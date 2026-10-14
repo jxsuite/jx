@@ -26,6 +26,7 @@
  *   change" true of the specimen canvas as well as the page one.
  */
 
+import { isNumber, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
 import { projectState } from "../store";
@@ -110,7 +111,7 @@ function pending(container: HTMLElement, group: TokenGroupId): { name: string; v
 
 /** The live project configuration, or an empty one before a project is open. */
 function config(): ProjectConfig {
-  return (projectState?.projectConfig || {}) as ProjectConfig;
+  return projectState?.projectConfig || {};
 }
 
 /**
@@ -121,7 +122,7 @@ function config(): ProjectConfig {
  * write, because there is no object here for it to have been written into.
  */
 function style(): JxStyle {
-  return (config().style || {}) as JxStyle;
+  return config().style || {};
 }
 
 /** Every rendering context this project declares, schemes first. */
@@ -159,10 +160,18 @@ async function persist(container: HTMLElement): Promise<void> {
 // ─── Projection ──────────────────────────────────────────────────────────────
 
 /** The colour a well is painted, and the colour the native input under it opens on. */
-function well(
-  resolved: string | number | undefined,
-  fallback: string,
-): { swatchBg: string; swatchInput: string } {
+interface SwatchWell {
+  /** The resolved value as a CSS background, or `transparent` when the token resolves to nothing. */
+  swatchBg: string;
+  /**
+   * What the native colour input opens on: the background when it is a hex colour, else the
+   * fallback.
+   */
+  swatchInput: string;
+}
+
+/** Paint one well from what the token resolves to. */
+function well(resolved: string | number | undefined, fallback: string): SwatchWell {
   const swatchBg = resolved === undefined ? "transparent" : String(resolved);
   return { swatchBg, swatchInput: swatchBg.startsWith("#") ? swatchBg : fallback };
 }
@@ -344,11 +353,23 @@ function addOverride(container: HTMLElement, token: string, ctx: string): void {
     return;
   }
   const base = rootStyle[token];
-  if (typeof base !== "string" && typeof base !== "number") {
+  if (!isString(base) && !isNumber(base)) {
     return;
   }
   writeTokenOverride(rootStyle, context, token, String(base));
   commit(container);
+}
+
+/** Switch Settings to the Contexts section, saying so when the section registry will not load. */
+async function openContextsSection(): Promise<void> {
+  try {
+    const { setSettingsSection } = await import("./section-registry");
+    setSettingsSection("contexts");
+  } catch (error) {
+    notify.error(`Could not open Settings › Contexts — ${errorMessage(error)}`, {
+      source: "Settings",
+    });
+  }
 }
 
 /**
@@ -378,13 +399,7 @@ function actions(container: HTMLElement): CssVarsActions {
        * breaks the css-vars-editor ↔ section-registry cycle.
        */
       manageContexts: () => {
-        void import("./section-registry")
-          .then(({ setSettingsSection }) => setSettingsSection("contexts"))
-          .catch((error: unknown) => {
-            notify.error(`Could not open Settings › Contexts — ${errorMessage(error)}`, {
-              source: "Settings",
-            });
-          });
+        void openContextsSection();
       },
       removeToken: (name: string) => {
         delete style()[name];
@@ -399,10 +414,16 @@ function actions(container: HTMLElement): CssVarsActions {
        * predecessor's `ref()` into the DOM could never do.
        */
       setAddName: (groupId: string, value: string) => {
-        pending(container, groupId as TokenGroupId).name = value;
+        const group = groupOf(groupId);
+        if (group) {
+          pending(container, group.id).name = value;
+        }
       },
       setAddValue: (groupId: string, value: string) => {
-        pending(container, groupId as TokenGroupId).value = value;
+        const group = groupOf(groupId);
+        if (group) {
+          pending(container, group.id).value = value;
+        }
       },
       setOverride: (token: string, ctx: string, value: string) => {
         const context = contexts().find((c) => c.name === ctx);

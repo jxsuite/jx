@@ -2,6 +2,15 @@
 // ─── Data Explorer ──────────────────────────────────────────────────────────
 
 import { nothing } from "lit-html";
+import {
+  isBigInt,
+  isBoolean,
+  isFunction,
+  isNonNullObject,
+  isNumber,
+  isString,
+  isSymbol,
+} from "@jxsuite/schema/guards";
 import { activeTab } from "../workspace/workspace";
 import { booleanArg, stringArg, stringProperty } from "../commands/command-args";
 import { renderDataTreeSurface } from "../surfaces/panel-data";
@@ -9,6 +18,8 @@ import { registerPanel } from "./panel-registry";
 import type { PanelBody } from "./panel-registry";
 import type { DataTreeRow } from "../surfaces/panel-data";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
+import type { CommandArgValues } from "../commands/command-args";
+import type { ScopeRecord, ScopeValue } from "../editor/merge-tags";
 
 /**
  * The focused tab's expansion record, created on first write.
@@ -22,7 +33,7 @@ function rowsUi(): Record<string, boolean> | null {
   if (!ui) {
     return null;
   }
-  return (ui.dataRows ??= {});
+  return ui.dataRows;
 }
 
 /*
@@ -44,7 +55,7 @@ function limitsUi(): Record<string, number> | null {
   if (!ui) {
     return null;
   }
-  return (ui.dataLimits ??= {});
+  return ui.dataLimits;
 }
 
 /** The cap for one marker: the default, plus whatever the reader has asked for. */
@@ -89,34 +100,60 @@ function moreRow(
   };
 }
 
-/** A value as the tree prints it, capped at `max` characters. `undefined` prints as nothing. */
-function valueText(value: unknown, max: number): string {
-  if (typeof value === "string" && value.length > max) {
+/**
+ * A value as the tree prints it, capped at `max` characters. `undefined` prints as nothing, and so
+ * do a function and a symbol: those are the values `JSON.stringify` answers with no text at all.
+ */
+function valueText(value: ScopeValue, max: number): string {
+  if (isString(value) && value.length > max) {
     return `"${value.slice(0, max)}…"`;
   }
-  return JSON.stringify(value) ?? "";
+  return value === undefined || isFunction(value) || isSymbol(value) ? "" : JSON.stringify(value);
+}
+
+/** Each primitive kind, in the spelling `typeof` gives it, with the guard that establishes it. */
+const PRIMITIVE_KINDS: readonly (readonly [string, (value: ScopeValue) => boolean])[] = [
+  ["string", isString],
+  ["number", isNumber],
+  ["boolean", isBoolean],
+  ["bigint", isBigInt],
+  ["symbol", isSymbol],
+  ["function", isFunction],
+];
+
+/** The `typeof` name of a value that is neither `null` nor an object. */
+function primitiveKind(value: ScopeValue): string {
+  return PRIMITIVE_KINDS.find(([, test]) => test(value))?.[0] ?? "undefined";
 }
 
 /** Which colour a value takes. `null` and a summary label are the two the tree actually paints. */
-function toneOf(value: unknown): string {
-  return value === null ? "null" : typeof value;
+function toneOf(value: ScopeValue): string {
+  return value === null ? "null" : primitiveKind(value);
+}
+
+/**
+ * A value the tree can open: an array or a record. `isNonNullObject` is a `typeof "object"` test,
+ * so it already refuses a function; this predicate is what tells the type checker so.
+ */
+function isOpenable(value: ScopeValue): value is ScopeValue[] | ScopeRecord {
+  return isNonNullObject(value);
 }
 
 /** `Array(3)` or `{2}` — what a value you can open says while it is closed. */
-function summaryLabel(value: object): string {
+function summaryLabel(value: ScopeValue[] | ScopeRecord): string {
   return Array.isArray(value) ? `Array(${value.length})` : `{${Object.keys(value).length}}`;
 }
 
 /** Unwrap a Vue ref (has .value and .__v_isRef) to get the underlying value. */
-export function unwrapSignal(value: unknown) {
-  if (value && typeof value === "object" && (value as Record<string, unknown>).__v_isRef) {
-    return (value as Record<string, unknown>).value;
+export function unwrapSignal(value: ScopeValue): ScopeValue {
+  if (isOpenable(value) && !Array.isArray(value) && value.__v_isRef) {
+    return value.value;
   }
   return value;
 }
 
 /** Type label for a signal value in the data explorer. */
-export function dataTypeLabel(value: unknown) {
+export function dataTypeLabel(value: ScopeValue): string {
   const v = unwrapSignal(value);
   if (v === null) {
     return "null";
@@ -127,10 +164,10 @@ export function dataTypeLabel(value: unknown) {
   if (Array.isArray(v)) {
     return `Array(${v.length})`;
   }
-  if (typeof v === "object") {
+  if (isOpenable(v)) {
     return `{${Object.keys(v).length}}`;
   }
-  return typeof v;
+  return primitiveKind(v);
 }
 
 /* THE VALUE LIST IS GONE, AND ITS ROWS ARE THE DEFINITION ROWS — `panels/signals-panel.ts`.
@@ -148,14 +185,14 @@ export function dataTypeLabel(value: unknown) {
  * each carry their own indent. Nothing else changed: the caps are the same caps, the text is
  * truncated at the same lengths, and a capped list still ends in a marker.
  *
- * @param {unknown} value The resolved value to read.
+ * @param {ScopeValue} value The resolved value to read.
  * @param {number} depth How deep this call already is; the indent is derived from it.
  * @param {number} [maxDepth] The default depth cap, before whatever the reader has raised.
  * @param {string} path This subtree's path, which is what a raised limit is remembered against.
  * @returns {DataTreeRow[]}
  */
 export function dataTreeRows(
-  value: unknown,
+  value: ScopeValue,
   depth: number,
   maxDepth = 5,
   path = "",
@@ -182,21 +219,21 @@ export function dataTreeRows(
   if (value === null || value === undefined) {
     return [row("", String(value), "null", path)];
   }
-  if (typeof value !== "object") {
+  if (!isOpenable(value)) {
     return [row("", valueText(value, 200), toneOf(value), path)];
   }
 
   const array = Array.isArray(value);
-  const entries: [string, string, unknown][] = array
+  const entries: [string, string, ScopeValue][] = array
     ? value.map((item, i) => [`${i}`, `[${i}] `, item])
-    : Object.keys(value).map((key) => [key, `${key}: `, (value as Record<string, unknown>)[key]]);
+    : Object.keys(value).map((key) => [key, `${key}: `, value[key]]);
   const limit = array ? "items" : "keys";
   const cap = capFor(path, limit, array ? 20 : 30);
 
   const rows: DataTreeRow[] = [];
   for (const [segment, label, item] of entries.slice(0, cap)) {
     const childPath = `${path}/${segment}`;
-    if (item === null || item === undefined || typeof item !== "object") {
+    if (!isOpenable(item)) {
       rows.push(row(label, valueText(item, 80), toneOf(item), childPath));
       continue;
     }
@@ -222,14 +259,14 @@ export function dataTreeRows(
  * repaint instead of this sweeping per host.
  *
  * @param {HTMLElement} host The node the tree is drawn into.
- * @param {unknown} value What the canvas resolved this entry to.
+ * @param {ScopeValue} value What the canvas resolved this entry to.
  * @param {string} path The subtree's path, which is what a raised limit is remembered against.
  * @param {() => void} rerender Repaint the panel, so that a raised limit is drawn.
  * @param {number} [maxDepth] The default depth cap, before whatever the reader has raised.
  */
 export function paintDataTree(
   host: HTMLElement,
-  value: unknown,
+  value: ScopeValue,
   path: string,
   rerender: () => void,
   maxDepth = 5,
@@ -327,7 +364,7 @@ export function dataExplorerCommands(deps: DataExplorerCommandDeps): AnyCommand[
       group: "5_data",
       requires: "an open document that defines data",
       when: (ctx) => ctx.document.open,
-      run: (_commandCtx, args) => {
+      run: (_commandCtx, args: CommandArgValues) => {
         const name = stringArg("data.expandRow", args, "name");
         const defined = definedDataNames();
         if (!defined.includes(name)) {
@@ -336,7 +373,7 @@ export function dataExplorerCommands(deps: DataExplorerCommandDeps): AnyCommand[
               `document — it defines: ${defined.length > 0 ? defined.join(", ") : "nothing"}`,
           );
         }
-        const { expanded } = args as { expanded?: unknown };
+        const { expanded } = args;
         // `expanded` defaults to true but is never COERCED: `{ expanded: "no" }` would otherwise
         // Read as a collapse, which is the class of silent wrong answer this whole record exists
         // To stop.

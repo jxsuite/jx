@@ -30,10 +30,23 @@ import {
 
 import type { CanvasPanel } from "../src/types";
 import type { Tab } from "../src/tabs/tab";
+import type { PaneDerivation } from "../src/workspace/workspace";
 
-/** A stand-in artboard: only `canvas` and `ready` are read by anything under test. */
+/**
+ * A stand-in artboard: only `canvas` and `ready` are read by anything under test, so the element,
+ * viewport and scroll container all point at the same canvas node.
+ */
 function panelOn(canvas: HTMLElement, ready = true): CanvasPanel {
-  return { canvas, mediaName: "base", ready } as unknown as CanvasPanel;
+  return {
+    _width: null,
+    canvas,
+    element: canvas,
+    mediaName: "base",
+    ready,
+    renderScope: null,
+    scrollContainer: canvas,
+    viewport: canvas,
+  };
 }
 
 function wrap(id: string): HTMLElement {
@@ -101,19 +114,19 @@ describe("the surface registry", () => {
 
 describe("which pane is showing what", () => {
   test("tabOfPane answers per pane, and null for a pane showing nothing", () => {
-    const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-a" }) as Tab;
+    const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-a" });
     expect(tabOfPane(PRIMARY_PANE)?.id).toBe(tab.id);
     expect(tabOfPane(SECONDARY_PANE)).toBeNull();
     expect(tabOfPane("no-such-pane")).toBeNull();
   });
 
   test("surfacesShowingTab finds the pane displaying a tab, even when it is not the focused one", () => {
-    const left = openTab({ document: { children: [], tagName: "div" }, id: "surface-left" }) as Tab;
+    const left = openTab({ document: { children: [], tagName: "div" }, id: "surface-left" });
     const right = openTab({
       document: { children: [], tagName: "div" },
       documentPath: "/p/right.js",
       id: "surface-right",
-    }) as Tab;
+    });
     right.session.ui.canvasMode = "source";
     expect(splitRight()?.id).toBe(SECONDARY_PANE);
     expect(workspace.activePaneId).toBe(SECONDARY_PANE);
@@ -128,7 +141,7 @@ describe("which pane is showing what", () => {
     /* The answer `surfaceShowingTab` could not give. It returned the FIRST matching pane, so the
        second stage drawing the same document was invisible to the patcher: it was posted a patch
        carrying the other pane's generation and dropped it in silence. */
-    const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-both" }) as Tab;
+    const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-both" });
     const other = openTab({ document: { children: [], tagName: "div" }, id: "surface-other" });
     expect(splitRight()?.id).toBe(SECONDARY_PANE);
     workspace.panes[0]!.activeTabId = tab.id;
@@ -143,10 +156,10 @@ describe("which pane is showing what", () => {
     const hidden = openTab({
       document: { children: [], tagName: "div" },
       id: "surface-hidden",
-    }) as Tab;
+    });
     // Opening the second tab made it active; re-activating the first leaves `hidden` in the strip
     // But off screen.
-    workspace.panes[0]!.activeTabId = (shown as Tab).id;
+    workspace.panes[0]!.activeTabId = shown.id;
     expect(surfacesShowingTab(hidden)).toEqual([]);
     expect(surfacesShowingTab(null)).toEqual([]);
   });
@@ -170,7 +183,7 @@ describe("panelHostingCanvas", () => {
 
 describe("the canvas mode of a pane", () => {
   test("composes the preview toggle onto the base mode, per tab", () => {
-    const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-mode" }) as Tab;
+    const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-mode" });
     tab.session.ui.canvasMode = "design";
     expect(canvasModeOfTab(tab)).toBe("design");
 
@@ -193,7 +206,7 @@ describe("the canvas mode of a pane", () => {
   test("a lens composes the shared tab's preview toggle onto the mode it draws in", () => {
     const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-mode-lens" });
     workspace.panes.push({ activeTabId: null, derived: null, id: SECONDARY_PANE, tabOrder: [] });
-    const derived = {
+    const derived: PaneDerivation = {
       diff: null,
       kind: "lens",
       media: null,
@@ -204,7 +217,7 @@ describe("the canvas mode of a pane", () => {
       status: "ready",
       zoom: 1,
     };
-    workspace.panes[1]!.derived = derived as never;
+    workspace.panes[1]!.derived = derived;
     expect(canvasModeOfPane(SECONDARY_PANE)).toBe("design");
 
     tab.session.ui.preview = true;
@@ -216,7 +229,7 @@ describe("the canvas mode of a pane", () => {
   });
 
   test("a pane showing nothing reads as design, not as the other pane's mode", () => {
-    const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-mode2" }) as Tab;
+    const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-mode2" });
     tab.session.ui.canvasMode = "source";
     expect(canvasModeOfPane(PRIMARY_PANE)).toBe("source");
     expect(canvasModeOfPane(SECONDARY_PANE)).toBe("design");
@@ -235,7 +248,7 @@ describe("the breakpoint a pane is drawing at", () => {
     const tab = openTab({
       document: { children: [], tagName: "div" },
       id: "surface-media",
-    }) as Tab;
+    });
     // The lens shares this tab, so the tab's own breakpoint is the WRONG answer for it by design.
     tab.session.ui.activeMedia = "wide";
     workspace.panes.push({ activeTabId: null, derived: null, id: SECONDARY_PANE, tabOrder: [] });
@@ -270,7 +283,10 @@ describe("the breakpoint a pane is drawing at", () => {
     const tab = breakpointLens("tablet");
     // A CODE lens is not a breakpoint lens: it draws the shared tab's breakpoint, because the
     // Only view fact it overrides is the mode.
-    const derived = workspace.panes[1]!.derived as { preset: string; media: string | null };
+    const { derived } = workspace.panes[1]!;
+    if (derived?.kind !== "lens") {
+      throw new Error("breakpointLens() installs a lens derivation on the secondary pane");
+    }
     derived.preset = "code";
     expect(activeMediaOfPane(SECONDARY_PANE)).toBe("wide");
     // …and an ordinary pane with nothing open answers null rather than borrowing.

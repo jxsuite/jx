@@ -42,9 +42,14 @@ import { resetExtensionSettingsSections } from "../src/settings/extension-sectio
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
 import { closeAllTabs, activeTab, workspace } from "../src/workspace/workspace";
 import "../src/ui/form-controls";
+import { emptyContext } from "../src/commands/context";
+import { isString } from "@jxsuite/schema/guards";
 import type { AnyCommand } from "../src/commands/registry";
+import type { NotifyOptions } from "../src/services/notify";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 import type { CommandContext } from "../src/commands/context";
 import type { ExtensionsInfo } from "../src/types";
+import type { CommandArgValues } from "../src/commands/command-args";
 
 // ─── Environment ─────────────────────────────────────────────────────────────
 
@@ -65,7 +70,7 @@ function openCommand(): AnyCommand {
 }
 
 /** Run `settings.open` and return the message it refused with. */
-async function refusal(args: Record<string, unknown>): Promise<string> {
+async function refusal(args: CommandArgValues): Promise<string> {
   try {
     await runOpen(args);
   } catch (error) {
@@ -74,10 +79,22 @@ async function refusal(args: Record<string, unknown>): Promise<string> {
   throw new Error("settings.open did not refuse");
 }
 
+/**
+ * Call a record's `run` the way the registry does: with a context and an argument record, `{}` when
+ * the caller passes none (`registry.run`'s own default).
+ */
+function runRecord(command: AnyCommand, args: CommandArgValues = {}): void | Promise<void> {
+  /* SAFETY: `settingsCommands()` stores every record as `Command<never>`, which erases the argument
+     type `run` was declared with. Each record here either ignores its arguments or reads them only
+     through the `command-args.ts` readers, which take a `CommandArgValues` record — the shape
+     `registry.run` hands every `run`. */
+  const run = command.run as (ctx: CommandContext, args: CommandArgValues) => void | Promise<void>;
+  return run(emptyContext(), args);
+}
+
 /** Run `settings.open` the way the registry does. */
-function runOpen(args: Record<string, unknown> = {}): Promise<void> {
-  const run = openCommand().run as (ctx: CommandContext, args: unknown) => void | Promise<void>;
-  return Promise.resolve(run({} as unknown as CommandContext, args));
+function runOpen(args: CommandArgValues = {}): Promise<void> {
+  return Promise.resolve(runRecord(openCommand(), args));
 }
 
 /**
@@ -95,17 +112,21 @@ function navLabels(): (string | undefined)[] {
 
 function navButton(label: string): HTMLElement {
   const button = [...host.querySelectorAll('[part="nav-item"]')].find(
-    (b) => b.getAttribute("label") === label,
+    (b): b is HTMLElement => b instanceof HTMLElement && b.getAttribute("label") === label,
   );
   if (!button) {
     throw new Error(`no nav item "${label}" — have ${navLabels().join(", ")}`);
   }
-  return button as HTMLElement;
+  return button;
 }
 
 /** The island a section renders into. */
 function body(): HTMLElement {
-  return host.querySelector('[part="body"]') as HTMLElement;
+  const island = host.querySelector('[part="body"]');
+  if (!(island instanceof HTMLElement)) {
+    throw new Error("the settings pane has drawn no section island");
+  }
+  return island;
 }
 
 /**
@@ -188,7 +209,7 @@ beforeEach(() => {
       content: {},
       extensions: [],
       style: { "--color-primary": "#007acc" },
-    } as unknown,
+    },
   });
   host = document.createElement("div");
   document.body.append(host);
@@ -291,9 +312,9 @@ describe("the settings document", () => {
        Spectrum buttons — the same reader-visible answer, addressed the way a document is. */
     await flush();
     const labels = [...body().querySelectorAll('[part="list"] [part="shape"]')].map((b) =>
-      b.textContent?.trim(),
+      b.textContent.trim(),
     );
-    expect(labels.some((l) => l?.includes("Author"))).toBe(true);
+    expect(labels.some((l) => l.includes("Author"))).toBe(true);
   });
 
   test("the CSS Variables section survives the move to a document and renders the project's vars", async () => {
@@ -547,7 +568,7 @@ describe("the configuration tab", () => {
 
   test("with no project open there is no document to show", async () => {
     const { setProjectState } = await import("../src/state");
-    setProjectState(null as unknown as Parameters<typeof setProjectState>[0]);
+    setProjectState(null);
     expect(showSettingsDocument()).toBeNull();
   });
 
@@ -572,7 +593,8 @@ describe("the configuration tab", () => {
     const onDisk =
       '{\n  "name": "site",\n  "style": { "--a": "1" },\n  "locales": ["en", "fr"]\n}\n';
     const { state } = installMockPlatform({}, { "project.json": onDisk });
-    resetStudioState({ projectConfig: JSON.parse(onDisk) as unknown });
+    const seeded: ProjectConfig = JSON.parse(onDisk);
+    resetStudioState({ projectConfig: seeded });
     resetProjectConfigDocument();
     try {
       const tab = showSettingsDocument()!;
@@ -581,13 +603,13 @@ describe("the configuration tab", () => {
       // Unwrapped, because `doc` is reactive and a proxied Map is not `toEqual` to a plain one.
       expect(toRaw(tab.doc.layout)).toEqual(deriveJsonLayout(onDisk));
 
-      const committed = await commitProjectConfig({ name: "renamed" } as never);
+      const committed = await commitProjectConfig({ name: "renamed" });
       expect(committed.ok).toBe(true);
-      expect(await saveFile(tab as never)).toBe(true);
+      expect(await saveFile(tab)).toBe(true);
 
-      const written = state.calls
-        .filter((call) => call[0] === "writeFile" && call[1] === "project.json")
-        .map((call) => call[2] as string);
+      const written = state.calls.flatMap((call) =>
+        call[0] === "writeFile" && call[1] === "project.json" && isString(call[2]) ? [call[2]] : [],
+      );
       expect(written).toHaveLength(2);
       expect(written[1]).toBe(written[0]);
       // A one-line diff of the seed: the renamed line moved and the inline object and array did not.
@@ -601,8 +623,11 @@ describe("the configuration tab", () => {
     expect(activeSettingsSection()).toBeNull();
     showSettingsDocument();
     expect(activeSettingsSection()).toBe(DEFAULT_SETTINGS_SECTION);
-    (activeTab.value as { session: { ui: { canvasMode: string } } }).session.ui.canvasMode =
-      "source";
+    const settingsTab = activeTab.value;
+    if (!settingsTab) {
+      throw new Error("showSettingsDocument() left no active tab");
+    }
+    settingsTab.session.ui.canvasMode = "source";
     expect(activeSettingsSection()).toBeNull();
   });
 });
@@ -617,10 +642,7 @@ describe("settings.open", () => {
     // It joined the rail foot's gear menu without leaving the ⬢ menu or the palette: a placement
     // Chooses WHETHER a record renders somewhere, never what it is or where else it appears.
     expect(command.menus).toEqual(["commandbar/overflow", "settings/menu", "palette"]);
-    expect(Object.keys((command.args as { properties: object }).properties).toSorted()).toEqual([
-      "entry",
-      "section",
-    ]);
+    expect(Object.keys(command.args?.properties ?? {}).toSorted()).toEqual(["entry", "section"]);
   });
 
   test("with no arguments it opens the document on its default section", async () => {
@@ -642,7 +664,7 @@ describe("settings.open", () => {
   test("a section and an entry select that entry of the contributed section", async () => {
     setExtensions(parserExtensions);
     resetStudioState({
-      projectConfig: { content: { pages: {}, posts: { format: "md" } } } as unknown,
+      projectConfig: { content: { pages: {}, posts: { format: "md" } } },
     });
     await runOpen({ entry: "posts", section: "content" });
     await mount();
@@ -654,7 +676,7 @@ describe("settings.open", () => {
 
   test("an entry the section does not have is refused, naming the entries it does", async () => {
     setExtensions(parserExtensions);
-    resetStudioState({ projectConfig: { content: { posts: {} } } as unknown });
+    resetStudioState({ projectConfig: { content: { posts: {} } } });
     expect(await refusal({ entry: "drafts", section: "content" })).toContain(
       '"drafts" is not an entry of settings section "content" — entries: posts',
     );
@@ -686,7 +708,7 @@ describe("onSettingsDocumentChanged", () => {
 
 describe("the ends of the document", () => {
   test("a contribution import that fails leaves the built-ins rendering, and files a Problem", async () => {
-    const warn = mock(() => {});
+    const warn = mock((_message: string, _options?: NotifyOptions) => {});
     void mock.module("../src/services/notify", () => ({ notify: { warn } }));
     void mock.module("../src/settings/extension-sections", () => ({
       extensionSectionsReady: () => Promise.resolve(),
@@ -697,7 +719,7 @@ describe("the ends of the document", () => {
     await mount();
     expect(navLabels()).toContain("Overview");
     expect(warn).toHaveBeenCalled();
-    expect((warn.mock.calls[0] as unknown[])[1]).toMatchObject({ tier: "problem" });
+    expect(warn.mock.calls[0]?.[1]).toMatchObject({ tier: "problem" });
   });
   test("with no sections at all it says so rather than going blank", async () => {
     await mount();
@@ -750,13 +772,16 @@ describe("styles.open", () => {
     const open = openCommand();
     expect(styles.requires).toBe(open.requires);
     for (const project of [{ open: true }, { open: false }]) {
-      const ctx = { project } as unknown as CommandContext;
+      const ctx: CommandContext = {
+        ...emptyContext(),
+        project: { ...emptyContext().project, ...project },
+      };
       expect(styles.when?.(ctx)).toBe(open.when?.(ctx));
     }
   });
 
   test("it opens the configuration document in the Project Styles editor", () => {
-    void stylesCommand().run({} as CommandContext, undefined as never);
+    void runRecord(stylesCommand());
     const tab = workspace.tabs.get("project.json");
     expect(tab?.session.ui.canvasMode).toBe("stylebook");
     expect(activeTab.value?.id).toBe("project.json");

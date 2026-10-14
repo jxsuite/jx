@@ -21,9 +21,20 @@ import {
   pathProperty,
   stringProperty,
 } from "../src/commands/command-args";
+import type { PropertySchema } from "../src/commands/command-args";
+import type { JsonValue } from "@jxsuite/schema/types";
+
+/**
+ * One property as the static check reads it: the runtime's {@link PropertySchema} plus the
+ * non-standard `declaredBy`, which names the registry a refusal cites.
+ */
+interface CheckedProperty extends Omit<PropertySchema, "oneOf"> {
+  declaredBy?: string;
+  oneOf?: readonly CheckedProperty[];
+}
 
 /** `validateArgs` over one property, so a case reads as the property and the value. */
-function issue(property: object, value: unknown): string[] {
+function issue(property: CheckedProperty, value: JsonValue): string[] {
   return validateArgs({ properties: { v: property } }, { v: value });
 }
 
@@ -49,7 +60,7 @@ describe("the empty string", () => {
 
   test("a const that admits it decides alone, as the const row does at runtime", () => {
     /* Hypothetical (no shipped record declares an empty const), but the parity sweep below holds
-       the two passes to it: the const row wins in `describeShape`, so the string rule never runs. */
+       the two passes to it: the const row wins in `coercionRowOf`, so the string rule never runs. */
     expect(issue({ const: "", type: "string" }, "")).toEqual([]);
     expect(issue({ const: "", type: "string" }, "x")).toEqual([
       'with v "x"; its args schema declares ""',
@@ -163,7 +174,7 @@ describe("oneOf", () => {
 
 describe("the static pass and the runtime pass agree", () => {
   /** Every shape a shipped record declares, plus the three the issue names. */
-  const properties: Record<string, object> = {
+  const properties = {
     bounded: numberProperty("d", { maximum: 5, minimum: 0.05 }),
     boundedInteger: { maximum: 9, minimum: 1, type: "integer" },
     constEmpty: { const: "", type: "string" },
@@ -183,10 +194,10 @@ describe("the static pass and the runtime pass agree", () => {
     string: stringProperty("d"),
     tab: enumProperty(["page", "layers"], "d"),
     union: { type: ["string", "null"] },
-  };
+  } satisfies Record<string, PropertySchema>;
 
   /** The values, each tried against every property. */
-  const values: unknown[] = [
+  const values: JsonValue[] = [
     "",
     "x",
     "page",

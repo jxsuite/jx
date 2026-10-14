@@ -2,6 +2,9 @@ import "./with-dom.js";
 import { effect } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { createTab, disposeTab } from "../src/tabs/tab";
+import type { Tab } from "../src/tabs/tab";
+import { childList, getNodeAtPath } from "../src/state";
+import type { FormatFrontmatter } from "../src/format/format-host";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import {
   mutateAddDef,
@@ -33,6 +36,18 @@ function makeTab(doc?: JxMutableNode) {
   return createTab({ document, id: "test" });
 }
 
+/**
+ * The element child of the tab's live document reached by following `indices` down successive
+ * `children` arrays. It walks with `getNodeAtPath`, so a slot that does not resolve reads
+ * `undefined` (asserted on directly by the out-of-range tests) instead of throwing mid-expect.
+ */
+function childAt(tab: Tab, ...indices: number[]): JxMutableNode | undefined {
+  return getNodeAtPath(
+    tab.doc.document,
+    indices.flatMap((index) => ["children", index]),
+  );
+}
+
 describe("transactDoc", () => {
   test("pushes history and marks dirty", () => {
     const tab = makeTab();
@@ -45,7 +60,7 @@ describe("transactDoc", () => {
     expect(tab.history.index).toBe(1);
     expect(tab.history.snapshots).toHaveLength(2);
     expect(tab.doc.document.children).toHaveLength(2);
-    expect((tab.doc.document as any).children[1].tagName).toBe("span");
+    expect(childAt(tab, 1)?.tagName).toBe("span");
 
     disposeTab(tab);
   });
@@ -135,8 +150,8 @@ describe("mutateInsertNode", () => {
   test("inserts at given index", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateInsertNode(t, [], 0, { tagName: "header" }));
-    expect((tab.doc.document as any).children[0].tagName).toBe("header");
-    expect((tab.doc.document as any).children[1].tagName).toBe("p");
+    expect(childAt(tab, 0)?.tagName).toBe("header");
+    expect(childAt(tab, 1)?.tagName).toBe("p");
     disposeTab(tab);
   });
 
@@ -170,7 +185,7 @@ describe("mutateDuplicateNode", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateDuplicateNode(t, ["children", 0]));
     expect(tab.doc.document.children).toHaveLength(2);
-    expect((tab.doc.document as any).children[1].tagName).toBe("p");
+    expect(childAt(tab, 1)?.tagName).toBe("p");
     expect(tab.session.selection).toEqual([["children", 1]]);
     disposeTab(tab);
   });
@@ -180,8 +195,8 @@ describe("mutateWrapNode", () => {
   test("wraps node in new element", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateWrapNode(t, ["children", 0], "section"));
-    expect((tab.doc.document as any).children[0].tagName).toBe("section");
-    expect((tab.doc.document as any).children[0].children[0].tagName).toBe("p");
+    expect(childAt(tab, 0)?.tagName).toBe("section");
+    expect(childAt(tab, 0, 0)?.tagName).toBe("p");
     disposeTab(tab);
   });
 });
@@ -198,7 +213,7 @@ describe("mutateMoveNode", () => {
     const tab = makeTab(doc);
     transactDoc(tab, (t) => mutateMoveNode(t, ["children", 1], ["children", 0], 0));
     expect(tab.doc.document.children).toHaveLength(1);
-    expect((tab.doc.document as any).children[0].children[0].textContent).toBe("move me");
+    expect(childAt(tab, 0, 0)?.textContent).toBe("move me");
     disposeTab(tab);
   });
 
@@ -206,8 +221,8 @@ describe("mutateMoveNode", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateMoveNode(t, ["children", 5], [], 0));
     expect(tab.doc.document.children).toHaveLength(1);
-    expect((tab.doc.document as any).children[0]).toBeDefined();
-    expect((tab.doc.document as any).children[0].tagName).toBe("p");
+    expect(childAt(tab, 0)).toBeDefined();
+    expect(childAt(tab, 0)?.tagName).toBe("p");
     disposeTab(tab);
   });
 
@@ -239,11 +254,9 @@ describe("mutateMoveNode", () => {
     const tab = makeTab(doc);
     // Move "a" below "c" (insert index 3, adjusted to 2 after removal)
     transactDoc(tab, (t) => mutateMoveNode(t, ["children", 0], [], 3));
-    expect((tab.doc.document as any).children.map((c: any) => c.textContent)).toEqual([
-      "b",
-      "c",
-      "a",
-    ]);
+    expect(childList(tab.doc.document).map((_, index) => childAt(tab, index)?.textContent)).toEqual(
+      ["b", "c", "a"],
+    );
     disposeTab(tab);
   });
 });
@@ -252,14 +265,14 @@ describe("mutateUpdateProperty", () => {
   test("sets a property", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "World"));
-    expect((tab.doc.document as any).children[0].textContent).toBe("World");
+    expect(childAt(tab, 0)?.textContent).toBe("World");
     disposeTab(tab);
   });
 
   test("deletes property when value is empty", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", ""));
-    expect((tab.doc.document as any).children[0].textContent).toBeUndefined();
+    expect(childAt(tab, 0)?.textContent).toBeUndefined();
     disposeTab(tab);
   });
 
@@ -279,7 +292,7 @@ describe("mutateUpdateProperty", () => {
     expect(() =>
       transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 7], "onclick", { body: "x" })),
     ).not.toThrow();
-    expect((tab.doc.document as any).children[7]).toBeUndefined();
+    expect(childAt(tab, 7)).toBeUndefined();
     disposeTab(tab);
   });
 });
@@ -288,7 +301,7 @@ describe("mutateUpdateStyle", () => {
   test("sets and removes style", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateUpdateStyle(t, [], "color", "red"));
-    expect((tab.doc.document as any).style.color).toBe("red");
+    expect(tab.doc.document.style?.color).toBe("red");
 
     transactDoc(tab, (t) => mutateUpdateStyle(t, [], "color", ""));
     expect(tab.doc.document.style).toBeUndefined();
@@ -300,10 +313,10 @@ describe("mutateUpdateAttribute", () => {
   test("sets and removes attribute", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateUpdateAttribute(t, ["children", 0], "id", "main"));
-    expect((tab.doc.document as any).children[0].attributes.id).toBe("main");
+    expect(childAt(tab, 0)?.attributes?.id).toBe("main");
 
     transactDoc(tab, (t) => mutateUpdateAttribute(t, ["children", 0], "id", ""));
-    expect((tab.doc.document as any).children[0].attributes).toBeUndefined();
+    expect(childAt(tab, 0)?.attributes).toBeUndefined();
     disposeTab(tab);
   });
 });
@@ -312,7 +325,7 @@ describe("mutateUpdateMediaStyle", () => {
   test("sets media-scoped style", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateUpdateMediaStyle(t, [], "--md", "display", "flex"));
-    expect((tab.doc.document as any).style["@--md"].display).toBe("flex");
+    expect(tab.doc.document.style).toMatchObject({ "@--md": { display: "flex" } });
     disposeTab(tab);
   });
 });
@@ -321,7 +334,7 @@ describe("state definitions", () => {
   test("mutateAddDef / mutateRemoveDef", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateAddDef(t, "count", { $value: 0 }));
-    expect((tab.doc.document as any).state.count.$value).toBe(0);
+    expect(tab.doc.document.state).toMatchObject({ count: { $value: 0 } });
 
     transactDoc(tab, (t) => mutateRemoveDef(t, "count"));
     expect(tab.doc.document.state).toBeUndefined();
@@ -332,7 +345,7 @@ describe("state definitions", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateAddDef(t, "name", { $value: "hello" }));
     transactDoc(tab, (t) => mutateUpdateDef(t, "name", { $value: "world" }));
-    expect((tab.doc.document as any).state.name.$value).toBe("world");
+    expect(tab.doc.document.state).toMatchObject({ name: { $value: "world" } });
     disposeTab(tab);
   });
 
@@ -340,8 +353,8 @@ describe("state definitions", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => mutateAddDef(t, "old", { $value: 1 }));
     transactDoc(tab, (t) => mutateRenameDef(t, "old", "new"));
-    expect((tab.doc.document as any).state.new.$value).toBe(1);
-    expect((tab.doc.document as any).state.old).toBeUndefined();
+    expect(tab.doc.document.state).toMatchObject({ new: { $value: 1 } });
+    expect(tab.doc.document.state?.old).toBeUndefined();
     disposeTab(tab);
   });
 });
@@ -351,7 +364,7 @@ describe("mutateUpdateProp", () => {
     const doc = { $props: { label: "Click" }, tagName: "my-button" };
     const tab = makeTab(doc);
     transactDoc(tab, (t) => mutateUpdateProp(t, [], "label", "Submit"));
-    expect((tab.doc.document as any).$props.label).toBe("Submit");
+    expect(tab.doc.document.$props?.label).toBe("Submit");
 
     transactDoc(tab, (t) => mutateUpdateProp(t, [], "label", ""));
     expect(tab.doc.document.$props).toBeUndefined();
@@ -360,7 +373,7 @@ describe("mutateUpdateProp", () => {
 });
 
 describe("mutateUpdateFrontmatter", () => {
-  function makeFmTab(frontmatter: Record<string, unknown>) {
+  function makeFmTab(frontmatter: FormatFrontmatter) {
     return createTab({
       document: { tagName: "main" },
       documentPath: "pages/index.md",
@@ -417,7 +430,11 @@ describe("mutateUpdateFrontmatter", () => {
     const tab = makeFmTab({ tags: ["a", "b"] });
 
     transactDoc(tab, (t) => mutateUpdateFrontmatter(t, "tags", ["x", "y", "z"]));
-    (tab.doc.content.frontmatter.tags as string[]).push("mutated-live");
+    const liveTags = tab.doc.content.frontmatter.tags;
+    if (!Array.isArray(liveTags)) {
+      throw new TypeError("the transaction above wrote `tags` as an array");
+    }
+    liveTags.push("mutated-live");
 
     undo(tab);
     expect(tab.doc.content.frontmatter.tags).toEqual(["a", "b"]);
@@ -505,7 +522,11 @@ describe("the debug history-consistency assertion", () => {
 
       // Drift the live document behind history's back — exactly the class of bug the assertion
       // Exists to catch, and the only way to reach its reporting branch.
-      (tab.doc.document.children as JxMutableNode[]).push({ tagName: "em" });
+      const liveChildren = tab.doc.document.children;
+      if (!Array.isArray(liveChildren)) {
+        throw new TypeError("the insert above left a static children array");
+      }
+      liveChildren.push({ tagName: "em" });
       undo(tab);
       redo(tab);
 

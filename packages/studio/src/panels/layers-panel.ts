@@ -47,7 +47,15 @@
  */
 
 import { nothing } from "lit-html";
-import { displayTagName, isTagExpression, tagNameCandidates } from "@jxsuite/schema/guards";
+import {
+  displayTagName,
+  isMappedArray,
+  isNonNullObject,
+  isNumber,
+  isString,
+  isTagExpression,
+  tagNameCandidates,
+} from "@jxsuite/schema/guards";
 import {
   VOID_ELEMENTS,
   childIndex,
@@ -60,7 +68,7 @@ import {
 } from "../store";
 import { activeTab } from "../workspace/workspace";
 import {
-  isSelected as isPathSelected,
+  isSelected,
   primarySelection,
   rangeSelection,
   selectionAnchor,
@@ -72,7 +80,12 @@ import { mutateUpdateProperty, transactDoc } from "../tabs/transact";
 import { view } from "../view";
 import { setActivityTab } from "../shell";
 import { registerPanel } from "./panel-registry";
-import { detachStylebookLayers, mountStylebookLayersPanel } from "./stylebook-layers-panel";
+import {
+  INDENT_BASE,
+  INDENT_STEP,
+  detachStylebookLayers,
+  mountStylebookLayersPanel,
+} from "./stylebook-layers-panel";
 import { selectStylebookTag, stylebookMeta } from "./stylebook-panel";
 import { isInlineElement } from "../editor/inline-edit";
 import { showContextMenu } from "../editor/context-menu";
@@ -115,17 +128,17 @@ const TEXT_PREVIEW_MAX = 40;
  * Deliberately short. `section`, `ul` and `table` are omitted: "Section" next to a `section` badge
  * is the repetition this function exists to remove.
  */
-const LANDMARK_NAMES: Readonly<Record<string, string>> = {
-  article: "Article",
-  aside: "Sidebar",
-  dialog: "Dialog",
-  figure: "Figure",
-  footer: "Footer",
-  form: "Form",
-  header: "Header",
-  main: "Main",
-  nav: "Navigation",
-};
+const LANDMARK_NAMES: ReadonlyMap<string, string> = new Map([
+  ["article", "Article"],
+  ["aside", "Sidebar"],
+  ["dialog", "Dialog"],
+  ["figure", "Figure"],
+  ["footer", "Footer"],
+  ["form", "Form"],
+  ["header", "Header"],
+  ["main", "Main"],
+  ["nav", "Navigation"],
+]);
 
 /** Trim and ellipsize to {@link LABEL_MAX}. */
 function truncate(text: string): string {
@@ -141,17 +154,17 @@ function truncate(text: string): string {
  * five-buttons-per-row build already cost it.
  */
 function firstText(node: JxMutableNode, depth = 0): string {
-  if (typeof node.textContent === "string" && node.textContent.trim()) {
+  if (isString(node.textContent) && node.textContent.trim()) {
     return node.textContent.trim();
   }
   if (depth >= 3 || !Array.isArray(node.children)) {
     return "";
   }
   for (const child of node.children) {
-    if (typeof child === "string" && child.trim()) {
+    if (isString(child) && child.trim()) {
       return child.trim();
     }
-    if (child && typeof child === "object") {
+    if (isNonNullObject(child)) {
       const found = firstText(child, depth + 1);
       if (found) {
         return found;
@@ -164,7 +177,7 @@ function firstText(node: JxMutableNode, depth = 0): string {
 /** The node's first class name, when it has a plain (unbound) `class` attribute. */
 function firstClass(node: JxMutableNode): string {
   const value = node.attributes?.class;
-  return typeof value === "string" ? (value.trim().split(/\s+/u)[0] ?? "") : "";
+  return isString(value) ? (value.trim().split(/\s+/u)[0] ?? "") : "";
 }
 
 /**
@@ -188,14 +201,14 @@ export function outlineLabel(node: JxMutableNode): string {
   if (node.$id) {
     return `#${truncate(node.$id)}`;
   }
-  if (typeof node.textContent === "string" && node.textContent.trim()) {
+  if (isString(node.textContent) && node.textContent.trim()) {
     return truncate(node.textContent);
   }
   const cls = firstClass(node);
   if (cls) {
     return `.${truncate(cls)}`;
   }
-  const landmark = LANDMARK_NAMES[displayTagName(node.tagName).toLowerCase()];
+  const landmark = LANDMARK_NAMES.get(displayTagName(node.tagName).toLowerCase());
   if (landmark) {
     return landmark;
   }
@@ -256,12 +269,11 @@ export function rowCommandViews(
 // ─── The tree, as a keyboard surface ─────────────────────────────────────────
 
 /**
- * Pixels of indent per level, the depth past which the column stops paying, and the row's own
- * gutter.
+ * The depth past which the column stops paying. The pixels per level and the row's own gutter are
+ * the Stylebook layers panel's {@link INDENT_STEP} and {@link INDENT_BASE}, so the two trees indent
+ * alike.
  */
-const INDENT_STEP = 16;
 const INDENT_MAX_DEPTH = 6;
-const INDENT_BASE = 8;
 
 /**
  * The indent for `depth`, capped.
@@ -275,7 +287,7 @@ export function indentWidth(depth: number): number {
 
 /** The inverse of {@link pathKey}: numeric segments come back as numbers, as the doc stores them. */
 function pathFromKey(key: string): JxPath {
-  return key ? (key.split("/").map((s) => (/^\d+$/u.test(s) ? Number(s) : s)) as JxPath) : [];
+  return key ? key.split("/").map((s) => (/^\d+$/u.test(s) ? Number(s) : s)) : [];
 }
 
 // ─── The row model, and the window onto it ───────────────────────────────────
@@ -288,7 +300,7 @@ function pathFromKey(key: string): JxPath {
  * window only. Splitting the two is the whole saving — the expensive half is the kit elements a
  * row's cluster mounts, not the walk that finds it.
  */
-interface OutlineRow {
+interface OutlineRowFacts {
   /** `pathKey(path)` — the drag-and-drop and roving-focus key, and the `$map`'s reconcile key. */
   key: string;
   path: JxPath;
@@ -303,13 +315,26 @@ interface OutlineRow {
    * than quietly start selecting text nodes.
    */
   item: boolean;
-  node: JxMutableNode | string | number | boolean;
   nodeType: string;
   /** 1-based position among the row's `role="treeitem"` siblings — see {@link numberOutlineSets}. */
   posInSet: number;
   /** How many `role="treeitem"` siblings the row has, itself included. */
   setSize: number;
 }
+
+/** A `role="treeitem"` row: an element, a repeater, a template or a case, always an object node. */
+interface OutlineItemRow extends OutlineRowFacts {
+  item: true;
+  node: JxMutableNode;
+}
+
+/** A text-node row: drawn, but not a tree item. Its node is the bare child primitive. */
+interface OutlineTextRow extends OutlineRowFacts {
+  item: false;
+  node: JxMutableNode | string | number | boolean;
+}
+
+type OutlineRow = OutlineItemRow | OutlineTextRow;
 
 /**
  * The declared height of one row — `surfaces/panel-outline.json`'s `[part="row"] { block-size }`.
@@ -456,6 +481,11 @@ function watchOutlineTree(): void {
  * reorder, canvas to Outline sync, a collaborator's cursor, a jump from Problems — needs the
  * unambiguous one.
  */
+/** Whether a decoded `data-jx-path` is a path: an array of string and number segments. */
+function isJxPath(value: unknown): value is JxPath {
+  return Array.isArray(value) && value.every((segment) => isString(segment) || isNumber(segment));
+}
+
 export function outlineRowPath(el: Element | null): JxPath | null {
   const row = el?.closest<HTMLElement>("[data-jx-path]");
   if (!row?.dataset.jxPath) {
@@ -463,7 +493,7 @@ export function outlineRowPath(el: Element | null): JxPath | null {
   }
   try {
     const parsed: unknown = JSON.parse(row.dataset.jxPath);
-    return Array.isArray(parsed) ? (parsed as JxPath) : null;
+    return isJxPath(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -674,7 +704,7 @@ function outlineRowLabel(row: OutlineRow): string {
     const text = String(row.node);
     return text.length > TEXT_PREVIEW_MAX ? `${text.slice(0, TEXT_PREVIEW_MAX)}…` : text;
   }
-  const node = row.node as JxMutableNode;
+  const { node } = row;
   return row.nodeType === "case-ref" ? node.$ref || "external" : outlineLabel(node);
 }
 
@@ -733,7 +763,7 @@ export function startLayerTitleEdit(path: JxPath, rerender: () => void) {
   /* The row's own node, not a second `getNodeAtPath` walk: the model already holds it, and reading
      it back off the model is what makes "a text line has no `$title` to write" a real branch rather
      than a defensive null check nothing can reach. */
-  if (!row?.item || typeof row.node !== "object") {
+  if (!row?.item) {
     return;
   }
   _editing = { key: row.key, rerender, text: row.node.$title || "" };
@@ -827,9 +857,11 @@ function buildOutlineRows(doc: JxMutableNode, mode: string, collapsed: Set<strin
     }
 
     const isText = nodeType === "text";
+    /** The row's node when it is a tree item; `null` for a text-node row. */
+    let element: JxMutableNode | null = null;
     if (!isText) {
       // After the text-node branch, a row's node is a JxMutableNode or it is not a row at all.
-      if (typeof node !== "object" || node === null) {
+      if (!isNonNullObject(node)) {
         continue;
       }
       if (path.length >= 2 && nodeType === "element") {
@@ -839,22 +871,28 @@ function buildOutlineRows(doc: JxMutableNode, mode: string, collapsed: Set<strin
           continue;
         }
       }
+      element = node;
     }
 
     while (ancestors.length > 0 && rows[ancestors.at(-1)!]!.depth >= depth) {
       ancestors.pop();
     }
-    rows.push({
-      depth,
-      item: !isText,
-      key,
-      node,
-      nodeType,
-      parent: ancestors.at(-1) ?? -1,
-      path,
-      posInSet: 0,
-      setSize: 0,
-    });
+    const parent = ancestors.at(-1) ?? -1;
+    rows.push(
+      element === null
+        ? { depth, item: false, key, node, nodeType, parent, path, posInSet: 0, setSize: 0 }
+        : {
+            depth,
+            item: true,
+            key,
+            node: element,
+            nodeType,
+            parent,
+            path,
+            posInSet: 0,
+            setSize: 0,
+          },
+    );
     ancestors.push(rows.length - 1);
   }
   return numberOutlineSets(rows);
@@ -890,30 +928,20 @@ function numberOutlineSets(rows: OutlineRow[]): OutlineRow[] {
 
 /** Whether the row has anything under it — children, a map template, or `$switch` cases. */
 function isExpandable(row: OutlineRow): boolean {
-  if (!row.item || typeof row.node !== "object") {
+  if (!row.item) {
     return false;
   }
-  const node = row.node as JxMutableNode;
+  const { node } = row;
   const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-  const hasMapChildren =
-    node.children !== undefined &&
-    typeof node.children === "object" &&
-    (node.children as unknown as Record<string, unknown>).$prototype === "Array";
+  const hasMapChildren = isMappedArray(node.children);
   const hasCases =
-    Boolean(node.$switch) &&
-    typeof node.cases === "object" &&
-    node.cases !== null &&
-    Object.keys(node.cases).length > 0;
+    Boolean(node.$switch) && isNonNullObject(node.cases) && Object.keys(node.cases).length > 0;
   return hasChildren || hasMapChildren || hasCases || (row.nodeType === "map" && Boolean(node.map));
 }
 
 /** The badge: what it says, which of the six drawings it gets, and what it says on hover. */
-function rowBadge(row: OutlineRow): {
-  badge: string;
-  badgeKind: string;
-  badgeTitle: string | null;
-} {
-  const node = row.node as JxMutableNode;
+function rowBadge(row: OutlineItemRow): Pick<OutlineRowView, "badge" | "badgeKind" | "badgeTitle"> {
+  const { node } = row;
   if (row.nodeType === "map") {
     return { badge: "↻", badgeKind: "map", badgeTitle: "Repeating list — one copy per item" };
   }
@@ -930,9 +958,7 @@ function rowBadge(row: OutlineRow): {
       badge: "▣",
       badgeKind: "slot",
       badgeTitle:
-        typeof slotName === "string" && slotName.trim()
-          ? `Slot "${slotName.trim()}"`
-          : "Default slot",
+        isString(slotName) && slotName.trim() ? `Slot "${slotName.trim()}"` : "Default slot",
     };
   }
   /* The ROW BADGE, which is the one place the tag is shown as itself rather than folded into a
@@ -994,10 +1020,9 @@ function outlineRowView(
   if (!row.item) {
     return textRowView(row);
   }
-  const { depth, key, nodeType, path } = row;
-  const node = row.node as JxMutableNode;
+  const { depth, key, node, nodeType, path } = row;
 
-  const selected = isPathSelected(doc.selection, path);
+  const selected = isSelected(doc.selection, path);
   const expandable = isExpandable(row);
   // Array nodes can't accept dropped children (their content is the single map template), so they
   // Block the make-child drop instruction like void elements do.
@@ -1006,8 +1031,7 @@ function outlineRowView(
   // Array (repeater) nodes are first-class structural nodes — movable/draggable/deletable like
   // Elements. Both sit at a numeric child index; templates (path tail "map") and case nodes do
   // Not, so they stay selectable/editable but not structurally manipulable.
-  const structural =
-    (nodeType === "element" || nodeType === "map") && typeof childIndex(path) === "number";
+  const structural = (nodeType === "element" || nodeType === "map") && isNumber(childIndex(path));
   const isRoot = doc.mode === "content" ? path.length === 0 : path.length < 2;
   const grabbable = structural && !isRoot;
   const open = expandable && !collapsed.has(key);
@@ -1187,7 +1211,7 @@ function revealChangedSelection(): void {
 function revealSelectedRow(): void {
   const drawn = _outlineList?.querySelector(`${ROW_SELECTOR}[aria-selected="true"]`);
   if (drawn) {
-    drawn.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    drawn.scrollIntoView({ behavior: "smooth", block: "nearest" });
     return;
   }
   revealOutlineRow(outlineIndexOfPath(primarySelection(activeTab.value?.session.selection)));
@@ -1244,9 +1268,9 @@ export function mountOutlinePanel(
     standing = {
       handle: mountOutlineSurface(target, values, {
         contextMenu: (_scope, event) => {
-          const path = outlineRowPath(event.target as Element | null);
-          if (path) {
-            showContextMenu(event as MouseEvent, path, { rerender: () => _outlineRerender?.() });
+          const path = outlineRowPath(event.target instanceof Element ? event.target : null);
+          if (path && event instanceof MouseEvent) {
+            showContextMenu(event, path, { rerender: () => _outlineRerender?.() });
             redrawOutline();
           }
         },
@@ -1260,10 +1284,9 @@ export function mountOutlinePanel(
              mount would, and the host decides when it is worth anything. An unconnected input
              cannot take focus. */
           queueMicrotask(() => {
-            const input = element as HTMLInputElement;
-            if (input.isConnected) {
-              input.focus();
-              input.select?.();
+            if (element instanceof HTMLInputElement && element.isConnected) {
+              element.focus();
+              element.select();
             }
           });
         },

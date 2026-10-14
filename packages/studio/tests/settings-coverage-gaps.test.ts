@@ -14,7 +14,9 @@ import { flush, installMockPlatform, key, pointer, resetStudioState, topDialog }
 import { problems, resetNotifications } from "../src/services/notify";
 import { resetActivities } from "../src/panels/activity-panel";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { MockPlatformState } from "./harness";
+import type { JsonObject, JxStyle, ProjectConfig } from "@jxsuite/schema/types";
 import type { SettingsContribution } from "../src/settings/contributed-section";
 
 void mock.module("../src/version", () => ({
@@ -54,7 +56,7 @@ afterEach(() => {
       d.remove();
     }
   }
-  (document.querySelector("#layer-modal") as HTMLElement).innerHTML = "";
+  modalLayer().innerHTML = "";
 });
 
 function makeContainer(): HTMLElement {
@@ -63,8 +65,17 @@ function makeContainer(): HTMLElement {
   return c;
 }
 
+/** One of the overlay layers `beforeAll` mounts, by id. */
+function overlayLayer(id: string): HTMLElement {
+  const layer = document.querySelector(`#${id}`);
+  if (!(layer instanceof HTMLElement)) {
+    throw new Error(`#${id} is not mounted; beforeAll creates every overlay layer`);
+  }
+  return layer;
+}
+
 function modalLayer(): HTMLElement {
-  return document.querySelector("#layer-modal") as HTMLElement;
+  return overlayLayer("layer-modal");
 }
 
 // ─── Dependencies editor ─────────────────────────────────────────────────────
@@ -78,16 +89,16 @@ function modalLayer(): HTMLElement {
 
 /** The line drawn where the table would be: "Loading…" or "No dependencies.". */
 function depsStatus(c: HTMLElement): string {
-  return c.querySelector('[part="status"]')?.textContent?.trim() ?? "";
+  return c.querySelector('[part="status"]')?.textContent.trim() ?? "";
 }
 
 /** One package's row, found by the package it draws. */
 function depsRow(c: HTMLElement, name: string): HTMLElement {
   const el = c.querySelector(`[part="row"][data-package="${name}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`no row for "${name}"`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 const TWO_DEPS = {
@@ -124,7 +135,7 @@ describe("dependencies editor gaps", () => {
     expect(c.querySelectorAll('[part="row"]')).toHaveLength(2);
     // The rows still list; with no registry answer every Latest cell reads — and nothing is
     // Offered as an update. A best-effort lookup that fails must not invent a target.
-    expect(depsRow(c, "hono").querySelector('[part="latest"]')?.textContent?.trim()).toBe("—");
+    expect(depsRow(c, "hono").querySelector('[part="latest"]')?.textContent.trim()).toBe("—");
     expect(c.querySelector('[part="update"]')).toBeNull();
   });
 
@@ -239,14 +250,16 @@ describe("dependencies editor gaps", () => {
       addPackage: async () => {
         adds += 1;
         await gate;
-        return {};
       },
       listPackages: async () => [],
     });
     const c = makeContainer();
     renderDependenciesEditor(c);
     await flush(4);
-    const field = c.querySelector('[part="add-field"] [part="input"]') as HTMLInputElement;
+    const field = c.querySelector('[part="add-field"] [part="input"]');
+    if (!(field instanceof HTMLInputElement)) {
+      throw new Error("the add field rendered no native input");
+    }
     field.value = "lodash";
     field.dispatchEvent(new Event("input", { bubbles: true }));
     await flush(2);
@@ -288,7 +301,7 @@ describe("jxsuite-update dismissal storage", () => {
       if (original) {
         Object.defineProperty(globalThis, "localStorage", original);
       }
-      (document.querySelector("#layer-dialog") as HTMLElement).innerHTML = "";
+      overlayLayer("layer-dialog").innerHTML = "";
     }
   });
 });
@@ -302,16 +315,17 @@ describe("css vars editor gaps", () => {
    */
   async function setupVars(media?: Record<string, string>): Promise<HTMLElement> {
     installMockPlatform();
-    resetStudioState({
-      projectConfig: {
-        style: {
-          "--color-primary": "#007acc",
-          "--font-body": "'Georgia', serif",
-          "--size-gap": "16px",
-        },
-        ...(media ? { $media: media } : {}),
-      } as unknown,
-    });
+    const projectConfig: ProjectConfig = {
+      style: {
+        "--color-primary": "#007acc",
+        "--font-body": "'Georgia', serif",
+        "--size-gap": "16px",
+      },
+    };
+    if (media) {
+      projectConfig.$media = media;
+    }
+    resetStudioState({ projectConfig });
     const container = document.createElement("div");
     renderCssVarsEditor(container);
     await flush();
@@ -319,19 +333,24 @@ describe("css vars editor gaps", () => {
     return container;
   }
 
-  function style(): Record<string, unknown> {
-    return (store.projectState as unknown as { projectConfig: { style: Record<string, unknown> } })
-      .projectConfig.style;
+  function style(): JxStyle {
+    const tokens = store.projectState?.projectConfig?.style;
+    if (!tokens) {
+      throw new Error("the project config has no style block");
+    }
+    return tokens;
   }
 
   function groupByTitle(container: HTMLElement, title: string): HTMLElement {
     const group = [...container.querySelectorAll('[part="group"]')].find(
-      (g) => g.querySelector('[part="group-title"]')?.textContent?.trim() === title,
+      (g): g is HTMLElement =>
+        g instanceof HTMLElement &&
+        g.querySelector('[part="group-title"]')?.textContent.trim() === title,
     );
     if (!group) {
       throw new Error(`no css-vars group titled "${title}"`);
     }
-    return group as HTMLElement;
+    return group;
   }
 
   test("font row delete removes the token", async () => {
@@ -352,12 +371,13 @@ describe("css vars editor gaps", () => {
     const container = await setupVars({ "--dark": "(prefers-color-scheme: dark)" });
     /* A document now: a scheme override is `[part="override"]`, and its colour well is the native
        input the kit's swatch wraps. */
-    const swatchInput = container.querySelector(
-      '[part="override"] input[type="color"]',
-    ) as HTMLInputElement;
+    const swatchInput = container.querySelector('[part="override"] input[type="color"]');
+    if (!(swatchInput instanceof HTMLInputElement)) {
+      throw new Error("the scheme override rendered no colour input");
+    }
     swatchInput.value = "#222222";
     swatchInput.dispatchEvent(new Event("input", { bubbles: true }));
-    expect((style()["@--dark"] as Record<string, unknown>)["--color-primary"]).toBe("#222222");
+    expect(style()["@--dark"]).toMatchObject({ "--color-primary": "#222222" });
   });
 });
 
@@ -375,10 +395,10 @@ describe("contributed section gaps", () => {
   /** A node the section's own document draws, by the `part` it carries. */
   function part(root: ParentNode, name: string): HTMLElement {
     const el = root.querySelector(`[part="${name}"]`);
-    if (!el) {
+    if (!(el instanceof HTMLElement)) {
       throw new Error(`no [part="${name}"] in the contributed section`);
     }
-    return el as HTMLElement;
+    return el;
   }
 
   /** The native control a kit element wraps. */
@@ -398,7 +418,7 @@ describe("contributed section gaps", () => {
       projectConfig: {
         connections: { main: { provider: "d1" } },
         name: "site",
-      } as unknown,
+      },
     });
     container = document.createElement("div");
     document.body.append(container);
@@ -408,8 +428,21 @@ describe("contributed section gaps", () => {
     container.remove();
   });
 
-  function config(): Record<string, unknown> {
-    return store.projectState!.projectConfig as unknown as Record<string, unknown>;
+  function config(): ProjectConfig {
+    const projectConfig = store.projectState?.projectConfig;
+    if (!projectConfig) {
+      throw new Error("no project config is loaded");
+    }
+    return projectConfig;
+  }
+
+  /** The contributed `connections` map, which the section reads and writes as plain JSON. */
+  function connections(): JsonObject {
+    const map = config().connections;
+    if (!isJsonObject(map)) {
+      throw new Error("the project config has no connections map");
+    }
+    return map;
   }
 
   const mapContribution: SettingsContribution = {
@@ -443,7 +476,7 @@ describe("contributed section gaps", () => {
     renderContributedSection(container, mapContribution);
     await settle();
     await createEntry("Fresh One");
-    expect((config().connections as Record<string, unknown>)["fresh-one"]).toEqual({});
+    expect(connections()["fresh-one"]).toEqual({});
   });
 
   test("newEntry templates substitute inside arrays and keep non-string leaves", async () => {
@@ -458,7 +491,7 @@ describe("contributed section gaps", () => {
     });
     await settle();
     await createEntry("tagged");
-    expect((config().connections as Record<string, unknown>).tagged).toEqual({
+    expect(connections().tagged).toEqual({
       depth: 2,
       enabled: true,
       tags: ["tagged", 7, { ref: "tagged" }],
@@ -497,7 +530,7 @@ describe("contributed section gaps", () => {
     key(nameInput(), "Escape");
     await settle();
     expect(nameInput().value).toBe("main");
-    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["main"]);
+    expect(Object.keys(connections())).toEqual(["main"]);
     expect(
       platformState.calls.filter((c) => c[0] === "writeFile" && c[1] === "project.json"),
     ).toHaveLength(0);
@@ -508,7 +541,7 @@ describe("contributed section gaps", () => {
     await settle();
     key(nameInput(), "Enter");
     await settle();
-    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["renamed-one"]);
+    expect(Object.keys(connections())).toEqual(["renamed-one"]);
     expect(nameInput().value).toBe("renamed-one");
   });
 });

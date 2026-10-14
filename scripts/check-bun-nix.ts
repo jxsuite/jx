@@ -38,18 +38,20 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
+import { isJsonRecord, isText } from "./lib/json-guards.ts";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /** Repo-relative, and relative to nothing else: both are read from the repository root. */
 export const LOCK_FILE = "bun.lock";
 export const NIX_FILE = "bun.nix";
 
 /** The `bun2nix` devDependency range, reduced to the bare version `bunx` will accept. */
-export function pinnedGeneratorVersion(manifest: unknown): string | undefined {
-  const dev = (manifest as { devDependencies?: Record<string, string> })?.devDependencies;
-  const range = dev?.bun2nix;
+export function pinnedGeneratorVersion(manifest: JsonValue): string | undefined {
+  const dev = isJsonRecord(manifest) ? manifest.devDependencies : undefined;
+  const range = isJsonRecord(dev) ? dev.bun2nix : undefined;
   // Only an exact-or-caret pin names one version. A range like `>=2 <3` names none, and guessing
   // Would be worse than letting bunx resolve the latest and saying so in the output.
-  const m = range && /^[\^~]?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(range);
+  const m = isText(range) && /^[\^~]?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(range);
   return m ? m[1] : undefined;
 }
 

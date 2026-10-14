@@ -167,10 +167,11 @@ describe("studioShellHtml", () => {
 
   test("boot modules load before the entry, in order", () => {
     const html = studioShellHtml({ boot: ["/edit-init.js", "/second.js"] });
-    const at = (s: string) => html.indexOf(s);
-    expect(at("/edit-init.js")).toBeGreaterThan(-1);
-    expect(at("/edit-init.js")).toBeLessThan(at("/second.js"));
-    expect(at("/second.js")).toBeLessThan(at(STUDIO_ENTRY));
+    const editInit = html.indexOf("/edit-init.js");
+    const second = html.indexOf("/second.js");
+    expect(editInit).toBeGreaterThan(-1);
+    expect(editInit).toBeLessThan(second);
+    expect(second).toBeLessThan(html.indexOf(STUDIO_ENTRY));
   });
 
   test("no boot module means no stray script tag", () => {
@@ -283,8 +284,9 @@ describe("canvasShellHtml", () => {
   /* The reference is a dynamic import() inside a template literal with a cache-buster — precisely
      the shape jx-platform's `(?:src|href)="\\./…"` residual-ref guard structurally could not see. */
   test("rebases the entry inside a template-literal import", () => {
-    expect(canvasShellHtml(canvas, FLAT)).toContain("/iframe-entry.js?t=");
-    expect(canvasShellHtml(canvas, FLAT)).not.toContain("./dist/iframe-entry.js");
+    const rebased = canvasShellHtml(canvas, FLAT);
+    expect(rebased).toContain("/iframe-entry.js?t=");
+    expect(rebased).not.toContain("./dist/iframe-entry.js");
   });
 
   test("rebases at a nested base too", () => {

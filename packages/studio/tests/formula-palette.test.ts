@@ -24,10 +24,6 @@ import type { FormulaCatalogEntry } from "../src/ui/formula-catalog";
 mountOverlayLayers(document.body);
 initLayers();
 
-// Happy-dom may not provide requestAnimationFrame in all versions.
-(globalThis as Record<string, unknown>).requestAnimationFrame ??= (cb: (t: number) => void) =>
-  setTimeout(() => cb(0), 0);
-
 function entry(overrides: Partial<FormulaCatalogEntry>): FormulaCatalogEntry {
   return {
     description: "desc",
@@ -60,21 +56,34 @@ function slot(): HTMLElement {
   return getLayerSlot("popover", "formula-palette");
 }
 
+/** The one element carrying `part` inside the palette's slot; the test fails if it is not drawn. */
+function drawnPart(name: string): HTMLElement {
+  const el = slot().querySelector(`[part="${name}"]`);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`formula palette draws no [part="${name}"]`);
+  }
+  return el;
+}
+
 function overlay(): HTMLElement | null {
   /* The palette is a persistent mount now: closed it is present but hidden on the layer root, and
      a test that asks "is the palette closed?" asks what the reader SEES — empty, not gone. */
   const shown = [...slot().querySelectorAll('[part="overlay"]')].find(
-    (el) => !el.hasAttribute("hidden"),
+    (el): el is HTMLElement => el instanceof HTMLElement && !el.hasAttribute("hidden"),
   );
-  return (shown as HTMLElement) ?? null;
+  return shown ?? null;
 }
 
 function searchInput(): HTMLInputElement {
-  return slot().querySelector('[part="input"]') as HTMLInputElement;
+  const input = drawnPart("input");
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("formula palette's search field is not an <input>");
+  }
+  return input;
 }
 
 function items(): HTMLElement[] {
-  return [...slot().querySelectorAll('[part="option"]')] as HTMLElement[];
+  return [...slot().querySelectorAll('[part="option"]')].filter((el) => el instanceof HTMLElement);
 }
 
 /** The row the caret is on, as the kit's sidecar marks it. */
@@ -127,7 +136,7 @@ describe("formula palette — open/close", () => {
 
   test("clicking the backdrop closes; clicks inside the panel do not", async () => {
     await open();
-    const panel = slot().querySelector('[part="panel"]') as HTMLElement;
+    const panel = drawnPart("panel");
     panel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(overlay()).toBeTruthy();
@@ -219,12 +228,11 @@ describe("formula palette — the anchored panel", () => {
   test("an anchor with a measured box pins the panel under it; no anchor centres it", async () => {
     const anchor = document.createElement("button");
     document.body.append(anchor);
-    anchor.getBoundingClientRect = () =>
-      ({ bottom: 40, height: 20, left: 120, top: 20, width: 60 }) as DOMRect;
+    anchor.getBoundingClientRect = () => new DOMRect(120, 20, 60, 20);
 
     openFormulaPalette({ anchor, entries: ENTRIES, onPick });
     await flush();
-    const panel = slot().querySelector('[part="panel"]') as HTMLElement;
+    const panel = drawnPart("panel");
     expect(panel.dataset.anchored).toBe("");
     /* Computed, not the element's own `style` attribute: the position is declared in the document's
        own style object and reaches the panel as a custom property set on the mount's root. */
@@ -235,7 +243,7 @@ describe("formula palette — the anchored panel", () => {
     closeFormulaPalette();
     await flush();
     await open();
-    const centred = slot().querySelector('[part="panel"]') as HTMLElement;
+    const centred = drawnPart("panel");
     expect(centred.dataset.anchored).toBeUndefined();
     anchor.remove();
   });
@@ -254,7 +262,7 @@ describe("formula palette — the highlight is one id", () => {
     await keydown("ArrowDown");
 
     const field = searchInput();
-    const list = slot().querySelector('[part="results"]') as HTMLElement;
+    const list = drawnPart("results");
     const active = field.getAttribute("aria-activedescendant");
 
     expect(active).toBe("formula-palette-option-1");
@@ -275,7 +283,7 @@ describe("formula palette — the highlight is one id", () => {
     // Would name a row that is not there now that the id IS the highlight.
     await keydown("ArrowDown");
     expect(searchInput().hasAttribute("aria-activedescendant")).toBe(false);
-    expect((slot().querySelector('[part="results"]') as HTMLElement).dataset.active).toBe("");
+    expect(drawnPart("results").dataset.active).toBe("");
   });
 
   test("a key moves the caret without re-ranking the catalog", async () => {

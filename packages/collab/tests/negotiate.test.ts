@@ -13,7 +13,7 @@ import {
 } from "../src/negotiate.ts";
 import { COLLAB_SUBPROTOCOL as FROM_ENVELOPE } from "../src/envelope.ts";
 import { createWsCollabConnection } from "../src/ws-client.ts";
-import type { WsLike } from "../src/ws-client.ts";
+import type { WsCollabConnectionOptions, WsLike } from "../src/ws-client.ts";
 
 type WsImpl = new (url: string, protocols?: string[]) => WsLike;
 
@@ -112,10 +112,22 @@ describe("selectSubprotocol", () => {
   });
 });
 
+/**
+ * One WebSocket constructor call, as the recorder saw it: the `url` and `protocols` the connection
+ * forwards from its options.
+ */
+type SocketCall = Pick<WsCollabConnectionOptions, "protocols" | "url">;
+
+/** The constructor calls seen so far, and the recording constructor that collects them. */
+interface SocketRecorder {
+  calls: SocketCall[];
+  impl: WsImpl;
+}
+
 describe("the offer reaches the socket", () => {
   /** Records what each connect() passed to the WebSocket constructor. */
-  function recorder(): { calls: { protocols?: string[]; url: string }[]; impl: WsImpl } {
-    const calls: { protocols?: string[]; url: string }[] = [];
+  function recorder(): SocketRecorder {
+    const calls: SocketCall[] = [];
     class RecordingSocket implements WsLike {
       binaryType = "arraybuffer";
       readyState = 0;

@@ -50,8 +50,9 @@
  * release is genuinely absent rather than merely not replicated yet.
  */
 
-const CONFIG = "release-please-config.json";
-const MANIFEST = ".release-please-manifest.json";
+/** Release-please's config and the manifest it writes, repo-relative. */
+export const RELEASE_PLEASE_CONFIG = "release-please-config.json";
+export const RELEASE_PLEASE_MANIFEST = ".release-please-manifest.json";
 
 interface PackageConfig {
   component?: string;
@@ -81,14 +82,10 @@ export interface ReleaseTarget {
  */
 export function tagFor(path: string, version: string, config: Config): string {
   const pkg = config.packages[path] ?? {};
-  const pick = <K extends keyof PackageConfig & keyof Config>(
-    key: K,
-    fallback: NonNullable<Config[K]>,
-  ) => (pkg[key] ?? config[key] ?? fallback) as NonNullable<Config[K]>;
-
-  const includeComponent = pick("include-component-in-tag", true);
-  const includeV = pick("include-v-in-tag", true);
-  const separator = pick("tag-separator", "-");
+  const includeComponent =
+    pkg["include-component-in-tag"] ?? config["include-component-in-tag"] ?? true;
+  const includeV = pkg["include-v-in-tag"] ?? config["include-v-in-tag"] ?? true;
+  const separator = pkg["tag-separator"] ?? config["tag-separator"] ?? "-";
   const component = pkg.component ?? path.split("/").at(-1)!;
 
   const prefix = includeComponent ? `${component}${separator}` : "";
@@ -108,8 +105,15 @@ export const UNRELEASED = "0.0.0";
 
 /** What every manifest entry claims to have shipped. */
 export async function readTargets(root = "."): Promise<ReleaseTarget[]> {
-  const config = (await Bun.file(`${root}/${CONFIG}`).json()) as Config;
-  const manifest = (await Bun.file(`${root}/${MANIFEST}`).json()) as Record<string, string>;
+  /* SAFETY: release-please-config.json declares release-please's own config schema in `$schema`,
+     and release-please rejects a config that breaks it on every release run, so the four keys
+     `tagFor` reads carry the types `Config` gives them. */
+  const config = (await Bun.file(`${root}/${RELEASE_PLEASE_CONFIG}`).json()) as Config;
+  // SAFETY: release-please writes this manifest itself, as one `"<path>": "<version>"` string per package.
+  const manifest = (await Bun.file(`${root}/${RELEASE_PLEASE_MANIFEST}`).json()) as Record<
+    string,
+    string
+  >;
 
   return Object.entries(manifest)
     .filter(([, version]) => version !== UNRELEASED)

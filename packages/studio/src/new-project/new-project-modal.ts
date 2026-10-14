@@ -41,6 +41,7 @@
 import { errorMessage } from "@jxsuite/schema/parse";
 import { layerHost } from "../ui/layers";
 import { enumArg, enumProperty } from "../commands/command-args";
+import type { CommandArgValues } from "../commands/command-args";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import { getPlatform } from "../platform";
 import { installUrlOf } from "../platform-errors";
@@ -118,9 +119,9 @@ let _nameError = "";
 /** GitHub-App install link carried by a structured needs_installation_access failure. */
 let _errorInstallUrl = "";
 
-function captureError(error: unknown) {
-  _error = errorMessage(error);
-  _errorInstallUrl = installUrlOf(error) ?? "";
+function captureError(cause: unknown) {
+  _error = errorMessage(cause);
+  _errorInstallUrl = installUrlOf(cause) ?? "";
 }
 
 let _creating = false;
@@ -244,6 +245,8 @@ export function openNewProjectModal(options?: { tab?: NewProjectTab }): Promise<
           if (_creating) {
             return;
           }
+          /* SAFETY: `value` is the selected `jx-tab`'s value, and the strip renders one tab per
+             `viewOf().tabs` entry, whose values are "starter", "import" and "agent". */
           _tab = value as NewProjectTab;
           _error = "";
           redraw();
@@ -348,10 +351,10 @@ async function finishCreated(result: { root: string; config: ProjectConfig }) {
     getTab: () => null,
   });
   if (!adopted && !openedElsewhere) {
-    notify.warn("Created the project, but could not open it here.", {
-      ...(error === null ? {} : { detail: error }),
-      source: "New Project",
-    });
+    notify.warn(
+      "Created the project, but could not open it here.",
+      error === null ? { source: "New Project" } : { detail: error, source: "New Project" },
+    );
   }
   finish(result);
 }
@@ -708,9 +711,9 @@ export function newProjectCommands(): AnyCommand[] {
       group: "1_file",
       /* No `aiTool`: application-level, refused at registration; it opens the wizard, and the
          model's own door is `create_project` / `import_site` (studio-ui-guidelines.md §12.4). */
-      run: (_commandCtx, args) => {
+      run: (_commandCtx, args: CommandArgValues) => {
         const tab =
-          (args as { tab?: unknown }).tab === undefined
+          args.tab === undefined
             ? undefined
             : enumArg("project.new", args, "tab", NEW_PROJECT_TABS);
         void openNewProjectModal(tab === undefined ? {} : { tab });

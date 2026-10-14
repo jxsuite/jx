@@ -88,10 +88,7 @@ function maybeNumeric(value: string): string | number {
  * Diff a single element's captured styles against its tagName's UA defaults. Returns only the
  * declarations that represent intentional styling.
  */
-export function diffStyles(
-  captured: Record<string, string>,
-  uaDefaults: Record<string, string>,
-): Record<string, string | number> {
+export function diffStyles(captured: Record<string, string>, uaDefaults: Record<string, string>) {
   const result: Record<string, string | number> = {};
 
   for (const [prop, value] of Object.entries(captured)) {

@@ -228,7 +228,10 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
   const scope = effectScope();
   const mounted = mountMediaSurface(canvasWrap, view(), {
     copyRef: () => {
-      void navigator.clipboard?.writeText(ref);
+      // `navigator.clipboard` is [SecureContext]: a plain-http host has none, whatever lib.dom says.
+      if ("clipboard" in navigator) {
+        void navigator.clipboard.writeText(ref);
+      }
     },
     imageLoaded: (width, height) => {
       /* The only honest source of pixel dimensions in a browser is an image that has loaded, and

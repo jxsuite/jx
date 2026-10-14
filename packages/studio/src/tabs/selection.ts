@@ -42,6 +42,8 @@
  * standing between a mixed selection and a half-applied, unrecorded delete.
  */
 
+import { isNumber } from "@jxsuite/schema/guards";
+
 import type { JxPath } from "../state";
 import { isAncestor, pathsEqual } from "../state";
 
@@ -52,7 +54,7 @@ import { isAncestor, pathsEqual } from "../state";
  * @returns {JxPath | null}
  */
 export function primarySelection(selection: readonly JxPath[] | null | undefined): JxPath | null {
-  return selection && selection.length > 0 ? (selection.at(-1) as JxPath) : null;
+  return selection?.at(-1) ?? null;
 }
 
 /**
@@ -62,7 +64,7 @@ export function primarySelection(selection: readonly JxPath[] | null | undefined
  * @returns {JxPath | null}
  */
 export function selectionAnchor(selection: readonly JxPath[] | null | undefined): JxPath | null {
-  return selection && selection.length > 0 ? (selection[0] as JxPath) : null;
+  return selection?.[0] ?? null;
 }
 
 /**
@@ -187,7 +189,7 @@ export function comparePaths(a: JxPath, b: JxPath): number {
     if (x === y) {
       continue;
     }
-    if (typeof x === "number" && typeof y === "number") {
+    if (isNumber(x) && isNumber(y)) {
       return x - y;
     }
     return String(x) < String(y) ? -1 : 1;
@@ -231,7 +233,27 @@ export function topLevelSelection(selection: readonly JxPath[]): JxPath[] {
  * @returns {boolean}
  */
 export function isSpliceablePath(path: JxPath): boolean {
-  return path.at(-2) === "children" && typeof path.at(-1) === "number";
+  return spliceCoordinate(path) !== null;
+}
+
+/** Where a structural verb splices: the parent element's path and the index in its children. */
+export interface SpliceCoordinate {
+  parentPath: JxPath;
+  index: number;
+}
+
+/**
+ * The splice coordinate `path` names, or `null` for no path and for every path
+ * {@link isSpliceablePath} refuses.
+ *
+ * @param {JxPath | null | undefined} path
+ * @returns {SpliceCoordinate | null}
+ */
+export function spliceCoordinate(path: JxPath | null | undefined): SpliceCoordinate | null {
+  const index = path?.at(-1);
+  return path && path.at(-2) === "children" && isNumber(index)
+    ? { index, parentPath: path.slice(0, -2) }
+    : null;
 }
 
 /**
@@ -289,7 +311,13 @@ export function selectionsEqual(
 ): boolean {
   const x = a ?? [];
   const y = b ?? [];
-  return x.length === y.length && x.every((p, i) => pathsEqual(p, y[i] as JxPath));
+  return x.length === y.length && x.every((p, i) => pathsEqual(p, y[i] ?? null));
+}
+
+/** One field's value read across the selection: `mixed` when the selected nodes disagree. */
+export interface UnifiedValue<T> {
+  mixed: boolean;
+  value: T | undefined;
 }
 
 /**
@@ -306,13 +334,13 @@ export function selectionsEqual(
  *
  * @template T
  * @param {readonly T[]} values One per selected node, in selection order.
- * @returns {{ mixed: boolean; value: T | undefined }}
+ * @returns {UnifiedValue<T>}
  */
-export function unifyValues<T>(values: readonly T[]): { mixed: boolean; value: T | undefined } {
+export function unifyValues<T>(values: readonly T[]): UnifiedValue<T> {
   if (values.length === 0) {
     return { mixed: false, value: undefined };
   }
-  const first = values[0] as T;
+  const [first] = values;
   const key = JSON.stringify(first ?? null);
   for (let i = 1; i < values.length; i++) {
     if (JSON.stringify(values[i] ?? null) !== key) {

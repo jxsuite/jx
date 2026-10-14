@@ -28,7 +28,9 @@ import {
 import { componentRegistry } from "../src/files/components";
 import { resetSlotModeMemory } from "../src/ui/dynamic-slot";
 import { activeTab } from "../src/workspace/workspace";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JxElementTagName, JxMutableNode } from "@jxsuite/schema/types";
+import type { SurfaceOptionGroup } from "../src/ui/surface";
 
 // ─── Local helpers (same shape as tests/properties-panel.test.ts) ─────────────
 
@@ -55,24 +57,36 @@ async function renderPanel(): Promise<HTMLElement> {
 }
 
 /** A `<x-card>` root holding one child element, with that child selected. */
-function openWithChildTag(tagName: unknown) {
+function openWithChildTag(tagName: JxElementTagName) {
   const tab = resetWorkspaceWithTab({
     children: [{ children: [], tagName }],
     tagName: "x-card",
-  } as unknown as JxMutableNode);
-  tab.session.selection = [["children", 0]] as never;
+  });
+  tab.session.selection = [["children", 0]];
   return tab;
 }
 
 function docNow(): JxMutableNode {
-  return activeTab.value!.doc.document as JxMutableNode;
+  return activeTab.value!.doc.document;
 }
 
+/** The root's one child, which `openWithChildTag` built as an element node and selected. */
 function selectedNode(): JxMutableNode {
-  return (docNow().children as JxMutableNode[])[0]!;
+  const { children } = docNow();
+  const first = Array.isArray(children) ? children[0] : undefined;
+  if (first === undefined || isString(first)) {
+    throw new Error("the document root lost the child element the test selected");
+  }
+  return first;
 }
 
-const tagRow = (c: HTMLElement) => c.querySelector('[data-prop="tagName"]') as HTMLElement;
+function tagRow(c: HTMLElement): Element {
+  const row = c.querySelector('[data-prop="tagName"]');
+  if (!row) {
+    throw new Error("the Properties panel drew no Tag row");
+  }
+  return row;
+}
 
 /** The rung the Tag row is currently at, in the ladder's own words. */
 /** The rung the chip PRINTS: its label part, since an enabled hint is a tip child of the host. */
@@ -121,7 +135,7 @@ describe("the Tag row commits what the rung change produced", () => {
        target: null, value: null }`, which `TagExpression` does not admit. */
     expect(selectedNode().tagName).toEqual({
       $expression: { initial: "section", operator: "?:", target: null, value: "section" },
-    } as never);
+    });
   });
 
   test("the write lands on the selected node, not on the document root", async () => {
@@ -147,7 +161,7 @@ describe("the Tag row commits what the rung change produced", () => {
     openWithChildTag("section");
     const c = await renderPanel();
     await chooseValueSource(c, "expression");
-    expect(typeof selectedNode().tagName).toBe("object");
+    expect(isNonNullObject(selectedNode().tagName)).toBe(true);
 
     await renderPanel();
     await chooseValueSource(c, "literal");
@@ -161,8 +175,10 @@ describe("the Tag row commits what the rung change produced", () => {
     await chooseValueSource(c, "expression");
     await renderPanel();
 
-    const select = tagRow(c).querySelector('[part="operator"]') as HTMLElement & {
-      groups?: { rows: { value: string }[] }[];
+    /* SAFETY: `[part="operator"]` in expression-editor.json is a jx-select whose `groups` prop is
+       bound to the row's `ExprRowView.groups`, an `SurfaceOptionGroup[]` the kit stores unchanged. */
+    const select = tagRow(c).querySelector('[part="operator"]') as Element & {
+      groups?: SurfaceOptionGroup[];
     };
     const offered = (select.groups ?? []).flatMap((group) => group.rows.map((row) => row.value));
 

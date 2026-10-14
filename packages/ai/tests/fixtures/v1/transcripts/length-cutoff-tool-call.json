@@ -1,7 +1,7 @@
 {
   "name": "length-cutoff-tool-call",
   "description": "A tool call cut off mid-arguments by the length limit (no tool_call_end). Studio's loop still runs it; the truncated arguments are sent verbatim and the reply is the parse failure, which the model corrects on the next round.",
-  "shapes": ["length-cutoff-tool-call", "single-tool-call", "content-null-with-tool-calls"],
+  "scenarios": ["length-cutoff-tool-call", "single-tool-call", "content-null-with-tool-calls"],
   "script": [
     ["sendMessage", "Add a pricing section"],
     ["appendToolCallStart", "call_1", "add_child"],

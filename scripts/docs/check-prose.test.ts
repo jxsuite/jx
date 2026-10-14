@@ -10,16 +10,18 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import type { AllowEntry, ProseConfig, Rule } from "./check-prose.ts";
-import { cadenceOf, check, corpusFiles, hitsOf, isAllowed } from "./check-prose.ts";
+import {
+  cadenceOf,
+  check,
+  corpusFiles,
+  hitsOf,
+  isAllowed,
+  readProseConfig,
+} from "./check-prose.ts";
 import { maskCodeSpans, maskLine, segment, segmentJson } from "./lib/prose.ts";
 
-const ROOT = resolve(import.meta.dir, "../..");
-const config = JSON.parse(
-  readFileSync(join(ROOT, "scripts/docs/prose.json"), "utf8"),
-) as ProseConfig;
+const config = readProseConfig();
 
 /** Rules seen to fire at least once, so a rule nobody has watched work cannot ship. */
 const exercised = new Set<string>();

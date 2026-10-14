@@ -48,6 +48,8 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isJsonRecord, isText } from "./lib/json-guards.ts";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /** Repo-relative. Everything here is resolved from the repository root. */
 export const VENDOR_DIR = "vendor/electrobun";
@@ -114,16 +116,16 @@ export const STUB_CONTENTS =
  * pinned exactly there; a range would name a set of releases and no single tag to check out, so it
  * is rejected rather than guessed at.
  */
-export function pinnedVersion(manifest: unknown): string | undefined {
-  const dev = (manifest as { devDependencies?: Record<string, string> })?.devDependencies;
-  const range = dev?.electrobun;
-  return range && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(range) ? range : undefined;
+export function pinnedVersion(manifest: JsonValue | undefined): string | undefined {
+  const dev = isJsonRecord(manifest) ? manifest.devDependencies : undefined;
+  const range = isJsonRecord(dev) ? dev.electrobun : undefined;
+  return isText(range) && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(range) ? range : undefined;
 }
 
 /** The version the checked-out submodule declares. Read from a file, never from `git describe`. */
-export function vendoredVersion(manifest: unknown): string | undefined {
-  const version = (manifest as { version?: unknown })?.version;
-  return typeof version === "string" ? version : undefined;
+export function vendoredVersion(manifest: JsonValue | undefined): string | undefined {
+  const version = isJsonRecord(manifest) ? manifest.version : undefined;
+  return isText(version) ? version : undefined;
 }
 
 /** The tag upstream publishes for a given release. */
@@ -142,38 +144,41 @@ export interface Status {
   problem?: "no-pin" | "not-initialised" | "version-mismatch" | "missing-sources" | "no-stub";
 }
 
+/** What `inspect` reads off disk, and all `evaluate` needs to judge it. */
+export interface VendorFacts {
+  pinned?: string | undefined;
+  vendored?: string | undefined;
+  missing: string[];
+  hasStub: boolean;
+}
+
 /**
  * Decide, from facts already gathered, whether the vendored SDK is usable. Split out from the
  * filesystem so the interesting combinations are testable without a git checkout.
  */
-export function evaluate(facts: {
-  pinned?: string;
-  vendored?: string;
-  missing: string[];
-  hasStub: boolean;
-}): Status {
+export function evaluate(facts: VendorFacts): Status {
   const { pinned, vendored, missing, hasStub } = facts;
-  const base = {
-    ...(pinned !== undefined ? { pinned } : {}),
-    ...(vendored !== undefined ? { vendored } : {}),
-    missing,
-  };
+  const status: Status = { ok: false, missing };
+  if (pinned !== undefined) {
+    status.pinned = pinned;
+  }
+  if (vendored !== undefined) {
+    status.vendored = vendored;
+  }
   if (!pinned) {
-    return { ...base, ok: false, problem: "no-pin" };
+    status.problem = "no-pin";
+  } else if (!vendored) {
+    status.problem = "not-initialised";
+  } else if (vendored !== pinned) {
+    status.problem = "version-mismatch";
+  } else if (missing.length > 0) {
+    status.problem = "missing-sources";
+  } else if (!hasStub) {
+    status.problem = "no-stub";
+  } else {
+    status.ok = true;
   }
-  if (!vendored) {
-    return { ...base, ok: false, problem: "not-initialised" };
-  }
-  if (vendored !== pinned) {
-    return { ...base, ok: false, problem: "version-mismatch" };
-  }
-  if (missing.length > 0) {
-    return { ...base, ok: false, problem: "missing-sources" };
-  }
-  if (!hasStub) {
-    return { ...base, ok: false, problem: "no-stub" };
-  }
-  return { ...base, ok: true };
+  return status;
 }
 
 /** What went wrong and what to type. One paragraph per problem, never a stack trace. */
@@ -223,7 +228,7 @@ export function describe(status: Status): string {
   }
 }
 
-function readJson(path: string): unknown {
+function readJson(path: string): JsonValue | undefined {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch {
@@ -236,23 +241,35 @@ export function inspect(cwd = process.cwd()): Status {
   const at = (path: string) => join(cwd, path);
   const desktop = readJson(at(DESKTOP_MANIFEST));
   const vendor = readJson(at(VENDOR_MANIFEST));
-  const pinned = pinnedVersion(desktop);
-  const vendored = vendoredVersion(vendor);
   return evaluate({
-    ...(pinned !== undefined ? { pinned } : {}),
-    ...(vendored !== undefined ? { vendored } : {}),
+    pinned: pinnedVersion(desktop),
+    vendored: vendoredVersion(vendor),
     missing: SDK_ENTRY_POINTS.filter((file) => !existsSync(at(file))),
     hasStub: existsSync(at(STUB_PATH)),
   });
 }
 
-function git(args: string[], cwd: string): { ok: boolean; stdout: string; stderr: string } {
+/** One `git` invocation's outcome, with both streams trimmed. */
+interface GitResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+}
+
+function git(args: string[], cwd: string): GitResult {
   const run = Bun.spawnSync(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
   return {
     ok: run.exitCode === 0,
     stdout: run.stdout.toString().trim(),
     stderr: run.stderr.toString().trim(),
   };
+}
+
+/** What `repair` did, step by step, and the reason it stopped if it did not finish. */
+export interface RepairResult {
+  ok: boolean;
+  log: string[];
+  error?: string;
 }
 
 /**
@@ -269,10 +286,7 @@ function git(args: string[], cwd: string): { ok: boolean; stdout: string; stderr
  * tag by name; if the host will not serve an arbitrary shallow ref the deepening fallback is a
  * plain unshallowed fetch rather than a hard failure.
  */
-export function repair(
-  cwd = process.cwd(),
-  options: { pin?: boolean } = {},
-): { ok: boolean; log: string[]; error?: string } {
+export function repair(cwd = process.cwd(), options: { pin?: boolean } = {}): RepairResult {
   const log: string[] = [];
   const submodule = join(cwd, VENDOR_DIR);
 
@@ -329,11 +343,10 @@ export function repair(
  * follow the devkit again — which is a judgement, not something a gate can make.
  */
 export function devkitDrift(cwd = process.cwd()): string[] {
-  const projection = readJson(join(cwd, DEVKIT_PROJECTION)) as
-    | { product?: { version?: string } }
-    | undefined;
-  const devkitVersion = projection?.product?.version;
-  if (!devkitVersion) {
+  const projection = readJson(join(cwd, DEVKIT_PROJECTION));
+  const product = isJsonRecord(projection) ? projection.product : undefined;
+  const devkitVersion = isJsonRecord(product) ? product.version : undefined;
+  if (!isText(devkitVersion) || !devkitVersion) {
     return [];
   }
   const notes: string[] = [];

@@ -108,7 +108,7 @@ export function declaredRpcRequests(): string[] {
  * them. Adding an entry here is a claim that must stay true: the parity test fails both when an
  * exempt request turns up in the map and when it disappears from the schema.
  */
-export const CHROMIUM_RPC_EXEMPT: Record<string, string> = {
+export const CHROMIUM_RPC_EXEMPT = {
   aiChatUrl:
     "chromium/platform.ts aiChatUrl() returns the local /__studio__/ai/chat path directly, with the project server's token",
   getCanvasUrl: "chromium/platform.ts builds `canvasUrl` from location.search; no round trip",
@@ -143,7 +143,7 @@ export const CHROMIUM_RPC_EXEMPT: Record<string, string> = {
     "the desktop environment decorates the --app window; no client-side window controls",
   windowSetFrame:
     "the desktop environment decorates the --app window; no client-side window controls",
-};
+} satisfies Record<string, string>;
 
 /**
  * Compare a launcher's registered method names against the declared schema.

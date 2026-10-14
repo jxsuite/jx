@@ -29,16 +29,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import cssVarsDoc from "./settings-css-vars.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("settings-css-vars", cssVarsDoc as unknown as JxDocument);
-
-/** One row of the add-an-override picker. */
-export interface OverrideChoice {
-  value: string;
-  label: string;
-}
+registerSurface("settings-css-vars", cssVarsDoc);
 
 /** One of a token's per-context values. */
 export interface OverrideRowView {
@@ -91,7 +84,7 @@ export interface TokenRowView {
   overrides: OverrideRowView[];
   /** Whether the add-an-override picker is offered. */
   addState: "none" | "shown";
-  addOptions: OverrideChoice[];
+  addOptions: SurfaceOption[];
   /** What the picker currently reads. Always `""` in practice — see {@link renderCssVarsSurface}. */
   addPick: string;
   addLabel: string;
@@ -141,7 +134,7 @@ interface CssVarsFlags {
   hasError: boolean;
 }
 
-interface CssVarsScope extends Record<string, unknown>, CssVarsView, CssVarsActions, CssVarsFlags {}
+interface CssVarsScope extends CssVarsView, CssVarsActions, CssVarsFlags {}
 
 interface Mounted {
   scope: CssVarsScope;
@@ -186,7 +179,7 @@ export function renderCssVarsSurface(
   }
   existing?.handle?.dispose();
   host.textContent = "";
-  const scope = reactive({ ...derive(view), ...actions }) as CssVarsScope;
+  const scope: CssVarsScope = reactive<CssVarsScope>({ ...derive(view), ...actions });
   const record: Mounted = { handle: null, scope };
   mounts.set(host, record);
   /* No race to arbitrate: a redraw arriving while this is in flight takes the branch above — a

@@ -22,12 +22,14 @@
  * @docs studio/interface/welcome-screen
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
 import { hydrateAccountStatus, takeToastNotices } from "../account-status";
 import { getPlatform, hasPlatform } from "../platform";
 import { platformErrorInfo } from "../platform-errors";
 import { notify } from "../services/notify";
 import { resetModelCache } from "../services/ai-models";
 import { openDialogSurface } from "../surfaces/dialog";
+import type { DialogSurfaceOptions } from "../surfaces/dialog";
 import { layerHost } from "../ui/layers";
 import { onActionRequired } from "./action-required";
 import type { ActionRequiredReport } from "./action-required";
@@ -43,7 +45,7 @@ export interface ActionPrompt {
 
 /** Whether this platform can perform an offered action at all. */
 export function canPerformActions(): boolean {
-  return hasPlatform() && typeof getPlatform().performAction === "function";
+  return hasPlatform() && isFunction(getPlatform().performAction);
 }
 
 /** The action a surface leads with — the one marked primary, else the first — and one other. */
@@ -87,14 +89,14 @@ export function promptAction(prompt: ActionPrompt): Promise<boolean> {
  * whether the caller should now try again: false for any other error (nothing was offered) and for
  * an offer declined.
  */
-export async function actIfRequired(error: unknown): Promise<boolean> {
-  const info = platformErrorInfo(error);
+export async function actIfRequired(cause: unknown): Promise<boolean> {
+  const info = platformErrorInfo(cause);
   if (info.code !== "action-required" || !info.actions?.length) {
     return false;
   }
   return promptAction({
     actions: info.actions,
-    detail: error instanceof Error ? error.message : undefined,
+    detail: cause instanceof Error ? cause.message : undefined,
     heading: info.heading,
     retry: info.retry,
   });
@@ -137,6 +139,35 @@ function offer(
       });
     };
 
+    /* Follow a started action to its end. A function of its own rather than inline, so `phase` is
+       read as it stands when the action settles, not as it stood when the action began. */
+    const follow = async (flow: Promise<ActionOutcome | null>) => {
+      let outcome: ActionOutcome | null;
+      try {
+        outcome = await flow;
+      } catch (error) {
+        if (phase === "waiting") {
+          offerAgain(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
+      /* A done action is re-read even when the dialog is already gone — the user may have
+         dismissed the waiting dialog and finished in the window anyway, and the account must
+         not go on saying otherwise. */
+      if (outcome?.status === "done") {
+        await settleDone();
+        finish(true);
+        return;
+      }
+      if (phase !== "waiting" || !outcome || outcome.status === "redirect") {
+        // Dismissed meanwhile, or the page is navigating to the action: nothing to draw.
+        return;
+      }
+      // Closed without saying: the account may have changed anyway, so re-read it, and offer again.
+      void hydrateAccountStatus();
+      offerAgain(message);
+    };
+
     const begin = (action: OfferedAction) => {
       if (phase !== "offer") {
         return;
@@ -157,34 +188,11 @@ function offer(
         message: "Finish in the window that opened. This closes by itself once it is done.",
         secondaryLabel: "",
       });
-      void flow.then(
-        async (outcome) => {
-          /* A done action is re-read even when the dialog is already gone — the user may have
-             dismissed the waiting dialog and finished in the window anyway, and the account must
-             not go on saying otherwise. */
-          if (outcome?.status === "done") {
-            await settleDone();
-            finish(true);
-            return;
-          }
-          if (phase !== "waiting" || !outcome || outcome.status === "redirect") {
-            // Dismissed meanwhile, or the page is navigating to the action: nothing to draw.
-            return;
-          }
-          // Closed without saying: the account may have changed anyway, so re-read it, and offer again.
-          void hydrateAccountStatus();
-          offerAgain(message);
-        },
-        (error: unknown) => {
-          if (phase === "waiting") {
-            offerAgain(error instanceof Error ? error.message : String(error));
-          }
-        },
-      );
+      void follow(flow);
     };
 
     const { lead, other } = leading;
-    const handle = openDialogSurface({
+    const options: DialogSurfaceOptions = {
       cancelLabel: "Not now",
       confirmLabel: lead.label,
       headline: prompt.heading ?? "One more step",
@@ -201,15 +209,14 @@ function offer(
         begin(lead);
       },
       region: "account/action",
-      ...(other
-        ? {
-            onSecondary: () => {
-              begin(other);
-            },
-            secondaryLabel: other.label,
-          }
-        : {}),
-    });
+    };
+    if (other) {
+      options.onSecondary = () => {
+        begin(other);
+      };
+      options.secondaryLabel = other.label;
+    }
+    const handle = openDialogSurface(options);
   });
 }
 

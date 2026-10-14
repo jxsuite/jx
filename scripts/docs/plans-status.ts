@@ -76,10 +76,13 @@ export function buildStatusReport(
   const drafts = specs.filter((s) => s.headerStatus !== "Implemented");
   const reports = drafts.map((spec): SpecReport => {
     const stem = spec.file.replace(/\.md$/, "");
+    // The report is printed as JSON, so `header` keeps its place between `stem` and `audited`.
+    const head: Pick<SpecReport, "file" | "header" | "stem"> = { file: spec.file, stem };
+    if (spec.headerStatus !== undefined) {
+      head.header = spec.headerStatus;
+    }
     return {
-      file: spec.file,
-      stem,
-      ...(spec.headerStatus !== undefined ? { header: spec.headerStatus } : {}),
+      ...head,
       audited: registry.audits.has(stem) && !unaudited.includes(spec.file),
       items: openItems(spec).map((item) => {
         const claimedBy = owner.get(keyOf(spec.file, item.anchor));

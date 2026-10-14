@@ -1,7 +1,7 @@
 {
   "name": "text-and-tool-calls",
   "description": "An assistant turn that streams text AND a tool call: the text is sent as content (not null) beside tool_calls.",
-  "shapes": ["text-and-tool-calls", "single-tool-call", "tool-result-message"],
+  "scenarios": ["text-and-tool-calls", "single-tool-call", "tool-result-message"],
   "script": [
     ["sendMessage", "What files are in this project?"],
     ["appendDelta", "Let me look."],

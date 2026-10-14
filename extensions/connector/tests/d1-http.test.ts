@@ -6,37 +6,51 @@
 import { describe, expect, test } from "bun:test";
 import { Kysely, sql } from "kysely";
 import { createD1HttpDialect } from "../src/dialects/d1-http";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { DynamicDatabase } from "../src/query";
 
 interface Captured {
   url: string;
-  headers: Record<string, string>;
-  body: { sql: string; params: unknown[] };
+  headers: Headers;
+  body: JsonValue;
+}
+
+/** Decode a posted request body: `JSON.parse` only ever yields JSON values. */
+function parseBody(init: RequestInit | undefined): JsonValue {
+  return JSON.parse(String(init?.body));
+}
+
+/** A whole `fetch` double: `handler` answers every request, and Bun's `preconnect` rides along. */
+function fakeFetch(
+  handler: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+): typeof globalThis.fetch {
+  const { preconnect } = globalThis.fetch;
+  return Object.assign(handler, { preconnect });
 }
 
 function makeDb(responder: (captured: Captured) => Response) {
   const calls: Captured[] = [];
-  const fakeFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  const fetch = fakeFetch(async (input, init) => {
     const captured: Captured = {
-      body: JSON.parse(String(init?.body)) as Captured["body"],
-      headers: { ...(init?.headers as Record<string, string>) },
+      body: parseBody(init),
+      headers: new Headers(init?.headers),
       url: String(input),
     };
     calls.push(captured);
     return responder(captured);
-  }) as typeof globalThis.fetch;
+  });
   const db = new Kysely<DynamicDatabase>({
     dialect: createD1HttpDialect({
       accountId: "acct",
       apiToken: "tok",
       databaseId: "db-uuid",
-      fetch: fakeFetch,
+      fetch,
     }),
   });
   return { calls, db };
 }
 
-function d1Ok(results: Record<string, unknown>[], meta: Record<string, unknown> = {}) {
+function d1Ok(results: JsonObject[], meta: JsonObject = {}) {
   return Response.json({ result: [{ meta, results, success: true }], success: true });
 }
 
@@ -51,9 +65,8 @@ describe("createD1HttpDialect", () => {
     expect(call!.url).toBe(
       "https://api.cloudflare.com/client/v4/accounts/acct/d1/database/db-uuid/query",
     );
-    expect(call!.headers.Authorization).toBe("Bearer tok");
-    expect(call!.body.sql).toBe('select * from "t" where "id" = ?');
-    expect(call!.body.params).toEqual(["a"]);
+    expect(call!.headers.get("Authorization")).toBe("Bearer tok");
+    expect(call!.body).toEqual({ params: ["a"], sql: 'select * from "t" where "id" = ?' });
   });
 
   test("maps meta.changes and meta.last_row_id to Kysely result fields", async () => {
@@ -79,17 +92,17 @@ describe("createD1HttpDialect", () => {
 
   test("supports a baseUrl override and rejects transactions", async () => {
     const calls: string[] = [];
-    const fakeFetch = (async (input: string | URL | Request) => {
+    const fetch = fakeFetch(async (input) => {
       calls.push(String(input));
       return d1Ok([]);
-    }) as typeof globalThis.fetch;
+    });
     const db = new Kysely<DynamicDatabase>({
       dialect: createD1HttpDialect({
         accountId: "a",
         apiToken: "t",
         baseUrl: "http://localhost:8787",
         databaseId: "d",
-        fetch: fakeFetch,
+        fetch,
       }),
     });
     await sql`select 1`.execute(db);
@@ -113,15 +126,18 @@ describe("createD1HttpDialect", () => {
 
   test("rejects streaming — the HTTP API has no cursor to stream from", async () => {
     const { db } = makeDb(() => d1Ok([{ id: "a" }]));
-    let caught: unknown;
+    let caught: Error | null = null;
     try {
       for await (const _row of db.selectFrom("t").selectAll().stream()) {
         // Unreachable: streamQuery throws before yielding anything.
       }
     } catch (error) {
-      caught = error;
+      // A non-Error rejection leaves `caught` null, which the first assertion reports.
+      if (error instanceof Error) {
+        caught = error;
+      }
     }
     expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toContain("does not support streaming");
+    expect(caught?.message).toContain("does not support streaming");
   });
 });

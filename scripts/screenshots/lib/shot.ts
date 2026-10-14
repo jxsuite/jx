@@ -23,7 +23,11 @@
 import { basename, join } from "node:path";
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import type { Frame, Page } from "puppeteer-core";
+import type { BoundingBox, Frame, Page } from "puppeteer-core";
+
+import { isJsonObject, isNonNullObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+
 import {
   isCommandStep,
   isInputStep,
@@ -115,18 +119,28 @@ const DIFF_THRESHOLD = 0.01;
  */
 const CHANNEL_TOLERANCE = 16;
 
-/** A measured box in top-document CSS pixels. */
-interface Rect {
-  height: number;
-  width: number;
-  x: number;
-  y: number;
-}
-
 /** The point `probe.pointAt` answers with — a node's on-screen box, transforms already composed. */
-interface CanvasPoint extends Rect {
+interface CanvasPoint extends BoundingBox {
   left: number;
   top: number;
+}
+
+/**
+ * `probe.state()`'s snapshot: the flat context record of studio.md §13.4, plain values only. The
+ * runner reads one key by name, `modal.open`; every other key is matched as data by
+ * `matchState()`.
+ */
+interface StudioContext extends JsonObject {
+  modal: { open: boolean };
+}
+
+/**
+ * Where a region id resolved, and its padded box when it has a non-empty one: a box in top-document
+ * CSS pixels, which is what puppeteer's screenshot `clip` takes.
+ */
+interface RegionMeasure {
+  found: boolean;
+  rect: BoundingBox | null;
 }
 
 /**
@@ -137,11 +151,11 @@ interface CanvasPoint extends Rect {
  * both sides at once.
  */
 interface AutomationHook {
-  run: (id: string, args?: Record<string, unknown>) => Promise<void>;
-  seed: (id: string, args?: Record<string, unknown>) => Promise<void>;
+  run: (id: string, args?: JsonObject) => Promise<void>;
+  seed: (id: string, args?: JsonObject) => Promise<void>;
   probe: {
     idle: (options?: { frames?: number; timeoutMs?: number }) => Promise<void>;
-    state: () => unknown;
+    state: () => StudioContext;
     commands: () => { id: string; title: string; enabled: boolean }[];
     seeds: () => { id: string; boundary: string }[];
     pointAt: (target: { path: (string | number)[] }) => Promise<CanvasPoint | null>;
@@ -152,6 +166,10 @@ interface AutomationHook {
 declare global {
   interface Window {
     __jxAutomation: AutomationHook;
+    /** The element `frameBlockers()` last saw focused, so a moving focus ring blocks a capture. */
+    __jxShotFocus?: Element | null;
+    /** Every element's scroll offsets, from `saveScrollState()` until `restoreScrollState()`. */
+    __jxShotScroll?: [Element, number, number][] | undefined;
   }
 }
 
@@ -203,7 +221,9 @@ function installFreeze(css: string): void {
     const style = document.createElement("style");
     style.dataset.jxScreenshotFreeze = "1";
     style.textContent = css;
-    (document.head ?? document.documentElement).append(style);
+    /* Looked up rather than read from `document.head`, whose type is non-null: at document start
+     * the parser has not built a <head> yet, and this falls back to `documentElement`. */
+    (document.querySelector("head") ?? document.documentElement).append(style);
   };
   add();
   document.addEventListener("DOMContentLoaded", add, { once: true });
@@ -327,10 +347,9 @@ export function frameBlockers(): string[] {
      clears either (`loading="lazy"` images below the fold stay incomplete forever). Both blocked 8
      of 61 shots for the full timeout. The retry ladder only the app can see is inside
      `probe.idle()`, which is the other half of this predicate. */
-  const w = window as unknown as { __jxShotFocus?: Element | null };
   const active = document.activeElement;
-  if (!("__jxShotFocus" in w) || w.__jxShotFocus !== active) {
-    w.__jxShotFocus = active;
+  if (!("__jxShotFocus" in window) || window.__jxShotFocus !== active) {
+    window.__jxShotFocus = active;
     blocked.push(`focus moved to <${active?.tagName.toLowerCase() ?? "none"}>`);
   }
   return blocked;
@@ -398,17 +417,23 @@ async function waitForQuiescence(
  * fail, and the point of replacing them is that a slow subsystem now identifies itself.
  */
 async function probeIdle(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    window.__jxAutomation.probe.idle().then(
-      () => [] as string[],
-      (error: unknown) => {
-        const blocked = (error as { blockedBy?: string[] } | null)?.blockedBy;
-        return blocked && blocked.length > 0
-          ? blocked
-          : [String((error as Error | null)?.message ?? error)];
-      },
-    ),
-  );
+  return page.evaluate(async (): Promise<string[]> => {
+    // Called outside the try: a synchronous throw is a broken hook, not a report of what is busy.
+    const idle = window.__jxAutomation.probe.idle();
+    try {
+      await idle;
+      return [];
+    } catch (error) {
+      /* SAFETY: probe.idle() rejects with services/idle.ts's NotIdleError, whose `blockedBy` is a
+       * string array and `message` a string. Any other rejection (an Error without `blockedBy`, or
+       * a thrown primitive) reads both members as undefined and falls through to String(). Cast
+       * rather than guarded: page.evaluate serialises this function alone, so it cannot call an
+       * imported guard. */
+      const rejection = error as { blockedBy?: string[]; message?: string } | null;
+      const blocked = rejection?.blockedBy;
+      return blocked && blocked.length > 0 ? blocked : [String(rejection?.message ?? error)];
+    }
+  });
 }
 
 /** Both nets, in order: the app's account first, then the page's. `at` names the failing step. */
@@ -472,7 +497,7 @@ function measureRegionInPage(
   viewportWidth: number,
   viewportHeight: number,
   scroll: boolean,
-): { found: boolean; rect: Rect | null } {
+): RegionMeasure {
   const ATTR = "data-jx-region";
   const canonical =
     id === "pane" ? "pane.primary" : id.startsWith("pane/") ? `pane.primary/${id.slice(5)}` : id;
@@ -523,7 +548,7 @@ async function measureRegion(
   id: string,
   padding: number,
   scroll: boolean,
-): Promise<{ found: boolean; rect: Rect | null }> {
+): Promise<RegionMeasure> {
   const viewport = page.viewport() ?? { height: 0, width: 0 };
   return page.evaluate(measureRegionInPage, id, padding, viewport.width, viewport.height, scroll);
 }
@@ -538,9 +563,8 @@ async function measureRegion(
  */
 async function saveScrollState(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const w = window as unknown as { __jxShotScroll?: [Element, number, number][] };
-    w.__jxShotScroll = [...document.querySelectorAll("*")].map(
-      (el) => [el, el.scrollTop, el.scrollLeft] as [Element, number, number],
+    window.__jxShotScroll = [...document.querySelectorAll("*")].map(
+      (el): [Element, number, number] => [el, el.scrollTop, el.scrollLeft],
     );
   });
 }
@@ -548,10 +572,7 @@ async function saveScrollState(page: Page): Promise<void> {
 /** Put every scroll offset back where {@link saveScrollState} found it. */
 async function restoreScrollState(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const w = window as unknown as {
-      __jxShotScroll?: [Element, number, number][] | undefined;
-    };
-    for (const [el, top, left] of w.__jxShotScroll ?? []) {
+    for (const [el, top, left] of window.__jxShotScroll ?? []) {
       if (el.scrollTop !== top) {
         el.scrollTop = top;
       }
@@ -559,7 +580,7 @@ async function restoreScrollState(page: Page): Promise<void> {
         el.scrollLeft = left;
       }
     }
-    w.__jxShotScroll = undefined;
+    window.__jxShotScroll = undefined;
   });
 }
 
@@ -573,7 +594,7 @@ async function restoreScrollState(page: Page): Promise<void> {
  * (scripts/screenshots/README.md, "The five verbs"): a step that asks for a state the app refuses
  * should fail, because that step is lying.
  */
-async function runCommand(page: Page, id: string, args: Record<string, unknown>): Promise<void> {
+async function runCommand(page: Page, id: string, args: JsonObject): Promise<void> {
   await page.evaluate(
     (commandId, commandArgs) => window.__jxAutomation.run(commandId, commandArgs),
     id,
@@ -581,7 +602,7 @@ async function runCommand(page: Page, id: string, args: Record<string, unknown>)
   );
 }
 
-async function runSeed(page: Page, id: string, args: Record<string, unknown>): Promise<void> {
+async function runSeed(page: Page, id: string, args: JsonObject): Promise<void> {
   await page.evaluate((seedId, seedArgs) => window.__jxAutomation.seed(seedId, seedArgs), id, args);
 }
 
@@ -676,16 +697,20 @@ async function runStep(page: Page, step: ShotStep, at: string): Promise<void> {
  * of mismatches, phrased as the assertion a reader wrote: `document.dirty is false, expected
  * true`.
  */
-export function matchState(expected: Record<string, unknown>, actual: unknown): string[] {
+export function matchState(expected: JsonObject, actual: JsonValue): string[] {
   const mismatches: string[] = [];
-  const walk = (want: unknown, got: unknown, path: string): void => {
-    if (want !== null && typeof want === "object" && !Array.isArray(want)) {
-      if (got === null || typeof got !== "object") {
+  const walk = (want: JsonValue, got: JsonValue | undefined, path: string): void => {
+    if (isJsonObject(want)) {
+      if (!isNonNullObject(got)) {
         mismatches.push(`${path || "state"} is ${JSON.stringify(got)}, expected an object`);
         return;
       }
-      for (const [key, value] of Object.entries(want as Record<string, unknown>)) {
-        walk(value, (got as Record<string, unknown>)[key], path ? `${path}.${key}` : key);
+      /* SAFETY: `got` is a non-null object (checked above). A key it lacks, including any key of an
+       * array that is not one of its indices, reads as undefined, which the leaf comparison below
+       * reports as a mismatch. */
+      const record = got as Partial<Record<string, JsonValue>>;
+      for (const [key, value] of Object.entries(want)) {
+        walk(value, record[key], path ? `${path}.${key}` : key);
       }
       return;
     }
@@ -704,11 +729,12 @@ export function matchState(expected: Record<string, unknown>, actual: unknown): 
  * `structuredClone` refuses, and what is wanted here is a SERIALISATION across the CDP wire, not a
  * deep copy inside the page.
  */
-async function probeState(page: Page): Promise<unknown> {
+async function probeState(page: Page): Promise<JsonValue> {
   return page.evaluate(() => {
     const state = window.__jxAutomation.probe.state();
     // oxlint-disable-next-line unicorn/prefer-structured-clone
-    return JSON.parse(JSON.stringify(state)) as unknown;
+    const snapshot: JsonValue = JSON.parse(JSON.stringify(state));
+    return snapshot;
   });
 }
 
@@ -862,7 +888,7 @@ async function captureImage(
   const target = capture.of ?? VIEWPORT_TARGET;
   await saveScrollState(page);
   try {
-    let clip: Rect | undefined;
+    let clip: BoundingBox | undefined;
     if (target !== VIEWPORT_TARGET) {
       const { found, rect } = await measureRegion(page, target, capture.padding ?? 0, true);
       if (!found) {
@@ -946,8 +972,8 @@ export function bootUrl(ctx: ShotContext, open: ResolvedOpen): string {
  */
 async function assertNoUninvitedModal(page: Page, shotName: string): Promise<void> {
   const uninvited = await page.evaluate(() => {
-    const state = window.__jxAutomation?.probe.state() as { modal: { open: boolean } } | undefined;
-    if (!state?.modal.open) {
+    const state = window.__jxAutomation.probe.state();
+    if (!state.modal.open) {
       return null;
     }
     return [...document.querySelectorAll("#layer-dialog [open], #layer-modal [open]")].map(
@@ -1029,11 +1055,16 @@ export async function executeShot(
   await assertNoUninvitedModal(page, shot.name);
   await applyOpenState(page, open, net);
 
-  const body: ThenSegment = {
-    ...(shot.capture ? { capture: shot.capture } : {}),
-    ...(shot.expect ? { expect: shot.expect } : {}),
-    ...(shot.steps ? { steps: shot.steps } : {}),
-  };
+  const body: ThenSegment = {};
+  if (shot.capture) {
+    body.capture = shot.capture;
+  }
+  if (shot.expect) {
+    body.expect = shot.expect;
+  }
+  if (shot.steps) {
+    body.steps = shot.steps;
+  }
   const written = await runSegment(page, body, shot, ctx, net, `shot "${shot.name}"`);
   for (const [index, segment] of (shot.then ?? []).entries()) {
     written.push(

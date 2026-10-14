@@ -21,7 +21,7 @@ const FILES_KEY = "jx-studio-recent-files";
 
 /** Drop any platform a prior test registered so backend()/hasPlatform() default to localStorage. */
 function clearPlatform() {
-  delete (globalThis as { __jxPlatform?: StudioPlatform }).__jxPlatform;
+  globalThis.__jxPlatform = undefined;
 }
 
 let now = 1_000_000;
@@ -73,7 +73,7 @@ describe("addRecentProject", () => {
     expect(projects.length).toBe(1);
     expect(projects[0]!.name).toBe("Demo");
     expect(projects[0]!.root).toBe("/projects/demo");
-    expect(typeof projects[0]!.timestamp).toBe("number");
+    expect(projects[0]!.timestamp).toBeTypeOf("number");
   });
 
   test("most recently added project comes first", () => {
@@ -231,7 +231,7 @@ describe("trackRecentFile", () => {
     expect(files[0]!.path).toBe("/site/page.json");
     expect(files[0]!.name).toBe("page.json");
     expect(files[0]!.root).toBe("/site");
-    expect(typeof files[0]!.timestamp).toBe("number");
+    expect(files[0]!.timestamp).toBeTypeOf("number");
   });
 
   test("re-tracking the same path within a project dedupes and moves it to the front", () => {

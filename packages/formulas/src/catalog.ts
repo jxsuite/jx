@@ -534,4 +534,4 @@ export const catalog: FormulaCatalogEntry[] = [
       },
     ],
   },
-] as unknown as FormulaCatalogEntry[];
+];

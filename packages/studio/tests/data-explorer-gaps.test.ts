@@ -26,6 +26,8 @@ import {
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { dataTreeRows, paintDataTree, resetDataRowExpansion } from "../src/panels/data-explorer";
 import { activeTab } from "../src/workspace/workspace";
+import type { JsonObject, JxStateDefinition } from "@jxsuite/schema/types";
+import type { ScopeValue } from "../src/editor/merge-tags";
 
 const containers: HTMLElement[] = [];
 
@@ -37,6 +39,15 @@ function stage(): HTMLElement {
   return container;
 }
 
+/** Press the control a part names, the way a reader's click does. */
+function press(root: ParentNode, selector: string): void {
+  const target = root.querySelector(selector);
+  if (!(target instanceof HTMLElement)) {
+    throw new TypeError(`nothing to press at ${selector}`);
+  }
+  target.click();
+}
+
 /** What the last {@link mountData} drew, and the hooks it was given. */
 interface Mounted {
   container: HTMLElement;
@@ -46,8 +57,8 @@ interface Mounted {
 
 /** Mount the merged Data panel over a document with `state`, and a canvas that resolved `scope`. */
 async function mountData(
-  state: Record<string, unknown>,
-  scope: Record<string, unknown> | null,
+  state: Record<string, JxStateDefinition>,
+  scope: JsonObject | null,
 ): Promise<Mounted> {
   const drawn = await drawSignals(state, { scope });
   drawn.resetCounts();
@@ -209,7 +220,7 @@ describe("expansion", () => {
 describe("the Refresh button", () => {
   test("re-fetches through refreshData, then re-renders the panel", async () => {
     const { container, counts } = await mountData({ a: {} }, {});
-    (container.querySelector('[part="refresh"] [part="control"]') as HTMLElement).click();
+    press(container, '[part="refresh"] [part="control"]');
     await settle();
     // RefreshData, not a plain repaint: automatic `Request` entries stay gated in edit/design, and
     // Re-firing them is exactly what this button promises.
@@ -223,10 +234,10 @@ describe("the Refresh button", () => {
     // And cleared by the iframe's `dataScope` reply, so the button is honest for as long as it
     // Takes.
     const { container, ctx } = await mountData({ a: {} }, {});
-    const btn = () => container.querySelector('[part="refresh"]') as HTMLElement;
-    const control = () => btn().querySelector('[part="control"]') as HTMLElement;
+    const btn = () => container.querySelector('[part="refresh"]')!;
+    const control = () => btn().querySelector('[part="control"]')!;
     // The control's text, not the host's: an enabled hint is a tip child of the host now.
-    expect(control().textContent?.trim()).toBe("Refresh");
+    expect(control().textContent.trim()).toBe("Refresh");
     expect(control().hasAttribute("disabled")).toBe(false);
 
     activeTab.value!.session.canvas.refreshing = true;
@@ -240,7 +251,7 @@ describe("the Refresh button", () => {
     activeTab.value!.session.canvas.refreshing = false;
     ctx.renderLeftPanel();
     await settle();
-    expect(control().textContent?.trim()).toBe("Refresh");
+    expect(control().textContent.trim()).toBe("Refresh");
     expect(btn().querySelector('[part="spinner"]')?.hasAttribute("hidden")).toBe(true);
   });
 
@@ -264,9 +275,9 @@ describe("truncation markers", () => {
     // In the one panel a reader opens BECAUSE item 40 is the surprising one.
     const { container } = await longList();
     expect(container.querySelectorAll('[part="row"]').length).toBe(20);
-    const more = container.querySelector('[part="more"]') as HTMLButtonElement;
+    const more = container.querySelector('[part="more"]')!;
     expect(more.tagName).toBe("BUTTON");
-    expect(more.textContent?.trim()).toBe("… 40 more");
+    expect(more.textContent.trim()).toBe("… 40 more");
     expect(more.getAttribute("title")).toBe("Show 50 more");
   });
 
@@ -274,7 +285,7 @@ describe("truncation markers", () => {
     const { container, counts } = await longList();
     // The press repaints the Navigator itself now — raising a limit is the surface's one action,
     // And the panel that owns the limit is the panel that redraws.
-    (container.querySelector('[part="more"]') as HTMLElement).click();
+    press(container, '[part="more"]');
     await settle();
     expect(counts.repaints).toBeGreaterThan(0);
     expect(container.querySelectorAll('[part="row"]').length).toBe(60);
@@ -283,7 +294,7 @@ describe("truncation markers", () => {
 
   test("the raised limit is per marker and per tab", async () => {
     const { container } = await longList();
-    (container.querySelector('[part="more"]') as HTMLElement).click();
+    press(container, '[part="more"]');
     await settle();
     expect(container.querySelectorAll('[part="row"]').length).toBe(60);
 
@@ -302,7 +313,7 @@ describe("truncation markers", () => {
     const { container } = await mountData({ obj: {} }, { obj: big });
     await openEntry(container, "obj");
     expect(container.querySelectorAll('[part="row"]').length).toBe(30);
-    (container.querySelector('[part="more"]') as HTMLElement).click();
+    press(container, '[part="more"]');
     await settle();
     expect(container.querySelectorAll('[part="row"]').length).toBe(40);
   });
@@ -323,7 +334,7 @@ describe("the value tree", () => {
    * one entry's value, and a deeper start was only ever reachable through the recursion the walk
    * now owns. A cap past the value's own depth is what the marker case is asserted with instead.
    */
-  async function tree(value?: unknown, maxDepth = 5): Promise<HTMLElement> {
+  async function tree(value?: ScopeValue, maxDepth = 5): Promise<HTMLElement> {
     const container = stage();
     paintDataTree(container, value, "", () => {}, maxDepth);
     await settle();
@@ -337,15 +348,15 @@ describe("the value tree", () => {
 
   test("renders a marker past maxDepth", async () => {
     const el = await tree({ a: 1 }, -1);
-    expect(el.querySelector('[part="more"]')?.textContent?.trim()).toBe("…");
+    expect(el.querySelector('[part="more"]')?.textContent.trim()).toBe("…");
     expect(el.querySelector('[part="more"]')?.getAttribute("title")).toBe("Show 50 more levels");
   });
 
   test("renders null and undefined leaves", async () => {
     const elNull = await tree(null);
-    expect(toned(elNull, "null")[0]?.textContent?.trim()).toBe("null");
+    expect(toned(elNull, "null")[0]?.textContent.trim()).toBe("null");
     const elUndef = await tree();
-    expect(toned(elUndef, "null")[0]?.textContent?.trim()).toBe("undefined");
+    expect(toned(elUndef, "null")[0]?.textContent.trim()).toBe("undefined");
   });
 
   test("renders scalar leaves with JSON formatting", async () => {

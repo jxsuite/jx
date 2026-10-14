@@ -29,10 +29,8 @@ interface PickerOptions {
   startIn?: string;
 }
 
-interface LocateQuery {
-  id: string;
-  name: string;
-}
+/** What `pickDirectoryPath` asks its `locate` callback. */
+type LocateQuery = Parameters<Parameters<typeof pickDirectoryPath>[0]>[0];
 
 /** One `getFileHandle` call recorded by the handle double. */
 interface CreatedEntry {
@@ -40,15 +38,25 @@ interface CreatedEntry {
   options?: { create?: boolean };
 }
 
-const globals = globalThis as Record<string, unknown>;
-const REAL_PICKER = globals.showDirectoryPicker;
+/** A stubbed chooser: it records its options and settles with a handle double or a rejection. */
+type PickerStub = (options?: PickerOptions) => Promise<FakeDirectoryHandle>;
+
+/** What these tests put in the chooser slot: a stub, or the empty object an over-eager shim leaves. */
+type PickerSlotValue = PickerStub | Record<string, never>;
+
+/* SAFETY: the DOM lib this package compiles against declares no `showDirectoryPicker` (the module
+   under test probes for it for the same reason), so this names the optional slot without claiming
+   anything about the realm; every value read back from it was written by these tests, except
+   REAL_PICKER, which is only ever written back. */
+const slot = globalThis as typeof globalThis & { showDirectoryPicker?: PickerSlotValue };
+const REAL_PICKER = slot.showDirectoryPicker;
 
 /** Install (or, with `undefined`, remove) the `showDirectoryPicker` global. */
-function setPicker(fn: unknown): void {
+function setPicker(fn: PickerSlotValue | undefined): void {
   if (fn === undefined) {
-    delete globals.showDirectoryPicker;
+    delete slot.showDirectoryPicker;
   } else {
-    globals.showDirectoryPicker = fn;
+    slot.showDirectoryPicker = fn;
   }
 }
 
@@ -57,6 +65,17 @@ afterEach(() => {
 });
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
+
+/** The writable the tag's bytes go through; they reach disk only once it is closed. */
+interface FakeWritable {
+  close: () => Promise<void>;
+  write: (data: string) => Promise<void>;
+}
+
+/** The tag file's handle, as the module uses it: only to open a writable. */
+interface FakeFileHandle {
+  createWritable: () => Promise<FakeWritable>;
+}
 
 /**
  * A `FileSystemDirectoryHandle` double recording the entries created and removed on it, and the
@@ -83,8 +102,12 @@ class FakeDirectoryHandle {
     this.name = name;
   }
 
-  getFileHandle(name: string, options?: { create?: boolean }): Promise<unknown> {
-    this.created.push({ name, ...(options ? { options } : {}) });
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<FakeFileHandle> {
+    const entry: CreatedEntry = { name };
+    if (options) {
+      entry.options = options;
+    }
+    this.created.push(entry);
     // A read-only grant rejects here rather than silently doing nothing.
     if (this.createError) {
       return Promise.reject(this.createError);
@@ -123,10 +146,16 @@ class FakeDirectoryHandle {
 }
 
 /**
+ * How a stubbed chooser settles: a handle double resolves, and anything else is the rejection — an
+ * Error, a DOMException-shaped record from another realm, or a thrown string.
+ */
+type PickerOutcome = FakeDirectoryHandle | Error | { message: string; name: string } | string;
+
+/**
  * Stub `showDirectoryPicker` with one that resolves `outcome` when it is a handle and rejects with
  * it otherwise, returning the array the options of every call are recorded into.
  */
-function installPicker(outcome: unknown): PickerOptions[] {
+function installPicker(outcome: PickerOutcome): PickerOptions[] {
   const calls: PickerOptions[] = [];
   setPicker((options?: PickerOptions) => {
     calls.push(options ?? {});
@@ -137,11 +166,14 @@ function installPicker(outcome: unknown): PickerOptions[] {
   return calls;
 }
 
-/** A `locate` double resolving `outcome` (or rejecting when it is an `Error`), plus its call log. */
-function recordLocate(outcome: string | null | Error): {
+/** The backend lookup double and the queries it was asked. */
+interface LocateDouble {
   calls: LocateQuery[];
   locate: (query: LocateQuery) => Promise<string | null>;
-} {
+}
+
+/** A `locate` double resolving `outcome` (or rejecting when it is an `Error`), plus its call log. */
+function recordLocate(outcome: string | null | Error): LocateDouble {
   const calls: LocateQuery[] = [];
   return {
     calls,
@@ -164,12 +196,15 @@ function abortError(): Error {
   return namedError("AbortError", "The user aborted a request.");
 }
 
-/** What a promise rejected with, for assertions on more than the message. */
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
+/** The Error a pick rejected with, for assertions on more than the message. */
+async function rejectionOf(promise: Promise<string | null>): Promise<Error> {
   try {
     await promise;
   } catch (error) {
-    return error;
+    if (error instanceof Error) {
+      return error;
+    }
+    throw error;
   }
   throw new Error("expected the promise to reject");
 }
@@ -286,10 +321,10 @@ describe("pickDirectoryPath with the API", () => {
 
     const error = await rejectionOf(pickDirectoryPath(locate));
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe(
+    expect(error.message).toBe(
       "The folder chooser could not open (Must be handling a user gesture.). Type the folder's path into Location instead.",
     );
-    expect((error as Error).cause).toBe(refusal);
+    expect(error.cause).toBe(refusal);
     expect(handle.created).toEqual([]);
     expect(calls).toEqual([]);
   });
@@ -311,10 +346,10 @@ describe("pickDirectoryPath with the API", () => {
     const { calls, locate } = recordLocate("/home/dev/Projects");
 
     const error = await rejectionOf(pickDirectoryPath(locate));
-    expect((error as Error).message).toBe(
+    expect(error.message).toBe(
       "Jx Studio can't write to \"Projects\" (NotAllowedError), so it can't create a project there. Choose a folder you can write to.",
     );
-    expect((error as Error).cause).toBe(refusal);
+    expect(error.cause).toBe(refusal);
     expect(handle.created).toHaveLength(1);
     expect(calls).toEqual([]);
     // Nothing was created, so there is nothing to clean up.
@@ -370,10 +405,10 @@ describe("pickDirectoryPath with the API", () => {
     const { locate } = recordLocate(failure);
 
     const error = await rejectionOf(pickDirectoryPath(locate));
-    expect((error as Error).message).toBe(
+    expect(error.message).toBe(
       'Jx Studio could not look up where "Projects" is: 500 from /__studio/locate-directory. Type the folder\'s path into Location instead.',
     );
-    expect((error as Error).cause).toBe(failure);
+    expect(error.cause).toBe(failure);
     expect(handle.removed).toEqual([LOCATION_ID_FILE]);
   });
 

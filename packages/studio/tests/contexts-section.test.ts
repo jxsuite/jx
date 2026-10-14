@@ -31,11 +31,11 @@
 import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { projectState } from "../src/store";
+import { isBoolean, isString } from "@jxsuite/schema/guards";
 
 import type { MockPlatformState } from "./harness";
 import type { StudioPlatform } from "../src/types";
-
-type AnyConfig = Record<string, any>;
+import type { ProjectConfig } from "@jxsuite/schema/types";
 
 /**
  * What the mocked validator returns.
@@ -45,16 +45,15 @@ type AnyConfig = Record<string, any>;
  * tell those two calls apart cannot test either half. A bare array answers both, which is exactly
  * how a pre-existing problem is expressed.
  */
-let validatorResult: string[] | Error | ((candidate: AnyConfig) => string[]) = [];
+let validatorResult: string[] | Error | ((candidate: ProjectConfig) => string[]) = [];
 
-const validateProjectConfig = mock(async (candidate: unknown): Promise<string[]> => {
+/* The section hands the validator a `ProjectConfig` (the file as it stands, then the candidate),
+   which is narrower than the real module's `ProjectConfig | JsonValue` and all this double reads. */
+const validateProjectConfig = mock(async (candidate: ProjectConfig): Promise<string[]> => {
   if (validatorResult instanceof Error) {
-    // eslint-disable-next-line no-throw-literal -- validatorResult IS an Error on this branch
-    throw validatorResult as Error;
+    throw validatorResult;
   }
-  return typeof validatorResult === "function"
-    ? validatorResult(candidate as AnyConfig)
-    : validatorResult;
+  return Array.isArray(validatorResult) ? validatorResult : validatorResult(candidate);
 });
 void mock.module("../src/services/jx-validate.js", () => ({
   validateProjectConfig,
@@ -84,9 +83,11 @@ async function setup(
   overrides: Partial<StudioPlatform> = {},
 ): Promise<{ container: HTMLElement; state: MockPlatformState }> {
   const { state } = installMockPlatform(overrides);
-  resetStudioState({
-    projectConfig: { name: "Site", ...(media ? { $media: media } : {}) } as unknown,
-  });
+  const projectConfig: ProjectConfig = { name: "Site" };
+  if (media) {
+    projectConfig.$media = media;
+  }
+  resetStudioState({ projectConfig });
   const container = document.createElement("div");
   document.body.append(container);
   renderContextsSection(container);
@@ -94,26 +95,52 @@ async function setup(
   return { container, state };
 }
 
-function config(): AnyConfig {
-  return (projectState as AnyConfig).projectConfig;
+/** The `$media` block of the project config as the section last wrote it. */
+function savedMedia(): Record<string, string> | undefined {
+  return projectState?.projectConfig?.$media;
 }
 
-function group(container: HTMLElement, kind: string): HTMLElement {
+function group(container: HTMLElement, kind: string): Element {
   const el = container.querySelector(`[data-context-group="${kind}"]`);
   if (!el) {
     throw new Error(`no "${kind}" group in the Contexts section`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 function rowKeys(container: HTMLElement, kind: string): string[] {
-  return [...group(container, kind).querySelectorAll("[data-context]")].map(
-    (el) => (el as HTMLElement).dataset.context ?? "",
+  return [...group(container, kind).querySelectorAll<HTMLElement>("[data-context]")].map(
+    (el) => el.dataset.context ?? "",
   );
 }
 
-function addButton(container: HTMLElement, kind: string): HTMLElement {
-  return group(container, kind).querySelector(`[data-add="${kind}"]`) as HTMLElement;
+/** The element in a group carrying `selector`; a missing one fails the test by name. */
+function groupMember(container: HTMLElement, kind: string, selector: string): Element {
+  const el = group(container, kind).querySelector(selector);
+  if (!el) {
+    throw new Error(`no ${selector} in the "${kind}" group`);
+  }
+  return el;
+}
+
+function addButton(container: HTMLElement, kind: string): Element {
+  return groupMember(container, kind, `[data-add="${kind}"]`);
+}
+
+/** A kit control's committed `value` property (`jx-textfield`, `jx-select`). */
+function valueOf(el: Element | null): string {
+  if (!el || !("value" in el) || !isString(el.value)) {
+    throw new TypeError("expected a kit control with a string value");
+  }
+  return el.value;
+}
+
+/** A kit control's `invalid` property, the state it draws its own error styling from. */
+function invalidOf(el: Element | null): boolean {
+  if (!el || !("invalid" in el) || !isBoolean(el.invalid)) {
+    throw new TypeError("expected a kit control with a boolean invalid flag");
+  }
+  return el.invalid;
 }
 
 /** The name field of the first row in a group. */
@@ -146,8 +173,8 @@ function baseField(container: HTMLElement): Element {
 }
 
 function errorTexts(container: HTMLElement): string[] {
-  return [...container.querySelectorAll('[part="row-error"], [part="section-error"]')].map(
-    (el) => el.textContent?.trim() ?? "",
+  return [...container.querySelectorAll('[part="row-error"], [part="section-error"]')].map((el) =>
+    el.textContent.trim(),
   );
 }
 
@@ -241,8 +268,8 @@ describe("rendering", () => {
 
   test("the base width renders its own row, outside every group", async () => {
     const { container } = await setup({ "--": "1280px" });
-    const base = baseField(container) as HTMLElement & { value: string };
-    expect(base.value).toBe("1280px");
+    const base = baseField(container);
+    expect(valueOf(base)).toBe("1280px");
     expect(base.closest("[data-context-group]")).toBeNull();
   });
 
@@ -250,7 +277,7 @@ describe("rendering", () => {
     const { container } = await setup({ "--dark": "(prefers-color-scheme: dark)" });
     const picker = group(container, "scheme").querySelector("jx-select");
     expect(picker).not.toBeNull();
-    expect((picker as unknown as { value: string }).value).toBe("dark");
+    expect(valueOf(picker)).toBe("dark");
     expect([...picker!.querySelectorAll("option")].map((o) => o.value)).toEqual(["light", "dark"]);
   });
 
@@ -297,7 +324,7 @@ describe("editing", () => {
     const { container } = await setup({ "--": "1280px" });
     pointer(addButton(container, "size"), "click");
     await settle();
-    expect(config().$media).toEqual({ "--": "1280px", "--breakpoint": "(max-width: 768px)" });
+    expect(savedMedia()).toEqual({ "--": "1280px", "--breakpoint": "(max-width: 768px)" });
   });
 
   test("adding twice does not collide — the second takes the next free name", async () => {
@@ -306,21 +333,21 @@ describe("editing", () => {
     await settle();
     pointer(addButton(container, "size"), "click");
     await settle();
-    expect(Object.keys(config().$media)).toEqual(["--breakpoint", "--breakpoint-2"]);
+    expect(Object.keys(savedMedia() ?? {})).toEqual(["--breakpoint", "--breakpoint-2"]);
   });
 
   test("adding a colour scheme writes the canonical prefers-color-scheme query", async () => {
     const { container } = await setup({});
     pointer(addButton(container, "scheme"), "click");
     await settle();
-    expect(config().$media["--dark"]).toBe("(prefers-color-scheme: dark)");
+    expect(savedMedia()?.["--dark"]).toBe("(prefers-color-scheme: dark)");
   });
 
   test("changing a query persists it", async () => {
     const { container } = await setup({ "--sm": "(max-width: 600px)" });
     setAndFire(valueField(container, "size"), "(max-width: 720px)");
     await settle();
-    expect(config().$media["--sm"]).toBe("(max-width: 720px)");
+    expect(savedMedia()?.["--sm"]).toBe("(max-width: 720px)");
   });
 
   test("renaming preserves order — a rename is not a reordering", async () => {
@@ -331,15 +358,15 @@ describe("editing", () => {
     });
     setAndFire(nameField(container, "size"), "Phone");
     await settle();
-    expect(Object.keys(config().$media)).toEqual(["--", "--phone", "--md"]);
-    expect(config().$media["--phone"]).toBe("(max-width: 600px)");
+    expect(Object.keys(savedMedia() ?? {})).toEqual(["--", "--phone", "--md"]);
+    expect(savedMedia()?.["--phone"]).toBe("(max-width: 600px)");
   });
 
   test("switching a scheme row's select rewrites the query, not the name", async () => {
     const { container } = await setup({ "--scheme": "(prefers-color-scheme: dark)" });
     setAndFire(valueField(container, "scheme"), "light");
     await settle();
-    expect(config().$media).toEqual({ "--scheme": "(prefers-color-scheme: light)" });
+    expect(savedMedia()).toEqual({ "--scheme": "(prefers-color-scheme: light)" });
   });
 
   test("remove deletes exactly one entry", async () => {
@@ -347,21 +374,21 @@ describe("editing", () => {
       "--sm": "(max-width: 600px)",
       "--md": "(max-width: 900px)",
     });
-    const remove = group(container, "size").querySelector('[data-remove="--sm"]') as HTMLElement;
+    const remove = groupMember(container, "size", '[data-remove="--sm"]');
     pointer(remove, "click");
     await settle();
-    expect(config().$media).toEqual({ "--md": "(max-width: 900px)" });
+    expect(savedMedia()).toEqual({ "--md": "(max-width: 900px)" });
   });
 
   test("the base width accepts pixels and clearing it drops the key", async () => {
     const { container } = await setup({ "--": "1280px", "--sm": "(max-width: 600px)" });
     setAndFire(baseField(container), "1440px");
     await settle();
-    expect(config().$media["--"]).toBe("1440px");
+    expect(savedMedia()?.["--"]).toBe("1440px");
 
     setAndFire(baseField(container), "");
     await settle();
-    expect(config().$media).toEqual({ "--sm": "(max-width: 600px)" });
+    expect(savedMedia()).toEqual({ "--sm": "(max-width: 600px)" });
   });
 });
 
@@ -376,9 +403,9 @@ describe("refusals", () => {
     setAndFire(baseField(container), "wide");
     await settle();
     expect(errorTexts(container)).toContain("Enter a width in pixels, like 1280px.");
-    expect(config().$media["--"]).toBe("1280px");
+    expect(savedMedia()?.["--"]).toBe("1280px");
     // And the control says so itself, rather than only the line under it.
-    expect((baseField(container) as unknown as { invalid: boolean }).invalid).toBe(true);
+    expect(invalidOf(baseField(container))).toBe(true);
   });
 
   test("an empty name is refused and the entry survives", async () => {
@@ -386,7 +413,7 @@ describe("refusals", () => {
     setAndFire(nameField(container, "size"), "   ");
     await settle();
     expect(errorTexts(container)).toContain("A context needs a name.");
-    expect(config().$media).toEqual({ "--sm": "(max-width: 600px)" });
+    expect(savedMedia()).toEqual({ "--sm": "(max-width: 600px)" });
   });
 
   test("renaming onto an existing name is refused instead of eating the other entry", async () => {
@@ -397,7 +424,7 @@ describe("refusals", () => {
     setAndFire(nameField(container, "size", 0), "md");
     await settle();
     expect(errorTexts(container).join(" ")).toContain("already defined");
-    expect(config().$media).toEqual({
+    expect(savedMedia()).toEqual({
       "--md": "(max-width: 900px)",
       "--sm": "(max-width: 600px)",
     });
@@ -408,7 +435,7 @@ describe("refusals", () => {
     setAndFire(nameField(container, "size"), "sm");
     await settle();
     expect(errorTexts(container)).toEqual([]);
-    expect(config().$media).toEqual({ "--sm": "(max-width: 600px)" });
+    expect(savedMedia()).toEqual({ "--sm": "(max-width: 600px)" });
   });
 
   test("an empty query is refused", async () => {
@@ -416,7 +443,7 @@ describe("refusals", () => {
     setAndFire(valueField(container, "size"), "  ");
     await settle();
     expect(errorTexts(container).join(" ")).toContain("needs a media query");
-    expect(config().$media["--sm"]).toBe("(max-width: 600px)");
+    expect(savedMedia()?.["--sm"]).toBe("(max-width: 600px)");
   });
 });
 
@@ -431,7 +458,7 @@ describe("validation", () => {
     setAndFire(valueField(container, "size"), "nonsense");
     await settle();
     expect(errorTexts(container)).toContain("/$media/--sm: must match pattern");
-    expect(config().$media["--sm"]).toBe("(max-width: 600px)");
+    expect(savedMedia()?.["--sm"]).toBe("(max-width: 600px)");
     expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
   });
 
@@ -448,7 +475,7 @@ describe("validation", () => {
     setAndFire(baseField(container), "1280px");
     await settle();
 
-    expect(config().$media["--"]).toBe("1280px");
+    expect(savedMedia()?.["--"]).toBe("1280px");
     expect(state.calls.filter(([name]) => name === "writeFile").length).toBeGreaterThan(0);
   });
 
@@ -475,11 +502,14 @@ describe("validation", () => {
   });
 
   test("a rejected write is shown, not swallowed", async () => {
-    const { container } = await setup({ "--sm": "(max-width: 600px)" }, {
-      writeFile: async () => {
-        throw new Error("EROFS: read-only file system");
+    const { container } = await setup(
+      { "--sm": "(max-width: 600px)" },
+      {
+        writeFile: async () => {
+          throw new Error("EROFS: read-only file system");
+        },
       },
-    } as unknown as Partial<StudioPlatform>);
+    );
     setAndFire(valueField(container, "size"), "(min-width: 1px)");
     await settle();
     expect(errorTexts(container).join(" ")).toContain(
@@ -488,11 +518,14 @@ describe("validation", () => {
   });
 
   test("a later success clears the error", async () => {
-    const { container } = await setup({ "--sm": "(max-width: 600px)" }, {
-      writeFile: async () => {
-        throw new Error("EROFS");
+    const { container } = await setup(
+      { "--sm": "(max-width: 600px)" },
+      {
+        writeFile: async () => {
+          throw new Error("EROFS");
+        },
       },
-    } as unknown as Partial<StudioPlatform>);
+    );
     setAndFire(valueField(container, "size"), "(min-width: 1px)");
     await settle();
     expect(errorTexts(container)).not.toEqual([]);
@@ -501,7 +534,7 @@ describe("validation", () => {
     setAndFire(valueField(container, "size"), "(min-width: 2px)");
     await settle();
     expect(errorTexts(container)).toEqual([]);
-    expect(config().$media["--sm"]).toBe("(min-width: 2px)");
+    expect(savedMedia()?.["--sm"]).toBe("(min-width: 2px)");
   });
 });
 

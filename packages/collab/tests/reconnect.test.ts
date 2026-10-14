@@ -45,22 +45,37 @@ interface Pending {
   fn: () => void;
   ms: number;
   cleared: boolean;
+  /** The handle the stub returned, which is how `clearTimeout` finds this entry again. */
+  handle: Timer;
 }
 
 const realSetTimeout = globalThis.setTimeout;
 const realClearTimeout = globalThis.clearTimeout;
 let timers: Pending[] = [];
 
+/** Record the callback and delay instead of scheduling them. */
+function stubSetTimeout(fn: () => void, ms = 0): Timer {
+  // A real but already-cancelled handle: unique per call, and genuinely a Timer.
+  const handle = realSetTimeout(() => {}, 0);
+  realClearTimeout(handle);
+  timers.push({ cleared: false, fn, handle, ms });
+  return handle;
+}
+
+function stubClearTimeout(id?: number | string | Timer | NodeJS.Timeout): void {
+  const entry = timers.find((t) => t.handle === id);
+  if (entry) {
+    entry.cleared = true;
+  }
+}
+
 beforeEach(() => {
   timers = [];
-  globalThis.setTimeout = ((fn: () => void, ms: number) => {
-    const entry = { cleared: false, fn, ms };
-    timers.push(entry);
-    return entry;
-  }) as unknown as typeof setTimeout;
-  globalThis.clearTimeout = ((entry: Pending) => {
-    entry.cleared = true;
-  }) as unknown as typeof clearTimeout;
+  /* SAFETY: createReconnectScheduler only ever calls setTimeout(fire, delay) with a zero-argument
+     callback and a numeric delay, and only hands the result back to clearTimeout. The stub serves
+     that call shape; the extra-arguments overload and `__promisify__` are never used. */
+  globalThis.setTimeout = stubSetTimeout as typeof setTimeout;
+  globalThis.clearTimeout = stubClearTimeout;
 });
 
 afterEach(() => {
@@ -95,6 +110,15 @@ class FakeTarget extends EventTarget {
   }
 }
 
+/**
+ * The two DOM globals the scheduler probes with `typeof window` / `typeof document`, typed only as
+ * far as it uses them, so a test can install a FakeTarget in their place or remove them outright.
+ */
+interface DomGlobals {
+  window?: EventTarget | undefined;
+  document?: EventTarget | undefined;
+}
+
 function setup(random = () => 1) {
   const win = new FakeTarget();
   const doc = new FakeTarget();
@@ -104,9 +128,9 @@ function setup(random = () => 1) {
       connects += 1;
     },
     {
-      doc: doc as unknown as Document,
+      doc,
       random,
-      win: win as unknown as Window,
+      win,
     },
   );
   return { connects: () => connects, doc, scheduler, win };
@@ -239,13 +263,13 @@ describe("createReconnectScheduler", () => {
   });
 
   test("defaults to the global window and document when none is injected", () => {
-    const globals = globalThis as Record<string, unknown>;
-    const realWindow = globals["window"];
-    const realDocument = globals["document"];
+    const globals: DomGlobals = globalThis;
+    const realWindow = globals.window;
+    const realDocument = globals.document;
     const win = new FakeTarget();
     const doc = new FakeTarget();
-    globals["window"] = win;
-    globals["document"] = doc;
+    globals.window = win;
+    globals.document = doc;
     try {
       let connects = 0;
       const scheduler = createReconnectScheduler(() => {
@@ -259,17 +283,17 @@ describe("createReconnectScheduler", () => {
       scheduler.dispose();
       expect(win.listeners).toBe(0);
     } finally {
-      globals["window"] = realWindow;
-      globals["document"] = realDocument;
+      globals.window = realWindow;
+      globals.document = realDocument;
     }
   });
 
   test("runs without a DOM at all (server-side and test runtimes)", () => {
-    const globals = globalThis as Record<string, unknown>;
-    const realWindow = globals["window"];
-    const realDocument = globals["document"];
-    delete globals["window"];
-    delete globals["document"];
+    const globals: DomGlobals = globalThis;
+    const realWindow = globals.window;
+    const realDocument = globals.document;
+    delete globals.window;
+    delete globals.document;
     try {
       let connects = 0;
       const scheduler = createReconnectScheduler(
@@ -284,10 +308,10 @@ describe("createReconnectScheduler", () => {
       scheduler.dispose();
     } finally {
       if (realWindow !== undefined) {
-        globals["window"] = realWindow;
+        globals.window = realWindow;
       }
       if (realDocument !== undefined) {
-        globals["document"] = realDocument;
+        globals.document = realDocument;
       }
     }
   });

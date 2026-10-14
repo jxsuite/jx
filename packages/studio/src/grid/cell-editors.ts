@@ -58,15 +58,18 @@ import { live } from "lit-html/directives/live.js";
 import { cellToText, coerceCellInput } from "./schema-columns";
 import type { GridCellValue, GridColumn } from "./grid-source";
 
-/** The subset of Tabulator's CellComponent the editors/formatters touch. */
+/**
+ * The subset of Tabulator's CellComponent the editors/formatters touch. A cell's value is a
+ * {@link GridCellValue}: the grid's row data is the grid source's rows, which hold nothing else.
+ */
 export interface CellLike {
-  getValue: () => unknown;
+  getValue: () => GridCellValue;
 }
 
 export type CellEditorFn = (
   cell: CellLike,
   onRendered: (fn: () => void) => void,
-  success: (value: unknown) => void,
+  success: (value: GridCellValue) => void,
   cancel: () => void,
 ) => HTMLElement;
 
@@ -74,6 +77,17 @@ export type CellFormatterFn = (cell: CellLike) => HTMLElement;
 
 /** Detached-host factory — grid-view owns the one sanctioned document.createElement. */
 export type HostFactory = (className: string) => HTMLElement;
+
+/**
+ * The `<input>` a listener in this file is bound on.
+ *
+ * Every input listener here sits on the `<input>` its own template renders, and an input has no
+ * children, so a keydown, change or blur it hears was dispatched at the input itself.
+ */
+function inputOf(e: Event): HTMLInputElement {
+  // SAFETY: the listener is bound on an `<input>` (above), and a void element is its events' target.
+  return e.target as HTMLInputElement;
+}
 
 /** Commit/cancel wiring shared by every text-ish editor. */
 function inputEditor(makeHost: HostFactory, column: GridColumn, inputType: string): CellEditorFn {
@@ -94,8 +108,8 @@ function inputEditor(makeHost: HostFactory, column: GridColumn, inputType: strin
     };
     const initial =
       column.kind === "date"
-        ? cellToText(cell.getValue() as GridCellValue).slice(0, 10)
-        : cellToText(cell.getValue() as GridCellValue);
+        ? cellToText(cell.getValue()).slice(0, 10)
+        : cellToText(cell.getValue());
     render(
       html`<input
         class="jx-grid-input"
@@ -103,12 +117,12 @@ function inputEditor(makeHost: HostFactory, column: GridColumn, inputType: strin
         .value=${live(initial)}
         @keydown=${(e: KeyboardEvent) => {
           if (e.key === "Enter") {
-            commit((e.target as HTMLInputElement).value);
+            commit(inputOf(e).value);
           } else if (e.key === "Escape") {
             abort();
           }
         }}
-        @blur=${(e: Event) => commit((e.target as HTMLInputElement).value)}
+        @blur=${(e: Event) => commit(inputOf(e).value)}
       />`,
       host,
     );
@@ -133,7 +147,7 @@ function checkboxEditor(makeHost: HostFactory): CellEditorFn {
         @change=${(e: Event) => {
           if (!done) {
             done = true;
-            success((e.target as HTMLInputElement).checked);
+            success(inputOf(e).checked);
           }
         }}
         @keydown=${(e: KeyboardEvent) => {
@@ -142,13 +156,13 @@ function checkboxEditor(makeHost: HostFactory): CellEditorFn {
             cancel();
           } else if (e.key === "Enter" && !done) {
             done = true;
-            success((e.target as HTMLInputElement).checked);
+            success(inputOf(e).checked);
           }
         }}
         @blur=${(e: Event) => {
           if (!done) {
             done = true;
-            success((e.target as HTMLInputElement).checked);
+            success(inputOf(e).checked);
           }
         }}
       />`,
@@ -160,19 +174,19 @@ function checkboxEditor(makeHost: HostFactory): CellEditorFn {
 }
 
 function selectEditor(makeHost: HostFactory, column: GridColumn): CellEditorFn {
-  const options = Array.isArray(column.schema?.enum)
-    ? (column.schema.enum as unknown[]).map(String)
-    : [];
+  const options = Array.isArray(column.schema?.enum) ? column.schema.enum.map(String) : [];
   return (cell, onRendered, success, cancel) => {
     const host = makeHost("jx-grid-editor");
     let done = false;
-    const current = cellToText(cell.getValue() as GridCellValue);
+    const current = cellToText(cell.getValue());
     render(
       html`<select
         class="jx-grid-select"
         @change=${(e: Event) => {
           if (!done) {
             done = true;
+            // SAFETY: this listener is bound on the `<select>` rendered here, and `change` is
+            // Dispatched at the select itself, never at one of its options.
             const { value } = e.target as HTMLSelectElement;
             success(value === "" ? null : value);
           }
@@ -235,26 +249,27 @@ function pillEditor(makeHost: HostFactory, column: GridColumn): CellEditorFn {
       render(
         html`<span class="jx-grid-pills">
           ${chips.map(
-            (chip, i) => html`<span class="jx-grid-chip"
-              >${chip}<button
-                class="jx-grid-chip-x"
-                title="Remove"
-                @mousedown=${(e: Event) => e.preventDefault()}
-                @click=${() => {
-                  chips.splice(i, 1);
-                  doRender();
-                  inputEl()?.focus();
-                }}
-              >
-                ×
-              </button></span
-            >`,
+            (chip, i) =>
+              html`<span class="jx-grid-chip"
+                >${chip}<button
+                  class="jx-grid-chip-x"
+                  title="Remove"
+                  @mousedown=${(e: Event) => e.preventDefault()}
+                  @click=${() => {
+                    chips.splice(i, 1);
+                    doRender();
+                    inputEl()?.focus();
+                  }}
+                >
+                  ×
+                </button></span
+              >`,
           )}
           <input
             class="jx-grid-pill-input"
             placeholder=${chips.length === 0 ? "add…" : ""}
             @keydown=${(e: KeyboardEvent) => {
-              const input = e.target as HTMLInputElement;
+              const input = inputOf(e);
               if (e.key === "Enter" || e.key === ",") {
                 e.preventDefault();
                 if (addFromInput(input)) {
@@ -272,7 +287,7 @@ function pillEditor(makeHost: HostFactory, column: GridColumn): CellEditorFn {
               }
             }}
             @blur=${(e: Event) => {
-              addFromInput(e.target as HTMLInputElement);
+              addFromInput(inputOf(e));
               finish([...chips]);
             }}
           />
@@ -317,7 +332,7 @@ export function editorForColumn(
 /** Formatter factory — plain-text projection rendered as a real element (innerHTML-safe). */
 export function formatterForColumn(column: GridColumn, makeHost: HostFactory): CellFormatterFn {
   return (cell) => {
-    const value = cell.getValue() as GridCellValue;
+    const value = cell.getValue();
     const host = makeHost(`jx-grid-cell-content jx-grid-kind-${column.kind}`);
     if (column.kind === "boolean") {
       render(html`${value === true ? "✓" : ""}`, host);

@@ -28,20 +28,18 @@ type JxColorField = HTMLElement & {
   resolved: string;
 };
 
-interface Dropper {
-  EyeDropper?: unknown;
-}
-
 beforeAll(async () => {
   await registerUi();
 });
 afterEach(() => {
   document.body.replaceChildren();
-  delete (globalThis as Dropper).EyeDropper;
+  Reflect.deleteProperty(globalThis, "EyeDropper");
 });
 
 async function field(attrs: Record<string, string> = {}): Promise<JxColorField> {
   const outer = document.createElement("div");
+  /* SAFETY: registerUi() in beforeAll defined jx-color-field, so createElement returns the upgraded
+     element, which carries every reactive property `JxColorField` lists from its document. */
   const el = document.createElement("jx-color-field") as JxColorField;
   el.setAttribute("label", "Background");
   for (const [k, v] of Object.entries(attrs)) {
@@ -61,6 +59,28 @@ const swatch = (el: Element) =>
 const textInput = (el: Element) =>
   el.querySelector<HTMLInputElement>('jx-textfield input[part="input"]')!;
 const above = (el: Element) => el.parentElement!;
+/** The native colour well, jx-color-field.json's `system` part: an `<input type="color">`. */
+const systemWell = (el: Element) => el.querySelector<HTMLInputElement>('[part="system"]')!;
+
+/** The picker's square, typed by the jx-color-area props the field writes and reads on it. */
+type AreaControl = HTMLElement & { hue: number; saturation: number; brightness: number };
+
+/** A picker track, typed by the jx-color-slider prop the field writes and reads on it. */
+type TrackControl = HTMLElement & { value: number };
+
+/** The field's square. */
+function areaOf(el: Element): AreaControl {
+  /* SAFETY: jx-color-field.json renders its `area` part as a jx-color-area, registered in
+     beforeAll, whose document declares numeric `hue`, `saturation` and `brightness` props. */
+  return part(el, "area") as AreaControl;
+}
+
+/** One of the field's tracks. */
+function trackOf(el: Element, name: "hue" | "opacity"): TrackControl {
+  /* SAFETY: jx-color-field.json renders its `hue` and `opacity` parts as jx-color-slider elements,
+     registered in beforeAll, whose document declares a numeric `value` prop. */
+  return part(el, name) as TrackControl;
+}
 
 /**
  * Stand a screen picker in for the engine's, answering with whatever `read` returns.
@@ -69,30 +89,36 @@ const above = (el: Element) => el.parentElement!;
  * object hands back that object, which is all `onEyeDropper` ever asks of the API.
  */
 function stubDropper(read: () => Promise<{ sRGBHex: string }>): void {
-  (globalThis as Dropper).EyeDropper = function EyeDropper() {
-    return { open: read };
-  };
+  Object.assign(globalThis, {
+    EyeDropper: function EyeDropper() {
+      return { open: read };
+    },
+  });
 }
 
 /** What the ANCESTOR heard, as `target=value`. */
-function record(el: HTMLElement): { input: string[]; change: string[] } {
-  const heard = { change: [] as string[], input: [] as string[] };
+function record(el: HTMLElement) {
+  const input: string[] = [];
+  const change: string[] = [];
   const seen = (event: Event) => {
-    const t = event.target as JxColorField;
+    /* SAFETY: the field stops its controls' own events and re-says them from the host, so the
+       wrapper hears the jx-color-field itself or, when a test appends one, a stray `<input>` the
+       field does not own; each is an HTMLElement with a string `value`. */
+    const t = event.target as HTMLElement & { value: string };
     return `${t.localName}=${t.value}`;
   };
   above(el).addEventListener("input", (e) => {
-    heard.input.push(seen(e));
+    input.push(seen(e));
   });
   above(el).addEventListener("change", (e) => {
-    heard.change.push(seen(e));
+    change.push(seen(e));
   });
-  return heard;
+  return { change, input };
 }
 
 /** Move an inner colour control and let it say so the way it does in a browser. */
-function move(control: HTMLElement & Record<string, unknown>, prop: string, value: number): void {
-  control[prop] = value;
+function move(control: TrackControl, value: number): void {
+  control.value = value;
   control.dispatchEvent(new Event("input", { bubbles: true }));
   control.dispatchEvent(new Event("change", { bubbles: true }));
 }
@@ -137,16 +163,16 @@ describe("jx-color-field", () => {
     expect(Math.round(el.hue)).toBe(53);
     expect(el.text).toBe("#f5d90a");
     expect(el.ink).toBe("black");
-    const area = part(el, "area") as HTMLElement & { hue: number };
+    const area = areaOf(el);
     expect(Math.round(area.hue)).toBe(53);
   });
 
   test("moving the square recomposes the value and says so once, from the element", async () => {
     const el = await field({ value: "#3b82f6" });
     const heard = record(el);
-    const area = part(el, "area") as HTMLElement & Record<string, unknown>;
-    area["saturation"] = 100;
-    area["brightness"] = 100;
+    const area = areaOf(el);
+    area.saturation = 100;
+    area.brightness = 100;
     area.dispatchEvent(new Event("input", { bubbles: true }));
     expect(el.value).toBe("#0061ff");
     /* One event, and `e.target` is the FIELD: five controls' worth of events would otherwise
@@ -160,17 +186,17 @@ describe("jx-color-field", () => {
   test("moving the hue track recomposes, and the square follows it", async () => {
     const el = await field({ value: "#3b82f6" });
     const heard = record(el);
-    move(part(el, "hue") as HTMLElement & Record<string, unknown>, "value", 120);
+    move(trackOf(el, "hue"), 120);
     expect(el.hue).toBe(120);
     expect(el.value).toBe("#3bf63b");
     expect(heard.change).toEqual(["jx-color-field=#3bf63b"]);
-    expect((part(el, "area") as HTMLElement & { hue: number }).hue).toBe(120);
+    expect(areaOf(el).hue).toBe(120);
   });
 
   test("with alpha off there is no opacity track and every value is opaque", async () => {
     const el = await field({ value: "#3b82f680" });
     expect(el.querySelector('[part="opacity"]')).toBeNull();
-    move(part(el, "hue") as HTMLElement & Record<string, unknown>, "value", 200);
+    move(trackOf(el, "hue"), 200);
     expect(el.value).toBe("#3bb8f6");
     expect(el.value.length).toBe(7);
   });
@@ -178,21 +204,21 @@ describe("jx-color-field", () => {
   test("with alpha on the opacity track is there and rides in the value", async () => {
     const el = await field({ alpha: "", value: "#3b82f680" });
     expect(Math.round(el.opacity)).toBe(50);
-    const opacity = part(el, "opacity") as HTMLElement & Record<string, unknown>;
+    const opacity = trackOf(el, "opacity");
     /* The routing attribute is the kit's own, because jx-color-slider writes `data-channel` from
        its own `channel` prop and an element's root attributes win over the ones its instance is
        given: the track this field calls `opacity` calls itself `alpha`. */
     expect(opacity.dataset["channel"]).toBe("alpha");
     expect(opacity.dataset["jxChannel"]).toBe("opacity");
-    move(opacity, "value", 100);
+    move(opacity, 100);
     expect(el.value).toBe("#3b82f6");
-    move(opacity, "value", 20);
+    move(opacity, 20);
     expect(el.value).toBe("#3b82f633");
   });
 
   test("format decides what is written, never what may be read", async () => {
     const el = await field({ format: "oklch", value: "#ff0000" });
-    move(part(el, "hue") as HTMLElement & Record<string, unknown>, "value", 29);
+    move(trackOf(el, "hue"), 29);
     expect(el.value).toStartWith("oklch(");
     /* And a reader may still type any of the three the module can read. */
     const input = textInput(el);
@@ -239,12 +265,12 @@ describe("jx-color-field", () => {
   test("the hue survives a colour going grey, which a round trip through the string would not", async () => {
     const el = await field({ value: "#3b82f6" });
     const before = el.hue;
-    const area = part(el, "area") as HTMLElement & Record<string, unknown>;
-    area["saturation"] = 0;
+    const area = areaOf(el);
+    area.saturation = 0;
     area.dispatchEvent(new Event("input", { bubbles: true }));
     expect(el.value).toBe("#f6f6f6");
     expect(el.hue).toBe(before);
-    expect((part(el, "hue") as HTMLElement & { value: number }).value).toBe(before);
+    expect(trackOf(el, "hue").value).toBe(before);
 
     /* A colourless value arriving whole is the same question and needs the same answer: a typed
        grey, and a grey a host wrote, both leave the hue track where the reader put it. */
@@ -263,7 +289,7 @@ describe("jx-color-field", () => {
   test("the system well is a door: what comes back is taken, and the alpha is kept", async () => {
     const el = await field({ alpha: "", value: "#3b82f680" });
     const heard = record(el);
-    const well = part(el, "system") as HTMLInputElement;
+    const well = systemWell(el);
     /* A native colour well is opaque by construction, so the reader's own alpha must survive it. */
     well.value = "#22c55e";
     well.dispatchEvent(new Event("input", { bubbles: true }));
@@ -273,9 +299,11 @@ describe("jx-color-field", () => {
 
   test("a palette slotted into the picker is a second way to the same value", async () => {
     const outer = document.createElement("div");
+    // SAFETY: registerUi() in beforeAll defined jx-color-field with every prop `JxColorField` lists.
     const el = document.createElement("jx-color-field") as JxColorField;
     el.setAttribute("label", "Background");
     el.setAttribute("value", "#3b82f6");
+    // SAFETY: registerUi() in beforeAll defined jx-swatch-group, whose document declares `value`.
     const group = document.createElement("jx-swatch-group") as HTMLElement & { value: string };
     group.setAttribute("slot", "tokens");
     group.setAttribute("label", "Project palette");
@@ -342,19 +370,10 @@ describe("jx-color-field", () => {
 
   test("the swatch opens the picker, positions it, and closes it again", async () => {
     const el = await field({ value: "#3b82f6" });
+    /* SAFETY: jx-color-field.json renders its `picker` part as a jx-popover, registered in
+       beforeAll, whose document declares the numeric `x` and `y` props the field writes. */
     const panel = part(el, "picker") as HTMLElement & { x: number; y: number };
-    el.getBoundingClientRect = () =>
-      ({
-        bottom: 40,
-        height: 24,
-        left: 12,
-        right: 100,
-        toJSON: () => ({}),
-        top: 16,
-        width: 88,
-        x: 12,
-        y: 16,
-      }) as DOMRect;
+    el.getBoundingClientRect = () => new DOMRect(12, 16, 88, 24);
     swatch(el).click();
     await tick();
     /* The coordinates are written BEFORE the panel is shown, which is what jx-popover asks of
@@ -375,8 +394,8 @@ describe("jx-color-field", () => {
     stubDropper(() => Promise.resolve({ sRGBHex: "#22c55e" }));
     const el = await field({ disabled: "", value: "#3b82f6" });
     /* The platform's own refusal first: a disabled button dispatches no click at all. */
-    expect((swatch(el) as HTMLButtonElement).disabled).toBe(true);
-    expect((part(el, "system") as HTMLInputElement).disabled).toBe(true);
+    expect(swatch(el).disabled).toBe(true);
+    expect(systemWell(el).disabled).toBe(true);
     expect(part(el, "dropper").querySelector<HTMLButtonElement>('[part="control"]')!.disabled).toBe(
       true,
     );
@@ -524,10 +543,14 @@ describe("jx-color-field", () => {
       value: "#000000",
     };
     const host = document.createElement("jx-color-field");
-    onFieldInput(state, { currentTarget: host, target: null } as unknown as Event);
+    // Never dispatched, so its target is null; only the currentTarget is the host's.
+    const input = new Event("input");
+    Object.defineProperty(input, "currentTarget", { value: host });
+    onFieldInput(state, input);
     expect(state.value).toBe("#000000");
 
-    onFieldMount(state, { currentTarget: null } as unknown as Event);
+    // Never dispatched, so its currentTarget is null.
+    onFieldMount(state, new Event("jx-ready"));
     expect(state.uid).toBe("");
   });
 });

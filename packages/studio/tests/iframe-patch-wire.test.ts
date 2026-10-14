@@ -7,9 +7,8 @@
  */
 import "./with-dom.js";
 import { describe, expect, mock, test } from "bun:test";
-import type { TransactionRecord } from "../src/tabs/patch-ops";
+import type { JxDocOp, TransactionRecord } from "../src/tabs/patch-ops";
 import type { Tab } from "../src/tabs/tab";
-import type { WireDocOp } from "../src/canvas/iframe-protocol";
 
 /* Capture what the parent posts to the bridge instead of reaching a real (cross-origin) iframe host.
 
@@ -17,11 +16,11 @@ import type { WireDocOp } from "../src/canvas/iframe-protocol";
    patch against belongs to the STAGE that frame is mounted on, and `postPatchToHosts` deliberately
    spans stages, so it resolves one per host inside its own loop. The caller hands over the ops and
    the tab whose hosts may have them. */
-let captured: { forwardOps: WireDocOp[]; tabId: string | null } | null = null;
+let captured: { forwardOps: JxDocOp[]; tabId: string | null } | null = null;
 /** How many ready hosts the fake bridge reports having fanned the patch out to. */
 let readyHosts = 1;
 void mock.module("../src/canvas/iframe-host", () => ({
-  postPatchToHosts: (forwardOps: WireDocOp[], tabId: string | null) => {
+  postPatchToHosts: (forwardOps: JxDocOp[], tabId: string | null) => {
     captured = { forwardOps, tabId };
     return readyHosts;
   },
@@ -83,11 +82,9 @@ describe("parent → iframe patch wire format", () => {
     ]);
     // Concretely: a path-only consumer could not reconstruct these — the set value and inserted node
     // Are present on the wire.
-    expect((captured!.forwardOps[0] as { value: unknown }).value).toEqual({ color: "blue" });
-    expect((captured!.forwardOps[1] as { node: unknown }).node).toEqual({
-      tagName: "b",
-      textContent: "hi",
-    });
+    const [setOp, insertOp] = captured!.forwardOps;
+    expect(setOp).toHaveProperty("value", { color: "blue" });
+    expect(insertOp).toHaveProperty("node", { tagName: "b", textContent: "hi" });
     // Addressed by TAB, not by generation: every host rendering this document gets it, each
     // Checking it against its own stage's number.
     expect(captured!.tabId).toBe(tab.id);

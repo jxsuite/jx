@@ -44,6 +44,8 @@
  */
 
 import { rmSync } from "node:fs";
+import { isJsonObject, isJsonPrimitive } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /** The generators, in the order they must run: entry documents EMBED the core. */
 export const GENERATORS = [
@@ -89,13 +91,13 @@ function escapeToken(token: string): string {
  * hundred reported changes. An empty container emits its own pointer so that its existence is
  * visible.
  *
- * @param {unknown} value - The parsed JSON document
+ * @param {JsonValue} value - The parsed JSON document
  * @param {string} base - Pointer prefix for recursion
  * @param {Map<string, string>} out - Accumulator
  * @returns {Map<string, string>} Pointer to a stable rendering of the value at it
  */
 export function flatten(
-  value: unknown,
+  value: JsonValue,
   base = "",
   out = new Map<string, string>(),
 ): Map<string, string> {
@@ -104,7 +106,7 @@ export function flatten(
       out.set(base, "[]");
       return out;
     }
-    if (value.every((v) => v === null || typeof v !== "object")) {
+    if (value.every((v) => isJsonPrimitive(v))) {
       for (const v of value) {
         out.set(`${base}/${escapeToken(String(v))}`, "member");
       }
@@ -115,8 +117,8 @@ export function flatten(
     }
     return out;
   }
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
+  if (isJsonObject(value)) {
+    const entries = Object.entries(value);
     if (entries.length === 0) {
       out.set(base, "{}");
       return out;
@@ -126,7 +128,7 @@ export function flatten(
     }
     return out;
   }
-  out.set(base, JSON.stringify(value) ?? "undefined");
+  out.set(base, JSON.stringify(value));
   return out;
 }
 
@@ -157,11 +159,11 @@ function clip(value: string, limit = 90): string {
 /**
  * Diff two parsed JSON documents by leaf pointer.
  *
- * @param {unknown} before - The committed document
- * @param {unknown} after - What the generator produced
+ * @param {JsonValue} before - The committed document
+ * @param {JsonValue} after - What the generator produced
  * @returns {PointerDelta} Pointers added, removed and re-valued
  */
-export function pointerDelta(before: unknown, after: unknown): PointerDelta {
+export function pointerDelta(before: JsonValue, after: JsonValue): PointerDelta {
   const a = flatten(before);
   const b = flatten(after);
   const added: string[] = [];
@@ -208,13 +210,10 @@ export function driftEntry(
   generated: string,
 ): DriftEntry {
   const empty: PointerDelta = { added: [], removed: [], changed: [] };
-  const entry: DriftEntry = {
-    ...(committed !== undefined ? { committed } : {}),
-    delta: empty,
-    generated,
-    kind: classifySchema(path),
-    path,
-  };
+  const entry: DriftEntry = { delta: empty, generated, kind: classifySchema(path), path };
+  if (committed !== undefined) {
+    entry.committed = committed;
+  }
   try {
     entry.delta = pointerDelta(
       committed === undefined ? {} : JSON.parse(committed),
@@ -553,10 +552,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const report = renderReport(entries, {
-    ...(inputs !== undefined ? { changedInputs: inputs } : {}),
-    fixed: fix,
-  });
+  const reportOptions: ReportOptions = { fixed: fix };
+  if (inputs !== undefined) {
+    reportOptions.changedInputs = inputs;
+  }
+  const report = renderReport(entries, reportOptions);
   if (wantsReport) {
     await Bun.write(reportAt, report);
   }

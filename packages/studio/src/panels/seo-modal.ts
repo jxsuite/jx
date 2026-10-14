@@ -32,6 +32,7 @@
  */
 
 import { activeRegistry } from "../commands/active-registry";
+import { HEAD_EDIT_DEBOUNCE } from "../ui/timing";
 import { previewAssetSrc } from "../canvas/asset-refs";
 import { getPlatform } from "../platform";
 import { layerHost } from "../ui/layers";
@@ -232,15 +233,6 @@ function writeField(
   applyMutation((doc: JxMutableNode) => upsertMeta(doc, field.attr, field.key, trimmed));
 }
 
-/**
- * How long a keystroke waits before it is written.
- *
- * Every commit is a document mutation, and the previews repaint from it, so a write per keystroke
- * would redraw the picture mid-word. A `change` — the control losing focus, or its clear button —
- * cancels the timer and commits immediately, which is why nothing is ever lost to the debounce.
- */
-const EDIT_DEBOUNCE_MS = 300;
-
 /** One timer per field key, so editing Description then Title does not cancel the first write. */
 const _pending = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -300,20 +292,24 @@ let _tab: Tab | null = null;
 /** Where each chip that leads somewhere goes, rebuilt with the view it was drawn from. */
 let _donors = new Map<string, () => void>();
 
+/** What the SEO body reads and writes for one tab: its merged head, and how an edit lands. */
+interface SeoContext {
+  headDoc: JxMutableNode;
+  head: JxHeadEntry[];
+  applyMutation: (fn: (doc: JxMutableNode) => void) => void;
+}
+
 /**
  * What the SEO body needs from a tab, resolved once.
  *
  * Both realms in one place: a markdown page keeps its head material in frontmatter and a JSON one
  * in root properties, and `buildHeadDoc` is the card's own view of that difference.
  */
-function seoContextFor(tab: Tab): {
-  headDoc: JxMutableNode;
-  head: JxHeadEntry[];
-  applyMutation: (fn: (doc: JxMutableNode) => void) => void;
-} {
+function seoContextFor(tab: Tab): SeoContext {
   const isContent = tab.doc.mode === "content";
-  const fm = (tab.doc.content?.frontmatter ?? {}) as Record<string, unknown>;
-  const headDoc = isContent ? buildHeadDoc(tab.doc.document, fm) : tab.doc.document;
+  const headDoc = isContent
+    ? buildHeadDoc(tab.doc.document, tab.doc.content.frontmatter)
+    : tab.doc.document;
   return {
     applyMutation: isContent
       ? (fn: (doc: JxMutableNode) => void) => applyContentMutation(tab, renderSeoModal, fn)
@@ -495,7 +491,7 @@ export function openSeoModal(tab: Tab): void {
           setTimeout(() => {
             _pending.delete(key);
             commitField(key, value);
-          }, EDIT_DEBOUNCE_MS),
+          }, HEAD_EDIT_DEBOUNCE),
         );
       },
       onOpenDonor: (key: string) => {

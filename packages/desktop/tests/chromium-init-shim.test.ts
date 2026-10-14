@@ -6,7 +6,6 @@ import { expect, mock, spyOn, test } from "bun:test";
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { launcherSignal } from "@jxsuite/studio/platform";
-import type { LauncherSignal } from "@jxsuite/studio/platform";
 
 try {
   GlobalRegistrator.register();
@@ -23,19 +22,21 @@ void mock.module("../src/chromium/platform", () => ({
 const hydrateGithubToken = mock((_stored: boolean) => {});
 void mock.module("@jxsuite/studio/github-auth-status", () => ({ hydrateGithubToken }));
 
-const g = globalThis as unknown as { __jxLauncher?: LauncherSignal; __jxPlatform?: unknown };
+/* SAFETY: GlobalRegistrator.register() above copies the happy-dom Window's own members onto
+   globalThis, and `happyDOM` (the DetachedWindowAPI that owns setURL) is one of them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
 
 test("a throwing chromium adapter is recorded, and the token is stripped regardless", async () => {
-  delete g.__jxLauncher;
-  delete g.__jxPlatform;
-  (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(
-    "http://127.0.0.1:4000/?token=secret&project=1",
-  );
+  delete globalThis.__jxLauncher;
+  delete globalThis.__jxPlatform;
+  happyDOM.setURL("http://127.0.0.1:4000/?token=secret&project=1");
   const consoleError = spyOn(console, "error").mockImplementation(() => {});
 
   await import("../src/chromium/init");
 
-  expect(g.__jxPlatform).toBeUndefined();
+  expect(globalThis.__jxPlatform).toBeUndefined();
   expect(launcherSignal()?.launcher).toBe("chromium");
   expect(launcherSignal()?.error?.message).toBe("boom");
   expect(hydrateGithubToken).not.toHaveBeenCalled();

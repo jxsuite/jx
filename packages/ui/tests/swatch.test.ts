@@ -27,6 +27,8 @@ afterEach(() => {
 
 async function swatch(attrs: Record<string, string> = {}): Promise<JxSwatch> {
   const outer = document.createElement("div");
+  /* SAFETY: registerUi() in beforeAll defined jx-swatch from its component document, whose props
+     are the members `JxSwatch` lists, so createElement returns that upgraded element. */
   const el = document.createElement("jx-swatch") as JxSwatch;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -118,7 +120,7 @@ describe("jx-swatch", () => {
     const el = await swatch({ color: "#3b82f6", value: "brand.cool" });
     const heard: unknown[] = [];
     el.parentElement!.addEventListener("select", (e) => {
-      heard.push((e as CustomEvent<unknown>).detail);
+      heard.push(e instanceof CustomEvent ? e.detail : undefined);
     });
     control(el).click();
     expect(heard).toEqual(["brand.cool"]);
@@ -132,7 +134,7 @@ describe("jx-swatch", () => {
     const el = await swatch({ color: "#3b82f6" });
     const heard: unknown[] = [];
     el.parentElement!.addEventListener("select", (e) => {
-      heard.push((e as CustomEvent<unknown>).detail);
+      heard.push(e instanceof CustomEvent ? e.detail : undefined);
     });
     control(el).click();
     expect(heard).toEqual(["#3b82f6"]);

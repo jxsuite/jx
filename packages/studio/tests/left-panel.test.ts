@@ -12,18 +12,25 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { html } from "lit-html";
 import type { TemplateResult } from "lit-html";
 import { mount, render, unmount } from "../src/panels/left-panel";
-import { initShellRefs, leftPanel } from "../src/store";
+import { initShellRefs, leftPanel, requireShellRef } from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { mountSignalsPanel } from "../src/panels/signals-panel";
 import { registerPanel, resetPanels } from "../src/panels/panel-registry";
+import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
 import { view } from "../src/view";
 import { shell } from "../src/shell";
 
-let ctx: Record<string, any>;
-let captured: { head: any; imports: any; git: any[] };
+/** The shell's Navigator cell, which `initShellRefs()` found in `beforeEach`. */
+function navigatorHost(): HTMLElement {
+  return requireShellRef(leftPanel, "left-panel");
+}
 
-function makeCtx(overrides: Record<string, unknown> = {}) {
-  captured = { git: [], head: null, imports: null };
+let ctx: NavigatorPanelDeps;
+
+function makeCtx(overrides: Partial<NavigatorPanelDeps> = {}): NavigatorPanelDeps {
+  /* SAFETY: the only reader of `webdata` is the Insert panel (elements-panel.ts), which reads
+     `webdata.elements` alone: category name to `{ tag }[]`, the shape the bundled file has. */
+  const webdata = { elements: { Text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"];
   return {
     cloneRepository: mock(() => {}),
     defaultDef: (tag: string) => ({ tagName: tag }),
@@ -33,38 +40,33 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
     navigateToComponent: mock(() => {}),
     registerComponentsDnD: mock(() => {}),
     registerElementsDnD: mock(() => {}),
-    registerFileTreeDnD: mock(() => {}),
     registerLayersDnD: mock(() => {}),
     // The Data panel's one verb that is not a repaint: it re-fires automatic `Request` entries,
     // And its presence is what puts the Refresh button on screen.
     refreshData: mock(() => {}),
     renderCanvas: mock(() => {}),
-    renderFilesTemplate: mock(() => html`<div class="file-tree" id="files-rendered"></div>`),
-    renderGitPanel: mock((...args: unknown[]) => {
-      captured.git = args;
-      return html`<div id="git-rendered"></div>`;
-    }),
     // The REAL mount: the Data panel is a document, and the assertion below is that what the
     // Navigator hands it reaches the drawn rows.
     mountSignalsPanel,
-    renderHeadTemplate: mock((opts: unknown) => {
-      captured.head = opts;
-      return html`<div id="head-rendered"></div>`;
-    }),
-    renderImportsTemplate: mock((opts: unknown) => {
-      captured.imports = opts;
-      return html`<div id="imports-rendered"></div>`;
-    }),
     setCanvasMode: mock(() => {}),
     setGitDiffState: mock(() => {}),
-    webdata: { elements: { Text: [{ tag: "p" }] } },
+    webdata,
     ...overrides,
   };
 }
 
-async function mountWith(overrides: Record<string, unknown> = {}) {
+/** The first HTML element under `scope` matching `selector`, or a failure naming the selector. */
+function required(scope: ParentNode, selector: string): HTMLElement {
+  const found = scope.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`nothing matches ${selector}`);
+  }
+  return found;
+}
+
+async function mountWith(overrides: Partial<NavigatorPanelDeps> = {}) {
   ctx = makeCtx(overrides);
-  mount(ctx as never);
+  mount(ctx);
   await flush(3);
 }
 
@@ -78,9 +80,6 @@ beforeEach(() => {
     <div id="statusbar"></div>
   `;
   initShellRefs();
-  if (!Element.prototype.scrollIntoView) {
-    Element.prototype.scrollIntoView = () => {};
-  }
   shell.leftTab = "layers";
   /* Source Control is a Jx document mounted by its own `afterRender` rather than a lit body drawn
      through `deps`, so the real panel runs here and asks the platform what the working tree says.
@@ -115,7 +114,7 @@ describe("left panel — project-level tabs", () => {
     shell.leftTab = "files";
     await mountWith();
     await flush(4);
-    const body = leftPanel.querySelector<HTMLElement>('[part="panel-body"]');
+    const body = navigatorHost().querySelector<HTMLElement>('[part="panel-body"]');
     expect(body?.dataset.panel).toBe("files");
     expect(body?.querySelector('[part="content"] [part="files"]')).not.toBeNull();
   });
@@ -125,7 +124,7 @@ describe("left panel — project-level tabs", () => {
      `#git-rendered` to find. What the Navigator still owes it is the HOST: the `[part="panel-body"]`
      carrying its region, and the `[part="content"]` box the document goes into. */
   function seedRepo() {
-    shell.git.branches = { branches: ["main"], current: "main" } as never;
+    shell.git.branches = { branches: ["main"], current: "main" };
     shell.git.status = {
       ahead: 0,
       behind: 0,
@@ -133,23 +132,22 @@ describe("left panel — project-level tabs", () => {
       files: [],
       isRepo: true,
       remotes: ["origin"],
-    } as never;
+    };
   }
 
-  test("git tab mounts the Source Control document, and not the deps renderer", async () => {
+  test("git tab mounts the Source Control document", async () => {
     seedRepo();
     shell.leftTab = "git";
     await mountWith();
     await flush(4);
-    expect(leftPanel.querySelector('[part="git-panel"]')).not.toBeNull();
-    expect(captured.git).toEqual([]);
+    expect(navigatorHost().querySelector('[part="git-panel"]')).not.toBeNull();
     /* And the box it went into is the one the Navigator's own document drew, addressable as this
        panel's region — which is the seam, and the thing a stale selector used to photograph. */
-    expect(leftPanel.querySelector<HTMLElement>('[part="panel-body"]')?.dataset.jxRegion).toBe(
-      "navigator/panel:git",
-    );
+    expect(
+      navigatorHost().querySelector<HTMLElement>('[part="panel-body"]')?.dataset.jxRegion,
+    ).toBe("navigator/panel:git");
     // The header reads the record's title; "Source" is the rail button's label and only that.
-    expect(leftPanel.querySelector('[part="header-title"]')?.textContent?.trim()).toBe(
+    expect(navigatorHost().querySelector('[part="header-title"]')?.textContent.trim()).toBe(
       "Source Control",
     );
   });
@@ -160,7 +158,7 @@ describe("left panel — project-level tabs", () => {
     shell.leftTab = "git";
     await mountWith();
     await flush(4);
-    expect(leftPanel.querySelector('[part="git-panel"]')).not.toBeNull();
+    expect(navigatorHost().querySelector('[part="git-panel"]')).not.toBeNull();
   });
 
   test("project-level source-control changes reach the panel with no tab open", async () => {
@@ -172,25 +170,25 @@ describe("left panel — project-level tabs", () => {
     shell.leftTab = "git";
     await mountWith();
     await flush(4);
-    expect(leftPanel.querySelector('[part="commit"]')).not.toBeNull();
+    expect(navigatorHost().querySelector('[part="commit"]')).not.toBeNull();
 
     shell.git.subTab = "history";
     await flush(4);
-    expect(leftPanel.querySelector('[part="commit"]')).toBeNull();
-    expect(leftPanel.querySelector('[part="history"]')).not.toBeNull();
+    expect(navigatorHost().querySelector('[part="commit"]')).toBeNull();
+    expect(navigatorHost().querySelector('[part="history"]')).not.toBeNull();
 
     shell.git.logEntries = [
       { author: "a", date: "2024-01-01T00:00:00Z", hash: "abc", message: "m" },
     ];
     await flush(4);
-    expect(leftPanel.querySelector('[part="history-entry"]')).not.toBeNull();
+    expect(navigatorHost().querySelector('[part="history-entry"]')).not.toBeNull();
     shell.git.subTab = "changes";
   });
 
   test("insert panel renders the elements palette and registers DnD", async () => {
     shell.leftTab = "insert";
     await mountWith();
-    expect(leftPanel.querySelector('[data-block-tag="p"]')).not.toBeNull();
+    expect(navigatorHost().querySelector('[data-block-tag="p"]')).not.toBeNull();
     expect(ctx.registerElementsDnD).toHaveBeenCalled();
     expect(ctx.registerComponentsDnD).toHaveBeenCalled();
   });
@@ -199,8 +197,8 @@ describe("left panel — project-level tabs", () => {
 describe("left panel — document tabs", () => {
   test("layers tab renders the layer tree and registers layers DnD", async () => {
     await mountWith();
-    expect(leftPanel.querySelector('[part="outline"] [part="tree"]')).not.toBeNull();
-    expect(leftPanel.querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
+    expect(navigatorHost().querySelector('[part="outline"] [part="tree"]')).not.toBeNull();
+    expect(navigatorHost().querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
     expect(ctx.registerLayersDnD).toHaveBeenCalled();
   });
 
@@ -226,8 +224,8 @@ describe("left panel — document tabs", () => {
        What the catalogue contains is `tests/stylebook-layers-panel.test.ts`. */
     await mountWith({ getCanvasMode: () => "stylebook" });
     await flush(4);
-    expect(leftPanel.querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
-    expect(leftPanel.querySelector('[part="outline"]')).toBeNull();
+    expect(navigatorHost().querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
+    expect(navigatorHost().querySelector('[part="outline"]')).toBeNull();
     expect(ctx.registerLayersDnD).not.toHaveBeenCalled();
   });
 
@@ -239,15 +237,14 @@ describe("left panel — document tabs", () => {
        `$elements` and a transact-backed `applyMutation` reaching the panel, is tested against the
        panel itself in `tests/imports-panel.test.ts`; what belongs here is that this tab reaches
        this panel at all. */
-    activeTab.value!.doc.document.$elements = ["@acme/widgets"] as never;
+    activeTab.value!.doc.document.$elements = ["@acme/widgets"];
     shell.leftTab = "packages";
     await mountWith();
     await flush(4);
     // Reader-visible, so it stays true whatever the document's internal part names become.
-    expect((leftPanel.textContent ?? "").replaceAll(/\s+/g, " ")).toContain(
+    expect(navigatorHost().textContent.replaceAll(/\s+/g, " ")).toContain(
       "Components you add here can be dropped onto this page",
     );
-    expect(leftPanel.querySelector("#imports-rendered")).toBeNull();
   });
 
   test("the data tab draws ONE panel over the whole tab", async () => {
@@ -261,12 +258,12 @@ describe("left panel — document tabs", () => {
      * It is drawn as a document (`surfaces/panel-signals.json`), so lit renders nothing here and
      * the assertion is against the mounted DOM rather than against an injected stub.
      */
-    activeTab.value!.doc.document.state = { count: { default: 0 } } as never;
+    activeTab.value!.doc.document.state = { count: { default: 0 } };
     activeTab.value!.session.canvas.scope = { count: 1 };
     shell.leftTab = "data";
     await mountWith();
     await flush(8);
-    const row = leftPanel.querySelector('[part="entry"][data-signal="count"]');
+    const row = navigatorHost().querySelector('[part="entry"][data-signal="count"]');
     expect(row).not.toBeNull();
     expect(row!.querySelector('[part="badge"]')?.textContent).toBe("S");
     const summary = row!.querySelector<HTMLElement>('[part="summary"]');
@@ -274,13 +271,13 @@ describe("left panel — document tabs", () => {
     expect(summary?.textContent).toBe("number");
     // A repaint and a refetch, and the refetch is what the Refresh button spends. `renderCanvas`
     // And `updateSession` were threaded through here until nothing in the panel read either.
-    expect(leftPanel.querySelector('[part="refresh"]')).not.toBeNull();
+    expect(navigatorHost().querySelector('[part="refresh"]')).not.toBeNull();
   });
 
   test("there is no `state` tab left to render", async () => {
     shell.leftTab = "state";
     await mountWith();
-    const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
+    const body = required(navigatorHost(), '[part="panel-body"]');
     expect(body.querySelector('[part="empty-message"]')?.textContent).toBe(
       'No Navigator panel is registered as "state".',
     );
@@ -289,7 +286,7 @@ describe("left panel — document tabs", () => {
   test("an id the registry does not declare says so instead of painting a blank body", async () => {
     shell.leftTab = "bogus";
     await mountWith();
-    const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
+    const body = required(navigatorHost(), '[part="panel-body"]');
     expect(body).not.toBeNull();
     expect(body.querySelector('[part="empty-message"]')?.textContent).toBe(
       'No Navigator panel is registered as "bogus".',
@@ -300,13 +297,11 @@ describe("left panel — document tabs", () => {
     closeAllTabs();
     shell.leftTab = "layers";
     await mountWith();
-    const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
+    const body = required(navigatorHost(), '[part="panel-body"]');
     expect(body.querySelector('[part="empty-message"]')?.textContent).toBe(
       "Open a page to see the elements it is built from.",
     );
-    expect((body.querySelector('[part="empty-action"]') as HTMLElement).textContent?.trim()).toBe(
-      "Open a page…",
-    );
+    expect(required(body, '[part="empty-action"]').textContent.trim()).toBe("Open a page…");
     expect(ctx.registerLayersDnD).not.toHaveBeenCalled();
   });
 
@@ -316,7 +311,7 @@ describe("left panel — document tabs", () => {
     for (const tabName of ["layers", "packages", "data", "page"]) {
       shell.leftTab = tabName;
       await mountWith();
-      const message = leftPanel.querySelector('[part="empty-message"]')?.textContent ?? "";
+      const message = navigatorHost().querySelector('[part="empty-message"]')?.textContent ?? "";
       expect(message.startsWith("Open a page to")).toBe(true);
       seen.add(message);
       unmount();
@@ -337,10 +332,10 @@ describe("left panel — document tabs", () => {
 describe("left panel — lifecycle and recovery", () => {
   test("reactive effect re-renders on selection change", async () => {
     await mountWith();
-    expect(leftPanel.querySelector('[part="row"][aria-selected="true"]')).toBeNull();
+    expect(navigatorHost().querySelector('[part="row"][aria-selected="true"]')).toBeNull();
     activeTab.value!.session.selection = [["children", 0]];
     await flush(4);
-    expect(leftPanel.querySelector('[part="row"][aria-selected="true"]')).not.toBeNull();
+    expect(navigatorHost().querySelector('[part="row"][aria-selected="true"]')).not.toBeNull();
   });
 
   test("unmounting before the mount lands leaves nothing behind", async () => {
@@ -349,19 +344,19 @@ describe("left panel — lifecycle and recovery", () => {
        for. The handle that settles afterwards has to throw its own surface away rather than append
        it, or the cell keeps a panel body nobody can reach and the next mount finds two. */
     ctx = makeCtx();
-    mount(ctx as never);
+    mount(ctx);
     unmount();
     await flush(4);
-    expect(leftPanel.childNodes).toHaveLength(0);
+    expect(navigatorHost().childNodes).toHaveLength(0);
   });
 
   test("render after unmount is a no-op", async () => {
     await mountWith();
     unmount();
-    leftPanel.textContent = "";
+    navigatorHost().textContent = "";
     render();
     await flush(3);
-    expect(leftPanel.querySelector('[part="panel-body"]')).toBeNull();
+    expect(navigatorHost().querySelector('[part="panel-body"]')).toBeNull();
   });
 
   /**
@@ -399,7 +394,7 @@ describe("left panel — lifecycle and recovery", () => {
     shell.leftTab = "boomtown";
     await mountWith();
     expect(calls).toBe(2);
-    expect(leftPanel.querySelector("#panel-recovered")).not.toBeNull();
+    expect(navigatorHost().querySelector("#panel-recovered")).not.toBeNull();
   });
 
   test("a persistent render error is swallowed without crashing", async () => {
@@ -409,9 +404,9 @@ describe("left panel — lifecycle and recovery", () => {
     shell.leftTab = "boomtown";
     await mountWith();
     // The dock still drew its own chrome: the reader can see which panel failed and leave it.
-    expect(leftPanel.querySelector<HTMLElement>('[part="panel-body"]')?.dataset.panel).toBe(
+    expect(navigatorHost().querySelector<HTMLElement>('[part="panel-body"]')?.dataset.panel).toBe(
       "boomtown",
     );
-    expect(leftPanel.querySelector('[part="content"]')?.childElementCount).toBe(0);
+    expect(navigatorHost().querySelector('[part="content"]')?.childElementCount).toBe(0);
   });
 });

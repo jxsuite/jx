@@ -12,6 +12,14 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
+import {
+  isJsonObject,
+  isJsonPrimitive,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
+import type { JsonObject, JsonPrimitive, JsonValue } from "@jxsuite/schema/types";
 import { runTask, runTrial } from "../runner.js";
 import type { Task, TrialResult } from "../runner.js";
 import { writeRun } from "../scoreboard.js";
@@ -70,8 +78,14 @@ function scriptedClient(rounds: StreamEvent[][]): StreamingClient & {
     async *streamChat(messages, tools) {
       const events = rounds[requests.length];
       requests.push({
-        roles: messages.map((m) => String((m as { role?: unknown }).role)),
-        tools: tools.map((t) => String((t as { function?: { name?: unknown } }).function?.name)),
+        roles: messages.map((m) => String("role" in m ? m.role : undefined)),
+        tools: tools.map((t) =>
+          String(
+            "function" in t && isNonNullObject(t.function) && "name" in t.function
+              ? t.function.name
+              : undefined,
+          ),
+        ),
       });
       if (!events) {
         throw new Error(
@@ -86,7 +100,7 @@ function scriptedClient(rounds: StreamEvent[][]): StreamingClient & {
 }
 
 /** A tool call as a model streams one: start, the arguments in two fragments, end. */
-function call(id: string, name: string, args: object): StreamEvent[] {
+function call(id: string, name: string, args: JsonObject): StreamEvent[] {
   const json = JSON.stringify(args);
   const cut = Math.floor(json.length / 2);
   return [
@@ -382,18 +396,9 @@ const SCENARIOS: Scenario[] = [
 
 // ─── Normalization ───────────────────────────────────────────────────────────
 
-interface WireToolCall {
-  id: string;
-  function: { name: string; arguments: string };
-}
-
-interface WireMessage {
-  role: string;
-  content?: string | null;
-  reasoning_content?: string;
-  tool_calls?: WireToolCall[];
-  tool_call_id?: string;
-}
+/** A value the goldens compare: JSON, except that an object member or array slot may be `undefined`. */
+type Normalizable = JsonPrimitive | NormalizableSlot[] | { [key: string]: NormalizableSlot };
+type NormalizableSlot = Normalizable | undefined;
 
 /** Replace anything run-dependent with a stable placeholder. */
 function normalizeString(s: string): string {
@@ -409,63 +414,72 @@ function normalizeString(s: string): string {
  * and `undefined` array slots as `null`. So the actual value compares against a parsed golden
  * as-is.
  */
-function normalizeDeep(value: unknown): unknown {
-  if (typeof value === "string") {
+function normalizeDeep(value: Normalizable): JsonValue {
+  if (isString(value)) {
     return normalizeString(value);
   }
   if (Array.isArray(value)) {
     return value.map((v) => (v === undefined ? null : normalizeDeep(v)));
   }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => [k, normalizeDeep(v)]),
-    );
+  if (isJsonPrimitive(value)) {
+    return value;
   }
-  return value;
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([k, v]) =>
+      v === undefined ? [] : [[k, normalizeDeep(v)] as const],
+    ),
+  );
 }
 
 /** Tool arguments as the loop parsed them, or the raw text when they did not parse. */
-function parseArgs(raw: string): unknown {
+function parseArgs(raw: string): JsonValue {
   if (!raw) {
     return {};
   }
   try {
-    return JSON.parse(raw) as unknown;
+    const parsed: JsonValue = JSON.parse(raw);
+    return parsed;
   } catch {
     return { $unparsed: raw };
   }
 }
 
-function normalizeTrial(scenario: Scenario, trial: TrialResult, requests: RecordedRequest[]) {
-  const wire = trial.transcript as WireMessage[];
+/**
+ * A transcript as the goldens record it: every tool call with its parsed arguments, and each
+ * message with tool results parsed. Members left `undefined` here are dropped by
+ * {@link normalizeDeep}.
+ */
+function transcriptView(wire: TrialResult["transcript"]) {
+  // Only an assistant message carries tool calls on the OpenAI wire.
   const toolCalls = wire.flatMap((m) =>
-    (m.tool_calls ?? []).map((tc) => ({
-      id: tc.id,
-      name: tc.function.name,
-      args: parseArgs(tc.function.arguments),
-    })),
+    m.role === "assistant"
+      ? (m.tool_calls ?? []).map((tc) => ({
+          id: tc.id,
+          name: tc.function.name,
+          args: parseArgs(tc.function.arguments),
+        }))
+      : [],
   );
   const transcript = wire.map((m) => {
     if (m.role === "tool") {
       // The loop sends `JSON.stringify(result)`; stored parsed so the golden stays readable.
-      return { role: m.role, toolCallId: m.tool_call_id, result: parseArgs(m.content ?? "") };
+      return { role: m.role, toolCallId: m.tool_call_id, result: parseArgs(m.content) };
     }
-    const entry: {
-      role: string;
-      content: string | null;
-      reasoning?: string;
-      toolCalls?: string[];
-    } = { role: m.role, content: m.content ?? null };
-    if (m.reasoning_content !== undefined) {
-      entry.reasoning = m.reasoning_content;
+    if (m.role === "assistant") {
+      return {
+        role: m.role,
+        content: m.content,
+        reasoning: m.reasoning_content,
+        toolCalls: m.tool_calls?.map((tc) => tc.function.name),
+      };
     }
-    if (m.tool_calls) {
-      entry.toolCalls = m.tool_calls.map((tc) => tc.function.name);
-    }
-    return entry;
+    return { role: m.role, content: m.content };
   });
+  return { toolCalls, transcript };
+}
+
+function normalizeTrial(scenario: Scenario, trial: TrialResult, requests: RecordedRequest[]) {
+  const { toolCalls, transcript } = transcriptView(trial.transcript);
   return normalizeDeep({
     scenario: scenario.id,
     task: scenario.task,
@@ -484,16 +498,23 @@ function normalizeTrial(scenario: Scenario, trial: TrialResult, requests: Record
 // ─── Golden comparison ───────────────────────────────────────────────────────
 
 function pathJoin(base: string, key: string | number): string {
-  return typeof key === "number" ? `${base}[${key}]` : `${base}.${key}`;
+  return isNumber(key) ? `${base}[${key}]` : `${base}.${key}`;
 }
 
-function show(v: unknown): string {
+function show(v: JsonValue | undefined): string {
+  if (v === undefined) {
+    return "undefined";
+  }
   const s = JSON.stringify(v);
-  return s === undefined ? "undefined" : s.length > 400 ? `${s.slice(0, 400)}...` : s;
+  return s.length > 400 ? `${s.slice(0, 400)}...` : s;
 }
 
 /** The first path at which two JSON values differ (key order included), or null when equal. */
-function firstDifference(expected: unknown, actual: unknown, at = "$"): string | null {
+function firstDifference(
+  expected: JsonValue | undefined,
+  actual: JsonValue | undefined,
+  at = "$",
+): string | null {
   if (Array.isArray(expected) && Array.isArray(actual)) {
     const n = Math.min(expected.length, actual.length);
     for (let i = 0; i < n; i++) {
@@ -510,9 +531,7 @@ function firstDifference(expected: unknown, actual: unknown, at = "$"): string |
     }
     return null;
   }
-  const isObj = (v: unknown): v is Record<string, unknown> =>
-    Boolean(v) && typeof v === "object" && !Array.isArray(v);
-  if (isObj(expected) && isObj(actual)) {
+  if (isJsonObject(expected) && isJsonObject(actual)) {
     const ek = Object.keys(expected);
     const ak = Object.keys(actual);
     for (const k of ek) {
@@ -557,7 +576,7 @@ function formatGolden(file: string) {
  * Compare against the committed golden, or rewrite it when JX_UPDATE_GOLDENS=1. The comparison is
  * on the parsed value (key order included), not the text, so a reformat is not a behavior change.
  */
-function matchGolden(id: string, actual: unknown) {
+function matchGolden(id: string, actual: JsonValue) {
   const file = join(FIXTURES_DIR, `${id}.json`);
   if (UPDATE) {
     mkdirSync(FIXTURES_DIR, { recursive: true });
@@ -570,7 +589,7 @@ function matchGolden(id: string, actual: unknown) {
       `missing golden fixtures/parity/${id}.json; run with JX_UPDATE_GOLDENS=1 to create it`,
     );
   }
-  const golden = JSON.parse(readFileSync(file, "utf8")) as unknown;
+  const golden: JsonValue = JSON.parse(readFileSync(file, "utf8"));
   const diff = firstDifference(golden, actual);
   if (diff) {
     throw new Error(
@@ -585,6 +604,7 @@ function matchGolden(id: string, actual: unknown) {
 function loadTasks(): Map<string, Task> {
   const tasks = new Map<string, Task>();
   for (const f of readdirSync(TASKS_DIR).filter((n) => n.endsWith(".json"))) {
+    // SAFETY: evals/tasks/*.json are the hand-authored golden task fixtures, written to `Task`.
     const task = JSON.parse(readFileSync(join(TASKS_DIR, f), "utf8")) as Task;
     tasks.set(task.id, task);
   }
@@ -626,7 +646,7 @@ const SCOREBOARD_PLAN: { task: string; trials: string[] }[] = [
 
 describe("eval parity goldens", () => {
   test("every golden task has its own scenario", () => {
-    const own = SCENARIOS.filter((s) => s.id === s.task).map((s) => s.id);
+    const own = SCENARIOS.flatMap((s) => (s.id === s.task ? [s.id] : []));
     expect(own.toSorted()).toEqual([...TASKS.keys()].toSorted());
   });
 
@@ -677,7 +697,11 @@ describe("eval parity goldens", () => {
         const alone = await runTrial(task, { client: scriptedClient(scenario.rounds) });
         const inTask = result.trials[i];
         expect(inTask && normalizeDeep(inTask.finalDoc)).toEqual(normalizeDeep(alone.finalDoc));
-        expect(inTask && normalizeDeep(inTask.transcript)).toEqual(normalizeDeep(alone.transcript));
+        // The whole raw wire transcript, compared as normalized JSON text.
+        expect(inTask).toBeDefined();
+        expect(normalizeString(JSON.stringify(inTask?.transcript ?? null))).toBe(
+          normalizeString(JSON.stringify(alone.transcript)),
+        );
       }
       results.push(result);
     }
@@ -686,13 +710,15 @@ describe("eval parity goldens", () => {
     try {
       const first = writeRun(results, { stamp: "20260101-000000", runsDir });
       expect(first.outDir).toBe(join(runsDir, "20260101-000000"));
-      const resultsJson = JSON.parse(readFileSync(join(first.outDir, "results.json"), "utf8")) as {
-        summary: unknown;
-        regressed: unknown;
-      };
+      const resultsJson: JsonValue = JSON.parse(
+        readFileSync(join(first.outDir, "results.json"), "utf8"),
+      );
+      if (!isJsonObject(resultsJson)) {
+        throw new Error("results.json does not hold an object");
+      }
       // What the CLI reads back equals what it wrote.
-      expect(first.summary).toEqual(resultsJson.summary as typeof first.summary);
-      expect(first.regressed).toEqual(resultsJson.regressed as string[]);
+      expect(resultsJson.summary).toEqual(first.summary);
+      expect(resultsJson.regressed).toEqual(first.regressed);
 
       /* The head of each transcript file: title, counters and both grader sections. The rest is
          the final document and the transcript, which the per-scenario goldens already hold. */

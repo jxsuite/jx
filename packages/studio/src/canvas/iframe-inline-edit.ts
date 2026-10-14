@@ -51,11 +51,21 @@ import type {
   SerializableRect,
 } from "./iframe-protocol";
 import type { DocPos } from "./iframe-position";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxPath } from "../state";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
+/** The commit a block session posts when its text reaches the document. */
+type EditCommitMsg = Extract<IframeToParent, { kind: "editCommit" }>;
+
+/** The commit a prop-bound session posts for its instance's `$props` value. */
+type EditCommitPropMsg = Extract<IframeToParent, { kind: "editCommitProp" }>;
+
+/** The toolbar commands that toggle an inline tag (every intent but `link` and `insertData`). */
+type InlineFormatCommand = Exclude<ApplyFormatIntent["command"], "link" | "insertData">;
+
 /** Toolbar command → inline tag (mirrors the parent's old `cmdToTag`, now iframe-side). */
-const CMD_TO_TAG: Record<string, string> = {
+const CMD_TO_TAG = {
   bold: "strong",
   code: "code",
   italic: "em",
@@ -63,7 +73,19 @@ const CMD_TO_TAG: Record<string, string> = {
   subscript: "sub",
   superscript: "sup",
   underline: "u",
-};
+} satisfies Record<InlineFormatCommand, string>;
+
+/**
+ * The CSS Custom Highlight API as this realm may or may not provide it. lib.dom declares both
+ * members unconditionally, but happy-dom and non-Chromium engines ship neither.
+ */
+interface HighlightRealm {
+  Highlight?: typeof Highlight;
+  CSS?: { highlights?: HighlightRegistry };
+}
+
+/** The global object, read through the optional shape above so the feature probes stay honest. */
+const highlightRealm: HighlightRealm = globalThis;
 
 /** Inline tags whose active state the snapshot reports (everything except `a`, handled via link). */
 const ACTIVE_TAG_PROBES = ["strong", "em", "u", "del", "sub", "sup", "code"];
@@ -125,19 +147,19 @@ function deliveredOutsideProps(node: JxMutableNode | undefined, prop: string): b
   if (!node) {
     return false;
   }
-  const attrs = node.attributes as Record<string, unknown> | undefined;
+  const attrs = node.attributes;
   if (attrs) {
     if (attrs[`props.${prop}`] !== undefined) {
       return true;
     }
     const reflected = new Set([prop.toLowerCase(), camelToKebab(prop).toLowerCase()]);
-    for (const [name, val] of Object.entries(attrs)) {
-      if (val !== undefined && reflected.has(name.toLowerCase())) {
+    for (const name of Object.keys(attrs)) {
+      if (attrs[name] !== undefined && reflected.has(name.toLowerCase())) {
         return true;
       }
     }
     const payload = attrs["data-jx-props"];
-    if (typeof payload === "string" && payloadNames(payload, prop)) {
+    if (isString(payload) && payloadNames(payload, prop)) {
       return true;
     }
   }
@@ -145,14 +167,14 @@ function deliveredOutsideProps(node: JxMutableNode | undefined, prop: string): b
   if (RESERVED_KEYS.has(prop) || prop.startsWith("$")) {
     return false;
   }
-  return (node as Record<string, unknown>)[prop] !== undefined;
+  return node[prop] !== undefined;
 }
 
 /** Whether a `data-jx-props` JSON payload carries `prop`. Unparseable payloads deliver nothing. */
 function payloadNames(payload: string, prop: string): boolean {
   try {
     const parsed: unknown = JSON.parse(payload);
-    return typeof parsed === "object" && parsed !== null && prop in parsed;
+    return isNonNullObject(parsed) && prop in parsed;
   } catch {
     return false;
   }
@@ -238,11 +260,8 @@ export function startIframeInlineEdit(
    * `Highlight`/`CSS.highlights`, so this is a silent no-op there (and in non-Chromium engines).
    */
   const updateHighlight = () => {
-    const HighlightCtor = (globalThis as { Highlight?: unknown }).Highlight as
-      | (new (range: Range) => unknown)
-      | undefined;
-    const highlights = (globalThis.CSS as unknown as { highlights?: Map<string, unknown> })
-      ?.highlights;
+    const HighlightCtor = highlightRealm.Highlight;
+    const highlights = highlightRealm.CSS?.highlights;
     if (!HighlightCtor || !highlights) {
       return;
     }
@@ -256,9 +275,7 @@ export function startIframeInlineEdit(
 
   /** Tear down the Custom Highlight (on teardown / real editEnd). */
   const clearHighlight = () => {
-    const highlights = (globalThis.CSS as unknown as { highlights?: Map<string, unknown> })
-      ?.highlights;
-    highlights?.delete(HIGHLIGHT_NAME);
+    highlightRealm.CSS?.highlights?.delete(HIGHLIGHT_NAME);
   };
 
   /**
@@ -321,13 +338,11 @@ export function startIframeInlineEdit(
       // Optional, so omitting it keeps the message shape unchanged for every non-tick commit.
       onCommit: (p, children, textContent, inPlace) => {
         inputAnnounced = false;
-        channel.post({
-          children,
-          kind: "editCommit",
-          path: p,
-          textContent,
-          ...(inPlace ? { inPlace: true } : {}),
-        });
+        const commit: EditCommitMsg = { children, kind: "editCommit", path: p, textContent };
+        if (inPlace) {
+          commit.inPlace = true;
+        }
+        channel.post(commit);
       },
       onEnd: () => {
         clearHighlight();
@@ -356,11 +371,11 @@ export function startIframeInlineEdit(
     if (!shadowDoc) {
       return true;
     }
-    const node = getNodeAtPath(shadowDoc, hostPath) as JxMutableNode | undefined;
+    const node = getNodeAtPath(shadowDoc, hostPath);
     if (deliveredOutsideProps(node, prop)) {
       return false;
     }
-    const raw = (node?.$props as Record<string, unknown> | undefined)?.[prop];
+    const raw = node?.$props?.[prop];
     if (raw == null) {
       return true; // Unset — editing ADDS the prop, overriding the definition default.
     }
@@ -371,7 +386,7 @@ export function startIframeInlineEdit(
      * Objects were already excluded; the scalar cases were not, and are the ones a component
      * actually declares. They stay editable in the properties panel, which knows their type.
      */
-    if (typeof raw !== "string") {
+    if (!isString(raw)) {
       return false;
     }
     return !raw.includes("${");
@@ -390,13 +405,16 @@ export function startIframeInlineEdit(
       {
         onCommit: (p, _children, textContent, inPlace) => {
           inputAnnounced = false;
-          channel.post({
+          const commit: EditCommitPropMsg = {
             kind: "editCommitProp",
             path: p,
             prop,
             value: textContent ?? "",
-            ...(inPlace ? { inPlace: true } : {}),
-          });
+          };
+          if (inPlace) {
+            commit.inPlace = true;
+          }
+          channel.post(commit);
         },
         onEnd: () => {
           clearHighlight();
@@ -519,6 +537,7 @@ export function startIframeInlineEdit(
     if (start === -1 || end === -1 || end <= start) {
       return false;
     }
+    // SAFETY: `blocksInOrder` selects `[data-jx-path]`, so every block it returns carries the key.
     const between = blocks
       .slice(start + 1, end)
       .map((el) => parseJxPath(el.dataset.jxPath as string));
@@ -573,7 +592,7 @@ export function startIframeInlineEdit(
      owns what a slash MEANS (start of a block or after a space; anywhere else it is punctuation).
      The matching `input` half re-filters the open menu, for the same reason: a contenteditable's
      `input` targets its host, not the block the caret happens to be in. */
-  const onSlashKey = (e: Event) => handleSlashTrigger(e as KeyboardEvent);
+  const onSlashKey = (e: KeyboardEvent) => handleSlashTrigger(e);
   const onSlashInput = () => {
     if (isSlashActive()) {
       refreshSlashMenu();

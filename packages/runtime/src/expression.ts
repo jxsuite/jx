@@ -13,25 +13,65 @@ import {
   INTL_HELPER_PATHS,
   INTL_LOCALE_PARAM,
 } from "@jxsuite/schema/intl";
-import type { JxExpressionNode, JxExpressionOperand } from "@jxsuite/schema/types";
-import type { JxScope } from "./types.ts";
+import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type {
+  CemParameter,
+  JxExpressionNode,
+  JxExpressionOperand,
+  JxRef,
+} from "@jxsuite/schema/types";
+import type { JxScope, JxScopeValue } from "./types.ts";
 import { readPath, refAccessor, refSegments } from "./pointer.ts";
 
-/** The runtime's expression node — the schema's expression model. */
-export type ExpressionNode = JxExpressionNode;
-export type ExpressionOperand = JxExpressionOperand;
+/** The published names of the schema's expression types, kept for existing importers. */
+export type {
+  JxExpressionNode as ExpressionNode,
+  JxExpressionOperand as ExpressionOperand,
+} from "@jxsuite/schema/types";
 
 /** The `$map` iteration context object stored in scope during mapped rendering. */
 interface ScopeMapCtx {
-  item?: unknown;
+  item?: JxScopeValue;
   index?: number;
-  [key: string]: unknown;
+  [key: string]: JxScopeValue;
 }
 
 /** View the scope's `$map` iteration context, if present. */
 function scopeMap(state: JxScope): ScopeMapCtx | undefined {
   const map = state.$map;
-  return map && typeof map === "object" ? (map as ScopeMapCtx) : undefined;
+  /* SAFETY: the guard proved a non-null object, and the runtime binds `$map` only to the
+     `{ item, index }` record a mapped row renders under; every member is read as a scope
+     member. */
+  return isNonNullObject(map) ? (map as ScopeMapCtx) : undefined;
+}
+
+/**
+ * Spec §19.2 shape detection: an operand object carrying `operator` is a nested node, never a
+ * literal.
+ */
+function isNodeOperand(operand: JxExpressionOperand): operand is JxExpressionNode {
+  return isNonNullObject(operand) && !Array.isArray(operand) && "operator" in operand;
+}
+
+/** Spec §19.2 shape detection: an operand object carrying `$ref` is a pointer, never a literal. */
+function isRefOperand(operand: JxExpressionOperand): operand is JxRef {
+  return isNonNullObject(operand) && !Array.isArray(operand) && "$ref" in operand;
+}
+
+/**
+ * A scope callable, a blessed global or a standard-library method as a formula invokes it: the
+ * resolved arguments go in untyped, as they do in the compiled `fn(...args)`, and whatever the
+ * callee returns comes back.
+ */
+type FormulaCallable = (...args: JxScopeValue[]) => JxScopeValue;
+
+/** Named-formula arguments bound for one `call` body, read through `$args/<name>` refs. */
+type FormulaArgs = Record<string, JxScopeValue>;
+
+/** A named-formula def met in scope unlowered: its body, and its parameters as written. */
+interface RawFormulaDef {
+  $expression: JxExpressionNode;
+  parameters?: readonly (string | CemParameter | null)[];
 }
 
 interface CompileOpts {
@@ -189,56 +229,84 @@ export const BLESSED_GLOBALS = new Set([
   ...INTL_HELPER_PATHS,
 ]);
 
+/** What a synthetic helper returns: a formatted string, a comparison or a list of segments. */
+type BlessedHelperResult = string | number | string[] | undefined;
+
+/**
+ * One synthetic helper. Each declares the arguments its Intl constructor expects; the table holds
+ * them as `(...args: never[])`, the parameter list every function is assignable to, so helpers of
+ * different arities share one map.
+ */
+type BlessedHelper = (...args: never[]) => BlessedHelperResult;
+
 /**
  * Synthetic blessed helpers (spec §19.4c): pure functions that have no direct `window` global
  * because the underlying standard-library API is a constructor. The interpreter dispatches to
  * these; the compiler emits the equivalent inline construct-then-format expression.
  */
-const BLESSED_HELPERS: Record<string, (...a: unknown[]) => unknown> = {
-  "Intl/compare": (a, b, locale, options) =>
-    new Intl.Collator(
-      (locale as string | undefined) ?? DEFAULT_FORMAT_LOCALE,
-      options as Intl.CollatorOptions | undefined,
-    ).compare(a as string, b as string),
-  "Intl/displayName": (code, type, locale, options) =>
-    new Intl.DisplayNames((locale as string | undefined) ?? DEFAULT_FORMAT_LOCALE, {
-      ...(options as Intl.DisplayNamesOptions | undefined),
-      type: (type as Intl.DisplayNamesType | undefined) ?? "language",
-    }).of(code as string),
-  "Intl/formatDate": (value, locale, options) =>
-    new Intl.DateTimeFormat((locale as string | undefined) ?? DEFAULT_FORMAT_LOCALE, {
-      timeZone: DEFAULT_TIME_ZONE,
-      ...(options as Intl.DateTimeFormatOptions | undefined),
-    }).format(new Date(value as string | number | Date)),
-  "Intl/formatList": (values, locale, options) =>
-    new Intl.ListFormat(
-      (locale as string | undefined) ?? DEFAULT_FORMAT_LOCALE,
-      options as Intl.ListFormatOptions | undefined,
-    ).format(values as string[]),
-  "Intl/formatNumber": (value, locale, options) =>
-    new Intl.NumberFormat(
-      (locale as string | undefined) ?? DEFAULT_FORMAT_LOCALE,
-      options as Intl.NumberFormatOptions | undefined,
-    ).format(value as number),
-  "Intl/formatRelativeTime": (value, unit, locale, options) =>
-    new Intl.RelativeTimeFormat(
-      (locale as string | undefined) ?? DEFAULT_FORMAT_LOCALE,
-      options as Intl.RelativeTimeFormatOptions | undefined,
-    ).format(value as number, unit as Intl.RelativeTimeFormatUnit),
-  "Intl/plural": (value, locale, options) =>
-    new Intl.PluralRules(
-      (locale as string | undefined) ?? DEFAULT_FORMAT_LOCALE,
-      options as Intl.PluralRulesOptions | undefined,
-    ).select(value as number),
+const BLESSED_HELPERS = new Map<string, BlessedHelper>([
+  [
+    "Intl/compare",
+    (a: string, b: string, locale?: string, options?: Intl.CollatorOptions) =>
+      new Intl.Collator(locale ?? DEFAULT_FORMAT_LOCALE, options).compare(a, b),
+  ],
+  [
+    "Intl/displayName",
+    (
+      code: string,
+      type?: Intl.DisplayNamesType,
+      locale?: string,
+      options?: Intl.DisplayNamesOptions,
+    ) =>
+      new Intl.DisplayNames(locale ?? DEFAULT_FORMAT_LOCALE, {
+        ...options,
+        type: type ?? "language",
+      }).of(code),
+  ],
+  [
+    "Intl/formatDate",
+    (value: string | number | Date, locale?: string, options?: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat(locale ?? DEFAULT_FORMAT_LOCALE, {
+        timeZone: DEFAULT_TIME_ZONE,
+        ...options,
+      }).format(new Date(value)),
+  ],
+  [
+    "Intl/formatList",
+    (values: string[], locale?: string, options?: Intl.ListFormatOptions) =>
+      new Intl.ListFormat(locale ?? DEFAULT_FORMAT_LOCALE, options).format(values),
+  ],
+  [
+    "Intl/formatNumber",
+    (value: number, locale?: string, options?: Intl.NumberFormatOptions) =>
+      new Intl.NumberFormat(locale ?? DEFAULT_FORMAT_LOCALE, options).format(value),
+  ],
+  [
+    "Intl/formatRelativeTime",
+    (
+      value: number,
+      unit: Intl.RelativeTimeFormatUnit,
+      locale?: string,
+      options?: Intl.RelativeTimeFormatOptions,
+    ) => new Intl.RelativeTimeFormat(locale ?? DEFAULT_FORMAT_LOCALE, options).format(value, unit),
+  ],
+  [
+    "Intl/plural",
+    (value: number, locale?: string, options?: Intl.PluralRulesOptions) =>
+      new Intl.PluralRules(locale ?? DEFAULT_FORMAT_LOCALE, options).select(value),
+  ],
   /* Returns the segments as plain strings, because a formula's value has to be JSON — the
      Segmenter's own iterator of {segment, index, isWordLike} records is not. */
-  "Intl/segment": (value, granularity, locale) =>
-    [
-      ...new Intl.Segmenter((locale as string | undefined) ?? DEFAULT_FORMAT_LOCALE, {
-        granularity: (granularity as "grapheme" | "sentence" | "word" | undefined) ?? "grapheme",
-      }).segment(value as string),
-    ].map((part) => part.segment),
-};
+  [
+    "Intl/segment",
+    (value: string, granularity?: "grapheme" | "sentence" | "word", locale?: string) =>
+      [
+        ...new Intl.Segmenter(locale ?? DEFAULT_FORMAT_LOCALE, {
+          granularity: granularity ?? "grapheme",
+        }).segment(value),
+      ].map((part) => part.segment),
+  ],
+]);
 
 /**
  * Fill in a helper's omitted `locale` argument from the page's own locale.
@@ -255,18 +323,17 @@ const BLESSED_HELPERS: Record<string, (...a: unknown[]) => unknown> = {
  * used standalone — keeps the fixed default.
  *
  * @param {string} path - Helper callee path, e.g. `Intl/formatNumber`
- * @param {unknown[]} args - Resolved arguments, in declaration order
+ * @param {JxScopeValue[]} args - Resolved arguments, in declaration order
  * @param {JxScope} state
- * @returns {unknown[]}
+ * @returns {JxScopeValue[]}
  */
-function withPageLocale(path: string, args: unknown[], state: JxScope): unknown[] {
+function withPageLocale(path: string, args: JxScopeValue[], state: JxScope): JxScopeValue[] {
   const index = INTL_LOCALE_PARAM[path];
   if (index === undefined || index < 0 || args[index] != null) {
     return args;
   }
-  const page = (state as { $page?: { locale?: unknown } }).$page;
-  const locale = page?.locale;
-  if (typeof locale !== "string" || locale === "") {
+  const locale = readPath(state.$page, "locale");
+  if (!isString(locale) || locale === "") {
     return args;
   }
   const filled = [...args];
@@ -290,11 +357,11 @@ export function isMutating(op: string) {
 // ─── Runtime Evaluation ──────────────────────────────────────────────────────
 
 interface IterCtx {
-  acc?: unknown;
-  item?: unknown;
+  acc?: JxScopeValue;
+  item?: JxScopeValue;
   index?: number;
   /** Named-formula arguments bound for the current `call` body ($args/<name> refs). */
-  args?: Record<string, unknown>;
+  args?: FormulaArgs;
   /** Call-nesting depth; capped at MAX_CALL_DEPTH to bound recursive formulas. */
   callDepth?: number;
 }
@@ -309,7 +376,7 @@ export const MAX_CALL_DEPTH = 64;
  * can badge every node. Absent (production), evaluation is untouched.
  */
 export interface ExpressionTrace {
-  report: (path: (string | number)[], value: unknown) => void;
+  report: (path: (string | number)[], value: JxScopeValue) => void;
   /** Current node path — internal; leave unset at the call boundary. */
   path?: (string | number)[];
   /** Recursion depth — internal; reporting stops beyond MAX_REPORT_DEPTH. */
@@ -340,33 +407,31 @@ function subTrace(
 
 /** Resolve an operand to its runtime value. */
 function resolveOperand(
-  operand: unknown,
+  operand: JxExpressionOperand | undefined,
   state: JxScope,
   event: Event | null,
   iterCtx?: IterCtx,
   trace?: ExpressionTrace,
-): unknown {
+): JxScopeValue {
   if (operand === null || operand === undefined) {
     return operand;
   }
 
   // Nested expression node
-  if (typeof operand === "object" && !Array.isArray(operand) && "operator" in operand) {
-    return evaluateExpression(operand as ExpressionNode, state, event, iterCtx, trace);
+  if (isNodeOperand(operand)) {
+    return evaluateExpression(operand, state, event, iterCtx, trace);
   }
 
   // $ref pointer
-  if (typeof operand === "object" && !Array.isArray(operand) && "$ref" in operand) {
-    const resolved = resolveExprRef((operand as { $ref: string }).$ref, state, event, iterCtx);
+  if (isRefOperand(operand)) {
+    const resolved = resolveExprRef(operand.$ref, state, event, iterCtx);
     trace?.report(trace.path ?? [], resolved);
     return resolved;
   }
 
   // Array of operands (e.g., splice args)
   if (Array.isArray(operand)) {
-    return operand.map((o: unknown, i: number) =>
-      resolveOperand(o, state, event, iterCtx, subTrace(trace, i)),
-    );
+    return resolveOperands(operand, state, event, iterCtx, trace);
   }
 
   // Literal
@@ -374,14 +439,29 @@ function resolveOperand(
   return operand;
 }
 
-/** Resolve a $ref string within expression context. */
+/** Resolve each operand of a list, tracing member `i` at segment `i` beneath `trace`. */
+function resolveOperands(
+  operands: readonly JxExpressionOperand[],
+  state: JxScope,
+  event: Event | null,
+  iterCtx: IterCtx | undefined,
+  trace: ExpressionTrace | undefined,
+): JxScopeValue[] {
+  return operands.map((o, i) => resolveOperand(o, state, event, iterCtx, subTrace(trace, i)));
+}
+
 /**
  * The receiver a `call` binds: the value the pointer's parent path names. `#/state/x` and
  * `parent#/x` are owned by the scope itself; `$map/item/fn` by the item; a pointer with no parent
  * segment (`$map/item`, `$args/x`) has no owner.
  */
-function calleeOwner(ref: string, state: JxScope, event: Event | null, iterCtx?: IterCtx): unknown {
-  const parentRef = (prefix: string): unknown => {
+function calleeOwner(
+  ref: string,
+  state: JxScope,
+  event: Event | null,
+  iterCtx?: IterCtx,
+): JxScopeValue {
+  const parentRef = (prefix: string): JxScopeValue => {
     const rest = ref.slice(prefix.length);
     if (!rest.includes("/")) {
       return state;
@@ -402,6 +482,7 @@ function calleeOwner(ref: string, state: JxScope, event: Event | null, iterCtx?:
   return undefined;
 }
 
+/** Resolve a $ref string within expression context. */
 function resolveExprRef(ref: string, state: JxScope, event: Event | null, iterCtx?: IterCtx) {
   if (ref === "$reduce/acc") {
     return iterCtx?.acc;
@@ -412,11 +493,11 @@ function resolveExprRef(ref: string, state: JxScope, event: Event | null, iterCt
   if (ref.startsWith("$args/")) {
     const parts = ref.slice("$args/".length).split("/");
     const base = iterCtx?.args?.[parts[0]!];
-    return parts.length > 1 ? getPath(base, parts.slice(1).join("/")) : base;
+    return parts.length > 1 ? readPath(base, parts.slice(1).join("/")) : base;
   }
   if (ref.startsWith("event#/")) {
     const path = ref.slice("event#/".length);
-    return getPath(event, path);
+    return readPath(event, path);
   }
   if (ref.startsWith("$map/")) {
     const parts = ref.split("/");
@@ -430,7 +511,7 @@ function resolveExprRef(ref: string, state: JxScope, event: Event | null, iterCt
     } else {
       base = map?.[key!] ?? state[`$map/${key}`];
     }
-    return parts.length > 2 ? getPath(base, parts.slice(2).join("/")) : base;
+    return parts.length > 2 ? readPath(base, parts.slice(2).join("/")) : base;
   }
   if (ref.startsWith("#/state/")) {
     // One call, not a hand-split leading token: slicing at the first `/` skipped unescaping it, so
@@ -445,12 +526,18 @@ function resolveExprRef(ref: string, state: JxScope, event: Event | null, iterCt
     return readPath(state, ref.slice("parent#/".length));
   }
   if (ref.startsWith("window#/")) {
-    return getPath(globalThis.window, ref.slice("window#/".length));
+    return readPath(globalThis.window, ref.slice("window#/".length));
   }
   if (ref.startsWith("document#/")) {
-    return getPath(globalThis.document, ref.slice("document#/".length));
+    return readPath(globalThis.document, ref.slice("document#/".length));
   }
   return readPath(state, ref) ?? null;
+}
+
+/** Where an assignment writes: the member `key` of the object `obj`. */
+interface WritableLocation {
+  obj: JxScope;
+  key: string;
 }
 
 /** Resolve a $ref to a writable location — returns { obj, key } for assignment. */
@@ -459,7 +546,7 @@ function resolveWritableRef(
   state: JxScope,
   _event: Event | null,
   iterCtx?: IterCtx,
-): { obj: JxScope; key: string } {
+): WritableLocation {
   if (ref.startsWith("$map/")) {
     const parts = ref.split("/");
     const [, key] = parts;
@@ -475,7 +562,11 @@ function resolveWritableRef(
     if (parts.length > 2) {
       const pathParts = parts.slice(2);
       const lastKey = pathParts.pop();
-      const obj = pathParts.length > 0 ? getPath(base, pathParts.join("/")) : base;
+      const obj = pathParts.length > 0 ? readPath(base, pathParts.join("/")) : base;
+      /* SAFETY: `parts.length > 2`, so `pathParts` held at least one segment and `pop()` returned a
+         string. A `$map/…` write names a member of an object in the item (spec §19.2 resolves it
+         like any `$ref`); a non-object here fails at the assignment as the compiled `_item.a = v`
+         does. */
       return { key: lastKey as string, obj: obj as JxScope };
     }
     return {
@@ -497,10 +588,13 @@ function resolveWritableRef(
     const parts = refSegments(sub);
     const lastKey = parts.pop();
     let obj = state;
-    // Pointer paths address objects by construction (validated by the schema).
     for (const p of parts) {
+      /* SAFETY: a writable pointer's leading segments name the objects that hold its target (spec
+         §19.3). The runtime does not validate that, so a missing or primitive segment fails at the
+         next member access or at the write, as the compiled `s.a.b = v` does. */
       obj = obj[p] as JxScope;
     }
+    // SAFETY: `sub` contains a `/`, so `refSegments` returned at least two segments and `pop()` a string.
     return { key: lastKey as string, obj };
   }
   return { key: ref, obj: state };
@@ -508,24 +602,69 @@ function resolveWritableRef(
 
 /** Evaluate an expression node at runtime. */
 export function evaluateExpression(
-  node: ExpressionNode,
+  node: JxExpressionNode,
   state: JxScope,
   event: Event | null,
   iterCtx?: IterCtx,
   trace?: ExpressionTrace,
-): unknown {
+): JxScopeValue {
   const result = evaluateNode(node, state, event, iterCtx, trace);
   trace?.report(trace.path ?? [], result);
   return result;
 }
 
+/**
+ * Apply one of the binary operators that convert their own operands: the arithmetic ones (ECMA-262
+ * §13.15.3 ApplyStringOrNumericBinaryOperator) and the relational ones (§7.2.13 IsLessThan). The
+ * interpreter hands them the resolved values unconverted, exactly as the compiled `(left op right)`
+ * does, so `+` still concatenates when either side is a string; `number` is what lets TypeScript
+ * accept the operators, not a conversion.
+ *
+ * @param {string} operator - One of `+ - * / %` or `< <= > >=`
+ * @param {number} left
+ * @param {number} right
+ * @returns {number | boolean}
+ */
+function applyCoercingOperator(operator: string, left: number, right: number): number | boolean {
+  switch (operator) {
+    case "+": {
+      return left + right;
+    }
+    case "-": {
+      return left - right;
+    }
+    case "*": {
+      return left * right;
+    }
+    case "/": {
+      return left / right;
+    }
+    case "%": {
+      return left % right;
+    }
+    case "<": {
+      return left < right;
+    }
+    case "<=": {
+      return left <= right;
+    }
+    case ">": {
+      return left > right;
+    }
+    default: {
+      // `>=`: the binary operator set leaves nothing else that reaches here.
+      return left >= right;
+    }
+  }
+}
+
 function evaluateNode(
-  node: ExpressionNode,
+  node: JxExpressionNode,
   state: JxScope,
   event: Event | null,
   iterCtx?: IterCtx,
   trace?: ExpressionTrace,
-): unknown {
+): JxScopeValue {
   const { operator, target, value, initial } = node;
 
   if (!BLESSED_OPERATORS.has(operator)) {
@@ -534,25 +673,20 @@ function evaluateNode(
 
   // ─── Unary ───
   if (UNARY_OPS.has(operator) && !("value" in node)) {
-    const operand: unknown = resolveOperand(
-      target,
-      state,
-      event,
-      iterCtx,
-      subTrace(trace, "target"),
-    );
+    const operand = resolveOperand(target, state, event, iterCtx, subTrace(trace, "target"));
     if (operator === "!") {
       return !operand;
     }
     if (operator === "-") {
+      // SAFETY: unary minus applies ToNumeric itself (ECMA-262 §13.5.4); `number` only lets TypeScript accept the operator.
       return -(operand as number);
     }
   }
 
   // ─── Call (spec §19.4c) ───
   if (operator === "call") {
-    const calleeRef = (target as { $ref?: string } | null)?.$ref;
-    if (typeof calleeRef !== "string") {
+    const calleeRef = isRefOperand(target) ? target.$ref : undefined;
+    if (!isString(calleeRef)) {
       throw new TypeError("$expression: call target must be a $ref pointer");
     }
     const callDepth = (iterCtx?.callDepth ?? 0) + 1;
@@ -560,9 +694,7 @@ function evaluateNode(
       throw new Error(`$expression: call depth exceeded (${MAX_CALL_DEPTH})`);
     }
     const argValues = Array.isArray(value)
-      ? value.map((o: unknown, i: number) =>
-          resolveOperand(o, state, event, iterCtx, subTrace(trace, ["value", i])),
-        )
+      ? value.map((o, i) => resolveOperand(o, state, event, iterCtx, subTrace(trace, ["value", i])))
       : [];
 
     // Blessed pure global via the window#/ scheme (Math.max, JSON.parse, …).
@@ -571,16 +703,23 @@ function evaluateNode(
         throw new Error(`$expression: "${calleeRef}" is not a blessed pure global`);
       }
       const globalPath = calleeRef.slice("window#/".length);
-      const helper = BLESSED_HELPERS[globalPath];
+      const helper = BLESSED_HELPERS.get(globalPath);
       if (helper) {
-        return helper(...withPageLocale(globalPath, argValues, state));
+        /* SAFETY: formula arguments carry no runtime types; each helper hands them to an Intl
+           constructor that coerces or throws itself, exactly as the inline call
+           `compileHelperCall` emits does. The parameter types document that contract. */
+        return (helper as (...args: JxScopeValue[]) => BlessedHelperResult)(
+          ...withPageLocale(globalPath, argValues, state),
+        );
       }
-      const fn = getPath(globalThis.window, globalPath) as (...a: unknown[]) => unknown;
+      /* SAFETY: `isBlessedGlobal` admitted `globalPath`, and every BLESSED_GLOBALS entry without a
+         synthetic helper names a standard-library function on `window` (Math.max, JSON.parse, …). */
+      const fn = readPath(globalThis.window, globalPath) as FormulaCallable;
       const lastSlash = globalPath.lastIndexOf("/");
       const thisArg =
         lastSlash === -1
           ? globalThis.window
-          : getPath(globalThis.window, globalPath.slice(0, lastSlash));
+          : readPath(globalThis.window, globalPath.slice(0, lastSlash));
       return fn.apply(thisArg, argValues);
     }
 
@@ -588,24 +727,28 @@ function evaluateNode(
     // A scope callable (buildScope lowers parameterized formula entries to functions). The receiver
     // Is the object that owns the pointer's last segment — what the compiled lowering binds when it
     // Emits `s.commands.run(...)` — so a host method handed in through the scope keeps its `this`.
-    if (typeof callee === "function") {
-      return (callee as (...a: unknown[]) => unknown).apply(
+    if (isFunction(callee)) {
+      // SAFETY: the guard proved `callee` callable; a scope callable takes the resolved arguments untyped, as the compiled call does.
+      return (callee as FormulaCallable).apply(
         calleeOwner(calleeRef, state, event, iterCtx),
         argValues,
       );
     }
     // A raw named-formula def (standalone evaluation, e.g. editor preview).
-    if (callee && typeof callee === "object" && "$expression" in callee) {
-      const def = callee as { $expression: ExpressionNode; parameters?: unknown[] };
-      const args: Record<string, unknown> = {};
+    if (isNonNullObject(callee) && "$expression" in callee) {
+      /* SAFETY: a scope member carrying `$expression` is a named-formula def (spec §19.4c), left
+         unlowered only when the document is evaluated standalone. Its parameters are read as the
+         document wrote them, so a malformed `null` entry stays possible and is skipped below. */
+      const def = callee as RawFormulaDef;
+      const args: FormulaArgs = {};
       for (const [i, p] of (def.parameters ?? []).entries()) {
-        const name = typeof p === "string" ? p : ((p as { name?: string } | null)?.name ?? "");
+        const name = isString(p) ? p : (p?.name ?? "");
         if (!name) {
           continue;
         }
         args[name] =
-          argValues[i] === undefined && typeof p === "object" && p !== null && "default" in p
-            ? (p as { default?: unknown }).default
+          argValues[i] === undefined && isNonNullObject(p) && "default" in p
+            ? p.default
             : argValues[i];
       }
       // The callee body's node paths are its own tree, not the call site's — no trace inside.
@@ -640,7 +783,7 @@ function evaluateNode(
     const cases = node.cases ?? {};
     const matched = Object.hasOwn(cases, key);
     if (trace) {
-      let result: unknown;
+      let result: JxScopeValue;
       for (const [k, caseOperand] of Object.entries(cases)) {
         const v = resolveOperand(caseOperand, state, event, iterCtx, subTrace(trace, ["cases", k]));
         if (k === key) {
@@ -663,48 +806,14 @@ function evaluateNode(
 
   // ─── Binary (pure) ───
   if (BINARY_OPS.has(operator)) {
-    const left = resolveOperand(
-      target,
-      state,
-      event,
-      iterCtx,
-      subTrace(trace, "target"),
-    ) as number & string;
-    const right = resolveOperand(value, state, event, iterCtx, subTrace(trace, "value")) as number &
-      string;
+    const left = resolveOperand(target, state, event, iterCtx, subTrace(trace, "target"));
+    const right = resolveOperand(value, state, event, iterCtx, subTrace(trace, "value"));
     switch (operator) {
-      case "+": {
-        return left + right;
-      }
-      case "-": {
-        return left - right;
-      }
-      case "*": {
-        return left * right;
-      }
-      case "/": {
-        return left / right;
-      }
-      case "%": {
-        return left % right;
-      }
       case "===": {
         return left === right;
       }
       case "!==": {
         return left !== right;
-      }
-      case "<": {
-        return left < right;
-      }
-      case "<=": {
-        return left <= right;
-      }
-      case ">": {
-        return left > right;
-      }
-      case ">=": {
-        return left >= right;
       }
       case "&&": {
         return left && right;
@@ -713,64 +822,40 @@ function evaluateNode(
         return left || right;
       }
       case "??": {
-        return (left as unknown) ?? (right as unknown);
+        return left ?? right;
       }
       default: {
-        break;
+        // SAFETY: the remaining binary operators coerce their own operands (see applyCoercingOperator).
+        return applyCoercingOperator(operator, left as number, right as number);
       }
     }
   }
 
   // ─── Assignment ───
   if (ASSIGNMENT_OPS.has(operator)) {
-    const rhs = resolveOperand(value, state, event, iterCtx, subTrace(trace, "value")) as number;
-    const { obj, key } = resolveWritableRef(
-      (target as { $ref: string }).$ref,
-      state,
-      event,
-      iterCtx,
-    );
-    switch (operator) {
-      case "=": {
-        obj[key] = rhs;
-        break;
-      }
-      case "+=": {
-        const current = obj[key] as number;
-        obj[key] = current + rhs;
-        break;
-      }
-      case "-=": {
-        const current = obj[key] as number;
-        obj[key] = current - rhs;
-        break;
-      }
-      case "*=": {
-        const current = obj[key] as number;
-        obj[key] = current * rhs;
-        break;
-      }
-      case "/=": {
-        const current = obj[key] as number;
-        obj[key] = current / rhs;
-        break;
-      }
-      default: {
-        break;
-      }
-    }
+    const rhs = resolveOperand(value, state, event, iterCtx, subTrace(trace, "value"));
+    // SAFETY: an assignment's target is a writable `$ref` (spec §19.3); the schema admits nothing else there.
+    const { obj, key } = resolveWritableRef((target as JxRef).$ref, state, event, iterCtx);
+    /* SAFETY: a compound `a op= b` is `a = a op b`, and `op` converts its own operands (see
+       applyCoercingOperator); plain `=` stores `rhs` untouched and never reads `obj[key]`. */
+    obj[key] =
+      operator === "="
+        ? rhs
+        : applyCoercingOperator(operator.slice(0, -1), obj[key] as number, rhs as number);
     return;
   }
 
   // ─── Array methods ───
   if (ARRAY_METHOD_OPS.has(operator)) {
-    const arr: unknown[] = resolveOperand(
+    /* SAFETY: an array-mutation operator's receiver is an array (spec §19.3); a non-array fails at
+       the method call exactly as the compiled `receiver.push(v)` does. */
+    const arr = resolveOperand(
       target,
       state,
       event,
       iterCtx,
       subTrace(trace, "target"),
-    ) as unknown[];
+    ) as JxScopeValue[];
     switch (operator) {
       case "push": {
         return arr.push(resolveOperand(value, state, event, iterCtx, subTrace(trace, "value")));
@@ -785,14 +870,15 @@ function evaluateNode(
         return arr.shift();
       }
       case "splice": {
-        const args: unknown[] = resolveOperand(
-          value,
-          state,
-          event,
-          iterCtx,
-          subTrace(trace, "value"),
-        ) as unknown[];
-        return (arr.splice as (...a: unknown[]) => unknown[])(...args);
+        /* SAFETY: splice's `value` is its argument list `[start, deleteCount, ...items]` (spec
+           §19.3); splice converts `start` and `deleteCount` itself (ToIntegerOrInfinity), as the
+           compiled `receiver.splice(...)` does. */
+        const args = resolveOperand(value, state, event, iterCtx, subTrace(trace, "value")) as [
+          start: number,
+          deleteCount: number,
+          ...items: JxScopeValue[],
+        ];
+        return arr.splice(...args);
       }
       default: {
         break;
@@ -807,32 +893,38 @@ function evaluateNode(
       value === undefined
         ? []
         : Array.isArray(value)
-          ? (resolveOperand(value, state, event, iterCtx, subTrace(trace, "value")) as unknown[])
+          ? resolveOperands(value, state, event, iterCtx, subTrace(trace, "value"))
           : [resolveOperand(value, state, event, iterCtx, subTrace(trace, "value"))];
-    const method = (receiver as Record<string, unknown> | null | undefined)?.[operator];
-    if (typeof method !== "function") {
+    const method = readPath(receiver, operator);
+    if (!isFunction(method)) {
       // Null-safe, like path reads: a missing receiver or method yields undefined, not a throw.
       return undefined;
     }
-    return (method as (...a: unknown[]) => unknown).apply(receiver, args);
+    // SAFETY: the guard proved `method` callable; a standard-library method coerces its own arguments.
+    return (method as FormulaCallable).apply(receiver, args);
   }
 
   // ─── Aggregates (pure) ───
   if (AGGREGATE_OPS.has(operator)) {
-    const arr: unknown[] = resolveOperand(
+    /* SAFETY: an aggregate's source is an array (spec §19.4a); a non-array fails at the iteration
+       exactly as the compiled `source.map(...)` does. */
+    const arr = resolveOperand(
       target,
       state,
       event,
       iterCtx,
       subTrace(trace, "target"),
-    ) as unknown[];
+    ) as JxScopeValue[];
+    /* SAFETY: an aggregate's `value` is its per-item expression node (spec §19.4a), the only shape
+       the schema admits there; anything else fails evaluateExpression's operator check. */
+    const perItem = value as JxExpressionNode;
     // Trace only the first iteration's per-item expression — one sample badge per node,
     // Not one report per array element.
     if (operator === "reduce") {
-      let acc: unknown = resolveOperand(initial, state, event, iterCtx, subTrace(trace, "initial"));
+      let acc = resolveOperand(initial, state, event, iterCtx, subTrace(trace, "initial"));
       for (const [index, item] of arr.entries()) {
         acc = evaluateExpression(
-          value as ExpressionNode,
+          perItem,
           state,
           event,
           { acc, index, item },
@@ -842,9 +934,9 @@ function evaluateNode(
       return acc;
     }
     if (operator === "map") {
-      return arr.map((item: unknown, index: number) =>
+      return arr.map((item, index) =>
         evaluateExpression(
-          value as ExpressionNode,
+          perItem,
           state,
           event,
           { ...iterCtx, index, item },
@@ -853,9 +945,9 @@ function evaluateNode(
       );
     }
     if (operator === "filter") {
-      return arr.filter((item: unknown, index: number) =>
+      return arr.filter((item, index) =>
         evaluateExpression(
-          value as ExpressionNode,
+          perItem,
           state,
           event,
           { ...iterCtx, index, item },
@@ -871,7 +963,7 @@ function evaluateNode(
 // ─── Compiler: Expression → JS Source ────────────────────────────────────────
 
 /** Compile an operand to a JS source string. */
-function compileOperand(operand: unknown, opts: CompileOpts): string {
+function compileOperand(operand: JxExpressionOperand | undefined, opts: CompileOpts): string {
   if (operand === null) {
     return "null";
   }
@@ -880,18 +972,18 @@ function compileOperand(operand: unknown, opts: CompileOpts): string {
   }
 
   // Nested expression node
-  if (typeof operand === "object" && !Array.isArray(operand) && "operator" in operand) {
-    return compileExpression(operand as ExpressionNode, opts);
+  if (isNodeOperand(operand)) {
+    return compileExpression(operand, opts);
   }
 
   // $ref pointer
-  if (typeof operand === "object" && !Array.isArray(operand) && "$ref" in operand) {
-    return compileRef((operand as { $ref: string }).$ref, opts);
+  if (isRefOperand(operand)) {
+    return compileRef(operand.$ref, opts);
   }
 
   // Array of operands
   if (Array.isArray(operand)) {
-    return operand.map((o: unknown) => compileOperand(o, opts)).join(", ");
+    return operand.map((o) => compileOperand(o, opts)).join(", ");
   }
 
   // Literal
@@ -968,9 +1060,9 @@ function compileRef(ref: string, opts: CompileOpts) {
 }
 
 /** Compile a writable $ref target to its JS equivalent (for LHS of assignment). */
-function compileTarget(target: unknown, opts: CompileOpts): string {
-  if (typeof target === "object" && target !== null && "$ref" in target) {
-    return compileRef((target as { $ref: string }).$ref, opts);
+function compileTarget(target: JxExpressionOperand, opts: CompileOpts): string {
+  if (isRefOperand(target)) {
+    return compileRef(target.$ref, opts);
   }
   return compileOperand(target, opts);
 }
@@ -979,7 +1071,7 @@ function compileTarget(target: unknown, opts: CompileOpts): string {
  * Compile an expression node to a JS source string. Returns a statement for mutating ops, a value
  * expression for pure ops.
  *
- * @param {ExpressionNode} node
+ * @param {JxExpressionNode} node
  * @param {CompileOpts} [opts]
  * @returns {string}
  */
@@ -1042,7 +1134,7 @@ function compileHelperCall(path: string, args: string[], opts: CompileOpts): str
   }
 }
 
-export function compileExpression(node: ExpressionNode, opts: CompileOpts = {}): string {
+export function compileExpression(node: JxExpressionNode, opts: CompileOpts = {}): string {
   const { operator, target, value, initial } = node;
 
   // ─── Unary ───
@@ -1058,8 +1150,8 @@ export function compileExpression(node: ExpressionNode, opts: CompileOpts = {}):
 
   // ─── Call (spec §19.4c) ───
   if (operator === "call") {
-    const calleeRef = (target as { $ref?: string } | null)?.$ref ?? "";
-    const args = Array.isArray(value) ? value.map((o: unknown) => compileOperand(o, opts)) : [];
+    const calleeRef = (isRefOperand(target) ? target.$ref : undefined) ?? "";
+    const args = Array.isArray(value) ? value.map((o) => compileOperand(o, opts)) : [];
     if (calleeRef.startsWith("window#/")) {
       if (!isBlessedGlobal(calleeRef)) {
         throw new Error(`$expression: "${calleeRef}" is not a blessed pure global`);
@@ -1133,7 +1225,7 @@ export function compileExpression(node: ExpressionNode, opts: CompileOpts = {}):
       }
       case "splice": {
         const args: string = Array.isArray(value)
-          ? value.map((o: unknown) => compileOperand(o, opts)).join(", ")
+          ? value.map((o) => compileOperand(o, opts)).join(", ")
           : compileOperand(value, opts);
         return `${arr}.splice(${args})`;
       }
@@ -1150,7 +1242,7 @@ export function compileExpression(node: ExpressionNode, opts: CompileOpts = {}):
       value === undefined
         ? ""
         : Array.isArray(value)
-          ? value.map((o: unknown) => compileOperand(o, opts)).join(", ")
+          ? value.map((o) => compileOperand(o, opts)).join(", ")
           : compileOperand(value, opts);
     // ?.method?.() matches the interpreter: missing receiver or method yields undefined.
     return `(${receiver})?.${operator}?.(${args})`;
@@ -1159,7 +1251,8 @@ export function compileExpression(node: ExpressionNode, opts: CompileOpts = {}):
   // ─── Aggregates (pure) ───
   if (AGGREGATE_OPS.has(operator)) {
     const arr: string = compileOperand(target, opts);
-    const itemExpr: string = compileExpression(value as ExpressionNode, opts);
+    // SAFETY: an aggregate's `value` is its per-item expression node (spec §19.4a), the only shape the schema admits there.
+    const itemExpr: string = compileExpression(value as JxExpressionNode, opts);
     if (operator === "reduce") {
       const seed: string = compileOperand(initial, opts);
       return `${arr}.reduce((_acc, _item, _index) => ${itemExpr}, ${seed})`;
@@ -1175,13 +1268,6 @@ export function compileExpression(node: ExpressionNode, opts: CompileOpts = {}):
   return "undefined";
 }
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
-
-/** Resolve a `$ref` path on an object, through the one tokenizer (`pointer.ts`). */
-function getPath(obj: unknown, path: string): unknown {
-  return readPath(obj, path);
-}
-
 // ─── Statement-Engine Surface (spec §20) ─────────────────────────────────────
 
 /**
@@ -1189,16 +1275,19 @@ function getPath(obj: unknown, path: string): unknown {
  * statement execution (spec §20) for `if` tests and `$switch` discriminants.
  */
 export function evaluateOperand(
-  operand: unknown,
+  operand: JxExpressionOperand | undefined,
   state: JxScope,
   event: Event | null,
   iterCtx?: IterCtx,
-): unknown {
+): JxScopeValue {
   return resolveOperand(operand, state, event, iterCtx);
 }
 
 /** Compile a bare operand to JS source — the statement compiler's counterpart to evaluateOperand. */
-export function compileOperandSource(operand: unknown, opts: CompileOpts = {}): string {
+export function compileOperandSource(
+  operand: JxExpressionOperand | undefined,
+  opts: CompileOpts = {},
+): string {
   return compileOperand(operand, opts);
 }
 

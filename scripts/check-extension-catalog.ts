@@ -33,6 +33,11 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { ExtensionCatalogMeta } from "@jxsuite/catalog";
+import type { ExtensionSectionInfo } from "@jxsuite/protocol";
+import { EXTENSION_MANIFEST } from "@jxsuite/schema/extension-registry";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { deltaSize, pointerDelta } from "./check-schema-freshness.ts";
 import { headingsOf } from "./docs/lib/headings.ts";
 
@@ -42,51 +47,32 @@ const EXTENSIONS_DIR = "extensions";
 /** The committed artifact this script owns. */
 export const CATALOG_PATH = "packages/catalog/catalog.json";
 
-/** The well-known manifest filename, mirroring `@jxsuite/schema`'s `EXTENSION_MANIFEST`. */
-const MANIFEST = "jx-extension.json";
-
 /** Docs page every catalogue entry deep-links into, and the slug it publishes under. */
 const DOCS_PAGE = "docs/extending/extensions/first-party.md";
 const DOCS_SLUG = "extending/extensions/first-party";
 
-interface CatalogSection {
-  key: string;
-  title?: string;
-}
-
-export interface ExtensionCatalogMeta {
-  name: string;
-  title: string;
-  description: string;
-  sections: CatalogSection[];
-  formats?: string[];
-  requires?: string[];
-  docs: string;
-}
-
-interface Manifest {
-  name?: string;
-  title?: string;
-  description?: string;
-  classes?: Record<string, string>;
-}
-
-interface PackageJson {
-  name?: string;
-  jx?: string;
-  exports?: Record<string, unknown>;
-  dependencies?: Record<string, string>;
-}
-
 /** Read and parse a JSON file, naming the file in any failure. */
-function readJson<T>(path: string): T {
+function readJson(path: string): JsonValue {
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
     throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`, {
       cause: error,
     });
   }
+}
+
+/**
+ * A JSON file read for its members. An array or a primitive has none of the members the catalogue
+ * reads, so it yields an empty object and the field checks below reject it by name; `null` has no
+ * members to read at all and is refused here.
+ */
+function readJsonObject(path: string): JsonObject {
+  const value = readJson(path);
+  if (value === null) {
+    throw new TypeError(`${path}: must hold a JSON object, not null`);
+  }
+  return isJsonObject(value) ? value : {};
 }
 
 /**
@@ -158,14 +144,14 @@ export function buildCatalog(root = "."): ExtensionCatalogMeta[] {
   const built: { entry: ExtensionCatalogMeta; deps: string[] }[] = [];
   for (const dir of dirs) {
     const packagePath = join(extensionsRoot, dir, "package.json");
-    const manifestPath = join(extensionsRoot, dir, MANIFEST);
+    const manifestPath = join(extensionsRoot, dir, EXTENSION_MANIFEST);
     if (!existsSync(manifestPath) || !existsSync(packagePath)) {
       continue;
     }
-    const pkg = readJson<PackageJson>(packagePath);
-    const manifest = readJson<Manifest>(manifestPath);
+    const pkg = readJsonObject(packagePath);
+    const manifest = readJsonObject(manifestPath);
 
-    if (typeof manifest.name !== "string") {
+    if (!isString(manifest.name)) {
       throw new TypeError(`${manifestPath}: must declare a string "name"`);
     }
     if (manifest.name !== pkg.name) {
@@ -173,55 +159,66 @@ export function buildCatalog(root = "."): ExtensionCatalogMeta[] {
         `${manifestPath}: manifest name "${manifest.name}" does not match package.json "${pkg.name}"`,
       );
     }
-    if (pkg.jx !== `./${MANIFEST}`) {
+    if (pkg.jx !== `./${EXTENSION_MANIFEST}`) {
       throw new Error(
-        `${packagePath}: must declare "jx": "./${MANIFEST}" (found ${JSON.stringify(pkg.jx)})`,
+        `${packagePath}: must declare "jx": "./${EXTENSION_MANIFEST}" (found ${JSON.stringify(pkg.jx)})`,
       );
     }
-    if (!pkg.exports?.[`./${MANIFEST}`]) {
+    if (!(isJsonObject(pkg.exports) && pkg.exports[`./${EXTENSION_MANIFEST}`])) {
       throw new Error(
-        `${packagePath}: exports must include "./${MANIFEST}" — it is the only path by which a ` +
+        `${packagePath}: exports must include "./${EXTENSION_MANIFEST}" — it is the only path by which a ` +
           `host resolves the manifest, so without it the extension cannot be enabled at all`,
       );
     }
-    if (typeof manifest.title !== "string" || typeof manifest.description !== "string") {
+    if (!isString(manifest.title) || !isString(manifest.description)) {
       throw new TypeError(
         `${manifestPath}: must declare a "title" and a "description" for studio surfaces`,
       );
     }
 
-    const sections: CatalogSection[] = [];
+    const sections: ExtensionSectionInfo[] = [];
     const formats = new Set<string>();
-    for (const ref of Object.values(manifest.classes ?? {})) {
+    const { classes } = manifest;
+    const refs = isJsonObject(classes) || Array.isArray(classes) ? Object.values(classes) : [];
+    for (const ref of refs) {
+      if (!isString(ref)) {
+        throw new TypeError(
+          `${manifestPath}: class descriptor ${JSON.stringify(ref)} is not a path`,
+        );
+      }
       const classPath = resolve(join(extensionsRoot, dir), ref);
       if (!existsSync(classPath)) {
         throw new Error(`${manifestPath}: class descriptor ${ref} does not exist at ${classPath}`);
       }
-      const descriptor = readJson<{
-        project?: { key?: string; title?: string };
-        format?: { extensions?: string[] };
-      }>(classPath);
-      const key = descriptor.project?.key;
-      if (typeof key === "string") {
-        const title = descriptor.project?.title;
-        sections.push({ key, ...(typeof title === "string" ? { title } : {}) });
+      const descriptor = readJsonObject(classPath);
+      const { format, project } = descriptor;
+      if (isJsonObject(project) && isString(project.key)) {
+        const section: ExtensionSectionInfo = { key: project.key };
+        if (isString(project.title)) {
+          section.title = project.title;
+        }
+        sections.push(section);
       }
-      for (const ext of descriptor.format?.extensions ?? []) {
+      const extensions = isJsonObject(format) ? format.extensions : undefined;
+      for (const ext of Array.isArray(extensions) ? extensions : []) {
+        if (!isString(ext)) {
+          throw new TypeError(`${classPath}: format.extensions must list strings`);
+        }
         formats.add(ext);
       }
     }
 
-    built.push({
-      deps: Object.keys(pkg.dependencies ?? {}),
-      entry: {
-        description: manifest.description,
-        docs: docsLink(anchors, manifest.name),
-        name: manifest.name,
-        sections,
-        title: manifest.title,
-        ...(formats.size > 0 ? { formats: [...formats].toSorted() } : {}),
-      },
-    });
+    const entry: ExtensionCatalogMeta = {
+      description: manifest.description,
+      docs: docsLink(anchors, manifest.name),
+      name: manifest.name,
+      sections,
+      title: manifest.title,
+    };
+    if (formats.size > 0) {
+      entry.formats = [...formats].toSorted();
+    }
+    built.push({ deps: Object.keys(pkg.dependencies ?? {}), entry });
   }
 
   const members = new Set(built.map((b) => b.entry.name));
@@ -269,7 +266,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  const delta = pointerDelta(committed === null ? [] : (JSON.parse(committed) as unknown), catalog);
+  // Both sides are compared as parsed JSON, exactly as the committed file and `generated` hold them.
+  const before: JsonValue = committed === null ? [] : JSON.parse(committed);
+  const delta = pointerDelta(before, JSON.parse(generated));
 
   if (fix) {
     writeFileSync(target, generated);

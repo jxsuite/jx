@@ -29,6 +29,10 @@ import {
 import { convertTargetExtensions, convertTargets } from "./format-choices";
 import { parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
+import type { CommandArgValues } from "../commands/command-args";
+import type { FormatFrontmatter } from "./format-host";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
 /** What a conversion will do, resolved in full before the reader is asked to confirm it. */
@@ -72,14 +76,17 @@ function withExtension(path: string, ext: string): string {
 async function readDocument(
   path: string,
   source: string,
-): Promise<{ document: Record<string, unknown>; frontmatter: Record<string, unknown> }> {
+): Promise<{ document: JxMutableNode; frontmatter: FormatFrontmatter }> {
   const { formatForPath } = await import("./format-host");
   if (formatForPath(path)) {
     const { parseSourceForPath } = await import("../files/file-ops");
     const parsed = await parseSourceForPath(path, source);
     return { document: parsed.document, frontmatter: parsed.frontmatter };
   }
-  return { document: JSON.parse(source) as Record<string, unknown>, frontmatter: {} };
+  /* SAFETY: a path no format claims is a `.json` document in pages/ or components/ (the only files
+     `convertTargets` offers a conversion for), and that file's schema requires a top-level object;
+     `JSON.parse` without a reviver yields a JSON value, so the object is a Jx document. */
+  return { document: JSON.parse(source) as JxMutableNode, frontmatter: {} };
 }
 
 /**
@@ -94,8 +101,8 @@ async function readDocument(
  */
 async function writeDocument(
   targetExt: string,
-  document: Record<string, unknown>,
-  frontmatter: Record<string, unknown>,
+  document: JxMutableNode,
+  frontmatter: FormatFrontmatter,
 ): Promise<string> {
   const merged = { ...frontmatter, ...document };
   if (targetExt === ".json") {
@@ -194,7 +201,9 @@ export async function buildPlan(
        errors, which is indistinguishable from a valid document. Claiming validity on the strength of
        a schema that was never compiled is the "never render 0" defect one layer down. */
     const { validateDocOrNull } = await import("../services/jx-validate");
-    const errors = await validateDocOrNull(JSON.parse(text));
+    /* SAFETY: `text` is what `serializeJson` just wrote, and `JSON.parse` without a reviver yields
+       a JSON value. */
+    const errors = await validateDocOrNull(JSON.parse(text) as JsonValue);
     if (errors === null) {
       lines.push(
         "The result could not be checked against the document schema — that is not the same as " +
@@ -292,7 +301,9 @@ export async function convertFile(path: string, targetExt?: string): Promise<str
 
   let original: string;
   try {
-    original = (await platform.readFile(path)) ?? "";
+    // The read crosses the PAL's wire, which can answer without a `content` field: read that as empty.
+    const read = await platform.readFile(path);
+    original = isString(read) ? read : "";
   } catch (error) {
     return fail(`Could not read ${path}.`, errorMessage(error));
   }
@@ -373,8 +384,8 @@ async function rebuildTab(from: string, to: string, text: string): Promise<void>
   const { formatForPath } = await import("./format-host");
   renameTab(from, to, to);
   const format = formatForPath(to);
-  let document: Record<string, unknown>;
-  let frontmatter: Record<string, unknown> | undefined;
+  let document: JxMutableNode;
+  let frontmatter: FormatFrontmatter | undefined;
   // The layout of the JSON just written, as every other JSON reader records it (`files/files.ts`,
   // `files/file-ops.ts`): the text is the serializer's own, so the record says what a layout-less
   // Write would do anyway — but the tab reads its file rather than assuming it.
@@ -392,14 +403,17 @@ async function rebuildTab(from: string, to: string, text: string): Promise<void>
     // Points at the file, and reopening it is one click.
     return;
   }
-  openTab({
+  const options: Parameters<typeof openTab>[0] = {
     document,
     documentPath: to,
-    ...(frontmatter === undefined ? {} : { frontmatter }),
     id: to,
     layout,
     sourceFormat: format?.name ?? null,
-  });
+  };
+  if (frontmatter !== undefined) {
+    options.frontmatter = frontmatter;
+  }
+  openTab(options);
 }
 
 const CANNOT_CONVERT =
@@ -499,8 +513,8 @@ export function fileFormatCommands(): AnyCommand[] {
       undo: "none",
       /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: `run` awaits a
          confirm dialog the person answers. */
-      run: async (_ctx, args: Record<string, unknown>) => {
-        const target = typeof args.format === "string" ? args.format : undefined;
+      run: async (_ctx, args: CommandArgValues) => {
+        const target = isString(args.format) ? args.format : undefined;
         await convertFile(
           stringArg("file.convertFormat", args, "source"),
           ...(target === undefined ? [] : [target]),

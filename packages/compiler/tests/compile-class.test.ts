@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { compileClassJson } from "../src/targets/compile-class";
-import type { JxClassDef } from "@jxsuite/schema/types";
+import type { JsonObject, JxClassDef } from "@jxsuite/schema/types";
 
 // ─── compileClassJson — Basic class generation ──────────────────────────────
 
@@ -84,11 +84,16 @@ describe("compileClassJson — extends", () => {
   });
 
   test("extends as unknown object type falls back to Object", () => {
-    const result = compileClassJson({
+    const classDef: JsonObject = {
       $prototype: "Class",
-      extends: { something: "else" } as unknown as string,
+      extends: { something: "else" },
       title: "Child",
-    });
+    };
+    /*
+     * SAFETY: JxClassDef types `extends` as string | JxRef and this object is neither, which is the
+     * unvalidated input under test; resolveBaseClass reads only `$ref` (absent here) from it.
+     */
+    const result = compileClassJson(classDef as JxClassDef);
     expect(result).toContain("class Child {");
   });
 

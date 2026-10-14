@@ -28,6 +28,7 @@
 
 /// <reference lib="dom" />
 
+import { isFunction } from "@jxsuite/schema/guards";
 import { rectOf } from "../utils/geometry";
 
 /** The measurement a window is computed from. Everything is in CSS pixels. */
@@ -244,7 +245,7 @@ export function createVirtualWindow(options: VirtualWindowOptions): VirtualWindo
   };
 
   let resizeObserver: ResizeObserver | null = null;
-  if (typeof ResizeObserver === "function") {
+  if (isFunction(globalThis.ResizeObserver)) {
     resizeObserver = new ResizeObserver(measureNextFrame);
     resizeObserver.observe(scroller);
     if (list) {
@@ -373,7 +374,7 @@ export function listWindow(
   return computeWindow({
     columns: spec.columns ?? 1,
     count: spec.count,
-    ...(spec.overscanRows === undefined ? {} : { overscanRows: spec.overscanRows }),
+    overscanRows: spec.overscanRows ?? DEFAULT_OVERSCAN_ROWS,
     rowHeight: spec.rowHeight,
     scrollTop: listScrollTop(scroller, list),
     viewportHeight: scroller.clientHeight,

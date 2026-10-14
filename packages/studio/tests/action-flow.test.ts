@@ -21,13 +21,8 @@ import { reportActionRequired, resetActionReports } from "../src/account/action-
 import { resetNotifications, toasts } from "../src/services/notify";
 import { initLayers } from "../src/ui/layers";
 import type { AccountNotice, ActionOutcome, OfferedAction, StudioPlatform } from "../src/types";
+import { JOIN_OFFER } from "./shared-fixtures";
 
-const JOIN: OfferedAction = {
-  href: "https://example.test/join",
-  id: "join",
-  label: "Join",
-  primary: true,
-};
 const ASK: OfferedAction = { href: "https://example.test/ask", id: "ask", label: "Ask an admin" };
 
 const realReload = location.reload;
@@ -45,7 +40,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  (location as { reload: unknown }).reload = realReload;
+  location.reload = realReload;
   for (const dialog of document.querySelectorAll("#layer-dialog > *")) {
     dialog.remove();
   }
@@ -71,11 +66,11 @@ async function actingPlatform(
   let notices: AccountNotice[] = [];
   const installed = installMockPlatform({
     getAccountStatus: async () => ({ installations: [], notices }),
-    performAction: mock(async () => {
+    performAction: mock(async (): Promise<ActionOutcome> => {
       if (doneNotice) {
         notices = [doneNotice];
       }
-      return { status: "done" } as ActionOutcome;
+      return { status: "done" };
     }),
     ...overrides,
   });
@@ -87,7 +82,7 @@ describe("leadingActions", () => {
   test("leads with the primary action, else the first, and keeps one other", () => {
     expect(leadingActions([])).toBeNull();
     expect(leadingActions([ASK])).toEqual({ lead: ASK });
-    expect(leadingActions([ASK, JOIN])).toEqual({ lead: JOIN, other: ASK });
+    expect(leadingActions([ASK, JOIN_OFFER])).toEqual({ lead: JOIN_OFFER, other: ASK });
     const third = { id: "x", label: "X" };
     expect(leadingActions([ASK, third])).toEqual({ lead: ASK, other: third });
   });
@@ -97,7 +92,7 @@ describe("the offer", () => {
   test("a platform that performs nothing is never offered anything", async () => {
     installMockPlatform();
     expect(canPerformActions()).toBe(false);
-    expect(await promptAction({ actions: [JOIN] })).toBe(false);
+    expect(await promptAction({ actions: [JOIN_OFFER] })).toBe(false);
     expect(actionDialog()).toBeNull();
   });
 
@@ -114,7 +109,7 @@ describe("the offer", () => {
       { display: "toast", id: "joined", message: "Welcome aboard.", title: "Joined" },
     );
     const result = promptAction({
-      actions: [ASK, JOIN],
+      actions: [ASK, JOIN_OFFER],
       detail: "Editing acme/site needs a membership.",
       heading: "Join the team",
     });
@@ -125,7 +120,7 @@ describe("the offer", () => {
     expect(message()).toBe("Editing acme/site needs a membership.");
 
     actionDialog()?.dispatchEvent(new Event("confirm"));
-    expect(platform.performAction).toHaveBeenCalledWith(JOIN);
+    expect(platform.performAction).toHaveBeenCalledWith(JOIN_OFFER);
     expect(await result).toBe(true);
     // The account was re-read, and the platform's one-time notice announced in its own words.
     expect(toasts.at(-1)?.message).toBe("Welcome aboard.");
@@ -134,7 +129,7 @@ describe("the offer", () => {
 
   test("the secondary button performs the other action", async () => {
     const { platform } = await actingPlatform();
-    const result = promptAction({ actions: [JOIN, ASK] });
+    const result = promptAction({ actions: [JOIN_OFFER, ASK] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("secondary"));
     expect(platform.performAction).toHaveBeenCalledWith(ASK);
@@ -154,7 +149,7 @@ describe("the offer", () => {
 
   test("callers asking while a dialog is up join it", async () => {
     await actingPlatform();
-    const first = promptAction({ actions: [JOIN] });
+    const first = promptAction({ actions: [JOIN_OFFER] });
     const second = promptAction({ actions: [ASK], detail: "ignored" });
     await flush();
     expect(document.querySelectorAll("#layer-dialog jx-dialog")).toHaveLength(1);
@@ -175,7 +170,7 @@ describe("the action's endings", () => {
           }),
       ),
     });
-    const result = promptAction({ actions: [JOIN, ASK] });
+    const result = promptAction({ actions: [JOIN_OFFER, ASK] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush();
@@ -196,7 +191,10 @@ describe("the action's endings", () => {
       getAccountStatus,
       performAction: async () => outcomes.shift() ?? { status: "canceled" },
     });
-    const result = promptAction({ actions: [JOIN, ASK], detail: "Saving needs a membership." });
+    const result = promptAction({
+      actions: [JOIN_OFFER, ASK],
+      detail: "Saving needs a membership.",
+    });
     await flush();
     const reads = getAccountStatus.mock.calls.length;
     actionDialog()?.dispatchEvent(new Event("confirm"));
@@ -218,7 +216,7 @@ describe("the action's endings", () => {
         throw new Error("Request denied");
       },
     });
-    const result = promptAction({ actions: [JOIN] });
+    const result = promptAction({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush(4);
@@ -233,7 +231,7 @@ describe("the action's endings", () => {
       // oxlint-disable-next-line prefer-promise-reject-errors -- a platform may reject with anything
       performAction: () => Promise.reject("denied"),
     });
-    const result = promptAction({ actions: [JOIN] });
+    const result = promptAction({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush(4);
@@ -244,12 +242,12 @@ describe("the action's endings", () => {
 
   test("a platform that throws before opening anything is a failure, not a hang", async () => {
     await actingPlatform({
-      performAction: (() => {
+      performAction: () => {
         // oxlint-disable-next-line no-throw-literal
         throw "no window";
-      }) as never,
+      },
     });
-    const result = promptAction({ actions: [JOIN] });
+    const result = promptAction({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush();
@@ -260,11 +258,11 @@ describe("the action's endings", () => {
 
   test("a thrown Error before opening anything says its message", async () => {
     await actingPlatform({
-      performAction: (() => {
+      performAction: () => {
         throw new Error("Popups are off");
-      }) as never,
+      },
     });
-    const result = promptAction({ actions: [JOIN] });
+    const result = promptAction({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush();
@@ -275,7 +273,7 @@ describe("the action's endings", () => {
 
   test("a redirect leaves the dialog alone — the page is on its way out", async () => {
     await actingPlatform({ performAction: async () => ({ status: "redirect" }) });
-    void promptAction({ actions: [JOIN] });
+    void promptAction({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush(4);
@@ -284,7 +282,7 @@ describe("the action's endings", () => {
 
   test("a platform that answers nothing leaves the dialog waiting", async () => {
     await actingPlatform({ performAction: async () => null });
-    void promptAction({ actions: [JOIN] });
+    void promptAction({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush(4);
@@ -301,7 +299,7 @@ describe("the action's endings", () => {
           finish = resolve;
         }),
     });
-    const result = promptAction({ actions: [JOIN] });
+    const result = promptAction({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     actionDialog()?.dispatchEvent(new Event("cancel"));
@@ -325,7 +323,7 @@ describe("the action's endings", () => {
     ];
     await actingPlatform({ performAction: () => pending.shift()! });
     for (const settle of [() => finish({ status: "unknown" }), () => fail(new Error("late"))]) {
-      const result = promptAction({ actions: [JOIN] });
+      const result = promptAction({ actions: [JOIN_OFFER] });
       await flush();
       actionDialog()?.dispatchEvent(new Event("confirm"));
       actionDialog()?.dispatchEvent(new Event("cancel"));
@@ -342,15 +340,15 @@ describe("refusals nobody caught", () => {
   test("a refusal that says reload is offered once, and reloads once its action is done", async () => {
     await actingPlatform();
     const reload = mock(() => {});
-    (location as { reload: unknown }).reload = reload;
+    location.reload = reload;
     const stop = wireActionReports();
     reportActionRequired({
-      actions: [JOIN],
+      actions: [JOIN_OFFER],
       detail: "Opening needs a membership.",
       retry: "reload",
     });
     // A burst of refusals is one dialog.
-    reportActionRequired({ actions: [JOIN] });
+    reportActionRequired({ actions: [JOIN_OFFER] });
     await flush();
     expect(document.querySelectorAll("#layer-dialog jx-dialog")).toHaveLength(1);
     actionDialog()?.dispatchEvent(new Event("confirm"));
@@ -362,14 +360,14 @@ describe("refusals nobody caught", () => {
   test("a refusal that says repeat tells the user to run it again; none says nothing", async () => {
     await actingPlatform();
     const stop = wireActionReports();
-    reportActionRequired({ actions: [JOIN], retry: "repeat" });
+    reportActionRequired({ actions: [JOIN_OFFER], retry: "repeat" });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush(6);
     expect(toasts.map((toast) => toast.message)).toContain("Done. Run that again now.");
 
     const before = toasts.length;
-    reportActionRequired({ actions: [JOIN], retry: "none" });
+    reportActionRequired({ actions: [JOIN_OFFER], retry: "none" });
     await flush();
     actionDialog()?.dispatchEvent(new Event("confirm"));
     await flush(6);
@@ -380,14 +378,14 @@ describe("refusals nobody caught", () => {
   test("declining silences the reports that arrive on their own, but not a deliberate ask", async () => {
     await actingPlatform();
     const stop = wireActionReports();
-    reportActionRequired({ actions: [JOIN] });
+    reportActionRequired({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("cancel"));
     await flush();
-    reportActionRequired({ actions: [JOIN] });
+    reportActionRequired({ actions: [JOIN_OFFER] });
     await flush();
     expect(actionDialog()).toBeNull();
-    const asked = promptAction({ actions: [JOIN] });
+    const asked = promptAction({ actions: [JOIN_OFFER] });
     await flush();
     expect(actionDialog()).not.toBeNull();
     actionDialog()?.dispatchEvent(new Event("cancel"));
@@ -398,11 +396,11 @@ describe("refusals nobody caught", () => {
   test("a dialog closed without a decline does not silence the next report", async () => {
     await actingPlatform();
     const stop = wireActionReports();
-    reportActionRequired({ actions: [JOIN] });
+    reportActionRequired({ actions: [JOIN_OFFER] });
     await flush();
     actionDialog()?.dispatchEvent(new Event("close"));
     await flush();
-    reportActionRequired({ actions: [JOIN] });
+    reportActionRequired({ actions: [JOIN_OFFER] });
     await flush();
     expect(actionDialog()).not.toBeNull();
     actionDialog()?.dispatchEvent(new Event("cancel"));
@@ -422,7 +420,7 @@ describe("actIfRequired", () => {
   test("a refusal is offered with its own members, and says whether to try again", async () => {
     const { platform } = await actingPlatform();
     const refusal = Object.assign(new Error("Creating needs a membership."), {
-      actions: [JOIN],
+      actions: [JOIN_OFFER],
       code: "action_required",
       heading: "Join first",
       retry: "repeat",
@@ -433,12 +431,12 @@ describe("actIfRequired", () => {
     expect(actionDialog()?.getAttribute("headline")).toBe("Join first");
     actionDialog()?.dispatchEvent(new Event("confirm"));
     expect(await retry).toBe(true);
-    expect(platform.performAction).toHaveBeenCalledWith(JOIN);
+    expect(platform.performAction).toHaveBeenCalledWith(JOIN_OFFER);
   });
 
   test("a refusal thrown as a bare object is still offered, in the plainest words", async () => {
     await actingPlatform();
-    const retry = actIfRequired({ actions: [JOIN], code: "action_required" });
+    const retry = actIfRequired({ actions: [JOIN_OFFER], code: "action_required" });
     await flush();
     expect(message()).toBe("This needs one more step first.");
     actionDialog()?.dispatchEvent(new Event("cancel"));
@@ -449,7 +447,7 @@ describe("actIfRequired", () => {
 describe("runOfferedAction", () => {
   test("a platform that performs nothing does nothing", async () => {
     installMockPlatform();
-    expect(await runOfferedAction(JOIN)).toBe(false);
+    expect(await runOfferedAction(JOIN_OFFER)).toBe(false);
   });
 
   test("a done action re-reads the account and announces what the platform says", async () => {
@@ -470,19 +468,20 @@ describe("runOfferedAction", () => {
     ];
     const getAccountStatus = mock(async () => ({ installations: [] }));
     installMockPlatform({ getAccountStatus, performAction: async () => outcomes.shift() ?? null });
-    expect(await runOfferedAction(JOIN)).toBe(false);
-    expect(await runOfferedAction(JOIN)).toBe(false);
+    const afterCancel = await runOfferedAction(JOIN_OFFER);
+    const afterNothing = await runOfferedAction(JOIN_OFFER);
+    expect([afterCancel, afterNothing]).toEqual([false, false]);
     expect(getAccountStatus).toHaveBeenCalledTimes(2);
-    expect(await runOfferedAction(JOIN)).toBe(false);
+    expect(await runOfferedAction(JOIN_OFFER)).toBe(false);
     expect(getAccountStatus).toHaveBeenCalledTimes(2);
   });
 
   test("a failed action is reported as an error, in whatever form it came", async () => {
     const failures: unknown[] = [new Error("Denied"), "refused"];
     installMockPlatform({ performAction: () => Promise.reject(failures.shift()) });
-    expect(await runOfferedAction(JOIN)).toBe(false);
+    expect(await runOfferedAction(JOIN_OFFER)).toBe(false);
     expect(toasts.at(-1)?.message).toBe("Denied");
-    expect(await runOfferedAction(JOIN)).toBe(false);
+    expect(await runOfferedAction(JOIN_OFFER)).toBe(false);
     expect(toasts.at(-1)?.message).toBe("refused");
   });
 });

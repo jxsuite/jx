@@ -8,8 +8,9 @@
 import "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
 
-const toggleInlineFormat = mock((_tag: string, _el: unknown) => {});
+const toggleInlineFormat = mock((_tag: string, _el: HTMLElement | null) => {});
 void mock.module("../src/editor/inline-format.js", () => ({
   normalizeInlineContent: () => {},
   toggleInlineFormat,
@@ -32,13 +33,13 @@ setSlashController({ dismiss: dismissSlashMenu, isOpen: isSlashMenuOpen, show: s
 
 // ─── Environment ──────────────────────────────────────────────────────────────
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 const execCommand = mock((_cmd: string, _ui?: boolean, _value?: string) => true);
-(document as unknown as { execCommand: typeof execCommand }).execCommand = execCommand;
+Object.assign(document, { execCommand });
 
 async function flush(turns = 2) {
   for (let i = 0; i < turns; i++) {
@@ -90,10 +91,19 @@ function caretAt(node: Node, offset: number) {
   sel.addRange(range);
 }
 
-function keydown(target: HTMLElement, key: string, init: KeyboardEventInit = {}) {
-  target.dispatchEvent(
-    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, ...init }),
-  );
+function keydown(target: HTMLElement, key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, ...init });
+  target.dispatchEvent(event);
+  return event;
+}
+
+/** The element child at `index`, failing the test when it is missing or a bare string. */
+function elementAt(children: (JxMutableNode | string)[] | null, index: number): JxMutableNode {
+  const child = children?.[index];
+  if (child === undefined || isString(child)) {
+    throw new Error(`expected an element child at ${index}`);
+  }
+  return child;
 }
 
 /**
@@ -169,7 +179,7 @@ describe("commit conversion", () => {
 
   test("anchor href and title are preserved", () => {
     const c = commitWith('<a href="/docs" title="Docs">link</a> tail');
-    const a = c!.children![0] as JxMutableNode;
+    const a = elementAt(c!.children, 0);
     expect(a.tagName).toBe("a");
     expect(a.attributes).toEqual({ href: "/docs", title: "Docs" });
     expect(a.textContent).toBe("link");
@@ -210,16 +220,16 @@ describe("editing interactions", () => {
        of the frame and applied through `applyFormat` — one definition site — and a revived copy
        here would toggle bold twice per press. */
     edit();
-    keydown(el, "b", { ctrlKey: true });
-    keydown(el, "i", { ctrlKey: true });
-    keydown(el, "`", { ctrlKey: true });
-    keydown(el, "k", { ctrlKey: true });
+    const chords = ["b", "i", "`", "k"].map((key) => keydown(el, key, { ctrlKey: true }));
     expect(toggleInlineFormat).not.toHaveBeenCalled();
+    // Nothing here claimed the chord, and the block's content is exactly as it was.
+    expect(chords.map((e) => e.defaultPrevented)).toEqual([false, false, false, false]);
+    expect(el.innerHTML).toBe("Hello");
   });
 
   test("paste inserts plain text via execCommand", () => {
     edit();
-    const e = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
+    const e = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(e, "clipboardData", {
       value: { getData: (type: string) => (type === "text/plain" ? "pasted!" : "") },
     });
@@ -246,7 +256,7 @@ describe("editing interactions", () => {
 
   test("paste without clipboard data inserts an empty string", () => {
     edit();
-    const e = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
+    const e = new Event("paste", { bubbles: true, cancelable: true });
     el.dispatchEvent(e);
     expect(execCommand).toHaveBeenCalledWith("insertText", false, "");
   });

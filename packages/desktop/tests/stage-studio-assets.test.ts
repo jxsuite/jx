@@ -98,8 +98,9 @@ describe("stageStudioAssets", () => {
   test("a literal head tag precedes the first script, for the macOS preload splice", async () => {
     await stageStudioAssets(desktopDir);
     const html = await readFile(join(desktopDir, "assets", "studio", "index.html"), "utf8");
-    expect(html.indexOf("<head>")).toBeGreaterThan(-1);
-    expect(html.indexOf("<head>")).toBeLessThan(html.indexOf("<script"));
+    const head = html.indexOf("<head>");
+    expect(head).toBeGreaterThan(-1);
+    expect(head).toBeLessThan(html.indexOf("<script"));
   });
 
   test("stages the split chunks — the editor cannot boot without them", async () => {
@@ -142,8 +143,9 @@ describe("stageStudioAssets", () => {
         cpSync(studioDir, join(bare, "studio"), { recursive: true });
         mkdirSync(join(bare, "desktop"), { recursive: true });
         rmSync(join(bare, "studio", missing), { force: true, recursive: true });
-        await expect(stageStudioAssets(join(bare, "desktop"))).rejects.toThrow(missing);
-        await expect(stageStudioAssets(join(bare, "desktop"))).rejects.toThrow(cost);
+        const staging = stageStudioAssets(join(bare, "desktop"));
+        await expect(staging).rejects.toThrow(missing);
+        await expect(staging).rejects.toThrow(cost);
       } finally {
         rmSync(bare, { force: true, recursive: true });
       }

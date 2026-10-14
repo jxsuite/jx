@@ -48,7 +48,11 @@ import {
 } from "../files/media-meta";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
 import { notedListing } from "../files/asset-versions";
-import type { MediaBrowserRow, MediaBrowserSurfaceHandle } from "../surfaces/media-browser";
+import type {
+  MediaBrowserRow,
+  MediaBrowserSurfaceHandle,
+  MediaBrowserView,
+} from "../surfaces/media-browser";
 import type { MediaFieldHandle, MediaFieldView } from "../surfaces/media-field";
 
 // ─── Media file cache ────────────────────────────────────────────────────────
@@ -139,7 +143,7 @@ let _browserFilter = "";
 let _browserOrigin = { x: 0, y: 0 };
 
 /** What the panel shows for the filter that stands now. */
-function browserView() {
+function browserView(): MediaBrowserView {
   const query = _browserFilter.toLowerCase();
   const filtered = query
     ? mediaCache.filter(
@@ -164,9 +168,9 @@ function browserView() {
     emptyLabel: "No matches",
     filter: _browserFilter,
     moreLabel: `…${filtered.length - BROWSE_LIMIT} more`,
-    moreState: (filtered.length > BROWSE_LIMIT ? "shown" : "hidden") as "hidden" | "shown",
+    moreState: filtered.length > BROWSE_LIMIT ? "shown" : "hidden",
     rows,
-    rowsState: (rows.length > 0 ? "listed" : "empty") as "empty" | "listed",
+    rowsState: rows.length > 0 ? "listed" : "empty",
     x: _browserOrigin.x,
     y: _browserOrigin.y,
   };
@@ -293,10 +297,14 @@ export function pickAndUpload(onCommit: (val: string) => void) {
 const FIELD_DEBOUNCE_MS = 400;
 
 /** One mounted field, and the decisions that move under it between repaints. */
-interface FieldEntry {
-  handle: MediaFieldHandle;
+/** What a field's callbacks read at call time; a re-mount rewrites both in place. */
+interface FieldBinding {
   prop: string;
   commit: (value: string) => void;
+}
+
+interface FieldEntry extends FieldBinding {
+  handle: MediaFieldHandle;
 }
 
 /**
@@ -347,8 +355,8 @@ export function mountMediaPicker(
     existing.handle.update(fieldView(prop, value));
     return;
   }
-  const entry: FieldEntry = { commit: onCommit, handle: null as unknown as MediaFieldHandle, prop };
-  entry.handle = mountMediaFieldSurface(host, fieldView(prop, value), {
+  const entry: FieldBinding = { commit: onCommit, prop };
+  const handle = mountMediaFieldSurface(host, fieldView(prop, value), {
     browse: (anchor: HTMLElement) => {
       void loadMediaCache();
       showMediaPickerPopover(anchor, (val: string) => entry.commit(val));
@@ -364,7 +372,8 @@ export function mountMediaPicker(
       void loadMediaCache();
     },
   });
-  _fields.set(host, entry);
+  // The same object, so the callbacks above see a later re-mount's `prop` and `commit`.
+  _fields.set(host, Object.assign(entry, { handle }));
 }
 
 /**

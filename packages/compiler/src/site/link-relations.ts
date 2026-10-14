@@ -14,6 +14,9 @@
  * @docs framework/site/seo
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonPrimitive, JsonValue, JxHeadEntry } from "@jxsuite/schema/types";
+
 /**
  * The IANA Link Relation Types registry, snapshotted from
  * `https://www.iana.org/assignments/link-relations/link-relations-1.csv` on 2026-08-16.
@@ -206,11 +209,11 @@ function isExtensionRelation(token: string): boolean {
  * token is judged on its own; comparison is case-insensitive, which is what the HTML Standard
  * specifies for link types.
  *
- * @param {unknown} rel - The raw attribute value
+ * @param {JsonValue | undefined} rel - The raw attribute value, as the document wrote it
  * @returns {string[]} Unrecognized tokens, as written
  */
-export function unregisteredRelations(rel: unknown): string[] {
-  if (typeof rel !== "string") {
+export function unregisteredRelations(rel: JsonValue | undefined): string[] {
+  if (!isString(rel)) {
     return [];
   }
   return rel.split(/\s+/).filter((token) => {
@@ -232,15 +235,16 @@ export function unregisteredRelations(rel: unknown): string[] {
  * Deduplicated because one mistyped `rel` in a layout is on every page of the site, and a warning
  * repeated four hundred times is a warning nobody reads.
  *
- * @param {readonly { tagName?: string; attributes?: Record<string, unknown> }[]} entries
+ * @param {readonly (JxHeadEntry | JsonPrimitive)[]} entries - As authored: a `$head` is JSON, and
+ *   the merger passes a primitive (`null`, a stray string) through where an entry belongs
  * @returns {string[]}
  */
 export function unregisteredHeadRelations(
-  entries: readonly { tagName?: string; attributes?: Record<string, unknown> }[],
+  entries: readonly (JxHeadEntry | JsonPrimitive)[],
 ): string[] {
   const found = new Set<string>();
   for (const entry of entries) {
-    if (entry?.tagName !== "link") {
+    if (!isNonNullObject(entry) || entry.tagName !== "link") {
       continue;
     }
     for (const token of unregisteredRelations(entry.attributes?.rel)) {

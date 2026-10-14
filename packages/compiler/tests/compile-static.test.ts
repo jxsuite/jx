@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { compileStaticPage } from "../src/targets/compile-static";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JsonObject, JxDocument, JxElement } from "@jxsuite/schema/types";
+
+/** A node whose children are primitives the schema rejects but an unvalidated document can carry. */
+function malformedNode(json: JsonObject): JxElement {
+  /*
+   * SAFETY: The schema allows only elements and strings as children, so this node is outside
+   * JxElement on purpose; compileStaticPage's compileNode renders numbers and booleans as text and
+   * returns "" for any other non-object child (null), which is what these tests exercise.
+   */
+  return json as JxElement;
+}
 
 // ─── compileStaticPage ─────────────────────────────────────────────────────
 
@@ -28,7 +38,7 @@ describe("compileStaticPage", () => {
     // Syntax-highlighted code arrives as one span per token with bare "\n" line separators from
     // `extensions/parser` highlight.ts. Whitespace the emitter adds between them is rendered text
     // Inside a <pre> that is rendered text, which used to shred code blocks into one token a line.
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           tagName: "pre",
@@ -45,7 +55,7 @@ describe("compileStaticPage", () => {
           ],
         },
       ],
-    } as unknown as JxDocument;
+    };
     const { html } = compileStaticPage(doc, baseOpts);
     expect(html).toContain(
       "<pre><code><span>const</span><span> x = 1;</span>\n<span>return x;</span></code></pre>",
@@ -53,9 +63,9 @@ describe("compileStaticPage", () => {
   });
 
   test("children outside <pre> keep the readability indent", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [{ tagName: "p", children: [{ tagName: "b", textContent: "a" }, "b"] }],
-    } as unknown as JxDocument;
+    };
     const { html } = compileStaticPage(doc, baseOpts);
     expect(html).toContain("<p><b>a</b>\n  b</p>");
   });
@@ -68,10 +78,10 @@ describe("compileStaticPage", () => {
   });
 
   test("injects the pre-paint script when a pure scheme query is declared", () => {
-    const doc = {
+    const doc: JxDocument = {
       $media: { "--dark": "(prefers-color-scheme: dark)" },
       children: [{ tagName: "p", textContent: "Hi" }],
-    } as JxDocument;
+    };
     const { html } = compileStaticPage(doc, baseOpts);
     const marker = 'localStorage.getItem("jx-color-scheme")';
     expect(html).toContain(marker);
@@ -79,7 +89,7 @@ describe("compileStaticPage", () => {
   });
 
   test("omits the pre-paint script without a scheme query", () => {
-    const doc = { $media: { "--md": "(min-width: 768px)" }, children: [] } as JxDocument;
+    const doc: JxDocument = { $media: { "--md": "(min-width: 768px)" }, children: [] };
     const { html } = compileStaticPage(doc, baseOpts);
     expect(html).not.toContain("jx-color-scheme");
   });
@@ -219,18 +229,16 @@ describe("compileStaticPage", () => {
   });
 
   test("handles numeric and boolean children", () => {
-    const doc = {
-      children: [{ children: [42, true], tagName: "p" }],
-    } as unknown as JxDocument;
+    const doc: JxDocument = { children: [malformedNode({ children: [42, true], tagName: "p" })] };
     const { html } = compileStaticPage(doc, baseOpts);
     expect(html).toContain("42");
     expect(html).toContain("true");
   });
 
   test("skips a null child rather than rendering it", () => {
-    const doc = {
-      children: [{ children: [null, "text"], tagName: "p" }],
-    } as unknown as JxDocument;
+    const doc: JxDocument = {
+      children: [malformedNode({ children: [null, "text"], tagName: "p" })],
+    };
     const { html } = compileStaticPage(doc, baseOpts);
     expect(html).toContain("text");
     expect(html).not.toContain("null");

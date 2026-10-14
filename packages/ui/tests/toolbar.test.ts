@@ -5,8 +5,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { findA11yDefects } from "@jxsuite/schema/a11y";
+import { isExpandedSignal, isJsonObject, isNodeObject } from "@jxsuite/schema/guards";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
-import type { JxElement } from "@jxsuite/schema/types";
+import type { JsonObject, JsonValue, JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import {
   cedesKey,
@@ -33,14 +34,31 @@ const settle = async () => {
 
 type JxToolbar = HTMLElement & { label: string; orientation: string };
 
-const page = JSON.parse(
-  readFileSync(resolve(import.meta.dir, "../stylebook/jx-toolbar.json"), "utf8"),
-) as JxElement;
+/** The stylebook page for the element, read off disk as the consumer document it is. */
+function loadPage(): JxElement {
+  const parsed = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../stylebook/jx-toolbar.json"), "utf8"),
+  );
+  if (!isNodeObject(parsed)) {
+    throw new Error("stylebook/jx-toolbar.json is not a Jx element document");
+  }
+  return parsed;
+}
+
+const page = loadPage();
 
 /** Every node in a document tree, so a gate cannot be dodged by nesting one level deeper. */
 function walk(node: JxElement): JxElement[] {
-  const kids = (node.children ?? []) as JxElement[];
-  return [node, ...kids.flatMap((child) => walk(child))];
+  const kids = Array.isArray(node.children) ? node.children : [];
+  return [node, ...kids.flatMap((child) => (isNodeObject(child) ? walk(child) : []))];
+}
+
+/** A kit document as the JSON tree it was imported from, for a walker that visits every key. */
+function jsonOf(doc: JxDocument): JsonObject {
+  if (!isJsonObject(doc)) {
+    throw new TypeError(`${doc.tagName}: a Jx document is a JSON object`);
+  }
+  return doc;
 }
 
 beforeAll(async () => {
@@ -49,14 +67,16 @@ beforeAll(async () => {
 
 afterEach(() => {
   document.body.replaceChildren();
-  delete (globalThis as { EyeDropper?: unknown }).EyeDropper;
+  Reflect.deleteProperty(globalThis, "EyeDropper");
 });
 
 /** Stand a screen picker in for the engine's, so a colour field draws its eyedropper button. */
 function stubDropper(): void {
-  (globalThis as { EyeDropper?: unknown }).EyeDropper = function EyeDropper() {
-    return { open: () => Promise.resolve({ sRGBHex: "#000000" }) };
-  };
+  Object.assign(globalThis, {
+    EyeDropper: function EyeDropper() {
+      return { open: () => Promise.resolve({ sRGBHex: "#000000" }) };
+    },
+  });
 }
 
 /**
@@ -70,7 +90,7 @@ function stubDropper(): void {
  */
 function makeControl(spec: string): HTMLElement {
   const [flags] = /[!~]*$/u.exec(spec)!;
-  const [kind, label] = spec.slice(0, spec.length - flags.length).split(":") as [string, string];
+  const [kind, label = ""] = spec.slice(0, spec.length - flags.length).split(":");
   let el: HTMLElement;
   switch (kind) {
     case "action": {
@@ -155,6 +175,9 @@ function makeControl(spec: string): HTMLElement {
 
 /** A toolbar whose children are described by {@link makeControl}'s spelling. */
 function build(attrs: Record<string, string>, specs: string[]): JxToolbar {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-toolbar` from its document before any test
+     runs, so `createElement` constructs that class synchronously, and jx-toolbar.json declares
+     `label` and `orientation` as state props the class exposes as properties. */
   const el = document.createElement("jx-toolbar") as JxToolbar;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -175,7 +198,7 @@ async function bar(attrs: Record<string, string>, specs: string[]): Promise<JxTo
 
 /** The label of each roved item, in order — the toolbar's own answer to "what is in this row". */
 const names = (el: HTMLElement) =>
-  itemsOf(el).map((item) => item.getAttribute("label") ?? item.textContent ?? "?");
+  itemsOf(el).map((item) => item.getAttribute("label") ?? item.textContent);
 
 /** The roving `tabindex` on each item's own CONTROL, which is the node a reader Tabs to. */
 const carets = (el: HTMLElement) =>
@@ -183,7 +206,7 @@ const carets = (el: HTMLElement) =>
 
 /** The accessible name of whatever the focus is on. */
 const focused = () => {
-  const active = document.activeElement as HTMLElement | null;
+  const active = document.activeElement;
   const host = active?.closest(
     "jx-action-button, jx-button, jx-textfield, jx-number-field, jx-checkbox, jx-switch",
   );
@@ -224,8 +247,8 @@ describe("jx-toolbar", () => {
     el.orientation = "vertical";
     await tick();
     expect(el.getAttribute("aria-orientation")).toBe("vertical");
-    const style = documents["jx-toolbar"]!.style as Record<string, unknown>;
-    expect(style['&[aria-orientation="vertical"]']).toBeDefined();
+    const { style } = documents["jx-toolbar"];
+    expect(style?.['&[aria-orientation="vertical"]']).toBeDefined();
   });
 
   test("a MIXED row is one tab stop, and this is the row jx-action-group cannot hold", async () => {
@@ -456,30 +479,31 @@ describe("jx-toolbar", () => {
         continue;
       }
       const focusables: { tagName: string; type: string; role: string }[] = [];
-      const visit = (node: unknown): void => {
+      /* Every value in the document's JSON, not just its `children`: a focusable node can sit in a
+         mapped array's template or a `$switch` case's `cases`, and the gate must see it there. */
+      const visit = (node: JsonValue | undefined): void => {
         if (Array.isArray(node)) {
           for (const item of node) {
             visit(item);
           }
           return;
         }
-        if (!node || typeof node !== "object") {
+        if (!isJsonObject(node)) {
           return;
         }
-        const el = node as JxElement;
-        const attrs = (el.attributes ?? {}) as Record<string, string>;
-        if (["button", "input", "select", "textarea"].includes(String(el.tagName))) {
+        const attrs = isJsonObject(node["attributes"]) ? node["attributes"] : {};
+        if (["button", "input", "select", "textarea"].includes(String(node["tagName"]))) {
           focusables.push({
-            tagName: String(el.tagName),
+            tagName: String(node["tagName"]),
             type: String(attrs["type"] ?? ""),
             role: String(attrs["role"] ?? ""),
           });
         }
-        for (const value of Object.values(node as Record<string, unknown>)) {
+        for (const value of Object.values(node)) {
           visit(value);
         }
       };
-      visit(doc.children);
+      visit(jsonOf(doc)["children"]);
       if (focusables.length === 0) {
         continue;
       }
@@ -490,7 +514,7 @@ describe("jx-toolbar", () => {
       if (first.tagName === "select" || OWN_ARROWS.has(first.type) || first.role === "combobox") {
         continue;
       }
-      if (!("tabindex" in ((doc.state ?? {}) as Record<string, unknown>))) {
+      if (!("tabindex" in (doc.state ?? {}))) {
         missing.push(tag);
       }
     }
@@ -527,10 +551,11 @@ describe("jx-toolbar", () => {
     expect(dropper.getAttribute("tabindex")).toBe("-1");
     expect(system.getAttribute("tabindex")).toBe("-1");
     const stops = () =>
-      [...el.querySelectorAll<HTMLElement>("button, input")]
-        .filter((node) => !node.closest('[part="picker"]'))
-        .filter((node) => node.getAttribute("tabindex") !== "-1")
-        .map((node) => node.getAttribute("aria-label") ?? node.getAttribute("label"));
+      [...el.querySelectorAll<HTMLElement>("button, input")].flatMap((node) =>
+        !node.closest('[part="picker"]') && node.getAttribute("tabindex") !== "-1"
+          ? [node.getAttribute("aria-label") ?? node.getAttribute("label")]
+          : [],
+      );
     expect(stops()).toEqual(["Save"]);
     // Property only: the host carries no tabindex, or it would be a second stop by itself.
     expect(field.hasAttribute("tabindex")).toBe(false);
@@ -655,9 +680,7 @@ describe("jx-toolbar", () => {
     expect(() => onToolbarReady({}, settled)).not.toThrow();
     const stray = document.createElement("div");
     document.body.append(stray);
-    stray.addEventListener("keydown", (e) =>
-      onToolbarKeydown({ orientation: "horizontal" }, e as KeyboardEvent),
-    );
+    stray.addEventListener("keydown", (e) => onToolbarKeydown({ orientation: "horizontal" }, e));
     stray.addEventListener("jx-ready", (e) => onToolbarReady({}, e));
     stray.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" }));
     stray.dispatchEvent(new CustomEvent("jx-ready", { bubbles: true }));
@@ -699,12 +722,14 @@ describe("jx-toolbar", () => {
        another element's internals. A toolbar's row is the first thing that needed the same door on
        a plain button and a text field, and without it those two stay in the tab order however
        carefully the row is roved — three tab stops in the grid toolbar, not one. */
-    for (const tag of ["jx-button", "jx-textfield", "jx-action-button", "jx-swatch"]) {
-      const entry = (documents[tag]!.state as Record<string, { default?: unknown }>)["tabindex"];
-      expect(entry, tag).toBeDefined();
-      expect(entry!.default, tag).toBe("");
+    for (const tag of ["jx-button", "jx-textfield", "jx-action-button", "jx-swatch"] as const) {
+      const entry = documents[tag].state?.["tabindex"];
+      if (!isExpandedSignal(entry)) {
+        throw new Error(`${tag} declares no tabindex prop with a default`);
+      }
+      expect(entry.default, tag).toBe("");
       // Property only: an observed attribute would land on the HOST and make a second tab stop.
-      expect((entry as { attribute?: string }).attribute, tag).toBeUndefined();
+      expect(entry.attribute, tag).toBeUndefined();
     }
     const el = await bar({ label: "Tools" }, ["button:Save", "field:Filter"]);
     expect(controlOf(itemsOf(el)[0]!).localName).toBe("button");
@@ -721,7 +746,7 @@ describe("jx-toolbar", () => {
        HOST measures, projects the list and opens `surfaces/menu.ts` — and a second answer in the
        kit could not build the rows anyway: an overflow menu is a list of COMMANDS, and §2 principle
        4 makes the host the only thing that may say what one is called or whether it can act. */
-    const doc = documents["jx-toolbar"]!;
+    const doc = documents["jx-toolbar"];
     expect(Object.keys(doc.state ?? {})).toEqual([
       "label",
       "orientation",
@@ -733,9 +758,7 @@ describe("jx-toolbar", () => {
     expect(emitted).toEqual(['"dispatchEvent":"jx-ready"']);
     expect(JSON.stringify(doc)).not.toContain("overflow");
     // One internal node, and it is the slot: no box stands between the role and the controls it owns.
-    const children = doc.children as JxElement[];
-    expect(children).toHaveLength(1);
-    expect(children[0]!.tagName).toBe("slot");
+    expect(doc.children).toEqual([{ tagName: "slot" }]);
   });
 
   test("the label is the toolbar's own responsibility, because no lint can ask for it", async () => {
@@ -743,7 +766,7 @@ describe("jx-toolbar", () => {
        of controls passes every gate the kit has. This is the gate, and it walks the WHOLE page. */
     const unnamed = await bar({}, ["action:A", "action:B"]);
     expect(unnamed.hasAttribute("aria-label")).toBe(false);
-    expect(findA11yDefects(documents["jx-toolbar"]! as JxElement)).toEqual([]);
+    expect(findA11yDefects(documents["jx-toolbar"])).toEqual([]);
     const bars = walk(page).filter((child) => child.tagName === "jx-toolbar");
     expect(bars.length).toBeGreaterThanOrEqual(2);
     for (const node of bars) {
@@ -768,7 +791,7 @@ describe("jx-toolbar", () => {
     }
     expect(offenders).toEqual([]);
     // The one place the role IS written is the element itself, and it is written literally.
-    expect((documents["jx-toolbar"]!.attributes as Record<string, string>)["role"]).toBe("toolbar");
+    expect(documents["jx-toolbar"].attributes?.["role"]).toBe("toolbar");
     for (const [tag, doc] of Object.entries(documents)) {
       if (tag === "jx-toolbar") {
         continue;
@@ -778,7 +801,7 @@ describe("jx-toolbar", () => {
   });
 
   test("the element and a consumer document both pass the kit's lints", () => {
-    const doc = documents["jx-toolbar"]! as JxElement;
+    const doc = documents["jx-toolbar"];
     const scope = { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS };
     expect(findA11yDefects(doc)).toEqual([]);
     expect(findPopoverDefects(doc, scope)).toEqual([]);

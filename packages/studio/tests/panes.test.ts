@@ -39,15 +39,17 @@ import {
   setPaneDerivation,
 } from "../src/workspace/pane-derive";
 import { BUFFER_COMMIT, bufferWrites } from "../src/services/monaco-buffer";
+import type { MonacoBuffer } from "../src/services/monaco-buffer";
 import { view } from "../src/view";
 import { editorKindOf, editorKindsOf, modeForEditorKind } from "../src/tabs/tab";
 import { effect, effectScope } from "../src/reactivity";
 import { createCommandRegistry } from "../src/commands/registry";
+import type { AnyCommand } from "../src/commands/registry";
 import { emptyContext, makeContext } from "../src/commands/context";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-function open(id: string, opts: Record<string, unknown> = {}) {
+function open(id: string, opts: Partial<Parameters<typeof openTab>[0]> = {}) {
   return openTab({ document: { tagName: "div" }, documentPath: `${id}.json`, id, ...opts });
 }
 
@@ -61,12 +63,20 @@ function openCanvasOnly(id: string) {
   });
 }
 
-function registryWith(commands: ReturnType<typeof paneCommands>) {
+function registryWith(commands: AnyCommand[]) {
   const registry = createCommandRegistry({
     getContext: () => makeContext({ document: { open: workspace.tabs.size > 0 } }),
   });
   registry.registerAll(commands);
   return registry;
+}
+
+/** A bare buffer seated as the dock's function editor. */
+function asDockEditor(buffer: MonacoBuffer): NonNullable<typeof view.functionEditor> {
+  /* SAFETY: the only reader these tests reach is the preview replacement's `commitTabBuffers`,
+     which takes `view.functionEditor` as a MonacoBuffer (`_editingTab`, `_writes`, `getModel`,
+     `getValue`, `hasTextFocus`) and touches none of the wider Monaco editor API. */
+  return buffer as NonNullable<typeof view.functionEditor>;
 }
 
 afterEach(() => {
@@ -558,7 +568,7 @@ describe("preview tabs", () => {
         landed.push(buffer.getValue());
       }
     });
-    view.functionEditor = buffer as never;
+    view.functionEditor = asDockEditor(buffer);
 
     open("p2", { preview: true });
 
@@ -589,7 +599,7 @@ describe("preview tabs", () => {
     writes.arm(BUFFER_COMMIT, 500, () => {
       victim.doc.dirty = true;
     });
-    view.functionEditor = buffer as never;
+    view.functionEditor = asDockEditor(buffer);
 
     open("p2", { preview: true });
 
@@ -710,7 +720,7 @@ describe("the two new tab commands", () => {
   const deps = { openFile: () => {}, openFileInPane: () => {} };
 
   test("Pin / Unpin toggles the focused tab", async () => {
-    const registry = registryWith(tabCommands(deps) as ReturnType<typeof paneCommands>);
+    const registry = registryWith(tabCommands(deps));
     open("a");
     await registry.run("document.togglePinned");
     expect(workspace.tabs.get("a")!.pinned).toBe(true);
@@ -719,7 +729,7 @@ describe("the two new tab commands", () => {
   });
 
   test("Keep Document Open is available only for a preview tab", async () => {
-    const registry = registryWith(tabCommands(deps) as ReturnType<typeof paneCommands>);
+    const registry = registryWith(tabCommands(deps));
     open("a");
     expect(registry.isEnabled("document.keepOpen")).toBe(false);
     expect(registry.disabledReason("document.keepOpen")).toBe(
@@ -732,7 +742,7 @@ describe("the two new tab commands", () => {
   });
 
   test("⌃Tab is offered whenever a second document is open in EITHER pane", () => {
-    const registry = registryWith(tabCommands(deps) as ReturnType<typeof paneCommands>);
+    const registry = registryWith(tabCommands(deps));
     open("a");
     expect(registry.isEnabled("document.nextTab")).toBe(false);
     open("b");

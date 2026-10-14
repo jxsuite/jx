@@ -24,13 +24,12 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import jxsuiteUpdateDoc from "./jxsuite-update.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { DialogLayerHandle, SurfaceHandle } from "../ui/surface";
 
-registerSurface("jxsuite-update", jxsuiteUpdateDoc as unknown as JxDocument);
+registerSurface("jxsuite-update", jxsuiteUpdateDoc);
 
 /** One package the offer would move. Every field is already the string the row prints. */
 export interface JxsuiteUpdateRow {
@@ -55,16 +54,7 @@ export interface JxsuiteUpdateSurfaceOptions {
   onClosed: () => void;
 }
 
-export interface JxsuiteUpdateSurfaceHandle {
-  /** The slot in the dialog layer that carries the region. */
-  host: HTMLElement;
-  /** Resolves with the `jx-dialog` element once it has rendered and been opened. */
-  ready: Promise<HTMLElement>;
-  /** Close the dialog (the platform restores focus) and dispose the document. Idempotent. */
-  close: () => void;
-}
-
-interface JxsuiteUpdateScope extends Record<string, unknown> {
+interface JxsuiteUpdateScope {
   packages: JxsuiteUpdateRow[];
   confirm: () => void;
   cancel: () => void;
@@ -72,9 +62,7 @@ interface JxsuiteUpdateScope extends Record<string, unknown> {
 }
 
 /** Open the offer. The handle's `ready` resolves once the dialog is showing. */
-export function openJxsuiteUpdateSurface(
-  options: JxsuiteUpdateSurfaceOptions,
-): JxsuiteUpdateSurfaceHandle {
+export function openJxsuiteUpdateSurface(options: JxsuiteUpdateSurfaceOptions): DialogLayerHandle {
   const slot = document.createElement("div");
   /* The layer is `pointer-events: none` so a click passes through it when nothing is up, and every
      slot in it turns them back on for its own content. `pointer-events` INHERITS, and the top layer
@@ -98,8 +86,12 @@ export function openJxsuiteUpdateSurface(
     closed = true;
     options.onClosed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
-  const scope = reactive<JxsuiteUpdateScope>({
+  const scope: JxsuiteUpdateScope = reactive<JxsuiteUpdateScope>({
     cancel: () => {
       options.onCancel();
     },
@@ -108,18 +100,20 @@ export function openJxsuiteUpdateSurface(
       options.onConfirm();
     },
     packages: options.packages,
-  }) as JxsuiteUpdateScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("jxsuite-update", scope, slot).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `jxsuite-update.json`'s root definition is a `jx-dialog` element, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     showModal(element);
@@ -135,7 +129,7 @@ export function openJxsuiteUpdateSurface(
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does — `finish` tells it so.
       mounted?.dispose();

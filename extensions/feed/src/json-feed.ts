@@ -32,9 +32,25 @@ interface JsonFeedItem {
   authors?: { name: string }[];
 }
 
+/*
+ * The top-level JSON Feed object, members in serialized order. An `undefined` member is dropped by
+ * JSON.stringify, which is how an optional key stays absent rather than null.
+ */
+interface JsonFeedDocument {
+  description: string | undefined;
+  feed_url: string;
+  home_page_url: string;
+  language: string | undefined;
+  next_url: string | undefined;
+  title: string;
+  version: string;
+  authors: { name: string }[] | undefined;
+  items: JsonFeedItem[];
+}
+
 export function renderJsonFeed(page: JsonFeedPage): string {
   const { feed, items, siteUrl } = page;
-  const doc: Record<string, unknown> = {
+  const doc: JsonFeedDocument = {
     description: feed.description === "" ? undefined : feed.description,
     feed_url: page.selfUrl,
     home_page_url: new URL(feed.basePath, siteUrl).href,
@@ -44,7 +60,7 @@ export function renderJsonFeed(page: JsonFeedPage): string {
     title: feed.title === "" ? "Feed" : feed.title,
     version: VERSION,
     // Authors is the 1.1 spelling; `author` was 1.0 and is deprecated.
-    ...(feed.author?.name === undefined ? {} : { authors: [{ name: feed.author.name }] }),
+    authors: feed.author?.name === undefined ? undefined : [{ name: feed.author.name }],
     items: items.map((item): JsonFeedItem => {
       const out: JsonFeedItem = { id: item.id, title: item.title, url: item.url };
       if (item.contentHtml !== null) {

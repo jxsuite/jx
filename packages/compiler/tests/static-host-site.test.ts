@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const SITE = "https://static.example";
 const roots: string[] = [];
@@ -21,7 +22,7 @@ const roots: string[] = [];
 async function build(trailingSlash: "always" | "never"): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), `jx-static-host-${trailingSlash}-`));
   roots.push(root);
-  const write = (path: string, contents: unknown) => {
+  const write = (path: string, contents: JsonValue) => {
     const full = join(root, path);
     mkdirSync(join(full, ".."), { recursive: true });
     writeFileSync(full, JSON.stringify(contents), "utf8");
@@ -68,8 +69,9 @@ describe('build.trailingSlash: "always"', () => {
     const html = read(always, "about/index.html");
     expect(canonical(html)).toContain(`href="${SITE}/about/"`);
     expect(html).toContain(`content="${SITE}/about/" property="og:url"`);
-    expect(locs(always)).toContain(`${SITE}/about/`);
-    expect(locs(always)).toContain(`${SITE}/blog/post/`);
+    const urls = locs(always);
+    expect(urls).toContain(`${SITE}/about/`);
+    expect(urls).toContain(`${SITE}/blog/post/`);
   });
 
   it("keeps the root as /", () => {
@@ -83,8 +85,9 @@ describe('build.trailingSlash: "never"', () => {
     const html = read(never, "about.html");
     expect(canonical(html)).toContain(`href="${SITE}/about"`);
     expect(html).toContain(`content="${SITE}/about" property="og:url"`);
-    expect(locs(never)).toContain(`${SITE}/about`);
-    expect(locs(never)).toContain(`${SITE}/blog/post`);
+    const urls = locs(never);
+    expect(urls).toContain(`${SITE}/about`);
+    expect(urls).toContain(`${SITE}/blog/post`);
   });
 });
 

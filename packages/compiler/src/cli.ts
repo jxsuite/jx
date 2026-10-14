@@ -9,6 +9,8 @@
  */
 
 import { relative, resolve } from "node:path";
+import { errorMessage } from "@jxsuite/schema/parse";
+import type { DbPushOptions } from "./site/db-push.ts";
 
 // The CLI body runs inside an async function rather than via top-level await: when a test pulls this
 // Entry in with a dynamic import(), Bun's test runtime drops the continuation after a top-level await
@@ -77,10 +79,11 @@ Options:
     const dryRun = flags.has("--dry-run");
     try {
       const { dbPush } = await import("./site/db-push.ts");
-      const { results, bindingsPatched, wranglerPath } = await dbPush(projectRoot, {
-        dryRun,
-        ...(connectionArg === undefined ? {} : { connection: connectionArg }),
-      });
+      const pushOptions: DbPushOptions = { dryRun };
+      if (connectionArg !== undefined) {
+        pushOptions.connection = connectionArg;
+      }
+      const { results, bindingsPatched, wranglerPath } = await dbPush(projectRoot, pushOptions);
       for (const result of results) {
         const mode = result.applied ? "applied" : "dry-run";
         console.log(
@@ -98,8 +101,7 @@ Options:
         console.log(`Updated bindings in ${relative(projectRoot, wranglerPath)}`);
       }
     } catch (error) {
-      const err = error as Error;
-      console.error(`db push failed: ${err.message}`);
+      console.error(`db push failed: ${errorMessage(error)}`);
       process.exit(1);
     }
     return;
@@ -125,8 +127,7 @@ Options:
 
       console.log(`\nDone: ${result.routes} routes → ${result.files} files`);
     } catch (error) {
-      const err = error as Error;
-      console.error(`Build failed: ${err.message}`);
+      console.error(`Build failed: ${errorMessage(error)}`);
       process.exit(1);
     }
   } else if (command === "dev") {
@@ -134,8 +135,7 @@ Options:
       const { runDev } = await import("./site/dev-command.ts");
       runDev(projectRoot, portArg);
     } catch (error) {
-      const err = error as Error;
-      console.error(err.message);
+      console.error(errorMessage(error));
       process.exit(1);
     }
   } else if (command === "preview") {
@@ -156,8 +156,7 @@ Options:
       console.log(`Wrote ${relative(projectRoot, projectSchemaPath)}`);
       console.log(`Wrote ${relative(projectRoot, documentSchemaPath)}`);
     } catch (error) {
-      const err = error as Error;
-      console.error(`Schema generation failed: ${err.message}`);
+      console.error(`Schema generation failed: ${errorMessage(error)}`);
       process.exit(1);
     }
   } else if (command === "validate") {
@@ -180,8 +179,7 @@ Options:
         process.exit(1);
       }
     } catch (error) {
-      const err = error as Error;
-      console.error(`Validation failed: ${err.message}`);
+      console.error(`Validation failed: ${errorMessage(error)}`);
       process.exit(1);
     }
   } else {

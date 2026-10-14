@@ -29,7 +29,7 @@ import { beginActivity } from "../panels/activity-panel";
 import { setBottomTab } from "../shell";
 import { layerHost } from "./layers";
 import { openProgressSurface } from "../surfaces/progress-modal";
-import type { ActivityHandle } from "../panels/activity-panel";
+import type { ActivityHandle, ActivityOptions } from "../panels/activity-panel";
 
 export interface ProgressModalHandle {
   /** Update the status line shown under the title. Also the Activity entry's status. */
@@ -68,12 +68,17 @@ export interface ProgressModalOptions {
 export function showProgressModal(opts: ProgressModalOptions): ProgressModalHandle {
   let closed = false;
 
-  const activity = beginActivity({
-    title: opts.title,
-    ...(opts.status === undefined ? {} : { status: opts.status }),
-    ...(opts.source === undefined ? {} : { source: opts.source }),
-    ...(opts.cancel === undefined ? {} : { cancel: opts.cancel }),
-  });
+  const activityOptions: ActivityOptions = { title: opts.title };
+  if (opts.status !== undefined) {
+    activityOptions.status = opts.status;
+  }
+  if (opts.source !== undefined) {
+    activityOptions.source = opts.source;
+  }
+  if (opts.cancel !== undefined) {
+    activityOptions.cancel = opts.cancel;
+  }
+  const activity = beginActivity(activityOptions);
 
   const close = () => {
     if (closed) {
@@ -118,7 +123,7 @@ export function showProgressModal(opts: ProgressModalOptions): ProgressModalHand
       // CAPTURED LOG as their message — `result.log ?? "bun install failed"` — so a multi-line one
       // Is split the way the old view split it: "<title> failed" as the headline, the whole text
       // As the detail. A Problems list whose first row is 400 lines of `bun` output is not a list.
-      const text = (message ?? "").trim();
+      const text = message.trim();
       if (text === "" || text.includes("\n")) {
         activity.log(text);
         activity.fail(`${opts.title} failed`);

@@ -8,18 +8,19 @@
 import type {
   JxClassCtorDef,
   JxClassDef,
+  JxClassDefs,
   JxClassMethodDef,
   JxClassParamDef,
 } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
 
 /**
  * Compile a .class.json schema to a JavaScript ES module string.
  *
  * @param {JxClassDef} classDef - Parsed .class.json content (must have $prototype: "Class")
- * @param {Record<string, unknown>} [_opts]
  * @returns {string} JavaScript module source code
  */
-export function compileClassJson(classDef: JxClassDef, _opts: Record<string, unknown> = {}) {
+export function compileClassJson(classDef: JxClassDef) {
   const className = classDef.title;
   if (!className) {
     throw new Error("compileClassJson: missing title (class name)");
@@ -30,7 +31,7 @@ export function compileClassJson(classDef: JxClassDef, _opts: Record<string, unk
   const fields = defs?.fields ?? {};
   // JSON objects inherit Object.prototype.constructor — only an own object value counts.
   const rawCtor = defs?.constructor;
-  const ctor = typeof rawCtor === "object" ? rawCtor : undefined;
+  const ctor = isOwnCtorDef(rawCtor) ? rawCtor : undefined;
   const methods = defs?.methods ?? {};
 
   const lines: string[] = [
@@ -154,6 +155,17 @@ export function compileClassJson(classDef: JxClassDef, _opts: Record<string, unk
 }
 
 /**
+ * Whether a `$defs.constructor` read is the document's own constructor definition rather than the
+ * `Object.prototype.constructor` function every JSON object inherits.
+ *
+ * @param {JxClassDefs["constructor"]} value
+ * @returns {boolean}
+ */
+function isOwnCtorDef(value: JxClassDefs["constructor"]): value is JxClassCtorDef {
+  return typeof value === "object";
+}
+
+/**
  * Resolve the base class name from an extends value.
  *
  * @param {JxClassDef["extends"]} ext
@@ -163,7 +175,7 @@ function resolveBaseClass(ext: JxClassDef["extends"]) {
   if (!ext) {
     return "Object";
   }
-  if (typeof ext === "string") {
+  if (isString(ext)) {
     return ext;
   }
   if (ext.$ref) {
@@ -186,7 +198,7 @@ function resolveParams(params: JxClassParamDef[]) {
         return param.$ref.split("/").pop();
       }
       const name = param.identifier ?? param.name;
-      return typeof name === "string" ? name : "arg";
+      return isString(name) ? name : "arg";
     })
     .join(", ");
 }

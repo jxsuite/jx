@@ -29,6 +29,10 @@ import {
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetModelCache } from "../src/services/ai-models";
+import type { AiModelsResponse, StudioPlatform } from "../src/types";
+
+/** What the wizard hands `createProject`. */
+type CreateProjectOptions = Parameters<StudioPlatform["createProject"]>[0];
 
 const { openNewProjectModal } = await import("../src/new-project/new-project-modal");
 const { initLayers } = await import("../src/ui/layers");
@@ -36,26 +40,41 @@ const { initLayers } = await import("../src/ui/layers");
 mountOverlayLayers(document.body);
 initLayers();
 
-/** The multiline prompt field on the Agent source step. */
-function promptField(): HTMLInputElement {
-  return npPart("prompt")!.querySelector('[part="input"]') as HTMLInputElement;
+/** The multiline prompt field on the Agent source step: `jx-textfield multiline` draws a textarea. */
+function promptField(): HTMLTextAreaElement {
+  const field = npPart("prompt")?.querySelector('[part="input"]');
+  if (!(field instanceof HTMLTextAreaElement)) {
+    throw new Error("New Project wizard: the Agent prompt field is not on screen");
+  }
+  return field;
+}
+
+/** Type into the prompt the way `npType` does a single-line field: set the value, fire `input`. */
+function typePrompt(value: string): void {
+  const field = promptField();
+  field.value = value;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /** The inline destination-validation message under the Location fields. */
 function inlineError(): string {
-  return npPart("destination-failure")?.textContent?.trim() ?? "";
+  return npPart("destination-failure")?.textContent.trim() ?? "";
 }
 
 /** The wizard's global refusal strip, which is a different sentence in a different place. */
 function globalError(): string {
-  return npPart("failure")?.textContent?.trim() ?? "";
+  return npPart("failure")?.textContent.trim() ?? "";
 }
 
 /* The credentials gate probes the AI proxy for backend-held credentials. Stub it: the default is an
    unmanaged, unconfigured backend (BYOK-only), and managed tests override `proxyState`. */
-let proxyState: { configured: boolean; managed: boolean } = { configured: false, managed: false };
-(globalThis as Record<string, unknown>).fetch = async () =>
-  Response.json({ models: [], ...proxyState }, { status: 200 });
+type ProxyProbe = Required<Pick<AiModelsResponse, "configured" | "managed">>;
+let proxyState: ProxyProbe = { configured: false, managed: false };
+// Every request is the proxy probe; `preconnect` is the real one so the double is a whole `fetch`.
+globalThis.fetch = Object.assign(
+  async () => Response.json({ models: [], ...proxyState }, { status: 200 }),
+  { preconnect: fetch.preconnect },
+);
 
 beforeEach(() => {
   localStorage.clear();
@@ -146,7 +165,7 @@ describe("Agent flow", () => {
     await flush(3);
     npPickTab("agent");
     await flush(3);
-    npType(promptField(), "A cozy site");
+    typePrompt("A cozy site");
     npPress("Confirm");
     await flush(3);
     npFillLocation();
@@ -154,7 +173,7 @@ describe("Agent flow", () => {
     npPress("Confirm");
     await flush(2);
     // The message renders inline at the name field, not in the global strip.
-    expect(npPart("name-failure")?.textContent?.trim()).toBe("Project name is required");
+    expect(npPart("name-failure")?.textContent.trim()).toBe("Project name is required");
     expect(state.calls.filter((c) => c[0] === "createProject")).toHaveLength(0);
   });
 
@@ -165,7 +184,7 @@ describe("Agent flow", () => {
     await flush(3);
     npPickTab("agent");
     await flush(3);
-    npType(promptField(), "A cozy site");
+    typePrompt("A cozy site");
     npPress("Confirm");
     await flush(3);
     // Everything but the destination is filled in — the wizard never guesses where to write.
@@ -184,19 +203,19 @@ describe("Agent flow", () => {
 
   test("scaffolds a blank project at the chosen location and stores the pending agent prompt", async () => {
     seedSettings({ "jx.ai.openaiKey": "sk-agent-test" });
-    const created: Record<string, unknown>[] = [];
+    const created: CreateProjectOptions[] = [];
     installMockPlatform({
-      createProject: (async (opts: Record<string, unknown>) => {
+      createProject: async (opts) => {
         created.push(opts);
         return { config: { name: "Agent Site" }, root: "/projects/agent-site" };
-      }) as never,
+      },
     });
 
     const promise = openNewProjectModal();
     await flush(3);
     npPickTab("agent");
     await flush(3);
-    npType(promptField(), "A landing page for a coffee roastery");
+    typePrompt("A landing page for a coffee roastery");
     npPress("Confirm");
     await flush(3);
     // The agent scaffolds from the blank template; its breakpoint preset prefills the editor.
@@ -212,7 +231,7 @@ describe("Agent flow", () => {
     expect(result).toEqual({
       config: { name: "Agent Site" },
       root: "/projects/agent-site",
-    } as never);
+    });
 
     expect(created[0]).toMatchObject({
       destination: { kind: "path", parent: "/home/dev/Sites" },
@@ -221,7 +240,7 @@ describe("Agent flow", () => {
       template: "blank",
     });
     // Untouched design prefills are not sent.
-    expect((created[0] as { design?: unknown }).design).toBeUndefined();
+    expect(created[0]?.design).toBeUndefined();
 
     // The prompt is keyed on the root the platform reported, not on the destination the modal sent.
     const stored = localStorage.getItem("jx.ai.pendingAgentPrompt:/projects/agent-site");

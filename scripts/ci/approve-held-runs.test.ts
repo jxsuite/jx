@@ -35,12 +35,19 @@ const run = (id: number, name: string, over: Partial<WorkflowRun> = {}): Workflo
   ...over,
 });
 
-const json = (status: number, body: unknown): ApiResponse => ({
-  ok: status >= 200 && status < 300,
-  status,
-  json: () => Promise.resolve(body),
-  text: () => Promise.resolve(JSON.stringify(body)),
-});
+/** The bodies the scripted GitHub answers with: a run listing, an error, or an empty approval. */
+type GitHubBody = { workflow_runs: WorkflowRun[] } | { message: string } | Record<string, never>;
+
+/** A response whose body crosses JSON text exactly as the network would carry it. */
+const json = (status: number, body: GitHubBody): ApiResponse => {
+  const text = JSON.stringify(body);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(JSON.parse(text)),
+    text: () => Promise.resolve(text),
+  };
+};
 
 /**
  * A GitHub whose listing answers come from a script, one entry per poll (the last entry repeats),
@@ -353,6 +360,14 @@ interface Workflow {
   jobs: Record<string, { if?: string; steps: Step[] }>;
 }
 
+/** One of the pushing lanes' committed workflow files, parsed. */
+function parseWorkflow(source: string): Workflow {
+  /* SAFETY: every source is a committed GitHub Actions workflow, which Actions refuses to run
+   * without `jobs` whose entries carry `steps`; `permissions` and `concurrency` are each asserted
+   * on below, so a lane that dropped one fails the test that reads it. */
+  return Bun.YAML.parse(source) as Workflow;
+}
+
 /** The wiring both pushing lanes must have, asserted once per lane. */
 function itWiresTheApproval(
   lane: string,
@@ -411,7 +426,7 @@ function itWiresTheApproval(
 }
 
 describe("screenshots.yml wires it", () => {
-  const workflow = Bun.YAML.parse(WORKFLOW_SOURCE) as Workflow;
+  const workflow = parseWorkflow(WORKFLOW_SOURCE);
   itWiresTheApproval("screenshots.yml", workflow, "capture", "Comment");
 
   test("keeps the actor refusal that makes approving the lane's own run a skipped job", () => {
@@ -422,7 +437,7 @@ describe("screenshots.yml wires it", () => {
 });
 
 describe("schemas.yml wires it", () => {
-  const workflow = Bun.YAML.parse(SCHEMAS_SOURCE) as Workflow;
+  const workflow = parseWorkflow(SCHEMAS_SOURCE);
   itWiresTheApproval("schemas.yml", workflow, "regenerate", "Comment on the pull request");
 
   test("has no actor refusal, and is safe on its own head by the fixed point instead", () => {
@@ -434,7 +449,7 @@ describe("schemas.yml wires it", () => {
 });
 
 describe("electrobun-vendor.yml wires it", () => {
-  const workflow = Bun.YAML.parse(ELECTROBUN_VENDOR_SOURCE) as Workflow;
+  const workflow = parseWorkflow(ELECTROBUN_VENDOR_SOURCE);
   itWiresTheApproval("electrobun-vendor.yml", workflow, "move", "Comment on the pull request");
 
   test("has no actor refusal, and is safe on its own head by the fixed point instead", () => {
@@ -447,7 +462,7 @@ describe("electrobun-vendor.yml wires it", () => {
 });
 
 describe("release-specs.yml wires it", () => {
-  const workflow = Bun.YAML.parse(RELEASE_SPECS_SOURCE) as Workflow;
+  const workflow = parseWorkflow(RELEASE_SPECS_SOURCE);
   itWiresTheApproval(
     "release-specs.yml",
     workflow,

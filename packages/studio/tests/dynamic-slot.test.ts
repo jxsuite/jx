@@ -146,7 +146,7 @@ describe("switchSlotMode", () => {
     switchSlotMode("ev|onblur", "function", "ref", body, { $ref: "" });
     body.body = "two";
     const back = switchSlotMode("ev|onblur", "ref", "function", { $ref: "" }, null);
-    expect((back as { body: string }).body).toBe("one");
+    expect(back).toEqual({ $prototype: "Function", body: "one", parameters: [] });
   });
 
   test("it records the rung, so the next render honours the switch", () => {

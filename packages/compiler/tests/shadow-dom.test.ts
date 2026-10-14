@@ -18,19 +18,13 @@ import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
  * emits no shadow API — is the first test below.
  */
 
-const asDoc = (d: unknown) => d as JxDocument;
-
-const component = (extra: Record<string, unknown> = {}) =>
-  asDoc({
-    children: [
-      { children: ["${state.n}"], className: "inner", tagName: "div" },
-      { tagName: "slot" },
-    ],
-    state: { n: 0 },
-    style: { color: "red" },
-    tagName: "sd-probe",
-    ...extra,
-  });
+const component = (extra: JxDocument = {}): JxDocument => ({
+  children: [{ children: ["${state.n}"], className: "inner", tagName: "div" }, { tagName: "slot" }],
+  state: { n: 0 },
+  style: { color: "red" },
+  tagName: "sd-probe",
+  ...extra,
+});
 
 const moduleFor = async (doc: JxDocument, defaults?: ProjectConfig["defaults"]) => {
   const { files } = await compileElement(doc, defaults === undefined ? {} : { defaults });
@@ -56,7 +50,10 @@ describe("resolveShadowMode", () => {
 
   test("a value that is not a mode is ignored rather than guessed at", () => {
     expect(resolveShadowMode(component({ $shadow: "yes" }), { shadow: "open" })).toBe("open");
-    expect(resolveShadowMode(component(), { shadow: true as unknown as "open" })).toBeNull();
+    /* `defaults` arrives from a parsed project.json, which the type cannot police: decode one the
+       way the build does, carrying a value outside the declared union. */
+    const lying: ProjectConfig["defaults"] = JSON.parse('{ "shadow": true }');
+    expect(resolveShadowMode(component(), lying)).toBeNull();
   });
 });
 

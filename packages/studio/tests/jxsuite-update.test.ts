@@ -56,11 +56,12 @@ async function openedDialog(): Promise<HTMLElement> {
 
 /** Every row the offer prints, as `name` → the version move beside it. */
 function rows(element: HTMLElement): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const row of element.querySelectorAll<HTMLElement>("[data-package]")) {
-    out[row.dataset.package!] = row.querySelector('[part="package-move"]')!.textContent!;
-  }
-  return out;
+  return Object.fromEntries(
+    [...element.querySelectorAll<HTMLElement>("[data-package]")].map((row) => [
+      row.dataset.package!,
+      row.querySelector('[part="package-move"]')!.textContent!,
+    ]),
+  );
 }
 
 /** A host whose registry lookup answers with `reported`. */
@@ -70,8 +71,9 @@ function withRegistry(reported: PackageVersionInfo[], extra: Partial<StudioPlatf
 
 afterEach(() => {
   localStorage.clear();
-  (document.querySelector("#layer-dialog") as HTMLElement).innerHTML = "";
-  (document.querySelector("#layer-modal") as HTMLElement).innerHTML = "";
+  // `beforeAll` created both layers, so neither lookup can miss.
+  document.querySelector("#layer-dialog")!.innerHTML = "";
+  document.querySelector("#layer-modal")!.innerHTML = "";
   resetNotifications();
   resetActivities();
 });
@@ -139,7 +141,12 @@ describe("maybePromptJxsuiteUpdate", () => {
     // BASE version against the registry's `latest`, so a project pinned `^1.4.1` is "outdated" the
     // Moment 1.4.2 publishes, and every starter shot would be blocked again by the next patch
     // Release of any @jxsuite package.
-    const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+    /* SAFETY: `./harness`, imported first, loads with-dom, whose GlobalRegistrator.register() copies
+       happy-dom's window members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns
+       setURL) among them. */
+    const { happyDOM } = globalThis as typeof globalThis & {
+      happyDOM: { setURL: (u: string) => void };
+    };
     happyDOM.setURL("http://localhost:3000/packages/studio/index.html?automation=1");
     let asked = 0;
     let wrote = 0;

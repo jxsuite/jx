@@ -15,8 +15,21 @@ import {
   showSaveDiscardDialog,
 } from "../src/ui/layers";
 
+/** The first match of `selector` under `root`, which the test needs to exist and to be a `kind`. */
+function must<T extends Element>(
+  root: ParentNode,
+  selector: string,
+  kind: abstract new () => T,
+): T {
+  const found = root.querySelector(selector);
+  if (!(found instanceof kind)) {
+    throw new Error(`expected a ${kind.name} at ${selector}`);
+  }
+  return found;
+}
+
 function layer(id: string): HTMLElement {
-  return document.querySelector(`#layer-${id}`) as HTMLElement;
+  return must(document, `#layer-${id}`, HTMLElement);
 }
 
 describe("getLayerSlot before initLayers", () => {
@@ -55,7 +68,7 @@ describe("layers after init", () => {
       await flush();
       // The kit dialog is a native modal <dialog>: Escape reaches it as the platform's `cancel`,
       // Which the element dispatches on itself and the flow answers with false.
-      const native = layer("dialog").querySelector('jx-dialog [part="dialog"]') as HTMLElement;
+      const native = must(layer("dialog"), 'jx-dialog [part="dialog"]', HTMLElement);
       native.dispatchEvent(new Event("cancel"));
       expect(await promise).toBe(false);
       expect(layer("dialog").children).toHaveLength(0);
@@ -89,7 +102,7 @@ describe("layers after init", () => {
       await flush();
       // Open state is the platform's toggle, mirrored onto the host as data-open.
       expect(isModalOpen()).toBe(true);
-      (layer("dialog").querySelector("jx-dialog") as HTMLElement).dispatchEvent(new Event("close"));
+      must(layer("dialog"), "jx-dialog", HTMLElement).dispatchEvent(new Event("close"));
       await promise;
       expect(isModalOpen()).toBe(false);
     });
@@ -122,10 +135,10 @@ describe("layers after init", () => {
     /** The flow's dialog: the kit element, once its document has rendered. */
     async function dialog(): Promise<HTMLElement> {
       await flush();
-      return layer("dialog").querySelector("jx-dialog") as HTMLElement;
+      return must(layer("dialog"), "jx-dialog", HTMLElement);
     }
     const buttonText = (host: HTMLElement, part: string) =>
-      host.querySelector(`[part="${part}"]`)?.textContent?.trim() ?? null;
+      host.querySelector(`[part="${part}"]`)?.textContent.trim() ?? null;
 
     test("confirm resolves true with custom labels, on a kit dialog opened modally", async () => {
       const promise = showConfirmDialog("Delete?", "Gone for good", {
@@ -141,7 +154,7 @@ describe("layers after init", () => {
       expect(host.querySelector<HTMLElement>('[part="confirm"]')?.dataset["variant"]).toBe(
         "negative",
       );
-      expect((host.querySelector('[part="dialog"]') as HTMLDialogElement).open).toBe(true);
+      expect(must(host, '[part="dialog"]', HTMLDialogElement).open).toBe(true);
       expect(host.parentElement?.dataset["jxRegion"]).toBe("overlay.dialog");
       host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe(true);
@@ -165,7 +178,7 @@ describe("layers after init", () => {
   describe("showSaveDiscardDialog", () => {
     async function dialog(): Promise<HTMLElement> {
       await flush();
-      return layer("dialog").querySelector("jx-dialog") as HTMLElement;
+      return must(layer("dialog"), "jx-dialog", HTMLElement);
     }
 
     test("confirm resolves 'save' with the given labels, and secondary resolves 'discard'", async () => {
@@ -175,7 +188,7 @@ describe("layers after init", () => {
         saveLabel: "Keep",
       });
       const host = await dialog();
-      const text = (part: string) => host.querySelector(`[part="${part}"]`)?.textContent?.trim();
+      const text = (part: string) => host.querySelector(`[part="${part}"]`)?.textContent.trim();
       expect([text("confirm"), text("secondary"), text("cancel")]).toEqual([
         "Keep",
         "Throw away",
@@ -205,10 +218,10 @@ describe("layers after init", () => {
   describe("showPromptDialog", () => {
     async function dialog(): Promise<HTMLElement> {
       await flush();
-      return layer("dialog").querySelector("jx-dialog") as HTMLElement;
+      return must(layer("dialog"), "jx-dialog", HTMLElement);
     }
     function field(): HTMLInputElement {
-      return layer("dialog").querySelector('jx-textfield [part="input"]') as HTMLInputElement;
+      return must(layer("dialog"), 'jx-textfield [part="input"]', HTMLInputElement);
     }
     /** Type into the field the way the kit's input event reaches the flow. */
     function type(text: string): void {
@@ -216,14 +229,14 @@ describe("layers after init", () => {
       field().dispatchEvent(new Event("input", { bubbles: true }));
     }
     const errorText = () =>
-      layer("dialog").querySelector('jx-textfield [part="error"]')?.textContent?.trim() ?? null;
+      layer("dialog").querySelector('jx-textfield [part="error"]')?.textContent.trim() ?? null;
 
     test("confirm resolves the trimmed value; defaults render OK/Cancel", async () => {
       const promise = showPromptDialog("Name it");
       const host = await dialog();
       expect(host.getAttribute("headline")).toBe("Name it");
-      expect(host.querySelector('[part="confirm"]')?.textContent?.trim()).toBe("OK");
-      expect(host.querySelector('[part="cancel"]')?.textContent?.trim()).toBe("Cancel");
+      expect(host.querySelector('[part="confirm"]')?.textContent.trim()).toBe("OK");
+      expect(host.querySelector('[part="cancel"]')?.textContent.trim()).toBe("Cancel");
       // No message option → no explanatory paragraph, and the field is named by the headline.
       expect(host.querySelector('[part="message"]')).toBeNull();
       expect(field().getAttribute("aria-label")).toBe("Name it");
@@ -262,7 +275,7 @@ describe("layers after init", () => {
     test("a multiline prompt is a textarea, and Enter in it is a newline rather than a confirm", async () => {
       const promise = showPromptDialog("Paste", { multiline: true, mono: true, rows: "10" });
       const host = await dialog();
-      const box = host.querySelector("jx-textfield textarea") as HTMLTextAreaElement;
+      const box = must(host, "jx-textfield textarea", HTMLTextAreaElement);
       expect(box).not.toBeNull();
       expect(host.querySelector('jx-textfield [part="input"]')?.tagName).toBe("TEXTAREA");
 
@@ -311,7 +324,7 @@ describe("layers after init", () => {
       });
       const host = await dialog();
       expect(host.querySelector('[part="message"]')?.textContent).toBe("Pick a slug");
-      expect(host.querySelector('[part="confirm"]')?.textContent?.trim()).toBe("Create");
+      expect(host.querySelector('[part="confirm"]')?.textContent.trim()).toBe("Create");
       host.dispatchEvent(new Event("confirm"));
       await flush();
       expect(errorText()).toBe("Must start with x.");
@@ -383,7 +396,7 @@ describe("layers after init", () => {
       const choice = host.querySelector<HTMLElement>('jx-select[part="choice"]')!;
       const select = choice.querySelector<HTMLSelectElement>("select")!;
       expect(select.getAttribute("aria-label")).toBe("Format");
-      expect([...select.options].map((o) => [o.value, o.textContent?.trim()])).toEqual([
+      expect([...select.options].map((o) => [o.value, o.textContent.trim()])).toEqual([
         [".md", "Markdown"],
         [".json", "JSON"],
       ]);

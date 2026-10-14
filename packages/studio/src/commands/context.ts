@@ -81,28 +81,28 @@ export type CanvasView = "edit" | "design" | "preview";
  */
 
 /** The `canvasMode` strings, mapped onto the editor each one actually names. */
-const EDITOR_KIND_BY_MODE: Readonly<Record<string, EditorKind>> = {
-  design: "canvas",
-  edit: "canvas",
+const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
+  ["design", "canvas"],
+  ["edit", "canvas"],
   /* The Entry editor — `content/entry-editor.ts`'s ENTRY_MODE. A form over ONE content entry's
      frontmatter, typed by its collection's schema; the same document the canvas edits the body of,
      which is why it is a mode of that tab rather than a tab of its own. */
-  entry: "entry",
-  "git-diff": "diff",
-  grid: "grid",
-  manage: "library",
+  ["entry", "entry"],
+  ["git-diff", "diff"],
+  ["grid", "grid"],
+  ["manage", "library"],
   /* The Media viewer — `media/media-pane.ts`. An image, a video, a font specimen: files the studio
      can SHOW but has no document model for, which is why clicking one used to end in "No format
      class imported for …", advice that means nothing about a PNG. */
-  media: "media",
-  preview: "canvas",
+  ["media", "media"],
+  ["preview", "canvas"],
   /* Project Settings — `settings/settings-document.ts`'s SETTINGS_MODE. A form over `project.json`,
      which is a configuration object and not a document tree; `stylebook` (Project Styles) is the
      second editor over that same document and answers `config` for the same reason. */
-  settings: "config",
-  source: "code",
-  stylebook: "config",
-};
+  ["settings", "config"],
+  ["source", "code"],
+  ["stylebook", "config"],
+]);
 
 /**
  * The editor kind a mode string names.
@@ -131,15 +131,15 @@ export const EDITOR_KIND_LABELS: Readonly<Record<EditorKind, string>> = {
 };
 
 export function editorKindForMode(mode: string): EditorKind {
-  return EDITOR_KIND_BY_MODE[mode] ?? "canvas";
+  return EDITOR_KIND_BY_MODE.get(mode) ?? "canvas";
 }
 
 /** Only the three canvas modes carry a view. */
-const CANVAS_VIEW_BY_MODE: Readonly<Record<string, CanvasView>> = {
-  design: "design",
-  edit: "edit",
-  preview: "preview",
-};
+const CANVAS_VIEW_BY_MODE = new Map<string, CanvasView>([
+  ["design", "design"],
+  ["edit", "edit"],
+  ["preview", "preview"],
+]);
 
 /**
  * The Canvas view a mode names — the neutral "design" for a mode that has none.
@@ -147,7 +147,7 @@ const CANVAS_VIEW_BY_MODE: Readonly<Record<string, CanvasView>> = {
  * Meaningful only where {@link editorKindForMode} answers `"canvas"`; every reader pairs the two.
  */
 export function canvasViewForMode(mode: string): CanvasView {
-  return CANVAS_VIEW_BY_MODE[mode] ?? "design";
+  return CANVAS_VIEW_BY_MODE.get(mode) ?? "design";
 }
 
 /** Facts a command may be gated on. Every field is a plain value; predicates read, never write. */
@@ -332,6 +332,8 @@ export function emptyContext(): CommandContext {
  */
 export function makeContext(patch: CommandContextPatch = {}): CommandContext {
   const base = emptyContext();
+  /* SAFETY: a `CommandContextPatch` is a mapped type over `keyof CommandContext`, so every own key
+     it carries is a context group; `Object.keys` only widens those names to `string`. */
   for (const key of Object.keys(patch) as (keyof CommandContext)[]) {
     const group = patch[key];
     if (group) {

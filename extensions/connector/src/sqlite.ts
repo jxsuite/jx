@@ -7,15 +7,17 @@
  * Supabase.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { createBunSqliteDialect } from "./dialects/bun-sqlite.ts";
 import { deployWithDialect, testWithDialect } from "./provider-utils.ts";
 import type { Dialect } from "kysely";
-import type { ConnectorProvider } from "./provider-utils.ts";
+import type { ConnectorProvider, HostEnv } from "./provider-utils.ts";
 import type { ConnectionDef } from "./types.ts";
 
 /** Resolve the SQLite file path for a connection. */
-export function sqliteFilePath(connection: ConnectionDef, env: Record<string, unknown>): string {
-  const root = typeof env["JX_PROJECT_ROOT"] === "string" ? env["JX_PROJECT_ROOT"] : ".";
+export function sqliteFilePath(connection: ConnectionDef, env: HostEnv): string {
+  const projectRoot = env["JX_PROJECT_ROOT"];
+  const root = isString(projectRoot) ? projectRoot : ".";
   const name = connection.$name ?? "default";
   const file = connection.file ?? `./.jx/data/${name}.sqlite`;
   if (file === ":memory:" || file.startsWith("/")) {
@@ -25,7 +27,7 @@ export function sqliteFilePath(connection: ConnectionDef, env: Record<string, un
 }
 
 /** Build the bun:sqlite dialect for a connection. */
-function sqliteDialect(connection: ConnectionDef, env: Record<string, unknown>): Dialect {
+function sqliteDialect(connection: ConnectionDef, env: HostEnv): Dialect {
   return createBunSqliteDialect({ url: sqliteFilePath(connection, env) });
 }
 
@@ -34,14 +36,14 @@ export const Sqlite = {
   deploySchema: async (
     tables: Parameters<ConnectorProvider["deploySchema"]>[0],
     connection: ConnectionDef,
-    options: { env: Record<string, unknown>; dryRun?: boolean },
+    options: { env: HostEnv; dryRun?: boolean },
   ) => {
     const dialect = sqliteDialect(connection, options.env);
     return deployWithDialect(dialect, "sqlite", tables, { dryRun: options.dryRun ?? false });
   },
   dialect: sqliteDialect,
   kind: "sqlite",
-  testConnection: async (connection: ConnectionDef, env: Record<string, unknown>) => {
+  testConnection: async (connection: ConnectionDef, env: HostEnv) => {
     try {
       return await testWithDialect(sqliteDialect(connection, env));
     } catch (error) {

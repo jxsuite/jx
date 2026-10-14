@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JsonObject } from "../types";
+
 const { validateDocument } = await import("../src/schema");
 
 /**
@@ -11,7 +13,7 @@ const { validateDocument } = await import("../src/schema");
  * to render in the face it names reported "must be string". It is the declaration that lets a
  * component internalize a value it cannot know until it renders.
  */
-const doc = (style: Record<string, unknown>) => ({ style, tagName: "div" });
+const doc = (style: JsonObject) => ({ style, tagName: "div" });
 
 describe("a style value may be a ref", () => {
   test("on an enumerated CSS property", async () => {

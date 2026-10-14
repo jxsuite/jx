@@ -44,7 +44,7 @@ function calls(...ids: string[]): StreamEvent[] {
 /** A registry with one tool that keeps every context it is handed and records one write each. */
 function probeRegistry(onCall?: (ctx: ToolContext) => void | Promise<void>) {
   const seen: ToolContext[] = [];
-  const registry = createToolRegistry();
+  const registry: ToolRegistry = createToolRegistry();
   registry.register(
     createToolDefinition({
       name: "probe",
@@ -58,7 +58,7 @@ function probeRegistry(onCall?: (ctx: ToolContext) => void | Promise<void>) {
       },
     }),
   );
-  return { registry: registry as ToolRegistry, seen };
+  return { registry, seen };
 }
 
 afterEach(() => {

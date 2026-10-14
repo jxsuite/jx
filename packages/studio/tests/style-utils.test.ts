@@ -52,7 +52,8 @@ describe("initCssData / getCssInitialMap", () => {
 
 describe("conditionPasses", () => {
   test("empty values list requires a non-empty, non-initial value", () => {
-    const cond = { prop: "display", values: [] as string[] };
+    const values: string[] = [];
+    const cond = { prop: "display", values };
     expect(conditionPasses(cond, { display: "flex" })).toBe(true);
     expect(conditionPasses(cond, { display: "" })).toBe(false);
     expect(conditionPasses(cond, { display: "initial" })).toBe(false);
@@ -89,10 +90,10 @@ describe("allConditionsPass", () => {
 
 describe("autoOpenSections", () => {
   test("opens sections for set scalar props, mapping unknown props to other", () => {
-    const node = {
+    const node: JxMutableNode = {
       style: { display: "flex", someUnknownProp: "x" },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const result = autoOpenSections(node, {});
     expect(result.layout).toBe(true);
     expect(result.other).toBe(true);
@@ -100,20 +101,20 @@ describe("autoOpenSections", () => {
   });
 
   test("skips object-valued props (nested selectors, media blocks)", () => {
-    const node = {
+    const node: JxMutableNode = {
       style: { ":hover": { color: "red" }, "@sm": { display: "grid" } },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     expect(autoOpenSections(node, {})).toEqual({});
   });
 
   test("preserves already-open sections and handles missing style", () => {
-    const node = { tagName: "div" } as unknown as JxMutableNode;
+    const node: JxMutableNode = { tagName: "div" };
     expect(autoOpenSections(node, { border: true })).toEqual({ border: true });
   });
 
   test("a section somebody CLOSED stays closed, even with a value in it", () => {
-    const node = { style: { display: "flex" }, tagName: "div" } as unknown as JxMutableNode;
+    const node: JxMutableNode = { style: { display: "flex" }, tagName: "div" };
     // The distinction is `false` versus absent, and it is what makes the accordion obey a click:
     // The Style tab re-projects the moment the record moves, so treating "closed" as "never
     // Opened" re-opened the section in the same frame the reader closed it.
@@ -236,7 +237,7 @@ describe("getFontVars", () => {
         color: "red",
       },
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
     expect(getFontVars()).toEqual([
       { name: "--font-body", value: "Inter, sans-serif" },
       { name: "--font-weight-ish", value: "700" },
@@ -256,7 +257,7 @@ describe("getFontVars", () => {
       children: [],
       style: { "--font-body": "Charter, serif" },
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
     expect(getFontVars()).toEqual([
       { name: "--font-body", value: "Charter, serif" },
       { name: "--font-ui", value: "Inter, sans-serif" },

@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { buildSite } from "../src/site/site-build.ts";
 
 const roots: string[] = [];
@@ -22,7 +23,7 @@ const roots: string[] = [];
 const fm = (title: string, slug: string, category: string, extra = "") =>
   `---\ntitle: ${title}\ndescription: ${title} for the vault test.\nslug: ${slug}\ncategory: ${category}\nstatus: review\npublish: true\n${extra}---\n\n`;
 
-const VAULT: Record<string, string> = {
+const VAULT = {
   "README.md": "# Vault\n\nNot a document.\n",
   "STYLE.md": "---\ntitle: Style\nslug: style\npublish: false\n---\n\nConventions.\n",
   "internal/Plan.md": `${fm("Plan", "plan", "Internal")}Excluded by path although flagged to publish.\n`,
@@ -63,7 +64,7 @@ const html = \`<div class="alert alert-info">\${__("Pick one")}</div>\`;
     "---\ntitle: Orphan\ndescription: Has no category.\nslug: orphan\nstatus: review\npublish: true\n---\n\nHas no route, uniquewordorphan.\n",
   "Git & Dev Tools/README.md": `${fm("Git & Dev Tools", "git-and-dev-tools", "Git & Dev Tools")}Section.\n`,
   "Git & Dev Tools/Git Cheatsheet.md": `${fm("Git Cheatsheet", "git-cheatsheet", "Git & Dev Tools")}Tips.\n`,
-};
+} satisfies Record<string, string>;
 
 const KB = {
   exclude: ["internal/**", "STYLE.md", "README.md", ".*/**"],
@@ -79,10 +80,14 @@ const KB = {
   where: { publish: true, status: { $ne: "draft" } },
 };
 
-function write(root: string, rel: string, content: string | object) {
+function writeText(root: string, rel: string, text: string) {
   const path = join(root, rel);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, typeof content === "string" ? content : JSON.stringify(content, null, 2));
+  writeFileSync(path, text);
+}
+
+function writeJson(root: string, rel: string, value: JsonObject) {
+  writeText(root, rel, JSON.stringify(value, null, 2));
 }
 
 const articleBody = {
@@ -92,13 +97,13 @@ const articleBody = {
 };
 
 /** One project over the shared vault; `pages` are written under pages/. */
-async function buildProject(pages: Record<string, object>): Promise<string> {
+async function buildProject(pages: Record<string, JsonObject>): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "jx-vault-e2e-"));
   roots.push(root);
   for (const [rel, text] of Object.entries(VAULT)) {
-    write(root, `vault/${rel}`, text);
+    writeText(root, `vault/${rel}`, text);
   }
-  write(root, "project.json", {
+  writeJson(root, "project.json", {
     build: { outDir: "./dist" },
     content: { kb: KB },
     extensions: ["@jxsuite/parser", "@jxsuite/search", "@jxsuite/feed"],
@@ -108,9 +113,9 @@ async function buildProject(pages: Record<string, object>): Promise<string> {
     search: { collections: { kb: { basePath: "/never-used/" } } },
     url: "https://vault.example",
   });
-  write(root, "pages/index.json", { children: ["home"], tagName: "div" });
+  writeJson(root, "pages/index.json", { children: ["home"], tagName: "div" });
   for (const [rel, doc] of Object.entries(pages)) {
-    write(root, `pages/${rel}`, doc);
+    writeJson(root, `pages/${rel}`, doc);
   }
   await buildSite(root, { verbose: false });
   return root;
@@ -127,6 +132,17 @@ const visibleText = (markup: string) =>
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">");
 const has = (root: string, rel: string) => existsSync(join(root, "dist", rel));
+
+/** The fields of `@jxsuite/search`'s emitted `SearchIndexEnvelope` that these tests read. */
+interface SearchIndexFile {
+  documents: { url: string; title: string; heading: string }[];
+}
+
+const searchIndex = (root: string): SearchIndexFile =>
+  /* SAFETY: search-index.json is written by @jxsuite/search's emit hook (listed in every project's
+     `extensions` here) as a SearchIndexEnvelope, whose `documents` entries all carry string `url`,
+     `title` and `heading` fields. */
+  JSON.parse(html(root, "search-index.json")) as SearchIndexFile;
 
 let catchAll = "";
 let named = "";
@@ -244,8 +260,9 @@ describe("the rendered HTML", () => {
   });
 
   it("highlights code with the new languages", () => {
-    expect(page()).toContain("language-python shiki");
-    expect(page()).toContain("--shiki-light");
+    const out = page();
+    expect(out).toContain("language-python shiki");
+    expect(out).toContain("--shiki-light");
   });
 });
 
@@ -261,11 +278,9 @@ describe("what every consumer of the collection sees", () => {
   });
 
   it("the search index holds only routed documents, at their routed URLs", () => {
-    const index = JSON.parse(html(catchAll, "search-index.json")) as {
-      documents: { url: string; title: string; heading: string }[];
-    };
-    const pages = index.documents.filter((d) => d.heading === "");
-    expect(pages.map((d) => d.url).toSorted()).toEqual([
+    const index = searchIndex(catchAll);
+    const pageUrls = index.documents.flatMap((d) => (d.heading === "" ? [d.url] : []));
+    expect(pageUrls.toSorted()).toEqual([
       "/kb/dup/same/",
       "/kb/frappe/",
       "/kb/frappe/bench-operations/",
@@ -302,19 +317,19 @@ describe("what every consumer of the collection sees", () => {
   it("the sitemap, the search index and the feed announce the same pages", () => {
     const origin = "https://vault.example";
     const fromSitemap = [...html(catchAll, "sitemap.xml").matchAll(/<loc>([^<]+)<\/loc>/g)]
-      .map((m) => m[1]!.replace(origin, "").replace(/\/?$/, "/"))
-      .filter((url) => url.startsWith("/kb/"))
+      .flatMap((m) => {
+        const url = m[1]!.replace(origin, "").replace(/\/?$/, "/");
+        return url.startsWith("/kb/") ? [url] : [];
+      })
       .toSorted();
     const fromIndex = [
-      ...new Set(
-        (
-          JSON.parse(html(catchAll, "search-index.json")) as { documents: { url: string }[] }
-        ).documents.map((d) => d.url.split("#")[0]!),
-      ),
+      ...new Set(searchIndex(catchAll).documents.map((d) => d.url.split("#")[0]!)),
     ].toSorted();
     const fromFeed = [...html(catchAll, "feed.xml").matchAll(/<link[^>]*href="([^"]+)"/g)]
-      .map((m) => m[1]!.replace(origin, ""))
-      .filter((url) => url.startsWith("/kb/") && url !== "/kb/")
+      .flatMap((m) => {
+        const url = m[1]!.replace(origin, "");
+        return url.startsWith("/kb/") && url !== "/kb/" ? [url] : [];
+      })
       .toSorted();
     expect(fromIndex).toEqual(fromSitemap);
     expect(fromFeed).toEqual(fromSitemap);
@@ -322,8 +337,8 @@ describe("what every consumer of the collection sees", () => {
 
   it("the two page shapes agree on every URL the search index announces", () => {
     const urls = (root: string) =>
-      (JSON.parse(html(root, "search-index.json")) as { documents: { url: string }[] }).documents
-        .map((d) => d.url)
+      searchIndex(root)
+        .documents.map((d) => d.url)
         .toSorted();
     expect(urls(named)).toEqual(urls(catchAll));
   });
@@ -334,27 +349,36 @@ describe("what every consumer of the collection sees", () => {
 /** A project of its own over a vault of its own; `warnings` are what the build printed. */
 async function buildCustom(options: {
   vault: Record<string, string>;
-  kb?: Record<string, unknown>;
-  pages: Record<string, object>;
-  project?: Record<string, unknown>;
+  /** Overrides for the collection's defaults; `undefined` removes a default key. */
+  kb?: Record<string, JsonValue | undefined>;
+  pages: Record<string, JsonObject>;
+  project?: JsonObject;
 }): Promise<{ root: string; warnings: string[] }> {
   const root = mkdtempSync(join(tmpdir(), "jx-vault-e2e-custom-"));
   roots.push(root);
   for (const [rel, text] of Object.entries(options.vault)) {
-    write(root, `vault/${rel}`, text);
+    writeText(root, `vault/${rel}`, text);
   }
-  write(root, "project.json", {
+  const kb: JsonObject = { format: "Markdown", route: "/kb/{slug}/", source: "./vault" };
+  for (const [key, value] of Object.entries(options.kb ?? {})) {
+    if (value === undefined) {
+      delete kb[key];
+    } else {
+      kb[key] = value;
+    }
+  }
+  writeJson(root, "project.json", {
     build: { outDir: "./dist" },
-    content: { kb: { format: "Markdown", route: "/kb/{slug}/", source: "./vault", ...options.kb } },
+    content: { kb },
     extensions: ["@jxsuite/parser", "@jxsuite/search"],
     images: { optimize: false },
     name: "Custom Vault Site",
     url: "https://vault.example",
     ...options.project,
   });
-  write(root, "pages/index.json", { children: ["home"], tagName: "div" });
+  writeJson(root, "pages/index.json", { children: ["home"], tagName: "div" });
   for (const [rel, doc] of Object.entries(options.pages)) {
-    write(root, `pages/${rel}`, doc);
+    writeJson(root, `pages/${rel}`, doc);
   }
   const warnings: string[] = [];
   const original = console.warn;
@@ -493,8 +517,9 @@ describe("text that looks like a template", () => {
     });
     const out = html(root, "list/index.html");
     expect(out).not.toContain("data-bind");
-    expect(visibleText(out)).toContain("Prose naming ${state.page.data.title} and ${HOME} here.");
-    expect(visibleText(out)).toContain("Heading ${h}");
+    const text = visibleText(out);
+    expect(text).toContain("Prose naming ${state.page.data.title} and ${HOME} here.");
+    expect(text).toContain("Heading ${h}");
     // The attribute cannot hold an entity, so the sequence is split rather than left to evaluate.
     expect(out).toContain("$\u200B{state.page.data.title}");
   });
@@ -539,8 +564,9 @@ describe("a localized collection", () => {
       },
     });
     expect(html(root, "kb/guide/index.html")).toContain("English words.");
-    expect(html(root, "fr/kb/guide/index.html")).toContain("Mots en francais.");
-    expect(html(root, "fr/kb/guide/index.html")).not.toContain("English words.");
+    const french = html(root, "fr/kb/guide/index.html");
+    expect(french).toContain("Mots en francais.");
+    expect(french).not.toContain("English words.");
   });
 });
 

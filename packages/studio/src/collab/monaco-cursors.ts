@@ -14,7 +14,7 @@ export interface AwarenessLike {
   off: (event: "change", cb: () => void) => void;
 }
 
-interface PeerStateShape {
+interface PeerPresence {
   user?: { color?: string; name?: string; login?: string };
 }
 
@@ -40,7 +40,10 @@ export function cursorStylesheet(awareness: AwarenessLike): string {
     if (clientId === awareness.clientID) {
       continue;
     }
-    const { user } = raw as PeerStateShape;
+    /* SAFETY: y-protocols keeps only non-null state objects in getStates() (a peer clearing its
+     * state removes the entry), and every member of PeerPresence is optional and read through
+     * optional chaining below, so a peer that publishes no `user` is skipped, not misread. */
+    const { user } = raw as PeerPresence;
     if (!user?.color) {
       continue;
     }

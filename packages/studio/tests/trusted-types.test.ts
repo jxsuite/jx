@@ -19,22 +19,45 @@ interface PolicyRules {
   createScriptURL?: (input: string) => string;
 }
 
+/** The slice of the Trusted Types API a stub provides: the one factory the policy module calls. */
+interface TrustedTypesStub {
+  createPolicy: (name: string, rules: PolicyRules) => { createHTML: (input: string) => string };
+}
+
+/** What `createPolicy` was called with, as the stub recorded it. */
+interface CapturedPolicy {
+  name: string | null;
+  rules: PolicyRules | null;
+}
+
+/**
+ * Put `stub` on the global scope as `trustedTypes`, where the module under test looks for it. A
+ * property definition rather than an assignment, because this `lib.dom` declares no such member.
+ */
+function defineTrustedTypes(stub: TrustedTypesStub): void {
+  Object.defineProperty(globalThis, "trustedTypes", {
+    configurable: true,
+    value: stub,
+    writable: true,
+  });
+}
+
 /** Install a minimal `trustedTypes` stub and hand back what the policy was created with. */
-function installTrustedTypes(): { name: string | null; rules: PolicyRules | null } {
-  const captured: { name: string | null; rules: PolicyRules | null } = { name: null, rules: null };
-  (globalThis as Record<string, unknown>).trustedTypes = {
-    createPolicy(name: string, rules: PolicyRules) {
+function installTrustedTypes(): CapturedPolicy {
+  const captured: CapturedPolicy = { name: null, rules: null };
+  defineTrustedTypes({
+    createPolicy(name, rules) {
       captured.name = name;
       captured.rules = rules;
       return { createHTML: (input: string) => `TRUSTED:${rules.createHTML?.(input) ?? input}` };
     },
-  };
+  });
   return captured;
 }
 
 afterEach(() => {
   resetStudioPolicy();
-  delete (globalThis as Record<string, unknown>).trustedTypes;
+  Reflect.deleteProperty(globalThis, "trustedTypes");
 });
 
 describe("assertSanitized", () => {
@@ -97,12 +120,12 @@ describe("studioPolicy", () => {
 
   test("the policy is created once", () => {
     let created = 0;
-    (globalThis as Record<string, unknown>).trustedTypes = {
-      createPolicy(_name: string, rules: PolicyRules) {
+    defineTrustedTypes({
+      createPolicy(_name, rules) {
         created += 1;
         return { createHTML: (input: string) => rules.createHTML?.(input) ?? input };
       },
-    };
+    });
     studioPolicy();
     studioPolicy();
     // A second createPolicy with the same name throws where policies are restricted by CSP.

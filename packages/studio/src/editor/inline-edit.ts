@@ -7,13 +7,13 @@
  * text formatting, Enter for new paragraphs, and slash commands for inserting elements.
  */
 
-import elementsMeta from "../../data/elements-meta.json";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { normalizeInlineContent } from "./inline-format";
-import { isEditableTag } from "./editable-tags";
+import { execEditingCommand } from "./inline-link";
+import { ELEMENT_DEFS, isEditableTag } from "./editable-tags";
 import type { EditableVerdicts } from "./editable-tags";
 import type { JxPath } from "../state";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonPrimitive, JxMutableNode } from "@jxsuite/schema/types";
 
 /**
  * The slash-menu surface inline editing drives. Injected (rather than imported) so this module
@@ -21,12 +21,15 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
  * real menu, the canvas iframe supplies its own (or a no-op) without bloating the slim iframe
  * bundle.
  */
+/** What a slash menu is opened with: the pick handler, and how the list is filtered and sourced. */
+export interface SlashMenuOptions {
+  onSelect: (cmd: SlashCommand) => void;
+  showFilter?: boolean;
+  commands?: SlashCommand[];
+}
+
 export interface SlashController {
-  show: (
-    anchorEl: HTMLElement,
-    filter: string,
-    cbs: { onSelect: (cmd: SlashCommand) => void; showFilter?: boolean; commands?: SlashCommand[] },
-  ) => void;
+  show: (anchorEl: HTMLElement, filter: string, cbs: SlashMenuOptions) => void;
   dismiss: () => void;
   isOpen: () => boolean;
 }
@@ -74,11 +77,6 @@ export interface InlineAction {
   shortcut?: string;
 }
 
-interface ElementDef {
-  $inlineChildren?: string[];
-  $inlineActions?: InlineAction[] | string;
-}
-
 export interface SlashCommand {
   label: string;
   tag: string;
@@ -124,7 +122,7 @@ export function isInlineInContext(childTag: string, parentTag: string) {
   if (!parentTag) {
     return INLINE_TAGS.has(childTag);
   }
-  const parentDef = (elementsMeta.$defs as Record<string, ElementDef>)[parentTag];
+  const parentDef = ELEMENT_DEFS[parentTag];
   if (!parentDef || !parentDef.$inlineChildren) {
     return false;
   }
@@ -139,13 +137,13 @@ export function isInlineInContext(childTag: string, parentTag: string) {
  * @returns {InlineAction[] | null}
  */
 export function getInlineActions(tag: string) {
-  const def = (elementsMeta.$defs as Record<string, ElementDef>)[tag];
+  const def = ELEMENT_DEFS[tag];
   if (!def) {
     return null;
   }
   let actions = def.$inlineActions;
-  if (typeof actions === "string") {
-    const refDef = (elementsMeta.$defs as Record<string, ElementDef>)[actions];
+  if (isString(actions)) {
+    const refDef = ELEMENT_DEFS[actions];
     actions = refDef?.$inlineActions ?? undefined;
   }
   if (!Array.isArray(actions)) {
@@ -233,12 +231,13 @@ export function isEditableBlock(el: HTMLElement) {
  * Check if a node is an inline child. When parentNode is provided, uses context-aware scoping from
  * metadata. Without parent, uses the fallback INLINE_TAGS set.
  *
- * @param {JxMutableNode} node
+ * @param {JxMutableNode | JsonPrimitive} node A document child entry; a text or other scalar child
+ *   is never an inline element.
  * @param {JxMutableNode} [parentNode]
  * @returns {boolean}
  */
-export function isInlineElement(node: JxMutableNode, parentNode?: JxMutableNode) {
-  if (!node || typeof node !== "object") {
+export function isInlineElement(node: JxMutableNode | JsonPrimitive, parentNode?: JxMutableNode) {
+  if (!isNonNullObject(node)) {
     return false;
   }
   const childTag = (displayTagName(node.tagName) || "div").toLowerCase();
@@ -304,7 +303,7 @@ export function startEditing(
   insertFn = callbacks.onInsert;
   endFn = callbacks.onEnd;
   _plainMode = opts?.plainText === true;
-  _plainOriginal = _plainMode ? (el.textContent ?? "") : "";
+  _plainOriginal = _plainMode ? el.textContent : "";
   _plainPosted = false;
 
   // Mark the caret's block so the empty-block slash hint can target it. The editing host itself is
@@ -495,7 +494,7 @@ function handlePaste(e: ClipboardEvent) {
   e.preventDefault();
   // Paste as plain text to avoid foreign HTML
   const text = e.clipboardData?.getData("text/plain") ?? "";
-  document.execCommand("insertText", false, text);
+  execEditingCommand("insertText", text);
 }
 
 // ─── Enter: split the active block ─────────────────────────────────────────
@@ -594,7 +593,7 @@ function commitChanges(inPlace: boolean) {
   if (_plainMode) {
     // A prop value is a plain single-line string (a directive attribute) — flatten any newline
     // That survived plaintext editing and skip the rich DOM→Jx serialization entirely.
-    const text = (activeEl.textContent ?? "").replaceAll("\n", " ");
+    const text = activeEl.textContent.replaceAll("\n", " ");
     /*
      * A SESSION THAT CHANGED NOTHING MUST WRITE NOTHING.
      *
@@ -635,17 +634,18 @@ export function normalizeChildren(node: { children?: (JxMutableNode | string)[] 
   }
 
   // Step 1: Merge adjacent text nodes
-  const merged = [];
+  const merged: (JxMutableNode | string)[] = [];
   for (const child of node.children) {
-    if (typeof child === "string" && merged.length > 0 && typeof merged.at(-1) === "string") {
-      merged[merged.length - 1] += child;
+    const last = merged.at(-1);
+    if (isString(child) && isString(last)) {
+      merged[merged.length - 1] = last + child;
     } else {
       merged.push(child);
     }
   }
 
   // Step 2: If all children are text, fold into textContent
-  if (merged.every((c: JxMutableNode | string) => typeof c === "string")) {
+  if (merged.every((c) => isString(c))) {
     return { textContent: merged.join("") };
   }
 
@@ -674,7 +674,7 @@ function elementToJx(el: HTMLElement): JxContentResult {
   const children: (JxMutableNode | string)[] = [];
   for (const child of nodes) {
     const jsx = domNodeToJx(child);
-    if (jsx !== null && jsx !== undefined) {
+    if (jsx !== null) {
       children.push(jsx);
     }
   }
@@ -682,6 +682,23 @@ function elementToJx(el: HTMLElement): JxContentResult {
   // Normalize: merge adjacent text nodes + fold all-text to textContent
   return normalizeChildren({ children });
 }
+
+/**
+ * Whether `node` is an element carrying `dataset` — an HTML, SVG or MathML element, which is every
+ * element an HTML editing host can hold. Decided by node type and feature, not `instanceof`, so it
+ * holds for a node of any realm.
+ */
+function isDatasetElementNode(node: Node): node is Element & HTMLOrSVGElement {
+  return node.nodeType === Node.ELEMENT_NODE && "dataset" in node;
+}
+
+/** Browser execCommand output tags, mapped to the tags Jx documents use for the same formatting. */
+const BROWSER_TAG_CONVENTIONS = new Map([
+  ["b", "strong"],
+  ["i", "em"],
+  ["s", "del"],
+  ["strike", "del"],
+]);
 
 /**
  * Convert a DOM node to a Jx element definition.
@@ -698,23 +715,17 @@ function domNodeToJx(node: Node) {
     return text; // Bare string — text node child
   }
 
-  if (node.nodeType !== Node.ELEMENT_NODE) {
+  if (!isDatasetElementNode(node)) {
     return null;
   }
 
-  const el = node as HTMLElement;
+  const el = node;
   const tag = el.tagName.toLowerCase();
   const result: JxMutableNode = { tagName: tag };
 
-  // Map browser execCommand output to our tag conventions
-  const tagMap: Record<string, string> = {
-    b: "strong",
-    i: "em",
-    s: "del",
-    strike: "del",
-  };
-  if (tagMap[tag]) {
-    result.tagName = tagMap[tag];
+  const conventional = BROWSER_TAG_CONVENTIONS.get(tag);
+  if (conventional) {
+    result.tagName = conventional;
   }
 
   // Attributes
@@ -725,8 +736,9 @@ function domNodeToJx(node: Node) {
   const href = el.dataset.jxHref ?? el.getAttribute("href");
   if (tag === "a" && href != null) {
     result.attributes = { href };
-    if ((el as HTMLAnchorElement).title) {
-      result.attributes.title = (el as HTMLAnchorElement).title;
+    // `title` is an HTMLElement property: an HTML `<a>` reflects the attribute, an SVG `<a>` has none.
+    if ("title" in el && isString(el.title) && el.title) {
+      result.attributes.title = el.title;
     }
   }
   if (tag === "code") {
@@ -776,13 +788,15 @@ function fragmentToJx(frag: DocumentFragment) {
     }
   }
 
+  const [only] = children;
   if (
     children.length === 1 &&
-    typeof children[0] !== "string" &&
-    children[0]!.tagName === "span" &&
-    typeof children[0]!.textContent === "string"
+    only !== undefined &&
+    !isString(only) &&
+    only.tagName === "span" &&
+    isString(only.textContent)
   ) {
-    return { textContent: children[0]!.textContent };
+    return { textContent: only.textContent };
   }
 
   return children.length > 0 ? { children } : { textContent: "" };
@@ -855,10 +869,11 @@ export function openSlashMenu(opts?: { anchored?: boolean }): void {
 
   // An unanchored menu carries its own filter field: there is no "/…" run in the document for the
   // Author to type into, so without one the list could only ever be filtered by scrolling it.
-  slash.show(activeEl, "", {
-    onSelect: handleSlashSelect,
-    ...(_slashAnchored ? {} : { showFilter: true }),
-  });
+  const menu: SlashMenuOptions = { onSelect: handleSlashSelect };
+  if (!_slashAnchored) {
+    menu.showFilter = true;
+  }
+  slash.show(activeEl, "", menu);
 }
 
 /**
@@ -935,6 +950,7 @@ function handleSlashSelect(cmd: SlashCommand) {
       let slashNode: Text | null = null;
       let slashOffset = 0;
       while (walker.nextNode()) {
+        // SAFETY: the walker shows only text nodes (SHOW_TEXT), and nextNode() just landed on one.
         const node = walker.currentNode as Text;
         if (charCount + node.length > slashIdx) {
           slashNode = node;

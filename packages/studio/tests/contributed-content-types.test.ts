@@ -34,22 +34,37 @@ import {
 } from "../src/settings/contributed-section";
 import { resetFormControlUiState } from "../src/ui/form-controls";
 import { projectState } from "../src/store";
+import { isString } from "@jxsuite/schema/guards";
 import type { ExtensionContributionInfo } from "../src/types";
 import type { MockPlatformState } from "./harness";
 import type { SettingsContribution } from "../src/settings/contributed-section";
 
-type AnyRecord = Record<string, any>;
+/** One field of a content type's schema, as this suite's fixtures and the section write it. */
+interface FieldSchema {
+  $ref?: string;
+  format?: string;
+  items?: FieldSchema;
+  properties?: Record<string, FieldSchema>;
+  required?: string[];
+  type?: string;
+}
+
+/** One content type under project.json's `content`: a source folder, a format, a schema. */
+interface ContentTypeEntry {
+  format?: string;
+  schema: FieldSchema;
+  source: string;
+}
+
+type ContentMap = Record<string, ContentTypeEntry>;
 
 // ─── The real parser contribution, exactly as the backend wires it ──────────
 
-const parserClass = contentClass as AnyRecord;
-const fragment = parserFragment as AnyRecord;
-
 const wireContribution: ExtensionContributionInfo = {
   className: "Content",
-  entrySchema: fragment.properties.content,
-  project: parserClass.project,
-  studio: parserClass.$studio,
+  entrySchema: parserFragment.properties.content,
+  project: contentClass.project,
+  studio: contentClass.$studio,
 };
 
 function derivedContribution(): SettingsContribution {
@@ -74,10 +89,10 @@ async function settle(): Promise<void> {
 /** A node the SECTION's own document draws, by the `part` it carries. */
 function part(root: ParentNode, name: string): HTMLElement {
   const el = root.querySelector(`[part="${name}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`no [part="${name}"] in the Content Types section`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** The native control a kit element wraps. */
@@ -109,16 +124,16 @@ function shows(el: Element): string {
 /** One field of the schema form — its own island, addressed by the property it edits. */
 function field(root: ParentNode, prop: string): HTMLElement {
   const el = root.querySelector(`[data-prop="${prop}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`the entry form has no field for "${prop}"`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** The content-type keys the left column is offering. */
 function entryKeys(scope: HTMLElement): string[] {
-  return [...scope.querySelectorAll("[data-entry]")].map(
-    (el) => (el as HTMLElement).dataset.entry ?? "",
+  return [...scope.querySelectorAll("[data-entry]")].flatMap((el) =>
+    el instanceof HTMLElement ? [el.dataset.entry ?? ""] : [],
   );
 }
 
@@ -139,10 +154,10 @@ function toggleSwitch(el: Element, checked: boolean): void {
 /** The (top-level) field card the schema-builder drew for a property. */
 function fieldCard(container: HTMLElement, fieldName: string): HTMLElement {
   const card = container.querySelector(`[data-field="${fieldName}"]`);
-  if (!card) {
+  if (!(card instanceof HTMLElement)) {
     throw new Error(`no field card for "${fieldName}"`);
   }
-  return card as HTMLElement;
+  return card;
 }
 
 /** One control of a field's own row, so a parent's is never mistaken for a child's. */
@@ -184,17 +199,25 @@ async function openNewEntry(container: HTMLElement): Promise<void> {
   await settle();
 }
 
-function config(): AnyRecord {
-  return (projectState as AnyRecord).projectConfig;
+/** The content map the section is editing, as it stands in memory. */
+function config(): { content: ContentMap } {
+  const current = projectState?.projectConfig;
+  if (!current) {
+    throw new Error("this test opened the section without a project config");
+  }
+  /* SAFETY: setup() seeds projectConfig as `{ content }` from postsConfig() or `{}`, and the
+     section only writes `content` entries cloned from those or from the parser's newEntry
+     template, each a `{ schema, source, format? }` object as ContentTypeEntry declares. */
+  return current as { content: ContentMap };
 }
 
 function projectWrites(state: MockPlatformState): string[] {
-  return state.calls
-    .filter((c) => c[0] === "writeFile" && c[1] === "project.json")
-    .map((c) => c[2] as string);
+  return state.calls.flatMap((c) =>
+    c[0] === "writeFile" && c[1] === "project.json" && isString(c[2]) ? [c[2]] : [],
+  );
 }
 
-function postsConfig(): AnyRecord {
+function postsConfig() {
   return {
     pages: {
       schema: { properties: { title: { type: "string" } }, required: [], type: "object" },
@@ -219,16 +242,16 @@ function postsConfig(): AnyRecord {
       },
       source: "./content/posts/",
     },
-  };
+  } satisfies ContentMap;
 }
 
 let platformState: MockPlatformState;
 let container: HTMLElement;
 
-async function setup(content: AnyRecord | null): Promise<void> {
+async function setup(content: ContentMap | null): Promise<void> {
   ({ state: platformState } = installMockPlatform());
   resetStudioState({
-    projectConfig: content === null ? null : ({ content } as unknown),
+    projectConfig: content === null ? null : { content },
   });
   container = document.createElement("div");
   document.body.append(container);
@@ -287,8 +310,9 @@ describe("content types list panel", () => {
 
   test("lists existing content type names and opens the entry form on select", async () => {
     await setup(postsConfig());
-    expect(entryKeys(container)).toContain("posts");
-    expect(entryKeys(container)).toContain("pages");
+    const keys = entryKeys(container);
+    expect(keys).toContain("posts");
+    expect(keys).toContain("pages");
 
     await selectType(container, "posts");
     expect(container.querySelector('[part="editor"]')).not.toBeNull();
@@ -343,7 +367,7 @@ describe("new content type flow", () => {
     await settle();
     key(control(input()), "Enter");
     await settle();
-    expect(config().content.posts.schema.properties.title).toEqual({ type: "string" });
+    expect(config().content.posts?.schema.properties?.title).toEqual({ type: "string" });
 
     key(control(input()), "Escape");
     await settle();
@@ -372,7 +396,7 @@ describe("content type rename and delete", () => {
     setAndFire(part(container, "entry-name"), "Blog Posts");
     await settle();
     expect(Object.keys(config().content)).toEqual(["pages", "blog-posts"]);
-    expect(config().content["blog-posts"].source).toBe("./content/posts/");
+    expect(config().content["blog-posts"]?.source).toBe("./content/posts/");
 
     setAndFire(part(container, "entry-name"), "pages");
     await settle();
@@ -397,8 +421,12 @@ describe("content type rename and delete", () => {
 // ─── Schema-builder field CRUD (the old editor's core surface) ───────────────
 
 describe("schema fields through the schema-builder control", () => {
-  function postsSchema(): AnyRecord {
-    return config().content.posts.schema;
+  function postsSchema(): FieldSchema & { properties: Record<string, FieldSchema> } {
+    const schema = config().content.posts?.schema;
+    if (!schema?.properties) {
+      throw new Error("the posts content type has lost its object schema");
+    }
+    return { ...schema, properties: schema.properties };
   }
 
   test("add a formatted required field via the inline add form", async () => {
@@ -512,20 +540,20 @@ describe("schema fields through the schema-builder control", () => {
     await settle();
     key(control(cardPart(container, "meta", "nested-add-name")), "Enter");
     await settle();
-    expect(metaSchema().properties.birthYear).toEqual({ type: "number" });
+    expect(metaSchema()?.properties?.birthYear).toEqual({ type: "number" });
 
     setAndFire(nestedPart(container, "meta", "author", "field-name"), "author name");
     await settle();
-    expect(metaSchema().properties.authorName).toEqual({ type: "string" });
-    expect(metaSchema().required).toContain("authorName");
+    expect(metaSchema()?.properties?.authorName).toEqual({ type: "string" });
+    expect(metaSchema()?.required).toContain("authorName");
 
     toggleSwitch(nestedPart(container, "meta", "authorName", "field-required"), false);
     await settle();
-    expect(metaSchema().required).not.toContain("authorName");
+    expect(metaSchema()?.required).not.toContain("authorName");
 
     pointer(nestedPart(container, "meta", "birthYear", "field-delete"), "click");
     await settle();
-    expect(metaSchema().properties.birthYear).toBeUndefined();
+    expect(metaSchema()?.properties?.birthYear).toBeUndefined();
     expect(projectWrites(platformState).length).toBeGreaterThanOrEqual(3);
   });
 

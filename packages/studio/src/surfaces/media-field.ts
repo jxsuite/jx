@@ -22,10 +22,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import mediaFieldDoc from "./media-field.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("media-field", mediaFieldDoc as unknown as JxDocument);
+registerSurface("media-field", mediaFieldDoc);
 
 /** Everything the control draws, as one value. */
 export interface MediaFieldView {
@@ -58,7 +57,7 @@ export interface MediaFieldHandle {
 }
 
 /** The scope the document reads. */
-interface MediaFieldScope extends Record<string, unknown>, MediaFieldView, MediaFieldActions {}
+interface MediaFieldScope extends MediaFieldView, MediaFieldActions {}
 
 /** Write a projection into the scope. */
 function project(scope: MediaFieldScope, view: MediaFieldView): void {
@@ -81,7 +80,7 @@ export function mountMediaFieldSurface(
   view: MediaFieldView,
   actions: MediaFieldActions,
 ): MediaFieldHandle {
-  const scope = reactive<MediaFieldScope>({
+  const scope: MediaFieldScope = reactive<MediaFieldScope>({
     browse: actions.browse,
     edit: actions.edit,
     label: view.label,
@@ -90,7 +89,7 @@ export function mountMediaFieldSurface(
     upload: actions.upload,
     value: view.value,
     warm: actions.warm,
-  }) as MediaFieldScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;

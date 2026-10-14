@@ -8,20 +8,20 @@
 import { describe, expect, test } from "bun:test";
 
 import { assertAnchors, decide } from "./affected.ts";
-import { validateManifest } from "./lib/types.ts";
+import { DEFAULT_MANIFEST, validateManifest } from "./lib/types.ts";
 import type { Manifest, Shot } from "./lib/types.ts";
 
-const MANIFEST = "scripts/screenshots/manifest.json";
-const live = validateManifest(await Bun.file(MANIFEST).json());
+const live = validateManifest(await Bun.file(DEFAULT_MANIFEST).json());
 
 function shot(name: string, project?: string, quarantined?: boolean): Shot {
-  return {
-    name,
-    ...(project === undefined ? {} : { open: { project } }),
-    ...(quarantined
-      ? { status: { reason: "test fixture", since: "deadbeef", state: "quarantined" as const } }
-      : {}),
-  };
+  const fixture: Shot = { name };
+  if (project !== undefined) {
+    fixture.open = { project };
+  }
+  if (quarantined) {
+    fixture.status = { reason: "test fixture", since: "deadbeef", state: "quarantined" };
+  }
+  return fixture;
 }
 
 function manifest(shots: Shot[]): Manifest {

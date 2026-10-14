@@ -37,7 +37,7 @@
  * registered from here, like every other tab of this dock.
  */
 
-import { render as litRender, nothing } from "lit-html";
+import { render, nothing } from "lit-html";
 import { effect, effectScope } from "../reactivity";
 import {
   BOTTOM_TAB_IDS,
@@ -141,6 +141,8 @@ export function activeBottomPanel(ctx: CommandContext = panelContext()): PanelRe
  */
 function bottomContext(): NavigatorPanelContext {
   return {
+    /* SAFETY: no Bottom dock panel reads `deps` (see above): Problems and Activity render from their
+       own stores and Logic from `activeTab`, so this empty stand-in is never dereferenced. */
     deps: {} as NavigatorPanelDeps,
     doc: null,
     rerender: renderBottomDock,
@@ -296,7 +298,7 @@ function paintBody(): void {
     return;
   }
   const active = activeBottomPanel();
-  litRender(
+  render(
     active
       ? active.render(bottomContext())
       : emptyState(host, { message: "Nothing to show here yet." }),
@@ -394,7 +396,7 @@ export function unmountBottomDock(): void {
     _host.removeAttribute(REGION_ATTR);
     /* The document's dispose removed its own root; this clears anything a caller left beside it,
        so the host is `:empty` again and the shell's sheet takes the dock out of the grid. */
-    litRender(nothing, _host);
+    render(nothing, _host);
     _host.textContent = "";
     runAfterRender(_host);
     _host = null;

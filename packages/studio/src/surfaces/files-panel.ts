@@ -37,14 +37,15 @@
  * @docs studio/interface
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import filesPanelDoc from "./files-panel.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("files-panel", filesPanelDoc as unknown as JxDocument);
+registerSurface("files-panel", filesPanelDoc);
 
 /**
  * One row the tree draws, with every field already a string.
@@ -170,7 +171,7 @@ export interface FilesPanelSurfaceHandle {
 }
 
 /** The scope the document reads: the projection, plus everything a control can ask for. */
-interface FilesPanelScope extends Record<string, unknown>, FilesPanelValues, FilesPanelActions {}
+interface FilesPanelScope extends FilesPanelValues, FilesPanelActions {}
 
 /** Write a projection into the scope. Assignment by assignment, so an unchanged field is inert. */
 function project(scope: FilesPanelScope, values: FilesPanelValues): void {
@@ -214,15 +215,28 @@ export function emptyFilesPanelValues(): FilesPanelValues {
 
 /** The `part` a node's definition carries, or `""` for a text node or an unmarked element. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
-/** The mapped row a node was rendered inside, or null when it was not in one. */
-function mappedRow(state: JxScope | undefined): FileRowView | null {
-  const map = state?.["$map"] as { item?: unknown } | undefined;
-  const item = map?.item as FileRowView | undefined;
-  return typeof item?.path === "string" ? item : null;
+/**
+ * The path and type of the mapped row a node was rendered inside, or null when it was not in one.
+ * The only mapped array in `files-panel.json` is `#/state/rows`, which `project()` fills from
+ * `FilesPanelValues.rows: FileRowView[]`, so a row's item carries both as strings.
+ */
+function mappedRow(state: JxScope | undefined): Pick<FileRowView, "path" | "type"> | null {
+  const map = state?.["$map"];
+  const item = isNonNullObject(map) && "item" in map ? map.item : undefined;
+  if (
+    !isNonNullObject(item) ||
+    !("path" in item) ||
+    !isString(item.path) ||
+    !("type" in item) ||
+    !isString(item.type)
+  ) {
+    return null;
+  }
+  return { path: item.path, type: item.type };
 }
 
 /**
@@ -237,10 +251,10 @@ export function mountFilesPanelSurface(
   values: FilesPanelValues,
   actions: FilesPanelActions,
 ): FilesPanelSurfaceHandle {
-  const scope = reactive<FilesPanelScope>({
+  const scope: FilesPanelScope = reactive<FilesPanelScope>({
     ...emptyFilesPanelValues(),
     ...actions,
-  }) as FilesPanelScope;
+  });
   project(scope, values);
 
   let mounted: SurfaceHandle | null = null;
@@ -286,8 +300,7 @@ export function mountFilesPanelSurface(
        answer is simply whether this handle is still wanted — answering no would start a second
        mount racing the first. Once mounted, the question is whether the root is still where it was
        put: a Navigator that painted another panel cleared this document out from under it. */
-    connected: () =>
-      !disposed && (mounted === null || (mounted.root as Node).parentNode === container),
+    connected: () => !disposed && (mounted === null || mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

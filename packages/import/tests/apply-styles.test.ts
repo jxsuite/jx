@@ -1,7 +1,18 @@
 import { describe, test, expect } from "bun:test";
 import { applyStylesToTree, orderBreakpointKeys } from "../src/apply-styles.ts";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import type { DiffedStyle } from "../src/style-diff.ts";
+
+/** The element at `index` of `node`'s children, failing the test where that slot is text or absent. */
+function childAt(node: JxElement, index: number): JxElement {
+  const { children } = node;
+  const child = Array.isArray(children) ? children[index] : undefined;
+  if (child === undefined || isString(child)) {
+    throw new Error(`expected an element child at index ${index}`);
+  }
+  return child;
+}
 
 describe("applyStylesToTree", () => {
   test("applies base styles to matching nodes", () => {
@@ -26,13 +37,13 @@ describe("applyStylesToTree", () => {
 
     applyStylesToTree(tree, styles);
 
-    const container = (tree.children as JxElement[])[0]!;
+    const container = childAt(tree, 0);
     expect(container.style).toEqual({ display: "flex", gap: "16px" });
 
-    const h1 = (container.children as JxElement[])[0]!;
+    const h1 = childAt(container, 0);
     expect(h1.style).toEqual({ fontSize: "32px", fontWeight: 700 });
 
-    const p = (container.children as JxElement[])[1]!;
+    const p = childAt(container, 1);
     expect(p.style).toEqual({ color: "rgb(100, 100, 100)" });
   });
 
@@ -46,7 +57,7 @@ describe("applyStylesToTree", () => {
 
     applyStylesToTree(tree, styles);
 
-    const p = (tree.children as JxElement[])[0]!;
+    const p = childAt(tree, 0);
     expect(p.style).toEqual({ color: "red", fontSize: "14px", fontWeight: 400 });
   });
 
@@ -60,14 +71,14 @@ describe("applyStylesToTree", () => {
       { path: [0], style: { display: "flex", flexDirection: "row" } },
     ];
 
-    const mediaDeltas: Record<string, DiffedStyle[]> = {
+    const mediaDeltas = {
       "--768": [{ path: [0], style: { flexDirection: "column" } }],
       "--640": [{ path: [0], style: { flexDirection: "column", gap: "8px" } }],
-    };
+    } satisfies Record<string, DiffedStyle[]>;
 
     applyStylesToTree(tree, baseStyles, mediaDeltas);
 
-    const container = (tree.children as JxElement[])[0]!;
+    const container = childAt(tree, 0);
     expect(container.style).toEqual({
       display: "flex",
       flexDirection: "row",
@@ -94,10 +105,10 @@ describe("applyStylesToTree", () => {
 
     applyStylesToTree(tree, styles);
 
-    const p1 = (tree.children as JxElement[])[1]!;
+    const p1 = childAt(tree, 1);
     expect(p1.style).toEqual({ color: "blue" });
 
-    const p2 = (tree.children as JxElement[])[3]!;
+    const p2 = childAt(tree, 3);
     expect(p2.style).toEqual({ color: "green" });
   });
 
@@ -118,7 +129,7 @@ describe("applyStylesToTree", () => {
 
     applyStylesToTree(tree, []);
 
-    const p = (tree.children as JxElement[])[0]!;
+    const p = childAt(tree, 0);
     expect(p.style).toBeUndefined();
   });
 });
@@ -164,12 +175,12 @@ describe("breakpoint key order", () => {
   });
 
   test("is stable with no query map at all", () => {
-    const noQueries: Record<string, string> | undefined = undefined;
+    const noQueries = undefined;
     expect(orderBreakpointKeys(["--767", "--1024"], noQueries)).toEqual(["--767", "--1024"]);
   });
 
   test("applies the deltas onto the node in that order", () => {
-    const root: JxElement = { tagName: "div", children: [{ tagName: "p" }] as JxElement[] };
+    const root: JxElement = { tagName: "div", children: [{ tagName: "p" }] };
     applyStylesToTree(
       root,
       [],
@@ -179,7 +190,7 @@ describe("breakpoint key order", () => {
       },
       QUERIES,
     );
-    const node = (root.children as JxElement[])[0]!;
-    expect(Object.keys(node.style as object)).toEqual(["@--1024", "@--767"]);
+    const node = childAt(root, 0);
+    expect(Object.keys(node.style ?? {})).toEqual(["@--1024", "@--767"]);
   });
 });

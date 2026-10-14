@@ -25,21 +25,20 @@ import {
   updateDataRow,
 } from "../src/data-api";
 import type { DataConnectionsResponse, DataPushResult, DataRowsResult } from "@jxsuite/protocol";
+import { isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const TMP = resolve(import.meta.dir, "__test-data-api__");
 
-function writeFixture(relPath: string, content: string | object) {
+function writeFixture(relPath: string, content: string | JsonObject) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
 }
 
 interface CallOptions {
-  body?: unknown;
+  /** A string is sent verbatim (malformed-JSON cases); an object is serialized. */
+  body?: string | JsonObject;
   params?: Record<string, string>;
   root?: string;
   active?: string | null;
@@ -53,7 +52,7 @@ function call(method: string, path: string, opts: CallOptions = {}): Promise<Res
   const body =
     opts.body === undefined
       ? {}
-      : { body: typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body) };
+      : { body: isString(opts.body) ? opts.body : JSON.stringify(opts.body) };
   return handleDataApi(
     new Request(url, { method, ...body }),
     url,
@@ -64,7 +63,17 @@ function call(method: string, path: string, opts: CallOptions = {}): Promise<Res
 
 async function json<T>(res: Response | null): Promise<T> {
   expect(res).not.toBeNull();
+  /* SAFETY: each caller names the protocol response type of the route it just called (the
+     Data*-types or the route's documented `{ row }` / `{ ok }` / `{ names }` body), and the test
+     then asserts the very fields it reads, so a shape mismatch fails the test rather than passing. */
   return (await res!.json()) as T;
+}
+
+/** A row primary key as the row routes accept it: a uuid string or an integer id. */
+function assertRowPk(value: unknown): asserts value is string | number {
+  if (!isString(value) && !isNumber(value)) {
+    throw new Error("Expected the inserted row to carry a string or numeric id");
+  }
 }
 
 beforeAll(() => {
@@ -289,9 +298,9 @@ describe("rows", () => {
       },
     });
     expect(res!.status).toBe(201);
-    const { row } = await json<{ row: Record<string, unknown> }>(res);
-    expect(typeof row.id).toBe("string");
-    expect((row.id as string).length).toBe(36);
+    const { row } = await json<{ row: JsonObject }>(res);
+    expect(row.id).toBeString();
+    expect(row.id).toHaveLength(36);
     expect(row.views).toBe(3);
     expect(row.published).toBe(1);
     expect(row.meta).toBe(JSON.stringify({ a: 1 }));
@@ -350,12 +359,14 @@ describe("rows", () => {
 
   test("update commits by pk (normalizing integer pks) and bumps updated_at", async () => {
     const { row } = await insertDataRow(TMP, { table: "comments", values: { message: "hi" } });
-    expect(typeof row.id).toBe("number");
+    expect(row.id).toBeNumber();
+    const pk = row.id;
+    assertRowPk(pk);
 
     const res = await call("PUT", "/__studio/data/rows", {
-      body: { pk: String(row.id), set: { message: "edited" }, table: "comments" },
+      body: { pk: String(pk), set: { message: "edited" }, table: "comments" },
     });
-    const updated = await json<{ row: Record<string, unknown> }>(res);
+    const updated = await json<{ row: JsonObject }>(res);
     expect(updated.row.message).toBe("edited");
     expect(updated.row.updated_at).toBeTruthy();
 
@@ -364,7 +375,7 @@ describe("rows", () => {
     });
     expect(gone!.status).toBe(404);
     const empty = await call("PUT", "/__studio/data/rows", {
-      body: { pk: row.id, set: {}, table: "comments" },
+      body: { pk, set: {}, table: "comments" },
     });
     expect(empty!.status).toBe(400);
   });
@@ -372,8 +383,10 @@ describe("rows", () => {
   test("tables with timestamps disabled skip the conveniences", async () => {
     const { row } = await insertDataRow(TMP, { table: "notes", values: { body: "n1" } });
     expect(row.created_at).toBeUndefined();
+    const pk = row.id;
+    assertRowPk(pk);
     const updated = await updateDataRow(TMP, {
-      pk: row.id as string,
+      pk,
       set: { body: "n2" },
       table: "notes",
     });
@@ -382,14 +395,16 @@ describe("rows", () => {
 
   test("delete removes by pk and 404s on a second attempt", async () => {
     const { row } = await insertDataRow(TMP, { table: "tags", values: { name: "temp" } });
+    const pk = row.id;
+    assertRowPk(pk);
     const res = await call("DELETE", "/__studio/data/rows", {
-      params: { pk: String(row.id), table: "tags" },
+      params: { pk: String(pk), table: "tags" },
     });
     expect(await json<{ ok: boolean }>(res)).toEqual({ ok: true });
-    const again = await deleteDataRow(TMP, { pk: row.id as string, table: "tags" }).catch(
+    const again = await deleteDataRow(TMP, { pk, table: "tags" }).catch(
       (error: { status?: number }) => error,
     );
-    expect((again as { status?: number }).status).toBe(404);
+    expect(again).toMatchObject({ status: 404 });
   });
 
   test("undeclared tables (junctions, system tables) are browsable via explicit connection", async () => {

@@ -15,17 +15,22 @@
  */
 import "./with-dom.js";
 import { describe, expect, mock, test } from "bun:test";
+import type { Mock } from "bun:test";
 import {
   createAbsolutePositionFromRelativePosition,
   createRelativePositionFromTypeIndex,
   sourceText,
   YDoc,
 } from "@jxsuite/collab";
-import type { CollabAwarenessState } from "@jxsuite/collab";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type * as Y from "yjs";
 import type { editor } from "monaco-editor";
 import { bindMonacoToYText } from "../src/collab/monaco-binding";
-import type { BindingAwareness } from "../src/collab/monaco-binding";
+import type {
+  BindingAwareness,
+  MonacoYTextBindingOptions,
+  RelativeSelection,
+} from "../src/collab/monaco-binding";
 
 // ─── Monaco doubles ───────────────────────────────────────────────────────────
 
@@ -47,31 +52,67 @@ function offsetOf(value: string, lineNumber: number, column: number): number {
 }
 
 /** The inverse. */
-function positionOf(value: string, offset: number): { lineNumber: number; column: number } {
+function positionOf(value: string, offset: number): PositionLike {
   const before = value.slice(0, offset);
   const lines = before.split("\n");
   return { column: (lines.at(-1)?.length ?? 0) + 1, lineNumber: lines.length };
 }
 
-interface FakeModel {
+/** A 1-based caret position, as Monaco's `IPosition` spells it. */
+interface PositionLike {
+  lineNumber: number;
+  column: number;
+}
+
+/** One entry of a content event's `changes`, as Monaco's `IModelContentChange` spells it. */
+interface ContentChange {
+  range: RangeLike;
+  rangeLength: number;
+  rangeOffset: number;
+  text: string;
+}
+
+/** A Monaco listener registration. */
+interface Subscription {
+  dispose: () => void;
+}
+
+/**
+ * The `ITextModel` members the binding reaches, spelled so that a real `ITextModel` is assignable
+ * to this interface (`applyEdits` is the one overload the binding calls). That direction is what
+ * lets {@link asTextModel} hand a double over with a single assertion.
+ */
+interface ModelSurface {
   getValue: () => string;
   setValue: (next: string) => void;
   applyEdits: (ops: { range: RangeLike; text: string | null }[]) => void;
-  getOffsetAt: (position: { lineNumber: number; column: number }) => number;
-  getPositionAt: (offset: number) => { lineNumber: number; column: number };
-  onDidChangeContent: (cb: (event: { changes: unknown[] }) => void) => { dispose: () => void };
-  onWillDispose: (cb: () => void) => { dispose: () => void };
+  getOffsetAt: (position: PositionLike) => number;
+  getPositionAt: (offset: number) => PositionLike;
+  onDidChangeContent: (cb: (event: { changes: ContentChange[] }) => void) => Subscription;
+  onWillDispose: (cb: () => void) => Subscription;
+}
+
+interface FakeModel extends ModelSurface {
   /** Drives the Monaco-side disposal path. */
   dispose: () => void;
   /** Test observability: how many listeners are still attached. */
   listenerCount: () => number;
 }
 
+/** Hand a model double to the binding, which is typed against the full `ITextModel`. */
+function asTextModel(model: ModelSurface): editor.ITextModel {
+  /* SAFETY: bindMonacoToYText touches the model only through the ModelSurface members (getValue,
+     setValue, applyEdits, getOffsetAt, getPositionAt, onDidChangeContent, onWillDispose) and
+     compares it by identity; the double implements each with Monaco's runtime behaviour, synchronous
+     content events included, so no other ITextModel member is ever read. */
+  return model as editor.ITextModel;
+}
+
 function createModel(initial = ""): FakeModel {
   let value = initial;
-  const content: ((event: { changes: unknown[] }) => void)[] = [];
+  const content: ((event: { changes: ContentChange[] }) => void)[] = [];
   const willDispose: (() => void)[] = [];
-  const fire = (changes: unknown[]): void => {
+  const fire = (changes: ContentChange[]): void => {
     // A copy: a listener disposing itself mid-fire is exactly what teardown does.
     const listening = [...content];
     for (const cb of listening) {
@@ -88,7 +129,7 @@ function createModel(initial = ""): FakeModel {
     };
   return {
     applyEdits(ops) {
-      const changes: unknown[] = [];
+      const changes: ContentChange[] = [];
       for (const op of ops) {
         const start = offsetOf(value, op.range.startLineNumber, op.range.startColumn);
         const end = offsetOf(value, op.range.endLineNumber, op.range.endColumn);
@@ -142,19 +183,32 @@ interface SelectionLike {
   positionColumn: number;
 }
 
-interface FakeDecorations {
-  current: { range: RangeLike; options: Record<string, unknown> }[];
-  cleared: number;
-  set: (decorations: unknown[]) => string[];
+/** The `IEditorDecorationsCollection` members the binding reaches. */
+interface DecorationsSurface {
+  set: (decorations: readonly editor.IModelDeltaDecoration[]) => string[];
   clear: () => void;
 }
 
-interface FakeEditor {
-  getModel: () => FakeModel | null;
+interface FakeDecorations extends DecorationsSurface {
+  current: readonly editor.IModelDeltaDecoration[];
+  cleared: number;
+}
+
+/**
+ * The `ICodeEditor` members the binding reaches, spelled so that a real `ICodeEditor` is assignable
+ * to this interface. That direction is what lets {@link asCodeEditor} use a single assertion.
+ */
+interface EditorSurface {
+  getModel: () => ModelSurface | null;
   getSelection: () => SelectionLike | null;
   setSelection: (selection: SelectionLike) => void;
+  createDecorationsCollection: () => DecorationsSurface;
+  onDidChangeCursorSelection: (cb: () => void) => Subscription;
+}
+
+interface FakeEditor extends EditorSurface {
+  getModel: () => FakeModel | null;
   createDecorationsCollection: () => FakeDecorations;
-  onDidChangeCursorSelection: (cb: () => void) => { dispose: () => void };
   /** Test controls. */
   _model: FakeModel | null;
   _selection: SelectionLike | null;
@@ -163,6 +217,15 @@ interface FakeEditor {
   _cursorListeners: (() => void)[];
   _moveCursor: (selection: SelectionLike | null) => void;
   _collection: () => FakeDecorations | undefined;
+}
+
+/** Hand an editor double to the binding, which is typed against the full `ICodeEditor`. */
+function asCodeEditor(editorDouble: EditorSurface): editor.ICodeEditor {
+  /* SAFETY: bindMonacoToYText touches an editor only through the EditorSurface members (getModel,
+     getSelection, setSelection, createDecorationsCollection, onDidChangeCursorSelection) and keys
+     its maps on the editor's identity; the double implements each, so no other ICodeEditor member
+     is ever read. */
+  return editorDouble as editor.ICodeEditor;
 }
 
 function createEditor(model: FakeModel | null): FakeEditor {
@@ -189,7 +252,7 @@ function createEditor(model: FakeModel | null): FakeEditor {
         cleared: 0,
         current: [],
         set(decorations) {
-          collection.current = decorations as FakeDecorations["current"];
+          collection.current = decorations;
           return decorations.map((_, i) => `d${i}`);
         },
       };
@@ -242,18 +305,23 @@ function spanFrom(value: string, anchor: number, head: number): SelectionLike {
 
 // ─── Awareness double ─────────────────────────────────────────────────────────
 
+/** This client's published state: the binding owns exactly the `selection` field of it. */
+interface PublishedState {
+  selection?: RelativeSelection | null;
+}
+
 interface FakeAwareness extends BindingAwareness {
-  local: Record<string, unknown>;
+  local: PublishedState;
   states: Map<number, unknown>;
   emit: () => void;
   listenerCount: () => number;
-  setLocalStateField: ReturnType<typeof mock>;
+  setLocalStateField: Mock<BindingAwareness["setLocalStateField"]>;
 }
 
 function createAwareness(clientID = 1): FakeAwareness {
   const states = new Map<number, unknown>();
   const listeners: (() => void)[] = [];
-  const local: Record<string, unknown> = {};
+  const local: PublishedState = {};
   const awareness: FakeAwareness = {
     clientID,
     emit: () => {
@@ -272,7 +340,7 @@ function createAwareness(clientID = 1): FakeAwareness {
       }
     },
     on: (_event, cb) => listeners.push(cb),
-    setLocalStateField: mock((field: string, value: unknown) => {
+    setLocalStateField: mock((field: "selection", value: RelativeSelection | null) => {
       local[field] = value;
       states.set(clientID, { ...local });
     }),
@@ -303,13 +371,16 @@ function bind(
   const model = createModel(options.modelValue ?? "");
   const editorDouble = createEditor(model);
   const awareness = createAwareness();
-  const unbind = bindMonacoToYText({
-    ...(options.withAwareness === false ? {} : { awareness: awareness as BindingAwareness }),
-    editors: [editorDouble as unknown as editor.ICodeEditor],
-    model: model as unknown as editor.ITextModel,
+  const bindingOptions: MonacoYTextBindingOptions = {
+    editors: [asCodeEditor(editorDouble)],
+    model: asTextModel(model),
     origin: options.origin,
     text,
-  });
+  };
+  if (options.withAwareness !== false) {
+    bindingOptions.awareness = awareness;
+  }
+  const unbind = bindMonacoToYText(bindingOptions);
   return { awareness, doc, editorDouble, model, text, unbind };
 }
 
@@ -410,8 +481,9 @@ describe("Y.Text → Monaco", () => {
       text.insert(0, "ONE");
       text.insert(7, "!");
     });
-    expect(model.getValue()).toBe(text.toString());
-    expect(model.getValue()).toBe("ONE two! three");
+    const value = model.getValue();
+    expect(value).toBe(text.toString());
+    expect(value).toBe("ONE two! three");
     unbind();
   });
 
@@ -419,8 +491,9 @@ describe("Y.Text → Monaco", () => {
     const seed = "alpha\nbeta\ngamma";
     const { model, text, unbind } = bind({ modelValue: seed, seed });
     text.insert(seed.indexOf("beta"), "the ");
-    expect(model.getValue()).toBe("alpha\nthe beta\ngamma");
-    expect(model.getValue()).toBe(text.toString());
+    const value = model.getValue();
+    expect(value).toBe("alpha\nthe beta\ngamma");
+    expect(value).toBe(text.toString());
     unbind();
   });
 
@@ -474,13 +547,13 @@ describe("convergence", () => {
     const editorA = createEditor(modelA);
     const editorB = createEditor(modelB);
     const unbindA = bindMonacoToYText({
-      editors: [editorA as unknown as editor.ICodeEditor],
-      model: modelA as unknown as editor.ITextModel,
+      editors: [asCodeEditor(editorA)],
+      model: asTextModel(modelA),
       text,
     });
     const unbindB = bindMonacoToYText({
-      editors: [editorB as unknown as editor.ICodeEditor],
-      model: modelB as unknown as editor.ITextModel,
+      editors: [asCodeEditor(editorB)],
+      model: asTextModel(modelB),
       text,
     });
 
@@ -520,7 +593,7 @@ describe("initial sync", () => {
       transactions += 1;
     });
     const unbind = bindMonacoToYText({
-      model: model as unknown as editor.ITextModel,
+      model: asTextModel(model),
       text,
     });
     expect(model.getValue()).toBe("already here");
@@ -539,11 +612,13 @@ describe("initial sync", () => {
   test("a Y.Text with no document is refused with a real message", () => {
     const detached = new YDoc().getText("orphan");
     // A type read off a doc is always attached, so construct the detached case directly.
-    const orphan = Object.create(Object.getPrototypeOf(detached) as object) as Y.Text;
+    /* SAFETY: an object on Y.Text's own prototype carries every Y.Text method; its `doc` is set to
+       null on the next line, and that field is all bindMonacoToYText reads before it refuses. */
+    const orphan = Object.create(Object.getPrototypeOf(detached)) as Y.Text;
     Object.assign(orphan, { doc: null });
     expect(() =>
       bindMonacoToYText({
-        model: createModel() as unknown as editor.ITextModel,
+        model: asTextModel(createModel()),
         text: orphan,
       }),
     ).toThrow(/has no Y.Doc/);
@@ -621,7 +696,10 @@ describe("awareness", () => {
     const { awareness, text, editorDouble, unbind } = bind({ modelValue: seed, seed });
     editorDouble._moveCursor(spanFrom(seed, 1, 4));
     expect(awareness.setLocalStateField).toHaveBeenCalled();
-    const published = awareness.local["selection"] as { anchor: unknown; head: unknown };
+    const published = awareness.local.selection;
+    if (!published) {
+      throw new Error("moving the caret published no selection");
+    }
     // The published pair resolves back to the offsets it was minted from, anchor first.
     expect(resolveIndex(published.anchor, text)).toBe(1);
     expect(resolveIndex(published.head, text)).toBe(4);
@@ -633,14 +711,14 @@ describe("awareness", () => {
     const { awareness, editorDouble, unbind } = bind({ modelValue: seed, seed });
     editorDouble._model = createModel("elsewhere");
     editorDouble._moveCursor(caretAt(seed, 2));
-    expect(awareness.setLocalStateField).not.toHaveBeenCalled();
+    expect(awareness.setLocalStateField.mock.calls).toEqual([]);
     unbind();
   });
 
   test("an editor with no caret publishes nothing", () => {
     const { awareness, editorDouble, unbind } = bind({ modelValue: "abc", seed: "abc" });
     editorDouble._moveCursor(null);
-    expect(awareness.setLocalStateField).not.toHaveBeenCalled();
+    expect(awareness.setLocalStateField.mock.calls).toEqual([]);
     unbind();
   });
 
@@ -650,11 +728,11 @@ describe("awareness", () => {
     awareness.states.set(7, peerSelection(text, 2, 5));
     awareness.emit();
     const [decoration] = editorDouble._collection()!.current;
-    expect(decoration!.options["className"]).toBe("yRemoteSelection yRemoteSelection-7");
-    expect(decoration!.options["afterContentClassName"]).toBe(
+    expect(decoration!.options.className).toBe("yRemoteSelection yRemoteSelection-7");
+    expect(decoration!.options.afterContentClassName).toBe(
       "yRemoteSelectionHead yRemoteSelectionHead-7",
     );
-    expect(decoration!.options["beforeContentClassName"]).toBeUndefined();
+    expect(decoration!.options.beforeContentClassName).toBeUndefined();
     expect(decoration!.range).toEqual({
       endColumn: 6,
       endLineNumber: 1,
@@ -677,10 +755,10 @@ describe("awareness", () => {
     awareness.states.set(7, overTheWire(peerSelection(text, 5, 2)));
     awareness.emit();
     const [decoration] = editorDouble._collection()!.current;
-    expect(decoration!.options["beforeContentClassName"]).toBe(
+    expect(decoration!.options.beforeContentClassName).toBe(
       "yRemoteSelectionHead yRemoteSelectionHead-7",
     );
-    expect(decoration!.options["afterContentClassName"]).toBeUndefined();
+    expect(decoration!.options.afterContentClassName).toBeUndefined();
     expect(decoration!.range).toEqual({
       endColumn: 6,
       endLineNumber: 1,
@@ -721,9 +799,9 @@ describe("awareness", () => {
     const awareness = createAwareness();
     awareness.states.set(7, peerSelection(text, 1, 3));
     const unbind = bindMonacoToYText({
-      awareness: awareness as BindingAwareness,
-      editors: [editorDouble as unknown as editor.ICodeEditor],
-      model: model as unknown as editor.ITextModel,
+      awareness,
+      editors: [asCodeEditor(editorDouble)],
+      model: asTextModel(model),
       text,
     });
     expect(editorDouble._collection()!.current).toHaveLength(1);
@@ -762,8 +840,8 @@ describe("awareness", () => {
     const editorDouble = createEditor(model);
     const unbind = bindMonacoToYText({
       awareness: null,
-      editors: [editorDouble as unknown as editor.ICodeEditor],
-      model: model as unknown as editor.ITextModel,
+      editors: [asCodeEditor(editorDouble)],
+      model: asTextModel(model),
       text,
     });
     text.insert(0, "abc");
@@ -781,11 +859,11 @@ describe("the disposer", () => {
     const seed = "abcdef";
     const { awareness, editorDouble, unbind } = bind({ modelValue: seed, seed });
     editorDouble._moveCursor(caretAt(seed, 3));
-    expect(awareness.local["selection"]).not.toBeNull();
+    expect(awareness.local.selection).not.toBeNull();
     unbind();
     /* Left set, every peer still in Code view keeps drawing this caret and name flag at its last
        position for the life of the session. `null` is a legal value for the field. */
-    expect(awareness.local["selection"]).toBeNull();
+    expect(awareness.local.selection).toBeNull();
   });
 
   test("clears decorations and releases every listener", () => {
@@ -830,7 +908,7 @@ describe("the disposer", () => {
   test("a disposed model tears the binding down exactly once", () => {
     const { awareness, model, unbind } = bind();
     model.dispose();
-    expect(awareness.local["selection"]).toBeNull();
+    expect(awareness.local.selection).toBeNull();
     const calls = awareness.setLocalStateField.mock.calls.length;
     model.dispose();
     unbind();
@@ -840,14 +918,17 @@ describe("the disposer", () => {
 
 // ─── Helpers that need the module under test's own yjs instance ───────────────
 
-/** A peer awareness state carrying a caret from `anchor` to `head` in `text`. */
-function peerSelection(text: Y.Text, anchor: number, head: number): CollabAwarenessState {
+/**
+ * A peer awareness state carrying a caret from `anchor` to `head` in `text`. Only the `selection`
+ * field of a `CollabAwarenessState`, because that is the one field the binding reads off a peer.
+ */
+function peerSelection(text: Y.Text, anchor: number, head: number): PublishedState {
   return {
     selection: {
       anchor: createRelativePositionFromTypeIndex(text, anchor),
       head: createRelativePositionFromTypeIndex(text, head),
     },
-  } as unknown as CollabAwarenessState;
+  };
 }
 
 /**
@@ -857,16 +938,13 @@ function peerSelection(text: Y.Text, anchor: number, head: number): CollabAwaren
  * what arrives is a plain `{type, tname, item, assoc}` object with plain `{client, clock}` ids —
  * not an instance of anything. Nothing in the resolve path may depend on the class.
  */
-function overTheWire(state: CollabAwarenessState): CollabAwarenessState {
+function overTheWire(state: PublishedState): JsonValue {
   // oxlint-disable-next-line unicorn/prefer-structured-clone -- the JSON round trip IS the wire format under test; structuredClone is a different transform
-  return JSON.parse(JSON.stringify(state)) as CollabAwarenessState;
+  return JSON.parse(JSON.stringify(state));
 }
 
 /** Resolve a published relative position back to an index in `text`. */
-function resolveIndex(relative: unknown, text: Y.Text): number | null {
-  const absolute = createAbsolutePositionFromRelativePosition(
-    relative as Y.RelativePosition,
-    text.doc!,
-  );
+function resolveIndex(relative: Y.RelativePosition, text: Y.Text): number | null {
+  const absolute = createAbsolutePositionFromRelativePosition(relative, text.doc!);
   return absolute && absolute.type === text ? absolute.index : null;
 }

@@ -39,7 +39,10 @@ import { emptyContext } from "../src/commands/context";
 import { activeRegistry, setActiveRegistry } from "../src/commands/active-registry";
 
 import type { HeadLayers, SeoPreview } from "../src/panels/head-panel";
+import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
+import type { FormatFrontmatter } from "../src/format/format-host";
 import type { Tab } from "../src/tabs/tab";
+import type { DirEntry } from "../src/types";
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 
 /** Every browse and upload the panel asked the media picker for, in order. */
@@ -96,14 +99,21 @@ function withCapturedTimers<T>(fn: (runPending: () => void) => T): T {
   const origClear = globalThis.clearTimeout;
   const pending = new Map<number, () => void>();
   let next = 1;
-  (globalThis as any).setTimeout = (cb: () => void) => {
+  const capture = (cb: () => void) => {
     next += 1;
     pending.set(next, cb);
     return next;
   };
-  (globalThis as any).clearTimeout = (id: number) => {
+  const cancel = (id: number) => {
     pending.delete(id);
   };
+  /* SAFETY: every setTimeout caller inside fn passes a callback and only hands the handle back to
+     clearTimeout, which is `cancel` for the same span and keys `pending` by exactly the numbers
+     `capture` returned, so the numeric handle is never inspected as a Timer. */
+  globalThis.setTimeout = capture as typeof setTimeout;
+  /* SAFETY: while fn runs, the only handles in circulation are the numbers `capture` minted, so
+     `cancel` is never handed a Timer object or a string. */
+  globalThis.clearTimeout = cancel as typeof clearTimeout;
   try {
     return fn(() => {
       const due = [...pending.values()];
@@ -131,11 +141,11 @@ interface Drawn {
  * A fresh host is also a fresh draft — the panel drops a half-typed tag when its content area is
  * replaced — so each call starts with an empty add form without reaching into module state.
  */
-async function draw(doc: Record<string, unknown>): Promise<Drawn> {
+async function draw(doc: JxMutableNode): Promise<Drawn> {
   const host = document.createElement("div");
   document.body.append(host);
   const result: Drawn = {
-    doc: doc as unknown as JxMutableNode,
+    doc,
     host,
     leftPanelRenders: 0,
     mutations: 0,
@@ -167,19 +177,19 @@ function heading(host: HTMLElement, key: string): string {
 /** One row, by the name a reader and the inspector call it. */
 function row(scope: ParentNode, prop: string): HTMLElement {
   const el = scope.querySelector(`[data-prop="${prop}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`row not found: ${prop}`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** The kit element a row draws. */
 function widget(scope: ParentNode, prop: string): HTMLElement {
   const el = row(scope, prop).querySelector('[part="widget"]');
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`row ${prop} draws no widget`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** The native control inside a kit element — what a reader actually types into or picks from. */
@@ -216,15 +226,18 @@ function hasChip(scope: ParentNode, prop: string): boolean {
 
 /** The labels a picker offers, in the order they are offered. */
 function options(scope: ParentNode, prop: string): string[] {
-  return [...widget(scope, prop).querySelectorAll('option[part="option"] [part="text"]')].map(
-    (t) => t.textContent?.trim() ?? "",
+  return [...widget(scope, prop).querySelectorAll('option[part="option"] [part="text"]')].map((t) =>
+    t.textContent.trim(),
   );
 }
 
-function metaContent(doc: any, attr: string, keyName: string): string | undefined {
-  return (doc.$head ?? []).find(
-    (e: any) => e?.tagName === "meta" && e?.attributes?.[attr] === keyName,
-  )?.attributes?.content;
+function metaContent(
+  doc: JxMutableNode,
+  attr: string,
+  keyName: string,
+): string | boolean | undefined {
+  return (doc.$head ?? []).find((e) => e.tagName === "meta" && e.attributes?.[attr] === keyName)
+    ?.attributes?.content;
 }
 
 beforeEach(() => {
@@ -249,7 +262,7 @@ describe("page section", () => {
     const page = section(drawn.host, "page")!;
     expect(row(page, "title").querySelector('[part="row-name"]')?.textContent).toBe("Title");
     clearRow(page, "title");
-    expect((drawn.doc as any).title).toBeUndefined();
+    expect(drawn.doc.title).toBeUndefined();
   });
 
   test("committing a title sets doc.title; whitespace-only deletes it", async () => {
@@ -257,9 +270,9 @@ describe("page section", () => {
     const page = section(drawn.host, "page")!;
     expect(hasChip(page, "title")).toBe(false);
     setAndFire(page, "title", "My Page");
-    expect((drawn.doc as any).title).toBe("My Page");
+    expect(drawn.doc.title).toBe("My Page");
     setAndFire(page, "title", "   ");
-    expect((drawn.doc as any).title).toBeUndefined();
+    expect(drawn.doc.title).toBeUndefined();
   });
 
   test("description meta upserts: add, replace in place, then remove", async () => {
@@ -267,13 +280,13 @@ describe("page section", () => {
     const page = section(drawn.host, "page")!;
     setAndFire(page, "description", "First");
     expect(metaContent(drawn.doc, "name", "description")).toBe("First");
-    expect((drawn.doc as any).$head.length).toBe(1);
+    expect(drawn.doc.$head).toHaveLength(1);
     setAndFire(page, "description", "Second");
     expect(metaContent(drawn.doc, "name", "description")).toBe("Second");
-    expect((drawn.doc as any).$head.length).toBe(1); // Replaced, not appended
+    expect(drawn.doc.$head).toHaveLength(1); // Replaced, not appended
     setAndFire(page, "description", "");
     expect(metaContent(drawn.doc, "name", "description")).toBeUndefined();
-    expect((drawn.doc as any).$head.length).toBe(0);
+    expect(drawn.doc.$head).toHaveLength(0);
   });
 
   test("viewport field gets the canonical placeholder", async () => {
@@ -291,19 +304,17 @@ describe("page section", () => {
     const page = section(drawn.host, "page")!;
     expect(row(page, "icon").querySelector('[part="media"]')).not.toBeNull();
     clearRow(page, "icon");
-    expect((drawn.doc as any).$head.length).toBe(0);
+    expect(drawn.doc.$head).toHaveLength(0);
   });
 
   test("the icon field upserts the link entry (add, then replace in place)", async () => {
     const drawn = await draw({ tagName: "div" });
     const page = section(drawn.host, "page")!;
     setAndFire(page, "icon", "/icon.svg");
-    expect((drawn.doc as any).$head[0].attributes.href).toBe("/icon.svg");
+    expect(drawn.doc.$head?.[0]?.attributes?.href).toBe("/icon.svg");
     setAndFire(page, "icon", "/icon2.svg");
-    expect((drawn.doc as any).$head.filter((e: any) => e?.attributes?.rel === "icon").length).toBe(
-      1,
-    );
-    expect((drawn.doc as any).$head[0].attributes.href).toBe("/icon2.svg");
+    expect(drawn.doc.$head?.filter((e) => e.attributes?.rel === "icon")).toHaveLength(1);
+    expect(drawn.doc.$head?.[0]?.attributes?.href).toBe("/icon2.svg");
   });
 
   test("typing into a field commits once, after the live-preview pause", async () => {
@@ -330,7 +341,7 @@ describe("page section", () => {
        switch, so cancelling only on a new host let a queued commit outlive its subject and write,
        `LIVE_PREVIEW` later, into whatever was open by then. */
     const first = await draw({ tagName: "div" });
-    const next = { tagName: "section" } as unknown as JxMutableNode;
+    const next: JxMutableNode = { tagName: "section" };
 
     withCapturedTimers((runPending) => {
       setAndFire(section(first.host, "page")!, "description", "half", "input");
@@ -361,7 +372,7 @@ describe("media rows reach the shared picker rather than drawing one", () => {
     expect(mediaCalls).toEqual(["browse"]);
     expect(browseAnchor).toBe(browse);
     browseCommit!("/from-browser.png");
-    expect((drawn.doc as any).$head[0].attributes.href).toBe("/from-browser.png");
+    expect(drawn.doc.$head?.[0]?.attributes?.href).toBe("/from-browser.png");
   });
 
   test("Upload opens the OS picker and assigns what comes back", async () => {
@@ -453,9 +464,7 @@ describe("the door to Search appearance", () => {
         '[part="seo-button"]',
       )!;
       // The label part: the host's text now also carries the tip its hint renders (ui.md §5.1).
-      expect(button.querySelector('[part="label"]')?.textContent?.trim()).toBe(
-        "Search appearance…",
-      );
+      expect(button.querySelector('[part="label"]')?.textContent.trim()).toBe("Search appearance…");
       pointer(button, "click");
       expect(ran).toEqual(["document.openSeo"]);
       // Ran THROUGH the registry, which is still the active one: the button opened nothing itself.
@@ -496,7 +505,7 @@ describe("custom $head entries", () => {
     { attributes: { href: "/c", rel: "canonical" }, tagName: "link" },
     { attributes: { content: "Jx", name: "generator" }, tagName: "meta" },
     { attributes: { content: "x", property: "og:custom" }, tagName: "meta" },
-    { tagName: "style", textContent: ".a{color:red}" } as JxHeadEntry,
+    { tagName: "style", textContent: ".a{color:red}" },
   ];
 
   /** The custom-tag rows, as the pair of strings each one prints. */
@@ -521,10 +530,11 @@ describe("custom $head entries", () => {
   });
 
   test("an entry without a tagName is labelled unknown", async () => {
-    const drawn = await draw({
-      $head: [{ textContent: "?" } as unknown as JxHeadEntry],
-      tagName: "div",
-    });
+    const headless: Partial<JxHeadEntry> = { textContent: "?" };
+    /* SAFETY: deliberately malformed — a `$head` entry as a hand-edited file can hold it, with no
+       tagName. The panel's labeller treats tagName as possibly absent, which is what is under test;
+       nothing here reads the entry as a well-formed one. */
+    const drawn = await draw({ $head: [headless as JxHeadEntry], tagName: "div" });
     expect(tags(drawn.host)[0]?.name).toBe("unknown");
   });
 
@@ -545,10 +555,8 @@ describe("custom $head entries", () => {
       first.querySelector('[part="remove"] [part="control"]')?.getAttribute("aria-label"),
     ).toBe('Remove <meta charset="utf8">');
     pointer(first.querySelector('[part="remove"]')!, "click");
-    expect((drawn.doc as any).$head.length).toBe(5);
-    expect((drawn.doc as any).$head.some((e: any) => e?.attributes?.charset === "utf8")).toBe(
-      false,
-    );
+    expect(drawn.doc.$head).toHaveLength(5);
+    expect(drawn.doc.$head?.some((e) => e.attributes?.charset === "utf8")).toBe(false);
     expect(drawn.leftPanelRenders).toBe(1);
   });
 });
@@ -557,10 +565,14 @@ describe("custom $head entries", () => {
 
 describe("add custom tag form", () => {
   /** One field of the add form, by the half of the entry it holds. */
-  function draft(host: HTMLElement, name: string): HTMLInputElement {
-    return host.querySelector(
+  function draft(host: HTMLElement, name: string): HTMLInputElement | HTMLSelectElement {
+    const el = host.querySelector(
       `[part="add"] [data-field="${name}"] [part="input"], [part="add"] [data-field="${name}"] [part="control"]`,
-    ) as HTMLInputElement;
+    );
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement)) {
+      throw new Error(`the add form draws no ${name} control`);
+    }
+    return el;
   }
 
   function type(host: HTMLElement, name: string, value: string): void {
@@ -575,7 +587,7 @@ describe("add custom tag form", () => {
     type(drawn.host, "value", "Jane");
     await flush(2);
     pointer(drawn.host.querySelector('[part="add-button"]')!, "click");
-    expect((drawn.doc as any).$head).toEqual([
+    expect(drawn.doc.$head).toEqual([
       { attributes: { content: "Jane", name: "author" }, tagName: "meta" },
     ]);
     await flush(2);
@@ -593,7 +605,7 @@ describe("add custom tag form", () => {
     type(drawn.host, "value", "/x.css");
     await flush(2);
     add();
-    expect((drawn.doc as any).$head.at(-1)).toEqual({
+    expect(drawn.doc.$head?.at(-1)).toEqual({
       attributes: { href: "/x.css", rel: "preload" },
       tagName: "link",
     });
@@ -604,7 +616,7 @@ describe("add custom tag form", () => {
     type(drawn.host, "value", "/x.js");
     await flush(2);
     add();
-    expect((drawn.doc as any).$head.at(-1)).toEqual({
+    expect(drawn.doc.$head?.at(-1)).toEqual({
       attributes: { src: "/x.js" },
       tagName: "script",
     });
@@ -618,7 +630,7 @@ describe("add custom tag form", () => {
     draft(drawn.host, "value").dispatchEvent(
       new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
     );
-    expect((drawn.doc as any).$head).toEqual([
+    expect(drawn.doc.$head).toEqual([
       { attributes: { content: "noindex", name: "robots" }, tagName: "meta" },
     ]);
   });
@@ -629,20 +641,20 @@ describe("add custom tag form", () => {
     type(drawn.host, "value", "  ");
     await flush(2);
     pointer(drawn.host.querySelector('[part="add-button"]')!, "click");
-    expect((drawn.doc as any).$head).toBeUndefined();
+    expect(drawn.doc.$head).toBeUndefined();
     expect(drawn.mutations).toBe(0);
   });
 });
 
 // ─── Layout section ───────────────────────────────────────────────────────────
 
-function layoutDirEntries() {
+function layoutDirEntries(): DirEntry[] {
   return [
     { name: "main-layout.json", path: "layouts/main-layout.json", type: "file" },
     { name: "blog.json", path: "layouts/blog.json", type: "file" },
     { name: "partials", path: "layouts/partials", type: "directory" },
     { name: "notes.txt", path: "layouts/notes.txt", type: "file" },
-  ] as any[];
+  ];
 }
 
 function setupSitePage(documentPath = "pages/about.json") {
@@ -651,11 +663,11 @@ function setupSitePage(documentPath = "pages/about.json") {
     listDirectory: async (dir: string) => {
       if (dir === "layouts") {
         counters.layoutLists += 1;
-        return layoutDirEntries() as any;
+        return layoutDirEntries();
       }
       return [];
     },
-  } as any);
+  });
   resetStudioState({
     isSiteProject: true,
     projectConfig: { defaults: { layout: "./layouts/main-layout.json" } },
@@ -715,11 +727,11 @@ describe("layout section", () => {
     const layout = section(drawn.host, "layout")!;
 
     setAndFire(layout, "layout", "./layouts/blog.json");
-    expect((drawn.doc as any).$layout).toBe("./layouts/blog.json");
+    expect(drawn.doc.$layout).toBe("./layouts/blog.json");
     setAndFire(layout, "layout", "__none__");
-    expect((drawn.doc as any).$layout).toBe(false);
+    expect(drawn.doc.$layout).toBe(false);
     setAndFire(layout, "layout", "__default__");
-    expect("$layout" in (drawn.doc as any)).toBe(false);
+    expect("$layout" in drawn.doc).toBe(false);
   });
 
   test("the clear dot removes an explicit $layout", async () => {
@@ -728,7 +740,7 @@ describe("layout section", () => {
     await flush();
     const drawn = await draw({ $layout: "./layouts/blog.json", tagName: "div" });
     clearRow(section(drawn.host, "layout")!, "layout");
-    expect((drawn.doc as any).$layout).toBeUndefined();
+    expect(drawn.doc.$layout).toBeUndefined();
   });
 
   test("a listing failure falls back to an empty layout list", async () => {
@@ -736,7 +748,7 @@ describe("layout section", () => {
       listDirectory: async () => {
         throw new Error("boom");
       },
-    } as any);
+    });
     resetStudioState({ isSiteProject: true, projectConfig: {} });
     resetWorkspaceWithTab(undefined, { documentPath: "pages/p.json" });
     await draw({ tagName: "div" });
@@ -775,7 +787,7 @@ const FM_SCHEMA = {
 };
 
 function setupContentTab(
-  frontmatter: Record<string, unknown>,
+  frontmatter: FormatFrontmatter,
   withSchema = true,
   documentPath = "posts/hello.json",
 ) {
@@ -787,9 +799,9 @@ function setupContentTab(
   });
   closeAllTabs();
   const tab = resetWorkspaceWithTab(undefined, { documentPath });
-  (tab as any).doc.mode = "content";
-  (tab as any).doc.content.frontmatter = frontmatter;
-  return tab as any;
+  tab.doc.mode = "content";
+  tab.doc.content.frontmatter = frontmatter;
+  return tab;
 }
 
 describe("frontmatter section", () => {
@@ -918,6 +930,11 @@ describe("frontmatter section", () => {
  * and where a commit lands. `left-panel.test.ts` goes on covering the Navigator's own routing.
  */
 describe("the Page panel record", () => {
+  /* SAFETY: the Page panel record's render and afterRender read only ctx.doc and ctx.rerender
+     (registerPagePanel in head-panel.ts), so no NavigatorPanelDeps member is ever read off this
+     empty object. */
+  const NO_DEPS = {} as NavigatorPanelDeps;
+
   /**
    * Run the registered panel's `afterRender` against a body the Navigator would have drawn.
    *
@@ -933,10 +950,10 @@ describe("the Page panel record", () => {
     body.innerHTML = '<div class="panel-content"></div>';
     document.body.append(body);
     // `render` draws nothing: the document is mounted in `afterRender` and lit owns the body.
-    expect(record.render({ deps: {} as never, doc: null, rerender: () => {} })).toBe(nothing);
+    expect(record.render({ deps: NO_DEPS, doc: null, rerender: () => {} })).toBe(nothing);
     record.afterRender!(
       {
-        deps: {} as never,
+        deps: NO_DEPS,
         doc: {
           canvas: null,
           content: tab.doc.content,
@@ -956,7 +973,7 @@ describe("the Page panel record", () => {
 
   test("a JSON document is drawn from its root node and transacts mutations directly", async () => {
     resetStudioState();
-    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" }) as Tab;
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
     const body = await paint(tab);
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "title", "Page title");
@@ -966,13 +983,13 @@ describe("the Page panel record", () => {
 
   test("a content document is drawn from its frontmatter title and $head", async () => {
     resetStudioState();
-    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/a.md" }) as any;
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/a.md" });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = {
       $head: [{ attributes: { content: "d", name: "description" }, tagName: "meta" }],
       title: "FM Title",
     };
-    const body = await paint(tab as Tab);
+    const body = await paint(tab);
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     expect(control(page, "title").value).toBe("FM Title");
     expect(control(page, "description").value).toBe("d");
@@ -980,10 +997,10 @@ describe("the Page panel record", () => {
 
   test("a content document's title and $head are committed into its frontmatter", async () => {
     resetStudioState();
-    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/b.md" }) as any;
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/b.md" });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = { title: "Old" };
-    const body = await paint(tab as Tab);
+    const body = await paint(tab);
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "title", "New");
     expect(tab.doc.content.frontmatter.title).toBe("New");
@@ -996,13 +1013,13 @@ describe("the Page panel record", () => {
 
   test("emptying the last $head entry clears the frontmatter key rather than leaving []", async () => {
     resetStudioState();
-    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/c.md" }) as any;
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/c.md" });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = {
       $head: [{ attributes: { content: "x", name: "description" }, tagName: "meta" }],
       title: "Same",
     };
-    const body = await paint(tab as Tab);
+    const body = await paint(tab);
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "description", "");
     expect(tab.doc.content.frontmatter.$head).toBeUndefined();
@@ -1340,7 +1357,7 @@ describe("layoutHeadEntries — the one layer that lives in a file", () => {
       isSiteProject: true,
       projectConfig: { defaults: { layout: "./layouts/main-layout.json" } },
     });
-    return resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" }) as Tab;
+    return resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" });
   }
 
   beforeEach(() => {
@@ -1352,7 +1369,7 @@ describe("layoutHeadEntries — the one layer that lives in a file", () => {
     resetStudioState({ isSiteProject: false, projectConfig: {} });
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "components/card.json",
-    }) as Tab;
+    });
     expect(layoutHeadEntries(tab)).toEqual({ entries: [], name: null });
   });
 
@@ -1371,7 +1388,7 @@ describe("layoutHeadEntries — the one layer that lives in a file", () => {
       isSiteProject: true,
       projectConfig: { defaults: { layout: "./layouts/gone.json" } },
     });
-    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" }) as Tab;
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" });
     layoutHeadEntries(tab);
     await flush();
     expect(layoutHeadEntries(tab).entries).toEqual([]);
@@ -1423,7 +1440,7 @@ describe("layoutHeadEntries — the one layer that lives in a file", () => {
         url: "https://acme.test",
       },
     });
-    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" }) as Tab;
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" });
     seoPreviewFor(tab, { tagName: "div" });
     await flush();
 

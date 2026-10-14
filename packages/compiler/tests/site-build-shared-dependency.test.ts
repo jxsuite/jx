@@ -16,9 +16,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSite } from "../src/site/site-build";
+import type { JsonValue } from "@jxsuite/schema/types";
 
-/** @param {string} root @param {string} path @param {unknown} obj */
-function writeJSON(root: string, path: string, obj: unknown) {
+/** @param {string} root @param {string} path @param {JsonValue} obj */
+function writeJSON(root: string, path: string, obj: JsonValue) {
   const full = resolve(root, path);
   mkdirSync(resolve(full, ".."), { recursive: true });
   writeFileSync(full, JSON.stringify(obj, null, 2), "utf8");

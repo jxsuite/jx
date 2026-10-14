@@ -22,7 +22,7 @@ const CUSTOM_ENTRY: JxHeadEntry = {
 
 /** Draw the panel over one document while its mutations are applied to a _different_ one. */
 async function drawAgainst(mutationDoc: JxMutableNode) {
-  const drawnDoc = { $head: [CUSTOM_ENTRY], tagName: "html" } as unknown as JxMutableNode;
+  const drawnDoc: JxMutableNode = { $head: [CUSTOM_ENTRY], tagName: "html" };
   const counts = { leftPanelRenders: 0, mutations: 0 };
   const host = document.createElement("div");
   document.body.append(host);
@@ -55,7 +55,7 @@ describe("head-panel custom tag removal (defensive branches)", () => {
   });
 
   test("Remove is a no-op when the mutated document has no $head", async () => {
-    const mutationDoc = { tagName: "html" } as unknown as JxMutableNode;
+    const mutationDoc: JxMutableNode = { tagName: "html" };
     const r = await drawAgainst(mutationDoc);
 
     pointer(r.remove, "click");
@@ -71,7 +71,7 @@ describe("head-panel custom tag removal (defensive branches)", () => {
       attributes: { content: "abc", name: "verification" },
       tagName: "meta",
     };
-    const mutationDoc = { $head: [otherEntry], tagName: "html" } as unknown as JxMutableNode;
+    const mutationDoc: JxMutableNode = { $head: [otherEntry], tagName: "html" };
     const r = await drawAgainst(mutationDoc);
 
     pointer(r.remove, "click");
@@ -84,10 +84,10 @@ describe("head-panel custom tag removal (defensive branches)", () => {
   });
 
   test("Remove splices the entry when the mutated document does hold it", async () => {
-    const mutationDoc = {
+    const mutationDoc: JxMutableNode = {
       $head: [CUSTOM_ENTRY],
       tagName: "html",
-    } as unknown as JxMutableNode;
+    };
     const r = await drawAgainst(mutationDoc);
 
     pointer(r.remove, "click");
@@ -97,7 +97,7 @@ describe("head-panel custom tag removal (defensive branches)", () => {
   });
 
   test("a key whose entry the projection no longer holds asks for no mutation at all", async () => {
-    const mutationDoc = { $head: [CUSTOM_ENTRY], tagName: "html" } as unknown as JxMutableNode;
+    const mutationDoc: JxMutableNode = { $head: [CUSTOM_ENTRY], tagName: "html" };
     const r = await drawAgainst(mutationDoc);
     /* The panel is redrawn over a document with no custom tags, which empties the key table, and
        THEN the button that row drew is pressed. A key that no longer names an entry must ask for
@@ -107,7 +107,7 @@ describe("head-panel custom tag removal (defensive branches)", () => {
         r.counts.mutations += 1;
         fn(mutationDoc);
       },
-      document: { tagName: "html" } as unknown as JxMutableNode,
+      document: { tagName: "html" },
       renderLeftPanel: () => {
         r.counts.leftPanelRenders += 1;
       },

@@ -154,7 +154,7 @@ export function surfaceForPane(paneId: string): CanvasSurface {
 
 /** A surface record with nothing in it. One place the per-stage defaults are written down. */
 function freshSurface(paneId: string): CanvasSurface {
-  return {
+  const record: Omit<CanvasSurface, "wrap"> & { wrap: HTMLElement | null } = {
     centerObserver: null,
     monacoDiffEditor: null,
     monacoEditor: null,
@@ -171,8 +171,26 @@ function freshSurface(paneId: string): CanvasSurface {
     renderGeneration: 0,
     sourceCollabCleanup: null,
     stageScrollbar: null,
-    wrap: null as unknown as HTMLElement,
+    wrap: null,
   };
+  /* SAFETY: `wrap` is the only member that differs from CanvasSurface, and it is null only until
+   * registerCanvasSurface attaches the pane's stage. The grid registers a cell's stage as it builds
+   * the cell, before any renderer runs (§18.1 rule 1), and the paths that can run earlier read the
+   * element through stageOf(), which keeps the nullable type. */
+  return record as CanvasSurface;
+}
+
+/**
+ * The surface's stage element, or null before {@link registerCanvasSurface} attaches one.
+ *
+ * `wrap` is typed non-null for the renderers, which only run after registration. The gestures and
+ * teardowns that can reach a surface before its host exists read it through here instead.
+ *
+ * @param {CanvasSurface} surface
+ * @returns {HTMLElement | null}
+ */
+export function stageOf(surface: CanvasSurface): HTMLElement | null {
+  return surface.wrap;
 }
 
 /**
@@ -199,7 +217,7 @@ export function stageContaining(node: Node | null): CanvasSurface | null {
     return null;
   }
   for (const surface of _surfaces.values()) {
-    if (surface.wrap?.contains(node)) {
+    if (stageOf(surface)?.contains(node)) {
       return surface;
     }
   }

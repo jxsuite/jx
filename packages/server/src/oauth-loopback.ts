@@ -28,6 +28,7 @@
  * string of its own and `Referrer-Policy: no-referrer`, so nothing carries it onward.
  */
 
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { secretsMatch } from "./net-guard.ts";
 
 /** The loopback redirect path this server hosts. */
@@ -345,29 +346,33 @@ export async function exchangeCode(params: {
     headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
     method: "POST",
   });
-  const payload = (await response.json().catch(() => null)) as {
-    access_token?: unknown;
-    error?: unknown;
-    error_description?: unknown;
-    expires_in?: unknown;
-    refresh_token?: unknown;
-    scope?: unknown;
-    token_type?: unknown;
-  } | null;
+  // A body that is not JSON reads as no payload, and is reported by status below.
+  const payload: unknown = await response.json().catch(() => null);
+  const fields = isJsonObject(payload) ? payload : null;
 
-  if (payload && typeof payload.error === "string") {
-    const description =
-      typeof payload.error_description === "string" ? payload.error_description : payload.error;
+  if (fields && isString(fields.error)) {
+    const description = isString(fields.error_description)
+      ? fields.error_description
+      : fields.error;
     throw new Error(`The provider refused the sign-in: ${description}`);
   }
-  if (!response.ok || !payload || typeof payload.access_token !== "string") {
+  if (!response.ok || !fields || !isString(fields.access_token)) {
     throw new Error(`The token exchange failed (HTTP ${response.status}).`);
   }
+  // RFC 6749 §5.1 makes these optional; each is kept only when the provider sent the right type.
+  const optional: Pick<TokenResult, "expiresIn" | "refreshToken" | "scope"> = {};
+  if (isNumber(fields.expires_in)) {
+    optional.expiresIn = fields.expires_in;
+  }
+  if (isString(fields.refresh_token)) {
+    optional.refreshToken = fields.refresh_token;
+  }
+  if (isString(fields.scope)) {
+    optional.scope = fields.scope;
+  }
   return {
-    accessToken: payload.access_token,
-    ...(typeof payload.expires_in === "number" ? { expiresIn: payload.expires_in } : {}),
-    ...(typeof payload.refresh_token === "string" ? { refreshToken: payload.refresh_token } : {}),
-    ...(typeof payload.scope === "string" ? { scope: payload.scope } : {}),
-    tokenType: typeof payload.token_type === "string" ? payload.token_type : "bearer",
+    accessToken: fields.access_token,
+    ...optional,
+    tokenType: isString(fields.token_type) ? fields.token_type : "bearer",
   };
 }

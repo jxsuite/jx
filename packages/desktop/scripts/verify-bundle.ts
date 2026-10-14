@@ -76,6 +76,8 @@ export function verifyBundle(appDir: string): string[] {
   // Future starters covered automatically.
   const registryPath = join(appDir, "bun", "registry.json");
   if (existsSync(registryPath)) {
+    /* SAFETY: bun/registry.json is the verbatim `build.copy` of packages/starters/registry.json,
+       whose every entry carries a non-empty string `id` (packages/starters/tests/registry.test.ts). */
     const starters = JSON.parse(readFileSync(registryPath, "utf8")) as { id: string }[];
     for (const { id } of starters) {
       if (!existsSync(join(appDir, "bun", "sites", id, "project.json"))) {

@@ -47,8 +47,17 @@ function git(root: string, args: string[], date = "2026-09-14T12:00:00Z"): strin
   });
 }
 
+/**
+ * A scratch repository's root, and a helper that adds a fragment on a branch at a given author
+ * date.
+ */
+interface ScratchRepo {
+  root: string;
+  branch: (name: string, fragment: string, at: string) => void;
+}
+
 /** A repository with `main`, and a helper that adds a fragment on a branch at a given author date. */
-function repo(): { root: string; branch: (name: string, fragment: string, at: string) => void } {
+function repo(): ScratchRepo {
   const root = mkdtempSync(join(tmpdir(), "spec-release-"));
   git(root, ["init", "-q", "-b", "main"]);
   mkdirSync(join(root, FRAGMENTS_DIR), { recursive: true });

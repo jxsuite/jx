@@ -9,25 +9,43 @@
 
 import { Kysely, sql } from "kysely";
 import { syncTables } from "./ddl.ts";
+import type { D1Database } from "@cloudflare/workers-types";
 import type { Dialect } from "kysely";
+import type { JsonObject } from "@jxsuite/schema/types";
 import type { SqlDialectKind } from "./columns.ts";
 import type { DynamicDatabase } from "./query.ts";
 import type { ConnectionDef, DeploySchemaResult, TableDef, TestConnectionResult } from "./types.ts";
 
+/** A Hyperdrive binding as the Supabase provider reads it: only its pooled connection string. */
+export interface HyperdriveBinding {
+  readonly connectionString: string;
+}
+
+/**
+ * One host environment entry: an env var or secret (a string), or a platform binding a connection
+ * names through its `binding` field (a D1 database, a Hyperdrive config).
+ */
+export type HostEnvValue = string | D1Database | HyperdriveBinding;
+
+/**
+ * The host environment a connection resolves against: process.env merged under `.dev.vars` plus
+ * `JX_PROJECT_ROOT` on node/Bun hosts, or the Worker `env` (vars, secrets and bindings) on
+ * Cloudflare. Connections carry identifiers only; every secret and binding is read from here.
+ */
+export type HostEnv = Readonly<Record<string, HostEnvValue | undefined>>;
+
 /** The static capability surface of a connector provider implementation. */
 export interface ConnectorProvider {
   kind: SqlDialectKind;
-  dialect: (connection: ConnectionDef, env: Record<string, unknown>) => Dialect | Promise<Dialect>;
+  dialect: (connection: ConnectionDef, env: HostEnv) => Dialect | Promise<Dialect>;
   deploySchema: (
     tables: Record<string, TableDef>,
     connection: ConnectionDef,
-    options: { env: Record<string, unknown>; dryRun?: boolean },
+    options: { env: HostEnv; dryRun?: boolean },
   ) => Promise<DeploySchemaResult>;
-  bindings: (connection: ConnectionDef) => Record<string, unknown>;
-  testConnection: (
-    connection: ConnectionDef,
-    env: Record<string, unknown>,
-  ) => Promise<TestConnectionResult>;
+  /** The wrangler binding fragment this connection provisions (`jx db push` patches wrangler.jsonc). */
+  bindings: (connection: ConnectionDef) => JsonObject;
+  testConnection: (connection: ConnectionDef, env: HostEnv) => Promise<TestConnectionResult>;
 }
 
 /**
@@ -76,11 +94,7 @@ export function tablesForConnection(
   tables: Record<string, TableDef>,
   connectionName: string,
 ): Record<string, TableDef> {
-  const out: Record<string, TableDef> = {};
-  for (const [name, def] of Object.entries(tables)) {
-    if (def.connection === connectionName) {
-      out[name] = def;
-    }
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(tables).filter(([, def]) => def.connection === connectionName),
+  );
 }

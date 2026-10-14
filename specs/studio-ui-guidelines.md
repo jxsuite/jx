@@ -268,7 +268,7 @@ The hybrid row is the one worth reading twice. It was `jx-value-selector`, a `Li
 
 ### 4.4 Debounce Pattern
 
-> **Status: Partial.** `INPUT_DEBOUNCE` (400) and `CODE_DEBOUNCE` (500) are in `packages/studio/src/ui/timing.ts`, and `debouncedStyleCommit()` is in `store.ts`. Much text entry commits through a provisional preview instead, `LIVE_PREVIEW` at 350ms and then again on blur or Enter: the draft layer (`src/ui/field-input.ts`) in the properties panel, and the same semantics on their own `LIVE_PREVIEW` timers in `panels/head-panel.ts` and `panels/frontmatter-panel.ts`. `panels/seo-modal.ts` and `surfaces/settings-head.ts` keep a local 300ms `EDIT_DEBOUNCE_MS`, and the lit `@input` examples predate the document surfaces.
+> **Status: Partial.** `INPUT_DEBOUNCE` (400) and `CODE_DEBOUNCE` (500) are in `packages/studio/src/ui/timing.ts`, and `debouncedStyleCommit()` is in `store.ts`. Much text entry commits through a provisional preview instead, `LIVE_PREVIEW` at 350ms and then again on blur or Enter: the draft layer (`src/ui/field-input.ts`) in the properties panel, and the same semantics on their own `LIVE_PREVIEW` timers in `panels/head-panel.ts` and `panels/frontmatter-panel.ts`. `panels/seo-modal.ts` and `surfaces/settings-head.ts` share `HEAD_EDIT_DEBOUNCE` (300ms) from `ui/timing.ts`, and the lit `@input` examples predate the document surfaces.
 
 All text input handlers must debounce before committing to state. Standard delay: **400ms** (500ms for code/expression textareas).
 

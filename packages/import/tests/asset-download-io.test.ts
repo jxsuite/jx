@@ -49,8 +49,9 @@ describe("downloadAssets through a memory sink", () => {
       "public/assets/icons/favicon.ico",
       "public/assets/images/hero.jpg",
     ]);
-    expect(files.get("public/assets/images/hero.jpg")).toBeInstanceOf(Uint8Array);
-    expect([...(files.get("public/assets/images/hero.jpg") as Uint8Array)]).toEqual([1, 2, 3, 4]);
+    const hero = files.get("public/assets/images/hero.jpg");
+    expect(hero).toBeInstanceOf(Uint8Array);
+    expect(hero).toEqual(new Uint8Array([1, 2, 3, 4]));
 
     /* The rewrite map names the SERVED path, not the written one: `public/` is the compiler's
        static root, so that segment must not survive into a reference. */

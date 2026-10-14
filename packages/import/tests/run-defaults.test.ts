@@ -13,12 +13,14 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LaunchOptions } from "../src/browser-local.ts";
+import type { ImportPipelineOptions } from "../src/pipeline.ts";
 
-const launchBrowser = mock((_opts?: Record<string, unknown>) => Promise.resolve({ fake: true }));
+const launchBrowser = mock((_opts?: LaunchOptions) => Promise.resolve({ fake: true }));
 const closeBrowser = mock(() => Promise.resolve());
 void mock.module("../src/browser-local.ts", () => ({ launchBrowser, closeBrowser }));
 
-const runImportPipeline = mock((_opts: Record<string, unknown>) =>
+const runImportPipeline = mock((_opts: ImportPipelineOptions) =>
   Promise.resolve({
     pages: [{ route: "pages/index.json", title: "T", nodeCount: 3 }],
     files: ["project.json", "pages/index.json", "layouts/base.json"],
@@ -36,8 +38,13 @@ function freshOutDir(): string {
   return join(base, "out");
 }
 
-function lastOptions(): Record<string, unknown> {
-  return runImportPipeline.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+/** The options of the most recent pipeline run; a test that never reached the pipeline fails. */
+function lastOptions(): ImportPipelineOptions {
+  const call = runImportPipeline.mock.calls.at(-1);
+  if (call === undefined) {
+    throw new Error("importSite never called runImportPipeline");
+  }
+  return call[0];
 }
 
 beforeEach(() => {
@@ -161,7 +168,7 @@ describe("importSite — the local defaults", () => {
     const outDir = freshOutDir();
     await importSite({ url: "https://site.example/", outDir });
 
-    const io = lastOptions().io as { write: (p: string, d: string) => Promise<void> };
+    const { io } = lastOptions();
     await io.write("pages/deep/x.json", '{"ok":true}');
     expect(await Bun.file(join(outDir, "pages", "deep", "x.json")).json()).toEqual({ ok: true });
   });

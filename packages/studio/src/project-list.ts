@@ -3,6 +3,7 @@
  * member (dev server sites, cloud platforms). Hydrated once at boot (studio.ts) like the
  * recent-projects cache; the welcome screen reads it synchronously.
  */
+import { isFunction } from "@jxsuite/schema/guards";
 import { getPlatform, hasPlatform } from "./platform";
 import type { ProjectListEntry } from "./types";
 
@@ -10,7 +11,7 @@ let cache: ProjectListEntry[] = [];
 
 /** True when the active platform exposes a project catalogue. */
 export function platformListsProjects(): boolean {
-  return hasPlatform() && typeof getPlatform().listProjects === "function";
+  return hasPlatform() && isFunction(getPlatform().listProjects);
 }
 
 /** Refresh the cache from the platform; resolves to [] when unsupported or failing. */

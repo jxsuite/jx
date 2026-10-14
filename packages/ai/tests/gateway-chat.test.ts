@@ -11,6 +11,7 @@
 
 import { afterEach, describe, expect, it } from "bun:test";
 import { PROBLEM_MEDIA_TYPE, problemDetails } from "@jxsuite/protocol";
+import type { ProblemDetails } from "@jxsuite/protocol";
 import * as gateway from "../src/gateway/index.ts";
 import { createChatHandler } from "../src/gateway/chat.ts";
 import type {
@@ -19,6 +20,8 @@ import type {
   GatewayRefusal,
   Upstream,
 } from "../src/gateway/types.ts";
+import type { JsonObject, JsonValue } from "../src/core-types.ts";
+import type { StreamEvent } from "../src/streaming-client.ts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -39,7 +42,14 @@ const OK_BODY = 'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\
 interface UpstreamCall {
   url: string;
   init: RequestInit;
-  body: Record<string, unknown>;
+  body: JsonObject;
+}
+
+/** A `fetch` that answers through `answer`, with the global's own `preconnect` beside it. */
+function fetchDouble(
+  answer: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  return Object.assign(answer, { preconnect: fetch.preconnect });
 }
 
 /** A fetch double that records each call and answers with `respond`. */
@@ -47,20 +57,38 @@ function fakeFetch(
   respond: () => Promise<Response> = () => Promise.resolve(new Response(OK_BODY)),
 ) {
   const calls: UpstreamCall[] = [];
-  const impl = ((url: string, init: RequestInit) => {
-    calls.push({ body: JSON.parse(String(init.body)) as Record<string, unknown>, init, url });
+  const impl = fetchDouble((input, init) => {
+    if (init === undefined) {
+      throw new Error("the gateway calls its upstream with an init");
+    }
+    // SAFETY: the gateway's only upstream body is JSON.stringify of its UpstreamBody object.
+    const body = JSON.parse(String(init.body)) as JsonObject;
+    calls.push({ body, init, url: String(input) });
     return respond();
-  }) as unknown as typeof fetch;
+  });
   return { calls, impl };
 }
 
+/** A request body as a test gives it: a string is sent as written, anything else as its JSON. */
+function isVerbatim(body: JsonValue): body is string {
+  return typeof body === "string";
+}
+
 /** A chat request whose body is `body` (a string is sent as written). */
-function chatRequest(body: unknown): Request {
+function chatRequest(body: JsonValue): Request {
   return new Request("http://gateway.test/ai/chat", {
-    body: typeof body === "string" ? body : JSON.stringify(body),
+    body: isVerbatim(body) ? body : JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
     method: "POST",
   });
+}
+
+/**
+ * The init of a request with a streamed body. Fetch requires `duplex: "half"` for one, and the
+ * RequestInit this program is typed against does not declare the member yet.
+ */
+interface StreamingRequestInit extends RequestInit {
+  duplex: "half";
 }
 
 /**
@@ -90,11 +118,8 @@ function tracedRequest(chunks: string[], trace: string[]) {
     },
     { highWaterMark: 0 },
   );
-  const request = new Request("http://gateway.test/ai/chat", {
-    body,
-    duplex: "half",
-    method: "POST",
-  } as RequestInit);
+  const init: StreamingRequestInit = { body, duplex: "half", method: "POST" };
+  const request = new Request("http://gateway.test/ai/chat", init);
   return { cancelled, request };
 }
 
@@ -107,18 +132,21 @@ async function drain(pending: Promise<Response>): Promise<string> {
 }
 
 /** The frames of an SSE body, parsed. */
-async function framesOf(response: Response): Promise<unknown[]> {
+async function framesOf(response: Response): Promise<StreamEvent[]> {
   const text = await response.text();
   return text
     .split("\n\n")
     .filter((block) => block !== "")
-    .map((block) => JSON.parse(block.slice("data: ".length)) as unknown);
+    .map(
+      // SAFETY: each block is one `data: ` line encodeSse wrote from JSON.stringify of a StreamEvent.
+      (block) => JSON.parse(block.slice("data: ".length)) as StreamEvent,
+    );
 }
 
 async function expectProblem(
   response: Response,
   status: number,
-  body: Record<string, unknown>,
+  body: ProblemDetails,
 ): Promise<void> {
   expect(response.status).toBe(status);
   expect(response.headers.get("Content-Type")).toBe(PROBLEM_MEDIA_TYPE);
@@ -136,10 +164,10 @@ afterEach(() => {
 describe("createChatHandler: the order of the checks", () => {
   it("admits, resolves, reads, accepts and only then contacts the upstream", async () => {
     const trace: string[] = [];
-    const upstreamFetch = (() => {
+    const upstreamFetch = fetchDouble(() => {
       trace.push("fetch");
       return Promise.resolve(new Response(OK_BODY));
-    }) as unknown as typeof fetch;
+    });
     const handler = createChatHandler<Context>({
       admit: () => {
         trace.push("admit");
@@ -268,16 +296,13 @@ describe("createChatHandler: the body", () => {
         controller.error(new Error("connection reset"));
       },
     });
-    const request = new Request("http://gateway.test/ai/chat", {
-      body,
-      duplex: "half",
-      method: "POST",
-    } as RequestInit);
+    const init: StreamingRequestInit = { body, duplex: "half", method: "POST" };
+    const request = new Request("http://gateway.test/ai/chat", init);
     const handler = createChatHandler<Context>({ resolveUpstream: () => UPSTREAM });
     await expectProblem(await handler(request, context()), 400, invalidJson);
   });
 
-  it.each<[string, unknown]>([
+  it.each<[string, JsonValue]>([
     ["a string", "not-an-array"],
     ["null", null],
     ["an object", { 0: "a" }],
@@ -297,11 +322,8 @@ describe("createChatHandler: the body", () => {
      and a body of JSON null has no members to destructure. */
   it("a body of JSON null rejects, as the server's proxy always did", async () => {
     const handler = createChatHandler<Context>({ resolveUpstream: () => UPSTREAM });
-    const outcome = await handler(chatRequest("null"), context()).then(
-      () => "resolved",
-      (error: unknown) => (error as Error).name,
-    );
-    expect(outcome).toBe("TypeError");
+    const outcome = await Promise.allSettled([handler(chatRequest("null"), context())]);
+    expect(outcome).toEqual([{ status: "rejected", reason: expect.any(TypeError) }]);
   });
 });
 
@@ -378,7 +400,7 @@ describe("createChatHandler: the limits", () => {
 // ─── onAccepted ──────────────────────────────────────────────────────────────
 
 describe("createChatHandler: onAccepted", () => {
-  it.each<[string, Record<string, unknown>, string]>([
+  it.each<[string, JsonObject, string]>([
     ["the body's model", { messages: [{}, {}], model: "gpt-x" }, "gpt-x"],
     ["the upstream's default when the body names none", { messages: [{}, {}] }, "default-model"],
     ["a model that is not a string, as text", { messages: [{}, {}], model: 7 }, "7"],
@@ -442,7 +464,7 @@ describe("createChatHandler: the upstream request", () => {
     );
   });
 
-  it.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+  it.each<[string, JsonObject, JsonObject]>([
     [
       "an empty body gets every default",
       {},
@@ -570,7 +592,7 @@ describe("createChatHandler: the stream", () => {
     ]);
   });
 
-  it.each<[string, unknown, unknown[]]>([
+  it.each<[string, Error, StreamEvent[]]>([
     [
       "a network failure is an error frame",
       new Error("boom"),
@@ -641,6 +663,7 @@ describe("@jxsuite/ai/gateway", () => {
   it("exports the gateway's runtime surface and nothing else", () => {
     expect(Object.keys(gateway).toSorted()).toEqual([
       "AI_SESSION_HEADER",
+      "DEFAULT_UPSTREAM_BASE_URL",
       "affinityKey",
       "createChatHandler",
       "encodeSse",
@@ -655,6 +678,6 @@ describe("@jxsuite/ai/gateway", () => {
 
   it("types a host's options without a cast", () => {
     const options: ChatGatewayOptions<Context> = { resolveUpstream: () => UPSTREAM };
-    expect(typeof gateway.createChatHandler(options)).toBe("function");
+    expect(gateway.createChatHandler(options)).toBeInstanceOf(Function);
   });
 });

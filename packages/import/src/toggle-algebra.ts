@@ -28,6 +28,9 @@
  * rules, which they ship correctly. When the algebra does not close, nothing is rewritten.
  */
 
+import { isString } from "@jxsuite/schema/guards";
+import type { JxAttributeValue } from "@jxsuite/schema/types";
+
 /** A JavaScript identifier, which is what every one of these shapes is built around. */
 const IDENT = String.raw`[A-Za-z_$][A-Za-z0-9_$]*`;
 
@@ -93,7 +96,7 @@ export function classifyToggleValue(
   value: string,
   knownIdents?: ReadonlySet<string>,
 ): ToggleRole | null {
-  if (typeof value !== "string" || value.length === 0) {
+  if (value.length === 0) {
     return null;
   }
 
@@ -141,12 +144,12 @@ export function classifyToggleValue(
  * declaration outranks a toggle, which outranks a predicate, because that is the order in which
  * they identify the node: a root, then a control, then a panel.
  *
- * @param {Record<string, unknown> | undefined} attributes
+ * @param {Record<string, JxAttributeValue> | undefined} attributes
  * @param {ReadonlySet<string>} [knownIdents] - Idents a DECLARE in scope has introduced
  * @returns {ToggleRole | null}
  */
 export function roleOfElement(
-  attributes: Record<string, unknown> | undefined,
+  attributes: Record<string, JxAttributeValue> | undefined,
   knownIdents?: ReadonlySet<string>,
 ): ToggleRole | null {
   if (!attributes) {
@@ -155,7 +158,7 @@ export function roleOfElement(
   const rank = { assign: 1, compare: 2, declare: 0 };
   let best: ToggleRole | null = null;
   for (const value of Object.values(attributes)) {
-    if (typeof value !== "string") {
+    if (!isString(value)) {
       continue;
     }
     const role = classifyToggleValue(value, knownIdents);

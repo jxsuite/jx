@@ -20,21 +20,21 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "bun:test";
 
+import { RELEASE_PLEASE_CONFIG, RELEASE_PLEASE_MANIFEST } from "./check-release-integrity.ts";
 import { readWorkspaces } from "./lib/workspaces.ts";
-
-const CONFIG = "release-please-config.json";
-const MANIFEST = ".release-please-manifest.json";
 
 /**
  * Components release-please versions and tags but npm never receives. Each needs a reason, because
  * the default reading of "in the config but not publishable" is a mistake.
  */
-const NON_NPM_COMPONENTS: Record<string, string> = {
-  "packages/desktop":
+const NON_NPM_COMPONENTS = new Map([
+  [
+    "packages/desktop",
     "Ships as signed installers attached to the desktop-v* GitHub release. It declares no " +
-    "publishConfig, so publish-order.ts drops it from the npm set — but it still needs a version " +
-    "and a tag, because the four bundler workflows check out `desktop-v<version>`.",
-};
+      "publishConfig, so publish-order.ts drops it from the npm set — but it still needs a version " +
+      "and a tag, because the four bundler workflows check out `desktop-v<version>`.",
+  ],
+]);
 
 interface PackageConfig {
   "release-type"?: string;
@@ -46,8 +46,13 @@ interface Config {
   "extra-files"?: unknown;
 }
 
-const config = (await Bun.file(CONFIG).json()) as Config;
-const manifest = (await Bun.file(MANIFEST).json()) as Record<string, string>;
+/* SAFETY: this reads the committed release-please-config.json, which release-please validates against
+ * its own schema on every release run; Config names only the keys these tests read, each optional
+ * where release-please allows it to be omitted. */
+const config = (await Bun.file(RELEASE_PLEASE_CONFIG).json()) as Config;
+/* SAFETY: this reads the committed .release-please-manifest.json, which release-please writes as a
+ * flat map of component path to version string; the tests below hold its keys to config.packages. */
+const manifest = (await Bun.file(RELEASE_PLEASE_MANIFEST).json()) as Record<string, string>;
 const workspaces = await readWorkspaces();
 
 describe("release-please config", () => {
@@ -59,12 +64,12 @@ describe("release-please config", () => {
       .filter((dir) => !components.includes(dir))
       .map((dir) => {
         const w = workspaces.find((x) => x.dir === dir)!;
-        return `${dir} (${w.name}) — publishable, but absent from ${CONFIG}: never versioned, never tagged, never published`;
+        return `${dir} (${w.name}) — publishable, but absent from ${RELEASE_PLEASE_CONFIG}: never versioned, never tagged, never published`;
       })
       .toSorted();
 
     const extra = components
-      .filter((dir) => !publishable.includes(dir) && !(dir in NON_NPM_COMPONENTS))
+      .filter((dir) => !publishable.includes(dir) && !NON_NPM_COMPONENTS.has(dir))
       .map(
         (dir) =>
           `${dir} — a release-please component, but not publishable and not in NON_NPM_COMPONENTS`,
@@ -90,12 +95,12 @@ describe("release-please config", () => {
     for (const [dir, version] of Object.entries(manifest)) {
       const w = workspaces.find((x) => x.dir === dir);
       if (!w) {
-        disagreements.push(`${MANIFEST} names ${dir}, which is not a workspace`);
+        disagreements.push(`${RELEASE_PLEASE_MANIFEST} names ${dir}, which is not a workspace`);
         continue;
       }
       if (w.version !== version) {
         disagreements.push(
-          `${MANIFEST} says ${dir}=${version}, ${dir}/package.json says ${w.version}`,
+          `${RELEASE_PLEASE_MANIFEST} says ${dir}=${version}, ${dir}/package.json says ${w.version}`,
         );
       }
     }
@@ -190,9 +195,10 @@ describe("release-please config", () => {
       edges.set(
         dir,
         w
-          ? [...w.deps, ...w.devDeps]
-              .map((n) => byName.get(n)?.dir)
-              .filter((d): d is string => Boolean(d) && dirs.has(d!))
+          ? [...w.deps, ...w.devDeps].flatMap((n) => {
+              const d = byName.get(n)?.dir;
+              return d && dirs.has(d) ? [d] : [];
+            })
           : [],
       );
     }

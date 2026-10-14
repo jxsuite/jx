@@ -23,5 +23,8 @@
   "scripts": {
     "test": "bun test --isolate",
     "test:coverage": "bun test --isolate --coverage"
+  },
+  "dependencies": {
+    "@jxsuite/protocol": "workspace:^"
   }
 }

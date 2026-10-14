@@ -22,6 +22,8 @@ import { componentRegistry } from "../files/components";
 import { uploadAssets } from "../files/media-upload";
 import { applyDropInstruction } from "../panels/dnd";
 import { mutateUpdateAttribute, mutateUpdateProp, transactDoc } from "../tabs/transact";
+import { isNumber } from "@jxsuite/schema/guards";
+import type { ComponentEntry } from "../files/components";
 import type { UploadedAsset } from "../files/media-upload";
 import type { DropPreview, FileDropHit } from "../canvas/iframe-protocol";
 import type { JxPath } from "../state";
@@ -30,12 +32,12 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import { isMediaFormat } from "../utils/studio-utils";
 
 /** Where an asset's URL goes when it replaces an existing element's picture. */
-const REPLACE_ATTRS: Record<string, "src" | "poster"> = {
-  img: "src",
-  source: "src",
+const REPLACE_ATTRS = new Map<string, "src" | "poster">([
+  ["img", "src"],
+  ["source", "src"],
   // A <video>'s own `src` is the movie; dropping an image on one sets its poster frame instead.
-  video: "poster",
-};
+  ["video", "poster"],
+]);
 
 /** What a drop resolves to once the parent has applied its semantics. */
 export type FileDropTarget =
@@ -43,11 +45,8 @@ export type FileDropTarget =
   | { mode: "replace-prop"; path: JxPath; prop: string }
   | { mode: "insert" };
 
-/** A component prop the registry declares as an image, for {@link resolveFileDropTarget}. */
-interface RegistryEntry {
-  tagName: string;
-  props?: { name: string; format?: unknown; [k: string]: unknown }[];
-}
+/** The part of a registry entry {@link resolveFileDropTarget} reads: its tag and declared props. */
+type RegistryEntry = Pick<ComponentEntry, "tagName" | "props">;
 
 /**
  * Decide whether a drop replaces an existing picture or inserts a new element.
@@ -66,15 +65,15 @@ export function resolveFileDropTarget(
   if (!hit || kind !== "image") {
     return { mode: "insert" };
   }
-  const attr = REPLACE_ATTRS[hit.tagName];
+  const attr = REPLACE_ATTRS.get(hit.tagName);
   if (attr) {
-    return { attr, mode: "replace-attr", path: hit.path as JxPath };
+    return { attr, mode: "replace-attr", path: hit.path };
   }
   if (hit.tagName.includes("-")) {
     const entry = registry.find((c) => c.tagName === hit.tagName);
     const imageProps = (entry?.props ?? []).filter((p) => isMediaFormat(p.format));
     if (imageProps.length === 1) {
-      return { mode: "replace-prop", path: hit.path as JxPath, prop: imageProps[0]!.name };
+      return { mode: "replace-prop", path: hit.path, prop: imageProps[0]!.name };
     }
   }
   return { mode: "insert" };
@@ -88,20 +87,20 @@ export function resolveFileDropTarget(
 export function elementForAsset(asset: UploadedAsset): JxMutableNode {
   switch (asset.kind) {
     case "image": {
-      return { attributes: { alt: "", src: asset.ref }, tagName: "img" } as JxMutableNode;
+      return { attributes: { alt: "", src: asset.ref }, tagName: "img" };
     }
     case "video": {
-      return { attributes: { controls: "", src: asset.ref }, tagName: "video" } as JxMutableNode;
+      return { attributes: { controls: "", src: asset.ref }, tagName: "video" };
     }
     case "audio": {
-      return { attributes: { controls: "", src: asset.ref }, tagName: "audio" } as JxMutableNode;
+      return { attributes: { controls: "", src: asset.ref }, tagName: "audio" };
     }
     default: {
       return {
         attributes: { href: asset.ref },
         tagName: "a",
         textContent: asset.name,
-      } as JxMutableNode;
+      };
     }
   }
 }
@@ -114,13 +113,13 @@ export function elementForAsset(asset: UploadedAsset): JxMutableNode {
  * they were dropped. `make-child` appends, which is already ordered.
  */
 export function nthDropPath(preview: DropPreview, n: number): JxPath {
-  const path = [...preview.targetPath];
+  const path: JxPath = [...preview.targetPath];
   const tail = path.at(-1);
-  if (n === 0 || typeof tail !== "number") {
-    return path as JxPath;
+  if (n === 0 || !isNumber(tail)) {
+    return path;
   }
   path[path.length - 1] = tail + n;
-  return path as JxPath;
+  return path;
 }
 
 /**
@@ -160,7 +159,7 @@ export async function applyFileDrop(
     if (preview) {
       applyDropInstruction(tab, { type: preview.instruction }, srcData, nthDropPath(preview, i));
     } else {
-      applyDropInstruction(tab, { type: "make-child" }, srcData, [] as unknown as JxPath);
+      applyDropInstruction(tab, { type: "make-child" }, srcData, []);
     }
   }
 }

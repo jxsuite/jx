@@ -6,6 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
+import { isNodeObject } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import type { MdastNode } from "../src/types";
 import {
@@ -24,6 +25,19 @@ import {
   slugifyHeading,
   transpileJxMarkdown,
 } from "../src/transpile";
+
+/** The single element a conversion produced; text, a fragment or nothing fails the test. */
+function elementFrom(result: ReturnType<typeof mdastNodeToJx> | undefined): JxElement {
+  if (!isNodeObject(result)) {
+    throw new Error(`Expected one element, got ${JSON.stringify(result)}`);
+  }
+  return result;
+}
+
+/** The element at `index` of a children slot; a string, a repeater or a missing entry fails. */
+function elementAt(children: JxElement["children"], index: number): JxElement {
+  return elementFrom(Array.isArray(children) ? children[index] : undefined);
+}
 
 // ─── jxKey / mdKey ──────────────────────────────────────────────────────────
 
@@ -216,33 +230,44 @@ describe("isJxMarkdown", () => {
 
 describe("mdastNodeToJx edge cases", () => {
   test("returns null for null / non-object input", () => {
-    expect(mdastNodeToJx(null as unknown as MdastNode)).toBeNull();
-    expect(mdastNodeToJx("text" as unknown as MdastNode)).toBeNull();
+    expect(mdastNodeToJx(null)).toBeNull();
+    // A hand-built tree can put a bare string where a node belongs.
+    /* SAFETY: deliberately outside MdastNode. A string has no `type`, so every `node.type`
+       comparison in mdastNodeToJx fails and the JX_TAG_MAP lookup misses, which returns null before
+       any other field is read; that null is what this pins. */
+    const strayNode = (value: MdastNode | string) => value as MdastNode;
+    expect(mdastNodeToJx(strayNode("text"))).toBeNull();
   });
 
   test("returns null for yaml and toml nodes", () => {
-    expect(mdastNodeToJx({ type: "yaml", value: "a: 1" } as MdastNode)).toBeNull();
-    expect(mdastNodeToJx({ type: "toml", value: "a = 1" } as MdastNode)).toBeNull();
+    expect(mdastNodeToJx({ type: "yaml", value: "a: 1" })).toBeNull();
+    expect(mdastNodeToJx({ type: "toml", value: "a = 1" })).toBeNull();
   });
 
   test("returns null for unknown node types", () => {
-    expect(mdastNodeToJx({ type: "definition" } as MdastNode)).toBeNull();
-    expect(mdastNodeToJx({ type: "footnoteDefinition" } as MdastNode)).toBeNull();
+    expect(mdastNodeToJx({ type: "definition" })).toBeNull();
+    expect(mdastNodeToJx({ type: "footnoteDefinition" })).toBeNull();
+  });
+
+  test("returns null for a node type named like an Object.prototype member", () => {
+    // The tag table is a Map, so an inherited name such as `constructor` is not a known node type.
+    expect(mdastNodeToJx({ type: "constructor" })).toBeNull();
+    expect(mdastNodeToJx({ type: "toString" })).toBeNull();
   });
 
   test("returns text node value, or null when missing", () => {
-    expect(mdastNodeToJx({ type: "text", value: "hi" } as MdastNode)).toBe("hi");
-    expect(mdastNodeToJx({ type: "text" } as MdastNode)).toBeNull();
+    expect(mdastNodeToJx({ type: "text", value: "hi" })).toBe("hi");
+    expect(mdastNodeToJx({ type: "text" })).toBeNull();
   });
 
   test("converts html nodes via htmlToJx", () => {
-    const result = mdastNodeToJx({ type: "html", value: "<div>hi</div>" } as MdastNode);
+    const result = mdastNodeToJx({ type: "html", value: "<div>hi</div>" });
     expect(result).toEqual([{ tagName: "div", textContent: "hi" }]);
   });
 
   test("returns null for html nodes without value", () => {
-    expect(mdastNodeToJx({ type: "html" } as MdastNode)).toBeNull();
-    expect(mdastNodeToJx({ type: "html", value: "" } as MdastNode)).toBeNull();
+    expect(mdastNodeToJx({ type: "html" })).toBeNull();
+    expect(mdastNodeToJx({ type: "html", value: "" })).toBeNull();
   });
 });
 
@@ -252,12 +277,11 @@ describe("prototype directives", () => {
   test(":::Array directive transpiles to a tagName-less $prototype node", () => {
     const md = [':::Array{items.ref="#/state/rows"}', "${$map.item.name}", ":::", ""].join("\n");
     const doc = transpileJxMarkdown(md);
-    const [node] = doc.children as JxElement[];
-    expect(node!.$prototype).toBe("Array");
-    expect(node!.tagName).toBeUndefined();
-    expect(node!.items).toEqual({ $ref: "#/state/rows" });
-    expect((node!.map as JxElement).tagName).toBe("p");
-    expect((node!.map as JxElement).textContent).toBe("${$map.item.name}");
+    const node = elementAt(doc.children, 0);
+    expect(node.$prototype).toBe("Array");
+    expect(node.tagName).toBeUndefined();
+    expect(node.items).toEqual({ $ref: "#/state/rows" });
+    expect(node.map).toMatchObject({ tagName: "p", textContent: "${$map.item.name}" });
   });
 
   test(":::Array nestled among sibling blocks keeps order", () => {
@@ -272,11 +296,12 @@ describe("prototype directives", () => {
       "",
     ].join("\n");
     const doc = transpileJxMarkdown(md);
-    const kids = doc.children as JxElement[];
-    expect(kids[0]!.tagName).toBe("h1");
-    expect(kids[1]!.$prototype).toBe("Array");
+    expect(elementAt(doc.children, 0).tagName).toBe("h1");
+    expect(elementAt(doc.children, 1).$prototype).toBe("Array");
     // Trailing paragraph "End" remains a sibling after the array.
-    expect(kids.at(-1)?.textContent ?? (kids.at(-1)?.children as unknown[])?.[0]).toBeDefined();
+    const last = elementFrom(Array.isArray(doc.children) ? doc.children.at(-1) : undefined);
+    const lastChildren = Array.isArray(last.children) ? last.children : [];
+    expect(last.textContent ?? lastChildren[0]).toBeDefined();
   });
 
   test(":::Array with filter and sort attributes", () => {
@@ -286,9 +311,9 @@ describe("prototype directives", () => {
       ":::",
       "",
     ].join("\n");
-    const [node] = transpileJxMarkdown(md).children as JxElement[];
-    expect(node!.filter).toEqual({ $ref: "#/state/byDate" });
-    expect(node!.sort).toEqual({ $ref: "#/state/asc" });
+    const node = elementAt(transpileJxMarkdown(md).children, 0);
+    expect(node.filter).toEqual({ $ref: "#/state/byDate" });
+    expect(node.sort).toEqual({ $ref: "#/state/asc" });
   });
 });
 
@@ -296,50 +321,60 @@ describe("prototype directives", () => {
 
 describe("mdastNodeToJx standard nodes", () => {
   test("heading maps depth to h-tag with textContent", () => {
-    const el = mdastNodeToJx({
-      children: [{ type: "text", value: "Title" }],
-      depth: 3,
-      type: "heading",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ type: "text", value: "Title" }],
+        depth: 3,
+        type: "heading",
+      }),
+    );
     expect(el).toEqual({ tagName: "h3", textContent: "Title" });
   });
 
   test("paragraph with mixed children gets children array", () => {
-    const el = mdastNodeToJx({
-      children: [
-        { type: "text", value: "Hello " },
-        { children: [{ type: "text", value: "world" }], type: "strong" },
-      ],
-      type: "paragraph",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          { type: "text", value: "Hello " },
+          { children: [{ type: "text", value: "world" }], type: "strong" },
+        ],
+        type: "paragraph",
+      }),
+    );
     expect(el.tagName).toBe("p");
     expect(el.children).toEqual(["Hello ", { tagName: "strong", textContent: "world" }]);
   });
 
   test("paragraph with no convertible children has neither textContent nor children", () => {
-    const el = mdastNodeToJx({ children: [], type: "paragraph" } as MdastNode) as JxElement;
+    const el = elementFrom(mdastNodeToJx({ children: [], type: "paragraph" }));
     expect(el).toEqual({ tagName: "p" });
   });
 
   test("emphasis and delete map to em / del", () => {
-    const em = mdastNodeToJx({
-      children: [{ type: "text", value: "x" }],
-      type: "emphasis",
-    } as MdastNode) as JxElement;
+    const em = elementFrom(
+      mdastNodeToJx({
+        children: [{ type: "text", value: "x" }],
+        type: "emphasis",
+      }),
+    );
     expect(em).toEqual({ tagName: "em", textContent: "x" });
 
-    const del = mdastNodeToJx({
-      children: [{ type: "text", value: "y" }],
-      type: "delete",
-    } as MdastNode) as JxElement;
+    const del = elementFrom(
+      mdastNodeToJx({
+        children: [{ type: "text", value: "y" }],
+        type: "delete",
+      }),
+    );
     expect(del).toEqual({ tagName: "del", textContent: "y" });
   });
 
   test("blockquote wraps block children", () => {
-    const el = mdastNodeToJx({
-      children: [{ children: [{ type: "text", value: "quoted" }], type: "paragraph" }],
-      type: "blockquote",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ children: [{ type: "text", value: "quoted" }], type: "paragraph" }],
+        type: "blockquote",
+      }),
+    );
     expect(el).toEqual({
       children: [{ tagName: "p", textContent: "quoted" }],
       tagName: "blockquote",
@@ -347,23 +382,25 @@ describe("mdastNodeToJx standard nodes", () => {
   });
 
   test("inlineCode becomes code with textContent", () => {
-    expect(mdastNodeToJx({ type: "inlineCode", value: "x+1" } as MdastNode)).toEqual({
+    expect(mdastNodeToJx({ type: "inlineCode", value: "x+1" })).toEqual({
       tagName: "code",
       textContent: "x+1",
     });
-    expect(mdastNodeToJx({ type: "inlineCode" } as MdastNode)).toEqual({
+    expect(mdastNodeToJx({ type: "inlineCode" })).toEqual({
       tagName: "code",
       textContent: null,
     });
   });
 
   test("link gets href, optional title, and textContent", () => {
-    const el = mdastNodeToJx({
-      children: [{ type: "text", value: "site" }],
-      title: "Tip",
-      type: "link",
-      url: "https://example.com",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ type: "text", value: "site" }],
+        title: "Tip",
+        type: "link",
+        url: "https://example.com",
+      }),
+    );
     expect(el).toEqual({
       attributes: { href: "https://example.com", title: "Tip" },
       tagName: "a",
@@ -372,13 +409,15 @@ describe("mdastNodeToJx standard nodes", () => {
   });
 
   test("link without title or url defaults href to empty string", () => {
-    const el = mdastNodeToJx({
-      children: [
-        { type: "text", value: "a" },
-        { children: [{ type: "text", value: "b" }], type: "emphasis" },
-      ],
-      type: "link",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          { type: "text", value: "a" },
+          { children: [{ type: "text", value: "b" }], type: "emphasis" },
+        ],
+        type: "link",
+      }),
+    );
     expect(el.attributes).toEqual({ href: "" });
     expect(el.children).toEqual(["a", { tagName: "em", textContent: "b" }]);
   });
@@ -390,26 +429,28 @@ describe("mdastNodeToJx standard nodes", () => {
         title: "Cat",
         type: "image",
         url: "/cat.png",
-      } as MdastNode),
+      }),
     ).toEqual({ attributes: { alt: "A cat", src: "/cat.png", title: "Cat" }, tagName: "img" });
 
-    expect(mdastNodeToJx({ type: "image" } as MdastNode)).toEqual({
+    expect(mdastNodeToJx({ type: "image" })).toEqual({
       attributes: { alt: "", src: "" },
       tagName: "img",
     });
   });
 
   test("unordered list with items", () => {
-    const el = mdastNodeToJx({
-      children: [
-        {
-          children: [{ children: [{ type: "text", value: "one" }], type: "paragraph" }],
-          type: "listItem",
-        },
-      ],
-      ordered: false,
-      type: "list",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          {
+            children: [{ children: [{ type: "text", value: "one" }], type: "paragraph" }],
+            type: "listItem",
+          },
+        ],
+        ordered: false,
+        type: "list",
+      }),
+    );
     expect(el.tagName).toBe("ul");
     expect(el.children).toEqual([
       { children: [{ tagName: "p", textContent: "one" }], tagName: "li" },
@@ -417,59 +458,67 @@ describe("mdastNodeToJx standard nodes", () => {
   });
 
   test("ordered list with non-default start gets start attribute", () => {
-    const el = mdastNodeToJx({
-      children: [],
-      ordered: true,
-      start: 4,
-      type: "list",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [],
+        ordered: true,
+        start: 4,
+        type: "list",
+      }),
+    );
     expect(el.tagName).toBe("ol");
     expect(el.attributes).toEqual({ start: "4" });
     expect(el.children).toBeUndefined();
   });
 
   test("ordered list starting at 1 omits start attribute", () => {
-    const el = mdastNodeToJx({
-      children: [],
-      ordered: true,
-      start: 1,
-      type: "list",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [],
+        ordered: true,
+        start: 1,
+        type: "list",
+      }),
+    );
     expect(el.attributes).toBeUndefined();
   });
 
   test("code block becomes pre > code with language class", () => {
-    expect(mdastNodeToJx({ lang: "js", type: "code", value: "let a = 1;" } as MdastNode)).toEqual({
+    expect(mdastNodeToJx({ lang: "js", type: "code", value: "let a = 1;" })).toEqual({
       children: [{ className: "language-js", tagName: "code", textContent: "let a = 1;" }],
       tagName: "pre",
     });
   });
 
   test("code block without language omits className", () => {
-    expect(mdastNodeToJx({ type: "code", value: "plain" } as MdastNode)).toEqual({
+    expect(mdastNodeToJx({ type: "code", value: "plain" })).toEqual({
       children: [{ tagName: "code", textContent: "plain" }],
       tagName: "pre",
     });
   });
 
   test("thematicBreak and break map to hr / br", () => {
-    expect(mdastNodeToJx({ type: "thematicBreak" } as MdastNode)).toEqual({ tagName: "hr" });
-    expect(mdastNodeToJx({ type: "break" } as MdastNode)).toEqual({ tagName: "br" });
+    expect(mdastNodeToJx({ type: "thematicBreak" })).toEqual({ tagName: "hr" });
+    expect(mdastNodeToJx({ type: "break" })).toEqual({ tagName: "br" });
   });
 
   test("table splits first row into thead, rest into tbody", () => {
     const row = (cells: string[], isHeader?: boolean) => ({
-      children: cells.map((value) => ({
-        children: [{ type: "text", value }],
-        ...(isHeader ? { isHeader: true } : {}),
-        type: "tableCell",
-      })),
+      children: cells.map((value) => {
+        const cell: MdastNode = { children: [{ type: "text", value }], type: "tableCell" };
+        if (isHeader) {
+          cell.isHeader = true;
+        }
+        return cell;
+      }),
       type: "tableRow",
     });
-    const el = mdastNodeToJx({
-      children: [row(["Name"], true), row(["Ada"])],
-      type: "table",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [row(["Name"], true), row(["Ada"])],
+        type: "table",
+      }),
+    );
 
     expect(el.tagName).toBe("table");
     expect(el.children).toEqual([
@@ -485,20 +534,23 @@ describe("mdastNodeToJx standard nodes", () => {
   });
 
   test("table with a single row emits only thead", () => {
-    const el = mdastNodeToJx({
-      children: [
-        {
-          children: [{ children: [{ type: "text", value: "Solo" }], type: "tableCell" }],
-          type: "tableRow",
-        },
-      ],
-      type: "table",
-    } as MdastNode) as JxElement;
-    expect((el.children as JxElement[]).map((c) => c.tagName)).toEqual(["thead"]);
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          {
+            children: [{ children: [{ type: "text", value: "Solo" }], type: "tableCell" }],
+            type: "tableRow",
+          },
+        ],
+        type: "table",
+      }),
+    );
+    expect(el.children).toHaveLength(1);
+    expect(elementAt(el.children, 0).tagName).toBe("thead");
   });
 
   test("empty table emits no children", () => {
-    const el = mdastNodeToJx({ children: [], type: "table" } as MdastNode) as JxElement;
+    const el = elementFrom(mdastNodeToJx({ children: [], type: "table" }));
     expect(el).toEqual({ children: [], tagName: "table" });
   });
 });
@@ -507,56 +559,64 @@ describe("mdastNodeToJx standard nodes", () => {
 
 describe("mdastNodeToJx directives", () => {
   test("leafDirective converts to bare element with routed attributes", () => {
-    const el = mdastNodeToJx({
-      attributes: { ref: "#/x", src: "/img.png" },
-      name: "img",
-      type: "leafDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        attributes: { ref: "#/x", src: "/img.png" },
+        name: "img",
+        type: "leafDirective",
+      }),
+    );
     expect(el).toEqual({ $ref: "#/x", attributes: { src: "/img.png" }, tagName: "img" });
   });
 
   test("textDirective with single text child uses textContent", () => {
-    const el = mdastNodeToJx({
-      children: [{ type: "text", value: "hi" }],
-      name: "span",
-      type: "textDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ type: "text", value: "hi" }],
+        name: "span",
+        type: "textDirective",
+      }),
+    );
     expect(el).toEqual({ tagName: "span", textContent: "hi" });
   });
 
   test("textDirective with mixed children uses children array", () => {
-    const el = mdastNodeToJx({
-      children: [
-        { type: "text", value: "a " },
-        { children: [{ type: "text", value: "b" }], type: "strong" },
-      ],
-      name: "span",
-      type: "textDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          { type: "text", value: "a " },
+          { children: [{ type: "text", value: "b" }], type: "strong" },
+        ],
+        name: "span",
+        type: "textDirective",
+      }),
+    );
     expect(el.children).toEqual(["a ", { tagName: "strong", textContent: "b" }]);
     expect(el.textContent).toBeUndefined();
   });
 
   test("textDirective without children stays bare", () => {
-    const el = mdastNodeToJx({ name: "wbr", type: "textDirective" } as MdastNode) as JxElement;
+    const el = elementFrom(mdastNodeToJx({ name: "wbr", type: "textDirective" }));
     expect(el).toEqual({ tagName: "wbr" });
   });
 
   test("standard element: DOM props stay element-level, rest become attributes", () => {
-    const el = mdastNodeToJx({
-      attributes: {
-        "aria-label": "Close",
-        className: "btn",
-        "data-x": "1",
-        href: "/go",
-        id: "main",
-        onclick: "doThing()",
-        slot: "footer",
-        type: "button",
-      },
-      name: "a",
-      type: "leafDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        attributes: {
+          "aria-label": "Close",
+          className: "btn",
+          "data-x": "1",
+          href: "/go",
+          id: "main",
+          onclick: "doThing()",
+          slot: "footer",
+          type: "button",
+        },
+        name: "a",
+        type: "leafDirective",
+      }),
+    );
 
     expect(el.tagName).toBe("a");
     expect(el.id).toBe("main");
@@ -572,25 +632,29 @@ describe("mdastNodeToJx directives", () => {
   });
 
   test("standard element: style dot-paths build a style object with pseudo mapping", () => {
-    const el = mdastNodeToJx({
-      attributes: { "style.color": "blue", "style.hover.color": "red" },
-      name: "div",
-      type: "leafDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        attributes: { "style.color": "blue", "style.hover.color": "red" },
+        name: "div",
+        type: "leafDirective",
+      }),
+    );
     expect(el.style).toEqual({ ":hover": { color: "red" }, color: "blue" });
   });
 
   test("custom element: structural keys element-level, unknown keys become attributes", () => {
-    const el = mdastNodeToJx({
-      attributes: {
-        ref: "#/$defs/thing",
-        "style.color": "red",
-        textContent: "Hi",
-        variant: "primary",
-      },
-      name: "my-card",
-      type: "leafDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        attributes: {
+          ref: "#/$defs/thing",
+          "style.color": "red",
+          textContent: "Hi",
+          variant: "primary",
+        },
+        name: "my-card",
+        type: "leafDirective",
+      }),
+    );
 
     expect(el.tagName).toBe("my-card");
     expect(el.$ref).toBe("#/$defs/thing");
@@ -600,34 +664,40 @@ describe("mdastNodeToJx directives", () => {
   });
 
   test("custom element: props.* dot paths land in $props", () => {
-    const el = mdastNodeToJx({
-      attributes: { "props.count": "3", "props.title": "Hi" },
-      name: "my-counter",
-      type: "leafDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        attributes: { "props.count": "3", "props.title": "Hi" },
+        name: "my-counter",
+        type: "leafDirective",
+      }),
+    );
     expect(el.$props).toEqual({ count: "3", title: "Hi" });
   });
 
   // "props" is a JX_DOLLAR_KEYS entry, so expandDotPaths renames it to "$props" whether or not it
   // Carries a dot-path — the bare form takes the exact same route as a dotted one.
   test("custom element: a bare props attribute (no dot-path) still lands in $props", () => {
-    const el = mdastNodeToJx({
-      attributes: { props: "literal" },
-      name: "my-counter",
-      type: "leafDirective",
-    } as MdastNode) as JxElement;
-    expect(el.$props as unknown as string).toBe("literal");
+    const el = elementFrom(
+      mdastNodeToJx({
+        attributes: { props: "literal" },
+        name: "my-counter",
+        type: "leafDirective",
+      }),
+    );
+    expect(el).toMatchObject({ $props: "literal" });
   });
 
   test("containerDirective converts block children", () => {
-    const el = mdastNodeToJx({
-      children: [
-        { children: [{ type: "text", value: "one" }], type: "paragraph" },
-        { children: [{ type: "text", value: "two" }], type: "paragraph" },
-      ],
-      name: "section",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          { children: [{ type: "text", value: "one" }], type: "paragraph" },
+          { children: [{ type: "text", value: "two" }], type: "paragraph" },
+        ],
+        name: "section",
+        type: "containerDirective",
+      }),
+    );
     expect(el.children).toEqual([
       { tagName: "p", textContent: "one" },
       { tagName: "p", textContent: "two" },
@@ -635,53 +705,61 @@ describe("mdastNodeToJx directives", () => {
   });
 
   test("containerDirective with a single text child collapses to textContent", () => {
-    const el = mdastNodeToJx({
-      children: [{ children: [{ type: "text", value: "solo" }], type: "paragraph" }],
-      name: "div",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ children: [{ type: "text", value: "solo" }], type: "paragraph" }],
+        name: "div",
+        type: "containerDirective",
+      }),
+    );
     // Div is not a phrasing element, so the paragraph wrapper is kept
     expect(el.children).toEqual([{ tagName: "p", textContent: "solo" }]);
   });
 
   test("phrasing container unwraps paragraph children", () => {
-    const el = mdastNodeToJx({
-      children: [
-        {
-          children: [
-            { type: "text", value: "Click " },
-            { children: [{ type: "text", value: "me" }], type: "strong" },
-          ],
-          type: "paragraph",
-        },
-      ],
-      name: "button",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          {
+            children: [
+              { type: "text", value: "Click " },
+              { children: [{ type: "text", value: "me" }], type: "strong" },
+            ],
+            type: "paragraph",
+          },
+        ],
+        name: "button",
+        type: "containerDirective",
+      }),
+    );
     expect(el.tagName).toBe("button");
     expect(el.children).toEqual(["Click ", { tagName: "strong", textContent: "me" }]);
   });
 
   test("phrasing container with a single unwrapped text child uses textContent", () => {
-    const el = mdastNodeToJx({
-      children: [{ children: [{ type: "text", value: "just text" }], type: "paragraph" }],
-      name: "button",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ children: [{ type: "text", value: "just text" }], type: "paragraph" }],
+        name: "button",
+        type: "containerDirective",
+      }),
+    );
     expect(el).toEqual({ tagName: "button", textContent: "just text" });
   });
 
   test("phrasing container spreads array results from inline html children", () => {
-    const el = mdastNodeToJx({
-      children: [
-        {
-          children: [{ type: "html", value: "<b>a</b><i>b</i>" }],
-          type: "paragraph",
-        },
-      ],
-      name: "button",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          {
+            children: [{ type: "html", value: "<b>a</b><i>b</i>" }],
+            type: "paragraph",
+          },
+        ],
+        name: "button",
+        type: "containerDirective",
+      }),
+    );
     expect(el.children).toEqual([
       { tagName: "b", textContent: "a" },
       { tagName: "i", textContent: "b" },
@@ -689,25 +767,29 @@ describe("mdastNodeToJx directives", () => {
   });
 
   test("phrasing container skips null inline children", () => {
-    const el = mdastNodeToJx({
-      children: [
-        {
-          children: [{ type: "definition" }, { type: "text", value: "kept" }],
-          type: "paragraph",
-        },
-      ],
-      name: "button",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [
+          {
+            children: [{ type: "definition" }, { type: "text", value: "kept" }],
+            type: "paragraph",
+          },
+        ],
+        name: "button",
+        type: "containerDirective",
+      }),
+    );
     expect(el).toEqual({ tagName: "button", textContent: "kept" });
   });
 
   test("non-phrasing container spreads array results from block html children", () => {
-    const el = mdastNodeToJx({
-      children: [{ type: "html", value: "<span>a</span><span>b</span>" }],
-      name: "div",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ type: "html", value: "<span>a</span><span>b</span>" }],
+        name: "div",
+        type: "containerDirective",
+      }),
+    );
     expect(el.children).toEqual([
       { tagName: "span", textContent: "a" },
       { tagName: "span", textContent: "b" },
@@ -715,21 +797,25 @@ describe("mdastNodeToJx directives", () => {
   });
 
   test("non-phrasing container skips null children", () => {
-    const el = mdastNodeToJx({
-      children: [{ type: "definition" }],
-      name: "div",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        children: [{ type: "definition" }],
+        name: "div",
+        type: "containerDirective",
+      }),
+    );
     expect(el).toEqual({ tagName: "div" });
   });
 
   test("children descriptor from dot-path attributes is not overwritten by body", () => {
-    const el = mdastNodeToJx({
-      attributes: { "children.items.ref": "#/$defs/items", "children.prototype": "Array" },
-      children: [{ children: [{ type: "text", value: "fallback" }], type: "paragraph" }],
-      name: "div",
-      type: "containerDirective",
-    } as MdastNode) as JxElement;
+    const el = elementFrom(
+      mdastNodeToJx({
+        attributes: { "children.items.ref": "#/$defs/items", "children.prototype": "Array" },
+        children: [{ children: [{ type: "text", value: "fallback" }], type: "paragraph" }],
+        name: "div",
+        type: "containerDirective",
+      }),
+    );
     expect(el.children).toEqual({ $prototype: "Array", items: { $ref: "#/$defs/items" } });
   });
 });
@@ -738,8 +824,10 @@ describe("mdastNodeToJx directives", () => {
 
 describe("convertChildren", () => {
   test("returns [] for missing input", () => {
-    expect(convertChildren(undefined as unknown as MdastNode[])).toEqual([]);
-    expect(convertChildren(null as unknown as MdastNode[])).toEqual([]);
+    expect(convertChildren()).toEqual([]);
+    // SAFETY: deliberately outside the optional parameter; convertChildren tests `!children`, so null takes undefined's early return.
+    const nullChildren = (value: MdastNode[] | null) => value as MdastNode[];
+    expect(convertChildren(nullChildren(null))).toEqual([]);
   });
 
   test("filters nulls and flattens arrays", () => {
@@ -747,7 +835,7 @@ describe("convertChildren", () => {
       { type: "definition" },
       { type: "text", value: "t" },
       { type: "html", value: "<u>a</u><u>b</u>" },
-    ] as MdastNode[]);
+    ]);
     expect(result).toEqual([
       "t",
       { tagName: "u", textContent: "a" },
@@ -842,16 +930,16 @@ describe("transpileJxMarkdown", () => {
 
   test("hard break inside a paragraph becomes br", () => {
     const doc = transpileJxMarkdown("line one\\\nline two\n");
-    const [p] = doc.children as JxElement[];
-    expect(p!.tagName).toBe("p");
-    expect(p!.children).toEqual(["line one", { tagName: "br" }, "line two"]);
+    const p = elementAt(doc.children, 0);
+    expect(p.tagName).toBe("p");
+    expect(p.children).toEqual(["line one", { tagName: "br" }, "line two"]);
   });
 
   test("strikethrough (gfm) becomes del", () => {
     const doc = transpileJxMarkdown("~~gone~~\n");
-    const [p] = doc.children as JxElement[];
-    expect(p!.textContent).toBeUndefined();
-    expect(p!.children).toEqual([{ tagName: "del", textContent: "gone" }]);
+    const p = elementAt(doc.children, 0);
+    expect(p.textContent).toBeUndefined();
+    expect(p.children).toEqual([{ tagName: "del", textContent: "gone" }]);
   });
 
   test("container directive with attributes round-trips through the pipeline", () => {
@@ -863,20 +951,20 @@ describe("transpileJxMarkdown", () => {
         "",
       ].join("\n"),
     );
-    const [card] = doc.children as JxElement[];
-    expect(card!.tagName).toBe("my-card");
-    expect(card!.$ref).toBe("#/$defs/card");
-    expect(card!.style).toEqual({ color: "red" });
-    expect(card!.attributes).toEqual({ variant: "primary" });
-    expect(card!.children).toEqual([
+    const card = elementAt(doc.children, 0);
+    expect(card.tagName).toBe("my-card");
+    expect(card.$ref).toBe("#/$defs/card");
+    expect(card.style).toEqual({ color: "red" });
+    expect(card.attributes).toEqual({ variant: "primary" });
+    expect(card.children).toEqual([
       { children: ["Body ", { tagName: "strong", textContent: "text" }], tagName: "p" },
     ]);
   });
 
   test("text directive inline in a paragraph", () => {
     const doc = transpileJxMarkdown("Press :kbd[Ctrl+S] to save.\n");
-    const [p] = doc.children as JxElement[];
-    expect(p!.children).toEqual(["Press ", { tagName: "kbd", textContent: "Ctrl+S" }, " to save."]);
+    const p = elementAt(doc.children, 0);
+    expect(p.children).toEqual(["Press ", { tagName: "kbd", textContent: "Ctrl+S" }, " to save."]);
   });
 
   test("block html in the body is flattened into children", () => {
@@ -889,8 +977,8 @@ describe("transpileJxMarkdown", () => {
 
   test("annotation attributes (--title) become $ keys", () => {
     const doc = transpileJxMarkdown('::my-widget{--title="Widget Title"}\n');
-    const [widget] = doc.children as JxElement[];
-    expect(widget!.$title).toBe("Widget Title");
+    const widget = elementAt(doc.children, 0);
+    expect(widget.$title).toBe("Widget Title");
   });
 });
 
@@ -898,13 +986,13 @@ describe("transpileJxMarkdown", () => {
 
 describe("assignHeadingIds", () => {
   test("mutates headings depth-first and returns matching toc entries", () => {
-    const tree = [
+    const tree: (JxElement | string)[] = [
       { tagName: "h2", textContent: "One" },
       { children: [{ tagName: "h3", textContent: "Nested" }], tagName: "section" },
       "loose text",
-    ] as (JxElement | string)[];
+    ];
     const toc = assignHeadingIds(tree);
-    expect((tree[0] as JxElement).id).toBe("one");
+    expect(elementAt(tree, 0).id).toBe("one");
     expect(toc).toEqual([
       { depth: 2, id: "one", text: "One" },
       { depth: 3, id: "nested", text: "Nested" },
@@ -912,13 +1000,13 @@ describe("assignHeadingIds", () => {
   });
 
   test("pre-existing ids are respected and still claim their slug", () => {
-    const tree = [
+    const tree: JxElement[] = [
       { id: "custom", tagName: "h2", textContent: "Setup" },
       { tagName: "h2", textContent: "Setup" },
-    ] as JxElement[];
+    ];
     const toc = assignHeadingIds(tree);
     expect(toc.map((e) => e.id)).toEqual(["custom", "setup"]);
-    expect((tree[1] as JxElement).id).toBe("setup");
+    expect(elementAt(tree, 1).id).toBe("setup");
   });
 
   test("missing children yield no entries", () => {

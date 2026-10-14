@@ -9,17 +9,28 @@ import {
   renderStaticNode,
   resolveRefValue,
 } from "../src/shared";
-import type { JxElement } from "@jxsuite/schema/types";
+import type { JsonObject, JxElement, JxStyle } from "@jxsuite/schema/types";
+
+/**
+ * A style block as a JSON document can carry it, including entries `JxStyle` does not admit (the
+ * numeric `arr` arrays below), which the emitter must skip rather than print.
+ */
+function styleFromJson(json: JsonObject): JxStyle {
+  /* SAFETY: style blocks reach `buildStyleRules` from parsed documents, so it classifies every entry
+     at runtime: an object that is not a block (a numeric array included) makes `declarationValue`
+     return null and the entry is dropped. The non-`JxStyle` entries here exist to reach that branch. */
+  return json as JxStyle;
+}
 
 describe("isNodeDynamic — style template string", () => {
   test("template string in style marks node dynamic", () => {
-    expect(isNodeDynamic({ style: { color: "${theme}" }, tagName: "div" } as any)).toBe(true);
+    expect(isNodeDynamic({ style: { color: "${theme}" }, tagName: "div" })).toBe(true);
   });
 });
 
 describe("hasAnyIsland — non-object", () => {
   test("string is never an island", () => {
-    expect(hasAnyIsland("just text" as any)).toBe(false);
+    expect(hasAnyIsland("just text")).toBe(false);
   });
 });
 
@@ -35,14 +46,14 @@ describe("collectSrcImports — string children", () => {
     const srcs = collectSrcImports({
       children: ["raw text", { tagName: "div" }],
       tagName: "div",
-    } as any);
+    });
     expect(srcs).toEqual([]);
   });
 });
 
 describe("compileStyles — projectStyle deep nesting", () => {
   test("nested selectors, media blocks, & selectors and recursion", () => {
-    const projectStyle = {
+    const projectStyle = styleFromJson({
       ".card": {
         ".child": {
           deep: { lineHeight: "1.5" },
@@ -60,8 +71,8 @@ describe("compileStyles — projectStyle deep nesting", () => {
         skipString: "x",
       },
       html: { margin: "0" },
-    };
-    const result = compileStyles({ children: [], tagName: "div" }, {}, projectStyle as any);
+    });
+    const result = compileStyles({ children: [], tagName: "div" }, {}, projectStyle);
     expect(result).toContain(".card {");
     expect(result).toContain("(min-width: 600px)");
     expect(result).toContain(".card:hover");
@@ -75,7 +86,7 @@ describe("compileStyles — projectStyle deep nesting", () => {
     const result = compileStyles(
       { children: [], tagName: "div" },
       { "--mobile": "(max-width: 600px)" },
-      { "@--mobile": { backgroundColor: "#111" } } as any,
+      { "@--mobile": { backgroundColor: "#111" } },
     );
     expect(result).toContain("@media (max-width: 600px)");
     expect(result).toContain("body {");
@@ -87,7 +98,7 @@ describe("compileStyles — element-level nested selectors", () => {
     const doc = {
       children: [],
       id: "box",
-      style: {
+      style: styleFromJson({
         ".child": {
           ".grand": { lineHeight: "1.5" },
           "& > span": { fontWeight: "bold" },
@@ -100,10 +111,10 @@ describe("compileStyles — element-level nested selectors", () => {
           },
           color: "red",
         },
-      },
+      }),
       tagName: "div",
     };
-    const result = compileStyles(doc as any);
+    const result = compileStyles(doc);
     expect(result).toContain("#box.child {");
     expect(result).toContain("@media (min-width: 700px)");
     expect(result).toContain("#box.child:hover");
@@ -124,7 +135,7 @@ describe("compileStyles — the nesting the compiler used to drop", () => {
       id: "box",
       style: { "@(min-width: 700px)": { ".child": { ":hover": { color: "blue" } } } },
       tagName: "div",
-    } as never);
+    });
     expect(result).toContain("@media (min-width: 700px) { #box.child:hover { color: blue } }");
   });
 
@@ -136,7 +147,7 @@ describe("compileStyles — the nesting the compiler used to drop", () => {
         ":hover": { "@supports (display: grid)": { "@(min-width: 1px)": { display: "grid" } } },
       },
       tagName: "div",
-    } as never);
+    });
     expect(result).toContain(
       "@supports (display: grid) { @media (min-width: 1px) { #box:hover { display: grid } } }",
     );
@@ -168,7 +179,7 @@ describe("collectStyles — $switch case styles", () => {
       },
       tagName: "div",
     };
-    const result = compileStyles(doc as any);
+    const result = compileStyles(doc);
     expect(result).toContain("#case-a");
     expect(result).toContain("color: red");
   });
@@ -181,7 +192,7 @@ describe("renderStaticNode — $switch", () => {
         $switch: "a",
         cases: { a: { tagName: "span", textContent: "Hello" } },
         tagName: "div",
-      } as any,
+      },
       {},
     );
     expect(html).toContain("<div>");
@@ -194,7 +205,7 @@ describe("renderStaticNode — $switch", () => {
         $switch: { $ref: "#/state/missing" },
         cases: { a: { tagName: "span", textContent: "X" } },
         tagName: "section",
-      } as any,
+      },
       {},
     );
     expect(html).toBe("<section></section>");
@@ -206,7 +217,7 @@ describe("renderStaticNode — $switch", () => {
         $switch: "a",
         cases: { a: { $ref: "./external.json" } },
         tagName: "div",
-      } as any,
+      },
       {},
     );
     expect(html).toBe("<div></div>");
@@ -215,27 +226,22 @@ describe("renderStaticNode — $switch", () => {
 
 describe("isComponentFullyStatic — dynamic markers", () => {
   test("nested array children are walked", () => {
-    expect(
-      isComponentFullyStatic({ children: [[{ tagName: "span" }]] } as unknown as JxElement),
-    ).toBe(true);
+    const nested: JsonObject = { children: [[{ tagName: "span" }]] };
+    /* SAFETY: deliberately unsound. A JSON component can nest an array inside `children`, which
+       JxElement omits; the walker must still treat it as static, which is what this test pins. */
+    expect(isComponentFullyStatic(nested as JxElement)).toBe(true);
   });
 
   test("$prototype node is not static", () => {
-    expect(
-      isComponentFullyStatic({ children: [{ $prototype: "Request" }] } as unknown as JxElement),
-    ).toBe(false);
+    expect(isComponentFullyStatic({ children: [{ $prototype: "Request" }] })).toBe(false);
   });
 
   test("$ref node is not static", () => {
-    expect(isComponentFullyStatic({ children: [{ $ref: "#/x" }] } as unknown as JxElement)).toBe(
-      false,
-    );
+    expect(isComponentFullyStatic({ children: [{ $ref: "#/x" }] })).toBe(false);
   });
 
   test("state entry with $ref is not static", () => {
-    expect(isComponentFullyStatic({ state: { x: { $ref: "#/y" } } } as unknown as JxElement)).toBe(
-      false,
-    );
+    expect(isComponentFullyStatic({ state: { x: { $ref: "#/y" } } })).toBe(false);
   });
 });
 
@@ -246,7 +252,7 @@ describe("buildComponentCSS — media blocks", () => {
       {
         "@(min-width: 1px)": { color: "green" },
         "@--mobile": { color: "red" },
-      } as any,
+      },
       null,
       { "--mobile": "(max-width: 600px)" },
     );
@@ -258,7 +264,7 @@ describe("buildComponentCSS — media blocks", () => {
     const css = buildComponentCSS("my-el", {
       "@--mobile": "not-an-object",
       color: "red",
-    } as any);
+    });
     expect(css).toContain("my-el { color: red }");
     expect(css).not.toContain("@media");
     expect(css).not.toContain("not-an-object");

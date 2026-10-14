@@ -35,6 +35,7 @@ import {
   toDomPosition,
 } from "./iframe-position";
 import { serializeJxPath } from "./path-mapping";
+import { isFunction } from "@jxsuite/schema/guards";
 import type { DocPos, DocRange, EditablePredicate } from "./iframe-position";
 import type { JxPath } from "../state";
 
@@ -167,6 +168,14 @@ export interface EditableRootHandle {
   isComposing: () => boolean;
 }
 
+/**
+ * Whether an element carries `dataset`. HTML, SVG and MathML elements all mix in
+ * `HTMLOrSVGElement`; an element from any other namespace has no `dataset` at all.
+ */
+function hasDataset(el: Element): el is Element & HTMLOrSVGElement {
+  return "dataset" in el;
+}
+
 /** Wire the editing host on `container`. */
 export function startEditableRoot(
   container: HTMLElement,
@@ -183,13 +192,13 @@ export function startEditableRoot(
     return mode === undefined || mode === "design" || mode === "edit";
   };
 
-  /** Pending idle-commit timer, or 0 when none is armed. */
-  let commitTimer = 0;
+  /** Pending idle-commit timer, or null when none is armed. */
+  let commitTimer: ReturnType<typeof setTimeout> | null = null;
 
   const cancelCommitTick = () => {
-    if (commitTimer) {
+    if (commitTimer !== null) {
       clearTimeout(commitTimer);
-      commitTimer = 0;
+      commitTimer = null;
     }
   };
 
@@ -202,7 +211,7 @@ export function startEditableRoot(
    * idle commit invisible — without it, typing would jump the caret every time you paused.
    */
   const commitTick = () => {
-    commitTimer = 0;
+    commitTimer = null;
     if (!activeEl || !deps.onCommitTick) {
       return;
     }
@@ -233,7 +242,7 @@ export function startEditableRoot(
       return;
     }
     cancelCommitTick();
-    commitTimer = setTimeout(commitTick, deps.commitDelayMs ?? COMMIT_IDLE_MS) as unknown as number;
+    commitTimer = setTimeout(commitTick, deps.commitDelayMs ?? COMMIT_IDLE_MS);
   };
 
   const onCompositionStart = () => {
@@ -349,7 +358,8 @@ export function startEditableRoot(
   const affectedRange = (
     e: InputEvent,
   ): { from: DocPos; to: DocPos; endEl: HTMLElement } | null => {
-    const [target] = typeof e.getTargetRanges === "function" ? e.getTargetRanges() : [];
+    // Happy-dom ships no `getTargetRanges` at all, so the method's presence is probed, not assumed.
+    const [target] = isFunction(e.getTargetRanges) ? e.getTargetRanges() : [];
     const sel = doc.getSelection();
     const useSelection = sel && sel.rangeCount > 0 && (sel.isCollapsed || !target);
     let startNode: Node | null;
@@ -370,8 +380,7 @@ export function startEditableRoot(
     return from && to && endBlock ? { endEl: endBlock.el, from, to } : null;
   };
 
-  const onBeforeInput = (event: Event) => {
-    const e = event as InputEvent;
+  const onBeforeInput = (e: InputEvent) => {
     if (!editingAllowed()) {
       return;
     }
@@ -435,21 +444,25 @@ export function startEditableRoot(
     if (!editingAllowed() || !deps.onPropActivate) {
       return;
     }
-    let el = e.target instanceof Element ? (e.target as HTMLElement) : null;
+    let el = e.target instanceof Element ? e.target : null;
     while (el && el !== container) {
-      if (el.dataset?.jxBoundProp) {
-        if (el !== activeEl) {
+      if (hasDataset(el) && el.dataset.jxBoundProp) {
+        /* SAFETY: The runtime builds SVG and MathML nodes as `createElementNS(...) as HTMLElement`
+           and stamps `data-jx-bound-prop` through that same `HTMLElement`-typed path, so a
+           foreign-namespace prop host already travels downstream as an `HTMLElement`. */
+        const host = el as HTMLElement;
+        if (host !== activeEl) {
           deactivate();
-          if (deps.onPropActivate(el)) {
+          if (deps.onPropActivate(host)) {
             // Adopt the nested host so the caret landing inside it is not read as a block change.
-            activeEl = el;
+            activeEl = host;
             activeKey = null;
           }
         }
         return;
       }
       // A stamped page block first means this is ordinary page DOM, not component internals.
-      if (el.dataset?.jxPath) {
+      if (hasDataset(el) && el.dataset.jxPath) {
         return;
       }
       el = el.parentElement;
@@ -493,7 +506,7 @@ export function startEditableRoot(
       if (composing) {
         return;
       }
-      if (commitTimer) {
+      if (commitTimer !== null) {
         cancelCommitTick();
         commitTick();
       }

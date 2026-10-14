@@ -121,13 +121,16 @@ describe("the race guard", () => {
   });
 
   test("notedListing passes a failed read through untouched", async () => {
-    let caught: unknown = null;
+    const failure = new Error("gone");
+    let caught: Error | null = null;
     try {
-      await notedListing(() => Promise.reject(new Error("gone")));
+      await notedListing(() => Promise.reject(failure));
     } catch (error) {
-      caught = error;
+      if (error instanceof Error) {
+        caught = error;
+      }
     }
-    expect((caught as Error).message).toBe("gone");
+    expect(caught).toBe(failure);
   });
 });
 

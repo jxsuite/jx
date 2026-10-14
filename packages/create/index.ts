@@ -77,14 +77,14 @@ Deployment adapter:
   const adapterChoice = await rl.question("Adapter [1]: ");
   rl.close();
 
-  const adapterMap: Record<string, ProjectOptions["adapter"]> = {
-    1: "static",
-    2: "cloudflare-pages",
-    3: "node",
-    4: "bun",
-    5: "cloudflare-workers",
-  };
-  const adapter = adapterMap[adapterChoice] || "static";
+  const adapterMap = new Map<string, NonNullable<ProjectOptions["adapter"]>>([
+    ["1", "static"],
+    ["2", "cloudflare-pages"],
+    ["3", "node"],
+    ["4", "bun"],
+    ["5", "cloudflare-workers"],
+  ]);
+  const adapter = adapterMap.get(adapterChoice) ?? "static";
 
   await generateProject(destPath, { adapter, description, name, starter, template, url });
 

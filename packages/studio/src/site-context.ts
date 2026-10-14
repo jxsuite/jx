@@ -8,6 +8,7 @@
  * @docs framework/site/i18n
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { projectState } from "./store";
 import { getPlatform } from "./platform";
 import { commitProjectConfig } from "./tabs/project-config";
@@ -57,10 +58,8 @@ export function getEffectiveStyle(docStyle?: JxStyle) {
   }
   const merged = { ...siteStyle };
   for (const [k, v] of Object.entries(docStyle)) {
-    merged[k] =
-      typeof v === "object" && v !== null && typeof merged[k] === "object" && merged[k] !== null
-        ? { ...(merged[k] as JxStyle), ...(v as JxStyle) }
-        : v;
+    const base = merged[k];
+    merged[k] = isNonNullObject(v) && isNonNullObject(base) ? { ...base, ...v } : v;
   }
   return merged;
 }
@@ -101,7 +100,8 @@ export function getEffectiveElements(docElements?: (JxElement | string)[]) {
   const seen = new Set<string>();
   const merged: (JxElement | string)[] = [];
   for (const entry of [...siteElements, ...docElements]) {
-    const key = typeof entry === "string" ? entry : entry?.$ref;
+    // A null entry in hand-edited JSON has no key, and is skipped rather than thrown on.
+    const key = isString(entry) ? entry : isNonNullObject(entry) ? entry.$ref : undefined;
     if (key && !seen.has(key)) {
       seen.add(key);
       merged.push(entry);
@@ -127,8 +127,9 @@ export function getEffectiveHead(docHead?: JxHeadEntry[]) {
   const seen = new Set<string>();
   const merged: JxHeadEntry[] = [];
   for (const entry of [...siteHead, ...docHead]) {
-    const key =
-      String(entry?.attributes?.href || entry?.attributes?.src || "") || JSON.stringify(entry);
+    // A null entry in hand-edited JSON is keyed by its serialisation, like any entry without a URL.
+    const attributes = isNonNullObject(entry) ? entry.attributes : undefined;
+    const key = String(attributes?.href || attributes?.src || "") || JSON.stringify(entry);
     if (!seen.has(key)) {
       seen.add(key);
       merged.push(entry);
@@ -189,13 +190,16 @@ export function getEffectiveLayoutPath(docLayout: string | false | undefined) {
  */
 export async function resolveLayoutDoc(layoutPath: string) {
   const normalized = layoutPath.replace(/^\.\//, "");
-  if (layoutCache.has(normalized)) {
-    return structuredClone(layoutCache.get(normalized) as JxMutableNode);
+  const cached = layoutCache.get(normalized);
+  if (cached !== undefined) {
+    return structuredClone(cached);
   }
 
   try {
     const platform = getPlatform();
     const content = await platform.readFile(normalized);
+    /* SAFETY: a `$layout` target is a Jx document file, which is a JSON element object; the slot
+       walk that consumes it checks `children` is an array before reading any of it. */
     const doc = JSON.parse(content) as JxMutableNode;
     layoutCache.set(normalized, doc);
     return structuredClone(doc);
@@ -220,8 +224,8 @@ export function distributePageIntoLayout(layoutDoc: JxMutableNode, pageDoc: JxMu
   const defaults: (JxMutableNode | string)[] = [];
 
   for (const child of children) {
-    const slotName = typeof child === "object" ? child.attributes?.slot : undefined;
-    if (typeof child === "object" && typeof slotName === "string" && slotName) {
+    const slotName = isString(child) ? undefined : child.attributes?.slot;
+    if (!isString(child) && isString(slotName) && slotName) {
       if (!named.has(slotName)) {
         named.set(slotName, []);
       }
@@ -254,18 +258,15 @@ function fillSlots(
   named: Map<string, JxMutableNode[]>,
   defaults: (JxMutableNode | string)[],
 ) {
-  if (!node || typeof node !== "object") {
-    return;
-  }
   if (!Array.isArray(node.children)) {
     return;
   }
 
   const newChildren: (JxMutableNode | string)[] = [];
   for (const child of node.children) {
-    if (child && typeof child === "object" && child.tagName === "slot") {
+    if (isNonNullObject(child) && child.tagName === "slot") {
       const slotName = child.attributes?.name;
-      if (typeof slotName === "string" && slotName && named.has(slotName)) {
+      if (isString(slotName) && slotName && named.has(slotName)) {
         newChildren.push(...named.get(slotName)!);
         named.delete(slotName);
       } else if (!slotName && defaults.length > 0) {
@@ -274,14 +275,25 @@ function fillSlots(
         newChildren.push(...child.children);
       }
     } else {
-      if (typeof child !== "string") {
+      /* Only an element has slots to fill. A null child (hand-edited JSON) used to reach the
+         `!node` guard this function opened with; it now stops here, with the same outcome. */
+      if (isNonNullObject(child)) {
         fillSlots(child, named, defaults);
       }
       newChildren.push(child);
     }
   }
-  node.children = newChildren as JxMutableNode[];
+  node.children = newChildren;
 }
+
+/**
+ * A `project.json` patch: each key's new value, or `undefined` to remove the key.
+ *
+ * `Partial<ProjectConfig>` cannot say the second half under `exactOptionalPropertyTypes` — its
+ * `url` is `string` when present, never `undefined` — so clearing a setting had to be spelled as a
+ * double cast at every call site that wanted to.
+ */
+export type ProjectConfigPatch = { [K in keyof ProjectConfig]?: ProjectConfig[K] | undefined };
 
 /**
  * Merge a partial patch into the project's configuration and persist it.
@@ -297,12 +309,15 @@ function fillSlots(
  * Problem, because the eight other sites reach this through `void updateSiteConfig(...)` and used
  * to drop it on the floor.
  *
- * @param {Partial<ProjectConfig>} patch - Fields to merge into the current projectConfig; a value
- *   of `undefined` clears the key.
+ * @param {ProjectConfigPatch} patch - Fields to merge into the current projectConfig; a value of
+ *   `undefined` clears the key.
  * @throws {unknown} The platform's rejection, when the write fails.
  */
-export async function updateSiteConfig(patch: Partial<ProjectConfig>) {
-  const result = await commitProjectConfig(patch);
+export async function updateSiteConfig(patch: ProjectConfigPatch) {
+  /* SAFETY: `commitProjectConfig` spreads the patch over the current config and serialises the
+     result with JSON.stringify, so an `undefined` member reaches disk as an absent key and the
+     written file is a ProjectConfig; every other member already has its ProjectConfig type. */
+  const result = await commitProjectConfig(patch as Partial<ProjectConfig>);
   if (!result.ok) {
     throw result.error;
   }

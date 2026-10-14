@@ -66,6 +66,9 @@ export function dirName(path: string): string {
 /** The open project's content sections, or null when no project (or no `content:`) is loaded. */
 function contentSections(): Record<string, ContentSectionEntry> | null {
   const content = projectState?.projectConfig?.content;
+  /* SAFETY: `content` is the parser extension's section, which the schema types leave opaque; its
+     Project fragment schema shapes every entry as a `ContentSectionEntry`, and `contentMountFor`
+     (the only reader) touches nothing but an entry's optional `source` behind `def?.source`. */
   return (content as Record<string, ContentSectionEntry> | undefined) ?? null;
 }
 

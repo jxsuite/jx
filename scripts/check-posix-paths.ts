@@ -34,6 +34,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+import type { CliReport } from "./lib/cli-report.ts";
+
 const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 
 export interface PosixPathFinding {
@@ -113,7 +115,7 @@ export function scanRepo(): PosixPathFinding[] {
 }
 
 /** The report a run prints, and whether it failed — separate so a test can run it without exiting. */
-export function report(findings: PosixPathFinding[]): { failed: boolean; lines: string[] } {
+export function report(findings: PosixPathFinding[]): CliReport {
   if (findings.length > 0) {
     return {
       failed: true,

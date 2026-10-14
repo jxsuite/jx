@@ -30,8 +30,10 @@ import { undo } from "../src/tabs/transact";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { shell } from "../src/shell";
 
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isExpressionDef } from "@jxsuite/schema/guards";
+import type { JsonObject, JxExpressionDef, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
+import type { FormulaEditDef } from "../src/types";
 
 /**
  * The code surface is DOUBLED, and the double is what makes the seam assertable.
@@ -95,7 +97,11 @@ const canvasWrap = registerPrimaryStage().wrap;
  * "is this mine?" is a question `syncLogicPanel` answers off this attribute. Clearing it is how a
  * test says "Problems is showing now".
  */
-const dock = document.querySelector("#logic") as HTMLElement;
+const dockBody = document.querySelector("#logic");
+if (!(dockBody instanceof HTMLElement)) {
+  throw new Error("the fixture above writes #logic, so it must be in the page");
+}
+const dock = dockBody;
 
 function docFixture(): JxMutableNode {
   return {
@@ -126,7 +132,7 @@ function docFixture(): JxMutableNode {
       },
     },
     tagName: "div",
-  } as unknown as JxMutableNode;
+  };
 }
 
 /** One dock paint of the Logic tab, exactly as `panels/bottom-dock.ts` runs it. */
@@ -139,14 +145,13 @@ async function paint(): Promise<void> {
 
 /** Open a fixture tab with a canvas dataScope snapshot and a workspace target, then paint. */
 async function openWorkspace(
-  editing?: Record<string, unknown> | null,
-  scope?: Record<string, unknown> | null,
+  editing?: FormulaEditDef | null,
+  scope?: JsonObject | null,
 ): Promise<Tab> {
   const tab = resetWorkspaceWithTab(docFixture(), { id: "fw-tab" });
   tab.session.canvas.scope = scope === undefined ? { count: 2 } : scope;
-  tab.session.ui.editingFormula = (
-    editing === undefined ? { defName: "total", type: "def" } : editing
-  ) as never;
+  tab.session.ui.editingFormula =
+    editing === undefined ? { defName: "total", type: "def" } : editing;
   await paint();
   return tab;
 }
@@ -160,7 +165,7 @@ function parts(name: string): HTMLElement[] {
 }
 
 function text(name: string): string {
-  return part(name)?.textContent?.trim() ?? "";
+  return part(name)?.textContent.trim() ?? "";
 }
 
 /**
@@ -197,8 +202,9 @@ function chipByLabel(label: string): HTMLElement {
 function paletteItem(name: string): HTMLElement | undefined {
   const host = document.querySelector('[data-jx-region="overlay.menu:formula-palette"]');
   return [...(host?.querySelectorAll('[part="option"]') ?? [])].find(
-    (el) => el.querySelector('[part="label"]')?.textContent === name,
-  ) as HTMLElement | undefined;
+    (el): el is HTMLElement =>
+      el instanceof HTMLElement && el.querySelector('[part="label"]')?.textContent === name,
+  );
 }
 
 /**
@@ -216,10 +222,10 @@ function paletteItem(name: string): HTMLElement | undefined {
  */
 function operatorPicker(): HTMLSelectElement {
   const picker = part("editor-host")?.querySelector('[part="operator"] [part="control"]');
-  if (!picker) {
+  if (!(picker instanceof HTMLSelectElement)) {
     throw new Error("no operator picker in the editor island");
   }
-  return picker as HTMLSelectElement;
+  return picker;
 }
 
 function changeValue(el: HTMLElement & { value: string }, value: string) {
@@ -227,8 +233,17 @@ function changeValue(el: HTMLElement & { value: string }, value: string) {
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function docState(): Record<string, never> {
-  return (activeTab.value?.doc.document.state ?? {}) as Record<string, never>;
+function docState(): NonNullable<JxMutableNode["state"]> {
+  return activeTab.value?.doc.document.state ?? {};
+}
+
+/** The active document's `state[name]`, which the test expects to be a formula entry. */
+function expressionDef(name: string): JxExpressionDef {
+  const def = docState()[name];
+  if (!isExpressionDef(def)) {
+    throw new Error(`state.${name} is not a formula entry`);
+  }
+  return def;
 }
 
 beforeEach(() => {
@@ -264,7 +279,7 @@ describe("def-type target", () => {
     // Live badges from the dataScope snapshot: count=2 → 2, 3, 30 along the chain.
     // Scoped to the strip: the editor beside it draws badges of its own on the rows it shows.
     expect(
-      [...part("chips")!.querySelectorAll('[part="badge"]')].map((b) => b.textContent?.trim()),
+      [...part("chips")!.querySelectorAll('[part="badge"]')].map((b) => b.textContent.trim()),
     ).toEqual(["2", "3", "30"]);
 
     // Main pane: the selected sub-node form (root by default), drawn into the announced island.
@@ -289,10 +304,20 @@ describe("def-type target", () => {
 
   test("leaves the canvas alone — the page it computes is the whole point of the move", async () => {
     const tab = resetWorkspaceWithTab(docFixture(), { id: "fw-tab" });
-    canvasPanels.push({ ready: true } as never);
+    const panelHost = document.createElement("div");
+    canvasPanels.push({
+      _width: null,
+      canvas: panelHost,
+      element: panelHost,
+      mediaName: "base",
+      ready: true,
+      renderScope: null,
+      scrollContainer: panelHost,
+      viewport: panelHost,
+    });
     canvasWrap.textContent = "the rendered page";
 
-    tab.session.ui.editingFormula = { defName: "total", type: "def" } as never;
+    tab.session.ui.editingFormula = { defName: "total", type: "def" };
     await paint();
 
     // The takeover cleared the stage before drawing itself over it. Nothing here touches the
@@ -315,11 +340,11 @@ describe("def-type target", () => {
   test("draws the evaluation error in the result line, in the error tone", async () => {
     const tab = await openWorkspace();
     // An unknown operator makes the engine throw during preview.
-    (docState().total! as { $expression: Record<string, unknown> }).$expression = {
+    expressionDef("total").$expression = {
       operator: "bogus",
       target: null,
     };
-    tab.session.ui.editingFormula = { defName: "total", type: "def" } as never;
+    tab.session.ui.editingFormula = { defName: "total", type: "def" };
     await paint();
     expect(part("result")?.dataset["tone"]).toBe("error");
     expect(text("result")).not.toBe("");
@@ -365,7 +390,7 @@ describe("chip selection", () => {
       eventKey: "onclick",
       path: ["children", 0],
       type: "event",
-    } as never;
+    };
     await flush(2);
     // The stored selection is KEYED by target rather than reset during the projection — a
     // Projection that writes the state it reads is a reactive loop, and this surface IS an effect.
@@ -380,7 +405,7 @@ describe("chip selection", () => {
 
     const other = resetWorkspaceWithTab(docFixture(), { id: "other-tab" });
     other.session.canvas.scope = { count: 2 };
-    other.session.ui.editingFormula = { defName: "total", type: "def" } as never;
+    other.session.ui.editingFormula = { defName: "total", type: "def" };
     await flush(2);
     expect(operatorPicker().value).toBe("*");
   });
@@ -396,9 +421,9 @@ describe("editing", () => {
     changeValue(operatorPicker(), "-");
     await flush(2);
 
-    const expr = (docState().total! as { $expression: Record<string, unknown> }).$expression;
+    const expr = expressionDef("total").$expression;
     // The selected sub-node changed…
-    expect((expr.target as Record<string, unknown>).operator).toBe("-");
+    expect(expr.target).toMatchObject({ operator: "-" });
     // …while the untouched siblings/parents survived intact.
     expect(expr.operator).toBe("*");
     expect(expr.value).toBe(10);
@@ -408,9 +433,8 @@ describe("editing", () => {
 
     // The write went through transactDoc: one undo step restores the previous tree.
     undo(tab);
-    const restored = (docState().total! as { $expression: Record<string, unknown> }).$expression;
-    expect((restored.target as Record<string, unknown>).operator).toBe("+");
-    expect((restored.target as Record<string, unknown>).value).toBe(1);
+    const restored = expressionDef("total").$expression;
+    expect(restored.target).toMatchObject({ operator: "+", value: 1 });
   });
 
   test("picking a catalog entry replaces the selected sub-node", async () => {
@@ -421,7 +445,7 @@ describe("editing", () => {
     expect(item).toBeTruthy();
     pointer(item!, "click");
 
-    const expr = (docState().total! as { $expression: Record<string, unknown> }).$expression;
+    const expr = expressionDef("total").$expression;
     expect(expr.operator).toBe("?:");
   });
 
@@ -434,11 +458,12 @@ describe("editing", () => {
     pointer(item!, "click");
 
     // The packaged def was copied into document state (the project owns the copy)…
-    const sum = docState().sum as { $expression?: unknown; parameters?: unknown[] } | undefined;
-    expect(sum?.$expression).toBeTruthy();
-    expect(Array.isArray(sum?.parameters)).toBe(true);
+    expect(docState().sum).toMatchObject({
+      $expression: expect.any(Object),
+      parameters: expect.any(Array),
+    });
     // …and the selected node became a call to it.
-    const expr = (docState().total! as { $expression: Record<string, unknown> }).$expression;
+    const expr = expressionDef("total").$expression;
     expect(expr).toMatchObject({ operator: "call", target: { $ref: "#/state/sum" } });
   });
 
@@ -449,12 +474,11 @@ describe("editing", () => {
     await flush();
     changeValue(operatorPicker(), "-");
 
-    const expr = (docState().mathArgs! as { $expression: Record<string, unknown> }).$expression;
-    const args = expr.value as Record<string, unknown>[];
-    expect(args[0]!.operator).toBe("-");
-    expect(args[0]!.target).toBe(1);
+    const expr = expressionDef("mathArgs").$expression;
+    const args = Array.isArray(expr.value) ? expr.value : [];
+    expect(args[0]).toMatchObject({ operator: "-", target: 1 });
     // The sibling argument and the call node itself survived intact.
-    expect(args[1]).toBe(5 as never);
+    expect(args[1]).toBe(5);
     expect(expr.operator).toBe("call");
   });
 });
@@ -520,7 +544,7 @@ describe("the code surface", () => {
   test("draws Monaco's host instead of the pipeline, and hands the dock body to its mount", async () => {
     const tab = await openWorkspace();
     monacoSyncs.length = 0;
-    tab.session.ui.editingFunction = { defName: "count", type: "def" } as never;
+    tab.session.ui.editingFunction = { defName: "count", type: "def" };
     await flush(2);
 
     expect(part("code-host")).not.toBeNull();
@@ -536,7 +560,7 @@ describe("the code surface", () => {
 
   test("Close on the code surface closes the FUNCTION editor, and leaves the formula alone", async () => {
     const tab = await openWorkspace();
-    tab.session.ui.editingFunction = { defName: "count", type: "def" } as never;
+    tab.session.ui.editingFunction = { defName: "count", type: "def" };
     await flush(2);
 
     pointer(part("close")!, "click");
@@ -637,7 +661,7 @@ describe("a control that outlives the formula it belongs to", () => {
     await flush(2);
     pointer(item!, "click");
 
-    const expr = (docState().total! as { $expression: Record<string, unknown> }).$expression;
+    const expr = expressionDef("total").$expression;
     expect(expr.operator).toBe("*");
     expect(tab.doc.dirty).toBe(false);
   });
@@ -655,7 +679,7 @@ describe("workspaceView", () => {
 
   test("the function target draws the code surface, with no chips and no catalog", async () => {
     const tab = await openWorkspace();
-    tab.session.ui.editingFunction = { defName: "count", type: "def" } as never;
+    tab.session.ui.editingFunction = { defName: "count", type: "def" };
     const view = workspaceView();
     expect(view.surface).toBe("code");
     expect(view.glyph).toBe("ƒ");
@@ -670,7 +694,7 @@ describe("workspaceView", () => {
       eventKey: "onclick",
       path: ["children", 0],
       type: "event",
-    } as never;
+    };
     const view = workspaceView();
     expect(view.name).toBe("onclick");
     expect(view.kind).toBe("event handler");
@@ -697,7 +721,7 @@ describe("logicTarget", () => {
 
   test("the function editor wins when both fields are set", async () => {
     const tab = await openWorkspace();
-    tab.session.ui.editingFunction = { defName: "count", type: "def" } as never;
+    tab.session.ui.editingFunction = { defName: "count", type: "def" };
     expect(logicTarget()?.surface).toBe("function");
     await flush(2);
     // One tab, two surfaces: Monaco's island replaces the chip pipeline.
@@ -733,7 +757,7 @@ describe("revealLogicPanel", () => {
 describe("openLogicTarget", () => {
   test("opening a formula takes the target from an open function", async () => {
     const tab = await openWorkspace();
-    tab.session.ui.editingFunction = { defName: "count", type: "def" } as never;
+    tab.session.ui.editingFunction = { defName: "count", type: "def" };
     expect(logicTarget()?.surface).toBe("function");
 
     openLogicTarget({ editing: { defName: "mathArgs", type: "def" }, surface: "formula" });
@@ -789,22 +813,21 @@ describe("event-type target", () => {
     expect(operatorPicker().value).toBe("+=");
 
     changeValue(operatorPicker(), "=");
-    const button = (tab.doc.document.children as Record<string, unknown>[])[0]!;
-    const binding = button.onclick as { $expression: Record<string, unknown> };
-    expect(binding.$expression.operator).toBe("=");
-    expect(binding.$expression.value).toBe(1);
+    const { children } = tab.doc.document;
+    const [button] = Array.isArray(children) ? children : [];
+    expect(button).toMatchObject({ onclick: { $expression: { operator: "=", value: 1 } } });
   });
 
   test("formulaRoot returns null for a non-expression binding", async () => {
     const tab = await openWorkspace();
-    const editing = { eventKey: "onmissing", path: ["children", 0], type: "event" } as const;
-    expect(formulaRoot(tab, editing as never)).toBeNull();
+    const editing: FormulaEditDef = { eventKey: "onmissing", path: ["children", 0], type: "event" };
+    expect(formulaRoot(tab, editing)).toBeNull();
   });
 
   test("formulaRoot returns null when the target names neither a def nor a full event", async () => {
     const tab = await openWorkspace();
     // Def target without a defName, and an event target without a path — both fall through.
-    expect(formulaRoot(tab, { type: "def" } as never)).toBeNull();
-    expect(formulaRoot(tab, { eventKey: "onclick", type: "event" } as never)).toBeNull();
+    expect(formulaRoot(tab, { type: "def" })).toBeNull();
+    expect(formulaRoot(tab, { eventKey: "onclick", type: "event" })).toBeNull();
   });
 });

@@ -18,6 +18,7 @@
  * without ever calling the registrar, and this is the seam both paths share.
  */
 
+import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { StudioPlatform } from "./types";
 
 /** What a launcher's boot module recorded when its adapter could not be constructed. */
@@ -42,14 +43,16 @@ export interface LauncherSignal {
   error?: LauncherBootError | undefined;
 }
 
-const g = globalThis as unknown as {
-  __jxPlatform?: StudioPlatform;
-  __jxLauncher?: LauncherSignal;
-};
+declare global {
+  /** The registered adapter, set by `registerPlatform` or pre-registered by a launcher bundle. */
+  var __jxPlatform: StudioPlatform | undefined;
+  /** The launcher's boot signal (spec/desktop.md §3.3), when a launcher announced itself. */
+  var __jxLauncher: LauncherSignal | undefined;
+}
 
 /** @param {StudioPlatform} platform */
 export function registerPlatform(platform: StudioPlatform) {
-  g.__jxPlatform = platform;
+  globalThis.__jxPlatform = platform;
 }
 
 /**
@@ -58,13 +61,12 @@ export function registerPlatform(platform: StudioPlatform) {
  * Idempotent, so an error recorded by the first announcer survives a second call.
  */
 export function announceLauncher(): LauncherSignal {
-  g.__jxLauncher ??= {};
-  return g.__jxLauncher;
+  return (globalThis.__jxLauncher ??= {});
 }
 
 /** The launcher signal, when a launcher's boot module announced itself in this window. */
 export function launcherSignal(): LauncherSignal | undefined {
-  return g.__jxLauncher;
+  return globalThis.__jxLauncher;
 }
 
 // ─── In-flight accounting ─────────────────────────────────────────────────────
@@ -102,6 +104,39 @@ function leave(method: string): void {
   }
 }
 
+/** A promise-like result, recognised the way `await` recognises one: by a callable `then`. */
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (isNonNullObject(value) || isFunction(value)) && "then" in value && isFunction(value.then);
+}
+
+/**
+ * One adapter method, wrapped so each call whose result is a promise counts as in flight under
+ * `method` until that promise settles. Any other result is returned untouched.
+ *
+ * The arguments are `never[]` because the wrapper is reached through the proxy, whose callers are
+ * typed by the member's own StudioPlatform signature; it relays whatever they pass, unread.
+ */
+function countCalls<R>(
+  method: string,
+  member: (...args: never[]) => R,
+  adapter: StudioPlatform,
+): (...args: never[]) => R {
+  return (...args: never[]): R => {
+    const result = member.apply(adapter, args);
+    if (!isThenable(result)) {
+      return result;
+    }
+    enter(method);
+    const settle = () => {
+      leave(method);
+    };
+    // Both arms: a rejected platform call is a call that FINISHED. Leaving it counted would
+    // Wedge every later `idle()` behind an error the caller already handled.
+    result.then(settle, settle);
+    return result;
+  };
+}
+
 /**
  * Wrap an adapter so every promise-returning member is counted while it is outstanding.
  *
@@ -111,13 +146,20 @@ function leave(method: string): void {
  * derive `capability.*`, and a fresh closure per read would allocate on every predicate).
  */
 function countingPlatform(platform: StudioPlatform): StudioPlatform {
-  const wrappers = new Map<PropertyKey, { raw: unknown; wrapper: unknown }>();
+  const wrappers = new Map<
+    string,
+    { raw: StudioPlatform[keyof StudioPlatform]; wrapper: unknown }
+  >();
   return new Proxy(platform, {
     get(target, property) {
-      // `this` stays the raw adapter: a proxy receiver would re-enter this trap for every internal
-      // Property read the method makes, counting nothing and costing everything.
-      const value = Reflect.get(target, property) as unknown;
-      if (typeof value !== "function" || typeof property !== "string") {
+      /* `this` stays the raw adapter: a proxy receiver would re-enter this trap for every internal
+         property read the method makes, counting nothing and costing everything.
+         SAFETY: a get trap is asked for any key, not only the ones StudioPlatform declares (`then`
+         when the proxy is awaited, inherited `toString`, symbols). An undeclared key reads as
+         undefined or an Object.prototype member, which the checks below relay untouched or wrap
+         exactly as they would a declared method, so the keyof claim never reaches a caller. */
+      const value = target[property as keyof StudioPlatform];
+      if (!isFunction(value) || !isString(property)) {
         return value;
       }
       // Keyed by the FUNCTION, not just the name: an adapter whose method is replaced later (a
@@ -127,21 +169,7 @@ function countingPlatform(platform: StudioPlatform): StudioPlatform {
       if (cached && cached.raw === value) {
         return cached.wrapper;
       }
-      const method = property;
-      const wrapper = (...args: unknown[]): unknown => {
-        const result = (value as (...a: unknown[]) => unknown).apply(target, args);
-        if (typeof (result as PromiseLike<unknown> | null)?.then !== "function") {
-          return result;
-        }
-        enter(method);
-        const settle = () => {
-          leave(method);
-        };
-        // Both arms: a rejected platform call is a call that FINISHED. Leaving it counted would
-        // Wedge every later `idle()` behind an error the caller already handled.
-        (result as PromiseLike<unknown>).then(settle, settle);
-        return result;
-      };
+      const wrapper = countCalls<ReturnType<typeof value>>(property, value, target);
       wrappers.set(property, { raw: value, wrapper });
       return wrapper;
     },
@@ -153,7 +181,7 @@ let counted: { raw: StudioPlatform; wrapped: StudioPlatform } | null = null;
 
 /** @returns {StudioPlatform} */
 export function getPlatform() {
-  const raw = g.__jxPlatform;
+  const raw = globalThis.__jxPlatform;
   if (!raw) {
     throw new Error("No platform registered. Call registerPlatform() before starting Studio.");
   }
@@ -165,5 +193,5 @@ export function getPlatform() {
 
 /** @returns {boolean} */
 export function hasPlatform() {
-  return g.__jxPlatform != null;
+  return globalThis.__jxPlatform != null;
 }

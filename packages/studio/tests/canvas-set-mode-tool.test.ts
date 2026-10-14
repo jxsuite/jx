@@ -17,6 +17,7 @@ import { createCommandToolRegistry } from "../src/services/ai-command-tools";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import type { CommandContext } from "../src/commands/context";
 import type { CommandRegistry } from "../src/commands/registry";
+import type { Tab } from "../src/tabs/tab";
 
 const { canvasViewCommands } = await import("../src/canvas/canvas-utils");
 
@@ -25,7 +26,7 @@ const modesSet: string[] = [];
 const deps = {
   getCanvasMode: () => "design",
   renderPane: () => {},
-  setCanvasMode: (_tab: unknown, mode: string) => {
+  setCanvasMode: (_tab: Tab | null, mode: string) => {
     modesSet.push(mode);
   },
   setOpenPopover: () => {},
@@ -77,6 +78,9 @@ describe("the projection", () => {
 
   test("the report names the mode and that the tree tools reach it, from editor.kind", () => {
     const { report } = registry.get("canvas.setMode")!.aiTool!;
+    /* SAFETY: `canvas.setMode`'s `run` and `report` both take `{ mode: string }`; the registry
+       stores every record as `AnyCommand`, whose argument type is erased to `never`, so the facts
+       object built here is exactly the shape the record's own `report` reads. */
     const facts = (after: CommandContext, mode: string) =>
       ({ after, args: { mode }, before: ctx }) as never;
     expect(report(facts(ctx, "design"))).toBe(
@@ -86,7 +90,7 @@ describe("the projection", () => {
     expect(report(facts(ctx, "preview"))).toBe(
       "The active document is in preview mode; the document tools address its element tree.",
     );
-    const code = makeContext({ ...ctx, editor: { kind: "code" } } as CommandContext);
+    const code = makeContext({ ...ctx, editor: { kind: "code" } });
     expect(report(facts(code, "source"))).toBe(
       "The active document is in source mode; the tree-editing tools are unavailable until it " +
         "returns to edit or design.",

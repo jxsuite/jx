@@ -28,9 +28,8 @@ import { APP_NAME, GIT_COMMIT, VERSION } from "../version";
 import bootFailureDoc from "./boot-failure.json";
 import type { BootRefusal } from "../platforms/default-platform";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("boot-failure", bootFailureDoc as unknown as JxDocument);
+registerSurface("boot-failure", bootFailureDoc);
 
 /** The page the failure happened on — `location`, or a stand-in with the one field read. */
 export interface BootFailurePage {
@@ -49,7 +48,7 @@ export interface BootFailureView {
 }
 
 /** The scope `boot-failure.json` reads. */
-interface BootFailureScope extends Record<string, unknown>, BootFailureView {
+interface BootFailureScope extends BootFailureView {
   /** The last Copy landed on the clipboard; the button says so. */
   copied: boolean;
   reload: () => void;
@@ -135,7 +134,7 @@ export function mountBootFailureSurface(
   page: BootFailurePage = location,
 ): Promise<SurfaceHandle> {
   const view = bootFailureView(refusal, page);
-  const scope = reactive<BootFailureScope>({
+  const scope: BootFailureScope = reactive<BootFailureScope>({
     ...view,
     copied: false,
     async copy() {
@@ -151,6 +150,6 @@ export function mountBootFailureSurface(
     reload() {
       location.reload();
     },
-  }) as BootFailureScope;
+  });
   return mountSurface("boot-failure", scope, host);
 }

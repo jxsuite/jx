@@ -20,6 +20,9 @@ interface Workflow {
   jobs: { "bundle-analysis": { strategy: { matrix: { package: string[] } } } };
 }
 
+/* SAFETY: bundle-analysis.yml is the committed workflow this suite exists to check: it filters
+ * `pull_request` on `paths` and builds a `package` matrix in its `bundle-analysis` job, and every
+ * test below reads exactly those members, so a workflow restructured away from them fails here. */
 const workflow = Bun.YAML.parse(await Bun.file(WORKFLOW).text()) as Workflow;
 const workspaces = await readWorkspaces();
 

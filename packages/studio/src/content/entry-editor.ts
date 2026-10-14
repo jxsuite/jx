@@ -50,6 +50,7 @@ import { mountEntryEditorSurface } from "../surfaces/entry-editor";
 import { paneRegion } from "../ui/regions";
 import { activateTab, workspace } from "../workspace/workspace";
 import { commitEntryFields, entryFields, mutateEntryField } from "./entry-fields";
+import type { EntryFields } from "./entry-fields";
 import { DRAFT_FIELD, DRAFT_MEANING, hasDraftAxis, isDraftEntry } from "./draft-state";
 import { collectionOfPath, missingRequired } from "./entry-model";
 import type { EntryCollection } from "./entry-model";
@@ -57,7 +58,7 @@ import type { EntryEditorSurfaceHandle, EntryEditorView } from "../surfaces/entr
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
 import type { Tab } from "../tabs/tab";
 import type { CanvasSurface } from "../canvas/canvas-surface";
-import type { JsonValue } from "../types";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 /** The `canvasMode` the entry form draws under. */
 export const ENTRY_MODE = "entry";
@@ -120,7 +121,7 @@ export function detachEntryPane(paneId: string): void {
  * has explicitly published something should be able to see that they did.
  */
 export function setEntryDraft(tab: Tab, draft: boolean): void {
-  transactDoc(tab, (t) => mutateEntryField(t, DRAFT_FIELD, draft as JsonValue));
+  transactDoc(tab, (t) => mutateEntryField(t, DRAFT_FIELD, draft));
 }
 
 /** What the tab chip's draft pill says. A value, drawn by `surfaces/tab-strip.json`. */
@@ -169,7 +170,7 @@ function formContext(tab: Tab): SchemaFormContext {
     fieldKeyPrefix: `entry:${tab.id}`,
     resolvePointer: (pointer, scope) =>
       resolveContextPointer(pointer, {
-        projectConfig: (projectState?.projectConfig ?? {}) as Record<string, unknown>,
+        projectConfig: projectState?.projectConfig ?? {},
         scope,
       }),
   };
@@ -185,13 +186,14 @@ function formContext(tab: Tab): SchemaFormContext {
  */
 function absentRequiredErrors(
   collection: EntryCollection,
-  fields: Record<string, unknown>,
+  fields: EntryFields,
 ): Record<string, string> {
-  const errors: Record<string, string> = {};
-  for (const field of missingRequired(collection.schema, fields)) {
-    errors[field] = "Required — this entry does not have one.";
-  }
-  return errors;
+  return Object.fromEntries(
+    missingRequired(collection.schema, fields).map((field) => [
+      field,
+      "Required — this entry does not have one.",
+    ]),
+  );
 }
 
 /** What the document says when the file belongs to no collection: the reason, then the fix. */
@@ -280,12 +282,22 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
       return;
     }
     const fields = entryFields(tab);
-    const form = mountSchemaForm(`entry:${paneId}`, collection.schema as JsonSchema, fields, {
-      context: formContext(tab),
-      errors: absentRequiredErrors(collection, fields),
-      onChange: (patch) => commitEntryFields(tab, patch),
-      rerender: redraw,
-    });
+    /* SAFETY: `collection` comes from `collectionOfPath`, which matches only a content type that
+       declares a `schema` (`findContentTypeSchema` refuses one without), and that schema is the
+       collection's JSON Schema — the shape `JsonSchema` names for the form. `fields` is a
+       frontmatter block or a JSON entry's own root (entry-fields.ts), both parsed from YAML or
+       JSON text, so every value is JSON; a key an editor cleared reads as absent either way. */
+    const form = mountSchemaForm(
+      `entry:${paneId}`,
+      collection.schema as JsonSchema,
+      fields as JsonObject,
+      {
+        context: formContext(tab),
+        errors: absentRequiredErrors(collection, fields),
+        onChange: (patch) => commitEntryFields(tab, patch),
+        rerender: redraw,
+      },
+    );
     if (form.parentNode !== formHost) {
       formHost.replaceChildren(form);
     }
@@ -332,7 +344,7 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
       // Never this effect's guess. `tab.doc.document` is also the reference every transaction
       // Replaces, so it is how an undo reaches the form whichever store the edit was in.
       void tab.doc.document;
-      void tab.doc.content?.frontmatter;
+      void tab.doc.content.frontmatter;
       void projectState?.projectConfig?.content;
       draw();
     });
@@ -365,7 +377,7 @@ export async function openEntryEditor(path: string): Promise<Tab | null> {
     tab.session.ui.canvasMode = ENTRY_MODE;
     tab.session.ui.preview = false;
     activateTab(id);
-    return tab as Tab;
+    return tab;
   }
   return null;
 }

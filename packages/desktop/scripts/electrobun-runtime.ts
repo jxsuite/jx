@@ -47,6 +47,8 @@ export const HUTCH_TARGET = "windows-x64";
  */
 export function electrobunVersion(): string {
   const require = createRequire(import.meta.url);
+  /* SAFETY: an npm registry tarball's package.json always has a string `version`; npm rejects a
+     publish without one. */
   return (require("electrobun/package.json") as { version: string }).version;
 }
 
@@ -67,6 +69,14 @@ export function hutchHome(
   return env.HUTCH_HOME || env.DASH_HOME || join(home, ".hutch");
 }
 
+/** Where {@link resolveWindowsRuntime} found the runtime, and every place it looked. */
+export interface WindowsRuntimeSearch {
+  /** The runtime directory, or null when no candidate held `launcher.exe`. */
+  dir: string | null;
+  /** The directories consulted, in order, for {@link describeRuntimeSearch}. */
+  searched: string[];
+}
+
 /**
  * Locate the directory to source Windows runtime binaries from.
  *
@@ -77,7 +87,7 @@ export function hutchHome(
 export function resolveWindowsRuntime(
   version: string,
   home: string = hutchHome(),
-): { dir: string | null; searched: string[] } {
+): WindowsRuntimeSearch {
   const exact = releaseDir(version, home);
   if (existsSync(join(exact, "launcher.exe"))) {
     return { dir: exact, searched: [exact] };

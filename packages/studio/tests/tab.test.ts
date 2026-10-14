@@ -108,7 +108,7 @@ describe("Tab primitive", () => {
 
     expect(observedSelection).toEqual([]);
     tab.session.selection = [[0, 1]];
-    expect(observedSelection as (string | number)[][]).toEqual([[0, 1]]);
+    expect(observedSelection).toEqual([[0, 1]]);
 
     stop();
     disposeTab(tab);

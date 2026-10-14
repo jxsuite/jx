@@ -39,6 +39,7 @@
  *   text. It is one value now, and the field shows it.
  */
 
+import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { getPlatform } from "../platform";
 import { commitProjectConfig } from "../tabs/project-config";
@@ -53,7 +54,8 @@ import { paneOfContainer } from "../canvas/canvas-surface";
 import { mountContributedSurface } from "../surfaces/settings-contributed";
 
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { ResolveContextOptions } from "../services/context-resolver";
 import type {
   ContributedActions,
   ContributedSurfaceHandle,
@@ -74,7 +76,7 @@ export interface SettingsContribution {
     entry?:
       | {
           ui?: Record<string, { control?: string; enum?: unknown }> | undefined;
-          newEntry?: Record<string, unknown> | undefined;
+          newEntry?: JsonObject | undefined;
         }
       | undefined;
   };
@@ -139,13 +141,8 @@ export function resetContributedSectionState(): void {
  *   such entry, so the caller's refusal can name both sides.
  */
 export function selectContributedEntry(sectionKey: string, entryKey: string): string[] | null {
-  const section = (projectState?.projectConfig as Record<string, unknown> | null | undefined)?.[
-    sectionKey
-  ];
-  const entries =
-    section && typeof section === "object" && !Array.isArray(section)
-      ? (section as Record<string, unknown>)
-      : {};
+  const section = projectState?.projectConfig?.[sectionKey];
+  const entries = isJsonObject(section) ? section : {};
   if (!Object.hasOwn(entries, entryKey)) {
     return Object.keys(entries);
   }
@@ -170,6 +167,14 @@ export function resetContributedDiagnostics(): void {
   diagnostics.clear();
 }
 
+/** {@link routeDiagnostics}' answer: per-field messages, and the ones about the record itself. */
+export interface RoutedDiagnostics {
+  /** The first message for each property one level under the base, keyed by property name. */
+  fields: Record<string, string>;
+  /** Messages whose pointer is the base itself, for the section line. */
+  section: string[];
+}
+
 /**
  * Route `jx-validate` messages ("/search/index: must be string") to the field they are about.
  *
@@ -182,10 +187,7 @@ export function resetContributedDiagnostics(): void {
  * @param {string[]} messages
  * @returns
  */
-export function routeDiagnostics(
-  base: string,
-  messages: string[],
-): { fields: Record<string, string>; section: string[] } {
+export function routeDiagnostics(base: string, messages: string[]): RoutedDiagnostics {
   const fields: Record<string, string> = {};
   const section: string[] = [];
   for (const message of messages) {
@@ -230,7 +232,12 @@ export function routeDiagnostics(
  * @param {() => void} rerender
  */
 async function saveProjectConfig(base: string, rerender: () => void) {
-  const config = (projectState as { projectConfig: ProjectConfig }).projectConfig;
+  /* Every caller reached this through `sectionValue`, which returns null without a config, so a
+     project is open here; the guard only states that to the compiler. */
+  const config = projectState?.projectConfig;
+  if (!config) {
+    return;
+  }
 
   const commit = await commitProjectConfig();
   if (!commit.ok) {
@@ -258,7 +265,7 @@ async function saveProjectConfig(base: string, rerender: () => void) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Apply a schema-form patch onto a record in place; `undefined` values unset the key. */
-function applyPatch(target: Record<string, unknown>, patch: Record<string, unknown>) {
+function applyPatch<V>(target: Record<string, V>, patch: Record<string, V | undefined>) {
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) {
       delete target[key];
@@ -277,30 +284,30 @@ function slugify(name: string): string {
 }
 
 /** Instantiate a newEntry template, substituting `${key}` in every string value. */
-function instantiateNewEntry(
-  template: Record<string, unknown> | undefined,
-  key: string,
-): Record<string, unknown> {
+function instantiateNewEntry(template: JsonObject | undefined, key: string): JsonObject {
   if (!template) {
     return {};
   }
-  const substitute = (value: unknown): unknown => {
-    if (typeof value === "string") {
+  const substituteObject = (value: JsonObject): JsonObject => {
+    const out: JsonObject = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = substitute(v);
+    }
+    return out;
+  };
+  const substitute = (value: JsonValue): JsonValue => {
+    if (isString(value)) {
       return value.replaceAll("${key}", key);
     }
     if (Array.isArray(value)) {
       return value.map((item) => substitute(item));
     }
-    if (value && typeof value === "object") {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(value)) {
-        out[k] = substitute(v);
-      }
-      return out;
+    if (isJsonObject(value)) {
+      return substituteObject(value);
     }
     return value;
   };
-  return substitute(template) as Record<string, unknown>;
+  return substituteObject(template);
 }
 
 /**
@@ -314,37 +321,44 @@ function buildContext(
   entryKey: string | null = null,
 ): SchemaFormContext {
   const platform = getPlatform();
-  return {
+  const context: SchemaFormContext = {
     fieldKeyPrefix: `$settings.${sectionKey}`,
-    resolvePointer: (pointer, scope) =>
-      resolveContextPointer(pointer, {
-        projectConfig: (projectState?.projectConfig ?? {}) as Record<string, unknown>,
-        ...(scope !== undefined && { scope }),
-        ...(opts.formats !== undefined && { formats: opts.formats }),
-      }),
-    ...(typeof platform.setSecrets === "function"
-      ? {
-          commitSecret: async (key: string, value: string) => {
-            const envName = deriveSecretEnvName(sectionKey, entryKey, key);
-            await platform.setSecrets!({ set: { [envName]: value } });
-            return envName;
-          },
-        }
-      : {}),
+    resolvePointer: (pointer, scope) => {
+      const resolveOpts: ResolveContextOptions = {
+        projectConfig: projectState?.projectConfig ?? {},
+      };
+      /* The scope is the form's current value record, which is section JSON; the guard is what
+         lets the compiler see that, and it also stands for the old `!== undefined` test. */
+      if (isJsonObject(scope)) {
+        resolveOpts.scope = scope;
+      }
+      if (opts.formats !== undefined) {
+        resolveOpts.formats = opts.formats;
+      }
+      return resolveContextPointer(pointer, resolveOpts);
+    },
   };
+  if (isFunction(platform.setSecrets)) {
+    context.commitSecret = async (key: string, value: string) => {
+      const envName = deriveSecretEnvName(sectionKey, entryKey, key);
+      await platform.setSecrets!({ set: { [envName]: value } });
+      return envName;
+    };
+  }
+  return context;
 }
 
 /** The section's value object in the project config, created on demand. */
-function sectionValue(key: string): Record<string, unknown> | null {
-  const config = projectState?.projectConfig as Record<string, unknown> | null | undefined;
+function sectionValue(key: string): JsonObject | null {
+  const config = projectState?.projectConfig;
   if (!config) {
     return null;
   }
   const existing = config[key];
-  if (existing && typeof existing === "object" && !Array.isArray(existing)) {
-    return existing as Record<string, unknown>;
+  if (isJsonObject(existing)) {
+    return existing;
   }
-  const fresh: Record<string, unknown> = {};
+  const fresh: JsonObject = {};
   config[key] = fresh;
   return fresh;
 }
@@ -360,7 +374,8 @@ function sectionValue(key: string): Record<string, unknown> | null {
 interface SectionMount {
   /** The element the registry handed the renderer, and this record's identity. */
   container: HTMLElement;
-  handle: ContributedSurfaceHandle;
+  /** The mounted document, or `null` for the instant between creating this record and mounting. */
+  handle: ContributedSurfaceHandle | null;
   contribution: SettingsContribution;
   opts: ContributedSectionOptions;
   /** Where the schema form goes, once the document has made one. */
@@ -423,8 +438,7 @@ function project(record: SectionMount): ContributedView {
   const entries = sectionValue(sectionKey) ?? {};
   const selected = selectedEntries.get(sectionKey) ?? null;
   const value = selected === null ? undefined : entries[selected];
-  const editing =
-    selected !== null && value !== undefined && value !== null && typeof value === "object";
+  const editing = selected !== null && isNonNullObject(value);
   return {
     actionsState,
     editorRegion,
@@ -499,11 +513,14 @@ function paintForm(record: SectionMount): void {
   const entries = sectionValue(sectionKey) ?? {};
   const selected = selectedEntries.get(sectionKey) ?? null;
   const value = selected === null ? undefined : entries[selected];
-  if (selected === null || !value || typeof value !== "object") {
+  if (selected === null || !isNonNullObject(value)) {
     host.replaceChildren();
     return;
   }
-  const entry = value as Record<string, unknown>;
+  /* SAFETY: a map section's entries are objects by the section schema (`additionalProperties`
+     of type object), and the check above admits only objects; an array entry is malformed config
+     the form still treats as the record it should be, reading and writing named members. */
+  const entry = value as JsonObject;
   const base = `/${sectionKey}/${selected}`;
   place(
     mountSchemaForm(`section:${sectionKey}:${selected}`, contribution.entrySchema, entry, {
@@ -619,7 +636,7 @@ function actionsFor(record: SectionMount): ContributedActions {
         return;
       }
       // Rebuild the map to preserve entry order under the new key
-      const next: Record<string, unknown> = {};
+      const next: JsonObject = {};
       for (const [k, v] of Object.entries(target)) {
         next[k === selected ? slug : k] = v;
         delete target[k];
@@ -655,19 +672,20 @@ export function renderContributedSection(
     record.contribution = contribution;
     record.opts = opts;
   }
-  if (!record?.handle.attached()) {
-    record?.handle.dispose();
+  let handle = record?.handle ?? null;
+  if (!record || !handle?.attached()) {
+    handle?.dispose();
     const fresh: SectionMount = {
       actionsHost: null,
       container,
       contribution,
       echo: null,
       formHost: null,
-      handle: undefined as unknown as ContributedSurfaceHandle,
+      handle: null,
       opts,
     };
     mounts.set(container, fresh);
-    fresh.handle = mountContributedSurface(container, actionsFor(fresh), {
+    handle = mountContributedSurface(container, actionsFor(fresh), {
       actionsSlot: (host) => {
         fresh.actionsHost = host;
         paintActions(fresh);
@@ -677,9 +695,10 @@ export function renderContributedSection(
         paintForm(fresh);
       },
     });
+    fresh.handle = handle;
     record = fresh;
   }
-  record.handle.update(project(record));
+  handle.update(project(record));
   paintActions(record);
   paintForm(record);
 }

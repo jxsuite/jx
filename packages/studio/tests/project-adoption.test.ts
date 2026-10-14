@@ -97,13 +97,11 @@ describe("project-adoption — adoptCreatedProject", () => {
   });
 
   test("a non-Error rejection from the adopter is stringified", async () => {
-    /* The adopter is late-bound and third party, so it may reject with anything. The cast is what
-       lets the case exist at all — `no-throw-literal` is right about production code. */
-    const notAnError = "just a string" as unknown as Error;
+    /* The adopter is late-bound and third party, so it may reject with anything. A bare string is
+       the case under test — `prefer-promise-reject-errors` is right about production code. */
+    const thirdPartyReason = "just a string";
     const outcome = await adoptCreatedProject("/abs/site", {
-      adopt: async () => {
-        throw notAnError;
-      },
+      adopt: () => Promise.reject(thirdPartyReason),
       getTab: () => null,
       initRepo: async () => false,
     });

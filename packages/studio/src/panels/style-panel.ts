@@ -44,7 +44,16 @@
  * @docs studio/design/style-inspector
  */
 
-import { getNestedStyle } from "@jxsuite/schema/guards";
+import {
+  getNestedStyle,
+  isFunctionDef,
+  isJsonObject,
+  isNestedStyle,
+  isNodeObject,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
 import { effect, effectScope, reactive } from "../reactivity";
 import {
   cancelStyleDebounce,
@@ -76,6 +85,7 @@ import {
   varDisplayName,
 } from "../utils/studio-utils";
 import { stringArg } from "../commands/command-args";
+import type { CommandArgValues, PropertySchema } from "../commands/command-args";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import { showPromptDialog } from "../ui/layers";
 import { parseMediaEntries, schemeOfQuery } from "../utils/canvas-media";
@@ -92,7 +102,7 @@ import {
 import {
   attachTargetLine,
   openSelectorMenu,
-  resetTargetLine as resetTargetSelector,
+  resetTargetLine,
   setTargetLine,
 } from "../surfaces/target-line";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
@@ -101,20 +111,23 @@ import {
   autoOpenSections,
   compressBorderSide,
   compressShorthand,
+  cssDefs,
   cssMeta,
   expandBorderSide,
   expandShorthand,
   getCssInitialMap,
   getFontVars,
+  isDeclarationValue,
   TYPO_PREVIEW_CHANNELS,
   getLonghands,
 } from "./style-utils";
+import type { CssFontPreset, CssLonghand, CssMetaEntry } from "./style-utils";
 import { UNIT_RE } from "../ui/unit-selector";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
 import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
 import { mountStylePanelSurface } from "../surfaces/style-panel";
 import { openMenu } from "../surfaces/menu";
-import type { MenuHandle } from "../surfaces/menu";
+import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import { cloneValue } from "../tabs/doc-op-apply";
 import { effectiveSlotMode, slotModeSeed, switchSlotMode } from "../ui/dynamic-slot";
 import { slotCaps, VALUE_SOURCE_HINTS, VALUE_SOURCE_LABELS } from "../ui/value-source";
@@ -138,21 +151,18 @@ import type { JxPath } from "../state";
 import type { JsonValue } from "../types";
 import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
-interface CssLonghand {
-  name: string;
-  entry: Record<string, unknown>;
-}
-
-type CssPropertyEntry = Record<string, unknown>;
-
 /** The chip a row wears when its caller has nothing more specific to say. */
 const DEFAULT_PROVENANCE: FieldProvenance = { state: "default" };
 
-type StyleMutateFn = (
-  t: Tab,
-  prop: string,
-  val?: string | Record<string, unknown> | undefined,
-) => void;
+/**
+ * One write to one compound coordinate. A value is a declaration, `undefined` to delete it, or —
+ * from Relative Styling's add-a-rule, and nowhere else — the empty block `{}` a new nested rule
+ * starts as.
+ */
+type StyleMutateFn = (t: Tab, prop: string, val?: string | JxStyle | undefined) => void;
+
+/** The `mutateUpdate*Style` writer for one coordinate, at the `string` type they declare. */
+type StyleWriteFn = (t: Tab, prop: string, value: string | undefined) => void;
 
 /**
  * Check if a selector is a stylebook tag path (e.g., "table" or "table th"). Tag paths don't start
@@ -209,7 +219,7 @@ function resolveContextStyle(
   }
   const flat: JxStyle = {};
   for (const [p, v] of Object.entries(base)) {
-    if (typeof v !== "object") {
+    if (isDeclarationValue(v)) {
       flat[p] = v;
     }
   }
@@ -232,38 +242,26 @@ function contextMutate(
   activeSelector: string | null,
   editMedia: string | null,
 ): StyleMutateFn {
+  let write: StyleWriteFn;
   if (activeSelector && isTagPath(activeSelector)) {
     const stylePath = activeSelector.split(" ");
-    return editMedia
-      ? (t, prop, val) =>
-          mutateUpdateMediaNestedStylePath(
-            t,
-            sel,
-            editMedia,
-            stylePath,
-            prop,
-            val as string | undefined,
-          )
-      : (t, prop, val) =>
-          mutateUpdateNestedStylePath(t, sel, stylePath, prop, val as string | undefined);
+    write = editMedia
+      ? (t, prop, val) => mutateUpdateMediaNestedStylePath(t, sel, editMedia, stylePath, prop, val)
+      : (t, prop, val) => mutateUpdateNestedStylePath(t, sel, stylePath, prop, val);
+  } else if (activeSelector) {
+    write = editMedia
+      ? (t, prop, val) => mutateUpdateMediaNestedStyle(t, sel, editMedia, activeSelector, prop, val)
+      : (t, prop, val) => mutateUpdateNestedStyle(t, sel, activeSelector, prop, val);
+  } else {
+    write = editMedia
+      ? (t, prop, val) => mutateUpdateMediaStyle(t, sel, editMedia, prop, val)
+      : (t, prop, val) => mutateUpdateStyle(t, sel, prop, val);
   }
-  if (activeSelector) {
-    return editMedia
-      ? (t, prop, val) =>
-          mutateUpdateMediaNestedStyle(
-            t,
-            sel,
-            editMedia,
-            activeSelector,
-            prop,
-            val as string | undefined,
-          )
-      : (t, prop, val) =>
-          mutateUpdateNestedStyle(t, sel, activeSelector, prop, val as string | undefined);
-  }
-  return editMedia
-    ? (t, prop, val) => mutateUpdateMediaStyle(t, sel, editMedia, prop, val as string | undefined)
-    : (t, prop, val) => mutateUpdateStyle(t, sel, prop, val as string | undefined);
+  /* SAFETY: the one non-string value a commit carries is the empty block `{}` Relative Styling
+     seeds a new nested rule with (see StyleMutateFn). Every `mutateUpdate*Style` writer stores the
+     value it is given as-is, deleting only on `undefined` or `""`, so the block lands as the rule's
+     body; their `string` parameter is narrower than what they store. */
+  return (t, prop, val) => write(t, prop, val as string | undefined);
 }
 
 /**
@@ -293,7 +291,7 @@ function mixedStyleProps(
     return mixed;
   }
   const blocks = targets.map((path) => {
-    const node = getNodeAtPath(tab.doc.document, path) as JxMutableNode | undefined;
+    const node = getNodeAtPath(tab.doc.document, path);
     return resolveContextStyle(node?.style ?? {}, activeSelector, editMedia);
   });
   const props = new Set<string>();
@@ -314,7 +312,7 @@ function mixedStyleProps(
 
 /** Forget the selector menu's element handle — the Inspector unmounted, or a test starts clean. */
 export function resetSelectorMenu(): void {
-  resetTargetSelector();
+  resetTargetLine();
 }
 
 /**
@@ -340,7 +338,7 @@ export function resetAffectedDisclosure(): void {
  * §6.2 forbids, so it routes to the definition site through the same command the context bar's
  * "Manage contexts…" footer runs.
  */
-function runCommand(id: string, args?: Record<string, unknown>): void {
+function runCommand(id: string, args?: CommandArgValues): void {
   void activeRegistry()?.run(id, args);
 }
 
@@ -523,16 +521,16 @@ interface InheritedInfo {
  * `state.` is optional because both spellings occur in documents and both mean the same entry — the
  * chip names the signal, not the accessor path it was reached by.
  */
-function templateSignalOf(value: unknown): string | null {
-  if (typeof value !== "string") {
+function templateSignalOf(value: JxStyle[string]): string | null {
+  if (!isString(value)) {
     return null;
   }
   return /\$\{\s*(?:state\.)?([A-Za-z_$][\w$]*)/.exec(value)?.[1] ?? null;
 }
 
 /** Whether a value is a `${}` template rather than a literal — the `bound` rung for a CSS value. */
-function isTemplateValue(value: unknown): boolean {
-  return typeof value === "string" && value.includes("${");
+function isTemplateValue(value: JxStyle[string]): boolean {
+  return isString(value) && value.includes("${");
 }
 
 /** What the Style tab can say about one property's origin. */
@@ -582,28 +580,27 @@ function provenanceOf(prop: string, ctx: ProvenanceCtx): FieldProvenance {
   if (value !== undefined) {
     if (isTemplateValue(value)) {
       const signal = templateSignalOf(value);
-      return {
-        state: "bound",
-        ...(signal ? { donor: signal } : {}),
-        ...(signal && ctx.signals.includes(signal)
-          ? {
-              onClick: () => {
-                runCommand("view.setActivity", { tab: "data" });
-                runCommand("data.expandRow", { name: signal });
-              },
-            }
-          : {}),
-      };
+      const bound: FieldProvenance = { state: "bound" };
+      if (signal) {
+        bound.donor = signal;
+        if (ctx.signals.includes(signal)) {
+          bound.onClick = () => {
+            runCommand("view.setActivity", { tab: "data" });
+            runCommand("data.expandRow", { name: signal });
+          };
+        }
+      }
+      return bound;
     }
     return { state: "set", onClick: () => ctx.clear(prop) };
   }
   const inherited = ctx.inherited[prop];
   if (inherited) {
-    return {
-      state: "inherited",
-      donor: inherited.donor,
-      ...(inherited.jump ? { onClick: inherited.jump } : {}),
-    };
+    const prov: FieldProvenance = { state: "inherited", donor: inherited.donor };
+    if (inherited.jump) {
+      prov.onClick = inherited.jump;
+    }
+    return prov;
   }
   return { state: "default" };
 }
@@ -628,14 +625,14 @@ function shorthandProvenance(
   ctx: ProvenanceCtx,
   clearAll?: (() => void) | undefined,
 ): FieldProvenance {
-  const props = [shortProp, ...(getLonghands(shortProp) as CssLonghand[]).map((l) => l.name)];
+  const props = [shortProp, ...getLonghands(shortProp).map((l) => l.name)];
   const { mixed } = ctx;
   if (mixed && props.some((p) => mixed.props.has(p))) {
-    return {
-      state: "mixed",
-      donor: String(mixed.count),
-      ...(clearAll ? { onClick: clearAll } : {}),
-    };
+    const prov: FieldProvenance = { state: "mixed", donor: String(mixed.count) };
+    if (clearAll) {
+      prov.onClick = clearAll;
+    }
+    return prov;
   }
   for (const p of props) {
     const prov = provenanceOf(p, ctx);
@@ -683,13 +680,10 @@ function longhandProvenance(
 /**
  * A section's tally, counting a shorthand as set when any of its longhands is.
  *
- * @param {{ prop: string; entry: CssPropertyEntry }[]} entries
+ * @param {CssPropertyItem[]} entries
  * @param {ProvenanceCtx} ctx
  */
-function sectionProvenance(
-  entries: { prop: string; entry: CssPropertyEntry }[],
-  ctx: ProvenanceCtx,
-): ProvenanceState[] {
+function sectionProvenance(entries: CssPropertyItem[], ctx: ProvenanceCtx): ProvenanceState[] {
   return entries.map(({ prop, entry }) =>
     inferInputType(entry) === "shorthand"
       ? shorthandProvenance(prop, ctx).state
@@ -698,6 +692,24 @@ function sectionProvenance(
 }
 
 // ─── The row register ────────────────────────────────────────────────────────
+
+/** One css-meta property, with its entry, as a section lists it. */
+interface CssPropertyItem {
+  prop: string;
+  entry: CssMetaEntry;
+}
+
+/** One projected row and the verbs registered for it. */
+interface ProjectedRow {
+  row: StyleRowView;
+  actions: RowActions;
+}
+
+/** A button-group row's buttons, and the values only its overflow list offers. */
+interface ButtonGroupView {
+  buttons: StyleButtonView[];
+  extra: string[];
+}
 
 /** One choice a row's list offers. `divider` draws a rule above the entry. */
 interface StyleChoice {
@@ -732,7 +744,8 @@ interface RowActions {
     mode: SlotMode;
     caps: SlotMode[];
     fieldKey: string;
-    value: unknown;
+    /** The field's literal, or `undefined` when it is empty. */
+    value: string | undefined;
     stateDefs: string[];
     onChange: (value?: JsonValue) => void;
   };
@@ -795,15 +808,11 @@ function isNumericValue(value: string): boolean {
  * manifest lacks is a red `tests/metadata.test.ts`, which is where a miss is caught before it ships
  * rather than degraded after.
  */
-function buttonGroup(
-  entry: CssPropertyEntry,
-  rowKey: string,
-  value: string,
-): { buttons: StyleButtonView[]; extra: string[] } {
-  const values = (entry.$buttonValues || entry.enum || []) as string[];
-  const iconMap = (entry.$icons || {}) as Record<string, string>;
-  const buttonValues = entry.$buttonValues as string[] | undefined;
-  const enumValues = entry.enum as string[] | undefined;
+function buttonGroup(entry: CssMetaEntry, rowKey: string, value: string): ButtonGroupView {
+  const values = entry.$buttonValues || entry.enum || [];
+  const iconMap = entry.$icons || {};
+  const buttonValues = entry.$buttonValues;
+  const enumValues = entry.enum;
   const extra =
     buttonValues && enumValues && enumValues.length > buttonValues.length
       ? enumValues.filter((v) => !buttonValues.includes(v))
@@ -842,7 +851,7 @@ function keywordChoices(options: string[], value: string): StyleChoice[] {
  * words alone.
  */
 function keywordOptions(options: string[], prop: string, face: string): StyleOptionView[] {
-  const channel = TYPO_PREVIEW_CHANNELS[prop];
+  const channel = TYPO_PREVIEW_CHANNELS.get(prop);
   return options.map((v) => {
     const option: StyleOptionView = { label: keywordLabel(v), value: v };
     if (channel) {
@@ -862,16 +871,16 @@ function keywordOptions(options: string[], prop: string, face: string): StyleOpt
  */
 function previewFace(ctx: EditorCtx): string {
   const raw = ctx.activeStyle.fontFamily ?? ctx.inheritedStyle.fontFamily;
-  if (typeof raw !== "string" && typeof raw !== "number") {
+  if (!isString(raw) && !isNumber(raw)) {
     return "";
   }
-  const resolved = resolveTokenValue(getEffectiveStyle(ctx.tab.doc.document?.style), raw);
+  const resolved = resolveTokenValue(getEffectiveStyle(ctx.tab.doc.document.style), raw);
   return resolved === undefined ? "" : String(resolved);
 }
 
 /** The Modern Font Stacks a `fontFamily` entry offers, as css-meta.json states them. */
-function fontPresets(entry: CssPropertyEntry): { title: string; value: string }[] {
-  return Array.isArray(entry.presets) ? (entry.presets as { title: string; value: string }[]) : [];
+function fontPresets(entry: CssMetaEntry): CssFontPreset[] {
+  return Array.isArray(entry.presets) ? entry.presets : [];
 }
 
 /**
@@ -886,7 +895,7 @@ function fontPresets(entry: CssPropertyEntry): { title: string; value: string }[
  * the pick will write is in the list; a preset row is bare, which is what tells the two groups
  * apart in a list that draws no divider.
  */
-function fontOptions(entry: CssPropertyEntry): StyleOptionView[] {
+function fontOptions(entry: CssMetaEntry): StyleOptionView[] {
   const fontVars = getFontVars();
   const style = getEffectiveStyle(activeTab.value?.doc.document?.style);
   const options: StyleOptionView[] = fontVars.map((fv) => ({
@@ -913,7 +922,7 @@ function fontOptions(entry: CssPropertyEntry): StyleOptionView[] {
  * minted early would be left behind when they finished typing something else.
  */
 function commitFont(
-  entry: CssPropertyEntry,
+  entry: CssMetaEntry,
   raw: string,
   mint: boolean,
   onCommit: (value: string) => void,
@@ -1008,7 +1017,7 @@ interface EditorCtx {
   /** One write, fanned across every selected element, inside the caller's transaction. */
   mutate: StyleMutateFn;
   /** The same write in a transaction of its own. */
-  commit: (prop: string, value?: string | Record<string, unknown> | undefined) => void;
+  commit: (prop: string, value?: string | JxStyle | undefined) => void;
   /** The key prefix a row's identity is built from — the coordinate, spelled once. */
   coord: string;
   targets: readonly JxPath[];
@@ -1034,7 +1043,7 @@ function styleCaps(): SlotMode[] {
 /** One ordinary property row: the label, the chip, the ladder and whichever control it draws. */
 function fieldRow(
   ctx: EditorCtx,
-  entry: CssPropertyEntry,
+  entry: CssMetaEntry,
   prop: string,
   value: string,
   opts: {
@@ -1045,7 +1054,7 @@ function fieldRow(
     onCommit: (value: string | undefined) => void;
     placeholder?: string;
   },
-): { row: StyleRowView; actions: RowActions } {
+): ProjectedRow {
   const key = `${ctx.coord}|${prop}${opts.child ? "|child" : ""}`;
   const row = blankRow(key, prop, "field");
   const actions: RowActions = {};
@@ -1123,8 +1132,8 @@ function fieldRow(
       break;
     }
     case "number-unit": {
-      const units = (entry.$units ?? []) as string[];
-      const keywords = (entry.$keywords ?? []) as string[];
+      const units = entry.$units ?? [];
+      const keywords = entry.$keywords ?? [];
       const match = UNIT_RE.exec(value);
       const isKeyword = !match && value !== "" && keywords.includes(value);
       const currentUnit = isKeyword ? (units[0] ?? "") : (match?.[2] ?? units[0] ?? "");
@@ -1136,12 +1145,14 @@ function fieldRow(
       row.choicesHint = `Unit for ${row.label.toLowerCase()}`;
       actions.choices = [
         ...units.map((u) => ({ checked: u === currentUnit, label: u, value: u })),
-        ...keywords.map((kw, index) => ({
-          checked: kw === value,
-          label: kw,
-          value: kw,
-          ...(index === 0 && units.length > 0 ? { divider: true } : {}),
-        })),
+        ...keywords.map((kw, index) => {
+          const choice: StyleChoice = { checked: kw === value, label: kw, value: kw };
+          // The rule between the units and the keywords, drawn only when there are units above.
+          if (index === 0 && units.length > 0) {
+            choice.divider = true;
+          }
+          return choice;
+        }),
       ];
       actions.choose = (chosen) => {
         if (keywords.includes(chosen)) {
@@ -1172,16 +1183,16 @@ function fieldRow(
       row.widget = "number";
       row.min = entry.minimum === undefined ? "" : String(entry.minimum);
       row.max = entry.maximum === undefined ? "" : String(entry.maximum);
-      row.step = typeof entry.maximum === "number" && entry.maximum <= 1 ? "0.1" : "";
+      row.step = entry.maximum !== undefined && entry.maximum <= 1 ? "0.1" : "";
       actions.commit = commitLiteral;
       break;
     }
     case "select":
     case "combobox": {
       const options = Array.isArray(entry.enum)
-        ? (entry.enum as string[])
+        ? entry.enum
         : Array.isArray(entry.examples)
-          ? (entry.examples as string[])
+          ? entry.examples
           : [];
       // A keyword row is the combobox contract exactly: the field IS the value, and the rows
       // Under it are the values worth offering. `allows-custom-value` is what makes an enum a
@@ -1238,17 +1249,13 @@ function unitDisplayValue(
 
 /** A unit field's placeholder is the inherited NUMBER — "500", not "500px". */
 function unitPlaceholder(placeholder: string): string {
-  return UNIT_RE.exec(placeholder)?.[1] ?? placeholder ?? "0";
+  return UNIT_RE.exec(placeholder)?.[1] ?? placeholder;
 }
 
 /** A shorthand header row and, when it is expanded, the longhand children under it. */
-function shorthandRows(
-  ctx: EditorCtx,
-  entry: CssPropertyEntry,
-  shortProp: string,
-): { row: StyleRowView; actions: RowActions }[] {
-  const longhands = getLonghands(shortProp) as CssLonghand[];
-  const style = ctx.activeStyle as Record<string, unknown>;
+function shorthandRows(ctx: EditorCtx, entry: CssMetaEntry, shortProp: string): ProjectedRow[] {
+  const longhands = getLonghands(shortProp);
+  const style = ctx.activeStyle;
   const shortVal = style[shortProp];
   const hasLonghands = longhands.some((l) => style[l.name] !== undefined);
   const isExpanded = ctx.tab.session.ui.styleShorthands[shortProp] ?? hasLonghands;
@@ -1284,7 +1291,7 @@ function shorthandRows(
   row.widget = "shorthand";
   row.hasLabel = true;
   row.label = propLabel(entry, shortProp);
-  row.value = typeof shortVal === "string" ? shortVal : "";
+  row.value = isString(shortVal) ? shortVal : "";
   row.placeholder = shorthandPlaceholder(shortVal, longhands, style, inherited, shortProp);
   row.expanded = isExpanded;
   row.expandIcon = isExpanded ? "caret-down" : "caret-right";
@@ -1307,14 +1314,14 @@ function shorthandRows(
     }
   };
 
-  const out = [{ actions, row }];
+  const out: ProjectedRow[] = [{ actions, row }];
   if (!isExpanded) {
     return out;
   }
 
   const isBorderSide = entry.$shorthandType === "border-side";
   const expanded =
-    typeof shortVal === "string" && shortVal
+    isString(shortVal) && shortVal
       ? isBorderSide
         ? expandBorderSide(shortVal)
         : expandShorthand(shortVal, longhands.length)
@@ -1325,9 +1332,11 @@ function shorthandRows(
   const recompress = (idx: number, val: string) =>
     writeShorthand(
       compress(
+        /* As text: the compressors join and compare strings, and a number a document holds reads
+           exactly as the template literal they build would have printed it. */
         longhands.map((l, i) =>
-          i === idx ? val : (style[l.name] ?? (expanded ? expanded[i] : emptyVal)),
-        ) as string[],
+          String(i === idx ? val : (style[l.name] ?? (expanded ? expanded[i] : emptyVal))),
+        ),
       ),
     );
 
@@ -1350,9 +1359,9 @@ function shorthandRows(
 
 /** The shorthand header's placeholder: the longhands it would compress, or what shows through. */
 function shorthandPlaceholder(
-  shortVal: unknown,
+  shortVal: JxStyle[string],
   longhands: CssLonghand[],
-  style: Record<string, unknown>,
+  style: JxStyle,
   inherited: Record<string, string | number>,
   shortProp: string,
 ): string {
@@ -1394,7 +1403,9 @@ function buildView(canvasMode: () => string): StylePanelView {
   }
   if (canvasMode() === "stylebook" && shell.stylebook.selection) {
     const node = tab.doc.document;
-    if (!node) {
+    /* Checked, not trusted: a tab's document is whatever the file parsed to, asserted rather than
+       verified where it is loaded (`files/files.ts`), and Stylebook reads its root style next. */
+    if (!isNodeObject(node)) {
       return emptyView("Open a page to style what you click.", true);
     }
     // No separate `Styling: <h1>` header. It said the same thing the Target Line's scope chip says,
@@ -1408,7 +1419,7 @@ function buildView(canvasMode: () => string): StylePanelView {
   if (!selected) {
     return emptyView(clickAnythingTo("style it"), false);
   }
-  const node = getNodeAtPath(tab.doc.document, selected) as JxMutableNode | undefined;
+  const node = getNodeAtPath(tab.doc.document, selected);
   if (!node) {
     return emptyView(staleSelectionMessage(), false);
   }
@@ -1431,17 +1442,15 @@ function buildEditor(
   opts: { effectiveStyle?: JxStyle | undefined; stylebookSelector?: string | null },
 ): StylePanelView {
   const { effectiveStyle, stylebookSelector = null } = opts;
+  /* SAFETY: `buildView` calls this with a primary selection it has checked, or in Stylebook, where
+     `selectStylebookTag` parks the selection on the root path `[[]]` rather than emptying it. */
   const sel = primarySelection(tab.session.selection) as JxPath;
   /** The document's OWN style — what a commit writes into. */
   const ownRootStyle: JxStyle = node.style || {};
   const style = effectiveStyle ?? ownRootStyle;
   // Signals seeding the ${} template default when a style value escalates (no $ref in JxStyle).
   const templateSignals = Object.entries(tab.doc.document.state || {})
-    .filter(
-      ([, d]) =>
-        !(d as Record<string, unknown>)?.$handler &&
-        (d as Record<string, unknown>)?.$prototype !== "Function",
-    )
+    .filter(([, d]) => !(isJsonObject(d) && d.$handler) && !isFunctionDef(d))
     .map(([defName]) => defName);
   const { sizeBreakpoints } = parseMediaEntries(getEffectiveMedia(tab.doc.document.$media));
   const mediaNames = sizeBreakpoints.map((bp) => bp.name);
@@ -1455,7 +1464,7 @@ function buildEditor(
   const forcedScheme = tab.session.ui.previewColorScheme;
   const schemeLayer =
     mediaTab === null && (forcedScheme === "light" || forcedScheme === "dark")
-      ? (Object.entries(getEffectiveMedia(tab.doc.document.$media) ?? {}).find(
+      ? (Object.entries(getEffectiveMedia(tab.doc.document.$media)).find(
           ([, q]) => schemeOfQuery(String(q)) === forcedScheme,
         )?.[0] ?? null)
       : null;
@@ -1463,9 +1472,7 @@ function buildEditor(
   const editMedia = mediaTab && mediaNames.length > 0 ? mediaTab : schemeLayer;
 
   // ── The selector axis — the one this tab owns ──────────────────────────────
-  const contextStyle = editMedia
-    ? (style[`@${editMedia}`] as Record<string, unknown>) || {}
-    : style;
+  const contextStyle = editMedia ? (getNestedStyle(style, `@${editMedia}`) ?? {}) : style;
   const declaredSelectors = new Set(Object.keys(contextStyle).filter((s) => isNestedSelector(s)));
   /* Element-aware, not the flat global list: `:popover-open` on a `<p>` is a rule that can never
      match, and a menu that offers unmatchable states is a menu people stop reading. What the
@@ -1500,8 +1507,7 @@ function buildEditor(
 
   // ── The Target Line (§6.2) ─────────────────────────────────────────────────
   const stylebookTag = stylebookTagOf(stylebookSelector);
-  const elementLabel =
-    stylebookTag ?? (typeof node.tagName === "string" ? node.tagName : "element");
+  const elementLabel = stylebookTag ?? (isString(node.tagName) ? node.tagName : "element");
   setTargetLine({
     segments: targetSegments(elementLabel, mediaTab, mediaNames.length > 0, schemeLayer),
     selector: {
@@ -1584,7 +1590,7 @@ function buildEditor(
       contextMutate(target, activeSelector, editMedia)(t, prop, val);
     }
   };
-  const commitStyle = (prop: string, val?: string | Record<string, unknown> | undefined) =>
+  const commitStyle = (prop: string, val?: string | JxStyle | undefined) =>
     transactDoc(activeTab.value, (t) => mutateTargets(t, prop, val));
 
   // ── Compute inherited style, and NAME THE DONOR ────────────────────────────
@@ -1595,9 +1601,9 @@ function buildEditor(
   if (schemeLayer) {
     const baseBlock = activeSelector ? (getNestedStyle(style, activeSelector) ?? {}) : style;
     for (const [p, v] of Object.entries(baseBlock)) {
-      if (typeof v !== "object") {
+      if (isDeclarationValue(v)) {
         inheritedInfo[p] = {
-          value: (v as string | number) ?? "",
+          value: v ?? "",
           donor: "Base",
           jump: () => updateUi(activeTab.value, "previewColorScheme", "auto"),
         };
@@ -1625,8 +1631,10 @@ function buildEditor(
     inherited: inheritedInfo,
     signals: templateSignals,
     clear: (prop: string) => commitStyle(prop),
-    ...(mixedProps.size > 0 ? { mixed: { count: targets.length, props: mixedProps } } : {}),
   };
+  if (mixedProps.size > 0) {
+    provCtx.mixed = { count: targets.length, props: mixedProps };
+  }
 
   // Auto-open sections that have properties. Written back only when it actually moves, so the
   // Effect this runs inside settles after one extra pass rather than chasing its own write.
@@ -1663,7 +1671,7 @@ function buildEditor(
 }
 
 /** Register a projected row's verbs, and hand back the row. */
-function register(entry: { row: StyleRowView; actions: RowActions }): StyleRowView {
+function register(entry: ProjectedRow): StyleRowView {
   _rows.set(entry.row.key, entry.actions);
   return entry.row;
 }
@@ -1672,18 +1680,18 @@ function register(entry: { row: StyleRowView; actions: RowActions }): StyleRowVi
 function propertySections(ctx: EditorCtx): StyleSectionView[] {
   const { activeStyle, tab } = ctx;
   const isFiltering = ctx.filter.length > 0;
-  const sectionProps: Record<string, { prop: string; entry: CssPropertyEntry }[]> = {};
+  const sectionProps: Record<string, CssPropertyItem[]> = {};
   for (const sec of cssMeta.$sections) {
     sectionProps[sec.key] = [];
   }
-  for (const [prop, entry] of Object.entries(cssMeta.$defs) as [string, CssPropertyEntry][]) {
-    if (typeof entry.$shorthand === "string") {
+  for (const [prop, entry] of Object.entries(cssDefs)) {
+    if (isString(entry.$shorthand)) {
       continue;
     }
-    sectionProps[(entry.$section as string) || "other"]!.push({ entry, prop });
+    sectionProps[entry.$section || "other"]!.push({ entry, prop });
   }
   for (const sec of cssMeta.$sections) {
-    sectionProps[sec.key]!.sort((a, b) => (a.entry.$order as number) - (b.entry.$order as number));
+    sectionProps[sec.key]!.sort((a, b) => a.entry.$order - b.entry.$order);
   }
 
   const out: StyleSectionView[] = [];
@@ -1698,7 +1706,7 @@ function propertySections(ctx: EditorCtx): StyleSectionView[] {
       }
       return (
         inferInputType(entry) === "shorthand" &&
-        (getLonghands(prop) as CssLonghand[]).some((l) => activeStyle[l.name] !== undefined)
+        getLonghands(prop).some((l) => activeStyle[l.name] !== undefined)
       );
     });
     const clearSection = () => {
@@ -1708,7 +1716,7 @@ function propertySections(ctx: EditorCtx): StyleSectionView[] {
             ctx.mutate(t, prop);
           }
           if (inferInputType(entry) === "shorthand") {
-            for (const l of getLonghands(prop) as CssLonghand[]) {
+            for (const l of getLonghands(prop)) {
               ctx.mutate(t, l.name);
             }
           }
@@ -1738,11 +1746,7 @@ function propertySections(ctx: EditorCtx): StyleSectionView[] {
 }
 
 /** One section's rows: every property that is set, or whose `$show` condition passes. */
-function sectionRows(
-  ctx: EditorCtx,
-  entries: { prop: string; entry: CssPropertyEntry }[],
-  grid: boolean,
-): StyleRowView[] {
+function sectionRows(ctx: EditorCtx, entries: CssPropertyItem[], grid: boolean): StyleRowView[] {
   const { activeStyle } = ctx;
   const rows: StyleRowView[] = [];
   for (const { prop, entry } of entries) {
@@ -1760,7 +1764,7 @@ function sectionRows(
       }
     }
     if (type === "shorthand") {
-      const longhands = getLonghands(prop) as CssLonghand[];
+      const longhands = getLonghands(prop);
       const hasAny = hasVal || longhands.some((l) => activeStyle[l.name] !== undefined);
       if (!hasAny && !condMet) {
         continue;
@@ -1771,7 +1775,7 @@ function sectionRows(
       continue;
     }
     const inherited = ctx.inheritedStyle[prop];
-    const built = fieldRow(ctx, entry, prop, (val as string) ?? "", {
+    const built = fieldRow(ctx, entry, prop, String(val ?? ""), {
       onCommit: (newVal) => ctx.commit(prop, newVal || undefined),
       placeholder: !hasVal && inherited !== undefined ? String(inherited) : "",
       provenance: provenanceOf(prop, ctx.provCtx),
@@ -1823,7 +1827,7 @@ function sectionShell(
 function nestedSection(ctx: EditorCtx): StyleSectionView[] {
   const nestedRules: string[] = [];
   for (const [prop, val] of Object.entries(ctx.activeStyle)) {
-    if (val !== null && typeof val === "object" && !Array.isArray(val) && !prop.startsWith("@")) {
+    if (isNestedStyle(val) && !prop.startsWith("@")) {
       nestedRules.push(prop);
     }
   }
@@ -1880,9 +1884,9 @@ function nestedSection(ctx: EditorCtx): StyleSectionView[] {
 function customSection(ctx: EditorCtx): StyleSectionView[] {
   const otherProps: string[] = [];
   for (const prop of Object.keys(ctx.activeStyle)) {
-    if (!(cssMeta.$defs as Record<string, unknown>)[prop]) {
-      const val = ctx.activeStyle[prop];
-      if (val !== null && typeof val === "object") {
+    if (!cssDefs[prop]) {
+      // Arrays and blocks are skipped; a `null` a document holds is listed, as it always was.
+      if (isNonNullObject(ctx.activeStyle[prop])) {
         continue;
       }
       otherProps.push(prop);
@@ -1901,7 +1905,7 @@ function customSection(ctx: EditorCtx): StyleSectionView[] {
   const cssInitialMap = getCssInitialMap();
   /** One target's OWN block at this coordinate — what a write that preserves values reads first. */
   const targetStyleOf = (t: Tab, target: JxPath): JxStyle => {
-    const targetNode = getNodeAtPath(t.doc.document, target) as JxMutableNode | undefined;
+    const targetNode = getNodeAtPath(t.doc.document, target);
     return resolveContextStyle(targetNode?.style ?? {}, ctx.activeSelector, ctx.editMedia);
   };
   for (const prop of otherProps) {
@@ -1979,14 +1983,16 @@ function closeRowMenu(): void {
   menu?.close();
 }
 
-/** Open a list under the control that asked for it. One menu at a time, the kit's. */
+/**
+ * Open a list under the control that asked for it. One menu at a time, the kit's. `trigger` is null
+ * when the surface handed over something that is not an element, which opens nothing.
+ */
 function openRowMenu(
-  anchor: unknown,
+  trigger: HTMLElement | null,
   label: string,
   choices: StyleChoice[],
   run: (value: string) => void,
 ): void {
-  const trigger = anchor instanceof HTMLElement ? anchor : null;
   closeRowMenu();
   if (!trigger || choices.length === 0) {
     return;
@@ -2000,16 +2006,19 @@ function openRowMenu(
     },
     opener: trigger,
     region: MENU_REGION,
-    rows: choices.map((choice) => ({
-      ...(choice.checked === undefined
-        ? {}
-        : { checked: (choice.checked ? "true" : "false") as "true" | "false" }),
-      destructive: false,
-      disabled: false,
-      dividerAbove: choice.divider === true,
-      id: choice.value,
-      title: choice.label,
-    })),
+    rows: choices.map((choice) => {
+      const row: MenuRowProjection = {
+        destructive: false,
+        disabled: false,
+        dividerAbove: choice.divider === true,
+        id: choice.value,
+        title: choice.label,
+      };
+      if (choice.checked !== undefined) {
+        row.checked = choice.checked ? "true" : "false";
+      }
+      return row;
+    }),
     run: (value) => run(value),
   });
 }
@@ -2058,7 +2067,9 @@ const ACTIONS: StylePanelActions = {
       return;
     }
     const { choose } = actions;
-    openRowMenu(anchor, "Values", actions.choices, (value) => choose(value));
+    openRowMenu(anchor instanceof HTMLElement ? anchor : null, "Values", actions.choices, (value) =>
+      choose(value),
+    );
   },
   pickSource: (key, anchor) => {
     const source = rowActions(key)?.source;
@@ -2066,7 +2077,7 @@ const ACTIONS: StylePanelActions = {
       return;
     }
     openRowMenu(
-      anchor,
+      anchor instanceof HTMLElement ? anchor : null,
       "Value source",
       source.caps.map((mode) => ({
         checked: mode === source.mode,
@@ -2074,8 +2085,8 @@ const ACTIONS: StylePanelActions = {
         value: mode,
       })),
       (chosen) => {
-        const next = chosen as SlotMode;
-        if (next === source.mode) {
+        const next = source.caps.find((mode) => mode === chosen);
+        if (next === undefined || next === source.mode) {
           return;
         }
         source.onChange(
@@ -2083,7 +2094,7 @@ const ACTIONS: StylePanelActions = {
             source.fieldKey,
             source.mode,
             next,
-            cloneValue(source.value as JsonValue | undefined),
+            cloneValue(source.value),
             slotModeSeed(next, { stateDefs: source.stateDefs }),
           ),
         );
@@ -2236,35 +2247,37 @@ export function styleCommands(): AnyCommand[] {
       group: "8_style",
       requires: "an element selection",
       when: styleTabOpen,
-      run: (_commandCtx, args) => {
-        const { selector } = args as { selector?: unknown };
-        if (selector === null) {
-          const tab = activeTab.value;
-          if (tab) {
-            tab.session.ui.activeSelector = null;
-          }
-          return;
-        }
-        const value = stringArg("style.setSelector", args, "selector");
-        if (!isNestedSelector(value)) {
-          throw new RangeError(
-            `command "style.setSelector" argument "selector": "${value}" is not a nested ` +
-              `selector — it must start with ":", ".", "&" or "["`,
-          );
-        }
-        const tab = activeTab.value;
-        if (!tab) {
-          throw new RangeError(`command "style.setSelector" needs an open document`);
-        }
-        tab.session.ui.activeSelector = value;
-      },
+      run: (_commandCtx, args) => setSelector(args),
       title: "Set Style Selector",
     },
   ];
 }
 
+/** `style.setSelector`: edit a nested selector, or the base context for `selector: null`. */
+function setSelector(args: CommandArgValues): void {
+  if (args.selector === null) {
+    const tab = activeTab.value;
+    if (tab) {
+      tab.session.ui.activeSelector = null;
+    }
+    return;
+  }
+  const value = stringArg("style.setSelector", args, "selector");
+  if (!isNestedSelector(value)) {
+    throw new RangeError(
+      `command "style.setSelector" argument "selector": "${value}" is not a nested ` +
+        `selector — it must start with ":", ".", "&" or "["`,
+    );
+  }
+  const tab = activeTab.value;
+  if (!tab) {
+    throw new RangeError(`command "style.setSelector" needs an open document`);
+  }
+  tab.session.ui.activeSelector = value;
+}
+
 /** The `selector` property's schema: a nested selector, or `null` for the base context. */
-function pathlessSelectorProperty(): object {
+function pathlessSelectorProperty(): PropertySchema {
   return {
     description:
       'A nested selector such as ":hover", ".child" or "[open]". null edits the base context.',

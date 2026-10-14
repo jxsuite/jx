@@ -19,6 +19,7 @@ import { isRecentLocal } from "../files/fs-events";
 import { showConfirmDialog } from "../ui/layers";
 import { showProgressModal } from "../ui/progress-modal";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { createEditBuffer } from "./edit-buffer";
 import { cellToText } from "./schema-columns";
 import type { EditBuffer } from "./edit-buffer";
@@ -111,25 +112,26 @@ export interface GridController {
 /** Row-object key carrying the grid row identity through the engine. */
 export const ROW_KEY_FIELD = "__key";
 
-const _controllers = new WeakMap<object, GridController>();
+const _controllers = new WeakMap<Tab, GridController>();
 
 /** The grid controller for a tab, if it is a grid tab. */
 export function getGridController(tab: Tab | null): GridController | null {
-  return tab ? (_controllers.get(toRaw(tab as unknown as object)) ?? null) : null;
+  return tab ? (_controllers.get(toRaw(tab)) ?? null) : null;
 }
 
 /** Create and register the controller for a grid tab. One per tab; lives in the tab's scope. */
 export function createGridController(tab: Tab, source: GridSource): GridController {
-  const state: GridControllerState = reactive({
-    columns: [] as GridColumn[],
-    error: null as string | null,
-    grouping: null as string | null,
+  const initial: GridControllerState = {
+    columns: [],
+    error: null,
+    grouping: null,
     loading: false,
-    query: {} as GridQuery,
-    rows: [] as GridRow[],
+    query: {},
+    rows: [],
     saving: false,
     total: 0,
-  }) as GridControllerState;
+  };
+  const state: GridControllerState = reactive(initial);
 
   let rowByKey = new Map<string, GridRow>();
   const indexRows = (rows: GridRow[]) => {
@@ -181,7 +183,7 @@ export function createGridController(tab: Tab, source: GridSource): GridControll
 
   const compareCells = (a: GridCellValue, b: GridCellValue, kind: GridColumnKind | undefined) => {
     if (kind === "number") {
-      return (typeof a === "number" ? a : 0) - (typeof b === "number" ? b : 0);
+      return (isNumber(a) ? a : 0) - (isNumber(b) ? b : 0);
     }
     if (kind === "boolean") {
       return (a === true ? 1 : 0) - (b === true ? 1 : 0);
@@ -280,7 +282,7 @@ export function createGridController(tab: Tab, source: GridSource): GridControll
           }
           for (const column of textColumns) {
             const value = buffer.effectiveValue(rowKey, column.field);
-            if (typeof value === "string" && value.includes(find)) {
+            if (isString(value) && value.includes(find)) {
               buffer.setCell(rowKey, column.field, value.replaceAll(find, replace));
               changed += 1;
             }
@@ -296,17 +298,13 @@ export function createGridController(tab: Tab, source: GridSource): GridControll
     effectiveRows() {
       // Detach values from reactive proxies — the grid engine must never hold live proxies.
       const plain = (value: GridCellValue): GridCellValue =>
-        Array.isArray(value)
-          ? [...value]
-          : value !== null && typeof value === "object"
-            ? { $ref: value.$ref }
-            : value;
-      const rowObject = (key: string) => {
-        const cells: Record<string, GridCellValue> = { [ROW_KEY_FIELD]: key };
+        Array.isArray(value) ? [...value] : isNonNullObject(value) ? { $ref: value.$ref } : value;
+      const rowObject = (key: string): Record<string, GridCellValue> => {
+        const cells: [field: string, value: GridCellValue][] = [[ROW_KEY_FIELD, key]];
         for (const column of state.columns) {
-          cells[column.field] = plain(buffer.effectiveValue(key, column.field));
+          cells.push([column.field, plain(buffer.effectiveValue(key, column.field))]);
         }
-        return cells;
+        return Object.fromEntries(cells);
       };
       const rows = orderedKeys().map((key) => rowObject(key));
       for (const [tempKey] of buffer.state.inserts) {
@@ -547,11 +545,11 @@ export function createGridController(tab: Tab, source: GridSource): GridControll
 
     onScopeDispose(() => {
       setHistoryDelegate(tab, null);
-      _controllers.delete(toRaw(tab as unknown as object));
+      _controllers.delete(toRaw(tab));
       source.dispose?.();
     });
   });
 
-  _controllers.set(toRaw(tab as unknown as object), controller);
+  _controllers.set(toRaw(tab), controller);
   return controller;
 }

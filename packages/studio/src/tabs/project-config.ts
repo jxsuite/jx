@@ -63,7 +63,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { effect, toRaw } from "../reactivity";
 import { getPlatform } from "../platform";
 import { notify } from "../services/notify";
-import { requireProjectState, setProjectState } from "../state";
+import { projectState, requireProjectState, setProjectState } from "../state";
 import { setWorkspaceProject, workspace } from "../workspace/workspace";
 import { PROJECT_CONFIG_PATH, createTab, disposeTab } from "./tab";
 import { transactDoc } from "./transact";
@@ -71,7 +71,7 @@ import { deriveJsonLayout, parseJsonDocument, serializeJson } from "@jxsuite/sch
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
 
 import type { Tab } from "./tab";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 
 export { PROJECT_CONFIG_PATH } from "./tab";
 
@@ -147,7 +147,7 @@ let _seeding: Promise<void> | null = null;
  */
 function openConfigTab(): Tab | null {
   const tab = workspace.tabs.get(PROJECT_CONFIG_PATH);
-  return tab ? (toRaw(tab as unknown as object) as Tab) : null;
+  return tab ? toRaw(tab) : null;
 }
 
 /** Drop the current binding, disposing the detached document if that is what it was. */
@@ -169,7 +169,8 @@ function seedCommitted(): Promise<void> {
       const text = await getPlatform().readFile(PROJECT_CONFIG_PATH);
       const { document, layout } = parseJsonDocument(text);
       _layout = layout;
-      _committed = serializeProjectConfig(document as unknown as ProjectConfig);
+      // {@link serializeProjectConfig}'s serialisation, over the file's parse rather than a config.
+      _committed = serializeJson(document, configLayout());
     } catch {
       // No file, an unreadable one, or one that does not parse. "Unknown" is the honest answer,
       // And an unknown file is one every commit must write.
@@ -240,8 +241,22 @@ function syncProjectState(config: ProjectConfig): void {
  * @returns {ProjectConfig | null}
  */
 function liveConfig(): ProjectConfig | null {
-  const config = requireProjectState()?.projectConfig;
-  return config ? (toRaw(config as unknown as object) as ProjectConfig) : null;
+  const config = projectState?.projectConfig;
+  return config ? toRaw(config) : null;
+}
+
+/**
+ * The configuration a configuration document holds, unwrapped.
+ *
+ * @param {JxMutableNode} document The bound tab's `doc.document`.
+ * @returns {ProjectConfig}
+ */
+function configOf(document: JxMutableNode): ProjectConfig {
+  /* SAFETY: every document this module reads is the `project.json` tab's root, and that root is
+     only ever installed as a ProjectConfig: `createTab` below seeds it from `projectConfig`, an open
+     tab parsed the file the schema gate wrote, and every transaction here assigns configuration
+     keys. The Tab type calls every root a JxMutableNode; this is the one place that says which. */
+  return toRaw(document) as ProjectConfig;
 }
 
 /**
@@ -261,10 +276,10 @@ function liveConfig(): ProjectConfig | null {
  * settings surfaces render from `projectState` and mutate it in place, and every reader of the
  * document follows the root reference {@link transactDoc} replaces when the transaction ends.
  *
- * @param {Record<string, unknown>} target
+ * @param {JxMutableNode} target
  * @param {ProjectConfig} source
  */
-function replaceContents(target: Record<string, unknown>, source: ProjectConfig): void {
+function replaceContents(target: JxMutableNode, source: ProjectConfig): void {
   for (const key of Object.keys(target)) {
     delete target[key];
   }
@@ -282,10 +297,10 @@ function bind(tab: Tab): Tab {
   tab.scope.run(() => {
     effect(() => {
       const doc = tab.doc.document;
-      if (_bound !== tab || !requireProjectState()) {
+      if (_bound !== tab || !projectState) {
         return;
       }
-      syncProjectState(toRaw(doc) as unknown as ProjectConfig);
+      syncProjectState(configOf(doc));
     });
   });
   return tab;
@@ -316,7 +331,7 @@ export function projectConfigDocument(): Tab {
     return bind(open);
   }
   _detached = createTab({
-    document: (state.projectConfig ?? {}) as unknown as Record<string, unknown>,
+    document: state.projectConfig ?? {},
     documentPath: PROJECT_CONFIG_PATH,
     id: PROJECT_CONFIG_PATH,
   });
@@ -380,7 +395,7 @@ export async function commitProjectConfig(
   // The seed, and the record it read handed to the document — so the tab the Settings door opened
   // Writes the same bytes from ⌘S that this commit is about to.
   await lendProjectConfigLayout(tab);
-  const current = toRaw(tab.doc.document) as unknown as ProjectConfig;
+  const current = configOf(tab.doc.document);
   const currentText = serializeProjectConfig(current);
 
   // Two objects that disagree — whichever one loses, an edit written into it is lost. Null when
@@ -404,7 +419,7 @@ export async function commitProjectConfig(
   }
 
   const base = rival ?? current;
-  const next = patch ? ({ ...base, ...patch } as ProjectConfig) : base;
+  const next: ProjectConfig = patch ? { ...base, ...patch } : base;
   const text = serializeProjectConfig(next);
 
   // Nothing the file does not already say: no transaction, no write, and therefore no diff. The
@@ -417,7 +432,7 @@ export async function commitProjectConfig(
 
   const before = extensionsKey(current);
   transactDoc(tab, (t) => {
-    const doc = t.doc.document as unknown as Record<string, unknown>;
+    const doc = t.doc.document;
     if (rival) {
       replaceContents(doc, rival);
     }
@@ -429,7 +444,7 @@ export async function commitProjectConfig(
   // Serialised from what the transaction actually LANDED, not from the `next` computed above: a
   // Gate on `transactDoc` can refuse a mutation, and writing the value it refused would put the
   // File and the document into the one disagreement this module exists to make impossible.
-  const config = toRaw(tab.doc.document) as unknown as ProjectConfig;
+  const config = configOf(tab.doc.document);
   const output = serializeProjectConfig(config);
   try {
     await getPlatform().writeFile(PROJECT_CONFIG_PATH, output);
@@ -480,18 +495,14 @@ export async function commitProjectConfig(
  * @returns {Promise<void>}
  */
 export async function adoptProjectConfig(config: ProjectConfig, text: string): Promise<void> {
-  if (!requireProjectState()) {
+  if (!projectState) {
     // No project state is no configuration document either ({@link projectConfigDocument} reads
     // One). The workspace copy is then the only thing there is to keep true.
     setWorkspaceProject(workspace.projectRoot, config);
     return;
   }
   const tab = projectConfigDocument();
-  transactDoc(
-    tab,
-    (t) => replaceContents(t.doc.document as unknown as Record<string, unknown>, config),
-    { skipHistory: true },
-  );
+  transactDoc(tab, (t) => replaceContents(t.doc.document, config), { skipHistory: true });
   tab.doc.dirty = false;
   // Settle a read already in flight before saying what the file holds, or it would resolve after
   // These lines with the PREVIOUS bytes and record, and make the next real commit look like a

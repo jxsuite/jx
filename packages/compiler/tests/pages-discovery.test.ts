@@ -52,10 +52,10 @@ describe("discoverPages", () => {
       JSON.stringify({ tagName: "div" }),
     );
     const routes = await discoverPages(FIXTURES);
-    const blogRoute = routes.find((r) => r.urlPattern.includes(":slug")) as any;
+    const blogRoute = routes.find((r) => r.urlPattern.includes(":slug"));
     expect(blogRoute).toBeDefined();
-    expect(blogRoute.isDynamic).toBe(true);
-    expect(blogRoute.params).toContain("slug");
+    expect(blogRoute?.isDynamic).toBe(true);
+    expect(blogRoute?.params).toContain("slug");
     cleanup();
   });
 
@@ -67,10 +67,10 @@ describe("discoverPages", () => {
       JSON.stringify({ tagName: "div" }),
     );
     const routes = await discoverPages(FIXTURES);
-    const docsRoute = routes.find((r) => r.isCatchAll) as any;
+    const docsRoute = routes.find((r) => r.isCatchAll);
     expect(docsRoute).toBeDefined();
-    expect(docsRoute.urlPattern).toContain("*");
-    expect(docsRoute.params).toContain("path");
+    expect(docsRoute?.urlPattern).toContain("*");
+    expect(docsRoute?.params).toContain("path");
     cleanup();
   });
 
@@ -89,9 +89,9 @@ describe("discoverPages", () => {
     setup();
     writeFileSync(join(FIXTURES, "post.md"), "---\n$layout: article\ntitle: Hello\n---\n# Hello");
     const routes = await discoverPages(FIXTURES, mdRegistry);
-    const mdRoute = routes.find((r) => r.sourcePath.endsWith(".md")) as any;
+    const mdRoute = routes.find((r) => r.sourcePath.endsWith(".md"));
     expect(mdRoute).toBeDefined();
-    expect(mdRoute.$layout).toBe("article");
+    expect(mdRoute?.$layout).toBe("article");
     cleanup();
   });
 
@@ -107,9 +107,9 @@ describe("discoverPages", () => {
     setup();
     writeFileSync(join(FIXTURES, "about.md"), "---\ntitle: About\n---\n# About");
     const routes = await discoverPages(FIXTURES, mdRegistry);
-    const mdRoute = routes.find((r) => r.urlPattern === "/about") as any;
+    const mdRoute = routes.find((r) => r.urlPattern === "/about");
     expect(mdRoute).toBeDefined();
-    expect(mdRoute.sourcePath).toContain(".md");
+    expect(mdRoute?.sourcePath).toContain(".md");
     cleanup();
   });
 });
@@ -127,8 +127,9 @@ describe("readPageDocument", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toContain('No format class registered for ".csv"');
-    expect((caught as Error).message).toContain('project.json "extensions"');
+    const message = caught instanceof Error ? caught.message : "";
+    expect(message).toContain('No format class registered for ".csv"');
+    expect(message).toContain('project.json "extensions"');
     cleanup();
   });
 });
@@ -281,6 +282,39 @@ describe("expandDynamicRoutes", () => {
     expect(result.length).toBe(2);
     expect(result[0]!.urlPattern).toBe("/products/ABC123");
     expect(result[1]!.urlPattern).toBe("/products/DEF456");
+    cleanup();
+  });
+
+  test("a null row in a $ref data file fails the expansion", async () => {
+    setup();
+    writeFileSync(join(FIXTURES, "rows.json"), JSON.stringify([{ sku: "ABC123" }, null]));
+    const pagePath = join(FIXTURES, "row.json");
+    writeFileSync(
+      pagePath,
+      JSON.stringify({
+        $paths: { $ref: "./rows.json", field: "sku", param: "id" },
+        tagName: "div",
+      }),
+    );
+    const routes = [
+      {
+        $layout: null,
+        isCatchAll: false,
+        isDynamic: true,
+        params: ["id"],
+        relativePath: "",
+        sourcePath: pagePath,
+        urlPattern: "/rows/:id",
+      },
+    ];
+    let failure: Error | undefined;
+    try {
+      await expandDynamicRoutes(routes, FIXTURES);
+    } catch (error) {
+      failure = error instanceof Error ? error : undefined;
+    }
+    expect(failure).toEqual(new TypeError('$paths.$ref "./rows.json" contains a null entry'));
+    expect(failure).toBeInstanceOf(TypeError);
     cleanup();
   });
 

@@ -18,6 +18,7 @@ import {
 import * as syncProtocol from "y-protocols/sync";
 import { decodeFrame, encodeFrame } from "./envelope.ts";
 import { createReconnectScheduler } from "./reconnect.ts";
+import type { ReconnectPolicy } from "./reconnect.ts";
 import type { CollabFrame, ControlMessage } from "./envelope.ts";
 import type { CollabHandle, CollabIdentity, CollabStatus } from "./provider.ts";
 
@@ -71,6 +72,13 @@ export interface WsCollabConnection {
 
 const WS_OPEN = 1;
 
+/**
+ * The origin a transaction on a handle's Y.Doc carries: a Jx writer's string tag (`"remote"` for an
+ * update this connection applied off the wire), the `Y.UndoManager` replaying an undo or redo, or
+ * `null` for an untagged transaction.
+ */
+type DocTransactionOrigin = string | Y.UndoManager | null;
+
 interface DocEntry {
   doc: Y.Doc;
   epoch: number;
@@ -89,9 +97,13 @@ interface DocEntry {
 }
 
 export function createWsCollabConnection(options: WsCollabConnectionOptions): WsCollabConnection {
+  /* SAFETY: a browser WebSocket does everything WsLike promises. The connection only sets
+     `binaryType`, reads `readyState`, sends a Uint8Array, closes, and assigns its own handlers,
+     which ignore the Event they are given and read only `data` off a MessageEvent. The declared
+     types differ only in the DOM handler signatures' `this` and event parameters. */
   const WebSocketCtor =
     options.webSocketImpl ??
-    (globalThis.WebSocket as unknown as new (url: string, protocols?: string[]) => WsLike);
+    (globalThis.WebSocket as new (url: string, protocols?: string[]) => WsLike);
   const openTimeoutMs = options.openTimeoutMs ?? 10_000;
   const docs = new Map<string, DocEntry>();
   const statusCbs = new Set<(status: CollabStatus) => void>();
@@ -135,7 +147,9 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
   // Reconnect via the full-state re-publish below).
   awareness.on(
     "update",
-    (changes: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
+    /* Every awareness origin is a string: "remote" for what came off the wire, "local" for
+       `setLocalState`, "destroy" for the teardown removal, and "timeout" for y-protocols' expiry. */
+    (changes: { added: number[]; updated: number[]; removed: number[] }, origin: string) => {
       if (origin === "remote") {
         return;
       }
@@ -147,13 +161,18 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
   const handleControl = (message: ControlMessage) => {
     switch (message.type) {
       case "hello": {
-        identity = {
+        const next: CollabIdentity = {
           color: message.color,
           login: message.login,
           permission: message.permission,
-          ...(message.name === undefined ? {} : { name: message.name }),
-          ...(message.avatarUrl === undefined ? {} : { avatarUrl: message.avatarUrl }),
         };
+        if (message.name !== undefined) {
+          next.name = message.name;
+        }
+        if (message.avatarUrl !== undefined) {
+          next.avatarUrl = message.avatarUrl;
+        }
+        identity = next;
         return;
       }
       case "opened": {
@@ -346,10 +365,14 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
       // The close handler follows and owns retry.
     };
   };
-  const reconnect = createReconnectScheduler(connect, {
-    ...(options.reconnectDelayMs === undefined ? {} : { baseMs: options.reconnectDelayMs }),
-    ...(options.reconnectRandom === undefined ? {} : { random: options.reconnectRandom }),
-  });
+  const policy: ReconnectPolicy = {};
+  if (options.reconnectDelayMs !== undefined) {
+    policy.baseMs = options.reconnectDelayMs;
+  }
+  if (options.reconnectRandom !== undefined) {
+    policy.random = options.reconnectRandom;
+  }
+  const reconnect = createReconnectScheduler(connect, policy);
   connect();
 
   return {
@@ -400,7 +423,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
       docs.set(path, entry);
 
       // Local doc updates go to the wire (unless they came FROM the wire).
-      entry.doc.on("update", (update: Uint8Array, origin: unknown) => {
+      entry.doc.on("update", (update: Uint8Array, origin: DocTransactionOrigin) => {
         if (origin === "remote" || !entry.opened) {
           return;
         }

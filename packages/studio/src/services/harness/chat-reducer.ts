@@ -11,10 +11,29 @@
 
 import type { createChatState } from "@jxsuite/ai/chat-state";
 import type { HarnessEvent, TurnOutcome } from "@jxsuite/ai/harness";
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import type { ImportProgressEvent } from "../../types";
 import { recordImportProgress } from "../import-run";
 
 type ChatStore = ReturnType<typeof createChatState>;
+
+/**
+ * Whether a tool's progress payload is an import progress line. The engine carries progress as
+ * opaque JSON; only the import tool reports any, and only in this shape. Exported so the test
+ * harness's tool context records exactly what this reducer records.
+ */
+export function isImportProgressEvent(value: unknown): value is ImportProgressEvent {
+  if (!isJsonObject(value)) {
+    return false;
+  }
+  const { phase, message, current, total } = value;
+  return (
+    isString(phase) &&
+    isString(message) &&
+    (current === undefined || isNumber(current)) &&
+    (total === undefined || isNumber(total))
+  );
+}
 
 /** How a turn's end reads in the transcript: the cap message, an error row, or nothing more. */
 function applyOutcome(chat: ChatStore, outcome: TurnOutcome): void {
@@ -96,7 +115,10 @@ export function applyHarnessEvent(chat: ChatStore, event: HarnessEvent): void {
       break;
     }
     case "tool_progress": {
-      recordImportProgress(event.callId, event.progress as unknown as ImportProgressEvent);
+      // A call that is not an import run has no record to update either way.
+      if (isImportProgressEvent(event.progress)) {
+        recordImportProgress(event.callId, event.progress);
+      }
       break;
     }
     case "tool_result": {

@@ -1,6 +1,17 @@
 import { describe, test, expect } from "bun:test";
 import { rewriteAssetUrls } from "../src/asset-rewrite.ts";
-import type { JxElement, JxStyle } from "@jxsuite/schema/types";
+import { getNestedStyle, isString } from "@jxsuite/schema/guards";
+import type { JxElement } from "@jxsuite/schema/types";
+
+/** The element at `index` of `node`'s children, failing the test where that slot is text or absent. */
+function childAt(node: JxElement, index: number): JxElement {
+  const { children } = node;
+  const child = Array.isArray(children) ? children[index] : undefined;
+  if (child === undefined || isString(child)) {
+    throw new Error(`expected an element child at index ${index}`);
+  }
+  return child;
+}
 
 describe("rewriteAssetUrls", () => {
   test("rewrites img src attribute", () => {
@@ -18,7 +29,7 @@ describe("rewriteAssetUrls", () => {
     const count = rewriteAssetUrls(tree, map);
 
     expect(count).toBe(1);
-    expect((tree.children as JxElement[])[0]!.attributes!.src).toBe("/assets/images/hero.jpg");
+    expect(childAt(tree, 0).attributes!.src).toBe("/assets/images/hero.jpg");
   });
 
   test("rewrites srcset attribute", () => {
@@ -41,7 +52,7 @@ describe("rewriteAssetUrls", () => {
     const count = rewriteAssetUrls(tree, map);
 
     expect(count).toBe(2);
-    expect((tree.children as JxElement[])[0]!.attributes!.srcset).toBe(
+    expect(childAt(tree, 0).attributes!.srcset).toBe(
       "/assets/images/small.jpg 320w, /assets/images/large.jpg 1024w",
     );
   });
@@ -70,7 +81,7 @@ describe("rewriteAssetUrls", () => {
     ]);
 
     rewriteAssetUrls(tree, map);
-    const attrs = (tree.children as JxElement[])[0]!.attributes!;
+    const attrs = childAt(tree, 0).attributes!;
 
     expect(attrs["srcset"]).toBeUndefined();
     // `sizes` describes a layout that no longer exists, and the compiler honours it over its own
@@ -95,7 +106,7 @@ describe("rewriteAssetUrls", () => {
     const map = new Map([["https://example.com/photo-300x200.jpg", "/assets/images/photo.jpg"]]);
 
     rewriteAssetUrls(tree, map);
-    const attrs = (tree.children as JxElement[])[0]!.attributes!;
+    const attrs = childAt(tree, 0).attributes!;
 
     // One candidate never downloaded, so the set is only partly local and must not be collapsed.
     expect(attrs["srcset"]).toContain("https://cdn.other.test/photo.jpg");
@@ -135,7 +146,7 @@ describe("rewriteAssetUrls", () => {
 
     expect(count).toBe(2);
     expect(tree.style!.backgroundImage).toBe('url("/assets/images/bg-desktop.png")');
-    expect((tree.style!["@--768"] as JxStyle).backgroundImage).toBe(
+    expect(getNestedStyle(tree.style, "@--768")?.backgroundImage).toBe(
       'url("/assets/images/bg-mobile.png")',
     );
   });
@@ -239,11 +250,9 @@ describe("rewriteAssetUrls", () => {
     const count = rewriteAssetUrls(tree, map, "https://tailwindcss.com/");
 
     expect(count).toBe(3);
-    expect((tree.children as JxElement[])[0]!.attributes!.src).toBe("/assets/images/hero.jpg");
-    expect((tree.children as JxElement[])[1]!.attributes!.src).toBe("/assets/images/logo.svg");
-    expect((tree.children as JxElement[])[2]!.style!.backgroundImage).toBe(
-      'url("/assets/images/bg.png")',
-    );
+    expect(childAt(tree, 0).attributes!.src).toBe("/assets/images/hero.jpg");
+    expect(childAt(tree, 1).attributes!.src).toBe("/assets/images/logo.svg");
+    expect(childAt(tree, 2).style!.backgroundImage).toBe('url("/assets/images/bg.png")');
   });
 
   test("resolves protocol-relative URLs against sourceUrl", () => {

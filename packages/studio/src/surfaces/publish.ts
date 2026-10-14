@@ -31,22 +31,15 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import publishDoc from "./publish.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("publish", publishDoc as unknown as JxDocument);
+registerSurface("publish", publishDoc);
 
 /** Where the Cloudflare Pages GitHub App is installed from. */
 const PAGES_APP_INSTALL_URL = "https://github.com/apps/cloudflare-pages/installations/new";
-
-/** One Cloudflare account, as the picker draws it. */
-export interface PublishAccountRow {
-  value: string;
-  label: string;
-}
 
 /** The create-and-connect form, as the reader has filled it in so far. */
 export interface PublishForm {
@@ -95,7 +88,7 @@ export interface PublishView {
   busy: boolean;
   /** The last refusal, verbatim from whatever raised it. Empty draws nothing. */
   error: string;
-  accounts: PublishAccountRow[];
+  accounts: SurfaceOption[];
   form: PublishForm;
   /** The connected Pages project, or null when this site has none yet. */
   deploy: PublishDeploy | null;
@@ -164,7 +157,7 @@ interface PublishFlags {
    */
   needsPagesApp: boolean;
   pagesAppUrl: string;
-  accountOptions: PublishAccountRow[];
+  accountOptions: SurfaceOption[];
   accountId: string;
   projectName: string;
   owner: string;
@@ -181,7 +174,7 @@ interface PublishFlags {
   busy: boolean;
 }
 
-interface PublishScope extends Record<string, unknown>, PublishFlags {
+interface PublishScope extends PublishFlags {
   connect: () => void;
   replace: () => void;
   setToken: (value: string) => void;
@@ -286,8 +279,12 @@ export function openPublishSurface(options: PublishSurfaceOptions): PublishSurfa
     closed = true;
     options.onClosed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
-  const scope = reactive({
+  const scope: PublishScope = reactive<PublishScope>({
     ...derive(options.view),
     closed: finish,
     connect: () => {
@@ -341,18 +338,21 @@ export function openPublishSurface(options: PublishSurfaceOptions): PublishSurfa
       tokenDraft = "";
       options.onSaveToken(token);
     },
-  }) as PublishScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("publish", scope, slot).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `publish.json`'s root definition carries `tagName: "jx-dialog"`, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare
+       string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     /* The region goes on the platform's own `<dialog>`, which is the one element here that HAS a
@@ -375,7 +375,7 @@ export function openPublishSurface(options: PublishSurfaceOptions): PublishSurfa
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does — `finish` tells it so.
       mounted?.dispose();

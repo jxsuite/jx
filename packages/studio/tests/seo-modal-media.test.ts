@@ -16,7 +16,8 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { close } from "@jxsuite/ui/behaviors/popover";
 import { initShellRefs, registerRenderer } from "../src/store";
 import { clearLayerSlot, initLayers } from "../src/ui/layers";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
@@ -61,9 +62,9 @@ function scans(): number {
   return state.calls.filter(([name]) => name === "listDirectory").length;
 }
 
-(globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (
-  cb: FrameRequestCallback,
-) => setTimeout(() => cb(0), 0) as unknown as number;
+// A frame is the next macrotask here; the handle is the timer's numeric id, as a browser's is.
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number =>
+  Number(setTimeout(() => cb(0), 0));
 
 let state: MockPlatformState;
 
@@ -86,9 +87,7 @@ function setupTab() {
   const tab = resetWorkspaceWithTab(undefined, {
     documentPath: "posts/hello.json",
     id: "seo-media-tab",
-  }) as unknown as {
-    doc: { mode: string; content: { frontmatter: Record<string, unknown> } };
-  };
+  });
   tab.doc.mode = "content";
   tab.doc.content.frontmatter = { title: "Hello" };
   return tab;
@@ -120,7 +119,9 @@ afterEach(async () => {
      test's own menu down with it. In the app Browse is pressed from a modal that closes with it,
      so this is a fixture's state rather than a defect's. */
   for (const menu of document.querySelectorAll("#layer-popover jx-menu")) {
-    (menu as HTMLElement & { hidePopover?: () => void }).hidePopover?.();
+    if (menu instanceof HTMLElement) {
+      close(menu);
+    }
   }
   await flush(2);
   clearLayerSlot("popover", "seo-media");
@@ -136,19 +137,16 @@ afterEach(async () => {
  * than found afterwards.
  */
 function pressUpload(prop: string): HTMLInputElement {
-  const inputs: HTMLInputElement[] = [];
-  const create = document.createElement.bind(document);
-  document.createElement = ((tag: string, options?: ElementCreationOptions) => {
-    const el = create(tag, options);
-    if (tag === "input") {
-      inputs.push(el as HTMLInputElement);
-    }
-    return el;
-  }) as typeof document.createElement;
+  const created = spyOn(document, "createElement");
+  let inputs: HTMLInputElement[];
   try {
     click(row(prop).querySelector('[part="upload"]')!);
   } finally {
-    document.createElement = create;
+    // Read before restoring: a restore resets the spy's record along with the method.
+    inputs = created.mock.results.flatMap((result) =>
+      result.type === "return" && result.value instanceof HTMLInputElement ? [result.value] : [],
+    );
+    created.mockRestore();
   }
   const input = inputs.at(-1);
   if (!input) {
@@ -219,7 +217,7 @@ describe("Upload", () => {
     click(row("og:image").querySelector('[part="browse"]')!);
     await flush(8);
     expect(scans()).toBeGreaterThan(before);
-    expect(menuRows().map((menuRow) => menuRow.textContent?.trim())).toEqual(["/card.png"]);
+    expect(menuRows().map((menuRow) => menuRow.textContent.trim())).toEqual(["/card.png"]);
   });
 
   test("an upload that lands after the modal closed writes nothing", async () => {

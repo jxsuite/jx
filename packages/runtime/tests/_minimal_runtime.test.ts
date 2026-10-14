@@ -9,6 +9,6 @@ try {
 
 describe("sanity", () => {
   test("import works", () => {
-    expect(typeof isSignal).toBe("function");
+    expect(isSignal).toBeInstanceOf(Function);
   });
 });

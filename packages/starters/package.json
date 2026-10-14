@@ -25,6 +25,9 @@
     "test": "bun test --isolate",
     "test:coverage": "bun test --isolate --coverage"
   },
+  "dependencies": {
+    "@jxsuite/protocol": "workspace:^"
+  },
   "devDependencies": {
     "@jxsuite/parser": "workspace:^",
     "@jxsuite/runtime": "workspace:^",

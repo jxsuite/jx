@@ -1,7 +1,7 @@
 {
   "name": "length-cutoff-text",
   "description": "A text answer cut off by the provider's length limit. finishStream discards its stop reason, so the truncated turn is indistinguishable from a finished one in the transcript and on the wire.",
-  "shapes": ["length-cutoff-text", "plain-exchange"],
+  "scenarios": ["length-cutoff-text", "plain-exchange"],
   "script": [
     ["sendMessage", "List the three setup steps"],
     ["appendDelta", "1. Create the project. 2. Add a page. 3. Publish the"],

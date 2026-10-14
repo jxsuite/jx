@@ -27,15 +27,16 @@
  * @docs studio/ai/chat
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { trustedHtml } from "../services/trusted-types";
 import { mountSurface, registerSurface } from "../ui/surface";
 import aiChatDoc from "./ai-chat.json";
-import type { JxElement, JxDocument } from "@jxsuite/schema/types";
+import type { JsonObject, JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { KeyedLabel, SurfaceHandle } from "../ui/surface";
 
-registerSurface("ai-chat", aiChatDoc as unknown as JxDocument);
+registerSurface("ai-chat", aiChatDoc);
 
 /** How close (px) to the bottom of a scroller still counts as "following along". */
 const STICK_THRESHOLD = 48;
@@ -51,7 +52,7 @@ const LOG_STICK_THRESHOLD = 24;
  * rendering of the registry rather than a second place its capabilities are decided
  * (`studio-ui-guidelines.md` §12.5).
  */
-export interface ChatCommandView extends Record<string, unknown> {
+export interface ChatCommandView {
   /** The reconcile key. The command id, because a button is drawn once per bar. */
   key: string;
   /** What `run` is given. */
@@ -68,14 +69,8 @@ export interface ChatCommandView extends Record<string, unknown> {
   disabled: boolean;
 }
 
-/** One answer an `ask_user` card offers as a shortcut. */
-export interface ChatAskOption extends Record<string, unknown> {
-  key: string;
-  label: string;
-}
-
 /** One line an import run has reported. */
-export interface ChatLogLine extends Record<string, unknown> {
+export interface ChatLogLine {
   key: string;
   phase: string;
   message: string;
@@ -88,7 +83,7 @@ export interface ChatLogLine extends Record<string, unknown> {
  * `$switch` chooses on one: a chip that omitted `options` would leave the question case reading an
  * absent path.
  */
-export interface ChatChipView extends Record<string, unknown> {
+export interface ChatChipView {
   /** The tool-call id — the reconcile key. */
   key: string;
   /** The tool's name, for a test and for the `data-tool` attribute. */
@@ -114,7 +109,8 @@ export interface ChatChipView extends Record<string, unknown> {
   hasContext: boolean;
   /** `pending`, `unanswered`, `answered`, `failed` or `none` — which half of the card to draw. */
   askState: string;
-  options: ChatAskOption[];
+  /** The answers an `ask_user` card offers as shortcuts. */
+  options: KeyedLabel[];
   /** What the reader replied, once they have. */
   answer: string;
   /** `run` when this call has an import to report, `none` otherwise. */
@@ -133,7 +129,7 @@ export interface ChatChipView extends Record<string, unknown> {
 }
 
 /** One file a turn changed. */
-export interface ChatChangeView extends Record<string, unknown> {
+export interface ChatChangeView {
   key: string;
   path: string;
   /** The tool that wrote it, or the sentence saying why it did not. */
@@ -143,14 +139,8 @@ export interface ChatChangeView extends Record<string, unknown> {
   disk: boolean;
 }
 
-/** One attached-context chip on a user turn. */
-export interface ChatContextChip extends Record<string, unknown> {
-  key: string;
-  label: string;
-}
-
 /** One line of the transcript. */
-export interface ChatRowView extends Record<string, unknown> {
+export interface ChatRowView {
   /** The message id. The `$map` key, and what `restore` is given. */
   key: string;
   /** `user`, `assistant`, `streaming`, `typing` or `tool-error`. */
@@ -159,7 +149,8 @@ export interface ChatRowView extends Record<string, unknown> {
   body: string;
   /** Sanitized model output for an `assistant` row. Filled into the island, never bound. */
   markdown: string;
-  contextChips: ChatContextChip[];
+  /** The attached-context chips on a user turn. */
+  contextChips: KeyedLabel[];
   hasContextChips: boolean;
   chips: ChatChipView[];
   hasChips: boolean;
@@ -172,7 +163,7 @@ export interface ChatRowView extends Record<string, unknown> {
 }
 
 /** One row of the chat history. */
-export interface ChatSessionView extends Record<string, unknown> {
+export interface ChatSessionView {
   /** The session id — the key, and what a row opens or deletes. */
   key: string;
   title: string;
@@ -181,7 +172,7 @@ export interface ChatSessionView extends Record<string, unknown> {
 }
 
 /** One chip the composer is carrying. */
-export interface ChatComposerChip extends Record<string, unknown> {
+export interface ChatComposerChip {
   /** The chip's kind — one chip per kind, so the kind IS the identity. */
   key: string;
   label: string;
@@ -277,7 +268,7 @@ export interface AiChatSurface {
 }
 
 /** The scope the document reads: the view, the flow's actions, and the scroller's own handler. */
-interface AiChatScope extends Record<string, unknown>, AiChatView, AiChatActions {
+interface AiChatScope extends AiChatView, AiChatActions {
   scrolled: () => void;
 }
 
@@ -353,21 +344,21 @@ export function emptyAiChatView(): AiChatView {
 
 /** The `part` a node's definition carries, or "" for a text node or an unmarked element. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The `$map` item a node was rendered inside, if it was rendered inside one. */
-function mapItem(state: JxScope | undefined): Record<string, unknown> | null {
-  const map = state?.["$map"] as { item?: unknown } | undefined;
-  const item = map?.item;
-  return item !== null && typeof item === "object" ? (item as Record<string, unknown>) : null;
+function mapItem(state: JxScope | undefined): JsonObject | null {
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  return isJsonObject(item) ? item : null;
 }
 
 /** A string field off a `$map` item, or "". */
-function itemString(item: Record<string, unknown> | null, field: string): string {
+function itemString(item: JsonObject | null, field: string): string {
   const value = item?.[field];
-  return typeof value === "string" ? value : "";
+  return isString(value) ? value : "";
 }
 
 /** Keep a scroller pinned to its newest line, unless the reader has scrolled away from it. */
@@ -406,7 +397,7 @@ export function mountAiChatSurface(
   /** The import logs, by chip key. */
   const logs = new Map<string, HTMLElement>();
 
-  const scope = reactive<AiChatScope>({
+  const scope: AiChatScope = reactive<AiChatScope>({
     ...emptyAiChatView(),
     ...actions,
     scrolled: () => {
@@ -416,7 +407,7 @@ export function mountAiChatSurface(
           STICK_THRESHOLD;
       }
     },
-  }) as AiChatScope;
+  });
   project(scope, view);
 
   /**
@@ -451,7 +442,11 @@ export function mountAiChatSurface(
    * value assigned here is a `TrustedHTML`; without one the same assertion has still run.
    */
   function fillIsland(node: HTMLElement, html: string): void {
-    (node as unknown as { innerHTML: unknown }).innerHTML = trustedHtml(html);
+    /* SAFETY: lib.dom declares `innerHTML` as `string`, but the setter's IDL type is
+       `(TrustedHTML or DOMString)`, and `trustedHtml` returns one of exactly those two: the policy's
+       `TrustedHTML`, or the asserted string where the API is absent. Widening the property to what
+       the sink accepts is an upcast of this HTMLElement, so the write reaches the same setter. */
+    (node as { innerHTML: unknown }).innerHTML = trustedHtml(html);
   }
 
   let mounted: SurfaceHandle | null = null;

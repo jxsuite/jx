@@ -17,7 +17,7 @@ import {
 
 describe("snapshotBeforeWrite", () => {
   test("reads the RAW document's errors and render state", async () => {
-    const tab = resetWorkspaceWithTab({ tagName: "div" } as never);
+    const tab = resetWorkspaceWithTab({ tagName: "div" });
     const seen: unknown[] = [];
     const snapshot = await snapshotBeforeWrite(tab, {
       renderCheck: async (doc) => {
@@ -82,7 +82,7 @@ describe("reportDocumentWrite", () => {
   });
 
   test("a success carries the summary, plus the token hints when the project has tokens", async () => {
-    const tab = resetWorkspaceWithTab({ style: { color: "#ff0000" }, tagName: "div" } as never);
+    const tab = resetWorkspaceWithTab({ style: { color: "#ff0000" }, tagName: "div" });
     const before = { errors: new Set<string>(), renderOk: true };
     const plain = await reportDocumentWrite(tab, before, "Set the colour.", {
       validate: async () => [],

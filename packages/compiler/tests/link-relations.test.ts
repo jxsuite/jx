@@ -8,6 +8,7 @@ import {
   unregisteredHeadRelations,
   unregisteredRelations,
 } from "../src/site/link-relations.ts";
+import type { JxHeadEntry } from "@jxsuite/schema/types";
 
 describe("unregisteredRelations", () => {
   test("registered relations are recognized", () => {
@@ -70,7 +71,8 @@ describe("unregisteredRelations", () => {
   });
 
   test("an absent or non-string rel reports nothing", () => {
-    expect(unregisteredRelations(({} as { rel?: string }).rel)).toEqual([]);
+    const bareLink: JxHeadEntry = { tagName: "link" };
+    expect(unregisteredRelations(bareLink.attributes?.rel)).toEqual([]);
     expect(unregisteredRelations(null)).toEqual([]);
     expect(unregisteredRelations(42)).toEqual([]);
     expect(unregisteredRelations("")).toEqual([]);

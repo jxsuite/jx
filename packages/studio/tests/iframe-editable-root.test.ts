@@ -33,6 +33,15 @@ interface Recorded {
 
 let live: EditableRootHandle | null = null;
 
+/** The `index`th element under `root` matching `selector`; throws rather than handing a test null. */
+function nth(root: ParentNode, selector: string, index = 0): HTMLElement {
+  const found = root.querySelectorAll(selector)[index];
+  if (!(found instanceof HTMLElement)) {
+    throw new TypeError(`expected an HTMLElement at ${selector}[${index}]`);
+  }
+  return found;
+}
+
 /** Mount `html` in a container and wire an editing host over it with recording deps. */
 function mount(html: string, overrides: Partial<EditableRootDeps> = {}) {
   const container = document.createElement("div");
@@ -76,14 +85,14 @@ const TWO_BLOCKS = `<p data-jx-path='["children",0]'>First block</p><p data-jx-p
 describe("activation follows the caret", () => {
   test("a caret landing in a block activates it — there is no gesture to recognise", () => {
     const { container, rec } = mount(TWO_BLOCKS);
-    caretInto(container.querySelector("p") as HTMLElement, 3);
+    caretInto(nth(container, "p"), 3);
     expect(rec.activated).toEqual([{ path: ["children", 0], tag: "p" }]);
     expect(rec.deactivated).toBe(0);
   });
 
   test("moving within the block reports a selection change, not a re-activation", () => {
     const { container, rec } = mount(TWO_BLOCKS);
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 1);
     const before = rec.selectionChanges;
     caretInto(p, 5);
@@ -100,7 +109,7 @@ describe("activation follows the caret", () => {
       onActivate: (_el, path) => order.push(`activate:${JSON.stringify(path)}`),
       onDeactivate: () => order.push("deactivate"),
     });
-    const [first, second] = [...container.querySelectorAll("p")] as HTMLElement[];
+    const [first, second] = [...container.querySelectorAll("p")];
     caretInto(first!, 2);
     caretInto(second!, 2);
     expect(order).toEqual(['activate:["children",0]', "deactivate", 'activate:["children",1]']);
@@ -108,14 +117,14 @@ describe("activation follows the caret", () => {
 
   test("a caret in canvas chrome releases the active block", () => {
     const { container, rec } = mount(`${TWO_BLOCKS}<div>chrome</div>`);
-    caretInto(container.querySelector("p") as HTMLElement, 1);
-    caretInto(container.querySelector("div") as HTMLElement);
+    caretInto(nth(container, "p"), 1);
+    caretInto(nth(container, "div"));
     expect(rec.deactivated).toBe(1);
   });
 
   test("a caret outside the container releases the active block", () => {
     const { container, rec } = mount(TWO_BLOCKS);
-    caretInto(container.querySelector("p") as HTMLElement, 1);
+    caretInto(nth(container, "p"), 1);
     const outside = document.createElement("p");
     outside.textContent = "elsewhere";
     document.body.append(outside);
@@ -127,7 +136,7 @@ describe("activation follows the caret", () => {
     // A re-render, a removeAllRanges, or the window losing focus all momentarily empty the
     // Selection. Committing and dropping the block there would lose the caret mid-typing.
     const { container, rec } = mount(TWO_BLOCKS);
-    caretInto(container.querySelector("p") as HTMLElement, 1);
+    caretInto(nth(container, "p"), 1);
     window.getSelection()!.removeAllRanges();
     document.dispatchEvent(new Event("selectionchange"));
     expect(rec.deactivated).toBe(0);
@@ -135,14 +144,14 @@ describe("activation follows the caret", () => {
 
   test("no caret exists outside design/edit modes", () => {
     const { container, rec } = mount(TWO_BLOCKS, { getMode: () => "preview" });
-    caretInto(container.querySelector("p") as HTMLElement, 1);
+    caretInto(nth(container, "p"), 1);
     expect(rec.activated).toHaveLength(0);
   });
 
   test("leaving edit mode with a live block releases it", () => {
     let mode = "edit";
     const { container, rec } = mount(TWO_BLOCKS, { getMode: () => mode });
-    caretInto(container.querySelector("p") as HTMLElement, 1);
+    caretInto(nth(container, "p"), 1);
     mode = "preview";
     document.dispatchEvent(new Event("selectionchange"));
     expect(rec.deactivated).toBe(1);
@@ -150,7 +159,7 @@ describe("activation follows the caret", () => {
 
   test("stop() releases the active block", () => {
     const { container, rec, root } = mount(TWO_BLOCKS);
-    caretInto(container.querySelector("p") as HTMLElement, 1);
+    caretInto(nth(container, "p"), 1);
     root.stop();
     live = null;
     expect(rec.deactivated).toBe(1);
@@ -167,7 +176,7 @@ describe("prop-bound nested hosts", () => {
         return true;
       },
     });
-    const marker = container.querySelector("[data-jx-bound-prop]") as HTMLElement;
+    const marker = nth(container, "[data-jx-bound-prop]");
     marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     expect(rec.props).toEqual(["title"]);
   });
@@ -176,7 +185,7 @@ describe("prop-bound nested hosts", () => {
     // The marker has no `data-jx-path`, so a naive block lookup would find nothing and deactivate
     // The host the instant the caret arrived in it.
     const { container, rec } = mount(WITH_PROP, { onPropActivate: () => true });
-    const marker = container.querySelector("[data-jx-bound-prop]") as HTMLElement;
+    const marker = nth(container, "[data-jx-bound-prop]");
     marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     caretInto(marker, 2);
     expect(rec.deactivated).toBe(0);
@@ -184,7 +193,7 @@ describe("prop-bound nested hosts", () => {
 
   test("a REFUSED marker is not adopted, so the caret does not linger in it", () => {
     const { container, rec } = mount(WITH_PROP, { onPropActivate: () => false });
-    const marker = container.querySelector("[data-jx-bound-prop]") as HTMLElement;
+    const marker = nth(container, "[data-jx-bound-prop]");
     marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     caretInto(marker, 2);
     expect(rec.activated).toHaveLength(0);
@@ -197,9 +206,7 @@ describe("prop-bound nested hosts", () => {
         return true;
       },
     });
-    (container.querySelector("p") as HTMLElement).dispatchEvent(
-      new MouseEvent("pointerdown", { bubbles: true }),
-    );
+    nth(container, "p").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     expect(rec.props).toEqual([]);
   });
 
@@ -214,14 +221,14 @@ describe("prop-bound nested hosts", () => {
    */
   test("typing in an adopted prop host is NOT prevented", () => {
     const { container } = mount(WITH_PROP, { onPropActivate: () => true });
-    const marker = container.querySelector("[data-jx-bound-prop]") as HTMLElement;
+    const marker = nth(container, "[data-jx-bound-prop]");
     marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     expect(beforeInput(marker, "insertText", "x")).toBe(false);
   });
 
   test("a paragraph split in a prop host IS prevented — one plain string", () => {
     const { container } = mount(WITH_PROP, { onPropActivate: () => true });
-    const marker = container.querySelector("[data-jx-bound-prop]") as HTMLElement;
+    const marker = nth(container, "[data-jx-bound-prop]");
     marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     expect(beforeInput(marker, "insertParagraph")).toBe(true);
   });
@@ -231,7 +238,7 @@ describe("prop-bound nested hosts", () => {
        unresolvable and the keystroke must not slip through — this is what proves the guard is the
        adoption state and not merely "the target has data-jx-bound-prop". */
     const { container } = mount(WITH_PROP, { onPropActivate: () => false });
-    const marker = container.querySelector("[data-jx-bound-prop]") as HTMLElement;
+    const marker = nth(container, "[data-jx-bound-prop]");
     marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     expect(beforeInput(marker, "insertText", "x")).toBe(true);
   });
@@ -240,17 +247,17 @@ describe("prop-bound nested hosts", () => {
     // The flag must not outlive the session: once a real block is active, `activeKey` is set again
     // And the chokepoint judges by position as usual.
     const { container } = mount(WITH_PROP, { onPropActivate: () => true });
-    const marker = container.querySelector("[data-jx-bound-prop]") as HTMLElement;
+    const marker = nth(container, "[data-jx-bound-prop]");
     marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
-    caretInto(container.querySelector("p") as HTMLElement, 1);
+    caretInto(nth(container, "p"), 1);
     expect(beforeInput(marker, "insertParagraph")).toBe(true);
   });
 
   test("leaving the nested host for a page block releases it", () => {
     const { container, rec } = mount(WITH_PROP, { onPropActivate: () => true });
-    const marker = container.querySelector("[data-jx-bound-prop]") as HTMLElement;
+    const marker = nth(container, "[data-jx-bound-prop]");
     marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
-    caretInto(container.querySelector("p") as HTMLElement, 1);
+    caretInto(nth(container, "p"), 1);
     expect(rec.deactivated).toBe(1);
     expect(rec.activated).toEqual([{ path: ["children", 0], tag: "p" }]);
   });
@@ -259,7 +266,7 @@ describe("prop-bound nested hosts", () => {
 describe("the beforeinput chokepoint", () => {
   test("ordinary typing runs natively", () => {
     const { container } = mount(TWO_BLOCKS);
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 3);
     expect(beforeInput(p, "insertText", "x")).toBe(false);
   });
@@ -271,7 +278,7 @@ describe("the beforeinput chokepoint", () => {
         return true;
       },
     });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 3);
     expect(beforeInput(p, "insertParagraph")).toBe(true);
     expect(rec.splits).toBe(1);
@@ -284,7 +291,7 @@ describe("the beforeinput chokepoint", () => {
         return true;
       },
     });
-    const second = [...container.querySelectorAll("p")][1] as HTMLElement;
+    const second = nth(container, "p", 1);
     caretInto(second, 0);
     expect(beforeInput(second, "deleteContentBackward")).toBe(true);
     expect(rec.mergeBackward).toEqual([{ offset: 0, path: ["children", 1] }]);
@@ -297,7 +304,7 @@ describe("the beforeinput chokepoint", () => {
         return true;
       },
     });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, "First block".length);
     expect(beforeInput(p, "deleteContentForward")).toBe(true);
     expect(rec.mergeForward).toHaveLength(1);
@@ -310,7 +317,7 @@ describe("the beforeinput chokepoint", () => {
         return true;
       },
     });
-    const [first, second] = [...container.querySelectorAll("p")] as HTMLElement[];
+    const [first, second] = [...container.querySelectorAll("p")];
     selectAcross(first!.firstChild!, 2, second!.firstChild!, 3);
     expect(beforeInput(first!, "deleteContentBackward")).toBe(true);
     expect(rec.replaced).toEqual([
@@ -326,7 +333,7 @@ describe("the beforeinput chokepoint", () => {
     // The load-bearing default: an unimplemented merge must leave the document untouched, never
     // Silently let contenteditable join two blocks behind the model's back.
     const { container, rec } = mount(TWO_BLOCKS); // No structural handlers wired.
-    const second = [...container.querySelectorAll("p")][1] as HTMLElement;
+    const second = nth(container, "p", 1);
     caretInto(second, 0);
     expect(beforeInput(second, "deleteContentBackward")).toBe(true);
     expect(rec.mergeBackward).toHaveLength(0);
@@ -339,7 +346,7 @@ describe("the beforeinput chokepoint", () => {
         return true;
       },
     });
-    const [first, second] = [...container.querySelectorAll("p")] as HTMLElement[];
+    const [first, second] = [...container.querySelectorAll("p")];
     selectAcross(first!.firstChild!, 2, second!.firstChild!, 3);
     expect(beforeInput(first!, "insertParagraph")).toBe(true);
     expect(rec.splits).toBe(0);
@@ -347,7 +354,7 @@ describe("the beforeinput chokepoint", () => {
 
   test("native formatting and history are refused", () => {
     const { container } = mount(TWO_BLOCKS);
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 3);
     expect(beforeInput(p, "formatBold")).toBe(true);
     expect(beforeInput(p, "historyUndo")).toBe(true);
@@ -355,14 +362,14 @@ describe("the beforeinput chokepoint", () => {
 
   test("input with no resolvable position is refused", () => {
     const { container } = mount(`${TWO_BLOCKS}<div>chrome</div>`);
-    const chrome = container.querySelector("div") as HTMLElement;
+    const chrome = nth(container, "div");
     caretInto(chrome);
     expect(beforeInput(chrome, "insertText", "x")).toBe(true);
   });
 
   test("beforeinput is inert outside design/edit modes", () => {
     const { container } = mount(TWO_BLOCKS, { getMode: () => "preview" });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     expect(beforeInput(p, "insertParagraph")).toBe(false);
   });
 });
@@ -370,7 +377,7 @@ describe("the beforeinput chokepoint", () => {
 describe("drag suppression", () => {
   test("a dragstart inside the canvas is cancelled — reordering is the bar's handle", () => {
     const { container } = mount(TWO_BLOCKS);
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     const e = new Event("dragstart", { bubbles: true, cancelable: true });
     p.dispatchEvent(e);
     expect(e.defaultPrevented).toBe(true);
@@ -386,7 +393,7 @@ describe("the idle commit tick", () => {
         ticks += 1;
       },
     });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 3);
     p.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -408,7 +415,7 @@ describe("the idle commit tick", () => {
         ticks += 1;
       },
     });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 1);
     for (let i = 0; i < 4; i++) {
       p.dispatchEvent(new Event("input", { bubbles: true }));
@@ -430,11 +437,11 @@ describe("the idle commit tick", () => {
     const { container } = mount(TWO_BLOCKS, {
       commitDelayMs: 5,
       onCommitTick: () => {
-        const p = container.querySelector("p") as HTMLElement;
+        const p = nth(container, "p");
         p.replaceChildren(document.createTextNode("First block"));
       },
     });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 6);
     p.dispatchEvent(new Event("input", { bubbles: true }));
     await new Promise<void>((r) => {
@@ -455,7 +462,7 @@ describe("the idle commit tick", () => {
         ticks += 1;
       },
     });
-    const [first, second] = [...container.querySelectorAll("p")] as HTMLElement[];
+    const [first, second] = [...container.querySelectorAll("p")];
     caretInto(first!, 2);
     first!.dispatchEvent(new Event("input", { bubbles: true }));
     caretInto(second!, 2);
@@ -475,7 +482,7 @@ describe("the idle commit tick", () => {
         ticks += 1;
       },
     });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 3);
     p.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -494,7 +501,7 @@ describe("the idle commit tick", () => {
         ticks += 1;
       },
     });
-    caretInto(container.querySelector("p") as HTMLElement, 1);
+    caretInto(nth(container, "p"), 1);
     live!.flush();
     expect(ticks).toBe(0);
   });
@@ -507,7 +514,7 @@ describe("the idle commit tick", () => {
         ticks += 1;
       },
     });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = nth(container, "p");
     caretInto(p, 1);
     p.dispatchEvent(new Event("input", { bubbles: true }));
     root.stop();
@@ -522,7 +529,7 @@ describe("the idle commit tick", () => {
 describe("caret capture and restore", () => {
   test("captureDocSelection returns both endpoints in document coordinates", () => {
     const { container } = mount(TWO_BLOCKS);
-    const [first, second] = [...container.querySelectorAll("p")] as HTMLElement[];
+    const [first, second] = [...container.querySelectorAll("p")];
     selectAcross(first!.firstChild!, 2, second!.firstChild!, 4);
     expect(captureDocSelection(container, EDITABLE)).toEqual({
       anchor: { offset: 2, path: ["children", 0] },
@@ -544,13 +551,13 @@ describe("caret capture and restore", () => {
 
   test("captureDocSelection returns null when an endpoint is not in an editable block", () => {
     const { container } = mount(`${TWO_BLOCKS}<div>chrome</div>`);
-    caretInto(container.querySelector("div") as HTMLElement);
+    caretInto(nth(container, "div"));
     expect(captureDocSelection(container, EDITABLE)).toBeNull();
   });
 
   test("a captured selection round-trips through restore", () => {
     const { container } = mount(TWO_BLOCKS);
-    const [first, second] = [...container.querySelectorAll("p")] as HTMLElement[];
+    const [first, second] = [...container.querySelectorAll("p")];
     selectAcross(first!.firstChild!, 2, second!.firstChild!, 4);
     const captured = captureDocSelection(container, EDITABLE)!;
 
@@ -581,7 +588,7 @@ describe("caret capture and restore", () => {
 
   test("the handle's capture/restore pair survives a re-render of the block's DOM", () => {
     const { container, rec } = mount(TWO_BLOCKS);
-    const first = container.querySelector("p") as HTMLElement;
+    const first = nth(container, "p");
     caretInto(first, 5);
     const captured = live!.capture();
     expect(captured).toEqual({
@@ -598,7 +605,7 @@ describe("caret capture and restore", () => {
 
   test("sync() re-derives the active block after a programmatic selection move", () => {
     const { container, rec } = mount(TWO_BLOCKS);
-    const second = [...container.querySelectorAll("p")][1] as HTMLElement;
+    const second = nth(container, "p", 1);
     // Move the selection WITHOUT dispatching the event the browser would.
     caretAt(second.firstChild!, 2);
     rec.activated.length = 0;

@@ -38,6 +38,11 @@ export interface CloudSignal {
   project: CloudProject | null;
 }
 
+declare global {
+  /** Published by the cloud shell's boot module before the studio bundle evaluates. */
+  var __jxCloud: CloudSignal | undefined;
+}
+
 /**
  * Why Studio will not fall back to the dev-server adapter, most specific evidence first.
  *
@@ -86,13 +91,14 @@ const BACKENDLESS_SCHEMES: ReadonlySet<string> = new Set(["views:", "file:"]);
 
 /** Read the boot environment from the live globals and document. */
 export function bootEnvironment(): BootEnvironment {
-  const doc = (globalThis as { document?: Document }).document;
+  // A DOM-less host (a test runner, a worker) has no document or location to read.
+  const doc = typeof document === "undefined" ? undefined : document;
   const meta = `meta[name="${BOOT_META.name}"][content="${BOOT_META.content}"]`;
   return {
-    cloud: (globalThis as unknown as { __jxCloud?: CloudSignal }).__jxCloud != null,
+    cloud: globalThis.__jxCloud != null,
     declared: doc?.querySelector(meta) != null,
     launcher: launcherSignal(),
-    protocol: (globalThis as { location?: Location }).location?.protocol ?? "",
+    protocol: typeof location === "undefined" ? "" : location.protocol,
   };
 }
 
@@ -159,6 +165,6 @@ export function resolveDefaultPlatform(): StudioPlatform {
   if (refusal) {
     throw new PlatformUnavailableError(refusal);
   }
-  const cloud = (globalThis as unknown as { __jxCloud?: CloudSignal }).__jxCloud;
+  const cloud = globalThis.__jxCloud;
   return cloud ? createCloudPlatform(cloud.project) : createDevServerPlatform();
 }

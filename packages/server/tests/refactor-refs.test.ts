@@ -40,7 +40,7 @@ describe("rewriteDocRefs — recognized reference forms", () => {
     expect(doc.imports.Counter).toBe("../components/button.json");
     expect(doc.imports.Markdown).toBe("@jxsuite/parser/Markdown.class.json"); // NPM untouched
     expect(doc.$layout).toBe("../layouts/base.json"); // Unrelated layout untouched
-    expect((doc.children[2] as { src: string }).src).toBe("../img/logo.png"); // Unrelated asset
+    expect(doc.children[2]).toHaveProperty("src", "../img/logo.png"); // Unrelated asset
     expect(changes).toHaveLength(4);
   });
 
@@ -69,9 +69,7 @@ describe("rewriteDocRefs — recognized reference forms", () => {
     const { changes } = rewriteDocRefs(doc, c);
     expect(doc.style.backgroundImage).toBe("url('../img/hero.png')");
     expect(doc.style.other).toBe("url(../img/hero.png) no-repeat");
-    expect((doc.children[0] as { style: { background: string } }).style.background).toBe(
-      'url("../img/hero.png")',
-    );
+    expect(doc.children[0]).toHaveProperty("style.background", 'url("../img/hero.png")');
     expect(changes).toHaveLength(3);
   });
 
@@ -109,9 +107,9 @@ describe("rewriteDocRefs — recognized reference forms", () => {
     };
     const c = ctx({ newAbs: "/p/img/hero.png", oldAbs: "/p/img/bg.png" });
     const { changes } = rewriteDocRefs(doc, c);
-    expect(doc.style[0] as string).toBe("url(../img/hero.png)"); // Array string member rewritten
-    expect((doc.style[1] as { bg: string }).bg).toBe("url(data:image/png;base64,AA)"); // Data URL left
-    expect((doc.children[0] as { style: { x: string } }).style.x).toBe("url(../img/other.png)"); // No match
+    expect(doc.style[0]).toBe("url(../img/hero.png)"); // Array string member rewritten
+    expect(doc.style[1]).toHaveProperty("bg", "url(data:image/png;base64,AA)"); // Data URL left
+    expect(doc.children[0]).toHaveProperty("style.x", "url(../img/other.png)"); // No match
     expect(changes).toHaveLength(1);
   });
 });
@@ -132,11 +130,12 @@ describe("rewriteDocRefs — copy map keys", () => {
     });
 
   test("renames a copy key naming the moved file, leaving its destination value alone", () => {
-    const doc: { copy: Record<string, string> } = {
+    const doc = {
       copy: { "assets/brochure.pdf": "brochure.pdf" },
     };
     const { changes } = rewriteDocRefs(doc, copyCtx());
-    expect(doc.copy).toEqual({ "assets/prospectus.pdf": "brochure.pdf" });
+    // The rename re-keys the map, so the expectation is typed as the map rather than the literal.
+    expect(doc.copy).toEqual<Record<string, string>>({ "assets/prospectus.pdf": "brochure.pdf" });
     expect(changes).toEqual([
       { from: "assets/brochure.pdf", refType: "copy", to: "assets/prospectus.pdf" },
     ]);
@@ -145,11 +144,14 @@ describe("rewriteDocRefs — copy map keys", () => {
   test("a copy key is project-root-relative, not document-relative", () => {
     // A page deep in the tree could never carry `copy`, but the base choice is what makes the key
     // Resolve at all — read from the project root, exactly as the build resolves it.
-    const doc: { copy: Record<string, string> } = {
+    const doc = {
       copy: { "assets/brochure.pdf": "files/brochure.pdf" },
     };
     rewriteDocRefs(doc, copyCtx({ docNewDir: "/p/pages", docOldDir: "/p/pages" }));
-    expect(doc.copy).toEqual({ "assets/prospectus.pdf": "files/brochure.pdf" });
+    // The rename re-keys the map, so the expectation is typed as the map rather than the literal.
+    expect(doc.copy).toEqual<Record<string, string>>({
+      "assets/prospectus.pdf": "files/brochure.pdf",
+    });
   });
 
   test("a copy DESTINATION that happens to name a real project file is never rewritten", () => {

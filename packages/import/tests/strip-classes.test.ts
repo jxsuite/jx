@@ -10,7 +10,7 @@ describe("stripClasses", () => {
   });
 
   test("removes a className property too", () => {
-    const node = { tagName: "div", className: "hero" } as unknown as JxElement;
+    const node: JxElement = { tagName: "div", className: "hero" };
     expect(stripClasses(node)).toBe(1);
     expect("className" in node).toBe(false);
   });
@@ -56,12 +56,12 @@ describe("stripClasses", () => {
   });
 
   test("string children are not elements and are left alone", () => {
-    const tree = {
+    const tree: JxElement = {
       tagName: "p",
       children: ["some text", { tagName: "em", attributes: { class: "x" } }],
-    } as unknown as JxElement;
+    };
     expect(stripClasses(tree)).toBe(1);
-    expect((tree.children as unknown[])[0]).toBe("some text");
+    expect(tree.children).toEqual(["some text", { tagName: "em" }]);
   });
 
   test("a bare string is not a node", () => {

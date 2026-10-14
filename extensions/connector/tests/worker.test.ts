@@ -10,8 +10,10 @@ import { createBunSqliteDialect } from "../src/dialects/bun-sqlite";
 import { Data, createDataMountState, handleDataRequest } from "../src/worker";
 import type { DataMountOptions, DataMountState } from "../src/worker";
 import type { JxAuthHooks, JxServerContext, TableDef } from "../src/types";
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
-const TABLES: Record<string, TableDef> = {
+const TABLES = {
   comments: {
     connection: "main",
     ownerField: "user_id",
@@ -53,9 +55,9 @@ const TABLES: Record<string, TableDef> = {
     permissions: { insert: "public", read: "public" },
     schema: { properties: { name: { type: "string" } }, type: "object" },
   },
-};
+} satisfies Record<string, TableDef>;
 
-type Call = (method: string, path: string, body?: unknown) => Promise<Response>;
+type Call = (method: string, path: string, body?: JsonValue) => Promise<Response>;
 
 interface Harness {
   options: DataMountOptions;
@@ -78,25 +80,56 @@ function makeHarness(
   };
   const state = createDataMountState();
   const call: Call = (method, path, body) => {
-    const request = new Request(`http://site.test${path}`, {
-      method,
-      ...(body === undefined
-        ? {}
-        : { body: JSON.stringify(body), headers: { "Content-Type": "application/json" } }),
-    });
+    const init: RequestInit = { method };
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
+      init.headers = { "Content-Type": "application/json" };
+    }
+    const request = new Request(`http://site.test${path}`, init);
     return handleDataRequest(request, {}, options, ctx, state);
   };
   return { call, ctx, options, state };
 }
 
-async function json(promise: Promise<Response> | Response): Promise<Record<string, unknown>> {
-  const response = await promise;
-  return (await response.json()) as Record<string, unknown>;
+/** A list of JSON rows: what list routes and `include` expansions of to-many refs return. */
+function isRowList(value: unknown): value is JsonObject[] {
+  return Array.isArray(value) && value.every((item) => isJsonObject(item));
 }
 
-async function rows(promise: Promise<Response>): Promise<Record<string, unknown>[]> {
+async function json(promise: Promise<Response> | Response): Promise<JsonObject> {
   const response = await promise;
-  return (await response.json()) as Record<string, unknown>[];
+  const body = await response.json();
+  if (!isJsonObject(body)) {
+    throw new Error(`Expected a JSON object body, got ${JSON.stringify(body)}`);
+  }
+  return body;
+}
+
+async function rows(promise: Promise<Response>): Promise<JsonObject[]> {
+  const response = await promise;
+  const body = await response.json();
+  if (!isRowList(body)) {
+    throw new Error(`Expected a JSON array of rows, got ${JSON.stringify(body)}`);
+  }
+  return body;
+}
+
+/** The rows an `include` expanded under `field` on a fetched row. */
+function includedRows(row: JsonObject, field: string): JsonObject[] {
+  const value = row[field];
+  if (!isRowList(value)) {
+    throw new Error(`Expected include "${field}" to expand to rows, got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+/** The id the worker assigned a created row: a uuid string, or an integer on `id: "integer"`. */
+function idOf(row: JsonObject): string | number {
+  const { id } = row;
+  if (isString(id) || isNumber(id)) {
+    return id;
+  }
+  throw new Error(`Expected a created row with an id, got ${JSON.stringify(row)}`);
 }
 
 async function statusOf(promise: Promise<Response>): Promise<number> {
@@ -119,7 +152,7 @@ describe("wire contract", () => {
     expect(row.approved).toBe(true);
     expect(row.views).toBe(3);
     expect(row.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(row.updated_at).toBe(row.created_at as string);
+    expect(row.updated_at).toBe(row.created_at);
 
     const listed = await rows(call("GET", "/_jx/data/comments"));
     expect(listed).toHaveLength(1);
@@ -212,7 +245,7 @@ describe("wire contract", () => {
   });
 
   test("integer-id tables parse path ids numerically", async () => {
-    const tables: Record<string, TableDef> = {
+    const tables = {
       posts: {
         connection: "main",
         id: "integer",
@@ -220,7 +253,7 @@ describe("wire contract", () => {
         schema: { properties: { title: { type: "string" } }, type: "object" },
         timestamps: false,
       },
-    };
+    } satisfies Record<string, TableDef>;
     const { call } = makeHarness({}, tables);
     const created = await json(call("POST", "/_jx/data/posts", { title: "first" }));
     expect(created.id).toBe(1);
@@ -235,26 +268,28 @@ describe("wire contract", () => {
     const user = await json(call("POST", "/_jx/data/users", { name: "kevin" }));
 
     const post = await json(
-      call("POST", "/_jx/data/posts", { tags: [tagA.id, tagB.id], title: "hello" }),
+      call("POST", "/_jx/data/posts", { tags: [idOf(tagA), idOf(tagB)], title: "hello" }),
     );
     const included = await json(call("GET", `/_jx/data/posts/${post.id}?include=tags`));
-    const tagNames = (included.tags as Record<string, unknown>[]).map((t) => t.name).toSorted();
+    const tagNames = includedRows(included, "tags")
+      .map((t) => t.name)
+      .toSorted();
     expect(tagNames).toEqual(["a", "b"]);
 
     // Replace the link set.
-    await call("PATCH", `/_jx/data/posts/${post.id}`, { tags: [tagB.id] });
+    await call("PATCH", `/_jx/data/posts/${post.id}`, { tags: [idOf(tagB)] });
     const after = await json(call("GET", `/_jx/data/posts/${post.id}?include=tags`));
-    expect((after.tags as Record<string, unknown>[]).map((t) => t.name)).toEqual(["b"]);
+    expect(includedRows(after, "tags").map((t) => t.name)).toEqual(["b"]);
 
     // To-one include: comments.author → users row; unknown include fields are ignored.
     const comment = await json(
-      call("POST", "/_jx/data/comments", { author: user.id as string, message: "hi" }),
+      call("POST", "/_jx/data/comments", { author: idOf(user), message: "hi" }),
     );
-    expect(comment.author_id).toBe(user.id as string);
+    expect(comment.author_id).toBe(idOf(user));
     const withAuthor = await json(
       call("GET", `/_jx/data/comments/${comment.id}?include=author,ghost`),
     );
-    expect((withAuthor.author as Record<string, unknown>).name).toBe("kevin");
+    expect(withAuthor.author).toMatchObject({ name: "kevin" });
 
     // A to-one include with no row carrying that ref: nothing to fetch, but no crash either.
     const solo = await json(call("POST", "/_jx/data/comments", { message: "no author" }));
@@ -268,7 +303,7 @@ describe("wire contract", () => {
   test("a patch touching only a junction field, on a table with no timestamps, still applies", async () => {
     // With timestamps off, a patch containing only `tags` leaves the direct-column row empty —
     // The update falls back to a plain re-select instead of an (empty) UPDATE statement.
-    const tables: Record<string, TableDef> = {
+    const tables = {
       posts: {
         connection: "main",
         permissions: { insert: "public", read: "public", update: "public" },
@@ -286,14 +321,14 @@ describe("wire contract", () => {
         permissions: { insert: "public", read: "public" },
         schema: { properties: { name: { type: "string" } }, type: "object" },
       },
-    };
+    } satisfies Record<string, TableDef>;
     const { call } = makeHarness({}, tables);
     const tag = await json(call("POST", "/_jx/data/tags", { name: "x" }));
     const post = await json(call("POST", "/_jx/data/posts", { title: "hello" }));
-    const patched = await call("PATCH", `/_jx/data/posts/${post.id}`, { tags: [tag.id] });
+    const patched = await call("PATCH", `/_jx/data/posts/${post.id}`, { tags: [idOf(tag)] });
     expect(patched.status).toBe(200);
     const after = await json(call("GET", `/_jx/data/posts/${post.id}?include=tags`));
-    expect((after.tags as Record<string, unknown>[]).map((t) => t.name)).toEqual(["x"]);
+    expect(includedRows(after, "tags").map((t) => t.name)).toEqual(["x"]);
   });
 
   test("Data.mount returns a memoizing fetch-style handler and projectData echoes the section", async () => {
@@ -318,10 +353,10 @@ describe("wire contract", () => {
   });
 
   test("unknown connections and providers are 500 config errors", async () => {
-    const tables: Record<string, TableDef> = {
+    const tables = {
       x: { connection: "ghost", permissions: { read: "public" }, schema: { type: "object" } },
       y: { connection: "badprov", permissions: { read: "public" }, schema: { type: "object" } },
-    };
+    } satisfies Record<string, TableDef>;
     const options: DataMountOptions = {
       connectors: {},
       sections: {
@@ -449,14 +484,14 @@ describe("fail-closed permission matrix", () => {
       getSession: async () => (userId ? { userId } : null),
     });
 
-    const tables: Record<string, TableDef> = {
+    const tables = {
       notes: {
         connection: "main",
         ownerField: "user_id",
         permissions: { delete: "owner", insert: "authenticated", read: "owner" },
         schema: { properties: { text: { type: "string" } }, type: "object" },
       },
-    };
+    } satisfies Record<string, TableDef>;
     const database = new Database(":memory:");
     const options: DataMountOptions = {
       autoSync: true,
@@ -464,17 +499,19 @@ describe("fail-closed permission matrix", () => {
       sections: { connections: { main: { provider: "test" } }, data: tables },
     };
     const state = createDataMountState();
-    const callAs = (user: string | null, method: string, path: string, body?: unknown) =>
-      handleDataRequest(
-        new Request(`http://x${path}`, {
-          method,
-          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        }),
+    const callAs = (user: string | null, method: string, path: string, body?: JsonValue) => {
+      const init: RequestInit = { method };
+      if (body !== undefined) {
+        init.body = JSON.stringify(body);
+      }
+      return handleDataRequest(
+        new Request(`http://x${path}`, init),
         {},
         options,
         { auth: asUser(user) },
         state,
       );
+    };
 
     const mine = await json(callAs("alice", "POST", "/_jx/data/notes", { text: "mine" }));
     expect(mine.user_id).toBe("alice");

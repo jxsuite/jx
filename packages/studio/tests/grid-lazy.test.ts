@@ -24,7 +24,7 @@ describe("loadGridEngine", () => {
 
   test("resolves the engine module and reports it loaded", async () => {
     const engine = await loadGridEngine();
-    expect(typeof engine.createGridView).toBe("function");
+    expect(engine.createGridView).toBeFunction();
     expect(loadedGridEngine()).toBe(engine);
   });
 

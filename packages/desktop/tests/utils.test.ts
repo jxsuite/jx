@@ -1,7 +1,19 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { homedir } from "node:os";
 
-const mockOpenFileDialog = mock(async () => ["/home/user/projects/project.json"]);
+/** The options Electrobun's `Utils.openFileDialog` takes, as `src/utils.ts` declares them. */
+interface FileDialogOptions {
+  startingFolder?: string;
+  allowedFileTypes?: string;
+  canChooseFiles?: boolean;
+  canChooseDirectory?: boolean;
+  allowsMultipleSelection?: boolean;
+}
+
+const mockOpenFileDialog = mock(async (_options: FileDialogOptions) => [
+  "/home/user/projects/project.json",
+]);
 const mockOpenExternal = mock((_url: string) => true);
 
 /* The OS opener is a real process launch — mocked here so a test run never opens a browser window
@@ -58,11 +70,13 @@ describe("openFileDialog", () => {
   test("passes correct options to Utils.openFileDialog", async () => {
     await init();
     await openFileDialog();
-    const [call] = mockOpenFileDialog.mock.calls[0] as unknown as [Record<string, unknown>];
-    expect(call.allowedFileTypes).toBe("json");
-    expect(call.canChooseFiles).toBe(true);
-    expect(call.canChooseDirectory).toBe(false);
-    expect(call.allowsMultipleSelection).toBe(false);
+    expect(mockOpenFileDialog).toHaveBeenCalledWith({
+      allowedFileTypes: "json",
+      allowsMultipleSelection: false,
+      canChooseDirectory: false,
+      canChooseFiles: true,
+      startingFolder: homedir(),
+    });
   });
 
   test("returns null when dialog cancelled (empty array)", async () => {
@@ -102,9 +116,12 @@ describe("openDirectoryDialog", () => {
     mockOpenFileDialog.mockImplementationOnce(async () => ["/home/user/projects"]);
     const result = await openDirectoryDialog();
     expect(result).toBe("/home/user/projects");
-    const [call] = mockOpenFileDialog.mock.calls[0] as unknown as [Record<string, unknown>];
-    expect(call.canChooseDirectory).toBe(true);
-    expect(call.canChooseFiles).toBe(false);
+    expect(mockOpenFileDialog).toHaveBeenCalledWith({
+      allowsMultipleSelection: false,
+      canChooseDirectory: true,
+      canChooseFiles: false,
+      startingFolder: homedir(),
+    });
   });
 
   test("returns null when the picker is cancelled", async () => {

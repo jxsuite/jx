@@ -11,12 +11,12 @@
  * `convert-to-component` must be mocked before the module under test is imported, and that file's
  * mock set is large enough that appending to it couples two suites' setup.
  */
-import { flush, resetWorkspaceWithTab } from "./harness";
+import { flush, installMockPlatform, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { componentRegistry } from "../src/files/components";
-import { registerPlatform } from "../src/platform";
 import { initLayers } from "../src/ui/layers";
 import { closeAllTabs } from "../src/workspace/workspace";
+import type { JxPath } from "@jxsuite/schema/types";
 import type { ReferencesResult } from "../src/types";
 
 for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
@@ -58,25 +58,26 @@ function titleOf(id: string): string {
 }
 
 /** Right-click a path and wait for the menu surface to mount. */
-async function rightClick(path: (string | number)[]): Promise<void> {
+async function rightClick(path: JxPath): Promise<void> {
   showContextMenu(
     new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }),
-    path as never,
+    path,
   );
   await flush();
 }
 
 beforeEach(() => {
   componentRegistry.length = 0;
-  componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
+  componentRegistry.push({ path: "components/card.json", tagName: "x-card" });
   resetWorkspaceWithTab({
     children: [
       { children: [], tagName: "x-card" },
       { children: [], tagName: "p" },
     ],
     tagName: "div",
-  } as never);
-  registerPlatform({ findReferences: async () => usageResult } as never);
+  });
+  // The mock platform declares no `findReferences` of its own, so this override is the only answer.
+  installMockPlatform({ findReferences: async () => usageResult });
 });
 
 afterEach(async () => {
@@ -98,7 +99,8 @@ describe("Find Usages in the element menu", () => {
   });
 
   test("disappears entirely on a host that cannot count", async () => {
-    registerPlatform({} as never);
+    // The harness platform has no `findReferences`, which is exactly a host that cannot count.
+    installMockPlatform();
     await rightClick(["children", 0]);
     // Hidden, not disabled: a verb whose answer would be a fabricated zero is not offered at all.
     expect(menuIds()).not.toContain("selection.findUsages");

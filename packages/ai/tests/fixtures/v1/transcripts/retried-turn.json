@@ -1,7 +1,7 @@
 {
   "name": "retried-turn",
   "description": "Retry: retryLast removes the last assistant turn and its user message, and the caller sends the text again. The transcript and the wire carry only the second attempt.",
-  "shapes": ["retried-turn", "plain-exchange"],
+  "scenarios": ["retried-turn", "plain-exchange"],
   "script": [
     ["sendMessage", "Summarize the page"],
     ["appendDelta", "It is a landing page"],

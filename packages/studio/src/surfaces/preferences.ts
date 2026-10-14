@@ -27,17 +27,18 @@
  * @docs studio/interface/preferences
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import preferencesDoc from "./preferences.json";
-import type { JxElement, JxDocument } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("preferences", preferencesDoc as unknown as JxDocument);
+registerSurface("preferences", preferencesDoc);
 
 /** One row of the section list. `current` is the string `aria-current` takes. */
 export interface PreferencesSectionRow {
@@ -173,7 +174,7 @@ interface PreferencesFlags {
   hasConflict: boolean;
 }
 
-interface PreferencesScope extends Record<string, unknown>, PreferencesView, PreferencesFlags {
+interface PreferencesScope extends PreferencesView, PreferencesFlags {
   selectSection: (id: string) => void;
   setTheme: (value: string) => void;
   runAccountAction: (key: string) => void;
@@ -199,8 +200,8 @@ function derive(view: PreferencesView): PreferencesView & PreferencesFlags {
 
 /** The `part` a node's definition carries, or `""` for a text node or an unmarked element. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -234,10 +235,16 @@ export function openPreferencesSurface(
     closed = true;
     options.onClosed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
-  const scope = reactive({
+  const scope: PreferencesScope = reactive<PreferencesScope>({
     ...derive(options.view),
     capture: (_scope: JxScope, event: Event) => {
+      /* SAFETY: `preferences.json` names `capture` in exactly one place, the keys sheet's
+         `onkeydown`, so the event the runtime hands it is always the platform's `KeyboardEvent`. */
       options.onCaptureKey(event as KeyboardEvent);
     },
     closed: finish,
@@ -270,7 +277,7 @@ export function openPreferencesSurface(
     toggleRebind: (commandId: string) => {
       options.onToggleRebind(commandId);
     },
-  }) as PreferencesScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("preferences", scope, slot, {
@@ -287,13 +294,16 @@ export function openPreferencesSurface(
     },
   }).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `preferences.json`'s root definition carries `tagName: "jx-dialog"`, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare
+       string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     /* The region goes on the platform's own `<dialog>`, which is the one element here that HAS a
@@ -323,7 +333,7 @@ export function openPreferencesSurface(
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does — `finish` tells it so.
       mounted?.dispose();

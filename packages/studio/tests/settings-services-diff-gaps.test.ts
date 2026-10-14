@@ -20,7 +20,7 @@
  */
 import { flush, installMockPlatform, pointer, resetStudioState, surfaceOf } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { nothing, render as litRender } from "lit-html";
+import { nothing, render } from "lit-html";
 import { createToolRegistry } from "@jxsuite/ai";
 import { problems, resetNotifications } from "../src/services/notify";
 import { fileTurn, resetAiWrites, writesForTurn } from "../src/services/ai-writes";
@@ -29,7 +29,6 @@ import { clearStudioStorage } from "../src/services/profile";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
 
 import type { ProjectToolsCtx } from "../src/services/ai-project-tools";
-import type { StudioPlatform } from "../src/types";
 
 const registry = await import("../src/settings/section-registry");
 
@@ -94,7 +93,7 @@ describe("contextsError", () => {
    */
   test("is null until a control refuses, then names the control and the reason", async () => {
     installMockPlatform();
-    resetStudioState({ projectConfig: { $media: { "--": "1280px" } } as unknown });
+    resetStudioState({ projectConfig: { $media: { "--": "1280px" } } });
     const container = document.createElement("div");
     document.body.append(container);
     renderContextsSection(container);
@@ -102,9 +101,10 @@ describe("contextsError", () => {
 
     expect(contextsError(container)).toBeNull();
 
-    const base = container.querySelector(
-      '[data-context="base"] [part="input"]',
-    ) as HTMLInputElement;
+    const base = container.querySelector('[data-context="base"] [part="input"]');
+    if (!(base instanceof HTMLInputElement)) {
+      throw new Error("the base context row rendered no input");
+    }
     base.value = "wide";
     base.dispatchEvent(new Event("change", { bubbles: true }));
     await flush(4);
@@ -113,7 +113,7 @@ describe("contextsError", () => {
       message: "Enter a width in pixels, like 1280px.",
       target: "base",
     });
-    expect(container.querySelector('[part="row-error"]')?.textContent?.trim()).toBe(
+    expect(container.querySelector('[part="row-error"]')?.textContent.trim()).toBe(
       "Enter a width in pixels, like 1280px.",
     );
 
@@ -138,7 +138,7 @@ describe("css vars — Manage contexts when the section cannot be opened", () =>
       projectConfig: {
         $media: { "--sm": "(max-width: 600px)" },
         style: { "--color-primary": "#007acc" },
-      } as unknown,
+      },
     });
     resetNotifications();
 
@@ -168,7 +168,7 @@ describe("the settings pane's draw guards", () => {
 
   beforeEach(() => {
     installMockPlatform();
-    resetStudioState({ projectConfig: {} as unknown });
+    resetStudioState({ projectConfig: {} });
     paneListeners.length = 0;
     renders = 0;
     registry.resetSettingsDocumentState();
@@ -239,7 +239,7 @@ describe("the settings pane's draw guards", () => {
     expect(renders).toBe(1);
     const survivor = host.querySelector('[part="body"] input');
     expect(survivor).toBe(halfTyped);
-    expect((survivor as HTMLInputElement).value).toBe("half-typed");
+    expect(halfTyped.value).toBe("half-typed");
   });
 
   test("…and a real change still redraws — the guard is idempotence, not inertia", async () => {
@@ -266,7 +266,7 @@ describe("the settings pane's draw guards", () => {
        effects, so the record disposes it — which is what makes the second half of this test the
        assertion it always meant to be: nothing of the old pane survives to be re-used. */
     detachSettingsPane("primary");
-    litRender(nothing, host);
+    render(nothing, host);
     await flush();
 
     expect(body()).toBeNull();
@@ -283,7 +283,7 @@ describe("the settings pane's draw guards", () => {
 
 describe("ai-project-tools — write_file when the disk refuses", () => {
   function harness(writeFile: (path: string, content: string) => Promise<void>) {
-    installMockPlatform({ writeFile } as Partial<StudioPlatform>);
+    installMockPlatform({ writeFile });
     const tools = createToolRegistry();
     const ctx: ProjectToolsCtx = {
       adoptProject: async () => {},
@@ -331,7 +331,8 @@ describe("ai-project-tools — write_file when the disk refuses", () => {
   });
 
   test("a rejection that is not an Error is stringified rather than reported as an object", async () => {
-    const notAnError = "quota exceeded" as unknown as Error;
+    // A platform adapter can reject with anything; a bare string is the shape this case is about.
+    const notAnError = "quota exceeded";
     const tools = harness(() => Promise.reject(notAnError));
     const turn2Call = recordingContext();
 

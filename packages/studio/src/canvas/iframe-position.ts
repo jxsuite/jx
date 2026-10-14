@@ -33,6 +33,12 @@ export interface DocRange {
   head: DocPos;
 }
 
+/** A live DOM caret position: a node and an offset into it, as a Selection endpoint carries. */
+export interface DomPosition {
+  node: Node;
+  offset: number;
+}
+
 /** Whether an element is a block the caret may live inside. Injected so the editable set is policy. */
 export type EditablePredicate = (el: HTMLElement) => boolean;
 
@@ -91,7 +97,7 @@ export function elementForPath(container: HTMLElement, path: JxPath): HTMLElemen
 
 /** The block's rendered text length — the maximum valid offset within it. */
 export function blockTextLength(block: HTMLElement): number {
-  return block.textContent?.length ?? 0;
+  return block.textContent.length;
 }
 
 /**
@@ -126,11 +132,12 @@ export function offsetOf(block: HTMLElement, node: Node, offset: number): number
  * every offset-based editor carries at a line break, and it is invisible for the paths that use
  * this (caret restore after a patch, and block-boundary edits, which clamp to 0 / length anyway).
  */
-export function domPositionAt(block: HTMLElement, offset: number): { node: Node; offset: number } {
+export function domPositionAt(block: HTMLElement, offset: number): DomPosition {
   const target = Math.max(0, Math.min(offset, blockTextLength(block)));
   const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT);
   let seen = 0;
   let last: Text | null = null;
+  // SAFETY: the walker was created with NodeFilter.SHOW_TEXT, so every node it yields is a Text.
   let current = walker.nextNode() as Text | null;
   while (current) {
     const len = current.length;
@@ -139,6 +146,7 @@ export function domPositionAt(block: HTMLElement, offset: number): { node: Node;
     }
     seen += len;
     last = current;
+    // SAFETY: the same SHOW_TEXT walker as above, so the next node is a Text or the walk's end.
     current = walker.nextNode() as Text | null;
   }
   // No text node reaches the target: either the block has no text at all (caret goes to the element
@@ -169,10 +177,7 @@ export function toDocPos(
  * block whose text shrank under a remote edit lands at the block's new end instead of being
  * dropped.
  */
-export function toDomPosition(
-  container: HTMLElement,
-  pos: DocPos,
-): { node: Node; offset: number } | null {
+export function toDomPosition(container: HTMLElement, pos: DocPos): DomPosition | null {
   const el = elementForPath(container, pos.path);
   return el ? domPositionAt(el, pos.offset) : null;
 }
@@ -246,6 +251,7 @@ export function adjacentBlock(
   const key = serializeJxPath(path);
   const index = blocks.findIndex((el) => el.dataset.jxPath === key);
   const neighbour = index === -1 ? undefined : blocks[index + direction];
+  // SAFETY: blocksInOrder collects only elements matching `[data-jx-path]`, so the attribute is set.
   return neighbour
     ? { el: neighbour, path: parseJxPath(neighbour.dataset.jxPath as string) }
     : null;

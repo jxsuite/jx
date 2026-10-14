@@ -32,6 +32,7 @@ import {
   setDiffView,
   stepDiff,
 } from "./diff-view";
+import { isString } from "@jxsuite/schema/guards";
 import type { DiffView } from "./diff-view";
 import type { ChangeStep } from "./diff-marks";
 import { panToParentRect } from "./canvas-utils";
@@ -158,7 +159,7 @@ function describeStep(step: ChangeStep, index: number, total: number): string {
  * it is, so a reveal that could not measure leaves a correct toolbar over an unmoved canvas.
  */
 function onStepClick(paneId: string, delta: 1 | -1): void {
-  stepDiffAndReveal(paneId, delta).catch((error: unknown) => {
+  stepDiffAndReveal(paneId, delta).catch((error) => {
     console.warn("stepDiffAndReveal:", error);
   });
 }
@@ -180,8 +181,8 @@ export async function stepDiffAndReveal(paneId: string, delta: 1 | -1): Promise<
   renderDiffToolbar(paneId);
   const step = diffChangeMapOf(paneId)?.steps[landed];
   const { panels } = surfaceForPane(paneId);
-  const original = panels[0]?.canvas as HTMLElement | undefined;
-  const current = panels[1]?.canvas as HTMLElement | undefined;
+  const original = panels[0]?.canvas;
+  const current = panels[1]?.canvas;
   if (!step) {
     return;
   }
@@ -252,10 +253,10 @@ export function diffToolbarView(paneId: string): DiffToolbarView {
   return {
     codeChecked: showing === "code" ? "true" : "false",
     countLabel,
-    degraded: !code && map?.degraded ? "shown" : "hidden",
+    degraded: !code && map.degraded ? "shown" : "hidden",
     nextDisabled: index >= total - 1,
     prevDisabled: index <= 0,
-    rootKeys: !code && map?.rootKeys.length ? "shown" : "hidden",
+    rootKeys: !code && map.rootKeys.length > 0 ? "shown" : "hidden",
     rootKeysTitle: `Changed: ${map?.rootKeys.join(", ") ?? ""}`,
     stepper: total === 0 ? "hidden" : "shown",
     // A file the canvas cannot render arrives with a null map: there is no visual half to offer.
@@ -266,8 +267,8 @@ export function diffToolbarView(paneId: string): DiffToolbarView {
 
 /** The pane a diff verb addresses: named, or the focused one. */
 function paneOfArgs(args: CommandArgValues): string {
-  const { pane } = args as { pane?: unknown };
-  return typeof pane === "string" ? pane : workspace.activePaneId;
+  const { pane } = args;
+  return isString(pane) ? pane : workspace.activePaneId;
 }
 
 const paneProperty = stringProperty("Which pane to act on. Defaults to the focused one.");

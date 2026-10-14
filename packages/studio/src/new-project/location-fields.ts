@@ -22,6 +22,7 @@
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
+import { isFunction } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import type { CreateProjectDestination, RepoInfo } from "../types";
 
@@ -211,7 +212,7 @@ export function locationView(slug: string): LocationView {
   return {
     browseLabel: _browsing ? "Choosing…" : "Browse…",
     browsing: _browsing,
-    canBrowse: typeof platform.pickDirectory === "function",
+    canBrowse: isFunction(platform.pickDirectory),
     destination: isRepo ? "repo" : "path",
     error: _error,
     owner: _owner,

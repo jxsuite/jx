@@ -31,10 +31,9 @@ import { effect, effectScope, reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import activityDoc from "./panel-activity.json";
 import type { EffectScope } from "@vue/reactivity";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("panel-activity", activityDoc as unknown as JxDocument);
+registerSurface("panel-activity", activityDoc);
 
 /** One declared phase of an operation, as the surface reads it. */
 export interface ActivityStepView {
@@ -98,7 +97,7 @@ export interface ActivitySurfaceDeps {
 }
 
 /** The scope the document reads: the projection, flattened, beside the three callbacks. */
-interface ActivityScope extends Record<string, unknown> {
+interface ActivityScope {
   rows: ActivityRowView[];
   hasRows: boolean;
   hasFinished: boolean;
@@ -127,7 +126,7 @@ function standingIn(container: HTMLElement): boolean {
     return false;
   }
   // Still mounting into this very container: a second call must not start a second mount.
-  return _handle === null ? _mount !== null : (_handle.root as Node).parentNode === container;
+  return _handle === null ? _mount !== null : _handle.root.parentNode === container;
 }
 
 /**
@@ -142,7 +141,7 @@ export function mountActivitySurface(container: HTMLElement, deps: ActivitySurfa
   }
   disposeActivitySurface();
   _container = container;
-  const scope = reactive<ActivityScope>({
+  const scope: ActivityScope = reactive<ActivityScope>({
     cancel: deps.cancel,
     clearFinished: deps.clearFinished,
     clearLabel: "",
@@ -150,7 +149,7 @@ export function mountActivitySurface(container: HTMLElement, deps: ActivitySurfa
     hasRows: false,
     rows: [],
     toggleLog: deps.toggleLog,
-  }) as ActivityScope;
+  });
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {

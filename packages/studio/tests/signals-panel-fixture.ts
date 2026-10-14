@@ -18,7 +18,13 @@ import { activeTab } from "../src/workspace/workspace";
 import { effect, effectScope } from "../src/reactivity";
 import { mountSignalsPanel } from "../src/panels/signals-panel";
 import type { EffectScope } from "@vue/reactivity";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
+import type { Tab } from "../src/tabs/tab";
+
+/** The `S` record the Navigator hands the Data panel, as `mountSignalsPanel` declares it. */
+type SignalsPanelState = Parameters<typeof mountSignalsPanel>[1];
+/** The hooks the Navigator hands the Data panel, as `mountSignalsPanel` declares them. */
+type SignalsPanelCtx = Parameters<typeof mountSignalsPanel>[2];
 
 /** A control the reader can put a string into. */
 export type ValueEl = HTMLElement & { value: string };
@@ -51,15 +57,23 @@ export function clearSignalPanels(): void {
   }
 }
 
+/** The two nodes the Navigator paints a panel into. */
+interface PanelHost {
+  /** The `.panel-body`, as `left-panel.ts` paints it. */
+  body: HTMLElement;
+  /** The `.panel-content` inside it, which the document is mounted into. */
+  content: HTMLElement;
+}
+
 /** The Navigator's panel host: a `.panel-body` with the `.panel-content` the document goes into. */
-function panelHost(): HTMLElement {
+function panelHost(): PanelHost {
   const body = document.createElement("div");
   body.className = "panel-body";
   const content = document.createElement("div");
   content.className = "panel-content";
   body.append(content);
   document.body.append(body);
-  return body;
+  return { body, content };
 }
 
 /** Let the mount, the kit elements inside it and one map re-render all settle. */
@@ -71,7 +85,7 @@ export interface DrawOptions {
   /** The document's tag — hyphenate it to get the CEM fields a custom element adds. */
   tagName?: string;
   /** What the canvas resolved these entries to. `null` means it has not answered at all. */
-  scope?: Record<string, unknown> | null;
+  scope?: Tab["session"]["canvas"]["scope"];
   /** Whether the panel is handed a Refresh verb. Omitted means yes. */
   refreshData?: boolean;
   /** The document's path, which is what `$params` are derived from. */
@@ -85,7 +99,7 @@ export interface DrawOptions {
  * drives the same shape the app does.
  */
 export async function drawSignals(
-  state: Record<string, unknown>,
+  state: NonNullable<JxMutableNode["state"]>,
   options: DrawOptions = {},
 ): Promise<MountedSignals> {
   /* One panel at a time, which is what the Navigator has: a standing render effect from an earlier
@@ -95,7 +109,7 @@ export async function drawSignals(
     children: [],
     state,
     tagName: options.tagName ?? "div",
-  } as unknown as JxMutableNode);
+  });
   const tab = activeTab.value;
   if (!tab) {
     throw new Error("no active tab");
@@ -103,21 +117,28 @@ export async function drawSignals(
   if (options.scope !== undefined) {
     tab.session.canvas.scope = options.scope;
   }
-  const host = panelHost();
+  const { body: host, content: panel } = panelHost();
   const counts = { refreshes: 0, repaints: 0 };
-  const S: Record<string, unknown> = {
+  const S: SignalsPanelState = {
     canvas: tab.session.canvas,
     document: tab.doc.document,
     mode: tab.doc.mode,
     selection: tab.session.selection,
     ui: tab.session.ui,
-    ...(options.documentPath === undefined ? {} : { documentPath: options.documentPath }),
   };
-  const ctx: Record<string, unknown> = {
+  if (options.documentPath !== undefined) {
+    S.documentPath = options.documentPath;
+  }
+  const ctx: SignalsPanelCtx = {
     renderLeftPanel: () => {
       counts.repaints += 1;
-      S.document = activeTab.value?.doc.document;
-      mountSignalsPanel(host, S as never, ctx as never);
+      const live = activeTab.value;
+      if (!live) {
+        // The panel projects `S.document`; with every tab closed there is nothing to project.
+        throw new Error("no active tab to repaint the Data panel over");
+      }
+      S.document = live.doc.document;
+      mountSignalsPanel(host, S, ctx);
     },
   };
   if (options.refreshData !== false) {
@@ -142,7 +163,7 @@ export async function drawSignals(
       }
       void live.doc.document;
       void live.doc.mode;
-      (ctx.renderLeftPanel as () => void)();
+      ctx.renderLeftPanel();
     });
   });
   await settle();
@@ -153,8 +174,8 @@ export async function drawSignals(
       scope.stop();
     },
     host,
-    panel: host.querySelector(".panel-content") as HTMLElement,
-    repaint: ctx.renderLeftPanel as () => void,
+    panel,
+    repaint: ctx.renderLeftPanel,
     resetCounts: () => {
       counts.refreshes = 0;
       counts.repaints = 0;
@@ -180,7 +201,13 @@ export function listedNames(panel: HTMLElement): string[] {
 
 /** One element's `data-*` value. */
 export function dataOf(el: Element | null | undefined, key: string): string | undefined {
-  return (el as HTMLElement | null | undefined)?.dataset[key];
+  if (!el) {
+    return undefined;
+  }
+  if (!(el instanceof HTMLElement || el instanceof SVGElement)) {
+    throw new Error(`<${el.localName}> carries no dataset to read "${key}" from`);
+  }
+  return el.dataset[key];
 }
 
 /**
@@ -242,31 +269,30 @@ export function fieldRow(editor: HTMLElement, prop: string): HTMLElement {
 
 /** The `data-prop` of every field row in an editor, in order. */
 export function fieldProps(editor: HTMLElement): string[] {
-  return [...editor.querySelectorAll<HTMLElement>('[part="field"]')]
-    .filter((row) => row.closest('[part="editor"]') === editor)
-    .map((row) => row.dataset["prop"] ?? "");
+  return [...editor.querySelectorAll<HTMLElement>('[part="field"]')].flatMap((row) =>
+    row.closest('[part="editor"]') === editor ? [row.dataset["prop"] ?? ""] : [],
+  );
 }
 
 /** The control inside a field row — `text`, `multiline`, `select` or `checkbox`. */
-export function control<T extends Element = Element>(
-  editor: HTMLElement,
-  prop: string,
-  part: string,
-): T {
+export function control(editor: HTMLElement, prop: string, part: string): Element {
   const el = fieldRow(editor, prop).querySelector(`[part="${part}"]`);
   if (!el) {
     throw new Error(`no [part="${part}"] in field row ${prop}`);
   }
-  return el as unknown as T;
+  return el;
 }
 
 /** The native input or textarea a kit text field wraps — what a keystroke actually lands on. */
-export function nativeInput(scope: Element): HTMLInputElement {
+export function nativeInput(scope: Element): HTMLInputElement | HTMLTextAreaElement {
   const el = scope.querySelector('[part="input"]');
   if (!el) {
     throw new Error("no native control inside the field");
   }
-  return el as HTMLInputElement;
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+    throw new Error(`the field's [part="input"] is a <${el.localName}>, not an input or textarea`);
+  }
+  return el;
 }
 
 /** The native select a `jx-select` wraps. */
@@ -275,7 +301,7 @@ export function nativeSelect(scope: Element): HTMLSelectElement {
   if (!el) {
     throw new Error("no native select inside the picker");
   }
-  return el as HTMLSelectElement;
+  return el;
 }
 
 /** Type into a control and leave it: an `input` and then a `change`, which is what a blur is. */
@@ -318,7 +344,10 @@ export async function press(el: Element | null | undefined): Promise<void> {
   if (!el) {
     throw new Error("no button to press");
   }
-  const target = el.querySelector<HTMLElement>('[part="control"]') ?? (el as HTMLElement);
+  const target = el.querySelector('[part="control"]') ?? el;
+  if (!(target instanceof HTMLElement)) {
+    throw new Error(`the button to press is a <${target.localName}>, which has no click()`);
+  }
   target.click();
   await settle();
 }
@@ -338,6 +367,9 @@ export function accessibleName(el: Element | null | undefined): string | null {
 }
 
 /** The open document's state map, as the test reads it back. */
-export function docState(): Record<string, Record<string, unknown>> {
-  return (activeTab.value?.doc.document.state ?? {}) as Record<string, Record<string, unknown>>;
+export function docState(): Record<string, JsonObject> {
+  /* SAFETY: every entry a Data-panel test reads back through here is an object definition (a
+     `{ default }` signal, a `$prototype` entry or a function), because the panel only ever writes
+     objects and the tests only seed scalars or arrays they never read back by member. */
+  return (activeTab.value?.doc.document.state ?? {}) as Record<string, JsonObject>;
 }

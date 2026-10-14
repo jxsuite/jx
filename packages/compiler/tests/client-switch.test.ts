@@ -14,24 +14,23 @@
 
 import { describe, expect, test } from "bun:test";
 import { compileClient } from "../src/targets/compile-client";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
-const DOC = {
-  children: [
-    {
-      $switch: { $ref: "#/state/mode" },
-      cases: {
-        a: { tagName: "p", textContent: "AAA-BRANCH" },
-        b: { tagName: "p", textContent: "BBB-BRANCH" },
-      },
-    },
-  ],
+const SWITCH_NODE: JxElement = {
+  $switch: { $ref: "#/state/mode" },
+  cases: {
+    a: { tagName: "p", textContent: "AAA-BRANCH" },
+    b: { tagName: "p", textContent: "BBB-BRANCH" },
+  },
+};
+
+const DOC: JxDocument = {
+  children: [SWITCH_NODE],
   state: { mode: "a" },
   tagName: "div",
 };
 
-const compile = (doc: unknown = DOC) =>
-  compileClient(doc as JxDocument, { modulePath: "app.js", title: "t" });
+const compile = (doc: JxDocument = DOC) => compileClient(doc, { modulePath: "app.js", title: "t" });
 
 const moduleOf = (r: { files: { content: string }[] }) => r.files[0]?.content ?? "";
 
@@ -61,7 +60,7 @@ describe("compileClient — $switch", () => {
 
   test("accepts a template-string discriminant", () => {
     const js = moduleOf(
-      compile({ ...DOC, children: [{ ...DOC.children[0], $switch: "${state.mode}" }] }),
+      compile({ ...DOC, children: [{ ...SWITCH_NODE, $switch: "${state.mode}" }] }),
     );
 
     expect(js).toContain("[String(`${state.mode}`)]");
@@ -73,7 +72,7 @@ describe("compileClient — $switch", () => {
         ...DOC,
         children: [
           {
-            ...DOC.children[0],
+            ...SWITCH_NODE,
             cases: { a: { tagName: "p", textContent: "AAA-BRANCH" }, b: { $ref: "./other.json" } },
           },
         ],

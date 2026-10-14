@@ -18,6 +18,7 @@
  * @docs studio/projects/settings
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { projectState } from "../store";
 import { updateSiteConfig } from "../site-context";
@@ -29,24 +30,15 @@ import {
   isGoogleFontEntry,
 } from "../utils/google-fonts";
 import { mountSurface, registerSurface } from "../ui/surface";
+import { HEAD_EDIT_DEBOUNCE } from "../ui/timing";
 import headDoc from "./settings-head.json";
-import type { JxDocument, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { JsonValue, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
+import type { SurfaceHandle, TaggedLabel } from "../ui/surface";
 
-registerSurface("settings-head", headDoc as unknown as JxDocument);
-
-/**
- * How long a keystroke waits before it is written.
- *
- * Every field commit is a `project.json` write, and the two body fields commit on `input` — one
- * write per keystroke without this. The lit editor debounced per ENTRY, with one timer shared by
- * that entry's fields, so editing `rel` and then `href` inside the window cancelled the first write
- * outright; the timers are per field here, which is why each edit lands.
- */
-const EDIT_DEBOUNCE_MS = 300;
+registerSurface("settings-head", headDoc);
 
 /** One `$head` entry as the document draws it: which fields, and what is in them. */
-interface HeadRow extends Record<string, unknown> {
+interface HeadRow {
   id: string;
   /** The tag name, drawn as `<link>` and named in the delete button. */
   tag: string;
@@ -64,18 +56,12 @@ interface HeadRow extends Record<string, unknown> {
 }
 
 /** One Google Fonts stylesheet link, by the family it loads. */
-interface FontRow extends Record<string, unknown> {
+interface FontRow {
   id: string;
   family: string;
 }
 
-/** One of the four tags the section can add, and the button that adds it. */
-interface AddTag extends Record<string, unknown> {
-  tag: string;
-  label: string;
-}
-
-interface HeadScope extends Record<string, unknown> {
+interface HeadScope {
   rows: HeadRow[];
   fonts: FontRow[];
   /**
@@ -85,7 +71,8 @@ interface HeadScope extends Record<string, unknown> {
   fontsState: "empty" | "listed";
   /** What is in the family field. The document reads it back, so clearing it is an assignment. */
   fontDraft: string;
-  tags: AddTag[];
+  /** The four tags the section can add, each with the words on the button that adds it. */
+  tags: TaggedLabel[];
   add: (tag: string) => void;
   remove: (id: string) => void;
   edit: (id: string, key: string, value: string) => void;
@@ -94,7 +81,7 @@ interface HeadScope extends Record<string, unknown> {
   removeFont: (id: string) => void;
 }
 
-const ADD_TAGS: AddTag[] = [
+const ADD_TAGS: TaggedLabel[] = [
   { label: "+ Link", tag: "link" },
   { label: "+ Meta", tag: "meta" },
   { label: "+ Script", tag: "script" },
@@ -137,7 +124,7 @@ let _entries: JxHeadEntry[] = [];
  * between would answer "no entries" and lose the tag that was just added.
  */
 function entries(): JxHeadEntry[] {
-  const config = (projectState?.projectConfig ?? null) as ProjectConfig | null;
+  const config = projectState?.projectConfig ?? null;
   if (config !== _config) {
     _config = config;
     _entries = [];
@@ -150,7 +137,7 @@ function entries(): JxHeadEntry[] {
   }
   const declared = config?.$head;
   if (Array.isArray(declared)) {
-    _entries = declared as JxHeadEntry[];
+    _entries = declared;
   }
   return _entries;
 }
@@ -161,8 +148,8 @@ function entryFor(id: string): JxHeadEntry | undefined {
 }
 
 /** A `$head` attribute as a field's text: anything that is not a string has none to show. */
-function text(value: unknown): string {
-  return typeof value === "string" ? value : "";
+function text(value: JsonValue | undefined): string {
+  return isString(value) ? value : "";
 }
 
 // ─── The projection ───────────────────────────────────────────────────────────
@@ -171,19 +158,21 @@ function text(value: unknown): string {
 function row(entry: JxHeadEntry): HeadRow {
   const attributes = entry.attributes ?? {};
   const src = text(attributes["src"]);
-  const tag = String(entry.tagName ?? "");
-  const kinds: Record<string, HeadRow["kind"]> = {
-    link: "link",
-    meta: "meta",
-    script: src === "" ? "script-inline" : "script",
-    style: "style",
-  };
+  /* `project.json` is read off disk unvalidated, so an entry can arrive without a `tagName`; like
+     an attribute, a tag that is not a string has none to show. */
+  const tag = text(entry.tagName);
+  const kinds = new Map<string, HeadRow["kind"]>([
+    ["link", "link"],
+    ["meta", "meta"],
+    ["script", src === "" ? "script-inline" : "script"],
+    ["style", "style"],
+  ]);
   return {
     body: text(entry.textContent),
     content: text(attributes["content"]),
     href: text(attributes["href"]),
     id: idOf(entry),
-    kind: kinds[tag] ?? "none",
+    kind: kinds.get(tag) ?? "none",
     name: text(attributes["name"]),
     rel: text(attributes["rel"]),
     src,
@@ -212,7 +201,12 @@ function save(): void {
   void updateSiteConfig({ $head: entries() });
 }
 
-/** Field edits waiting out {@link EDIT_DEBOUNCE_MS}, one per field. */
+/**
+ * Field edits waiting out {@link HEAD_EDIT_DEBOUNCE}, one per field. The two body fields commit on
+ * `input`, so without the wait every keystroke would be a `project.json` write; the lit editor
+ * shared one timer per ENTRY, so editing `rel` and then `href` inside the window cancelled the
+ * first write outright.
+ */
 const _pending = new Map<string, { commit: () => void; timer: ReturnType<typeof setTimeout> }>();
 
 /**
@@ -302,7 +296,7 @@ function state(): HeadScope {
         _pending.delete(token);
         write(id, key, value);
       };
-      _pending.set(token, { commit, timer: setTimeout(commit, EDIT_DEBOUNCE_MS) });
+      _pending.set(token, { commit, timer: setTimeout(commit, HEAD_EDIT_DEBOUNCE) });
     },
     fonts: [],
     fontDraft: "",
@@ -339,7 +333,7 @@ function state(): HeadScope {
     },
     rows: [],
     tags: ADD_TAGS,
-  }) as HeadScope;
+  });
   return _scope;
 }
 

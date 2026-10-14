@@ -183,12 +183,19 @@ export function iconProblems(input: {
   return problems;
 }
 
+/** What one icon check found: the problems, and how many kit tags and icon keys it looked at. */
+export interface IconCheck {
+  problems: string[];
+  tagCount: number;
+  keyCount: number;
+}
+
 /**
  * {@link iconProblems}, against the real tree.
  *
  * @returns The problems, plus the two counts the reporter prints on success.
  */
-export function checkIcons(): { problems: string[]; tagCount: number; keyCount: number } {
+export function checkIcons(): IconCheck {
   const src = join(STUDIO, "src");
   const tags = kitTagsUsed(src);
   const keys = iconKeysDeclared(src);

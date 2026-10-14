@@ -4,11 +4,12 @@ import { join, resolve } from "node:path";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const FIXTURES = resolve(import.meta.dir, "_resolve_gaps_fixtures");
 
 /** Build a POST request for handleResolve. */
-function resolveReq(body: unknown) {
+function resolveReq(body: JsonObject) {
   return new Request("http://localhost/__jx_resolve__", {
     body: JSON.stringify(body),
     method: "POST",
@@ -120,7 +121,7 @@ function setup() {
 }
 
 /** Build a POST request for handleServerFunction. */
-function serverReq(body: unknown) {
+function serverReq(body: JsonObject) {
   return new Request("http://localhost/__jx_server__", {
     body: JSON.stringify(body),
     method: "POST",
@@ -244,7 +245,7 @@ describe("handleResolve — gaps", () => {
         external,
       );
       expect(res.status).toBe(200);
-      const value = (await res.json()) as { a: number };
+      const value: { a: number } = await res.json();
       expect(value.a).toBe(5);
     } finally {
       rmSync(external, { force: true, recursive: true });

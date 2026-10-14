@@ -6,33 +6,64 @@
 import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { fakeChannelPair } from "../src/canvas/iframe-channel";
-import { flush } from "./harness";
+import { flush, stubRect } from "./harness";
 import { startCanvasIframe } from "../src/canvas/iframe-entry";
-import type { IframeToParent, ParentToIframe, WireMapperCtx } from "../src/canvas/iframe-protocol";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
 
-const WIRE_CTX: WireMapperCtx = {
-  arrayPaths: [],
-  canvasMode: "design",
-  layoutWrapped: false,
-  pageContentOffset: null,
-  pageContentPrefix: null,
-};
-
-function renderMsg(gen: number, doc: unknown, shadowDoc: unknown = doc): ParentToIframe {
+function renderMsg(
+  gen: number,
+  doc: JxMutableNode,
+  shadowDoc: JxMutableNode = doc,
+): ParentToIframe {
   return {
     colorScheme: null,
     doc,
     docBase: "http://localhost:3000/",
     gen,
     kind: "render",
-    mapperCtx: WIRE_CTX,
+    mapperCtx: {
+      arrayPaths: [],
+      canvasMode: "design",
+      layoutWrapped: false,
+      pageContentOffset: null,
+      pageContentPrefix: null,
+    },
     mode: "design",
     shadowDoc,
     siteStyle: null,
   };
 }
 
-const freshDoc = () => ({
+type Ack<K extends IframeToParent["kind"]> = Extract<IframeToParent, { kind: K }>;
+
+/** The first message of `kind` the frame posted, narrowed to that message's own shape. */
+function findAck<K extends IframeToParent["kind"]>(
+  acks: IframeToParent[],
+  kind: K,
+): Ack<K> | undefined {
+  return acks.find((m): m is Ack<K> => m.kind === kind);
+}
+
+/** The rendered document's first paragraph; throws rather than handing a test null. */
+function firstParagraph(root: ParentNode): HTMLParagraphElement {
+  const p = root.querySelector("p");
+  if (!p) {
+    throw new Error("expected the rendered canvas to contain a <p>");
+  }
+  return p;
+}
+
+/** A `DragEvent` whose `dataTransfer` advertises `types`, or carries no `dataTransfer` at all. */
+function dragWithTypes(types: string[] | null): DragEvent {
+  const event = new DragEvent("dragover");
+  if (types) {
+    Object.defineProperty(event, "dataTransfer", { value: { types } });
+  }
+  return event;
+}
+
+const freshDoc = (): JxMutableNode => ({
   children: [
     { children: ["One"], tagName: "p" },
     { children: ["Two"], tagName: "p" },
@@ -65,20 +96,10 @@ afterEach(() => {
 describe("previewAt with a resolvable target", () => {
   test("a dragMove over a stamped element posts a concrete placement preview", async () => {
     const { acks, container, pair } = await bootRendered(3);
-    const first = container.querySelector("p") as HTMLElement;
+    const first = firstParagraph(container);
     // Happy-dom has no layout: resolve the hit-test and rects directly.
     document.elementFromPoint = () => first;
-    first.getBoundingClientRect = () =>
-      ({
-        bottom: 40,
-        height: 20,
-        left: 0,
-        right: 100,
-        top: 20,
-        width: 100,
-        x: 0,
-        y: 20,
-      }) as DOMRect;
+    stubRect(first, { height: 20, left: 0, top: 20, width: 100 });
     try {
       pair.parent.post({ dragSeq: 2, gen: 3, kind: "dragStart", src: { type: "block" } });
       acks.length = 0;
@@ -86,39 +107,29 @@ describe("previewAt with a resolvable target", () => {
       pair.flush();
       pair.flush();
 
-      const over = acks.find((m) => m.kind === "dragOver") as
-        | { preview: { targetPath: unknown; instruction: string } | null }
-        | undefined;
+      const over = findAck(acks, "dragOver");
       expect(over?.preview).not.toBeNull();
       expect(over?.preview?.targetPath).toEqual(["children", 0]);
-      expect(typeof over?.preview?.instruction).toBe("string");
+      expect(over?.preview?.instruction).toEqual(expect.any(String));
       pair.parent.post({ dragSeq: 2, kind: "dragEnd" });
       pair.flush();
     } finally {
-      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+      Reflect.deleteProperty(document, "elementFromPoint");
     }
   });
 });
 
 describe("auto-scroll tick stop conditions", () => {
-  interface ScrollWindow {
-    requestAnimationFrame: (cb: () => void) => number;
-    cancelAnimationFrame: (h: number) => void;
-    scrollBy: (x: number, y: number) => void;
-    scrollY: number;
-    innerHeight: number;
-  }
-
   function hijackScroll() {
-    const win = window as unknown as ScrollWindow;
+    const win = window;
     const orig = {
       cancel: win.cancelAnimationFrame,
       raf: win.requestAnimationFrame,
       scrollBy: win.scrollBy,
     };
     const rafCbs: (() => void)[] = [];
-    win.requestAnimationFrame = (cb: () => void) => {
-      rafCbs.push(cb);
+    win.requestAnimationFrame = (cb: FrameRequestCallback) => {
+      rafCbs.push(() => cb(performance.now()));
       return rafCbs.length;
     };
     win.cancelAnimationFrame = () => {};
@@ -217,7 +228,7 @@ describe("entry-wired accessor seams", () => {
   test("a design-mode pointermove threads the shadow doc into the insert-zone computation", async () => {
     const { acks, container, pair } = await bootRendered(1);
     acks.length = 0;
-    const p = container.querySelector("p") as HTMLElement;
+    const p = firstParagraph(container);
     p.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 5, clientY: 5 }));
     // Hover + insert zones are coalesced into one rAF, so the move's effects land next frame.
     await new Promise<void>((resolve) => {
@@ -313,16 +324,14 @@ function fileDrag(
 describe("external file drag", () => {
   test("isExternalFileDrag reads the dataTransfer types list", async () => {
     const { isExternalFileDrag } = await import("../src/canvas/iframe-entry");
-    const withFiles = { dataTransfer: { types: ["Files"] } } as unknown as DragEvent;
-    const withText = { dataTransfer: { types: ["text/plain"] } } as unknown as DragEvent;
-    expect(isExternalFileDrag(withFiles)).toBe(true);
-    expect(isExternalFileDrag(withText)).toBe(false);
-    expect(isExternalFileDrag({} as DragEvent)).toBe(false);
+    expect(isExternalFileDrag(dragWithTypes(["Files"]))).toBe(true);
+    expect(isExternalFileDrag(dragWithTypes(["text/plain"]))).toBe(false);
+    expect(isExternalFileDrag(dragWithTypes(null))).toBe(false);
   });
 
   test("a file dragover is accepted with the copy effect and posts geometry", async () => {
     const { acks, container, pair } = await bootRendered(11);
-    const first = container.querySelector("p") as HTMLElement;
+    const first = firstParagraph(container);
     document.elementFromPoint = () => first;
     try {
       acks.length = 0;
@@ -335,9 +344,7 @@ describe("external file drag", () => {
       // Without preventDefault the browser shows "not allowed" and swallows the drop.
       expect(event.defaultPrevented).toBe(true);
       expect(dataTransfer.dropEffect).toBe("copy");
-      const over = acks.find((m) => m.kind === "fileDragOver") as
-        | { hit: { path: unknown; tagName: string } | null }
-        | undefined;
+      const over = findAck(acks, "fileDragOver");
       expect(over).toBeDefined();
       expect(over?.hit?.path).toEqual(["children", 0]);
       // The tag comes from the SHADOW DOC — that is the node the parent will mutate.
@@ -345,13 +352,13 @@ describe("external file drag", () => {
       // A file drag never claims the parent's pragmatic session.
       expect(acks.some((m) => m.kind === "nativeDragEnter")).toBe(false);
     } finally {
-      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+      Reflect.deleteProperty(document, "elementFromPoint");
     }
   });
 
   test("a file drop posts the File objects across the boundary", async () => {
     const { acks, container, pair } = await bootRendered(12);
-    const first = container.querySelector("p") as HTMLElement;
+    const first = firstParagraph(container);
     document.elementFromPoint = () => first;
     const file = new File(["x"], "a.png");
     try {
@@ -360,11 +367,11 @@ describe("external file drag", () => {
       pair.flush();
 
       expect(event.defaultPrevented).toBe(true);
-      const drop = acks.find((m) => m.kind === "fileDrop") as { files: File[] } | undefined;
+      const drop = findAck(acks, "fileDrop");
       // FileList is not structured-cloneable; the iframe spreads it to a plain array.
       expect(drop?.files).toEqual([file]);
     } finally {
-      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+      Reflect.deleteProperty(document, "elementFromPoint");
     }
   });
 
@@ -375,13 +382,11 @@ describe("external file drag", () => {
       acks.length = 0;
       fileDrag("dragover", [new File(["x"], "a.png")], { clientX: 5, clientY: 5 });
       pair.flush();
-      const over = acks.find((m) => m.kind === "fileDragOver") as
-        | { hit: unknown; preview: unknown }
-        | undefined;
+      const over = findAck(acks, "fileDragOver");
       expect(over?.hit).toBeNull();
       expect(over?.preview).toBeNull();
     } finally {
-      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+      Reflect.deleteProperty(document, "elementFromPoint");
     }
   });
 

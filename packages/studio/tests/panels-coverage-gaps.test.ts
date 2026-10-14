@@ -10,18 +10,25 @@
  */
 import { flush, registerPrimaryStage, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { Instruction } from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
+import { childList } from "../src/state";
 import type { JxPath } from "../src/state";
 import type { Tab } from "../src/tabs/tab";
+import type { ComponentEntry } from "../src/files/components";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 
-type AnyRec = Record<string, any>;
+/** The slice of a `draggable()` config these tests drive: its drag-preview hook. */
+interface RecordedDraggable {
+  onGenerateDragPreview: (args: { nativeSetDragImage: null }) => void;
+}
 
-const draggables: AnyRec[] = [];
+const draggables: RecordedDraggable[] = [];
 let previewsDisabled = 0;
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
-  draggable: (cfg: AnyRec) => {
+  draggable: (cfg: RecordedDraggable) => {
     draggables.push(cfg);
     return () => {};
   },
@@ -43,11 +50,11 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-
   },
 }));
 void mock.module("@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item", () => ({
-  attachInstruction: (data: AnyRec) => data,
-  extractInstruction: (data: AnyRec) => data.__instr ?? null,
+  attachInstruction: <T extends object>(data: T) => data,
+  extractInstruction: (data: { __instr?: Instruction }) => data.__instr ?? null,
 }));
 void mock.module("../src/panels/component-preview", () => ({
-  renderComponentPreview: async (comp: AnyRec) => {
+  renderComponentPreview: async (comp: ComponentEntry) => {
     const el = document.createElement(comp.tagName);
     el.textContent = "preview";
     return el;
@@ -66,6 +73,24 @@ const { view } = await import("../src/view");
 const { activeTab, closeAllTabs } = await import("../src/workspace/workspace");
 const { initLayers } = await import("../src/ui/layers");
 
+/** The first match of `selector` under `root`, failing the test unless it is a `kind`. */
+function find<T extends Element>(root: ParentNode, selector: string, kind: new () => T): T {
+  const el = root.querySelector(selector);
+  if (!(el instanceof kind)) {
+    throw new Error(`expected a ${kind.name} at ${selector}`);
+  }
+  return el;
+}
+
+/** The element child at `index`, failing the test when that slot holds text or nothing. */
+function elementAt(node: JxMutableNode, index: number): JxMutableNode {
+  const child = childList(node)[index];
+  if (child === undefined || isString(child)) {
+    throw new Error(`expected an element child at index ${index}`);
+  }
+  return child;
+}
+
 // ─── Stylebook doc transforms ────────────────────────────────────────────────
 
 describe("transposeStylebookStyle gaps", () => {
@@ -76,7 +101,7 @@ describe("transposeStylebookStyle gaps", () => {
         "@--sm": { "@--nested": { color: "blue" }, color: "red" },
         margin: "0",
       },
-    } as never) as Record<string, any>;
+    });
     expect(out["& .element-card-preview p"]).toEqual({
       "@--sm": { "@--nested": { color: "blue" }, color: "red" },
       margin: "0",
@@ -88,15 +113,15 @@ describe("transposeStylebookStyle gaps", () => {
       ":hover": { color: "red" },
       ".brand": { color: "blue" },
       p: { margin: "0" },
-    } as never) as Record<string, any>;
+    });
     expect(out[":hover"]).toEqual({ color: "red" });
     expect(out[".brand"]).toEqual({ color: "blue" });
     expect(out["& .element-card-preview p"]).toEqual({ margin: "0" });
   });
 
   test("hasTagStyle sees customizations under media blocks", () => {
-    expect(hasTagStyle({ "@--sm": { p: { margin: "0" } } } as never, "p")).toBe(true);
-    expect(hasTagStyle({ "@--sm": { p: {} } } as never, "p")).toBe(false);
+    expect(hasTagStyle({ "@--sm": { p: { margin: "0" } } }, "p")).toBe(true);
+    expect(hasTagStyle({ "@--sm": { p: {} } }, "p")).toBe(false);
   });
 });
 
@@ -105,7 +130,7 @@ describe("buildStylebookDoc component filtering", () => {
   const components = [
     { path: "components/my-card.json", tagName: "my-card" },
     { path: "components/other.json", tagName: "other-thing" },
-  ] as never;
+  ];
 
   test("the filter narrows the Components section by tag name", () => {
     const { doc, tagToCardPath } = buildStylebookDoc({
@@ -114,14 +139,12 @@ describe("buildStylebookDoc component filtering", () => {
       effectiveMedia: {},
       effectiveStyle: {},
       filter: "card",
-      meta: meta as never,
+      meta,
       projectRoot: null,
     });
     expect(tagToCardPath.has("my-card")).toBe(true);
     expect(tagToCardPath.has("other-thing")).toBe(false);
-    expect((doc as Record<string, unknown>).$elements).toEqual([
-      { $ref: "/components/my-card.json" },
-    ]);
+    expect(doc.$elements).toEqual([{ $ref: "/components/my-card.json" }]);
   });
 
   test("customizedOnly keeps only components the effective style touches", () => {
@@ -129,9 +152,9 @@ describe("buildStylebookDoc component filtering", () => {
       components,
       customizedOnly: true,
       effectiveMedia: {},
-      effectiveStyle: { "my-card": { color: "red" } } as never,
+      effectiveStyle: { "my-card": { color: "red" } },
       filter: "",
-      meta: meta as never,
+      meta,
       projectRoot: null,
     });
     expect(tagToCardPath.has("my-card")).toBe(true);
@@ -174,7 +197,7 @@ describe("pane-context interaction gaps", () => {
     surfaceForPane("primary").panzoomWrap = null; // Canvas-utils actions guard on this and no-op cleanly.
     const root = document.createElement("div");
     document.body.append(root);
-    paneContext.mount(root, makePaneCtx() as never);
+    paneContext.mount(root, makePaneCtx());
     // A mounted document settles over several turns; the pod does not exist on the next tick.
     await flush(8);
 
@@ -284,7 +307,7 @@ describe("layers-panel gaps", () => {
       <div id="layer-dialog"></div>
     `;
     initLayers();
-    host = document.querySelector(".panel-body") as HTMLElement;
+    host = find(document, ".panel-body", HTMLElement);
     view._layersCollapsed = new Set();
     view.dndCleanups = [];
     resetWorkspaceWithTab(makeDoc());
@@ -297,7 +320,7 @@ describe("layers-panel gaps", () => {
   });
 
   function badge(path: JxPath): HTMLElement {
-    return rowByKey(path)!.querySelector('[part="badge"]') as HTMLElement;
+    return find(rowByKey(path)!, '[part="badge"]', HTMLElement);
   }
 
   test("slot rows get the slot badge with named and default titles", async () => {
@@ -315,8 +338,7 @@ describe("layers-panel gaps", () => {
   });
 
   test("a legacy array-object children sibling still counts as a container", async () => {
-    const doc = activeTab.value!.doc.document as AnyRec;
-    doc.children[2].children = {
+    elementAt(activeTab.value!.doc.document, 2).children = {
       $prototype: "Array",
       items: { $ref: "#/state/things" },
       map: { tagName: "li", textContent: "item" },
@@ -326,15 +348,16 @@ describe("layers-panel gaps", () => {
   });
 
   test("non-array object children (a $ref) do not count as a container", async () => {
-    const doc = activeTab.value!.doc.document as AnyRec;
-    doc.children[4].children = { $ref: "#/state/body" };
+    // Read off disk, a node can hold children the schema has no shape for: plant one as JSON.
+    const fromDisk: JsonObject = { children: { $ref: "#/state/body" }, tagName: "div" };
+    childList(activeTab.value!.doc.document)[4] = fromDisk;
     await renderLayers();
     expect(await canMoveIn(["children", 5])).toBe(false);
   });
 
   test("a click on the chevron collapses the row without also selecting it", async () => {
     await renderLayers();
-    const toggle = rowByKey(["children", 2])!.querySelector('[part="twisty"]') as HTMLElement;
+    const toggle = find(rowByKey(["children", 2])!, '[part="twisty"]', HTMLElement);
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flush();
     expect(view._layersCollapsed!.has("children/2")).toBe(true);
@@ -346,8 +369,7 @@ describe("layers-panel gaps", () => {
     /* The row EXISTS in the model — it is drawn, it is keyed, it sits under its paragraph — and it
        is still not renameable, because a text node has nowhere to put a `$title`. That is the
        branch a "the node is gone" guard could never reach: the node is right there. */
-    const doc = activeTab.value!.doc.document as AnyRec;
-    doc.children[0].children = ["just words"];
+    elementAt(activeTab.value!.doc.document, 0).children = ["just words"];
     await renderLayers();
     const textRow = rowByKey(["children", 0, "children", 0])!;
     expect(textRow.dataset.kind).toBe("text");
@@ -373,9 +395,7 @@ describe("layers-panel gaps", () => {
     const rerender = mock(() => {});
     startLayerTitleEdit(["children", 1], rerender);
     await flush(2);
-    const input = rowByKey(["children", 1])!.querySelector(
-      '[part="title-input"]',
-    ) as HTMLInputElement;
+    const input = find(rowByKey(["children", 1])!, '[part="title-input"]', HTMLInputElement);
     input.value = "Committed";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("blur"));
@@ -387,8 +407,7 @@ describe("layers-panel gaps", () => {
     );
     await flush(2);
     expect(rerender).toHaveBeenCalledTimes(1);
-    const node = (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
-    expect(node.$title).toBe("Committed");
+    expect(elementAt(activeTab.value!.doc.document, 1).$title).toBe("Committed");
   });
 });
 
@@ -411,7 +430,7 @@ describe("dnd drag previews", () => {
   });
 
   test("Outline row drags suppress the native drag image", async () => {
-    const leftPanel = document.querySelector("#left-panel") as HTMLElement;
+    const leftPanel = find(document, "#left-panel", HTMLElement);
     leftPanel.innerHTML = `<div part="outline">
       <div part="row" data-dnd-row data-value="children/0" data-dnd-depth="0"></div>
     </div>`;
@@ -424,11 +443,11 @@ describe("dnd drag previews", () => {
   });
 
   test("component-card drags suppress the native drag image", async () => {
-    const leftPanel = document.querySelector("#left-panel") as HTMLElement;
+    const leftPanel = find(document, "#left-panel", HTMLElement);
     leftPanel.innerHTML = `<div class="components-section">
       <div data-component-tag="my-card"><div class="element-card-preview"></div></div>
     </div>`;
-    componentRegistry.push({ tagName: "my-card" } as never);
+    componentRegistry.push({ tagName: "my-card" });
     dnd.registerComponentsDnD();
     await raf();
     await flush();

@@ -24,28 +24,16 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import localesDoc from "./settings-locales.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption, TaggedLabel } from "../ui/surface";
 
-registerSurface("settings-locales", localesDoc as unknown as JxDocument);
-
-/** One declared language: the tag as the author wrote it, and the name that language calls itself. */
-export interface LocaleRow {
-  tag: string;
-  label: string;
-}
-
-/** One row of a picker. */
-export interface LocaleChoice {
-  value: string;
-  label: string;
-}
+registerSurface("settings-locales", localesDoc);
 
 /** What the section shows — the flow's projection of `project.json` and of the form beside it. */
 export interface LocalesView {
-  locales: LocaleRow[];
-  localeOptions: LocaleChoice[];
-  routings: LocaleChoice[];
+  /** Each declared language: the tag as the author wrote it, and the name it calls itself. */
+  locales: TaggedLabel[];
+  localeOptions: SurfaceOption[];
+  routings: SurfaceOption[];
   defaultLocale: string;
   routing: string;
   /** The tag being typed, kept so an outside redraw does not take it away. */
@@ -80,7 +68,7 @@ interface LocalesFlags {
   hasError: boolean;
 }
 
-interface LocalesScope extends Record<string, unknown>, LocalesView, LocalesActions, LocalesFlags {}
+interface LocalesScope extends LocalesView, LocalesActions, LocalesFlags {}
 
 interface Mounted {
   scope: LocalesScope;
@@ -124,7 +112,7 @@ export function renderLocalesSurface(
   }
   existing?.handle?.dispose();
   host.textContent = "";
-  const scope = reactive({ ...derive(view), ...actions }) as LocalesScope;
+  const scope: LocalesScope = reactive<LocalesScope>({ ...derive(view), ...actions });
   const record: Mounted = { handle: null, scope };
   mounts.set(host, record);
   /* No race to arbitrate: a redraw arriving while this is in flight takes the branch above — a

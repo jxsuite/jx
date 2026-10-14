@@ -17,6 +17,7 @@ import { allCanvasSurfaces, stageContaining, surfaceForPane } from "./surface-re
 import type { CanvasSurface } from "./surface-registry";
 import type { PaneDerivation } from "../workspace/workspace";
 import type { CanvasPanel } from "../types";
+import type { UnboundCanvasPanel } from "./canvas-utils";
 import type { Tab } from "../tabs/tab";
 
 export {
@@ -149,11 +150,12 @@ export function panelHostingCanvas(
  * answers with the FOCUSED pane's tab, which is a different document the moment the click is in a
  * pane the keyboard is not in.
  *
- * @param {CanvasPanel} panel
+ * @param {UnboundCanvasPanel} panel
  * @returns {Tab | null}
  */
-export function tabOfMountedPanel(panel: CanvasPanel): Tab | null {
-  const canvasEl = panel.canvas as HTMLElement | null;
+export function tabOfMountedPanel(panel: UnboundCanvasPanel): Tab | null {
+  // An unbound board (no canvas node yet) has no pane mounting it.
+  const canvasEl = panel.canvas;
   const mounted = canvasEl ? panelHostingCanvas(canvasEl) : null;
   return mounted ? tabOfPane(mounted.surface.paneId) : null;
 }

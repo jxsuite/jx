@@ -53,7 +53,7 @@ export const DEFAULT_CONFIG_ENTRYPOINT = "src/bun/index.ts";
 /** A copy source the config lists that pre-build writes, so it is absent in a clean checkout. */
 const PREBUILD_OUTPUT = "assets/";
 
-export interface ConfigShape {
+export interface CheckedConfig {
   readonly build: {
     readonly bun: { readonly entrypoint: string };
     readonly copy: Readonly<Record<string, string>>;
@@ -68,7 +68,7 @@ export interface ConfigShape {
 
 export interface Inputs {
   /** The config module's default export. */
-  readonly config: ConfigShape;
+  readonly config: CheckedConfig;
   /** `electrobun.config.ts`, as text — the import rule reads statements, not values. */
   readonly source: string;
   /** Injected so the rules are testable without a fixture tree. */
@@ -183,7 +183,7 @@ export function summary(failures: readonly Failure[], copyRows: number): string 
 /** Read the real config off disk and judge it. Returns the number of failures. */
 export async function main(log: (line: string) => void = console.log): Promise<number> {
   const [{ default: config }, source] = await Promise.all([
-    import("../electrobun.config") as Promise<{ default: ConfigShape }>,
+    import("../electrobun.config"),
     Bun.file(resolve(DESKTOP_DIR, "electrobun.config.ts")).text(),
   ]);
   const failures = report({

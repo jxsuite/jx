@@ -26,7 +26,8 @@
  * ignored it would produce a popover that opens into nothing.
  */
 
-import type { JxElement } from "@jxsuite/schema/types";
+import { getNestedStyle, isString } from "@jxsuite/schema/guards";
+import type { JxElement, JxStyle } from "@jxsuite/schema/types";
 import { POPOVER_DEFAULT_MODE, POPOVER_INVOKER_TAGS } from "@jxsuite/schema/overlays";
 
 /** Attributes naming the panel an invoker controls, in the order they are trusted. */
@@ -41,22 +42,14 @@ const CONCEALING = new Set(["display", "visibility", "opacity"]);
 /** A concealed panel is only a popover if it is also lifted out of the flow. */
 const POSITIONED = new Set(["absolute", "fixed"]);
 
-function styleOf(node: JxElement): Record<string, unknown> | undefined {
-  return node.style as Record<string, unknown> | undefined;
-}
-
-function attributesOf(node: JxElement): Record<string, unknown> | undefined {
-  return node.attributes as Record<string, unknown> | undefined;
-}
-
 function childrenOf(node: JxElement): JxElement[] {
   return Array.isArray(node.children)
-    ? (node.children.filter((child) => typeof child !== "string") as JxElement[])
+    ? node.children.filter((child): child is JxElement => !isString(child))
     : [];
 }
 
 /** Whether a style hides the node outright, and by which declaration. */
-function concealedBy(style: Record<string, unknown> | undefined): string[] {
+function concealedBy(style: JxStyle | undefined): string[] {
   if (!style) {
     return [];
   }
@@ -84,11 +77,11 @@ function concealedBy(style: Record<string, unknown> | undefined): string[] {
  * explicit statements of the same intent.
  */
 export function looksLikePanel(node: JxElement): boolean {
-  const style = styleOf(node);
+  const { style } = node;
   if (concealedBy(style).length === 0) {
     return false;
   }
-  const attributes = attributesOf(node);
+  const { attributes } = node;
   if (attributes?.["role"] === "dialog" || attributes?.["inert"] !== undefined) {
     return true;
   }
@@ -97,13 +90,13 @@ export function looksLikePanel(node: JxElement): boolean {
 
 /** The id an invoker names, from whichever attribute carries it. */
 export function targetIdOf(node: JxElement): string | null {
-  const attributes = attributesOf(node);
+  const { attributes } = node;
   if (!attributes) {
     return null;
   }
   for (const name of TARGET_ATTRIBUTES) {
     const raw = attributes[name];
-    if (typeof raw !== "string" || raw.length === 0) {
+    if (!isString(raw) || raw.length === 0) {
       continue;
     }
     const id = raw.startsWith("#") ? raw.slice(1) : name === "href" ? "" : raw;
@@ -120,7 +113,7 @@ function looksLikeInvoker(node: JxElement): boolean {
   if (tag !== "button" && tag !== "input" && tag !== "a") {
     return false;
   }
-  const attributes = attributesOf(node);
+  const { attributes } = node;
   if (!attributes) {
     return false;
   }
@@ -133,8 +126,8 @@ function looksLikeInvoker(node: JxElement): boolean {
 function indexById(root: JxElement): Map<string, JxElement> {
   const index = new Map<string, JxElement>();
   const visit = (node: JxElement): void => {
-    const id = attributesOf(node)?.["id"];
-    if (typeof id === "string" && !index.has(id)) {
+    const id = node.attributes?.["id"];
+    if (isString(id) && !index.has(id)) {
       index.set(id, node);
     }
     for (const child of childrenOf(node)) {
@@ -183,7 +176,7 @@ function panelBesideAncestor(ancestry: readonly JxElement[]): JxElement | null {
  * writing `block` there would be inventing a fact: the element's own default is the honest answer,
  * so nothing is written and the warning is accepted.
  */
-function openValueFor(property: string, closed: unknown): string | null {
+function openValueFor(property: string, closed: JxStyle[string]): string | null {
   if (property === "opacity" && (closed === 0 || closed === "0")) {
     return "1";
   }
@@ -197,12 +190,12 @@ function openValueFor(property: string, closed: unknown): string | null {
  * Move a panel's closed-state declarations into `:popover-open`, where they describe the open one.
  *
  * `node` is always a panel `looksLikePanel` already accepted, and that requires a concealing style
- * declaration to exist (`concealedBy(style).length === 0` rejects it otherwise) — so
- * `styleOf(node)` is never empty here.
+ * declaration to exist (`concealedBy(style).length === 0` rejects it otherwise) — so `node.style`
+ * is never empty here.
  */
 function liftConcealment(node: JxElement): void {
-  const style = styleOf(node)!;
-  const open = (style[":popover-open"] as Record<string, unknown> | undefined) ?? {};
+  const style = node.style!;
+  const open = getNestedStyle(style, ":popover-open") ?? {};
   for (const property of Object.keys(style)) {
     if (!CONCEALING.has(property)) {
       continue;
@@ -213,12 +206,12 @@ function liftConcealment(node: JxElement): void {
        design and is carried across unchanged, because the base rule is no longer where it belongs. */
     const openValue = isConcealment ? openValueFor(property, value) : value;
     if (openValue !== null) {
-      (open as Record<string, unknown>)[property] = openValue;
+      open[property] = openValue;
     }
     delete style[property];
   }
   if (Object.keys(open).length > 0) {
-    (style as Record<string, unknown>)[":popover-open"] = open;
+    style[":popover-open"] = open;
   }
 }
 
@@ -248,14 +241,15 @@ export function applyPopovers(root: JxElement): PopoverResult {
 
       if (panel && panel !== node && !claimed.has(panel) && looksLikePanel(panel)) {
         const tag = String(node.tagName ?? "").toLowerCase();
-        const attributes = (node.attributes ??= {}) as Record<string, unknown>;
+        node.attributes ??= {};
+        const { attributes } = node;
 
         /* `popovertarget` exists only on button and input. An anchor that is really a button
            becomes one; an anchor that navigates keeps its job, because a dead link is a worse
            defect than an unconverted menu. */
         if (!POPOVER_INVOKER_TAGS.has(tag)) {
           const { href } = attributes;
-          const navigates = typeof href === "string" && href.length > 0 && href !== "#";
+          const navigates = isString(href) && href.length > 0 && href !== "#";
           if (navigates) {
             result.skippedNavigatingLinks += 1;
             for (const child of childrenOf(node)) {
@@ -268,9 +262,10 @@ export function applyPopovers(root: JxElement): PopoverResult {
           delete attributes["href"];
         }
 
-        const panelAttributes = (panel.attributes ??= {}) as Record<string, unknown>;
+        panel.attributes ??= {};
+        const { attributes: panelAttributes } = panel;
         let { id: panelId } = panelAttributes;
-        if (typeof panelId !== "string" || panelId.length === 0) {
+        if (!isString(panelId) || panelId.length === 0) {
           generated += 1;
           panelId = `jx-popover-${generated}`;
           panelAttributes["id"] = panelId;

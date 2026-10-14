@@ -121,7 +121,7 @@ describe("the hints are exported where a backend looks for them", () => {
   });
 
   it("from the root, ./streaming-client and ./gateway alike", () => {
-    for (const surface of [ai, streamingClient, gateway] as Record<string, unknown>[]) {
+    for (const surface of [ai, streamingClient, gateway]) {
       expect(surface.AI_SESSION_HEADER).toBe(AI_SESSION_HEADER);
       expect(surface.affinityKey).toBe(affinityKey);
       expect(surface.isAiSessionId).toBe(isAiSessionId);

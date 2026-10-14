@@ -129,9 +129,10 @@ describe("command composition", () => {
     const INDIRECT = new Map<string, string>([
       ["paneCommands", "spread into tabCommands(), which viaRegistration() registers"],
     ]);
-    const bootstrapped = [...BOOTSTRAP.matchAll(/\b(\w*Commands)\s*\(/g)]
-      .map((match) => match[1]!)
-      .filter((name) => name.endsWith("Commands") && !name.startsWith("register"));
+    const bootstrapped = [...BOOTSTRAP.matchAll(/\b(\w*Commands)\s*\(/g)].flatMap((match) => {
+      const name = match[1]!;
+      return name.endsWith("Commands") && !name.startsWith("register") ? [name] : [];
+    });
     const missing = [...new Set(bootstrapped)].filter(
       (name) => !COMPOSITION.includes(`...${name}(`) && !UNCALLED.has(name) && !INDIRECT.has(name),
     );
@@ -203,9 +204,9 @@ describe("command composition", () => {
       const row = `${command.category}: ${command.title}`;
       seen.set(row, [...(seen.get(row) ?? []), command.id]);
     }
-    const duplicates = [...seen]
-      .filter(([, ids]) => ids.length > 1)
-      .map(([row, ids]) => `"${row}" ← ${ids.join(", ")}`);
+    const duplicates = [...seen].flatMap(([row, ids]) =>
+      ids.length > 1 ? [`"${row}" ← ${ids.join(", ")}`] : [],
+    );
     expect(
       duplicates,
       'two palette rows with one name — give one of them `menus: ["never"]` or a distinct title',

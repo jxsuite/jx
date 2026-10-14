@@ -72,7 +72,7 @@ const CORS_HEADER = /Access-Control-Allow-/;
 interface Violation {
   file: string;
   line: number;
-  rule: string;
+  rule: keyof typeof EXPLANATION;
   text: string;
 }
 
@@ -145,7 +145,7 @@ for (const name of HAND_WRITTEN_ALLOWED) {
   }
 }
 
-const EXPLANATION: Record<string, string> = {
+const EXPLANATION = {
   "no-bare-text-failure":
     "a bare-text 4xx/5xx gives the client a string it cannot key on — use problem(...)",
   "no-cors":

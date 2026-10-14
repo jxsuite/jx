@@ -33,7 +33,7 @@ function sourceFiles(dir: string): string[] {
  * sweep must not nag about it. Each is a different kind of thing from a document node:
  *   comp/c      — ComponentEntry, a registered component's ROOT name
  *   entry       — JxHeadEntry, a `<head>` tag
- *   layout/     — LayoutSelection, the studio's own chrome-selection record
+ *   layout/     — LayoutHit, the studio's own chrome-selection record
  *   selection   — the same
  *   el/element/targetEl/icon — a DOM Element, where `tagName` is the browser's
  *   query/target — UsageQuery, whose `tagName` is a component ROOT name being searched for

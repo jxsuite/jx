@@ -8,6 +8,7 @@
  * empty results.
  */
 
+import { isNumber } from "@jxsuite/schema/guards";
 import { Kysely } from "kysely";
 import { fromStorage, planTable } from "./columns.ts";
 import { resolveDialect } from "./connectors.ts";
@@ -15,20 +16,23 @@ import { syncTables } from "./ddl.ts";
 import { applyFilter, applySort, normalizeFilter, normalizeSort } from "./query.ts";
 import { tablesForConnection } from "./provider-utils.ts";
 import type { SqlDialectKind } from "./columns.ts";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type { ConnectionsConfig } from "./connectors.ts";
-import type { DynamicDatabase } from "./query.ts";
+import type { DynamicDatabase, DynamicRow } from "./query.ts";
 import type { TableQueryDef } from "./table-shared.ts";
 import type { TableDef } from "./types.ts";
 
+/** The project context hosts inject under `_project`: its config, root, and data section. */
+export interface TableProjectContext {
+  config?: ConnectionsConfig & { data?: Record<string, TableDef> };
+  root?: string;
+  data?: Record<string, TableDef>;
+}
+
 /** The `_project`-bearing config shape hosts inject into state classes. */
 export interface TableNodeConfig extends TableQueryDef {
-  id?: unknown;
-  _project?: {
-    config?: ConnectionsConfig & { data?: Record<string, TableDef> };
-    root?: string;
-    data?: Record<string, TableDef>;
-    [key: string]: unknown;
-  };
+  id?: JsonValue;
+  _project?: TableProjectContext;
 }
 
 interface OpenedTable {
@@ -48,10 +52,10 @@ async function openTable(config: TableNodeConfig): Promise<OpenedTable> {
   if (!tableDef) {
     throw new Error(`unknown table "${tableName}" (no data section entry)`);
   }
-  const env: Record<string, unknown> = {
-    ...process.env,
-    ...(project.root === undefined ? {} : { JX_PROJECT_ROOT: project.root }),
-  };
+  const env = { ...process.env };
+  if (project.root !== undefined) {
+    env["JX_PROJECT_ROOT"] = project.root;
+  }
   const { dialect, type } = await resolveDialect(tableDef.connection, projectConfig, env);
   const db = new Kysely<DynamicDatabase>({ dialect });
   const connection = projectConfig.connections?.[tableDef.connection];
@@ -66,19 +70,19 @@ async function openTable(config: TableNodeConfig): Promise<OpenedTable> {
  * Query a table with the def's filter/sort/limit/offset (the content grammar).
  *
  * @param {TableNodeConfig} config
- * @returns {Promise<Record<string, unknown>[]>}
+ * @returns {Promise<DynamicRow[]>}
  */
-export async function queryTable(config: TableNodeConfig): Promise<Record<string, unknown>[]> {
+export async function queryTable(config: TableNodeConfig): Promise<DynamicRow[]> {
   const { db, kind, tables, tableName } = await openTable(config);
   try {
     const plan = planTable(tableName, tables[tableName]!, tables, kind);
     let qb = db.selectFrom(tableName).selectAll();
     qb = applyFilter(qb, normalizeFilter(config.filter), plan.columns);
     qb = applySort(qb, normalizeSort(config.sort), plan.columns);
-    if (typeof config.limit === "number" && config.limit > 0) {
+    if (isNumber(config.limit) && config.limit > 0) {
       qb = qb.limit(config.limit);
     }
-    if (typeof config.offset === "number" && config.offset > 0) {
+    if (isNumber(config.offset) && config.offset > 0) {
       qb = qb.limit(config.limit ?? 100_000_000).offset(config.offset);
     }
     const rows = await qb.execute();
@@ -93,12 +97,9 @@ export async function queryTable(config: TableNodeConfig): Promise<Record<string
  *
  * @param {TableNodeConfig} config
  * @param {string} id
- * @returns {Promise<Record<string, unknown> | null>}
+ * @returns {Promise<DynamicRow | null>}
  */
-export async function getEntry(
-  config: TableNodeConfig,
-  id: string,
-): Promise<Record<string, unknown> | null> {
+export async function getEntry(config: TableNodeConfig, id: string): Promise<DynamicRow | null> {
   const { db, kind, tables, tableName } = await openTable(config);
   try {
     const plan = planTable(tableName, tables[tableName]!, tables, kind);

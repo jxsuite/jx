@@ -42,11 +42,11 @@ import { extname, join, resolve } from "node:path";
 import { serveSite, siteContext, siteHeaders } from "@jxsuite/site/serve";
 import { SERVABLE_ROOTS } from "@jxsuite/site/paths";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
-import type { AssetIO, SiteContext } from "@jxsuite/site/serve";
+import type { AssetIO, SiteContext, SiteTree } from "@jxsuite/site/serve";
 import { readProjectConfig } from "@jxsuite/site/compose";
 import type { DocumentParser, SiteIO } from "@jxsuite/site/compose";
-import { buildProjectFormatRegistry } from "@jxsuite/compiler/format-host";
-import type { JxDocument } from "@jxsuite/schema/types";
+import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import { createSseHub } from "./sse.ts";
 import type { SseHub } from "./sse.ts";
 import { LIVE_NAMESPACE, PREVIEW_CLIENT_JS } from "./preview-client.ts";
@@ -203,12 +203,13 @@ function documentParser(projectRoot: string): DocumentParser {
         paths: () => [],
         read: (file) => readTreeFile(projectRoot, file),
       });
-      const registry = await buildProjectFormatRegistry(projectRoot, config);
-      const entry = registry.byExtension(extname(path), "parse");
+      const { formats } = await buildProjectExtensionRegistry(projectRoot, config);
+      const entry = formats.byExtension(extname(path), "parse");
       if (!entry) {
         return null;
       }
-      return (await entry.call("parse", text, { path })) as JxDocument;
+      // A page format answers a JxDocument; one that throws instead is caught below.
+      return await entry.parseDocument(text, { path });
     } catch {
       /* A format that throws is a broken project, not a broken preview: returning null lets the
          composer report the page by name rather than taking the whole origin down. */
@@ -231,7 +232,7 @@ async function readTreeFile(projectRoot: string, path: string): Promise<string |
 }
 
 /** Reading the tree, overlay first — which is what makes this the canvas rather than the disk. */
-function makeIO(projectRoot: string, paths: string[]): { io: SiteIO; assets: AssetIO } {
+function makeIO(projectRoot: string, paths: string[]): SiteTree {
   const io: SiteIO = {
     parse: documentParser(projectRoot),
     paths: () => paths,
@@ -273,11 +274,12 @@ function invalidate(entry: Running) {
 
 /** `project.json`'s `style` as a stylesheet, or empty when the project declares none. */
 function siteStyleCss(context: SiteContext): string {
-  const { style } = context.config as { style?: Record<string, unknown> };
-  if (!style || typeof style !== "object") {
+  const { style } = context.config;
+  // Project.json is hand-edited JSON, so a declared `style` may still be a non-object
+  if (!style || !isNonNullObject(style)) {
     return "";
   }
-  const media = (context.config as { $media?: Record<string, string> }).$media ?? {};
+  const media = context.config.$media ?? {};
   /* Identity transposition: a browser tab IS the viewport, so `100vh` already means what it says.
      The canvas passes a real transposer because its viewport is an iframe it sizes to content. */
   return buildSiteStyleCSS(style, media, (value) => value);
@@ -314,6 +316,9 @@ async function handle(entry: Running, projectRoot: string, req: Request): Promis
     if (surface === "ack" && req.method === "POST") {
       let body: { gen?: number };
       try {
+        /* SAFETY: PREVIEW_CLIENT_JS is this route's only client and posts `{ gen }` with the
+           generation it applied; `gen` is only compared with `===`, so a stray value merely fails
+           to settle the pending acknowledgement. */
         body = (await req.json()) as { gen?: number };
       } catch {
         return problem("invalidRequest", "Invalid JSON body");
@@ -520,6 +525,7 @@ function enforceOverlayBudget(overlay: Overlay): void {
     total += value.length;
   }
   while (total > OVERLAY_MAX_BYTES && overlay.files.size > 1) {
+    // SAFETY: the loop runs only while `files.size > 1`, so the key iterator has a first entry.
     const oldest = overlay.files.keys().next().value as string;
     total -= overlay.files.get(oldest)?.length ?? 0;
     overlay.files.delete(oldest);

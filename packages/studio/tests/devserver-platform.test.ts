@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createDevServerPlatform } from "../src/platforms/devserver";
 import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
 import type { ExtensionCatalogEntry, FsEvent, StudioPlatform } from "../src/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { recordCollabSockets } from "./collab-socket-recorder";
 
 /** Minimal EventSource stub: records the latest instance and lets tests emit named events. */
@@ -27,7 +29,7 @@ class FakeEventSource {
     this.listeners.set(type, fn);
   }
   emit(type: string, data: string): void {
-    this.listeners.get(type)?.({ data } as MessageEvent);
+    this.listeners.get(type)?.(new MessageEvent(type, { data }));
   }
   close(): void {
     this.closed = true;
@@ -51,7 +53,7 @@ const originalFetch = globalThis.fetch;
 let routes: { handler: RouteHandler; method: string | undefined; path: string }[] = [];
 let calls: RecordedCall[] = [];
 
-function json(data: unknown, status = 200): Response {
+function json(data: JsonValue, status = 200): Response {
   return Response.json(data, { status });
 }
 
@@ -69,14 +71,22 @@ function callsTo(path: string): RecordedCall[] {
   return calls.filter((c) => c.path === path);
 }
 
+/** A call's body as the JSON object every adapter POST sends; anything else fails the test. */
+function bodyOf(call: RecordedCall): JsonObject {
+  if (!isJsonObject(call.body)) {
+    throw new Error(`${call.method} ${call.path} sent no JSON object body`);
+  }
+  return call.body;
+}
+
 beforeEach(() => {
   routes = [];
   calls = [];
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const answer = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input), "http://localhost");
     const rawBody = init?.body;
     let body: unknown = rawBody;
-    if (typeof rawBody === "string") {
+    if (isString(rawBody)) {
       try {
         body = JSON.parse(rawBody);
       } catch {
@@ -99,17 +109,18 @@ beforeEach(() => {
       return json({ error: `no route: ${call.method} ${call.path}` }, 500);
     }
     return await match.handler(call);
-  }) as typeof fetch;
+  };
+  globalThis.fetch = Object.assign(answer, { preconnect: originalFetch.preconnect });
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  delete (window as unknown as Record<string, unknown>).showDirectoryPicker;
+  delete pickerSlot.showDirectoryPicker;
 });
 
 // ─── Fake directory handle for openProject ───────────────────────────────────
 
-function fakeDirHandle(name: string, config: unknown | null) {
+function fakeDirHandle(name: string, config: JsonObject | null) {
   return {
     getFileHandle: async (_file: string) => {
       if (config === null) {
@@ -123,8 +134,8 @@ function fakeDirHandle(name: string, config: unknown | null) {
   };
 }
 
-function setPicker(fn: unknown): void {
-  (window as unknown as Record<string, unknown>).showDirectoryPicker = fn;
+function setPicker(fn: PickerStub): void {
+  pickerSlot.showDirectoryPicker = fn;
 }
 
 // ─── Fake directory handle for pickDirectory ─────────────────────────────────
@@ -135,7 +146,7 @@ function setPicker(fn: unknown): void {
  * id the picker put in the tag, which is what the server matches on.
  */
 function fakeDestHandle(name: string) {
-  const log = { created: [] as string[], removed: [] as string[], written: [] as string[] };
+  const log: TagLog = { created: [], removed: [], written: [] };
   const handle = {
     getFileHandle: async (file: string) => {
       log.created.push(file);
@@ -155,6 +166,28 @@ function fakeDestHandle(name: string) {
   };
   return { handle, log };
 }
+
+/** What a picked destination's handle saw happen to its location tag. */
+interface TagLog {
+  created: string[];
+  removed: string[];
+  written: string[];
+}
+
+/** A stubbed chooser, settling with one of the two handle doubles above (or rejecting). */
+type PickerStub = () => Promise<
+  ReturnType<typeof fakeDirHandle> | ReturnType<typeof fakeDestHandle>["handle"]
+>;
+
+/* SAFETY: the DOM lib declares no `showDirectoryPicker` (the adapter probes the window for it for
+   the same reason), so this only names the optional slot; the tests write every value it holds and
+   `afterEach` deletes it again. */
+const pickerSlot = window as Window & { showDirectoryPicker?: PickerStub };
+
+/* SAFETY: names only the `EventSource` slot so a fake can stand in it. subscribeFileEvents uses the
+   constructor as `new EventSource(url)` and then calls only addEventListener and close on the
+   instance, which are the members FakeEventSource implements; each test restores the original. */
+const eventSourceSlot = globalThis as { EventSource?: unknown };
 
 // ─── Basic identity, projectRoot, activate ───────────────────────────────────
 
@@ -176,7 +209,7 @@ describe("devserver platform basics", () => {
   test("declares NO assetSpace: the dev server already serves the site URL space", () => {
     // Read through the INTERFACE, so the assertion is about what a host may declare rather than
     // About what this factory's inferred type happens to contain.
-    const p = createDevServerPlatform() as unknown as StudioPlatform;
+    const p: StudioPlatform = createDevServerPlatform();
     expect(p.assetSpace).toBeUndefined();
     expect(p.documentBaseUrl).toBeUndefined();
   });
@@ -196,7 +229,8 @@ describe("devserver platform basics", () => {
     const p = createDevServerPlatform();
     p.projectRoot = "";
     expect(p.projectRoot).toBe("");
-    p.projectRoot = undefined as unknown as string;
+    // The setter is typed `string`; an untyped caller can still write undefined, and this is that write.
+    Reflect.set(p, "projectRoot", undefined);
     expect(p.projectRoot).toBe("");
     expect(callsTo("/__studio/activate").length).toBe(0);
   });
@@ -220,9 +254,7 @@ describe("devserver platform basics", () => {
     const p = createDevServerPlatform();
     // Counted by root: every platform an earlier case made is listening for focus too.
     const mine = () =>
-      callsTo("/__studio/activate").filter(
-        (call) => (call.body as { root?: string }).root === "focus/site",
-      ).length;
+      callsTo("/__studio/activate").filter((call) => bodyOf(call)["root"] === "focus/site").length;
     window.dispatchEvent(new Event("focus"));
     // No project, nothing to claim.
     expect(mine()).toBe(0);
@@ -486,7 +518,7 @@ describe("createProject", () => {
     });
     // The member is spread in at CONSTRUCTION time, so the stub must precede the platform.
     const p: StudioPlatform = createDevServerPlatform();
-    expect(typeof p.pickDirectory).toBe("function");
+    expect(p.pickDirectory).toBeInstanceOf(Function);
     expect(await p.pickDirectory!()).toBe("/home/dev/Sites");
     expect(callsTo("/__studio/locate-directory").length).toBe(1);
     // The tag is a throwaway with a fixed hidden name — it never outlives the pick.
@@ -524,9 +556,10 @@ describe("createProject", () => {
   test("pickDirectory rejects naming the network failure when fetch throws", async () => {
     const { handle, log } = fakeDestHandle("Sites");
     setPicker(async () => handle);
-    globalThis.fetch = (async () => {
+    const unreachable = async (): Promise<Response> => {
       throw new TypeError("Failed to fetch");
-    }) as unknown as typeof fetch;
+    };
+    globalThis.fetch = Object.assign(unreachable, { preconnect: originalFetch.preconnect });
     const p: StudioPlatform = createDevServerPlatform();
     await expect(p.pickDirectory!()).rejects.toThrow(
       /could not look up where "Sites" is: Failed to fetch\./,
@@ -572,18 +605,20 @@ describe("createProject", () => {
 
   test("surfaces the server's refusal when no destination was supplied", async () => {
     route("/__studio/create-project", (c) => {
-      expect((c.body as { destination?: unknown }).destination).toBeUndefined();
+      expect(bodyOf(c)["destination"]).toBeUndefined();
       return json({ error: "A destination folder is required." }, 400);
     });
     const p = createDevServerPlatform();
     // The adapter forwards whatever the modal collected.
     // Refusing an absent destination is the server's job, and its message must reach the caller.
-    expect(
-      p.createProject({
-        directory: "x",
-        name: "y",
-      } as unknown as Parameters<typeof p.createProject>[0]),
-    ).rejects.toThrow("A destination folder is required.");
+    type CreateOptions = Parameters<typeof p.createProject>[0];
+    const collected: Omit<CreateOptions, "destination"> = { directory: "x", name: "y" };
+    /* SAFETY: deliberately missing the required `destination`. createProject sends its options as
+       `JSON.stringify(opts)` and reads none of their members, so the absence reaches the server
+       unchanged, which is the refusal this test pins. */
+    expect(p.createProject(collected as CreateOptions)).rejects.toThrow(
+      "A destination folder is required.",
+    );
   });
 });
 
@@ -811,14 +846,14 @@ describe("file operations", () => {
   });
 
   test("subscribeFileEvents strips and filters fs events from the SSE stream", () => {
-    const original = (globalThis as { EventSource?: unknown }).EventSource;
-    (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
+    const original = eventSourceSlot.EventSource;
+    eventSourceSlot.EventSource = FakeEventSource;
     try {
       route("/__studio/activate", () => json({ ok: true }));
       const p = createDevServerPlatform();
       p.projectRoot = "site";
       const received: FsEvent[] = [];
-      const stop = p.subscribeFileEvents?.((events) => received.push(...events)) ?? (() => {});
+      const stop = p.subscribeFileEvents((events) => received.push(...events));
       const es = FakeEventSource.last;
       es?.emit(
         "fs",
@@ -833,19 +868,19 @@ describe("file operations", () => {
       stop();
       expect(es?.closed).toBe(true);
     } finally {
-      (globalThis as { EventSource?: unknown }).EventSource = original;
+      eventSourceSlot.EventSource = original;
     }
   });
 
   test("subscribeFileEvents reports a reconnect resync on every EventSource open after the first", () => {
-    const original = (globalThis as { EventSource?: unknown }).EventSource;
-    (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
+    const original = eventSourceSlot.EventSource;
+    eventSourceSlot.EventSource = FakeEventSource;
     try {
       const p = createDevServerPlatform();
       const reasons: string[] = [];
-      const stop =
-        p.subscribeFileEvents?.(() => {}, { onResync: (reason) => reasons.push(reason) }) ??
-        (() => {});
+      const stop = p.subscribeFileEvents(() => {}, {
+        onResync: (reason) => reasons.push(reason),
+      });
       const es = FakeEventSource.last;
       // EventSource reconnects on its own and fires `open` each time it does; the server replays
       // Nothing it sent while the stream was down, so only the first open is gap-free.
@@ -856,18 +891,18 @@ describe("file operations", () => {
       expect(reasons).toEqual(["reconnect", "reconnect"]);
       stop();
     } finally {
-      (globalThis as { EventSource?: unknown }).EventSource = original;
+      eventSourceSlot.EventSource = original;
     }
   });
 
   test("a reconnect re-binds the server to this tab's project (a restart comes back unbound)", () => {
-    const original = (globalThis as { EventSource?: unknown }).EventSource;
-    (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
+    const original = eventSourceSlot.EventSource;
+    eventSourceSlot.EventSource = FakeEventSource;
     try {
       route("/__studio/activate", () => json({ ok: true }));
       const p = createDevServerPlatform();
       p.projectRoot = "site";
-      const stop = p.subscribeFileEvents?.(() => {}) ?? (() => {});
+      const stop = p.subscribeFileEvents(() => {});
       const es = FakeEventSource.last;
       es?.emit("open", "");
       expect(callsTo("/__studio/activate").length).toBe(1);
@@ -876,7 +911,7 @@ describe("file operations", () => {
       stop();
       p.projectRoot = "";
     } finally {
-      (globalThis as { EventSource?: unknown }).EventSource = original;
+      eventSourceSlot.EventSource = original;
     }
   });
 
@@ -1139,7 +1174,7 @@ describe("formats", () => {
   });
 
   test("listExtensionCatalog reads its own route and degrades to []", async () => {
-    const catalog: ExtensionCatalogEntry[] = [
+    const catalog = [
       {
         installed: false,
         name: "@jxsuite/feed",
@@ -1147,16 +1182,16 @@ describe("formats", () => {
         source: "first-party",
         title: "Feeds",
       },
-    ];
+    ] satisfies ExtensionCatalogEntry[];
     route("/__studio/catalog", (c) => {
       expect(c.search.get("dir")).toBe(".");
       return json(catalog);
     });
     const p = createDevServerPlatform();
-    expect(await p.listExtensionCatalog?.()).toEqual(catalog);
+    expect(await p.listExtensionCatalog()).toEqual(catalog);
     // A backend without the route costs the OFFER, not the section.
     route("/__studio/catalog", () => json({}, 404));
-    expect(await p.listExtensionCatalog?.()).toEqual([]);
+    expect(await p.listExtensionCatalog()).toEqual([]);
   });
 
   test("fetchProjectSchemas returns the bundled pair and degrades to {}", async () => {
@@ -1186,9 +1221,11 @@ describe("formats", () => {
   test("formatAction throws the server error or a generic fallback", async () => {
     route("/__studio/format", () => json({ error: "unknown format" }, 400));
     const p = createDevServerPlatform();
-    expect(p.formatAction({ format: "nope" })).rejects.toThrow("unknown format");
+    expect(p.formatAction({ action: "parse", format: "nope" })).rejects.toThrow("unknown format");
     route("/__studio/format", () => json({}, 500));
-    expect(p.formatAction({ format: "nope" })).rejects.toThrow("Format action failed");
+    expect(p.formatAction({ action: "parse", format: "nope" })).rejects.toThrow(
+      "Format action failed",
+    );
   });
 });
 
@@ -1318,8 +1355,9 @@ describe("git write operations", () => {
   const postCases: [
     string,
     string,
-    (p: ReturnType<typeof createDevServerPlatform>) => Promise<unknown>,
-    unknown,
+    // Each verb answers with the route's parsed JSON body (`res.json()`).
+    (p: ReturnType<typeof createDevServerPlatform>) => Promise<JsonValue>,
+    JsonObject,
   ][] = [
     ["gitStage", "/__studio/git/stage", (p) => p.gitStage(["a.json"]), { files: ["a.json"] }],
     ["gitUnstage", "/__studio/git/unstage", (p) => p.gitUnstage(["b.json"]), { files: ["b.json"] }],
@@ -1489,7 +1527,7 @@ describe("listProjects", () => {
       ]),
     );
     const p = createDevServerPlatform();
-    expect(await p.listProjects?.()).toEqual([
+    expect(await p.listProjects()).toEqual([
       { name: "Named Site", root: "sites/named", description: "sites/named" },
       { name: "anon", root: "sites/anon", description: "sites/anon" },
     ]);
@@ -1498,7 +1536,7 @@ describe("listProjects", () => {
   test("returns [] when the sites endpoint fails", async () => {
     route("/__studio/sites", () => json({ error: "nope" }, 500));
     const p = createDevServerPlatform();
-    expect(await p.listProjects?.()).toEqual([]);
+    expect(await p.listProjects()).toEqual([]);
   });
 });
 
@@ -1509,36 +1547,36 @@ describe("cloudflare publish surface", () => {
       json({ success: true, result: [{ id: "acct", name: "Acme" }] }, 200),
     );
     const p = createDevServerPlatform();
-    const accounts = await p.cfApi?.("/accounts");
+    const accounts = await p.cfApi("/accounts");
     expect(accounts).toEqual([{ id: "acct", name: "Acme" }]);
     const call = callsTo("/__studio/cf/proxy")[0]!;
-    expect((call.body as { path: string }).path).toBe("/accounts");
+    expect(bodyOf(call)["path"]).toBe("/accounts");
     clearSeededSettings();
   });
 
   test("cfApi throws without a token and surfaces Cloudflare errors", async () => {
     clearSeededSettings();
     const p = createDevServerPlatform();
-    expect(p.cfApi?.("/accounts")).rejects.toThrow(/No Cloudflare API token/);
+    expect(p.cfApi("/accounts")).rejects.toThrow(/No Cloudflare API token/);
 
     seedSettings({ "jx.cf.token": "cf_tok" });
     route("/__studio/cf/proxy", () =>
       json({ success: false, errors: [{ message: "denied" }] }, 403),
     );
-    expect(p.cfApi?.("/accounts")).rejects.toThrow(/denied/);
+    expect(p.cfApi("/accounts")).rejects.toThrow(/denied/);
     clearSeededSettings();
   });
 
   test("cfConnection is null without a token, verified with one", async () => {
     clearSeededSettings();
     const p = createDevServerPlatform();
-    expect(await p.cfConnection?.()).toBeNull();
+    expect(await p.cfConnection()).toBeNull();
 
     seedSettings({ "jx.cf.token": "cf_tok" });
     route("/__studio/cf/proxy", () =>
       json({ success: true, result: [{ id: "acct1", name: "Acme" }] }, 200),
     );
-    expect(await p.cfConnection?.()).toEqual({
+    expect(await p.cfConnection()).toEqual({
       connected: true,
       accountId: "acct1",
       accountName: "Acme",
@@ -1546,7 +1584,7 @@ describe("cloudflare publish surface", () => {
     expect(localStorage.getItem("jx.cf.accountId")).toBe("acct1");
 
     route("/__studio/cf/proxy", () => json({ success: false, errors: [] }, 401));
-    expect(await p.cfConnection?.()).toEqual({ connected: false });
+    expect(await p.cfConnection()).toEqual({ connected: false });
     clearSeededSettings();
   });
 });
@@ -1554,8 +1592,12 @@ describe("cloudflare publish surface", () => {
 describe("collab capability", () => {
   test("a server without the endpoint degrades to solo, probing once", async () => {
     const platform = createDevServerPlatform();
-    expect(await platform.collab?.("pages/index.md")).toBeNull();
-    expect(await platform.collab?.("pages/index.md")).toBeNull();
+    // Asked twice on purpose: the second answer must come from the remembered probe.
+    const answers = [
+      await platform.collab("pages/index.md"),
+      await platform.collab("pages/index.md"),
+    ];
+    expect(answers).toEqual([null, null]);
     expect(callsTo("/__studio/collab")).toHaveLength(1);
   });
 
@@ -1592,7 +1634,7 @@ describe("collab capability", () => {
     };
     try {
       const platform = createDevServerPlatform();
-      expect(await platform.collab?.("pages/index.md")).toBeNull();
+      expect(await platform.collab("pages/index.md")).toBeNull();
     } finally {
       console.warn = realWarn;
     }

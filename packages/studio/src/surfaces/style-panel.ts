@@ -22,13 +22,15 @@
  * @docs studio/design/style-inspector
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import stylePanelDoc from "./style-panel.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
+import type { ColorTokenView } from "../ui/color-selector";
 
-registerSurface("style-panel", stylePanelDoc as unknown as JxDocument);
+registerSurface("style-panel", stylePanelDoc);
 
 // ─── The projection ──────────────────────────────────────────────────────────
 
@@ -59,26 +61,13 @@ export type StyleRowKind =
 export type StyleChipControl = "none" | "button" | "text";
 
 /**
- * One colour the project has named, as the row's palette draws it.
- *
- * `value` is the reference and `color` is the literal behind it, and they are two fields because
- * they are two things: choosing a swatch commits `var(--color-accent)`, while the chip is only how
- * that reads on screen. `label` is what a reader hears — a swatch is never named by its hex.
- */
-export interface StyleTokenView extends Record<string, unknown> {
-  value: string;
-  color: string;
-  label: string;
-}
-
-/**
  * One keyword a `keywords` row lists under its field.
  *
  * `value` is what the row commits and `label` is how it reads — `Inline block` over `inline-block`
  * — and the two stay separate because the field holds the value: a combobox row's label is a
  * courtesy, never a second spelling the reader could end up with.
  */
-export interface StyleOptionView extends Record<string, unknown> {
+export interface StyleOptionView {
   value: string;
   label: string;
   /** A muted note at the end of the row — a font token's own name beside its display name. */
@@ -97,7 +86,7 @@ export interface StyleOptionView extends Record<string, unknown> {
 }
 
 /** One value of a button-group row. */
-export interface StyleButtonView extends Record<string, unknown> {
+export interface StyleButtonView {
   /** The owning row's key — a nested `$map` shadows `$map.item`, so the row carries it here. */
   row: string;
   /** The CSS value this button commits, and the button's identity in the repeater. */
@@ -130,7 +119,7 @@ export interface StyleButtonView extends Record<string, unknown> {
  * `prop` is the name a reader, the region grammar and the inspector see. The two are different on
  * purpose: one coordinate's `color` and another's are two rows with one name.
  */
-export interface StyleRowView extends Record<string, unknown> {
+export interface StyleRowView {
   key: string;
   prop: string;
   label: string;
@@ -177,7 +166,7 @@ export interface StyleRowView extends Record<string, unknown> {
   choicesHint: string;
   buttons: StyleButtonView[];
   /** The palette a colour row offers inside its picker, and whether it has one to offer. */
-  tokens: StyleTokenView[];
+  tokens: ColorTokenView[];
   hasTokens: boolean;
   overflowSelected: boolean;
   expanded: boolean;
@@ -190,7 +179,7 @@ export interface StyleRowView extends Record<string, unknown> {
 }
 
 /** One accordion section. */
-export interface StyleSectionView extends Record<string, unknown> {
+export interface StyleSectionView {
   key: string;
   label: string;
   open: boolean;
@@ -236,14 +225,14 @@ export interface StylePanelActions {
   /** The provenance chip, a custom pair's remove and a nested rule's remove are one verb. */
   chipClick: (key: string) => void;
   /** Open the Value Source picker under the chip that was pressed. */
-  pickSource: (key: string, anchor: unknown) => void;
+  pickSource: (key: string, anchor: EventTarget | null) => void;
   /** Open the row's list of offerable values under the button that was pressed. */
-  pickChoice: (key: string, anchor: unknown) => void;
+  pickChoice: (key: string, anchor: EventTarget | null) => void;
   pressButton: (key: string, value: string) => void;
   toggleShorthand: (key: string) => void;
   renameCustom: (key: string, name: string) => void;
   /** Enter in the add-a-property field. Given the field too, because it is emptied on success. */
-  addCustom: (key: string, field: unknown) => void;
+  addCustom: (key: string, field: EventTarget | null) => void;
   openNested: (key: string) => void;
   addNested: () => void;
 }
@@ -264,12 +253,12 @@ export interface StylePanelSurface {
 }
 
 /** The scope the document reads: the view plus the actions, flat. */
-interface StylePanelScope extends Record<string, unknown>, StylePanelView, StylePanelActions {}
+interface StylePanelScope extends StylePanelView, StylePanelActions {}
 
 /** A node definition's `part`, as written in the document. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** Write a whole view into the scope. Assignment only — the mount is never rebuilt for a repaint. */
@@ -300,7 +289,7 @@ export function mountStylePanelSurface(
   actions: StylePanelActions,
   hosts: StyleHostSink,
 ): StylePanelSurface {
-  const scope = reactive<StylePanelScope>({
+  const scope: StylePanelScope = reactive<StylePanelScope>({
     ...actions,
     emptyActionLabel: "",
     emptyMessage: "",
@@ -308,7 +297,7 @@ export function mountStylePanelSurface(
     hasEmptyAction: false,
     sections: [],
     view: "empty",
-  }) as StylePanelScope;
+  });
   project(scope, view);
 
   host.replaceChildren();
@@ -334,9 +323,7 @@ export function mountStylePanelSurface(
        dock that redrew took the tab's root away without telling anyone. */
     connected: () =>
       !disposed &&
-      (mounted === null
-        ? host.childNodes.length === 0
-        : (mounted.root as Node).parentNode === host),
+      (mounted === null ? host.childNodes.length === 0 : mounted.root.parentNode === host),
     dispose() {
       disposed = true;
       hosts.target(null);

@@ -13,6 +13,7 @@
  * hop would report `var(--color-brand)` as a colour.
  */
 
+import { isNumber, isString } from "@jxsuite/schema/guards";
 import type { JxStyle } from "@jxsuite/schema/types";
 
 /** A value that is EXACTLY one `var()` reference — not `calc(var(--a) * 2)`, which is a value. */
@@ -24,11 +25,11 @@ const MAX_HOPS = 10;
 /**
  * The token a value references, or null when the value is not a bare reference.
  *
- * @param {unknown} value
+ * @param {string | number} value
  * @returns {string | null}
  */
-export function tokenRefName(value: unknown): string | null {
-  if (typeof value !== "string") {
+export function tokenRefName(value: string | number): string | null {
+  if (!isString(value)) {
     return null;
   }
   return TOKEN_REF_RE.exec(value)?.[1] ?? null;
@@ -75,7 +76,7 @@ export function resolveTokenValue(
     }
     seen.add(ref);
     const next = style?.[ref];
-    if (typeof next !== "string" && typeof next !== "number") {
+    if (!isString(next) && !isNumber(next)) {
       return undefined;
     }
     current = next;

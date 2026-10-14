@@ -27,6 +27,7 @@
  *    colliding still throws, because that one is a bug in the app and nobody's preference.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { KEY_SCOPES } from "./levels";
 import type { KeyScope } from "./levels";
 
@@ -36,33 +37,33 @@ const MODIFIER_ORDER = ["mod", "ctrl", "alt", "shift"] as const;
 type Modifier = (typeof MODIFIER_ORDER)[number];
 
 /** Spellings people actually write, mapped onto the canonical four. */
-const MODIFIER_ALIASES: Readonly<Record<string, Modifier>> = {
-  mod: "mod",
-  cmd: "mod",
-  command: "mod",
-  meta: "mod",
-  super: "mod",
-  ctrl: "ctrl",
-  control: "ctrl",
-  alt: "alt",
-  opt: "alt",
-  option: "alt",
-  shift: "shift",
-};
+const MODIFIER_ALIASES = new Map<string, Modifier>([
+  ["mod", "mod"],
+  ["cmd", "mod"],
+  ["command", "mod"],
+  ["meta", "mod"],
+  ["super", "mod"],
+  ["ctrl", "ctrl"],
+  ["control", "ctrl"],
+  ["alt", "alt"],
+  ["opt", "alt"],
+  ["option", "alt"],
+  ["shift", "shift"],
+]);
 
 /** Key aliases — arrow/space spellings and the `KeyboardEvent.key` values that differ. */
-const KEY_ALIASES: Readonly<Record<string, string>> = {
-  up: "arrowup",
-  down: "arrowdown",
-  left: "arrowleft",
-  right: "arrowright",
-  esc: "escape",
-  space: " ",
-  spacebar: " ",
-  del: "delete",
-  plus: "=",
-  return: "enter",
-};
+const KEY_ALIASES = new Map<string, string>([
+  ["up", "arrowup"],
+  ["down", "arrowdown"],
+  ["left", "arrowleft"],
+  ["right", "arrowright"],
+  ["esc", "escape"],
+  ["space", " "],
+  ["spacebar", " "],
+  ["del", "delete"],
+  ["plus", "="],
+  ["return", "enter"],
+]);
 
 /** How each modifier prints, per platform. */
 const MAC_GLYPHS: Readonly<Record<Modifier, string>> = {
@@ -80,18 +81,18 @@ const PC_LABELS: Readonly<Record<Modifier, string>> = {
 };
 
 /** Keys whose printed name is not just the uppercased token. */
-const KEY_LABELS: Readonly<Record<string, string>> = {
-  arrowup: "↑",
-  arrowdown: "↓",
-  arrowleft: "←",
-  arrowright: "→",
-  " ": "Space",
-  escape: "Esc",
-  enter: "Enter",
-  tab: "Tab",
-  delete: "Delete",
-  backspace: "Backspace",
-};
+const KEY_LABELS = new Map<string, string>([
+  ["arrowup", "↑"],
+  ["arrowdown", "↓"],
+  ["arrowleft", "←"],
+  ["arrowright", "→"],
+  [" ", "Space"],
+  ["escape", "Esc"],
+  ["enter", "Enter"],
+  ["tab", "Tab"],
+  ["delete", "Delete"],
+  ["backspace", "Backspace"],
+]);
 
 /**
  * The five fields the keymap reads off a keyboard event.
@@ -159,12 +160,12 @@ export function parseChord(chord: string): ParsedChord {
     // Parses the same as "Cmd+Shift+P".
     const trimmed = token.trim();
     const lower = trimmed === "" ? " " : trimmed.toLowerCase();
-    const modifier = MODIFIER_ALIASES[lower];
+    const modifier = MODIFIER_ALIASES.get(lower);
     if (modifier) {
       parsed[modifier] = true;
       continue;
     }
-    parsed.key = KEY_ALIASES[lower] ?? lower;
+    parsed.key = KEY_ALIASES.get(lower) ?? lower;
   }
   if (!parsed.key) {
     throw new Error(`keybinding "${chord}" has no key — a chord needs more than modifiers`);
@@ -185,6 +186,9 @@ export function normalizeChord(chord: string): string {
 
 /** Whether the current platform is a mac. `navigator` is injectable so tests never touch globals. */
 export function isMacPlatform(
+  /* SAFETY: this module types without the DOM lib, so `globalThis` does not declare `navigator`.
+     Where a host provides one (every webview, Bun), its `platform` and `userAgent` are strings,
+     which is all `PlatformInfo` reads; where none exists the `?? {}` default answers. */
   nav: PlatformInfo = (globalThis as { navigator?: PlatformInfo }).navigator ?? {},
 ): boolean {
   return /mac/i.test(nav.platform ?? nav.userAgent ?? "");
@@ -209,7 +213,7 @@ export function chordFromEvent(event: KeyChordEvent, mac: boolean): string {
      chord needs more than modifiers") — so every bare modifier press threw out of `resolveEvent`,
      into the keydown listener, and onto the console. `""` is the honest answer, and
      {@link Keymap.resolveEvent} reads it as "no chord yet". */
-  if (MODIFIER_ALIASES[key]) {
+  if (MODIFIER_ALIASES.has(key)) {
     return "";
   }
   const parsed: ParsedChord = {
@@ -219,7 +223,7 @@ export function chordFromEvent(event: KeyChordEvent, mac: boolean): string {
     // Shift is implied by an uppercase letter but a chord table cannot rely on that: with ⇧ held
     // `e.key` is "Z" for ⌘⇧Z and "?" for ⇧/, so the flag is the only stable signal.
     shift: event.shiftKey,
-    key: KEY_ALIASES[key] ?? key,
+    key: KEY_ALIASES.get(key) ?? key,
   };
   return serializeChord(parsed);
 }
@@ -229,7 +233,7 @@ export function formatChord(chord: string, mac: boolean): string {
   const parsed = parseChord(chord);
   const held = MODIFIER_ORDER.filter((modifier) => parsed[modifier]);
   const key =
-    KEY_LABELS[parsed.key] ??
+    KEY_LABELS.get(parsed.key) ??
     (parsed.key.length === 1
       ? parsed.key.toUpperCase()
       : parsed.key.charAt(0).toUpperCase() + parsed.key.slice(1));
@@ -386,7 +390,7 @@ export function createKeymap(options: { mac?: boolean } = {}): Keymap {
     if (!raw) {
       return [];
     }
-    return (typeof raw === "string" ? [raw] : [...raw]).map((chord) => normalizeChord(chord));
+    return (isString(raw) ? [raw] : [...raw]).map((chord) => normalizeChord(chord));
   }
 
   function tableFor(scope: KeyScope): Map<string, Claim> {

@@ -8,6 +8,14 @@
  * parser extension's `coerceCSVRows` (currency-stripped numbers, `"true"` booleans, comma-split
  * arrays) so grid edits round-trip identically to the runtime content loader.
  */
+import {
+  isBoolean,
+  isJsonObject,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
+import type { ContentTypeSchema, JsonValue } from "@jxsuite/schema/types";
 import type { GridCellValue, GridColumn, GridColumnKind } from "./grid-source";
 import type { JsonSchema } from "../ui/schema-form";
 import { isMediaFormat } from "../utils/studio-utils";
@@ -93,17 +101,17 @@ export interface ColumnsFromSchemaOptions {
  * required properties in declaration order, then the rest in declaration order.
  */
 export function columnsFromSchema(
-  schema: { properties?: Record<string, unknown>; required?: string[] } | null | undefined,
+  schema: ContentTypeSchema | null | undefined,
   opts: ColumnsFromSchemaOptions = {},
 ): GridColumn[] {
-  const props = Object.entries(schema?.properties ?? {}) as [string, PropSchema][];
+  const props: [string, PropSchema][] = Object.entries(schema?.properties ?? {});
   const required = new Set(schema?.required);
   const readonly = new Set(opts.readonlyFields);
 
   const columns = props.map(([field, prop]): GridColumn => {
     const kind = readonly.has(field) ? "readonly" : kindForProp(prop);
     const enumLen = Array.isArray(prop.enum)
-      ? Math.max(...(prop.enum as unknown[]).map((v) => String(v).length), 4)
+      ? Math.max(...prop.enum.map((v) => String(v).length), 4)
       : 0;
     return {
       editable: kind !== "readonly",
@@ -144,9 +152,10 @@ export function inferColumnsFromRows(
   }
 
   return fields.map((field): GridColumn => {
-    const values = sample
-      .map((row) => row[field])
-      .filter((v): v is Exclude<GridCellValue, null> => v !== null && v !== undefined && v !== "");
+    const values = sample.flatMap((row) => {
+      const value = row[field];
+      return value === null || value === undefined || value === "" ? [] : [value];
+    });
     const kind = inferKind(values);
     const maxLen = Math.max(...values.map((v) => cellToText(v).length), field.length, 4);
     return {
@@ -167,14 +176,11 @@ function inferKind(values: Exclude<GridCellValue, null>[]): GridColumnKind {
     return "array";
   }
   const texts = values.map(String);
-  if (
-    values.every((v) => typeof v === "boolean") ||
-    texts.every((t) => /^(true|false)$/i.test(t))
-  ) {
+  if (values.every((v) => isBoolean(v)) || texts.every((t) => /^(true|false)$/i.test(t))) {
     return "boolean";
   }
   if (
-    values.every((v) => typeof v === "number") ||
+    values.every((v) => isNumber(v)) ||
     texts.every((t) => t.trim() !== "" && !Number.isNaN(Number(t.replaceAll(/[$€£¥,\s]/g, ""))))
   ) {
     return "number";
@@ -194,13 +200,13 @@ function inferKind(values: Exclude<GridCellValue, null>[]): GridColumnKind {
  * Coerce editor/clipboard input to the column's typed value. Empty input clears to null. Number and
  * array semantics mirror the parser extension's coerceCSVRows.
  */
-export function coerceCellInput(raw: unknown, col: GridColumn): GridCellValue {
+export function coerceCellInput(raw: JsonValue | undefined, col: GridColumn): GridCellValue {
   if (raw === null || raw === undefined) {
     return null;
   }
   switch (col.kind) {
     case "number": {
-      if (typeof raw === "number") {
+      if (isNumber(raw)) {
         return Number.isNaN(raw) ? null : raw;
       }
       const cleaned = String(raw)
@@ -213,7 +219,7 @@ export function coerceCellInput(raw: unknown, col: GridColumn): GridCellValue {
       return Number.isNaN(n) ? null : n;
     }
     case "boolean": {
-      if (typeof raw === "boolean") {
+      if (isBoolean(raw)) {
         return raw;
       }
       return String(raw).trim().toLowerCase() === "true";
@@ -233,9 +239,9 @@ export function coerceCellInput(raw: unknown, col: GridColumn): GridCellValue {
     case "reference": {
       // Relationship VALUES are plain target-entry ids ("jane-doe") — the $ref lives on the
       // Schema property, not in the data (specs/relationships.md; parser resolveContentTypeRefs).
-      if (typeof raw === "object" && raw !== null && "$ref" in raw) {
-        const ref = (raw as { $ref: unknown }).$ref;
-        return typeof ref === "string" && ref !== "" ? ref : null;
+      if (isJsonObject(raw) && "$ref" in raw) {
+        const ref = raw.$ref;
+        return isString(ref) && ref !== "" ? ref : null;
       }
       const text = String(raw).trim();
       return text === "" ? null : text;
@@ -248,14 +254,14 @@ export function coerceCellInput(raw: unknown, col: GridColumn): GridCellValue {
 }
 
 /** Plain-text projection of a cell value — display, clipboard, and CSV share it. */
-export function cellToText(value: GridCellValue): string {
+export function cellToText(value: GridCellValue | undefined): string {
   if (value === null || value === undefined) {
     return "";
   }
   if (Array.isArray(value)) {
     return value.join(", ");
   }
-  if (typeof value === "object") {
+  if (isNonNullObject(value)) {
     return value.$ref;
   }
   return String(value);

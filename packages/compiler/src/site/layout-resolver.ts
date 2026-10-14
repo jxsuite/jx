@@ -9,11 +9,11 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { parseJxDocument } from "@jxsuite/schema/parse";
+import { errorMessage, parseJxDocument } from "@jxsuite/schema/parse";
 import { resolve } from "node:path";
 import { resolveLayout as resolveLayoutWith } from "@jxsuite/site/layout";
 import type { LayoutLoader } from "@jxsuite/site/layout";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 
 /** A {@link LayoutLoader} over the project's own directory. */
 export function nodeLayoutLoader(projectRoot: string): LayoutLoader {
@@ -25,8 +25,9 @@ export function nodeLayoutLoader(projectRoot: string): LayoutLoader {
     try {
       return parseJxDocument(readFileSync(layoutPath, "utf8"), layoutPath);
     } catch (error) {
-      const err = error as Error;
-      throw new Error(`Invalid layout JSON at ${layoutPath}: ${err.message}`, { cause: error });
+      throw new Error(`Invalid layout JSON at ${layoutPath}: ${errorMessage(error)}`, {
+        cause: error,
+      });
     }
   };
 }
@@ -35,13 +36,13 @@ export function nodeLayoutLoader(projectRoot: string): LayoutLoader {
  * Resolve a page's layout against a project on disk.
  *
  * @param {JxDocument} pageDoc - The raw page document
- * @param {Record<string, unknown>} projectConfig - Site configuration (for defaults.layout)
+ * @param {ProjectConfig} projectConfig - Site configuration (for defaults.layout)
  * @param {string} projectRoot - Project root directory
  * @returns {Promise<JxDocument>} The merged document (layout wrapping page content)
  */
 export function resolveLayout(
   pageDoc: JxDocument,
-  projectConfig: Record<string, unknown>,
+  projectConfig: ProjectConfig,
   projectRoot: string,
 ): Promise<JxDocument> {
   return resolveLayoutWith(pageDoc, projectConfig, nodeLayoutLoader(projectRoot));

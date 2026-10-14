@@ -18,6 +18,7 @@ import type {
   ImportSiteOptions,
   ImportSiteSummary,
 } from "../types";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 
 /**
@@ -28,6 +29,34 @@ import type { ProjectConfig } from "@jxsuite/schema/types";
  * successful import hands off to the new project.
  */
 export const IMPORT_WARNING_PHASE = "warning";
+
+/** The request headers: JSON, plus the caller's AI credentials when it has them. */
+interface ImportRequestHeaders {
+  "Content-Type": string;
+  "X-Api-Key"?: string;
+  "X-Api-Base-URL"?: string;
+}
+
+/** The JSON body the import-site route reads; `model` travels as `aiModel`. */
+interface ImportRequestBody {
+  url: string;
+  directory: string;
+  depth: number;
+  maxPages: number;
+  aiComponents: boolean;
+  breakpoints?: ImportSiteOptions["breakpoints"];
+  aiModel?: ImportSiteOptions["model"];
+  verify?: boolean;
+  verifyThreshold?: number;
+  verifyMinFidelity?: number;
+}
+
+/** What a `done` line settles the stream with. */
+export interface ImportStreamResult {
+  root: string;
+  config: ProjectConfig;
+  result?: ImportSiteSummary;
+}
 
 interface StreamLine {
   type: string;
@@ -58,8 +87,8 @@ export async function streamImport(
   onProgress: (evt: ImportProgressEvent) => void,
   signal?: AbortSignal,
   onReady?: (evt: ImportReadyEvent) => void,
-): Promise<{ root: string; config: ProjectConfig; result?: ImportSiteSummary }> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+): Promise<ImportStreamResult> {
+  const headers: ImportRequestHeaders = { "Content-Type": "application/json" };
   if (opts.apiKey) {
     headers["X-Api-Key"] = opts.apiKey;
   }
@@ -67,32 +96,46 @@ export async function streamImport(
     headers["X-Api-Base-URL"] = opts.baseUrl;
   }
 
-  const res = await fetch(endpoint, {
-    body: JSON.stringify({
-      url: opts.url,
-      directory: opts.directory,
-      depth: opts.depth,
-      maxPages: opts.maxPages,
-      aiComponents: opts.aiComponents,
-      ...(opts.breakpoints === undefined ? {} : { breakpoints: opts.breakpoints }),
-      ...(opts.model === undefined ? {} : { aiModel: opts.model }),
-      ...(opts.verify === undefined ? {} : { verify: opts.verify }),
-      ...(opts.verifyThreshold === undefined ? {} : { verifyThreshold: opts.verifyThreshold }),
-      ...(opts.verifyMinFidelity === undefined
-        ? {}
-        : { verifyMinFidelity: opts.verifyMinFidelity }),
-    }),
-    headers,
+  const request: ImportRequestBody = {
+    url: opts.url,
+    directory: opts.directory,
+    depth: opts.depth,
+    maxPages: opts.maxPages,
+    aiComponents: opts.aiComponents,
+  };
+  if (opts.breakpoints !== undefined) {
+    request.breakpoints = opts.breakpoints;
+  }
+  if (opts.model !== undefined) {
+    request.aiModel = opts.model;
+  }
+  if (opts.verify !== undefined) {
+    request.verify = opts.verify;
+  }
+  if (opts.verifyThreshold !== undefined) {
+    request.verifyThreshold = opts.verifyThreshold;
+  }
+  if (opts.verifyMinFidelity !== undefined) {
+    request.verifyMinFidelity = opts.verifyMinFidelity;
+  }
+  // The spread is a plain record copy: an interface is not assignable to the `HeadersInit` record.
+  const init: RequestInit = {
+    body: JSON.stringify(request),
+    headers: { ...headers },
     method: "POST",
-    ...(signal === undefined ? {} : { signal }),
-  });
+  };
+  if (signal !== undefined) {
+    init.signal = signal;
+  }
+  const res = await fetch(endpoint, init);
 
   if (!res.ok) {
     let message = `Import failed (${res.status})`;
     try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) {
-        message = body.error;
+      const body: unknown = await res.json();
+      // `new Error()` stringifies a non-string message, so String() keeps any `error` value's text.
+      if (isJsonObject(body) && body.error) {
+        message = String(body.error);
       }
     } catch {
       /* Non-JSON error body — keep the status message. */
@@ -106,7 +149,7 @@ export async function streamImport(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: { root: string; config: ProjectConfig; result?: ImportSiteSummary } | null = null;
+  let result: ImportStreamResult | null = null;
   /*
    * Lines the parser could not read. Tolerating one is right — an import that ran for two minutes
    * should not die on a garbled progress line — but doing it *silently* is not: the import then
@@ -115,37 +158,47 @@ export async function streamImport(
    */
   let unreadable = 0;
 
-  const handleLine = (line: string) => {
+  /** Apply one line; a `done` line's result is returned for the read loop to keep. */
+  const handleLine = (line: string): ImportStreamResult | undefined => {
     const trimmed = line.trim();
     if (!trimmed) {
-      return;
+      return undefined;
     }
     let parsed: StreamLine;
     try {
+      /* SAFETY: the import-site route writes every line as JSON.stringify of one stream line
+         object with a string `type`, and every other member is optional; each branch below
+         compares `type` to a literal and checks the members it reads before using them. */
       parsed = JSON.parse(trimmed) as StreamLine;
     } catch {
       unreadable += 1;
-      return; // Tolerate a mangled line rather than killing the whole import.
+      return undefined; // Tolerate a mangled line rather than killing the whole import.
     }
     if (parsed.type === "progress") {
-      onProgress({
+      const progress: ImportProgressEvent = {
         phase: parsed.phase ?? "",
         message: parsed.message ?? "",
-        ...(parsed.current === undefined ? {} : { current: parsed.current }),
-        ...(parsed.total === undefined ? {} : { total: parsed.total }),
-      });
+      };
+      if (parsed.current !== undefined) {
+        progress.current = parsed.current;
+      }
+      if (parsed.total !== undefined) {
+        progress.total = parsed.total;
+      }
+      onProgress(progress);
     } else if (parsed.type === "ready" && parsed.root !== undefined) {
       onReady?.({ root: parsed.root });
     } else if (parsed.type === "done" && parsed.root !== undefined && parsed.config) {
-      result = {
-        root: parsed.root,
-        config: parsed.config,
-        ...(parsed.result === undefined ? {} : { result: parsed.result }),
-      };
+      const settled: ImportStreamResult = { root: parsed.root, config: parsed.config };
+      if (parsed.result !== undefined) {
+        settled.result = parsed.result;
+      }
+      return settled;
     } else if (parsed.type === "error") {
       throw new Error(parsed.error || "Import failed");
     }
     // Heartbeats and unknown line types are ignored.
+    return undefined;
   };
 
   try {
@@ -159,10 +212,10 @@ export async function streamImport(
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
-        handleLine(line);
+        result = handleLine(line) ?? result;
       }
     }
-    handleLine(buffer);
+    result = handleLine(buffer) ?? result;
   } finally {
     try {
       await reader.cancel();

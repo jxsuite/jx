@@ -20,6 +20,7 @@
  * they must not differ on is WHICH entries the list should hold.
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { computeRelativePath } from "./components";
 import type { ComponentEntry } from "./components";
 import type { JxElement } from "@jxsuite/schema/types";
@@ -29,9 +30,7 @@ export type ElementsEntry = string | JxElement | { $ref: string };
 
 /** The `$ref` of an entry, when it has one. */
 function refOf(entry: ElementsEntry): string | null {
-  return typeof entry === "object" && entry !== null && typeof entry.$ref === "string"
-    ? entry.$ref
-    : null;
+  return isNonNullObject(entry) && isString(entry.$ref) ? entry.$ref : null;
 }
 
 /**
@@ -81,7 +80,7 @@ export function hasElement(
   const specifier = npmSpecifier(comp);
   if (specifier) {
     return elements.some(
-      (entry) => typeof entry === "string" && (entry === specifier || entry === comp.package),
+      (entry) => isString(entry) && (entry === specifier || entry === comp.package),
     );
   }
   if (!comp.path) {
@@ -132,7 +131,7 @@ export function disableElement(
   if (specifier) {
     // Both spellings: a component ticked off must not stay imported through the package entry.
     return elements.filter(
-      (entry) => !(typeof entry === "string" && (entry === specifier || entry === comp.package)),
+      (entry) => !(isString(entry) && (entry === specifier || entry === comp.package)),
     );
   }
   if (!comp.path) {
@@ -151,7 +150,7 @@ export function removePackageElements(
   pkg: string,
 ): ElementsEntry[] {
   return elements.filter(
-    (entry) => typeof entry !== "string" || !(entry === pkg || entry.startsWith(`${pkg}/`)),
+    (entry) => !isString(entry) || !(entry === pkg || entry.startsWith(`${pkg}/`)),
   );
 }
 

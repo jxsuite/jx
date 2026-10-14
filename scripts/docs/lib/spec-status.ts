@@ -11,7 +11,7 @@ export const STATUS_VOCAB = ["Implemented", "Partial", "Pending", "Future", "Rem
 export type Status = (typeof STATUS_VOCAB)[number];
 
 export function isStatus(word: string): word is Status {
-  return (STATUS_VOCAB as readonly string[]).includes(word);
+  return STATUS_VOCAB.some((status) => status === word);
 }
 
 /**
@@ -120,7 +120,8 @@ const INLINE_OPEN_STATUS = /\*\*(Partial|Pending)\b[^*]*\*\*/g;
 /** A table cell that OPENS with a bold status word. A status word mid-cell is prose. */
 const CELL_STATUS = /^\*\*([A-Za-z]+)\b[^*]*\*\*/;
 const ANY_HEADING = /^(#{2,6})\s+(.*)$/;
-const FENCE = /^\s*(```|~~~)/;
+/** A fenced code block's opening or closing line. Shared by every docs gate that skips fences. */
+export const FENCE = /^\s*(```|~~~)/;
 const ROADMAP_TITLE = /\bRoadmap\b/i;
 /*
  * Sections whose tables use `**Pending**` as a conformance class (standards.md §3.5), not as an
@@ -137,7 +138,8 @@ const HEADER_VERSION = /^\*\*Version:\*\*\s*([^\\]+)/;
 const HEADER_STATUS = /^\*\*Status:\*\*\s*([^\\]+)/;
 const HEADER_UPDATED = /^\*\*Updated:\*\*\s*([^\\]+)/;
 const FOOTER_VERSION = /Specification v([0-9][A-Za-z0-9.-]*)/;
-const CHANGELOG_HEADING = /^##\s+Changelog\s*$/;
+/** The `## Changelog` heading that closes a spec's body. */
+export const CHANGELOG_HEADING = /^##\s+Changelog\s*$/;
 // `- **<version>** (<YYYY-MM-DD>) — <summary>` (em-dash or hyphen separator).
 const CHANGELOG_ENTRY = /^-\s+\*\*([^*]+)\*\*\s*\((\d{4}-\d{2}-\d{2})\)\s*[—-]\s*(.+)$/;
 
@@ -221,15 +223,18 @@ export function compareSpecVersion(a: string, b: string): number | null {
  * A null base means no floor: an unfetched ref, a shallow clone, or a spec that does not exist on
  * the base yet because this branch is what adds it.
  */
-export function versionFloor(
-  local: ParsedVersion,
-  base: ParsedVersion | null,
-): { version: ParsedVersion; raised: boolean } {
+export function versionFloor(local: ParsedVersion, base: ParsedVersion | null): VersionFloor {
   if (!base) {
     return { version: local, raised: false };
   }
   const raised = (compareSpecVersion(base.raw, local.raw) ?? 0) > 0;
   return { version: raised ? base : local, raised };
+}
+
+/** The version a release counts up from, and whether the base raised it above the working file. */
+export interface VersionFloor {
+  version: ParsedVersion;
+  raised: boolean;
 }
 
 /** Parse one spec file's status markers and release metadata. */
@@ -361,11 +366,12 @@ export function parseSpecSource(source: string, file: string): SpecStatus {
         seenNumbered = true;
       }
       if (ROADMAP_TITLE.test(heading[2]!)) {
-        out.roadmaps.push({
-          line: lineNo,
-          title: heading[2]!.trim(),
-          ...(h?.[1] !== undefined ? { anchor: h[1] } : {}),
-        });
+        const roadmap: RoadmapHeading = { line: lineNo, title: heading[2]!.trim() };
+        const anchor = h?.[1];
+        if (anchor !== undefined) {
+          roadmap.anchor = anchor;
+        }
+        out.roadmaps.push(roadmap);
       }
       continue;
     }
@@ -406,6 +412,8 @@ export function parseSpecSource(source: string, file: string): SpecStatus {
       // Everything after the leading marker: a second status on the same line is a second claim.
       const rest = line.slice(bq.index! + bq[0].length);
       for (const m of rest.matchAll(INLINE_OPEN_STATUS)) {
+        /* SAFETY: INLINE_OPEN_STATUS's one capture group is the alternation `(Partial|Pending)`,
+         * so m[1] is always one of those two STATUS_VOCAB words when the regex matched. */
         credit({ status: m[1] as Status, line: lineNo, form: "blockquote" }, line.trim());
       }
       continue;

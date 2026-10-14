@@ -19,40 +19,51 @@ import { describe, test, expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { emitProjectSchema } from "@jxsuite/schema/project-schemas";
+import { CONVENTIONAL_PROJECT_CORE_REF, emitProjectSchema } from "@jxsuite/schema/project-schemas";
 import { validateProjectFile } from "@jxsuite/schema/validate-project";
 import { emitMultiPageProject } from "../src/emit.ts";
 import { createLocalIo } from "../src/io.ts";
 import type { MultiEmitOptions } from "../src/emit.ts";
-import type { JxElement } from "@jxsuite/schema/types";
+import { parseProjectConfig } from "@jxsuite/schema/parse";
+import type { JxElement, ProjectConfig } from "@jxsuite/schema/types";
 
-/** Where a project's own entry schema points at the core fragment it composes over. */
-const CORE_REF = "./node_modules/@jxsuite/schema/schemas/project.core.schema.json";
+/** What {@link emitAndValidate} hands back: the project, where it lives, and its schema errors. */
+interface EmitValidation {
+  dir: string;
+  project: ProjectConfig;
+  errors: string[];
+}
 
 /**
  * Emit a project into a fresh directory, give it the entry schema `jx schema` would have written,
  * and hand back what the project validator says about the pair.
  */
-async function emitAndValidate(
-  options: Omit<MultiEmitOptions, "io">,
-): Promise<{ dir: string; project: Record<string, unknown>; errors: string[] }> {
+async function emitAndValidate(options: Omit<MultiEmitOptions, "io">): Promise<EmitValidation> {
   const dir = await mkdtemp(join(tmpdir(), "jx-import-schema-"));
   await emitMultiPageProject({ ...options, io: createLocalIo(dir) });
   await Bun.write(
     join(dir, "project.schema.json"),
-    `${JSON.stringify(emitProjectSchema({ corePath: CORE_REF, fragments: [] }), null, 2)}\n`,
+    `${JSON.stringify(emitProjectSchema({ corePath: CONVENTIONAL_PROJECT_CORE_REF, fragments: [] }), null, 2)}\n`,
   );
   const result = await validateProjectFile(dir);
   return {
     dir,
     errors: (result.errors ?? []).map((error) => describeError(error)),
-    project: (await Bun.file(join(dir, "project.json")).json()) as Record<string, unknown>,
+    project: parseProjectConfig(await Bun.file(join(dir, "project.json")).text(), "project.json"),
   };
 }
 
 /** The same formatting Studio's `jx-validate.ts` shows a person, so a failure reads as they saw it. */
-function describeError(error: unknown): string {
-  const e = error as { instancePath?: string; message?: string; params?: Record<string, unknown> };
+function describeError(cause: unknown): string {
+  /* SAFETY: every entry of `validateProjectFile(...).errors` is ajv's `validate.errors` verbatim,
+     and an ajv ErrorObject always carries `instancePath` and `params`, with `message` under the
+     default `messages: true`; only an `unevaluatedProperties` error sets `params.unevaluatedProperty`,
+     which is why it stays optional here. */
+  const e = cause as {
+    instancePath?: string;
+    message?: string;
+    params?: { unevaluatedProperty?: string };
+  };
   const property = e.params?.unevaluatedProperty;
   return (
     `${e.instancePath || "(root)"}: ${e.message}` +
@@ -60,7 +71,7 @@ function describeError(error: unknown): string {
   );
 }
 
-const ONE_PAGE = new Map([["pages/index.json", { tagName: "div" } as JxElement]]);
+const ONE_PAGE = new Map<string, JxElement>([["pages/index.json", { tagName: "div" }]]);
 
 describe("the emitted project.json", () => {
   test("validates, with everything an import can put in it", async () => {
@@ -107,7 +118,10 @@ describe("the emitted project.json", () => {
     });
     try {
       // Reintroduce exactly what the emitter used to write, and confirm the gate would have said so.
-      const project = (await Bun.file(join(dir, "project.json")).json()) as Record<string, unknown>;
+      const project = parseProjectConfig(
+        await Bun.file(join(dir, "project.json")).text(),
+        "project.json",
+      );
       expect(errors).toEqual([]);
       await Bun.write(
         join(dir, "project.json"),
@@ -136,7 +150,7 @@ describe("the emitted project.json", () => {
         io: createLocalIo(dir),
         title: "Ordered",
         sourceUrl: "https://example.com",
-        pages: new Map([["pages/index.json", { tagName: "div" } as JxElement]]),
+        pages: new Map<string, JxElement>([["pages/index.json", { tagName: "div" }]]),
         // The order a crawl merges them in, which is not an order.
         breakpoints: {
           "--1390": "(min-width: 1390px)",
@@ -160,7 +174,7 @@ describe("the emitted project.json", () => {
         io: createLocalIo(dir),
         title: "Plain",
         sourceUrl: "https://example.com",
-        pages: new Map([["pages/index.json", { tagName: "div" } as JxElement]]),
+        pages: new Map<string, JxElement>([["pages/index.json", { tagName: "div" }]]),
       });
       const project = await Bun.file(join(dir, "project.json")).json();
       expect(project.$media).toBeUndefined();

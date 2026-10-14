@@ -31,26 +31,12 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import expressionEditorDoc from "./expression-editor.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption, SurfaceOptionGroup } from "../ui/surface";
 
-registerSurface("expression-editor", expressionEditorDoc as unknown as JxDocument);
-
-/** A closed list of choices, in the shape the kit's select reads. */
-export interface ExprOption {
-  value: string;
-  label: string;
-}
-
-/** A delimited run of choices — the kit's own `optgroup`, which draws both halves of the rule. */
-export interface ExprSelectGroup {
-  id: string;
-  label: string;
-  rows: ExprOption[];
-}
+registerSurface("expression-editor", expressionEditorDoc);
 
 /** One chip of the pipeline, as the document draws it. */
-export interface ExprChipView extends Record<string, unknown> {
+export interface ExprChipView {
   /** The joined node path: the repeater's key, and what a click reports back to the flow. */
   key: string;
   label: string;
@@ -83,7 +69,7 @@ export type ExprLead = "none" | "arg" | "case" | "default";
  * Every field is a string, a flag or a list: the document asks no question about an expression, and
  * there is no branch in it that the walk has not already taken.
  */
-export interface ExprRowView extends Record<string, unknown> {
+export interface ExprRowView {
   /**
    * Unique within one editor, and the repeater's key. It is the node's own path plus the slot it
    * fills, so a row that survives an edit keeps its node — which is what stops a keystroke in one
@@ -111,19 +97,19 @@ export interface ExprRowView extends Record<string, unknown> {
   /** The accessible name of the row's icon-only control. */
   title: string;
   /** An `operator` row's grouped operator list. */
-  groups: ExprSelectGroup[];
+  groups: SurfaceOptionGroup[];
   /** An `operator` row offers the catalog beside its picker; a nested one does not. */
   catalog: boolean;
   /** Which rung an `operand` row shows. */
   source: ExprSource;
   /** The rungs on offer. Empty means the slot admits one shape, so there is nothing to choose. */
-  sourceOptions: ExprOption[];
+  sourceOptions: SurfaceOption[];
   /** Whether the rung picker is drawn at all — `sourceOptions` non-empty, said as a flag. */
   chooser: boolean;
   /** `string`, `number`, `boolean` or `null` — what the literal type picker holds. */
   literalType: string;
   /** The literal types on offer. A separate list from {@link sourceOptions}: two questions. */
-  typeOptions: ExprOption[];
+  typeOptions: SurfaceOption[];
   /** Which literal control follows the type picker: `text`, `number`, `bool` or `null`. */
   literal: string;
   /** What a text literal, a number literal or a ref picker holds. */
@@ -131,9 +117,9 @@ export interface ExprRowView extends Record<string, unknown> {
   /** What a boolean literal holds. */
   checked: boolean;
   /** The signals this slot may bind to. */
-  refOptions: ExprOption[];
+  refOptions: SurfaceOption[];
   /** The event refs, as their own named run. Empty where the position admits none. */
-  refGroups: ExprSelectGroup[];
+  refGroups: SurfaceOptionGroup[];
   /** Which leading cell the row carries. */
   lead: ExprLead;
   /** An arg's positional name, or the `default` case's word. */
@@ -181,7 +167,7 @@ export interface ExpressionActions {
   pickChip: (key: string) => void;
 }
 
-interface ExpressionScope extends Record<string, unknown>, ExpressionActions {
+interface ExpressionScope extends ExpressionActions {
   rows: ExprRowView[];
 }
 
@@ -225,7 +211,7 @@ export function renderExpressionEditorSurface(
   }
   takeDown(host, existing);
   host.textContent = "";
-  const scope = reactive({ ...actions, rows }) as ExpressionScope;
+  const scope: ExpressionScope = reactive<ExpressionScope>({ ...actions, rows });
   const record: Mounted = { disposed: false, handle: null, scope };
   mounts.set(host, record);
   /* No race to arbitrate: a repaint arriving while this is in flight takes the branch above — a

@@ -18,7 +18,8 @@ import { describe, test, expect } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import type { JxElement } from "@jxsuite/schema/types";
+import { parseJxDocument } from "@jxsuite/schema/parse";
+import type { JxElement, JxStateDefinition } from "@jxsuite/schema/types";
 import type { ComponentizeResult } from "../src/componentize.ts";
 import { emitMultiPageProject } from "../src/emit.ts";
 import { createLocalIo } from "../src/io.ts";
@@ -27,13 +28,13 @@ function statefulResult(): ComponentizeResult {
   const panel = (index: number): JxElement => ({
     tagName: "div",
     attributes: { role: "tabpanel", hidden: `\${state.active !== ${index}}` },
-    children: [{ tagName: "p", textContent: `\${state.label${index}}` }] as JxElement[],
+    children: [{ tagName: "p", textContent: `\${state.label${index}}` }],
   });
 
   const template: JxElement = {
     tagName: "div",
-    state: { active: 0 } as unknown as Record<string, string>,
-    children: [panel(0), panel(1)] as JxElement[],
+    state: { active: 0 },
+    children: [panel(0), panel(1)],
   };
 
   return {
@@ -41,12 +42,13 @@ function statefulResult(): ComponentizeResult {
       ["tab-group.json", { $id: "TabGroup", tagName: "tab-group", template, instanceCount: 2 }],
     ]),
     rewrittenPages: new Map<string, JxElement>([
-      ["pages/index.json", { tagName: "div", children: [{ tagName: "tab-group" }] as JxElement[] }],
+      ["pages/index.json", { tagName: "div", children: [{ tagName: "tab-group" }] }],
     ]),
   };
 }
 
-async function emitAndRead(): Promise<Record<string, unknown>> {
+/** Emit the stateful component and return the `state` its written document declares. */
+async function emittedState(): Promise<Record<string, JxStateDefinition>> {
   const dir = await mkdtemp(join(tmpdir(), "jx-import-state-"));
   try {
     await emitMultiPageProject({
@@ -55,9 +57,13 @@ async function emitAndRead(): Promise<Record<string, unknown>> {
       sourceUrl: "https://example.com",
       pages: new Map<string, JxElement>(),
       precomputedComponents: statefulResult(),
-    } as Parameters<typeof emitMultiPageProject>[0]);
-    const raw = await readFile(join(dir, "components", "tab-group.json"), "utf8");
-    return JSON.parse(raw) as Record<string, unknown>;
+    });
+    const path = join(dir, "components", "tab-group.json");
+    const { state } = parseJxDocument(await readFile(path, "utf8"), path);
+    if (state === undefined) {
+      throw new Error("the emitted tab-group declares no state at all");
+    }
+    return state;
   } finally {
     await rm(dir, { force: true, recursive: true });
   }
@@ -65,8 +71,7 @@ async function emitAndRead(): Promise<Record<string, unknown>> {
 
 describe("component state survives emission", () => {
   test("declared state is kept, not overwritten by derived defaults", async () => {
-    const doc = await emitAndRead();
-    const state = doc["state"] as Record<string, unknown>;
+    const state = await emittedState();
 
     expect(state).toBeDefined();
     // The declared value, not a placeholder "".
@@ -74,16 +79,14 @@ describe("component state survives emission", () => {
   });
 
   test("derived placeholders still fill in for genuinely undeclared props", async () => {
-    const doc = await emitAndRead();
-    const state = doc["state"] as Record<string, unknown>;
+    const state = await emittedState();
 
     expect(state["label0"]).toBe("");
     expect(state["label1"]).toBe("");
   });
 
   test("an interpolated expression never becomes a state key", async () => {
-    const doc = await emitAndRead();
-    const state = doc["state"] as Record<string, unknown>;
+    const state = await emittedState();
 
     for (const key of Object.keys(state)) {
       expect(key).toMatch(/^[A-Za-z_$][A-Za-z0-9_$]*$/);

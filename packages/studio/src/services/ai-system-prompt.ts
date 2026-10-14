@@ -10,7 +10,8 @@
 import { VOID_ELEMENTS } from "../store.js";
 import { flattenTree } from "../state.js";
 import type { ComponentEntry } from "../files/components.js";
-import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonPrimitive, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 
 /** Options for {@link buildSystemPrompt}. */
 interface BuildSystemPromptOptions {
@@ -362,7 +363,7 @@ ${[...VOID_ELEMENTS].join(", ")}
 
 // ─── State Shape Decision Tree ───────────────────────────────────────────────
 
-const STATE_SHAPE_DECISION_TREE = `## State Shape Decision Tree
+const STATE_ENTRY_DECISION_TREE = `## State Shape Decision Tree
 
 When adding state to a component, choose the right shape:
 
@@ -712,7 +713,7 @@ export const SYSTEM_PROMPT_STATIC_PREFIX =
     // 2. Jx schema reference — kept in ALL modes (pre-project the model plans starter content)
     JX_SCHEMA_REFERENCE,
     // 2a. State shape decision tree
-    STATE_SHAPE_DECISION_TREE,
+    STATE_ENTRY_DECISION_TREE,
     // 2b. Real-world patterns
     REAL_WORLD_PATTERNS,
     // 2c. Design principles — spacing, type, color, layout, restraint
@@ -756,9 +757,9 @@ export function buildSystemPrompt({
   // Their records' own gates, for the same reason — one function answers both the prompt and the
   // Executor (`advertisedCommandTools`).
   const toolList = [
-    ...AI_TOOL_TIERS.filter((t) =>
-      toolActive(t, { canImport, hasDocument, hasProject, treeEditable }),
-    ).map((t) => t.blurb),
+    ...AI_TOOL_TIERS.flatMap((t) =>
+      toolActive(t, { canImport, hasDocument, hasProject, treeEditable }) ? [t.blurb] : [],
+    ),
     ...commandTools,
   ]
     .map((blurb) => `- ${blurb}`)
@@ -860,6 +861,9 @@ function buildDocumentSummary(doc: JxMutableNode) {
   lines.push(`\nElement tree (${flat.length} nodes):`);
   for (const item of flat) {
     const indent = "  ".repeat(item.depth);
+    /* SAFETY: both added members are optional, so the assertion claims nothing a row must carry;
+       one that lacks them reads `undefined`. `FlatRow` itself declares neither, so this label
+       currently prints as `undefined` for every row, a known defect rather than a contract. */
     const row = item as typeof item & { id?: string; tag?: string };
     const label = row.id || row.tag;
     lines.push(`${indent}${label}`);
@@ -872,19 +876,16 @@ function buildDocumentSummary(doc: JxMutableNode) {
       lines.push(`\nState keys (${stateKeys.length}): ${stateKeys.join(", ")}`);
       // Add type info for each state entry
       for (const key of stateKeys) {
-        const entry: unknown = doc.state[key];
-        const entryObj = entry as Record<string, unknown>;
+        const entry = doc.state[key];
         let typeStr = "unknown";
-        if (!entry || typeof entry !== "object") {
-          typeStr = typeof entry;
-        } else if (entryObj.$prototype === "Function") {
+        if (!isNonNullObject(entry)) {
+          typeStr = primitiveTypeName(entry);
+        } else if ("$prototype" in entry && entry.$prototype === "Function") {
           typeStr = "Function";
-        } else if (entryObj.$prototype === "Data") {
+        } else if ("$prototype" in entry && entry.$prototype === "Data") {
           typeStr = "Data source";
-        } else if (typeof entry === "string" && (entry as string).includes("${")) {
-          typeStr = "Computed";
-        } else if (entryObj.type) {
-          typeStr = `Typed (${entryObj.type})`;
+        } else if ("type" in entry && entry.type) {
+          typeStr = `Typed (${String(entry.type)})`;
         } else {
           typeStr = "Scalar";
         }
@@ -895,13 +896,30 @@ function buildDocumentSummary(doc: JxMutableNode) {
 
   // Imported elements
   if (doc.$elements && doc.$elements.length > 0) {
-    const refs = doc.$elements
-      .map((e) => (typeof e === "string" ? e : e.$ref || "(unknown)"))
-      .join(", ");
+    const refs = doc.$elements.map((e) => (isString(e) ? e : e.$ref || "(unknown)")).join(", ");
     lines.push(`\nImported elements: ${refs}`);
   }
 
   return lines.join("\n");
+}
+
+/**
+ * `typeof` of a state entry that is not an object, spelled as the summary has always printed it.
+ *
+ * @param {JsonPrimitive | undefined} value
+ * @returns {string}
+ */
+function primitiveTypeName(value: JsonPrimitive | undefined): string {
+  if (isString(value)) {
+    return "string";
+  }
+  if (isNumber(value)) {
+    return "number";
+  }
+  if (isBoolean(value)) {
+    return "boolean";
+  }
+  return value === null ? "object" : "undefined";
 }
 
 /**
@@ -937,6 +955,9 @@ function buildProjectSummary({
   if (components && components.length > 0) {
     lines.push(`Available components (reuse these instead of rebuilding):`);
     for (const c of components) {
+      /* SAFETY: both added members are optional, so the assertion claims nothing an entry must
+         carry: a discovered component may still bring a legacy `tag` or `name`, and one without
+         them reads `undefined` and falls through to `path`. */
       const entry = c as ComponentEntry & { tag?: string; name?: string };
       const tag = entry.tagName || entry.tag || entry.name || entry.path;
       const label = c.$id ? ` — ${c.$id}` : "";
@@ -952,7 +973,12 @@ function buildProjectSummary({
         `Design tokens (always use var(--token) — never hard-code a color, radius, or font that a token defines):`,
       );
       type TokenEntry = (typeof tokens)[number];
-      const groups: { color: TokenEntry[]; font: TokenEntry[]; other: TokenEntry[] } = {
+      interface TokenGroups {
+        color: TokenEntry[];
+        font: TokenEntry[];
+        other: TokenEntry[];
+      }
+      const groups: TokenGroups = {
         color: [],
         font: [],
         other: [],

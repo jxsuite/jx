@@ -1,11 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import type { JsonObject } from "@jxsuite/schema/types";
 import { handleCodeApi } from "../src/code-api";
+
+/** The code API answers every `/__studio/code/<action>` POST it knows; `null` means it declined. */
+function handled(res: Response | null): Response {
+  if (res === null) {
+    throw new Error("handleCodeApi declined a request it was expected to answer");
+  }
+  return res;
+}
 
 // Code-api locates the oxlint binary by walking up from its own directory probing
 // Node_modules/.bin, so in the workspace layout it finds the repo-root hoisted bin directly —
 // No staging or symlinking is needed for these tests to exercise the real linter.
 
-function codeRequest(action: string, body: unknown) {
+function codeRequest(action: string, body: JsonObject) {
   const url = new URL(`http://localhost/__studio/code/${action}`);
   return {
     req: new Request(url, {
@@ -21,7 +30,7 @@ describe("code-api — lint diagnostics adjustment", () => {
   test("reports diagnostics with line numbers adjusted past the wrapper header", async () => {
     const { req, url } = codeRequest("lint", { code: "debugger;" });
     const res = await handleCodeApi(req, url);
-    const data = await (res as Response).json();
+    const data = await handled(res).json();
     expect(data.error).toBeUndefined();
     expect(data.diagnostics.length).toBeGreaterThan(0);
     // The wrapper adds `function __jx_fn__(...) {` as line 1; spans are shifted back
@@ -32,7 +41,7 @@ describe("code-api — lint diagnostics adjustment", () => {
   test("adjusts offsets by the header length", async () => {
     const { req, url } = codeRequest("lint", { code: "debugger;" });
     const res = await handleCodeApi(req, url);
-    const data = await (res as Response).json();
+    const data = await handled(res).json();
     const label = data.diagnostics[0].labels?.[0];
     // `debugger` starts at the beginning of the snippet
     expect(label.span.offset).toBe(0);
@@ -41,7 +50,7 @@ describe("code-api — lint diagnostics adjustment", () => {
   test("returns no diagnostics for clean code", async () => {
     const { req, url } = codeRequest("lint", { code: "return state;" });
     const res = await handleCodeApi(req, url);
-    const data = await (res as Response).json();
+    const data = await handled(res).json();
     expect(data.error).toBeUndefined();
     expect(data.diagnostics).toEqual([]);
   });
@@ -49,7 +58,7 @@ describe("code-api — lint diagnostics adjustment", () => {
   test("diagnostics on later lines shift accordingly", async () => {
     const { req, url } = codeRequest("lint", { code: "const ok = 1;\ndebugger;\nreturn ok;" });
     const res = await handleCodeApi(req, url);
-    const data = await (res as Response).json();
+    const data = await handled(res).json();
     expect(data.diagnostics.length).toBeGreaterThan(0);
     const label = data.diagnostics[0].labels?.[0];
     expect(label.span.line).toBe(2);
@@ -61,9 +70,9 @@ describe("code-api — format error path", () => {
     // Args is not an array → wrapBody throws before formatting
     const { req, url } = codeRequest("format", { args: 123, code: "return 1;" });
     const res = await handleCodeApi(req, url);
-    const data = await (res as Response).json();
+    const data = await handled(res).json();
     expect(data.code).toBe("return 1;");
     expect(data.errors.length).toBe(1);
-    expect(typeof data.errors[0].message).toBe("string");
+    expect(data.errors[0].message).toBeString();
   });
 });

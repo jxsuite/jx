@@ -15,18 +15,19 @@
  * @module @jxsuite/schema/doc-ops
  */
 
-import type { JxMutableNode, JxPath } from "../types.ts";
+import { isNonNullObject, isNumber } from "./guards";
+import type { JxDocumentValue, JxMutableNode, JxPath } from "../types.ts";
 
 /** Value-carrying document mutation, replayable in either direction. */
 export type JxDocOp =
   /** Set (or delete, when value is undefined) a key on the node at path. */
-  | { op: "set-key"; path: JxPath; key: string; value?: unknown }
+  | { op: "set-key"; path: JxPath; key: string; value?: JxDocumentValue | undefined }
   /** Insert a node at parentPath.children[index]. */
-  | { op: "insert-child"; parentPath: JxPath; index: number; node: unknown }
+  | { op: "insert-child"; parentPath: JxPath; index: number; node: JxMutableNode | string }
   /** Remove parentPath.children[index]. */
   | { op: "remove-child"; parentPath: JxPath; index: number }
   /** Replace parentPath.children[index] with node. */
-  | { op: "set-child"; parentPath: JxPath; index: number; node: unknown }
+  | { op: "set-child"; parentPath: JxPath; index: number; node: JxMutableNode | string }
   /** Raw two-splice move: remove fromParent.children[fromIndex], insert at toParent[toIndex]. */
   | {
       op: "move-child";
@@ -43,27 +44,34 @@ export interface JxDocOpPair {
 
 /** JSON round-trip clone — also normalizes away reactive proxies / functions / undefined. */
 function jsonClone<T>(value: T): T {
+  /* SAFETY: every value cloned here is document data (a node, a children member, or a key's value),
+     which is JSON by contract; the round trip reproduces that shape and drops only functions and
+     `undefined` members, which the document types already treat as absent. */
   // oxlint-disable-next-line unicorn/prefer-structured-clone -- structuredClone throws on reactive proxies; JSON normalization is the point
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
 /** Deep-clone a recorded value (undefined/null pass through; reactive proxies are read through). */
 export function cloneValue<T>(v: T): T {
-  return v === undefined || v === null ? v : (jsonClone(v as object) as T);
+  return v === undefined || v === null ? v : jsonClone(v);
 }
 
 /**
- * Walk a plain document tree by path. Paths address nodes by construction; missing segments and
- * non-node leaves surface as undefined (typed as node for caller ergonomics, matching Studio's
- * historical helper).
+ * Walk a plain document tree by path. Paths address nodes by construction; a missing segment
+ * surfaces as undefined, so every caller checks the answer before treating it as a node.
  */
-export function getNodeAtPath(doc: JxMutableNode, path: JxPath): JxMutableNode {
-  let node = doc;
+export function getNodeAtPath(doc: JxMutableNode, path: JxPath): JxMutableNode | undefined {
+  let node: JxMutableNode | undefined = doc;
   for (const key of path) {
+    // `== null` also stops at a JSON `null` partway down the path.
     if (node == null) {
-      return undefined as unknown as JxMutableNode;
+      return undefined;
     }
-    node = node[key] as JxMutableNode;
+    /* SAFETY: a `JxPath` alternates node keys with a "children" key and an index, so each step
+       lands on a node, on a children array (whose only use is the next, numeric, lookup, which an
+       array answers as a node would), or on nothing. A path that wrongly ends on a string child or a
+       children array reaches a caller as one; `childArray` and `insertableChildren` refuse it. */
+    node = node[key] as JxMutableNode | undefined;
   }
   return node;
 }
@@ -90,44 +98,40 @@ export function childArray(node: JxMutableNode): (JxMutableNode | string)[] {
  * aliases the op object. Throws (with a machine-readable reason) when a target path is missing.
  */
 export function applyDocOpToDoc(doc: JxMutableNode, op: JxDocOp): void {
+  // Read before the switch: an op from outside may carry a kind the union does not name.
+  const { op: kind } = op;
   switch (op.op) {
     case "set-key": {
       const node = getNodeAtPath(doc, op.path);
       if (!node) {
         throw new Error(`doc-op-node-not-found:${op.path.join("/")}`);
       }
-      const target = node as Record<string, unknown>;
       if (op.value === undefined) {
-        delete target[op.key];
+        delete node[op.key];
       } else {
-        target[op.key] = cloneValue(op.value);
+        node[op.key] = cloneValue(op.value);
       }
       return;
     }
     case "insert-child": {
-      const parent = getNodeAtPath(doc, op.parentPath);
-      childArray(parent).splice(op.index, 0, cloneValue(op.node) as JxMutableNode);
+      childArrayAt(doc, op.parentPath).splice(op.index, 0, cloneValue(op.node));
       return;
     }
     case "remove-child": {
-      const parent = getNodeAtPath(doc, op.parentPath);
-      childArray(parent).splice(op.index, 1);
+      childArrayAt(doc, op.parentPath).splice(op.index, 1);
       return;
     }
     case "set-child": {
-      const parent = getNodeAtPath(doc, op.parentPath);
-      childArray(parent).splice(op.index, 1, cloneValue(op.node) as JxMutableNode);
+      childArrayAt(doc, op.parentPath).splice(op.index, 1, cloneValue(op.node));
       return;
     }
     case "move-child": {
       assertNotIntoOwnSubtree(op);
-      const fromParent = getNodeAtPath(doc, op.fromParentPath);
-      const toParent = getNodeAtPath(doc, op.toParentPath);
       /* Both arrays are resolved BEFORE the source is spliced, so a move whose target cannot receive
          children throws with the document untouched rather than having detached the node it could
          not place. */
-      const from = childArray(fromParent);
-      const to = childArray(toParent);
+      const from = childArrayAt(doc, op.fromParentPath);
+      const to = childArrayAt(doc, op.toParentPath);
       const [node] = from.splice(op.fromIndex, 1);
       to.splice(op.toIndex, 0, node!);
       return;
@@ -136,7 +140,19 @@ export function applyDocOpToDoc(doc: JxMutableNode, op: JxDocOp): void {
       break;
     }
   }
-  throw new Error(`unknown-doc-op:${(op as JxDocOp).op}`);
+  throw new Error(`unknown-doc-op:${kind}`);
+}
+
+/**
+ * The children array of the node at `parentPath`, lazily created (see {@link childArray}); throws a
+ * `TypeError` naming the path when no node is there.
+ */
+function childArrayAt(doc: JxMutableNode, parentPath: JxPath): (JxMutableNode | string)[] {
+  const parent = getNodeAtPath(doc, parentPath);
+  if (parent == null) {
+    throw new TypeError(`doc-op-node-not-found:${parentPath.join("/")}`);
+  }
+  return childArray(parent);
 }
 
 /**
@@ -155,10 +171,10 @@ function shiftThroughSplice(
 ): JxPath {
   const depth = parentPath.length;
   const isProperPrefix = depth < path.length && parentPath.every((seg, i) => seg === path[i]);
-  if (!isProperPrefix || path[depth] !== "children" || typeof path[depth + 1] !== "number") {
+  const index = path[depth + 1];
+  if (!isProperPrefix || path[depth] !== "children" || !isNumber(index)) {
     return path;
   }
-  const index = path[depth + 1] as number;
   if (inclusive ? index < spliceIndex : index <= spliceIndex) {
     return path;
   }
@@ -218,13 +234,15 @@ function insertionSlot(index: number, length: number): number {
  * @returns {JxDocOp}
  */
 export function inverseOf(doc: JxMutableNode, op: JxDocOp): JxDocOp {
+  // Read before the switch: an op from outside may carry a kind the union does not name.
+  const { op: kind } = op;
   switch (op.op) {
     case "set-key": {
       const node = getNodeAtPath(doc, op.path);
       if (!node) {
         throw new Error(`doc-op-node-not-found:${op.path.join("/")}`);
       }
-      const before = cloneValue((node as Record<string, unknown>)[op.key]);
+      const before = cloneValue(node[op.key]);
       return before === undefined
         ? { key: op.key, op: "set-key", path: op.path }
         : { key: op.key, op: "set-key", path: op.path, value: before };
@@ -271,7 +289,7 @@ export function inverseOf(doc: JxMutableNode, op: JxDocOp): JxDocOp {
       break;
     }
   }
-  throw new Error(`unknown-doc-op:${(op as JxDocOp).op}`);
+  throw new Error(`unknown-doc-op:${kind}`);
 }
 
 /** The node's existing children array, or null when it has none (or is not a node). */
@@ -292,10 +310,15 @@ function assertIndex(
 }
 
 /** A clone of `parentPath`'s child at `index`, or the applier's reason when there is none. */
-function existingChild(doc: JxMutableNode, parentPath: JxPath, index: number): unknown {
+function existingChild(
+  doc: JxMutableNode,
+  parentPath: JxPath,
+  index: number,
+): JxMutableNode | string {
   const children = childrenAt(doc, parentPath);
   assertIndex(children, parentPath, index);
-  return cloneValue(children[index]);
+  // `assertIndex` has just proven `index` is in range.
+  return cloneValue(children[index]!);
 }
 
 /**
@@ -304,8 +327,9 @@ function existingChild(doc: JxMutableNode, parentPath: JxPath, index: number): u
  * children array addressed as if it were a node, or a mapped-array `children`.
  */
 function insertableChildren(doc: JxMutableNode, parentPath: JxPath): (JxMutableNode | string)[] {
-  const node = getNodeAtPath(doc, parentPath) as unknown as { children?: unknown } | null;
-  if (!node || typeof node !== "object" || Array.isArray(node)) {
+  const node = getNodeAtPath(doc, parentPath);
+  // A path that ends on a string child or a children array is refused here, not just a missing one.
+  if (!isNonNullObject(node) || Array.isArray(node)) {
     throw new Error(`doc-op-node-not-found:${parentPath.join("/")}`);
   }
   if (node.children === undefined) {
@@ -314,7 +338,7 @@ function insertableChildren(doc: JxMutableNode, parentPath: JxPath): (JxMutableN
   if (!Array.isArray(node.children)) {
     throw new TypeError(`doc-op-mapped-children:${parentPath.join("/")}`);
   }
-  return node.children as (JxMutableNode | string)[];
+  return node.children;
 }
 
 /**

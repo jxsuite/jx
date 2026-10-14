@@ -54,7 +54,7 @@ describe("appInfo", () => {
     process.env.JX_STUDIO_ASSETS = "/nix/store/abc/assets";
     expect(appInfo()).toMatchObject({
       channel: "system",
-      version: (pkg as { version: string }).version,
+      version: pkg.version,
     });
   });
 

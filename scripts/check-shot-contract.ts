@@ -51,6 +51,18 @@
 
 import { isAbsolute, resolve } from "node:path";
 
+import {
+  isBoolean,
+  isFunction,
+  isJsonObject,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+
+import { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.ts";
+
 /**
  * Paths in this file are repo-relative, resolved against the repo root rather than `cwd`.
  *
@@ -76,7 +88,7 @@ function fromRoot(path: string): string {
 export interface CommandRecord {
   id: string;
   /** JSON Schema for `run`'s args, when the record declares one. */
-  args?: object;
+  args?: ArgsSchema;
   /** `false` once a record opts out of the `run()` projection. */
   scriptable: boolean;
   /** Module that declared it, so a failure says where to look. */
@@ -90,10 +102,12 @@ export const DEFAULT_COMMAND_SOURCES = [
   "packages/studio/src/services/automation.ts",
 ] as const;
 
-export const DEFAULT_MANIFEST = "scripts/screenshots/manifest.json";
-
-/** The manifest shape this file implements. A bump is for surface SHAPE, never for content drift. */
-export const CONTRACT_VERSION = 1;
+/**
+ * The runner and this checker read one manifest file at one contract version, so both constants
+ * live in the constants-only `screenshots/lib/contract.ts`. Re-exported because the Studio suite
+ * imports them from here.
+ */
+export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.ts";
 
 // ─── Committed budgets ────────────────────────────────────────────────────────
 
@@ -181,6 +195,10 @@ export const CONTRACT_BUDGET = {
 export type BudgetKey = keyof typeof CONTRACT_BUDGET;
 export type ContractCounts = Record<BudgetKey, number>;
 
+/* SAFETY: `Object.keys` of a const object literal whose keys are all own, non-numeric strings
+ * returns exactly its declared keys, in declaration order, which is every `BudgetKey`. */
+const BUDGET_KEYS = Object.keys(CONTRACT_BUDGET) as BudgetKey[];
+
 /**
  * The toggle ids the manifest still names, and how many steps name each. **Empty, and staying so.**
  *
@@ -244,6 +262,12 @@ const INPUT_ACTIONS = new Set([
   "type",
 ]);
 
+/** A contract-1 verb: the command id it stands for, and the argument its `value` field carries. */
+interface LegacyVerb {
+  id: string;
+  valueAs?: string;
+}
+
 /**
  * Contract-1 bespoke verbs, read as the command step each one already is.
  *
@@ -259,26 +283,26 @@ const INPUT_ACTIONS = new Set([
  * conversion rewrites the manifest into `cmd:` steps, this table is deleted and nothing else
  * moves.
  */
-const LEGACY_ACTIONS: Readonly<Record<string, { id: string; valueAs?: string }>> = {
-  editDef: { id: "formula.editDef" },
-  editFunction: { id: "formula.editEvent" },
-  openBrowse: { id: "library.open" },
-  openDataGrid: { id: "data.openGrid" },
-  openNewProject: { id: "project.new" },
-  openQuickSearch: { id: "search.openPalette" },
-  openSettings: { id: "settings.open" },
-  seedAssistant: { id: "seed.assistant" },
-  seedCollab: { id: "seed.collab" },
-  seedPublish: { id: "seed.publish" },
-  select: { id: "selection.set" },
-  setActivity: { id: "view.setActivity", valueAs: "tab" },
-  setCanvasMode: { id: "canvas.setMode", valueAs: "mode" },
-  setRightTab: { id: "view.setRightTab", valueAs: "tab" },
-  setStatus: { id: "view.setStatus", valueAs: "text" },
-  setTheme: { id: "view.setTheme", valueAs: "color" },
-  setZoom: { id: "canvas.setZoom", valueAs: "zoom" },
-  showWelcome: { id: "project.showWelcome" },
-};
+const LEGACY_ACTIONS: ReadonlyMap<string, LegacyVerb> = new Map([
+  ["editDef", { id: "formula.editDef" }],
+  ["editFunction", { id: "formula.editEvent" }],
+  ["openBrowse", { id: "library.open" }],
+  ["openDataGrid", { id: "data.openGrid" }],
+  ["openNewProject", { id: "project.new" }],
+  ["openQuickSearch", { id: "search.openPalette" }],
+  ["openSettings", { id: "settings.open" }],
+  ["seedAssistant", { id: "seed.assistant" }],
+  ["seedCollab", { id: "seed.collab" }],
+  ["seedPublish", { id: "seed.publish" }],
+  ["select", { id: "selection.set" }],
+  ["setActivity", { id: "view.setActivity", valueAs: "tab" }],
+  ["setCanvasMode", { id: "canvas.setMode", valueAs: "mode" }],
+  ["setRightTab", { id: "view.setRightTab", valueAs: "tab" }],
+  ["setStatus", { id: "view.setStatus", valueAs: "text" }],
+  ["setTheme", { id: "view.setTheme", valueAs: "color" }],
+  ["setZoom", { id: "canvas.setZoom", valueAs: "zoom" }],
+  ["showWelcome", { id: "project.showWelcome" }],
+]);
 
 // ─── Pure rules ───────────────────────────────────────────────────────────────
 
@@ -370,13 +394,13 @@ export function suggestFor(id: string, known: Iterable<string>): string {
 }
 
 /** A JSON Schema keyword subset — everything a command's `args` schema realistically declares. */
-interface ArgsSchema {
+export interface ArgsSchema {
   type?: string | readonly string[];
   properties?: Record<string, ArgsSchema>;
   required?: readonly string[];
   additionalProperties?: boolean;
-  enum?: readonly unknown[];
-  const?: unknown;
+  enum?: readonly JsonValue[];
+  const?: JsonValue;
   oneOf?: readonly ArgsSchema[];
   items?: ArgsSchema;
   minimum?: number;
@@ -389,28 +413,28 @@ interface ArgsSchema {
   declaredBy?: string;
 }
 
-const JSON_TYPE_OF: Record<string, string> = {
-  boolean: "boolean",
-  number: "number",
-  object: "object",
-  string: "string",
-};
-
-function jsonTypeOf(value: unknown): string {
+/** The JSON Schema `type` name of a JSON value: `array` and `null` are their own types. */
+function jsonTypeOf(value: JsonValue): string {
   if (value === null) {
     return "null";
   }
   if (Array.isArray(value)) {
     return "array";
   }
-  return JSON_TYPE_OF[typeof value] ?? typeof value;
+  if (isString(value)) {
+    return "string";
+  }
+  if (isNumber(value)) {
+    return "number";
+  }
+  return isBoolean(value) ? "boolean" : "object";
 }
 
-function show(value: unknown): string {
-  return typeof value === "string" ? `"${value}"` : JSON.stringify(value);
+function show(value: JsonValue): string {
+  return isString(value) ? `"${value}"` : JSON.stringify(value);
 }
 
-function typeMatches(expected: string | readonly string[], value: unknown): boolean {
+function typeMatches(expected: string | readonly string[], value: JsonValue): boolean {
   /* JSON Schema's `type` may be a UNION, and two shipped commands declare one — `canvas.setBreakpoint`'s
      `media` is `["string", "null"]` and `canvas.setTestProp`'s `value` is the whole JSON ladder. This
      compared an array to a string, so any union type failed every value; no shot named one of those
@@ -420,7 +444,7 @@ function typeMatches(expected: string | readonly string[], value: unknown): bool
     return expected.some((option) => typeMatches(option, value));
   }
   if (expected === "integer") {
-    return typeof value === "number" && Number.isInteger(value);
+    return isNumber(value) && Number.isInteger(value);
   }
   return jsonTypeOf(value) === expected;
 }
@@ -465,14 +489,14 @@ function describeBranch(branch: ArgsSchema): string {
 function propertyIssue(
   property: ArgsSchema,
   key: string,
-  value: unknown,
+  value: JsonValue,
   source: string,
 ): string | undefined {
   if (property.type !== undefined && !typeMatches(property.type, value)) {
     return `with ${key} ${show(value)} (${jsonTypeOf(value)}); ${source} declares ${property.type}`;
   }
   if (property.const !== undefined) {
-    /* `describeShape`'s `const` row decides alone, so a satisfied const is the whole answer: the
+    /* `coercionRowOf`'s `const` row decides alone, so a satisfied const is the whole answer: the
        rules below do not get to refuse a `{ type: "string", const: "" }` the runtime admits. */
     return value === property.const
       ? undefined
@@ -508,7 +532,7 @@ function propertyIssue(
     return `with ${key} ""; ${source} declares a non-empty string`;
   }
   if (
-    typeof value === "number" &&
+    isNumber(value) &&
     ((property.minimum !== undefined && value < property.minimum) ||
       (property.maximum !== undefined && value > property.maximum))
   ) {
@@ -526,7 +550,7 @@ function propertyIssue(
 function oneOfIssue(
   branches: readonly ArgsSchema[],
   key: string,
-  value: unknown,
+  value: JsonValue,
   source: string,
 ): string | undefined {
   const refusals: string[] = [];
@@ -543,8 +567,8 @@ function oneOfIssue(
   if (refusals.length === 1) {
     return refusals[0];
   }
-  const shapes = branches.map((branch) => describeBranch(branch)).join(" | ");
-  return `with ${key} ${show(value)} (${jsonTypeOf(value)}); ${source} declares ${shapes}`;
+  const alternatives = branches.map((branch) => describeBranch(branch)).join(" | ");
+  return `with ${key} ${show(value)} (${jsonTypeOf(value)}); ${source} declares ${alternatives}`;
 }
 
 /**
@@ -553,8 +577,7 @@ function oneOfIssue(
  * Fragments, not sentences: the caller prefixes `manifest shot "x" step n names command "id" `, so
  * every failure in this file reads as one sentence naming both sides of the break.
  */
-export function validateArgs(schema: object, args: Record<string, unknown>): string[] {
-  const spec = schema as ArgsSchema;
+export function validateArgs(spec: ArgsSchema, args: JsonObject): string[] {
   const properties = spec.properties ?? {};
   const issues: string[] = [];
   for (const key of spec.required ?? []) {
@@ -592,7 +615,7 @@ interface CommandStep {
   /** `manifest shot "tab-strip-shot" step 12`, or `… variant "cleanup" step 3`. */
   at: string;
   id: string;
-  args: Record<string, unknown>;
+  args: JsonObject;
 }
 
 interface Sighting {
@@ -611,33 +634,29 @@ interface ManifestFacts {
   contract: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+/** The plain objects in a manifest list; anything else, list or entry, reads as nothing. */
+function records(value: JsonValue | undefined): JsonObject[] {
+  return Array.isArray(value) ? value.filter((entry) => isJsonObject(entry)) : [];
 }
 
-function records(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter((entry) => isRecord(entry)) : [];
-}
-
-function asArgs(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {};
+function asArgs(value: JsonValue | undefined): JsonObject {
+  return isJsonObject(value) ? value : {};
 }
 
 /** A contract-1 action's own fields, read as the command args the manifest conversion writes. */
-function legacyArgs(
-  verb: { id: string; valueAs?: string },
-  action: Record<string, unknown>,
-): Record<string, unknown> {
+function legacyArgs(verb: LegacyVerb, action: JsonObject): JsonObject {
   if (verb.valueAs) {
-    return "value" in action ? { [verb.valueAs]: action.value } : {};
+    // A key parsed from JSON always holds a value, so presence is "not undefined".
+    const { value } = action;
+    return value === undefined ? {} : { [verb.valueAs]: value };
   }
   const { do: _verb, ...rest } = action;
   return rest;
 }
 
 /** Read every fact the rules need out of a parsed manifest, in one traversal. */
-export function readManifest(raw: unknown): ManifestFacts {
-  const root = isRecord(raw) ? raw : {};
+export function readManifest(raw: JsonValue): ManifestFacts {
+  const root = asArgs(raw);
   const counts: ContractCounts = {
     selectorActions: 0,
     waitForSelectors: 0,
@@ -655,24 +674,24 @@ export function readManifest(raw: unknown): ManifestFacts {
     seedSteps: [],
     regionIds: [],
     counts,
-    contract: typeof root.contract === "number" ? root.contract : 1,
+    contract: isNumber(root.contract) ? root.contract : 1,
   };
   const distinctRegions = new Set<string>();
 
-  const countArgSelectors = (args: Record<string, unknown>) => {
+  const countArgSelectors = (args: JsonObject) => {
     for (const value of Object.values(args)) {
-      if (typeof value === "string" && looksLikeSelector(value)) {
+      if (isString(value) && looksLikeSelector(value)) {
         counts.argSelectors += 1;
       }
     }
   };
-  const countUnstable = (entry: Record<string, unknown>) => {
+  const countUnstable = (entry: JsonObject) => {
     if (entry.unstable !== undefined) {
       counts.unstable += 1;
     }
   };
-  const takeRegion = (at: string, id: unknown) => {
-    if (typeof id !== "string" || !id) {
+  const takeRegion = (at: string, id: JsonValue | undefined) => {
+    if (!isString(id) || !id) {
       return;
     }
     facts.regionIds.push({ at, value: id });
@@ -683,29 +702,29 @@ export function readManifest(raw: unknown): ManifestFacts {
       }
     }
   };
-  const takeClip = (at: string, clip: unknown) => {
-    if (isRecord(clip) && typeof clip.selector === "string") {
+  const takeClip = (at: string, clip: JsonValue | undefined) => {
+    if (isJsonObject(clip) && isString(clip.selector)) {
       counts.clipSelectors += 1;
       takeRegion(at, clip.selector);
     }
   };
   // `waitFor` selectors are counted, not addressed: the manifest conversion turned all 43 into
   // `expect` entries, so nothing here ever needs to name the step that held one.
-  const takeWaits = (waits: unknown) => {
+  const takeWaits = (waits: JsonValue | undefined) => {
     for (const wait of records(waits)) {
       if (wait.type === "selector") {
         counts.waitForSelectors += 1;
       }
     }
   };
-  const takeSteps = (label: string, steps: unknown) => {
+  const takeSteps = (label: string, steps: JsonValue | undefined) => {
     for (const [index, step] of records(steps).entries()) {
       const at = `${label} step ${index + 1}`;
       countUnstable(step);
       const args = asArgs(step.args);
       countArgSelectors(args);
-      const kind = typeof step.do === "string" ? step.do : "";
-      if (typeof step.selector === "string") {
+      const kind = isString(step.do) ? step.do : "";
+      if (isString(step.selector)) {
         counts.selectorActions += 1;
       }
       if (INPUT_ACTIONS.has(kind) || step.input !== undefined) {
@@ -717,31 +736,31 @@ export function readManifest(raw: unknown): ManifestFacts {
         takeRegion(at, step.region);
       }
       const commandId = kind === "run" ? step.id : step.cmd;
-      const legacy = LEGACY_ACTIONS[kind];
-      if (typeof commandId === "string") {
+      const legacy = LEGACY_ACTIONS.get(kind);
+      if (isString(commandId)) {
         facts.commandSteps.push({ at, args, id: commandId });
       } else if (legacy) {
         facts.commandSteps.push({ at, args: legacyArgs(legacy, step), id: legacy.id });
       }
-      if (typeof step.seed === "string") {
+      if (isString(step.seed)) {
         facts.seedSteps.push({ at, args, id: step.seed });
       }
     }
   };
 
-  takeWaits(isRecord(root.defaults) ? root.defaults.waitFor : undefined);
-  takeClip("manifest defaults", isRecord(root.defaults) ? root.defaults.clip : undefined);
+  takeWaits(isJsonObject(root.defaults) ? root.defaults.waitFor : undefined);
+  takeClip("manifest defaults", isJsonObject(root.defaults) ? root.defaults.clip : undefined);
 
   for (const [index, shot] of records(root.shots).entries()) {
     facts.shots += 1;
-    const name = typeof shot.name === "string" ? shot.name : `#${index + 1}`;
+    const name = isString(shot.name) ? shot.name : `#${index + 1}`;
     const label = `manifest shot "${name}"`;
     // A quarantined shot is one the repo ADMITS is broken (scripts/screenshots/README.md,
     // "Authoring notes"). The runner skips it, `docs:check` fails if a page still illustrates itself
     // With it, and holding a disabled shot to the contract would only mean the fix has to be made
     // Twice. Its ids are checked again the moment the quarantine is lifted, which is the point at
     // Which someone is looking.
-    if (isRecord(shot.status) && shot.status.state === "quarantined") {
+    if (isJsonObject(shot.status) && shot.status.state === "quarantined") {
       facts.quarantined.push(name);
       continue;
     }
@@ -751,7 +770,7 @@ export function readManifest(raw: unknown): ManifestFacts {
     takeWaits(shot.waitFor);
     takeClip(label, shot.clip);
     for (const region of records(shot.regions)) {
-      if (typeof region.selector === "string") {
+      if (isString(region.selector)) {
         counts.regionSelectors += 1;
         takeRegion(label, region.selector);
       }
@@ -764,7 +783,7 @@ export function readManifest(raw: unknown): ManifestFacts {
       takeRegion(label, assertion.region);
     }
     for (const variant of records(shot.variants)) {
-      const suffix = typeof variant.suffix === "string" ? variant.suffix : "?";
+      const suffix = isString(variant.suffix) ? variant.suffix : "?";
       const variantLabel = `${label} variant "${suffix}"`;
       takeSteps(variantLabel, variant.actions);
       takeWaits(variant.waitFor);
@@ -789,7 +808,7 @@ export interface ContractResult {
 }
 
 export interface ContractInput {
-  manifest: unknown;
+  manifest: JsonValue;
   commands: CommandTable;
   budget?: Readonly<ContractCounts>;
   toggleDebt?: Readonly<Record<string, number>>;
@@ -862,7 +881,7 @@ export function checkShotContract(input: ContractInput): ContractResult {
 
   const ratchets: string[] = [];
   // Canonical order, so a violation list reads the same whoever supplied the budget.
-  for (const key of Object.keys(CONTRACT_BUDGET) as BudgetKey[]) {
+  for (const key of BUDGET_KEYS) {
     const actual = facts.counts[key];
     const allowed = budget[key];
     if (actual > allowed) {
@@ -902,9 +921,9 @@ export const REMEDY =
   "justification as lowering a coverage threshold — those counts are the migration's scoreboard.";
 
 export function formatSummary(result: ContractResult): string {
-  const budgetLine = (Object.keys(CONTRACT_BUDGET) as BudgetKey[])
-    .map((key) => `${key} ${result.counts[key]}/${CONTRACT_BUDGET[key]}`)
-    .join(" · ");
+  const budgetLine = BUDGET_KEYS.map(
+    (key) => `${key} ${result.counts[key]}/${CONTRACT_BUDGET[key]}`,
+  ).join(" · ");
   const lines = [
     `shot-contract OK: ${result.shots} shot(s), ${result.commandSteps} command step(s) over ` +
       `${result.commandIds} id(s).`,
@@ -924,10 +943,16 @@ export function formatSummary(result: ContractResult): string {
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
+/** The shim's per-id record (`ManifestId` in packages/studio/src/services/automation.ts). */
+interface ShimEntry {
+  disposition: string;
+  note: string;
+}
+
 interface CommandModule {
-  defaultCommandSet?: () => { id: string; args?: object; isScriptable?: boolean }[];
+  defaultCommandSet?: () => { id: string; args?: ArgsSchema; isScriptable?: boolean }[];
   seedIds?: () => string[];
-  AUTOMATION_COMMANDS?: Record<string, unknown>;
+  AUTOMATION_COMMANDS?: Readonly<Record<string, ShimEntry>>;
 }
 
 /**
@@ -943,27 +968,35 @@ interface CommandModule {
  */
 export async function loadCommandTable(modulePaths: readonly string[]): Promise<CommandTable> {
   const table = new Map<string, CommandRecord>();
-  const add = (id: string, source: string, args?: object, scriptable = true) => {
-    if (!table.has(id)) {
-      table.set(id, { id, scriptable, source, ...(args ? { args } : {}) });
+  const add = (id: string, source: string, args?: ArgsSchema, scriptable = true) => {
+    if (table.has(id)) {
+      return;
     }
+    const record: CommandRecord = { id, scriptable, source };
+    if (args) {
+      record.args = args;
+    }
+    table.set(id, record);
   };
   for (const path of modulePaths) {
+    /* SAFETY: every path is a command source (DEFAULT_COMMAND_SOURCES, or a `--commands` fixture)
+     * whose exports, when present, have the `CommandModule` signatures; each member is optional
+     * and is checked to be a function or an object below before it is called or read. */
     const module_ = (await import(Bun.pathToFileURL(fromRoot(path)).href)) as CommandModule;
     let declared = false;
-    if (typeof module_.defaultCommandSet === "function") {
+    if (isFunction(module_.defaultCommandSet)) {
       declared = true;
       for (const command of module_.defaultCommandSet()) {
         add(command.id, path, command.args, command.isScriptable !== false);
       }
     }
-    if (typeof module_.seedIds === "function") {
+    if (isFunction(module_.seedIds)) {
       declared = true;
       for (const id of module_.seedIds()) {
         add(id, path);
       }
     }
-    if (module_.AUTOMATION_COMMANDS && typeof module_.AUTOMATION_COMMANDS === "object") {
+    if (isNonNullObject(module_.AUTOMATION_COMMANDS)) {
       declared = true;
       for (const id of Object.keys(module_.AUTOMATION_COMMANDS)) {
         add(id, path);
@@ -1009,9 +1042,9 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 2;
   }
 
-  let manifest: unknown;
+  let manifest: JsonValue;
   try {
-    manifest = (await Bun.file(fromRoot(manifestPath)).json()) as unknown;
+    manifest = await Bun.file(fromRoot(manifestPath)).json();
   } catch (error) {
     console.error(`Cannot read ${manifestPath}: ${error instanceof Error ? error.message : error}`);
     return 2;

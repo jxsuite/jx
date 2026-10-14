@@ -15,6 +15,9 @@ try {
  * file down with it. The canvas bridge is exercised through `fakeChannelPair`, never through a real
  * page load, so the fetch was never wanted here.
  */
+/* SAFETY: GlobalRegistrator.register() copies the happy-dom window's members onto globalThis,
+   `happyDOM` (the DetachedWindowAPI that owns `settings`) among them. Both members stay optional
+   because the guard below must tolerate a runtime where registration did not take place. */
 const { happyDOM } = globalThis as {
   happyDOM?: { settings?: { disableIframePageLoading?: boolean } };
 };

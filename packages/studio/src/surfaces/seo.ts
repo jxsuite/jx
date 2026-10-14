@@ -33,13 +33,12 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import seoDoc from "./seo.json";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("seo", seoDoc as unknown as JxDocument);
+registerSurface("seo", seoDoc);
 
 /** How a field's provenance is drawn — §6.7's vocabulary, reduced to three shapes and an absence. */
 export type SeoChipKind = "none" | "dot" | "static" | "link";
@@ -65,8 +64,9 @@ export interface SeoFieldView {
   chipTitle: string;
 }
 
-/** One named warning. A list, never a total. */
+/** A named thing that is wrong, or absent. Never summed: the list IS the report. */
 export interface SeoWarningView {
+  /** Stable id, so a test and a shot name the same warning. */
   id: string;
   /** The head key it is about, so the row can carry it as code. */
   field: string;
@@ -154,17 +154,17 @@ export interface SeoSurfaceHandle {
 type LineState = "text" | "unset";
 
 /** One field row with the flags the document branches on. */
-interface SeoFieldRow extends SeoFieldView, Record<string, unknown> {
+interface SeoFieldRow extends SeoFieldView {
   valueState: LineState;
 }
 
 /** One editable row with the flags the document branches on. */
-interface SeoEditRow extends SeoEditRowView, Record<string, unknown> {
+interface SeoEditRow extends SeoEditRowView {
   hasThumb: boolean;
 }
 
 /** One group with its rows already flagged. */
-interface SeoGroupRow extends Record<string, unknown> {
+interface SeoGroupRow {
   key: string;
   title: string;
   note: string;
@@ -196,12 +196,12 @@ interface SeoFlags {
   groups: SeoGroupRow[];
 }
 
-interface SeoScope extends Record<string, unknown>, SeoFlags {
+interface SeoScope extends SeoFlags {
   documentLabel: string;
   edit: (key: string, value: string) => void;
   commit: (key: string, value: string) => void;
   upload: (key: string) => void;
-  browse: (key: string, anchor: unknown) => void;
+  browse: (key: string, anchor: EventTarget | null) => void;
   openDonor: (key: string) => void;
   closed: () => void;
 }
@@ -268,9 +268,9 @@ export function openSeoSurface(options: SeoSurfaceOptions): SeoSurfaceHandle {
     options.onClosed();
   };
 
-  const scope = reactive({
+  const scope: SeoScope = reactive<SeoScope>({
     ...derive(options.view),
-    browse: (key: string, anchor: unknown) => {
+    browse: (key: string, anchor: EventTarget | null) => {
       if (anchor instanceof HTMLElement) {
         options.onBrowse(key, anchor);
       }
@@ -288,18 +288,24 @@ export function openSeoSurface(options: SeoSurfaceOptions): SeoSurfaceHandle {
     upload: (key: string) => {
       options.onUpload(key);
     },
-  }) as SeoScope;
+  });
 
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("seo", scope, slot).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `seo.json`'s root definition carries `tagName: "jx-dialog"`, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     const box = element.querySelector<HTMLElement>('dialog[part="dialog"]') ?? element;
@@ -317,7 +323,7 @@ export function openSeoSurface(options: SeoSurfaceOptions): SeoSurfaceHandle {
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does — `finish` tells it so.
       mounted?.dispose();

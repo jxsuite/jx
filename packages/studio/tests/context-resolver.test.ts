@@ -6,6 +6,8 @@
 import { describe, expect, test } from "bun:test";
 import { resolveContextPointer } from "../src/services/context-resolver";
 import contentCollectionClass from "@jxsuite/parser/ContentCollection.class.json";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 
 const projectConfig = {
   auth: { roles: ["admin", "editor"] },
@@ -17,7 +19,7 @@ const projectConfig = {
       source: "./content/post/",
     },
   },
-} as Record<string, unknown>;
+} satisfies ProjectConfig;
 
 describe("resolveContextPointer basics", () => {
   test("non-context pointers resolve to undefined", () => {
@@ -42,7 +44,7 @@ describe("resolveContextPointer basics", () => {
   // Legacy-form coverage: old class descriptors point at `contentTypes`; the walker is key-agnostic
   // So a contentTypes-keyed config keeps resolving.
   test("follows any section name without special-casing (legacy contentTypes vs content)", () => {
-    const config = { contentTypes: { doc: { schema: {} } } } as Record<string, unknown>;
+    const config = { contentTypes: { doc: { schema: {} } } } satisfies ProjectConfig;
     expect(resolveContextPointer("#/$context/contentTypes", { projectConfig: config })).toEqual({
       doc: { schema: {} },
     });
@@ -59,7 +61,7 @@ describe("resolveContextPointer basics", () => {
   });
 
   test("walking through a primitive resolves to undefined", () => {
-    const config = { name: "site" } as Record<string, unknown>;
+    const config = { name: "site" } satisfies ProjectConfig;
     expect(
       resolveContextPointer("#/$context/name/deeper", { projectConfig: config }),
     ).toBeUndefined();
@@ -128,39 +130,39 @@ describe("$formats virtual root", () => {
 
 // ─── Regression: ContentCollection.class.json enum refs ──────────────────────
 
-interface ClassParameter {
-  type: {
-    enum?: { $ref?: string };
-    items?: { properties: Record<string, { enum?: { $ref?: string } }> };
-  };
-}
+const classParams = contentCollectionClass.$defs.parameters;
 
-const classParams = (contentCollectionClass as unknown as { $defs: Record<string, unknown> }).$defs
-  .parameters as Record<string, ClassParameter>;
+/** The keys an enum consumer offers for a resolved object; anything else fails the test. */
+function enumChoices(resolved: JsonValue | undefined): string[] {
+  if (!isJsonObject(resolved)) {
+    throw new TypeError(`expected the pointer to resolve to an object, got ${String(resolved)}`);
+  }
+  return Object.keys(resolved);
+}
 
 describe("ContentCollection.class.json enum refs (descriptor regression)", () => {
   test("contentType enum ref resolves to the project content type keys", () => {
-    const ref = classParams.contentType!.type.enum!.$ref!;
+    const ref = classParams.contentType.type.enum.$ref;
     expect(ref).toBe("#/$context/content");
     const resolved = resolveContextPointer(ref, { projectConfig });
     // Enum consumers apply Object.keys to object results — same choices as before
-    expect(Object.keys(resolved as Record<string, unknown>)).toEqual(["page", "post"]);
+    expect(enumChoices(resolved)).toEqual(["page", "post"]);
   });
 
   test("filter/sort field enum refs resolve the selected content type's properties", () => {
-    for (const param of ["filter", "sort"]) {
-      const ref = classParams[param]!.type.items!.properties.field!.enum!.$ref!;
+    for (const param of ["filter", "sort"] as const) {
+      const ref = classParams[param].type.items.properties.field.enum.$ref;
       expect(ref).toBe("#/$context/content/{@contentType}/schema/properties");
       const resolved = resolveContextPointer(ref, {
         projectConfig,
         scope: { contentType: "post" },
       });
-      expect(Object.keys(resolved as Record<string, unknown>)).toEqual(["date", "slug", "title"]);
+      expect(enumChoices(resolved)).toEqual(["date", "slug", "title"]);
     }
   });
 
   test("field enum refs without a selected contentType resolve to undefined (textfield fallback)", () => {
-    const ref = classParams.filter!.type.items!.properties.field!.enum!.$ref!;
+    const ref = classParams.filter.type.items.properties.field.enum.$ref;
     expect(resolveContextPointer(ref, { projectConfig, scope: {} })).toBeUndefined();
   });
 });

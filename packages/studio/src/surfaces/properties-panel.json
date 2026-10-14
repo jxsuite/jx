@@ -629,7 +629,7 @@
                             "display": "contents"
                           },
                           "$switch": {
-                            "$ref": "$map/item/shape"
+                            "$ref": "$map/item/variant"
                           },
                           "cases": {
                             "field": {

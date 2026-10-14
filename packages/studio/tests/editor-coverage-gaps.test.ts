@@ -12,9 +12,19 @@
 import { flush, resetStudioState, resetWorkspaceWithTab, topDialog } from "./harness";
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
-import type { SlashCommand } from "../src/editor/inline-edit";
+import { isNodeObject } from "@jxsuite/schema/guards";
+import type { JxContentResult, SlashCommand } from "../src/editor/inline-edit";
 import type { Tab } from "../src/tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+
+/** The element children of `node`; the fixtures here hold no text children at the top level. */
+function elementChildren(node: JxMutableNode | undefined): JxMutableNode[] {
+  const children = node?.children;
+  if (!Array.isArray(children) || !children.every((child) => isNodeObject(child))) {
+    throw new Error("expected an array of element children");
+  }
+  return children;
+}
 
 void mock.module("monaco-editor/editor", () => ({
   MarkerSeverity: { Error: 8, Warning: 4 },
@@ -32,28 +42,28 @@ const { dismissContextMenu, pasteNode, showContextMenu } =
 const { initLayers } = await import("../src/ui/layers");
 const { activeTab, workspace } = await import("../src/workspace/workspace");
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 // ─── Inline-edit apply ───────────────────────────────────────────────────────
 
 describe("inline-edit apply gaps", () => {
   let tab: Tab;
-  const RICH = ["a ", { tagName: "strong", textContent: "b" }];
-  const kids = () => tab.doc.document.children as Record<string, unknown>[];
+  const RICH: (JxMutableNode | string)[] = ["a ", { tagName: "strong", textContent: "b" }];
+  const kids = () => elementChildren(tab.doc.document);
 
   beforeEach(() => {
     resetStudioState();
     tab = resetWorkspaceWithTab({
       children: [{ children: structuredClone(RICH), tagName: "p" }],
       tagName: "div",
-    } as never);
+    });
   });
 
   test("committing identical rich children is a no-op", () => {
-    applyInlineCommit(tab, ["children", 0], structuredClone(RICH) as never, null);
+    applyInlineCommit(tab, ["children", 0], structuredClone(RICH), null);
     expect(tab.doc.dirty).toBe(false);
     expect(kids()[0]!.children).toEqual(RICH);
   });
@@ -84,8 +94,8 @@ describe("inline-edit apply gaps", () => {
     tab = resetWorkspaceWithTab({
       children: [{ tagName: "p", textContent: "" }],
       tagName: "div",
-    } as never);
-    const cmd = { tag: "p" } as unknown as SlashCommand;
+    });
+    const cmd: SlashCommand = { description: "", label: "Paragraph", tag: "p" };
     const path = applyInlineInsert(tab, ["children", 0], cmd, { textContent: "" });
     expect(path).toEqual(["children", 0]);
     expect(kids()[0]!.tagName).toBe("p");
@@ -93,9 +103,11 @@ describe("inline-edit apply gaps", () => {
   });
 
   test("slash-insert commits rich pending children before inserting the new element", () => {
-    const cmd = { tag: "h2" } as unknown as SlashCommand;
-    const pending = { children: ["kept ", { tagName: "strong", textContent: "rich" }] };
-    const path = applyInlineInsert(tab, ["children", 0], cmd, pending as never);
+    const cmd: SlashCommand = { description: "", label: "Heading 2", tag: "h2" };
+    const pending: JxContentResult = {
+      children: ["kept ", { tagName: "strong", textContent: "rich" }],
+    };
+    const path = applyInlineInsert(tab, ["children", 0], cmd, pending);
     expect(path).toEqual(["children", 1]);
     expect(kids()[0]!.children).toEqual(pending.children);
     expect(kids()[1]!.tagName).toBe("h2");
@@ -125,7 +137,7 @@ describe("convert-to-repeater gaps", () => {
       children: [{ tagName: "li", textContent: "Item" }],
       state: {},
       tagName: "ul",
-    } as never);
+    });
     tab.session.selection = [["children", 0]];
 
     const done = convertToRepeater();
@@ -141,9 +153,9 @@ describe("convert-to-repeater gaps", () => {
     field!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     await done;
 
-    const doc = tab.doc.document as Record<string, unknown>;
-    expect((doc.state as Record<string, unknown>).viaEnter).toEqual({ default: [], type: "array" });
-    const child = (doc.children as Record<string, unknown>[])[0]!;
+    const doc = tab.doc.document;
+    expect(doc.state?.viaEnter).toEqual({ default: [], type: "array" });
+    const child = elementChildren(doc)[0]!;
     expect(child.$prototype).toBe("Array");
     expect(child.items).toEqual({ $ref: "#/state/viaEnter" });
   });
@@ -153,7 +165,7 @@ describe("convert-to-repeater gaps", () => {
       meta: { x: { tagName: "span", textContent: "loose" } },
       state: { rows: { default: [], type: "array" } },
       tagName: "div",
-    } as never);
+    });
     tab.session.selection = [["meta", "x"]];
 
     const done = convertToRepeater();
@@ -163,10 +175,8 @@ describe("convert-to-repeater gaps", () => {
     dialog.dispatchEvent(new Event("confirm"));
     await done;
 
-    const doc = tab.doc.document as Record<string, unknown>;
-    expect((doc.meta as Record<string, unknown>).x).toEqual({
-      tagName: "span",
-      textContent: "loose",
+    expect(tab.doc.document.meta).toEqual({
+      x: { tagName: "span", textContent: "loose" },
     });
   });
 });
@@ -174,10 +184,8 @@ describe("convert-to-repeater gaps", () => {
 // ─── Context-menu clipboard ──────────────────────────────────────────────────
 
 describe("context-menu clipboard gaps", () => {
-  interface FakeReadItem {
-    types: string[];
-    getType: (t: string) => Promise<Blob>;
-  }
+  /** The members of a `ClipboardItem` that a paste reads. */
+  type FakeReadItem = Pick<ClipboardItem, "getType" | "types">;
   let readResult: FakeReadItem[] | null = null;
 
   function fakeItem(parts: Record<string, string>): FakeReadItem {
@@ -202,7 +210,7 @@ describe("context-menu clipboard gaps", () => {
     if (originalClipboardDesc) {
       Object.defineProperty(navigator, "clipboard", originalClipboardDesc);
     } else {
-      delete (navigator as unknown as Record<string, unknown>).clipboard;
+      Reflect.deleteProperty(navigator, "clipboard");
     }
   });
 
@@ -216,7 +224,7 @@ describe("context-menu clipboard gaps", () => {
         { tagName: "p", textContent: "B" },
       ],
       tagName: "div",
-    } as never);
+    });
   });
 
   function doc(): JxMutableNode {
@@ -227,7 +235,7 @@ describe("context-menu clipboard gaps", () => {
     readResult = [fakeItem({ "text/html": "", "text/plain": "plain fallback" })];
     activeTab.value!.session.selection = [["children", 0]];
     await pasteNode();
-    const children = doc().children as Record<string, unknown>[];
+    const children = elementChildren(doc());
     expect(children).toHaveLength(3);
     expect(children[1]).toMatchObject({ tagName: "p", textContent: "plain fallback" });
   });
@@ -256,13 +264,16 @@ describe("context-menu conversion actions", () => {
       children: [{ tagName: "p", textContent: "A" }],
       state: { rows: { default: [], type: "array" } },
       tagName: "div",
-    } as never);
+    });
   });
 
   function clickItem(label: string) {
     const item = [...document.querySelectorAll("#layer-popover jx-menu-item")].find(
-      (el) => el.querySelector('[part="label"]')?.textContent?.trim() === label,
-    ) as HTMLElement;
+      (el) => el.querySelector('[part="label"]')?.textContent.trim() === label,
+    );
+    if (!(item instanceof HTMLElement)) {
+      throw new TypeError(`no menu item labelled "${label}"`);
+    }
     item.click();
   }
 
@@ -286,7 +297,7 @@ describe("context-menu conversion actions", () => {
     expect(dialog).not.toBeNull();
     dialog!.dispatchEvent(new Event("cancel"));
     await flush();
-    const child = (activeTab.value!.doc.document.children as Record<string, unknown>[])[0]!;
+    const child = elementChildren(activeTab.value!.doc.document)[0]!;
     expect(child.tagName).toBe("p");
     dismissContextMenu();
   });
@@ -299,7 +310,7 @@ describe("context-menu conversion actions", () => {
     expect(dialog).not.toBeNull();
     dialog!.dispatchEvent(new Event("cancel"));
     await flush();
-    const child = (activeTab.value!.doc.document.children as Record<string, unknown>[])[0]!;
+    const child = elementChildren(activeTab.value!.doc.document)[0]!;
     expect(child.tagName).toBe("p");
     dismissContextMenu();
   });

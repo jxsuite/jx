@@ -17,8 +17,9 @@ describe("jx cli — successful build", () => {
     expect(buildSiteCalls).toHaveLength(1);
     expect(buildSiteCalls[0]?.root).toBe(resolve("/tmp/jx-cli-site"));
     expect(buildSiteCalls[0]?.opts).toEqual({ clean: true, verbose: true });
-    expect(result.logs.join("\n")).toContain("Building site from");
-    expect(result.logs.join("\n")).toContain("Done: 3 routes → 5 files");
+    const logText = result.logs.join("\n");
+    expect(logText).toContain("Building site from");
+    expect(logText).toContain("Done: 3 routes → 5 files");
   });
 });
 

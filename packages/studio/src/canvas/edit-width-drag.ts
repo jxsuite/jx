@@ -58,7 +58,7 @@ export function applyEditWidth(surface: CanvasSurface, column: HTMLElement, widt
     return;
   }
   column.style.maxWidth = `${Math.round(width)}px`;
-  if ((tab.session.ui.editZoom ?? 1) !== 1) {
+  if (tab.session.ui.editZoom !== 1) {
     applyEditZoom(surface);
   }
   const rendered = rectOf(column).width || width;
@@ -183,5 +183,8 @@ export function mountEditWidthHandle(
   if (!handle || !column || _wired.has(handle)) {
     return;
   }
+  /* SAFETY: Every caller passes one of the two `jx-split` slots `surfaces/canvas-stage.json` draws
+     beside the column, and a `jx-split` carries the `value`/`min`/`max`/`collapse` share
+     properties `SplitElement` names; `bindSplit` only writes them. */
   _wired.set(handle, bindSplit(handle as SplitElement, editWidthTarget(surface, column, grow)));
 }

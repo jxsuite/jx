@@ -4,15 +4,12 @@
  * the flag in and the lines out.
  */
 import { describe, expect, it } from "bun:test";
-import { runEntry, setValidateProjectTree, validateProjectTreeOptions } from "./_cli-harness.ts";
-
-const FINDING = {
-  file: "pages/index.json",
-  message: "the <button> has no accessible name.",
-  rule: "interactive-unnamed",
-  severity: "error",
-  source: "accessibility",
-};
+import {
+  BUTTON_NAME_FINDING,
+  runEntry,
+  setValidateProjectTree,
+  validateProjectTreeOptions,
+} from "./_cli-harness.ts";
 
 /* One run per file: the harness imports the entry once, and `main()` runs at import. */
 describe("jx cli — validate --strict", () => {
@@ -22,7 +19,7 @@ describe("jx cli — validate --strict", () => {
       Promise.resolve({
         checked: 3,
         issues: [],
-        lint: [FINDING],
+        lint: [BUTTON_NAME_FINDING],
         valid: options?.strict !== true,
       }),
     );

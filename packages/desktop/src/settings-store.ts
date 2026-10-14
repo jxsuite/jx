@@ -20,7 +20,7 @@ import { watch } from "node:fs";
 import { dirname, basename } from "node:path";
 import { configFile, migrateLegacyStore } from "./user-config";
 import { readStringStore, updateStore } from "./user-store";
-import type { SettingsPatch } from "@jxsuite/protocol";
+import type { KeyValuePatch } from "@jxsuite/protocol";
 
 const STORE_NAME = "settings.json";
 
@@ -39,7 +39,7 @@ export async function readSettings(): Promise<Record<string, string>> {
  * overwriting the other. The resulting map is returned so a caller can broadcast it without a
  * second read that might see a third writer's work.
  */
-export async function patchSettings(patch: SettingsPatch): Promise<Record<string, string>> {
+export async function patchSettings(patch: KeyValuePatch): Promise<Record<string, string>> {
   const file = await migrateLegacyStore(STORE_NAME);
   return updateStore(file, readStringStore, (current) => {
     const next = { ...current };

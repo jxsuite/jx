@@ -32,6 +32,7 @@ export {
 export type { UpstreamCacheHints } from "./cache-hints.js";
 
 export type {
+  AiCredentials,
   AnthropicStreamingClientOptions,
   OpenAIStreamingClientOptions,
   ProxyStreamingClientOptions,

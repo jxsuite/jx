@@ -30,8 +30,8 @@
 import { layerHost } from "./layers";
 import { overlayRegion, REGION_ATTR } from "./regions";
 import { mountSurface } from "./surface";
-import type { JxMountOptions } from "@jxsuite/runtime/types";
-import type { SurfaceHandle } from "./surface";
+import type { JxHostScope, JxMountOptions, JxScope } from "@jxsuite/runtime/types";
+import type { MountSurfaceOptions, SurfaceHandle } from "./surface";
 
 /** A popover panel element, as the platform's popover API sees it. */
 type PanelElement = HTMLElement & {
@@ -51,13 +51,14 @@ export interface PopoverSurfaceHandle {
   readonly close: () => void;
 }
 
-export interface OpenPopoverSurfaceOptions {
+/** How a popover surface is opened. `S` is the scope's own type, held to `JxHostScope` on open. */
+export interface OpenPopoverSurfaceOptions<S = JxScope> {
   /** The registered surface name — its document's root must be a `jx-popover`. */
   name: string;
   /** The panel's instance name; its region becomes `overlay.<kind>:<id>`. */
   slot: string;
   /** The reactive scope the document reads. */
-  scope: Record<string, unknown>;
+  scope: S;
   /**
    * The control it was opened from. It becomes the popover's invoker, so a press on that control
    * does not light-dismiss the panel its own click is about to toggle, and focus goes back to it.
@@ -78,7 +79,9 @@ export interface OpenPopoverSurfaceOptions {
  * @param {OpenPopoverSurfaceOptions} options
  * @returns {PopoverSurfaceHandle}
  */
-export function openPopoverSurface(options: OpenPopoverSurfaceOptions): PopoverSurfaceHandle {
+export function openPopoverSurface<S extends JxHostScope<S>>(
+  options: OpenPopoverSurfaceOptions<S>,
+): PopoverSurfaceHandle {
   const { anchor, name, scope, slot: slotId } = options;
   const host = document.createElement("div");
   host.style.pointerEvents = "auto";
@@ -88,6 +91,8 @@ export function openPopoverSurface(options: OpenPopoverSurfaceOptions): PopoverS
   let panel: PanelElement | null = null;
   let mounted: SurfaceHandle | null = null;
   let closed = false;
+  // A function rather than a property read, because the signal can abort across every `await` below.
+  const aborted = (): boolean => controller.signal.aborted;
 
   const finish = (fromPlatform: boolean): void => {
     if (closed) {
@@ -104,21 +109,24 @@ export function openPopoverSurface(options: OpenPopoverSurfaceOptions): PopoverS
   };
 
   const ready = (async () => {
-    const surface = await mountSurface(name, scope, host, {
-      signal: controller.signal,
-      ...(options.onNodeCreated ? { onNodeCreated: options.onNodeCreated } : {}),
-    });
-    if (controller.signal.aborted) {
+    const mountOptions: MountSurfaceOptions = { signal: controller.signal };
+    if (options.onNodeCreated) {
+      mountOptions.onNodeCreated = options.onNodeCreated;
+    }
+    const surface = await mountSurface(name, scope, host, mountOptions);
+    if (aborted()) {
       return;
     }
     mounted = surface;
+    /* SAFETY: `name` must register a document whose root is a `jx-popover` (see
+       OpenPopoverSurfaceOptions.name), an HTMLElement carrying `open` and the popover methods. */
     panel = surface.root as PanelElement;
     /* On the PANEL as well as the slot: a popover is `position: fixed` in the top layer, so the
        slot around it has a zero-height box and the screenshots lane refuses it ("has an empty
        box"). Both carry the id; the measurement takes the last match, which is the panel. */
     panel.setAttribute(REGION_ATTR, overlayRegion("popover", slotId));
     panel.addEventListener("toggle", (event) => {
-      if ((event as { newState?: string }).newState === "closed") {
+      if ("newState" in event && event.newState === "closed") {
         finish(true);
       }
     });
@@ -130,7 +138,7 @@ export function openPopoverSurface(options: OpenPopoverSurfaceOptions): PopoverS
         panel?.addEventListener("jx-ready", () => resolve(), { once: true });
       });
     }
-    if (controller.signal.aborted) {
+    if (aborted()) {
       return;
     }
     panel.showPopover(anchor ? { source: anchor } : undefined);

@@ -118,14 +118,21 @@ export interface ReleaseDiff {
   specExists: (spec: string) => boolean;
 }
 
+/** The gate's verdict: the body changes that carry no release, and the releases it found. */
+export interface ReleaseJudgement {
+  violations: Violation[];
+  /**
+   * One line per release: `<spec> <before> → <after>` in place, `<spec> (<level> fragment: …)`
+   * otherwise.
+   */
+  released: string[];
+}
+
 /**
  * The gate's judgement over a diff: which specs were released (in place or by fragment) and which
  * body changes have no release. Pure, so the test can hand it a diff without a git repository.
  */
-export function judgeSpecReleases(diff: ReleaseDiff): {
-  violations: Violation[];
-  released: string[];
-} {
+export function judgeSpecReleases(diff: ReleaseDiff): ReleaseJudgement {
   const specFiles = diff.changed.filter(
     (f) => /^specs\/[^/]+\.md$/.test(f) && f !== "specs/README.md",
   );

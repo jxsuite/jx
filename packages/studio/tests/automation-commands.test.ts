@@ -45,9 +45,17 @@ function makeDeps(): AutomationDeps & {
   };
 }
 
-/** The rejection reason, as a value. */
+/** The rejection reason, as a value. A promise that settles any other way fails the test by name. */
 async function rejection(promise: Promise<unknown>): Promise<Error> {
-  return (await promise.catch((error: unknown) => error)) as Error;
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error;
+    }
+    throw new TypeError("rejected with a reason that is not an Error", { cause: error });
+  }
+  throw new Error("expected a rejection, but the promise fulfilled");
 }
 
 const DEPLOYMENT = {
@@ -185,7 +193,7 @@ describe("the seed registry", () => {
   test("a bare id resolves to its `seed.` form", async () => {
     const deps = makeDeps();
     await createAutomationApi(deps).seed("assistant", { messages: [] });
-    expect(deps.seedAssistantMessages).toHaveBeenCalledTimes(1);
+    expect(deps.seedAssistantMessages.mock.calls).toEqual([[[]]]);
   });
 
   test("an unknown seed names the declared ones instead of no-opping", async () => {
@@ -265,6 +273,8 @@ describe("the screenshot manifest", () => {
    * has to be made twice.
    */
   async function steps(): Promise<Step[]> {
+    /* SAFETY: the file is the screenshot manifest, whose shape check-shot-contract validates on
+       every pull request; only the members this walk reads are declared. */
     const manifest = (await Bun.file(manifestPath).json()) as {
       shots: {
         status?: { state?: string };

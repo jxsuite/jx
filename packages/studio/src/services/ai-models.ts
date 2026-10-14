@@ -10,7 +10,9 @@
  * @license MIT
  */
 
+import type { AiCredentials } from "@jxsuite/ai/streaming-client";
 import type { AiModelsResponse, OfferedAction } from "@jxsuite/protocol";
+import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import { offeredActions } from "../platform-errors";
 import { getBaseUrl, getOpenAiKey, hasOpenAiKey, storedModel } from "./ai-settings";
@@ -38,10 +40,7 @@ export interface AiModel {
  * Two fields, taken together or not at all. The per-field overrides this replaces let a caller pass
  * a draft key with a stored base URL, which is a pair that was never configured anywhere.
  */
-export interface AiCredentials {
-  apiKey: string;
-  baseUrl: string;
-}
+export type { AiCredentials } from "@jxsuite/ai/streaming-client";
 
 /** The credentials the app is configured with right now. */
 export function aiConnection(): AiCredentials {
@@ -380,19 +379,24 @@ export async function fetchAvailableModels(
   if (!resp.ok) {
     throw new Error(`HTTP ${resp.status}`);
   }
+  /* SAFETY: this route is served by a Studio backend answering with `AiModelsResponse`
+     (`@jxsuite/protocol`); `Partial` because an older backend omits members. The members that
+     decide a gate (`configured`, `managed`, `code`, `detail`, a model's capabilities) are each
+     compared to a literal or guarded below before use; the rest are passed through as display text. */
   const data = (await resp.json()) as Partial<AiModelsResponse>;
   proxyConfigured = data.configured === true;
   proxyManaged = data.managed === true;
   proxyDefaultModel = data.defaultModel ?? "";
   proxyCode = data.code;
   proxyModelsError = data.upstreamError !== undefined ? (data.upstreamMessage ?? "") : "";
-  proxyAction =
-    data.code === "action_required"
-      ? {
-          actions: offeredActions(data.actions),
-          ...(typeof data.detail === "string" && data.detail ? { detail: data.detail } : {}),
-        }
-      : null;
+  proxyAction = null;
+  if (data.code === "action_required") {
+    const offer: ProxyActionOffer = { actions: offeredActions(data.actions) };
+    if (isString(data.detail) && data.detail) {
+      offer.detail = data.detail;
+    }
+    proxyAction = offer;
+  }
   /* Capabilities are kept, not dropped. The backend has reported `toolSupport` all along and the
      ingest mapped `{id, name}` only, so a Workers AI model that cannot call tools looked exactly
      like one that can — the agent loop ran, called nothing, and answered as if that were normal.
@@ -400,10 +404,10 @@ export async function fetchAvailableModels(
      which is a third state both consumers depend on. */
   cache = (data.models || []).map((m) => {
     const model: AiModel = { id: m.id, name: m.name || m.id };
-    if (typeof m.contextWindow === "number") {
+    if (isNumber(m.contextWindow)) {
       model.contextWindow = m.contextWindow;
     }
-    if (typeof m.toolSupport === "boolean") {
+    if (isBoolean(m.toolSupport)) {
       model.toolSupport = m.toolSupport;
     }
     return model;

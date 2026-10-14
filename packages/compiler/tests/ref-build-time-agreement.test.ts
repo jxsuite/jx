@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolveRefValue } from "../src/shared.ts";
 import { resolveRef } from "@jxsuite/runtime";
-import type { JxScope } from "@jxsuite/runtime/types";
 
 /*
  * `resolveRefValue` is the *fourth* resolver of the same `$ref` grammar: the compiler evaluates a
@@ -37,7 +36,7 @@ describe("the build-time resolver agrees with the runtime one", () => {
     ["plain", "flat"],
   ])("%p prerenders as %p, the same value hydration will produce", (ref, expected) => {
     expect(resolveRefValue(ref, scope())).toEqual(expected);
-    expect(resolveRef(ref, scope() as unknown as JxScope)).toEqual(expected);
+    expect(resolveRef(ref, scope())).toEqual(expected);
   });
 
   // A non-string ref is a literal value and passes straight through, unlike every case above.

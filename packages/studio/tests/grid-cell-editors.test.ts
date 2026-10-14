@@ -2,7 +2,7 @@ import { flush } from "./harness";
 import { describe, expect, test } from "bun:test";
 import { editorForColumn, formatterForColumn } from "../src/grid/cell-editors";
 import type { CellLike } from "../src/grid/cell-editors";
-import type { GridColumn } from "../src/grid/grid-source";
+import type { GridCellValue, GridColumn } from "../src/grid/grid-source";
 
 const makeHost = (className: string) => {
   const el = document.createElement("div");
@@ -10,20 +10,27 @@ const makeHost = (className: string) => {
   return el;
 };
 
-const col = (kind: GridColumn["kind"], schema?: GridColumn["schema"]): GridColumn => ({
-  editable: kind !== "readonly",
-  field: "f",
-  kind,
-  title: "F",
-  ...(schema ? { schema } : {}),
-});
+const col = (kind: GridColumn["kind"], schema?: GridColumn["schema"]): GridColumn => {
+  const column: GridColumn = { editable: kind !== "readonly", field: "f", kind, title: "F" };
+  if (schema) {
+    column.schema = schema;
+  }
+  return column;
+};
 
-const cellWith = (value: unknown): CellLike => ({ getValue: () => value });
+const cellWith = (value: GridCellValue): CellLike => ({ getValue: () => value });
+
+/** What an editor reported back: each committed value, each cancel, each render callback. */
+interface EditorOutcome {
+  success: GridCellValue[];
+  cancel: number;
+  rendered: number;
+}
 
 /** Drive an editor factory and capture its success/cancel outcomes. */
-function openEditor(column: GridColumn, value: unknown) {
+function openEditor(column: GridColumn, value: GridCellValue) {
   const editor = editorForColumn(column, makeHost)!;
-  const outcome: { success: unknown[]; cancel: number; rendered: number } = {
+  const outcome: EditorOutcome = {
     cancel: 0,
     rendered: 0,
     success: [],
@@ -129,7 +136,7 @@ describe("editorForColumn", () => {
     await flush();
     expect(
       [...host.querySelectorAll(".jx-grid-chip")].map((c) =>
-        c.textContent?.replaceAll(/\s+/g, " ").trim(),
+        c.textContent.replaceAll(/\s+/g, " ").trim(),
       ),
     ).toEqual(["a ×", "b ×"]);
 
@@ -154,7 +161,11 @@ describe("editorForColumn", () => {
     keydown(pops.host.querySelector("input")!, "Backspace");
     expect(pops.host.querySelectorAll(".jx-grid-chip")).toHaveLength(1);
 
-    (pops.host.querySelector(".jx-grid-chip-x") as HTMLElement).click();
+    const remove = pops.host.querySelector(".jx-grid-chip-x");
+    if (!(remove instanceof HTMLElement)) {
+      throw new Error("the pill editor drew no × on its remaining chip");
+    }
+    remove.click();
     expect(pops.host.querySelectorAll(".jx-grid-chip")).toHaveLength(0);
 
     const input = pops.host.querySelector("input")!;
@@ -234,20 +245,20 @@ describe("editorForColumn", () => {
 describe("formatterForColumn", () => {
   test("renders plain text for scalars and kind classes on the host", () => {
     const format = formatterForColumn(col("string"), makeHost);
-    const host = format(cellWith("hello")) as HTMLElement;
+    const host = format(cellWith("hello"));
     expect(host.textContent).toContain("hello");
     expect(host.className).toContain("jx-grid-kind-string");
   });
 
   test("booleans render a check only when true", () => {
     const format = formatterForColumn(col("boolean"), makeHost);
-    expect((format(cellWith(true)) as HTMLElement).textContent).toContain("✓");
-    expect((format(cellWith(false)) as HTMLElement).textContent?.trim()).toBe("");
+    expect(format(cellWith(true)).textContent).toContain("✓");
+    expect(format(cellWith(false)).textContent.trim()).toBe("");
   });
 
   test("arrays render one chip per item", () => {
     const format = formatterForColumn(col("array"), makeHost);
-    const host = format(cellWith(["red", "blue"])) as HTMLElement;
+    const host = format(cellWith(["red", "blue"]));
     const chips = host.querySelectorAll(".jx-grid-chip");
     expect(chips).toHaveLength(2);
     expect(chips[1]!.textContent).toContain("blue");
@@ -255,7 +266,7 @@ describe("formatterForColumn", () => {
 
   test("references render their target text", () => {
     const format = formatterForColumn(col("reference"), makeHost);
-    const host = format(cellWith({ $ref: "#/content/posts/hi" })) as HTMLElement;
+    const host = format(cellWith({ $ref: "#/content/posts/hi" }));
     expect(host.textContent).toContain("#/content/posts/hi");
   });
 });

@@ -13,17 +13,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-
-interface Preview {
-  errors: string[];
-  origin: string;
-  port: number;
-  routes: number;
-}
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
+import type { LivePreview } from "../src/live-preview.ts";
 
 const startCalls: string[] = [];
 const navigateCalls: { route: string; root: string }[] = [];
-let startResult: Preview = {
+let startResult: LivePreview = {
   errors: [],
   origin: "http://127.0.0.1:41234",
   port: 41_234,
@@ -65,10 +61,16 @@ const SITE = join(FIXTURES, "site");
 /** A plain directory with no project.json. */
 const PLAIN = join(FIXTURES, "plain");
 
-async function callApi(body: unknown, root: string, activeProjectRoot: string | null) {
+/**
+ * A JSON body for the route, or a string sent verbatim as the request body (how the malformed-JSON
+ * cases reach it).
+ */
+type RouteBody = JsonObject | string;
+
+async function callApi(body: RouteBody, root: string, activeProjectRoot: string | null) {
   const url = new URL("http://localhost/__studio/preview");
   const req = new Request(url, {
-    body: typeof body === "string" ? body : JSON.stringify(body),
+    body: isString(body) ? body : JSON.stringify(body),
     method: "POST",
   });
   const res = await handleStudioApi(req, url, root, activeProjectRoot);
@@ -80,13 +82,13 @@ async function callApi(body: unknown, root: string, activeProjectRoot: string | 
 
 async function callOverlay(
   method: "POST" | "DELETE",
-  body: unknown,
+  body: RouteBody,
   root: string,
   activeProjectRoot: string | null,
 ) {
   const url = new URL("http://localhost/__studio/preview/overlay");
   const req = new Request(url, {
-    body: typeof body === "string" ? body : JSON.stringify(body),
+    body: isString(body) ? body : JSON.stringify(body),
     method,
   });
   const res = await handleStudioApi(req, url, root, activeProjectRoot);

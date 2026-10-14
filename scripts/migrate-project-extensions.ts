@@ -15,6 +15,9 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+
 const PARSER_PREFIX = "@jxsuite/parser/";
 
 function detectIndent(text: string): string {
@@ -23,8 +26,8 @@ function detectIndent(text: string): string {
 }
 
 /** Recursively rewrite `#/contentTypes/...` pointer strings to `#/content/...`. */
-function rewriteRefs(value: unknown): unknown {
-  if (typeof value === "string") {
+function rewriteRefs(value: JsonValue): JsonValue {
+  if (isString(value)) {
     return value.startsWith("#/contentTypes/")
       ? value.replace("#/contentTypes/", "#/content/")
       : value;
@@ -32,8 +35,8 @@ function rewriteRefs(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => rewriteRefs(item));
   }
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
+  if (isJsonObject(value)) {
+    const out: JsonObject = {};
     for (const [k, v] of Object.entries(value)) {
       out[k] = rewriteRefs(v);
     }
@@ -60,14 +63,15 @@ function migrateProject(root: string): void {
   }
   const text = readFileSync(projectPath, "utf8");
   const indent = detectIndent(text);
-  const raw = JSON.parse(text) as Record<string, unknown>;
+  // SAFETY: project.json is a Jx project document, whose root the project schema requires to be an object.
+  const raw = JSON.parse(text) as JsonObject;
 
   // Drop parser imports (manifest-provided classes) but keep everything else.
   let droppedParserImport = false;
-  const imports = raw.imports as Record<string, string> | undefined;
-  if (imports) {
+  const { imports } = raw;
+  if (isJsonObject(imports)) {
     for (const [name, target] of Object.entries(imports)) {
-      if (typeof target === "string" && target.startsWith(PARSER_PREFIX)) {
+      if (isString(target) && target.startsWith(PARSER_PREFIX)) {
         delete imports[name];
         droppedParserImport = true;
       }
@@ -81,7 +85,7 @@ function migrateProject(root: string): void {
   const needsParser = droppedParserImport || hadContentTypes;
 
   // Rebuild with $schema first, contentTypes renamed in place, and refs rewritten.
-  const migrated: Record<string, unknown> = { $schema: "./project.schema.json" };
+  const migrated: JsonObject = { $schema: "./project.schema.json" };
   for (const [key, value] of Object.entries(raw)) {
     if (key === "$schema") {
       continue;
@@ -95,7 +99,7 @@ function migrateProject(root: string): void {
     }
     migrated[key] = rewriteRefs(value);
   }
-  const extensions = Array.isArray(raw.extensions) ? ([...raw.extensions] as string[]) : [];
+  const extensions: JsonValue[] = Array.isArray(raw.extensions) ? [...raw.extensions] : [];
   if (needsParser && !extensions.includes("@jxsuite/parser")) {
     extensions.push("@jxsuite/parser");
   }

@@ -12,16 +12,7 @@
 import type { AssetContext } from "./asset-resolve";
 import type { JxDocOp } from "../tabs/patch-ops";
 import type { JxContentResult, SlashCommand } from "../editor/inline-edit";
-import type { JxExpressionNode, JxMutableNode } from "@jxsuite/schema/types";
-
-/**
- * The wire form of a value-carrying document op (the `forward` half of a recorded
- * {@link JxDocOpPair} — see {@link file://../tabs/patch-ops.ts}). It is structurally a
- * {@link JxDocOp}: it carries the inserted/replaced `node` and the set `value`, NOT just a path, so
- * the iframe can fold it into its shadow doc and re-render subtrees without ever reading the
- * parent's reactive document.
- */
-export type WireDocOp = JxDocOp;
+import type { JsonObject, JxExpressionNode, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
 export const CANVAS_MODES = ["preview", "design", "edit", "stylebook", "git-diff"] as const;
 
@@ -37,7 +28,7 @@ export const CANVAS_MODES = ["preview", "design", "edit", "stylebook", "git-diff
 export type CanvasMode = (typeof CANVAS_MODES)[number];
 
 export function isCanvasMode(value: unknown): value is CanvasMode {
-  return typeof value === "string" && (CANVAS_MODES as readonly string[]).includes(value);
+  return typeof value === "string" && CANVAS_MODES.some((mode) => mode === value);
 }
 
 /**
@@ -121,7 +112,7 @@ export type ParentToIframe =
        */
       assets?: AssetContext | null;
       mapperCtx: WireMapperCtx;
-      siteStyle: Record<string, unknown> | null;
+      siteStyle: JxStyle | null;
       // Forced color-scheme preview (spec.md §9.5): "light"/"dark" sets data-color-scheme on the
       // Iframe root, null clears it (auto — follow the OS).
       colorScheme: "light" | "dark" | null;
@@ -239,7 +230,7 @@ export type ParentToIframe =
   // Render-free; the superseding render carries the same style via its own siteStyle.
   | {
       kind: "siteStyleUpdate";
-      siteStyle: Record<string, unknown> | null;
+      siteStyle: JxStyle | null;
       media: Record<string, string>;
     }
   // Ask the iframe to measure the given document paths and post their current rects back. Used to
@@ -255,7 +246,12 @@ export type ParentToIframe =
   // In place. `gen` matches the last render so the iframe drops patches superseded by a re-render.
   | {
       kind: "patch";
-      forwardOps: WireDocOp[];
+      /**
+       * The `forward` halves of the recorded {@link JxDocOp} pairs (tabs/patch-ops.ts). Each carries
+       * the inserted/replaced `node` and the set `value`, not just a path, so the iframe folds it
+       * into its shadow doc without ever reading the parent's reactive document.
+       */
+      forwardOps: JxDocOp[];
       gen: number;
       /**
        * Paths whose DOM the RECIPIENT already has correct, because this patch is the echo of an
@@ -273,7 +269,7 @@ export type ParentToIframe =
   // Regenerates the whole scoped-CSS cascade (real @media included) without a re-render. `style` is
   // Already transposed parent-side (transposeStylebookStyle); `gen` must equal the iframe's
   // RenderedGen — a stale update is dropped (the superseding render carries the same style).
-  | { kind: "styleUpdate"; style: Record<string, unknown>; gen: number }
+  | { kind: "styleUpdate"; style: JxStyle; gen: number }
   // Enter inline editing on the node at `path` (used to re-enter after a split/insert re-renders).
   | {
       kind: "enterEdit";
@@ -490,7 +486,7 @@ export type IframeToParent =
   // `S.canvas.scope` so the data-explorer panel shows live data instead of "pending" (the iframe,
   // Not the parent, now resolves the scope). `gen` lets the parent drop a snapshot from a superseded
   // Render. Posted right after `renderComplete`; values are JSON-safe deep clones (see serialize-scope).
-  | { kind: "dataScope"; gen: number; scope: Record<string, unknown> }
+  | { kind: "dataScope"; gen: number; scope: JsonObject }
   // The frame's own quiescence, ANSWERED rather than polled (studio.md §13.5).
   // Nothing in the parent realm can see inside a cross-origin frame, so a parent that wanted to
   // Know whether the canvas had settled could only sleep. The frame samples itself at its own rAF

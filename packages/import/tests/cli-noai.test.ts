@@ -6,9 +6,10 @@ console.error = (...args: unknown[]) => {
   errors.push(args.join(" "));
 };
 
-process.exit = ((code?: number) => {
+// An arrow whose body always throws is inferred to return `never`, matching `process.exit`.
+process.exit = (code?: number) => {
   throw new Error(`process.exit(${code})`);
-}) as never;
+};
 
 delete process.env.OPENAI_API_KEY;
 process.argv = [process.argv[0] ?? "bun", "cli.ts", "https://clone.example/", "--ai-components"];

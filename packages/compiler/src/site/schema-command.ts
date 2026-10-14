@@ -23,10 +23,12 @@ import {
   composeProjectSchemas,
   flattenSchema,
 } from "@jxsuite/schema/project-schemas";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
 import { loadProjectConfig } from "./site-loader.ts";
 import type { ExtensionInfo } from "@jxsuite/schema/extension-registry";
 import type { SchemaJsonLoader } from "@jxsuite/schema/project-schemas";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const CORE_PROJECT_SPECIFIER = "@jxsuite/schema/schemas/project.core.schema.json";
 const CORE_DOCUMENT_SPECIFIER = "@jxsuite/schema/schema.json";
@@ -85,7 +87,7 @@ export async function writeProjectSchemas(projectRoot: string) {
  * (workspace hoisting leaves in-repo projects without their own node_modules).
  *
  * @param {string} projectRoot - Absolute path to the project directory
- * @returns {Promise<{ project: Record<string, unknown>; document: Record<string, unknown> }>}
+ * @returns {Promise<{ project: JsonObject; document: JsonObject }>}
  */
 export async function readBundledProjectSchemas(
   projectRoot: string,
@@ -129,15 +131,29 @@ export async function readBundledProjectSchemas(
   }
 
   const loadJson = restrictedSchemaLoader(root);
-  const projectFile =
-    composed?.projectSchema ??
-    (JSON.parse(readFileSync(projectSchemaPath, "utf8")) as Record<string, unknown>);
-  const documentFile =
-    composed?.documentSchema ??
-    (JSON.parse(readFileSync(documentSchemaPath, "utf8")) as Record<string, unknown>);
+  const projectFile = composed?.projectSchema ?? readSchemaFile(projectSchemaPath);
+  const documentFile = composed?.documentSchema ?? readSchemaFile(documentSchemaPath);
   const project = flattenSchema(await bundleSchema(projectFile, loadJson, root));
   const document = flattenSchema(await bundleSchema(documentFile, loadJson, root));
   return { document, project };
+}
+
+/**
+ * Read and parse one schema file.
+ *
+ * Every file this host bundles is a schema resource that `bundleSchema` gives an `$id` and embeds
+ * under `$defs`, and only a JSON object can be one, so anything else is refused here by name.
+ *
+ * @param {string} path - Absolute path to the schema file
+ * @returns {JsonObject}
+ */
+function readSchemaFile(path: string): JsonObject {
+  // SAFETY: JSON.parse only ever yields JSON values; its `any` return type says nothing more.
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as JsonValue;
+  if (!isJsonObject(parsed)) {
+    throw new TypeError(`Schema file "${path}" is not a JSON object`);
+  }
+  return parsed;
 }
 
 /** Packages whose schemas define the Jx document contract itself, never a project's own content. */
@@ -215,13 +231,10 @@ export function restrictedSchemaLoader(root: string): SchemaJsonLoader {
     // Noticed for six weeks, because the artifact was only ever regenerated on the machine that
     // Had the shadow.
     if (specifier !== null && isFirstPartySchema(specifier)) {
-      return JSON.parse(readFileSync(hostResolve(specifier, path), "utf8")) as Record<
-        string,
-        unknown
-      >;
+      return readSchemaFile(hostResolve(specifier, path));
     }
     if (existsSync(abs)) {
-      return JSON.parse(readFileSync(abs, "utf8")) as Record<string, unknown>;
+      return readSchemaFile(abs);
     }
     if (specifier === null) {
       throw new Error(`Schema ref "${path}" does not exist`);
@@ -242,7 +255,7 @@ export function restrictedSchemaLoader(root: string): SchemaJsonLoader {
         );
       }
     }
-    return JSON.parse(readFileSync(resolved, "utf8")) as Record<string, unknown>;
+    return readSchemaFile(resolved);
   };
 }
 

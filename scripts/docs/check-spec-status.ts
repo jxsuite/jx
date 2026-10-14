@@ -246,8 +246,15 @@ function keywordViolations(specsDir: string): string[] {
   return violations;
 }
 
+/** What `checkSpecStatus()` reports for a specs directory. */
+export interface SpecStatusReport {
+  /** How many specs were read. */
+  specs: number;
+  violations: string[];
+}
+
 /** Every violation across `specsDir`: the per-spec rules, then the BCP 14 declaration. */
-export function checkSpecStatus(specsDir: string): { specs: number; violations: string[] } {
+export function checkSpecStatus(specsDir: string): SpecStatusReport {
   const specs = parseSpecStatuses(specsDir);
   return {
     specs: specs.length,

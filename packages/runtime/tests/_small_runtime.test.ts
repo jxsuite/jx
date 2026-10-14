@@ -4,6 +4,8 @@ import { describe, test, expect } from "bun:test";
 import { reactive, ref } from "@vue/reactivity";
 import { resolvePrototype, isSignal, Jx } from "../src/runtime";
 
+import type { JxScope } from "../src/types";
+
 try {
   GlobalRegistrator.register();
 } catch {}
@@ -14,7 +16,7 @@ describe("isSignal", () => {
 
 describe("resolvePrototype", () => {
   test("Set: default empty", async () => {
-    const state: Record<string, unknown> = reactive({});
+    const state: JxScope = reactive({});
     const result = await resolvePrototype({ $prototype: "Set" }, state, "s");
     state.s = result;
     expect(state.s).toBeInstanceOf(Set);

@@ -16,9 +16,8 @@
 import { mountSurface, registerSurface } from "../ui/surface";
 import shellDoc from "./shell.json";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("shell", shellDoc as unknown as JxDocument);
+registerSurface("shell", shellDoc);
 
 /**
  * Render the frame into `host`, and resolve once its cells exist.

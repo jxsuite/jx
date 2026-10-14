@@ -26,6 +26,7 @@ import {
 import type { CommandContext } from "../src/commands/context";
 import type { Tab } from "../src/tabs/tab";
 import type { CommandRegistry } from "../src/commands/registry";
+import type { JxPath } from "../src/state";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 
 // ─── Seams (all must precede the modules under test) ─────────────────────────
@@ -152,14 +153,14 @@ const setCanvasMode = mock((tab: Tab | null, mode: string) => {
 const renderedPanes: string[] = [];
 /** Which pane each rendering-context verb opened or closed the resolving popover for. */
 const resolvingOpened: [string, boolean][] = [];
-const openedPopovers: [string, unknown][] = [];
-const openedDialogs: [string, unknown][] = [];
+const openedPopovers: [string, JxPath | null][] = [];
+const openedDialogs: [string, JxPath | null][] = [];
 const deps = {
   getCanvasMode: () => canvasMode,
   renderPane: (paneId: string) => renderedPanes.push(paneId),
   setCanvasMode,
-  setOpenPopover: (tab: Tab, path: unknown) => openedPopovers.push([tab.id, path]),
-  setOpenDialog: (tab: Tab, path: unknown) => openedDialogs.push([tab.id, path]),
+  setOpenPopover: (tab: Tab, path: JxPath | null) => openedPopovers.push([tab.id, path]),
+  setOpenDialog: (tab: Tab, path: JxPath | null) => openedDialogs.push([tab.id, path]),
   setResolvingOpen: (paneId: string, open: boolean) => resolvingOpened.push([paneId, open]),
 };
 
@@ -252,11 +253,9 @@ describe("the records themselves", () => {
   });
 
   test("canvas.setMode's enum is the observable mode set, preview included", () => {
-    const schema = registry.get("canvas.setMode")?.args as {
-      properties: { mode: { enum: string[] } };
-    };
-    expect(schema.properties.mode.enum).toEqual([...CANVAS_MODES]);
-    expect(schema.properties.mode.enum).toContain("preview");
+    const modeEnum = registry.get("canvas.setMode")?.args?.properties?.mode?.enum;
+    expect(modeEnum).toEqual([...CANVAS_MODES]);
+    expect(modeEnum).toContain("preview");
   });
 });
 
@@ -269,7 +268,7 @@ describe("the rendering-context verbs repaint the pane they WROTE", () => {
   /** A document with a breakpoint, in the focused pane. */
   const withMedia = () => {
     const tab = openWith(["edit", "design"]);
-    (tab.doc.document as Record<string, unknown>).$media = { md: "(min-width: 768px)" };
+    tab.doc.document.$media = { md: "(min-width: 768px)" };
     return tab;
   };
 
@@ -437,7 +436,7 @@ describe("canvas.setEditWidth", () => {
   /** A desktop-first document, so the bands below read the way a starter's do. */
   const withWidths = () => {
     const tab = openWith(["edit", "design"]);
-    (tab.doc.document as Record<string, unknown>).$media = {
+    tab.doc.document.$media = {
       "--": "1200px",
       "--md": "(max-width: 768px)",
     };
@@ -853,7 +852,7 @@ describe("canvas.setPopoverOpen", () => {
   /** Give the active tab a document with one popover and select something inside it. */
   function withPopover(selection: (string | number)[][] = []) {
     const tab = activeTab.value!;
-    (tab.doc as { document: unknown }).document = {
+    tab.doc.document = {
       children: [
         { tagName: "button" },
         {
@@ -864,7 +863,7 @@ describe("canvas.setPopoverOpen", () => {
       ],
       tagName: "div",
     };
-    tab.session.selection = selection as never;
+    tab.session.selection = selection;
     return tab;
   }
 
@@ -914,14 +913,14 @@ describe("canvas.setDialogOpen", () => {
   /** Give the active tab a document with one dialog and select something inside it. */
   function withDialog(selection: (string | number)[][] = []) {
     const tab = activeTab.value!;
-    (tab.doc as { document: unknown }).document = {
+    tab.doc.document = {
       children: [
         { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" },
         { attributes: { id: "d" }, children: [{ tagName: "p" }], tagName: "dialog" },
       ],
       tagName: "div",
     };
-    tab.session.selection = selection as never;
+    tab.session.selection = selection;
     return tab;
   }
 
@@ -952,7 +951,7 @@ describe("canvas.setDialogOpen", () => {
 
   test("it is enabled only while the document holds a dialog", () => {
     const tab = activeTab.value!;
-    (tab.doc as { document: unknown }).document = { children: [], tagName: "div" };
+    tab.doc.document = { children: [], tagName: "div" };
     expect(registry.isEnabled("canvas.setDialogOpen")).toBe(false);
     withDialog();
     expect(registry.isEnabled("canvas.setDialogOpen")).toBe(true);

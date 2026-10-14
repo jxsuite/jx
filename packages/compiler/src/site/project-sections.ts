@@ -8,7 +8,16 @@
 
 import { createNodeFormatIO } from "./format-host.ts";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
+import type { ProjectSectionData } from "@jxsuite/schema/format-registry";
 import type { ProjectConfig } from "@jxsuite/schema/types";
+
+/* One section's `projectData` result. The host never reads inside it: it hands it to classes as
+   `_project[key]` and back to the owner's own `resolvePaths` as `data`, so the capability contract
+   in @jxsuite/schema names it and this module re-exports that name for the hosts built on it. */
+export type { ProjectSectionData } from "@jxsuite/schema/format-registry";
+
+/** Every loaded project section, keyed by its section key (`content`, `auth`, ...). */
+export type ProjectSections = Record<string, ProjectSectionData>;
 
 /**
  * Load all extension-contributed project sections.
@@ -20,14 +29,14 @@ import type { ProjectConfig } from "@jxsuite/schema/types";
  * @param {string} projectRoot - Absolute path to the project root
  * @param {ProjectConfig | undefined} projectConfig - Already-loaded project config
  * @param {ExtensionRegistry} registry - The project's extension registry
- * @returns {Promise<Record<string, unknown>>} Section key → projectData result
+ * @returns {Promise<ProjectSections>} Section key → projectData result
  */
 export async function loadProjectSections(
   projectRoot: string,
   projectConfig: ProjectConfig | undefined,
   registry: ExtensionRegistry,
-): Promise<Record<string, unknown>> {
-  const sections: Record<string, unknown> = {};
+): Promise<ProjectSections> {
+  const sections: ProjectSections = {};
   const io = createNodeFormatIO(projectRoot);
   for (const entry of registry.projectContributions()) {
     const key = entry.project?.key;

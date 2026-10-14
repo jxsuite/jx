@@ -15,22 +15,14 @@
  * @docs studio/projects/settings
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import settingsPaneDoc from "./settings-pane.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { JxElement } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceTab } from "../ui/surface";
 
-registerSurface("settings-pane", settingsPaneDoc as unknown as JxDocument);
-
-/** One row of the section list, as the document draws it. */
-export interface SettingsNavView {
-  /** The section key — the row's identity, its `value`, and what the strip compares `selected` to. */
-  key: string;
-  label: string;
-  /** The row's own element id, which the one panel names as its `aria-labelledby`. */
-  tabId: string;
-}
+registerSurface("settings-pane", settingsPaneDoc);
 
 /** What the editor says right now. */
 export interface SettingsPaneValues {
@@ -40,7 +32,7 @@ export interface SettingsPaneValues {
   active: string;
   /** The current section's row id, so the body is named by the row that chose it. */
   activeTabId: string;
-  sections: SettingsNavView[];
+  sections: SurfaceTab[];
   /**
    * Whether a renderer will draw into the island.
    *
@@ -75,13 +67,12 @@ export interface SettingsPaneHandle {
   dispose: () => void;
 }
 
-interface SettingsPaneScope
-  extends Record<string, unknown>, SettingsPaneValues, SettingsPaneActions {}
+interface SettingsPaneScope extends SettingsPaneValues, SettingsPaneActions {}
 
 /** The `part` a node was declared with, or the empty string. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -101,7 +92,7 @@ export function mountSettingsPaneSurface(
   values: SettingsPaneValues,
   actions: SettingsPaneActions,
 ): SettingsPaneHandle {
-  const scope = reactive<SettingsPaneScope>({ ...values, ...actions }) as SettingsPaneScope;
+  const scope: SettingsPaneScope = reactive<SettingsPaneScope>({ ...values, ...actions });
 
   container.textContent = "";
   // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types

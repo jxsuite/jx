@@ -22,11 +22,15 @@ const { renderHeadEditor } = await import("../src/settings/head-editor");
 function withImmediateTimers<T>(fn: () => T): T {
   const origSet = globalThis.setTimeout;
   const origClear = globalThis.clearTimeout;
-  (globalThis as any).setTimeout = (cb: () => void) => {
+  const immediate = (cb: () => void) => {
     cb();
     return 0;
   };
-  (globalThis as any).clearTimeout = () => {};
+  /* SAFETY: every setTimeout caller inside fn passes a callback (run here at once) and only hands
+     the handle back to clearTimeout, which is a no-op for the same span, so the placeholder 0 is
+     never inspected as a Timer. */
+  globalThis.setTimeout = immediate as typeof setTimeout;
+  globalThis.clearTimeout = () => {};
   try {
     return fn();
   } finally {
@@ -56,34 +60,47 @@ async function settle(): Promise<void> {
   await flush();
 }
 
+/** The one element `selector` names inside `scope`; a missing element fails the test by name. */
+function required(scope: ParentNode, selector: string): HTMLElement {
+  const found = scope.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`nothing matches ${selector}`);
+  }
+  return found;
+}
+
 function entries(host: HTMLElement): HTMLElement[] {
-  return [...host.querySelectorAll('[part="entry"]')] as HTMLElement[];
+  return [...host.querySelectorAll<HTMLElement>('[part="entry"]')];
 }
 
 function fontRows(host: HTMLElement): HTMLElement[] {
-  return [...host.querySelectorAll('[part="font-row"]')] as HTMLElement[];
+  return [...host.querySelectorAll<HTMLElement>('[part="font-row"]')];
 }
 
 function fontsSection(host: HTMLElement): HTMLElement {
-  return host.querySelector('[data-section="fonts"]') as HTMLElement;
+  return required(host, '[data-section="fonts"]');
 }
 
 function headSection(host: HTMLElement): HTMLElement {
-  return host.querySelector('[data-section="head"]') as HTMLElement;
+  return required(host, '[data-section="head"]');
 }
 
 /** The kit field carrying one attribute of an entry, by the `$head` key it writes. */
 function field(scope: HTMLElement, dataKey: string): HTMLElement {
   const found = scope.querySelector(`[data-key="${dataKey}"]`);
-  if (!found) {
+  if (!(found instanceof HTMLElement)) {
     throw new Error(`no field for ${dataKey}`);
   }
-  return found as HTMLElement;
+  return found;
 }
 
 /** The native control inside a `jx-textfield` — what a reader types into, and what events come from. */
 function control(field_: Element): HTMLInputElement | HTMLTextAreaElement {
-  return field_.querySelector("input, textarea") as HTMLInputElement | HTMLTextAreaElement;
+  const found = field_.querySelector("input, textarea");
+  if (!(found instanceof HTMLInputElement || found instanceof HTMLTextAreaElement)) {
+    throw new Error("the field holds no native control");
+  }
+  return found;
 }
 
 /** Type into a field and dispatch the event the browser would, past the debounce. */
@@ -109,7 +126,7 @@ function shown(host: HTMLElement, index: number, dataKey: string): string {
 }
 
 function addButton(host: HTMLElement, tag: string): HTMLElement {
-  return host.querySelector(`[part="add-entry"][data-tag="${tag}"]`) as HTMLElement;
+  return required(host, `[part="add-entry"][data-tag="${tag}"]`);
 }
 
 function fontEntryUrl(family: string): string {
@@ -141,7 +158,7 @@ describe("head entry rendering", () => {
       { attributes: { content: "ie=edge", name: "x-ua" }, tagName: "meta" },
       { attributes: { src: "/app.js" }, tagName: "script" },
       { attributes: {}, tagName: "script" },
-      { tagName: "style", textContent: ".x{}" } as JxHeadEntry,
+      { tagName: "style", textContent: ".x{}" },
       { attributes: {}, tagName: "base" },
     ]);
     const blocks = entries(host);
@@ -172,21 +189,22 @@ describe("head entry rendering", () => {
     expect(field(blocks[3]!, "src")).toBeTruthy();
 
     // Style: the body box, carrying the entry's text.
-    expect((blocks[4]!.querySelector("textarea") as HTMLTextAreaElement).value).toBe(".x{}");
+    expect(blocks[4]!.querySelector("textarea")?.value).toBe(".x{}");
 
     // Unknown tag: a header and nothing to fill in.
     expect(blocks[5]!.querySelector('[part="entry-fields"]')?.children.length).toBe(0);
   });
 
   test("a body box is named by the row it sits in, not by a label beside it", async () => {
-    const { host } = await setup([{ tagName: "style", textContent: "" } as JxHeadEntry]);
-    const row = host.querySelector('[part="body-row"]') as HTMLElement;
+    const { host } = await setup([{ tagName: "style", textContent: "" }]);
+    const row = required(host, '[part="body-row"]');
     expect(row.querySelector('[part="label"]')?.textContent).toBe("Style body");
     const area = host.querySelector("textarea")!;
-    expect(area.getAttribute("aria-labelledby")).toBe(row.querySelector("label")!.id);
-    expect(area.getAttribute("aria-labelledby")).toBeTruthy();
+    const labelledBy = area.getAttribute("aria-labelledby");
+    expect(labelledBy).toBe(row.querySelector("label")!.id);
+    expect(labelledBy).toBeTruthy();
     // The code box is the kit's: mono, multiline, and as tall as the entry kind asks for.
-    const box = host.querySelector('[part="body-field"]') as HTMLElement;
+    const box = required(host, '[part="body-field"]');
     expect(box.dataset["mono"]).toBe("");
     expect(box.dataset["rows"]).toBe("8");
   });
@@ -240,7 +258,7 @@ describe("add and remove entries", () => {
     expect(entries(host).length).toBe(4);
     expect(await savedHead()).toEqual(head);
     const store = await import("../src/store");
-    expect(store.projectState?.projectConfig?.$head).toBe(head as any);
+    expect(store.projectState?.projectConfig?.$head).toBe(head);
   });
 
   test("delete button removes the entry and persists", async () => {
@@ -294,7 +312,7 @@ describe("add and remove entries", () => {
 
 describe("field updates", () => {
   test("link field change debounces into attributes (creating them when absent)", async () => {
-    const { host, head } = await setup([{ tagName: "link" } as JxHeadEntry]);
+    const { host, head } = await setup([{ tagName: "link" }]);
     const block = entries(host)[0]!;
     type(field(block, "rel"), "preload");
     type(field(block, "href"), "/new.css");
@@ -329,7 +347,7 @@ describe("field updates", () => {
 
 describe("google fonts", () => {
   function fontInput(host: HTMLElement): HTMLElement {
-    return fontsSection(host).querySelector('[part="font-input"]') as HTMLElement;
+    return required(fontsSection(host), '[part="font-input"]');
   }
 
   /** Type a family name the way a reader does: the control's value, then `input`. */

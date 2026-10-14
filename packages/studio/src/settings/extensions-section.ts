@@ -90,7 +90,10 @@ const mounted = new WeakMap<HTMLElement, ExtensionsSurfaceHandle>();
 const errors = new WeakMap<HTMLElement, string>();
 
 /** The sentence a row's state deserves, and the tone it is said in. */
-function noteFor(row: ExtensionRow): { note: string; noteTone: ExtensionRowView["noteTone"] } {
+type RowNote = Pick<ExtensionRowView, "note" | "noteTone">;
+
+/** Answer {@link RowNote} for one row. */
+function noteFor(row: ExtensionRow): RowNote {
   if (row.unavailable !== undefined) {
     return { note: row.unavailable, noteTone: "warn" };
   }

@@ -37,12 +37,12 @@ function ready(files: { path: string; count: number }[], refsTotal: number): Usa
       tagName: "h1",
     },
     status: "ready",
-  } as UsageState;
+  };
 }
 
 function setupLayoutTab() {
   resetStudioState();
-  const doc = { children: [], tagName: "div" } as unknown as JxMutableNode;
+  const doc: JxMutableNode = { children: [], tagName: "div" };
   const tab = resetWorkspaceWithTab(doc);
   tab.documentPath = "layouts/base.json";
   tab.session.selection = [[]];
@@ -182,7 +182,7 @@ describe("project.json is the widest scope, not the narrowest", () => {
     usage = ready([{ count: 4, path: "pages/index.json" }], 4);
     const c = await renderPanel();
     expect(c.querySelector('[part="scope"]')!.textContent).toContain("all <h1> in this project");
-    expect((c.querySelector('[part="scope"]') as HTMLElement).dataset.scope).toBe("project");
+    expect(c.querySelector<HTMLElement>('[part="scope"]')!.dataset.scope).toBe("project");
     expect(c.querySelector('[part="warning-text"]')!.textContent).toContain("4 elements in 1 file");
   });
 

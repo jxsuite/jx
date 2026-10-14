@@ -1,8 +1,9 @@
 import "./with-dom.ts";
 
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 import { documentStyleText } from "@jxsuite/runtime";
+import { isNodeObject } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
@@ -18,8 +19,9 @@ import {
   supportsInterestInvokers,
   TOOLTIP_HIDE_GRACE_MS,
 } from "../src/behaviors/tooltip.ts";
+import type { TooltipState } from "../src/behaviors/tooltip.ts";
 
-const doc = documents["jx-tooltip"]!;
+const doc = documents["jx-tooltip"];
 
 type TipEl = HTMLElement & {
   open: boolean;
@@ -49,21 +51,21 @@ const frame = () =>
   });
 
 /** The shim marks a showing popover with `data-popover-open`; `:popover-open` never matches here. */
-const shown = (el: Element) => (el as HTMLElement).dataset["popoverOpen"] !== undefined;
+const shown = (el: HTMLElement) => el.dataset["popoverOpen"] !== undefined;
 
 /** Every emitted CSS rule scoped to this element's own document, in source order. */
-function rules(el: Element): string[] {
-  const scope = `[data-jx="${(el as HTMLElement).dataset["jx"]}"]`;
+function rules(el: HTMLElement): string[] {
+  const scope = `[data-jx="${el.dataset["jx"]}"]`;
   return documentStyleText()
     .split("\n")
     .filter((line) => line.startsWith(scope) || line.includes(`{ ${scope}`));
 }
 /** The first emitted rule whose selector carries `selector`. */
-const ruleFor = (el: Element, selector: string) =>
+const ruleFor = (el: HTMLElement, selector: string) =>
   rules(el).find((line) => line.slice(0, line.indexOf("{") + 1).includes(selector)) ?? "";
 /** The element's own base rule: the one whose selector is the scope and nothing else. */
-const baseRule = (el: Element) => {
-  const scope = `[data-jx="${(el as HTMLElement).dataset["jx"]}"]`;
+const baseRule = (el: HTMLElement) => {
+  const scope = `[data-jx="${el.dataset["jx"]}"]`;
   return rules(el).find((line) => line.startsWith(`${scope} {`)) ?? "";
 };
 
@@ -84,6 +86,15 @@ const fire = (el: EventTarget, type: string) => {
   return el.dispatchEvent(new Event(type, { bubbles: false }));
 };
 
+/** A fresh, unattached `jx-tooltip`, typed with the state its document declares. */
+function createTip(): TipEl {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-tooltip` from its document before any test
+     runs, so `createElement` constructs that class synchronously, and jx-tooltip.json declares
+     every TipEl member (open, x, y, delay, arrow, placement, anchored, flipped) as state the class
+     exposes as a property. */
+  return document.createElement("jx-tooltip") as TipEl;
+}
+
 /** An icon-only control and the tip that describes it, wired the way a consumer would. */
 async function scene(
   options: { for?: string; delay?: number; interestfor?: boolean } = {},
@@ -95,7 +106,7 @@ async function scene(
   if (options.interestfor) {
     button.setAttribute("interestfor", "tip");
   }
-  const tip = document.createElement("jx-tooltip") as TipEl;
+  const tip = createTip();
   tip.id = "tip";
   tip.textContent = "Save the file";
   if (options.delay !== undefined) {
@@ -111,8 +122,19 @@ async function scene(
 
 /** A rectangle stub, so a happy-dom element can be measured. */
 function box(el: Element, rect: Partial<DOMRect>): void {
-  const full = { bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0, ...rect };
-  el.getBoundingClientRect = () => full as DOMRect;
+  const geometry = {
+    bottom: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+    width: 0,
+    x: 0,
+    y: 0,
+    ...rect,
+  };
+  const full: DOMRect = { ...geometry, toJSON: () => geometry };
+  el.getBoundingClientRect = () => full;
 }
 
 beforeAll(async () => {
@@ -137,12 +159,12 @@ describe("the document", () => {
         }
       }
       for (const [i, child] of (Array.isArray(node.children) ? node.children : []).entries()) {
-        if (child && typeof child === "object") {
-          walk(child as JxElement, `${path}.children[${i}]`);
+        if (isNodeObject(child)) {
+          walk(child, `${path}.children[${i}]`);
         }
       }
     };
-    walk(doc as JxElement, "root");
+    walk(doc, "root");
     expect(found).toEqual([]);
   });
 
@@ -187,7 +209,7 @@ describe("the emitted sheet", () => {
     expect(tip.querySelectorAll("slot").length).toBe(0);
     expect(tip.querySelector('[part="content"]')).toBeNull();
     expect(tip.firstChild?.nodeType).toBe(3);
-    expect(tip.textContent?.trim()).toBe("Save the file");
+    expect(tip.textContent.trim()).toBe("Save the file");
     expect([...tip.children].map((child) => child.getAttribute("part"))).toEqual(["arrow"]);
     expect(rules(tip).some((rule) => rule.includes('[part="content"]'))).toBe(false);
   });
@@ -513,12 +535,11 @@ describe("hint mode", () => {
 describe("the declarative path", () => {
   test("this engine has no interest invokers, and one with them is detected", () => {
     expect(supportsInterestInvokers()).toBe(false);
-    const proto = HTMLButtonElement.prototype as unknown as Record<string, unknown>;
-    proto["interestForElement"] = null;
+    Object.assign(HTMLButtonElement.prototype, { interestForElement: null });
     try {
       expect(supportsInterestInvokers()).toBe(true);
     } finally {
-      delete proto["interestForElement"];
+      Reflect.deleteProperty(HTMLButtonElement.prototype, "interestForElement");
     }
   });
 
@@ -526,8 +547,7 @@ describe("the declarative path", () => {
     // The engine is made to look like Chrome BEFORE the pair mounts, so this covers the mount path
     // As well as the direct call: on that engine the timers, the grace and Escape are the
     // Platform's, and a second set of listeners would double every one of them.
-    const proto = HTMLButtonElement.prototype as unknown as Record<string, unknown>;
-    proto["interestForElement"] = null;
+    Object.assign(HTMLButtonElement.prototype, { interestForElement: null });
     try {
       const { button, tip } = await scene({ delay: 0, interestfor: true });
       fire(button, "focusin");
@@ -537,7 +557,7 @@ describe("the declarative path", () => {
       expect(shown(tip)).toBe(false);
       dispose();
     } finally {
-      delete proto["interestForElement"];
+      Reflect.deleteProperty(HTMLButtonElement.prototype, "interestForElement");
     }
   });
 
@@ -560,18 +580,11 @@ describe("the declarative path", () => {
      * binding and removed with the last, and Escape walks the dismissers instead — hiding only the
      * tip that is showing.
      */
-    const added: string[] = [];
-    const removed: string[] = [];
-    const originalAdd = document.addEventListener.bind(document);
-    const originalRemove = document.removeEventListener.bind(document);
-    document.addEventListener = ((type: string, ...rest: unknown[]) => {
-      added.push(type);
-      (originalAdd as (...args: unknown[]) => void)(type, ...rest);
-    }) as typeof document.addEventListener;
-    document.removeEventListener = ((type: string, ...rest: unknown[]) => {
-      removed.push(type);
-      (originalRemove as (...args: unknown[]) => void)(type, ...rest);
-    }) as typeof document.removeEventListener;
+    // Both spies call through to the real methods; they only record the event type of each call.
+    const adds = spyOn(document, "addEventListener");
+    const removes = spyOn(document, "removeEventListener");
+    const added = () => adds.mock.calls.map(([type]) => type);
+    const removed = () => removes.mock.calls.map(([type]) => type);
     try {
       const pairs = [0, 1, 2].map((n) => {
         const button = document.createElement("button");
@@ -581,7 +594,7 @@ describe("the declarative path", () => {
         document.body.append(button, tip);
         return { button, dispose: bindTooltip(tip, button), tip };
       });
-      expect(added.filter((type) => type === "keydown")).toHaveLength(1);
+      expect(added().filter((type) => type === "keydown")).toHaveLength(1);
       // Only the showing tip hears the Escape; the other two were never shown and are not touched.
       const hides = pairs.map((pair) => {
         let count = 0;
@@ -600,12 +613,12 @@ describe("the declarative path", () => {
       // The listener outlives every binding but the last.
       pairs[0]!.dispose();
       pairs[1]!.dispose();
-      expect(removed.filter((type) => type === "keydown")).toHaveLength(0);
+      expect(removed().filter((type) => type === "keydown")).toHaveLength(0);
       pairs[2]!.dispose();
-      expect(removed.filter((type) => type === "keydown")).toHaveLength(1);
+      expect(removed().filter((type) => type === "keydown")).toHaveLength(1);
     } finally {
-      document.addEventListener = originalAdd;
-      document.removeEventListener = originalRemove;
+      adds.mockRestore();
+      removes.mockRestore();
     }
   });
 
@@ -653,8 +666,8 @@ describe("the declarative path", () => {
     const refuse = (): never => {
       throw new SyntaxError("unknown pseudo-class");
     };
-    (button as unknown as { matches: () => boolean }).matches = refuse;
-    (tip as unknown as { matches: () => boolean }).matches = refuse;
+    Object.assign(button, { matches: refuse });
+    Object.assign(tip, { matches: refuse });
     const dispose = bindTooltip(tip, button);
     fire(button, "focusin");
     expect(shown(tip)).toBe(true);
@@ -689,15 +702,14 @@ describe("the declarative path", () => {
 
   test("still binds when the engine has interest invokers but the control declares none", async () => {
     const { button, tip } = await scene({ delay: 0 });
-    const proto = HTMLButtonElement.prototype as unknown as Record<string, unknown>;
-    proto["interestForElement"] = null;
+    Object.assign(HTMLButtonElement.prototype, { interestForElement: null });
     try {
       const dispose = bindTooltip(tip, button);
       fire(button, "focusin");
       expect(shown(tip)).toBe(true);
       dispose();
     } finally {
-      delete proto["interestForElement"];
+      Reflect.deleteProperty(HTMLButtonElement.prototype, "interestForElement");
     }
   });
 });
@@ -720,11 +732,11 @@ describe("the platform's toggle", () => {
   test("an event from something that is not an element is ignored", () => {
     // `newState: "closed"` against `open: true`, so the guard returning early and the guard being
     // Absent are distinguishable — the same fixture with "open" is satisfied either way.
-    const state: Record<string, unknown> = { open: true };
+    const state: TooltipState = { open: true };
     const event = new Event("toggle");
     Object.assign(event, { newState: "closed" });
     onTooltipToggle(state, event);
-    expect(state["open"]).toBe(true);
+    expect(state.open).toBe(true);
   });
 });
 
@@ -732,24 +744,24 @@ describe("placement", () => {
   test("puts the tip under the control it describes", async () => {
     const { button, tip } = await scene();
     box(button, { bottom: 60, height: 20, left: 100, right: 140, top: 40, width: 40 });
-    const state: Record<string, unknown> = { for: "trigger" };
+    const state: TooltipState = { for: "trigger" };
     placeTooltip(state, tip);
-    expect(state["x"]).toBe(100);
-    expect(state["y"]).toBe(66);
-    expect(state["flipped"]).toBe(false);
+    expect(state.x).toBe(100);
+    expect(state.y).toBe(66);
+    expect(state.flipped).toBe(false);
   });
 
   test("measures synchronously when the platform has no requestAnimationFrame", async () => {
     const { button, tip } = await scene();
     box(button, { bottom: 60, height: 20, left: 100, right: 140, top: 40, width: 40 });
     const raf = globalThis.requestAnimationFrame;
-    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    Object.assign(globalThis, { requestAnimationFrame: undefined });
     try {
-      const state: Record<string, unknown> = { for: "trigger" };
+      const state: TooltipState = { for: "trigger" };
       placeTooltip(state, tip);
       // No `await frame()`: the measurement already ran, inline, on the call itself.
-      expect(state["x"]).toBe(100);
-      expect(state["y"]).toBe(66);
+      expect(state.x).toBe(100);
+      expect(state.y).toBe(66);
     } finally {
       globalThis.requestAnimationFrame = raf;
     }
@@ -759,15 +771,15 @@ describe("placement", () => {
     const { button, tip } = await scene();
     box(button, { bottom: 720, height: 20, left: 100, right: 140, top: 700, width: 40 });
     box(tip, { bottom: 786, height: 60, left: 100, right: 300, top: 726, width: 200 });
-    const state: Record<string, unknown> = { for: "trigger" };
+    const state: TooltipState = { for: "trigger" };
     placeTooltip(state, tip);
-    expect(state["y"]).toBe(726);
-    expect(state["flipped"]).toBe(false);
+    expect(state.y).toBe(726);
+    expect(state.flipped).toBe(false);
     await frame();
-    expect(state["y"]).toBe(634);
+    expect(state.y).toBe(634);
     // The arrow is pinned to one edge in CSS, so the flip has to be told to the element or the
     // Pointer ends up on the far side from the control it points at.
-    expect(state["flipped"]).toBe(true);
+    expect(state.flipped).toBe(true);
   });
 
   test("a flipped tip stamps data-flipped on itself, and one with room below does not", async () => {
@@ -856,18 +868,19 @@ describe("placement", () => {
   });
 
   test("onTooltipReady off an element does nothing: a handler bound where an event was not", () => {
-    const state: Record<string, unknown> = {};
+    const state: TooltipState = {};
     expect(() => {
-      onTooltipReady(state, { currentTarget: null } as unknown as Event);
+      // An event that was never dispatched has no currentTarget.
+      onTooltipReady(state, new Event("jx-ready"));
     }).not.toThrow();
-    expect(state["x"]).toBeUndefined();
+    expect(state.x).toBeUndefined();
   });
 
   test("measureAnchoredFlip and onTooltipBeforeToggle do nothing where there is nothing to read", () => {
-    const state: Record<string, unknown> = {};
+    const state: TooltipState = {};
     onTooltipBeforeToggle(state, new Event("beforetoggle"));
     expect(state.anchored).toBeUndefined();
-    const tip = document.createElement("jx-tooltip") as TipEl;
+    const tip = document.createElement("jx-tooltip");
     document.body.append(tip);
     /* A tip with no control is not watched either: the disposer it hands back is the no-op one. */
     const stop = measureAnchoredFlip(state, tip);
@@ -886,10 +899,10 @@ describe("placement", () => {
     const { button, tip } = await scene();
     box(button, { bottom: 60, height: 20, left: 990, right: 1020, top: 40, width: 30 });
     box(tip, { bottom: 126, height: 60, left: 990, right: 1190, top: 66, width: 200 });
-    const state: Record<string, unknown> = { for: "trigger" };
+    const state: TooltipState = { for: "trigger" };
     placeTooltip(state, tip);
     await frame();
-    expect(state["x"]).toBe(820);
+    expect(state.x).toBe(820);
   });
 
   test("finds the control by interestfor when nothing named it", async () => {
@@ -897,41 +910,41 @@ describe("placement", () => {
     // Only interestfor may answer: with aria-describedby still on it the next route would too.
     button.removeAttribute("aria-describedby");
     box(button, { bottom: 60, height: 20, left: 12, right: 52, top: 40, width: 40 });
-    const state: Record<string, unknown> = {};
+    const state: TooltipState = {};
     placeTooltip(state, tip);
-    expect(state["x"]).toBe(12);
+    expect(state.x).toBe(12);
   });
 
   test("finds the control by aria-describedby when nothing else did", async () => {
     const { button, tip } = await scene();
     box(button, { bottom: 60, height: 20, left: 7, right: 47, top: 40, width: 40 });
-    const state: Record<string, unknown> = {};
+    const state: TooltipState = {};
     placeTooltip(state, tip);
-    expect(state["x"]).toBe(7);
+    expect(state.x).toBe(7);
   });
 
   test("a tip with no id and no `for` has no control to be placed against", async () => {
     const { tip } = await scene();
     tip.removeAttribute("id");
-    const state: Record<string, unknown> = {};
+    const state: TooltipState = {};
     placeTooltip(state, tip);
-    expect(state["x"]).toBeUndefined();
+    expect(state.x).toBeUndefined();
   });
 
   test("an unmeasured control is left alone rather than placed at the origin", async () => {
     const { tip } = await scene();
-    const state: Record<string, unknown> = { for: "trigger" };
+    const state: TooltipState = { for: "trigger" };
     placeTooltip(state, tip);
-    expect(state["x"]).toBeUndefined();
+    expect(state.x).toBeUndefined();
   });
 
   test("an unmeasured tip is not clamped", async () => {
     const { button, tip } = await scene();
     box(button, { bottom: 60, height: 20, left: 100, right: 140, top: 40, width: 40 });
-    const state: Record<string, unknown> = { for: "trigger" };
+    const state: TooltipState = { for: "trigger" };
     placeTooltip(state, tip);
     await frame();
-    expect(state["y"]).toBe(66);
+    expect(state.y).toBe(66);
   });
 });
 
@@ -1042,31 +1055,26 @@ describe("the arrow follows a flip the platform makes later (#310)", () => {
 
   test("closing stops the watch: no measurement after hide, and the window listeners come off", async () => {
     const restore = withAnchorSupport(true);
-    const added: string[] = [];
-    const removed: string[] = [];
-    const add = window.addEventListener.bind(window);
-    const remove = window.removeEventListener.bind(window);
-    window.addEventListener = ((type: string, ...rest: unknown[]) => {
-      added.push(type);
-      return (add as (...args: unknown[]) => void)(type, ...rest);
-    }) as typeof window.addEventListener;
-    window.removeEventListener = ((type: string, ...rest: unknown[]) => {
-      removed.push(type);
-      return (remove as (...args: unknown[]) => void)(type, ...rest);
-    }) as typeof window.removeEventListener;
+    // Both spies call through to the real methods; they only record the event type of each call.
+    const adds = spyOn(window, "addEventListener");
+    const removes = spyOn(window, "removeEventListener");
+    const added = () => adds.mock.calls.map(([type]) => type);
+    const removed = () => removes.mock.calls.map(([type]) => type);
     try {
       const { button, tip, reads } = await anchoredScene();
-      expect(added.filter((type) => type === "scroll" || type === "resize").toSorted()).toEqual([
-        "resize",
-        "scroll",
-      ]);
+      expect(
+        added()
+          .filter((type) => type === "scroll" || type === "resize")
+          .toSorted(),
+      ).toEqual(["resize", "scroll"]);
       fire(button, "focusout");
       await tick();
       expect(tip.open).toBe(false);
-      expect(removed.filter((type) => type === "scroll" || type === "resize").toSorted()).toEqual([
-        "resize",
-        "scroll",
-      ]);
+      expect(
+        removed()
+          .filter((type) => type === "scroll" || type === "resize")
+          .toSorted(),
+      ).toEqual(["resize", "scroll"]);
       const settled = reads();
       moveTo(tip, ABOVE);
       window.dispatchEvent(new Event("scroll"));
@@ -1076,8 +1084,8 @@ describe("the arrow follows a flip the platform makes later (#310)", () => {
       expect(reads()).toBe(settled);
       expect(tip.dataset["flipped"]).toBeUndefined();
     } finally {
-      window.addEventListener = add;
-      window.removeEventListener = remove;
+      adds.mockRestore();
+      removes.mockRestore();
       restore();
     }
   });
@@ -1118,24 +1126,31 @@ describe("the arrow follows a flip the platform makes later (#310)", () => {
   test("the tip and its control are observed for size where the engine can, and released on close", async () => {
     /* The engine's ResizeObserver (happy-dom's) observes nothing, so the engine's is stood in for by one that
        records what it was given and can be fired by hand. */
-    class FakeResizeObserver {
+    class FakeResizeObserver implements ResizeObserver {
       static instances: FakeResizeObserver[] = [];
-      callback: () => void;
+      callback: ResizeObserverCallback;
       observed: Element[] = [];
       disconnected = false;
-      constructor(callback: () => void) {
+      constructor(callback: ResizeObserverCallback) {
         this.callback = callback;
         FakeResizeObserver.instances.push(this);
       }
       observe(el: Element): void {
         this.observed.push(el);
       }
+      unobserve(el: Element): void {
+        this.observed = this.observed.filter((one) => one !== el);
+      }
       disconnect(): void {
         this.disconnected = true;
       }
+      /** Fire the callback by hand, with no entries, the way a size change would. */
+      fire(): void {
+        this.callback([], this);
+      }
     }
     const real = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+    globalThis.ResizeObserver = FakeResizeObserver;
     const restore = withAnchorSupport(true);
     try {
       const { button, tip, reads } = await anchoredScene();
@@ -1144,7 +1159,7 @@ describe("the arrow follows a flip the platform makes later (#310)", () => {
       expect(observer!.observed.map((el) => el.localName)).toEqual(["jx-tooltip", "button"]);
       const before = reads();
       moveTo(tip, ABOVE);
-      observer!.callback();
+      observer!.fire();
       await frame();
       await tick();
       expect(reads()).toBe(before + 1);
@@ -1160,7 +1175,7 @@ describe("the arrow follows a flip the platform makes later (#310)", () => {
 
   test("an engine without a ResizeObserver is watched by scroll and resize alone", async () => {
     const real = globalThis.ResizeObserver;
-    (globalThis as unknown as Record<string, unknown>)["ResizeObserver"] = undefined;
+    Object.assign(globalThis, { ResizeObserver: undefined });
     const restore = withAnchorSupport(true);
     try {
       const { button, tip } = await anchoredScene();
@@ -1191,12 +1206,12 @@ describe("the arrow follows a flip the platform makes later (#310)", () => {
         count += 1;
         return rect();
       };
-      const state: Record<string, unknown> = { for: "trigger", anchored: true };
+      const state: TooltipState = { for: "trigger", anchored: true };
       measureAnchoredFlip(state, tip);
       const stop = measureAnchoredFlip(state, tip);
       await frame();
       expect(count).toBe(1);
-      expect(state["flipped"]).toBe(false);
+      expect(state.flipped).toBe(false);
       window.dispatchEvent(new Event("scroll"));
       await frame();
       /* Two live watches would read the box twice here. */
@@ -1219,22 +1234,18 @@ describe("the arrow follows a flip the platform makes later (#310)", () => {
     box(button, { bottom: 720, height: 20, left: 100, right: 140, top: 700, width: 40 });
     box(tip, ABOVE);
     const raf = globalThis.requestAnimationFrame;
-    const add = window.addEventListener;
-    const added: string[] = [];
-    window.addEventListener = ((type: string, ...rest: unknown[]) => {
-      added.push(type);
-      return (add as (...args: unknown[]) => void).call(window, type, ...rest);
-    }) as typeof window.addEventListener;
-    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    // The spy calls through to the real method; it only records that a listener was added.
+    const adds = spyOn(window, "addEventListener");
+    Object.assign(globalThis, { requestAnimationFrame: undefined });
     try {
-      const state: Record<string, unknown> = { for: "trigger", anchored: true };
+      const state: TooltipState = { for: "trigger", anchored: true };
       const stop = measureAnchoredFlip(state, tip);
-      expect(state["flipped"]).toBe(true);
-      expect(added).toEqual([]);
+      expect(state.flipped).toBe(true);
+      expect(adds.mock.calls).toEqual([]);
       stop();
-      expect(state["flipped"]).toBe(true);
+      expect(state.flipped).toBe(true);
     } finally {
-      window.addEventListener = add;
+      adds.mockRestore();
       globalThis.requestAnimationFrame = raf;
     }
   });

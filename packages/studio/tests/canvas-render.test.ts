@@ -13,7 +13,7 @@ import {
   stubRect,
 } from "./harness";
 import { hasTyping } from "../src/tabs/typing";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isString } from "@jxsuite/schema/guards";
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import { initShellRefs, setProjectState } from "../src/store";
@@ -41,7 +41,7 @@ import { toRaw } from "../src/reactivity";
 import { shell } from "../src/shell";
 import { setFormats } from "../src/format/format-host";
 import { serializeJson } from "@jxsuite/schema/json-layout";
-import { setEditZoom } from "../src/canvas/canvas-utils";
+import { canvasPanelEntry, setEditZoom } from "../src/canvas/canvas-utils";
 import { resetEditWidths, setEditWidth } from "../src/canvas/edit-width";
 import { diffChangeMapOf, diffViewOf, resetDiffViews, setDiffView } from "../src/canvas/diff-view";
 import { MARKDOWN_FORMAT } from "./format-fixture";
@@ -49,9 +49,15 @@ import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
 import { setActiveRegistry } from "../src/commands/active-registry";
 import { derivationCommands, noopDerivationDeps } from "../src/workspace/pane-derive";
-import type { CanvasPanel } from "../src/types";
+import type { CanvasPanel, GitDiffState } from "../src/types";
 import type { PaneDerivation } from "../src/workspace/workspace";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type { Mock } from "bun:test";
+import type { editor } from "monaco-editor";
+import type { CanvasSurface } from "../src/canvas/surface-registry";
+import type { WireDiffMarks } from "../src/canvas/iframe-protocol";
+import type * as stylebookPanel from "../src/panels/stylebook-panel";
+import type { Tab } from "../src/tabs/tab";
 
 /* The panels of the FOCUSED pane's stage. Panels belong to a pane's surface now, not to the
    app (`src/canvas/canvas-surface.ts`); the array identity is stable, so a module-level
@@ -71,25 +77,32 @@ type IframeMount = (
   widthPx?: number | null,
 ) => Promise<void>;
 // The stylebook fast path posts style updates to live stylebook hosts; tests control the count.
-let styleUpdateImpl: (style: Record<string, unknown>) => number = () => 0;
+let styleUpdateImpl: (style: JxStyle) => number = () => 0;
 /**
  * Every synchronous preview-mode declaration the renderer made, in order. The renderer must tell
  * the host what kind of render is coming BEFORE it awaits the resolved document (see
  * adoptCanvasPreviewMode) — these records are how a test sees that call happened, and with what.
  */
 const previewAdoptions: { canvas: HTMLElement; preview: boolean }[] = [];
-let iframeImpl: IframeMount = async (_gen, doc, canvas) => {
+/**
+ * The default DOM double: each child of the document becomes its own tag (a `span` when it names
+ * none) carrying its literal text, under one wrapper. A text child has no tag and no text of its
+ * own here, so it stamps an empty `span`.
+ */
+const stampDocText: IframeMount = async (_gen, doc, canvas) => {
   canvas.innerHTML = "";
   const root = document.createElement("div");
-  for (const child of (doc.children as JxMutableNode[] | undefined) ?? []) {
-    const el = document.createElement(displayTagName(child.tagName) || "span");
-    if (child.textContent) {
-      el.textContent = child.textContent as string;
+  for (const child of Array.isArray(doc.children) ? doc.children : []) {
+    const node: JxMutableNode = isString(child) ? {} : child;
+    const el = document.createElement(displayTagName(node.tagName) || "span");
+    if (node.textContent) {
+      el.textContent = String(node.textContent);
     }
     root.append(el);
   }
   canvas.append(root);
 };
+let iframeImpl: IframeMount = stampDocText;
 
 const renderWelcome = mock((host: HTMLElement) => {
   host.textContent = "welcome";
@@ -99,7 +112,11 @@ const notified = mock((_message: string) => {});
 const overlaysRender = mock(() => {});
 /* Async, because the real one is: the stage is a mounted document and the artboards land one
    microtask after the view is written, so `renderCanvasImpl` chains its fit off the promise. */
-const renderStylebookMode = mock((_surface: unknown, _helpers: unknown) => Promise.resolve());
+/** The helpers `canvas-render` hands the Stylebook renderer, as the real module declares them. */
+type StylebookHelpers = Parameters<typeof stylebookPanel.renderStylebookMode>[1];
+const renderStylebookMode = mock((_surface: CanvasSurface, _helpers: StylebookHelpers) =>
+  Promise.resolve(),
+);
 const parseSourceForPathMock = mock(async (_path: string, _source: string) => ({
   document: { children: [{ tagName: "p", textContent: "parsed-md" }], tagName: "article" },
   format: MARKDOWN_FORMAT,
@@ -107,10 +124,14 @@ const parseSourceForPathMock = mock(async (_path: string, _source: string) => ({
 }));
 const serializeDocumentMock = mock(async () => "# markdown source");
 
+/** What the doubled `Uri.parse` returns: only its string form is ever read. */
+interface FakeUri {
+  toString: () => string;
+}
 interface FakeModel {
   _value: string;
   lang: string;
-  uri: unknown;
+  uri: FakeUri;
   /** Fires the adopting editor's change handlers, as a real model's `setValue` does. */
   _fire: () => void;
   dispose: ReturnType<typeof mock>;
@@ -133,7 +154,7 @@ const createdModels: FakeModel[] = [];
 const createdEditors: FakeEditor[] = [];
 interface FakeDiffEditor {
   _model: { original: FakeModel; modified: FakeModel } | null;
-  _options: Record<string, unknown>;
+  _options: editor.IStandaloneDiffEditorConstructionOptions;
   _diffKey?: string;
   container: HTMLElement;
   dispose: ReturnType<typeof mock>;
@@ -143,7 +164,7 @@ interface FakeDiffEditor {
 const createdDiffEditors: FakeDiffEditor[] = [];
 /** What each `mountIframeCanvas` was told beyond the four arguments the DOM double needs. */
 const mountCalls: {
-  diffMarks: { kind: string; path: unknown[] }[] | null;
+  diffMarks: WireDiffMarks | null;
   modeOverride: string | null;
 }[] = [];
 
@@ -191,7 +212,7 @@ void mock.module("monaco-editor/editor", () => ({
   MarkerSeverity: { Error: 8, Warning: 4 },
   Uri: { parse: (s: string) => ({ toString: () => s }) },
   editor: {
-    create: (_el: HTMLElement, opts: { model?: FakeModel }) => {
+    create: (_el: HTMLElement, opts?: { model?: FakeModel }) => {
       const ed: FakeEditor = {
         _changeHandlers: [],
         _focused: false,
@@ -232,7 +253,7 @@ void mock.module("monaco-editor/editor", () => ({
       createdEditors.push(ed);
       return ed;
     },
-    createModel: (value: string, lang: string, uri: unknown) => {
+    createModel: (value: string, lang: string, uri: FakeUri) => {
       const m: FakeModel = {
         _value: value,
         _fire: () => {},
@@ -251,7 +272,10 @@ void mock.module("monaco-editor/editor", () => ({
     /* The comparison's editor. A DIFFERENT Monaco type from `create` above: it owns two models
        rather than one, and disposing it has to dispose both or their URIs stay claimed and the next
        mount throws on a URI nobody can see. */
-    createDiffEditor: (container: HTMLElement, options: Record<string, unknown>) => {
+    createDiffEditor: (
+      container: HTMLElement,
+      options: editor.IStandaloneDiffEditorConstructionOptions,
+    ) => {
       const ed: FakeDiffEditor = {
         _model: null,
         _options: options,
@@ -299,7 +323,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   canvasPointAt: () => Promise.resolve(null),
   revealCanvasPath: () => Promise.resolve(null),
   postRedefineElementToLiveHosts: () => 0,
-  postStyleUpdateToStylebookHosts: (style: Record<string, unknown>) => styleUpdateImpl(style),
+  postStyleUpdateToStylebookHosts: (style: JxStyle) => styleUpdateImpl(style),
   getEditBarAnchorRect: () => null,
   getEditSnapshot: () => ({ editing: false, snapshot: null }),
   mountIframeCanvas: (
@@ -308,9 +332,9 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
     canvas: HTMLElement,
     widthPx?: number | null,
     _tabId?: string | null,
-    _viewTab?: unknown,
+    _viewTab?: Tab | null,
     modeOverride?: string | null,
-    diffMarks?: { kind: string; path: unknown[] }[] | null,
+    diffMarks?: WireDiffMarks | null,
   ) => {
     // The later arguments are recorded rather than forwarded: `iframeImpl` is the DOM double and
     // Takes four, but the per-artboard facts a git-diff render carries are only observable here.
@@ -434,12 +458,20 @@ function openSyncedTab(
 
 const { detachMediaPane } = await import("../src/media/media-pane");
 
-const ctx = {
-  gitDiffState: null as Record<string, unknown> | null,
+/** `initCanvasRender`'s context, with the seams the tests read back kept as mocks. */
+interface RenderCtxFixture {
+  gitDiffState: GitDiffState | null;
+  openFileFromTree: Mock<(path: string) => void>;
+  setCanvasMode: Mock<(tab: Tab | null, mode: string) => void>;
+  setGitDiffState: Mock<(state: GitDiffState | null) => void>;
+}
+
+const ctx: RenderCtxFixture = {
+  gitDiffState: null,
   openFileFromTree: mock(() => {}),
   /* Takes the tab. `renderCanvas` is per-PANE, so its git-diff fallback names the tab of the pane
      it is drawing rather than whichever one has focus. */
-  setCanvasMode: mock((_tab: unknown, m: string) => {
+  setCanvasMode: mock((_tab: Tab | null, m: string) => {
     setMode(m);
   }),
   setGitDiffState: mock(() => {}),
@@ -464,6 +496,44 @@ function stageEl(): HTMLElement {
   return surfaceForPane("primary").wrap;
 }
 
+/** The first match for `selector` under `root` (the primary stage), which must have been drawn. */
+function htmlEl(selector: string, root: ParentNode = stageEl()): HTMLElement {
+  const found = root.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`nothing drawn matches ${selector}`);
+  }
+  return found;
+}
+
+/** The primary stage's panel at `index`, which the test requires the render to have mounted. */
+function panelAt(index: number): CanvasPanel {
+  const panel = canvasPanels[index];
+  if (!panel) {
+    throw new Error(`the render mounted no panel at index ${String(index)}`);
+  }
+  return panel;
+}
+
+/** A panel record left by an earlier pass, minted as the render mints one, with an observed scope. */
+function panelWithScope(stop: () => void): CanvasPanel {
+  const { panel } = canvasPanelEntry(null, null, false);
+  panel.renderScope = { run: (fn) => fn(), stop };
+  return panel;
+}
+
+/** An observer whose only effect any teardown here is asked about is `disconnect`. */
+function observerStub(disconnect: () => void): ResizeObserver {
+  return { disconnect, observe: () => {}, unobserve: () => {} };
+}
+
+/** The dock's code editor, as far as a canvas render could reach it: something to dispose. */
+function dockEditorStub(dispose: () => void): NonNullable<typeof view.functionEditor> {
+  /* SAFETY: these tests assert the canvas never touches the dock's editor, so `dispose` (the one
+     member a teardown would call) is the only one that has to exist; calling any other would be
+     the regression the test is there to catch, and it would throw. */
+  return { dispose } as NonNullable<typeof view.functionEditor>;
+}
+
 /**
  * Run fn with long debounce/sweep timers (>=200ms) intercepted so they can be flushed
  * deterministically via the returned runPending callback.
@@ -476,23 +546,30 @@ async function withFastTimers(fn: (runPending: () => Promise<number>) => Promise
      timers that had been cancelled — which made "does the teardown cancel the armed debounce?"
      an unaskable question in this file, and that is the question the source view's 600ms
      document-replacing timer needed asked. A fake clock that cannot cancel certifies a leak. */
-  const pending = new Map<number, () => unknown>();
-  let nextHandle = 0;
-  globalThis.setTimeout = ((cb: () => unknown, ms?: number, ...args: unknown[]) => {
-    if (typeof ms === "number" && ms >= 200) {
-      nextHandle += 1;
-      pending.set(nextHandle, cb);
-      return { __fake: nextHandle } as unknown as ReturnType<typeof setTimeout>;
+  const pending = new Map<ReturnType<typeof setTimeout>, () => void>();
+  /* SAFETY: the double implements `setTimeout`'s call signature — a handler, a delay, and the
+     extra arguments it forwards untouched to the real timer — and returns a real handle. What the
+     cast adds is the `__promisify__` namespace `@types/node` declares on the global, which nothing
+     under test reads. */
+  globalThis.setTimeout = ((handler: () => void, ms?: number, ...args: []) => {
+    if (ms !== undefined && ms >= 200) {
+      /* A genuine handle, cancelled at once: unique per call and exactly the type the code under
+         test stores, so `clearTimeout` below can tell an intercepted timer by identity. */
+      const handle = origSetTimeout(() => {}, 0);
+      origClearTimeout(handle);
+      pending.set(handle, handler);
+      return handle;
     }
-    return origSetTimeout(cb as () => void, ms, ...(args as []));
+    return origSetTimeout(handler, ms, ...args);
   }) as typeof setTimeout;
-  globalThis.clearTimeout = ((handle: unknown) => {
-    const fake = (handle as { __fake?: number } | null | undefined)?.__fake;
-    if (typeof fake === "number") {
-      pending.delete(fake);
+  /* SAFETY: while the double is installed, every handle reaching `clearTimeout` came from the
+     doubled `setTimeout` above, which only ever returns `ReturnType<typeof setTimeout>`; the cast
+     only widens the parameter to the string and number ids the other global overloads accept. */
+  globalThis.clearTimeout = ((handle?: ReturnType<typeof setTimeout>) => {
+    if (handle !== undefined && pending.delete(handle)) {
       return;
     }
-    origClearTimeout(handle as ReturnType<typeof setTimeout>);
+    origClearTimeout(handle);
   }) as typeof clearTimeout;
   try {
     await fn(async () => {
@@ -535,18 +612,7 @@ beforeEach(() => {
   setMode("design");
   ctx.gitDiffState = null;
   styleUpdateImpl = () => 0;
-  iframeImpl = async (_gen, doc, canvas) => {
-    canvas.innerHTML = "";
-    const root = document.createElement("div");
-    for (const child of (doc.children as JxMutableNode[] | undefined) ?? []) {
-      const el = document.createElement(displayTagName(child.tagName) || "span");
-      if (child.textContent) {
-        el.textContent = child.textContent as string;
-      }
-      root.append(el);
-    }
-    canvas.append(root);
-  };
+  iframeImpl = stampDocText;
   for (const m of [
     renderWelcome,
     renderFunctionEditor,
@@ -572,7 +638,7 @@ beforeEach(() => {
   view.functionEditor = null;
   surfaceForPane("primary").centerObserver = null;
   surfaceForPane("primary").renderGeneration = 0;
-  initCanvasRender(ctx as never);
+  initCanvasRender(ctx);
 });
 
 afterEach(() => {
@@ -596,9 +662,7 @@ describe("renderCanvas without a tab", () => {
     resetStudioState({ isSiteProject: true });
     stageEl().textContent = "leftover";
     /* The mocked host has no frame to tell, so nothing is — and the render still runs. */
-    expect(
-      redefineElementOnCanvases({ tagName: "jx-probe" } as never, "http://x/jx-probe.json"),
-    ).toBe(0);
+    expect(redefineElementOnCanvases({ tagName: "jx-probe" }, "http://x/jx-probe.json")).toBe(0);
     expect(stageEl().textContent).toBe("");
   });
 
@@ -623,8 +687,8 @@ describe("renderCanvas without a tab", () => {
 // ─── Close-all / reopen lifecycle (toxic-state regression) ────────────────────
 
 describe("tab close/reopen lifecycle", () => {
-  /** Read Lit's private render-part marker without tripping noImplicitAny. */
-  const litPart = () => (stageEl() as unknown as Record<string, unknown>)["_$litPart$"];
+  /** Whether the stage still carries Lit's private render-part marker (an own property). */
+  const hasLitPart = () => "_$litPart$" in stageEl();
 
   test("reopening after closing all tabs re-renders without a dangling Lit part", async () => {
     // A project is open, so closing every tab leaves a bare canvas (not the welcome screen).
@@ -635,14 +699,14 @@ describe("tab close/reopen lifecycle", () => {
     await flush();
     expect(stageEl().querySelector('[part="edit-column"]')).not.toBeNull();
     // CanvasWrap now owns a Lit render part
-    expect(litPart()).toBeDefined();
+    expect(hasLitPart()).toBe(true);
 
     // Closing every tab must eject the part along with the DOM — not just the DOM. Leaving the part
     // Behind is what previously made the next litRender throw "ChildPart has no parentNode".
     closeAllTabs();
     renderCanvas();
     expect(stageEl().textContent).toBe("");
-    expect(litPart()).toBeUndefined();
+    expect(hasLitPart()).toBe(false);
     expect(surface.prevCanvasMode).toBeNull();
 
     // Reopening must render cleanly rather than crashing the canvas into an unusable state.
@@ -659,16 +723,14 @@ describe("tab close/reopen lifecycle", () => {
     setMode("edit");
     renderCanvas();
     await flush();
-    const pageColumn = stageEl().querySelector('[part="edit-column"]')!;
-    expect((pageColumn as HTMLElement).dataset.hug).toBeUndefined();
+    expect(htmlEl('[part="edit-column"]').dataset.hug).toBeUndefined();
 
     // A component-definition root (custom-element tag) → the column hugs its content.
     openSyncedTab({ children: [{ tagName: "h2", textContent: "Hi" }], tagName: "eer-cta" });
     setMode("edit");
     renderCanvas();
     await flush();
-    const compColumn = stageEl().querySelector('[part="edit-column"]')!;
-    expect((compColumn as HTMLElement).dataset.hug).toBe("");
+    expect(htmlEl('[part="edit-column"]').dataset.hug).toBe("");
   });
 
   test("the edit column is as wide as the breakpoint the size switcher chose", async () => {
@@ -686,10 +748,9 @@ describe("tab close/reopen lifecycle", () => {
       $media: { "--": "900px", md: "(min-width: 768px)", sm: "(max-width: 480px)" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
+    });
     setMode("edit");
-    const columnWidth = () =>
-      (stageEl().querySelector('[part="edit-column"]') as HTMLElement).style.maxWidth;
+    const columnWidth = () => htmlEl('[part="edit-column"]').style.maxWidth;
 
     renderCanvas();
     await flush();
@@ -719,7 +780,7 @@ describe("tab close/reopen lifecycle", () => {
       $media: { "--": "900px" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
+    });
 
     setMode("edit");
     renderCanvas();
@@ -733,8 +794,10 @@ describe("tab close/reopen lifecycle", () => {
     const column = canvas.querySelector('[part="edit-column"]')!;
     expect(column.querySelector('[part="edit-handle"]')).toBeNull();
     const row = [...canvas.querySelectorAll('[part="edit-handle"], [part="edit-column"]')].map(
-      (el) =>
-        `${el.localName}:${el.getAttribute("part")}:${(el as HTMLElement).dataset.side ?? ""}`,
+      (el) => {
+        const side = el instanceof HTMLElement ? el.dataset.side : undefined;
+        return `${el.localName}:${el.getAttribute("part")}:${side ?? ""}`;
+      },
     );
     expect(row).toEqual([
       "jx-split:edit-handle:start",
@@ -757,9 +820,8 @@ describe("tab close/reopen lifecycle", () => {
       $media: { "--": "900px", "--md": "(max-width: 768px)" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
-    const columnWidth = () =>
-      (stageEl().querySelector('[part="edit-column"]') as HTMLElement).style.maxWidth;
+    });
+    const columnWidth = () => htmlEl('[part="edit-column"]').style.maxWidth;
 
     setMode("edit");
     renderCanvas();
@@ -793,8 +855,8 @@ describe("tab close/reopen lifecycle", () => {
       $media: { "--": "900px" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
-    const column = () => stageEl().querySelector('[part="edit-column"]') as HTMLElement;
+    });
+    const column = () => htmlEl('[part="edit-column"]');
     setMode("edit");
     renderCanvas();
     await flush();
@@ -818,14 +880,12 @@ describe("tab close/reopen lifecycle", () => {
       $media: { "--": "900px" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
+    });
     tab.session.ui.activeMedia = "ghost";
     setMode("edit");
     renderCanvas();
     await flush();
-    expect((stageEl().querySelector('[part="edit-column"]') as HTMLElement).style.maxWidth).toBe(
-      "900px",
-    );
+    expect(htmlEl('[part="edit-column"]').style.maxWidth).toBe("900px");
   });
 
   test("closing all tabs while in source mode disposes the monaco editor", async () => {
@@ -835,7 +895,7 @@ describe("tab close/reopen lifecycle", () => {
     await waitForEditors(1);
     const [editor] = createdEditors;
     const [model] = createdModels;
-    expect(surfaceForPane("primary").monacoEditor).toBe(editor as never);
+    expect(surfaceForPane("primary").monacoEditor).toBe<FakeEditor | undefined>(editor);
 
     closeAllTabs();
     renderCanvas();
@@ -849,7 +909,7 @@ describe("tab close/reopen lifecycle", () => {
     renderCanvas();
     await waitForEditors(2);
     expect(createdEditors.length).toBe(2);
-    expect(surfaceForPane("primary").monacoEditor).toBe(createdEditors[1] as never);
+    expect(surfaceForPane("primary").monacoEditor).toBe<FakeEditor | undefined>(createdEditors[1]);
   });
 
   test("clearing to the no-tab state disposes this module's observers, editors, scopes, and cleanups", () => {
@@ -857,10 +917,10 @@ describe("tab close/reopen lifecycle", () => {
     const stop = mock(() => {});
     const disconnect = mock(() => {});
     const fnDispose = mock(() => {});
-    surfaceForPane("primary").centerObserver = { disconnect } as never;
-    view.functionEditor = { dispose: fnDispose } as never;
+    surfaceForPane("primary").centerObserver = observerStub(disconnect);
+    view.functionEditor = dockEditorStub(fnDispose);
     surface.prevCanvasMode = "design";
-    canvasPanels.push({ renderScope: { stop } } as never);
+    canvasPanels.push(panelWithScope(stop));
 
     closeAllTabs();
     renderCanvas();
@@ -899,7 +959,7 @@ describe("a logic target open in the dock", () => {
     const painted = canvasPanels.length;
     expect(painted).toBeGreaterThan(0);
 
-    tab.session.ui.editingFunction = { path: ["children", 0], prop: "onclick" } as never;
+    tab.session.ui.editingFunction = { eventKey: "onclick", path: ["children", 0], type: "event" };
     renderCanvas();
     expect(canvasPanels.length).toBe(painted);
     expect(renderFunctionEditor).not.toHaveBeenCalled();
@@ -917,7 +977,7 @@ describe("a logic target open in the dock", () => {
     // Author was typing into each time the canvas repainted underneath it.
     openSyncedTab();
     const dispose = mock(() => {});
-    view.functionEditor = { dispose } as never;
+    view.functionEditor = dockEditorStub(dispose);
     renderCanvas();
     expect(dispose).not.toHaveBeenCalled();
     expect(view.functionEditor).not.toBeNull();
@@ -939,7 +999,7 @@ describe("source mode", () => {
     expect(stageEl().querySelector('[part="source-wrap"]')).not.toBeNull();
     expect(stageEl().querySelector('[part="source-editor"]')).not.toBeNull();
     await waitForEditors(1);
-    expect(surfaceForPane("primary").monacoEditor).toBe(createdEditors[0] as never);
+    expect(surfaceForPane("primary").monacoEditor).toBe<FakeEditor | undefined>(createdEditors[0]);
     // The bytes a save writes — the layout serializer's, not `JSON.stringify`'s (issue 308).
     expect(createdModels[0]!._value).toBe(serializeJson(tab.doc.document, tab.doc.layout));
     expect(createdModels[0]!.lang).toBe("json");
@@ -952,9 +1012,7 @@ describe("source mode", () => {
     // And the buffer names the tab it was mounted for, in the spelling the dock's editor uses.
     // Compared through `toRaw`: the pane hands the mount its own reactive wrapper of this tab, and
     // Identity across two proxies of one object is exactly what `buffersForTab` normalizes.
-    expect(toRaw(surfaceForPane("primary").monacoEditor!._editingTab as object)).toBe(
-      toRaw(tab as object),
-    );
+    expect(toRaw(surfaceForPane("primary").monacoEditor!._editingTab)).toBe(toRaw(tab));
   });
 
   test("debounced edits sync valid JSON back into the document", async () => {
@@ -1052,7 +1110,7 @@ describe("source mode", () => {
     expect(String(createdModels[1]!.uri)).toBe("file:///project.json");
     expect(createdModels[0]!.dispose).toHaveBeenCalled();
     expect(firstEditor.dispose).toHaveBeenCalled();
-    expect(surfaceForPane("primary").monacoEditor).toBe(createdEditors[1] as never);
+    expect(surfaceForPane("primary").monacoEditor).toBe<FakeEditor | undefined>(createdEditors[1]);
   });
 
   /* The generated entry documents get a reserved URI so they cannot collide with the ids the
@@ -1438,7 +1496,7 @@ describe("source mode", () => {
 
     expect(createdEditors).toHaveLength(1);
     expect(createdModels).toHaveLength(1);
-    expect(surfaceForPane("primary").monacoEditor).toBe(createdEditors[0] as never);
+    expect(surfaceForPane("primary").monacoEditor).toBe<FakeEditor | undefined>(createdEditors[0]);
     expect(createdModels[0]!.dispose).not.toHaveBeenCalled();
   });
 
@@ -1560,7 +1618,7 @@ describe("media mode", () => {
 
     const viewer = stageEl().querySelector('[part="viewer"]');
     expect(viewer).not.toBeNull();
-    expect(stageEl().querySelector('[part="title"]')?.textContent?.trim()).toBe("hero.png");
+    expect(stageEl().querySelector('[part="title"]')?.textContent.trim()).toBe("hero.png");
     // No artboard: a media file is shown, not laid out.
     expect(canvasPanels.length).toBe(0);
 
@@ -1580,9 +1638,9 @@ describe("git-diff mode", () => {
     /* Positionally, not `toHaveBeenCalledWith`: the first argument is a reactive Tab proxy and
        bun's matcher serializes its arguments, which on a document graph is a cyclic structure. The
        identity check is the stronger assertion anyway — it names WHICH tab. */
-    const [target, mode] = ctx.setCanvasMode.mock.calls.at(-1) as [unknown, string];
+    const [target, mode] = ctx.setCanvasMode.mock.calls.at(-1)!;
     expect(mode).toBe("design");
-    expect(toRaw(target as object)).toBe(toRaw(tab as unknown as object));
+    expect(toRaw(target)).toBe(toRaw(tab));
     expect(canvasPanels.length).toBe(1);
   });
 
@@ -1595,6 +1653,7 @@ describe("git-diff mode", () => {
         tagName: "div",
       }),
       filePath: "/project/index.json",
+      fileStatus: "M",
       originalContent: JSON.stringify({
         children: [{ tagName: "p", textContent: "old text" }],
         tagName: "div",
@@ -1604,13 +1663,13 @@ describe("git-diff mode", () => {
     await flush();
 
     const headers = [...stageEl().querySelectorAll('[part="panel-header"]')].map((h) =>
-      h.textContent?.trim(),
+      h.textContent.trim(),
     );
     expect(headers).toEqual(["Original", "Current"]);
     expect(canvasPanels.length).toBe(2);
-    const [orig, curr] = canvasPanels as unknown as CanvasPanel[];
-    expect(orig!.canvas?.textContent).toContain("old text");
-    expect(curr!.canvas?.textContent).toContain("new text");
+    const [orig, curr] = canvasPanels;
+    expect(orig!.canvas.textContent).toContain("old text");
+    expect(curr!.canvas.textContent).toContain("new text");
     // Diff panels are never live-patchable
     expect(orig!.ready).toBe(false);
     expect(curr!.ready).toBe(false);
@@ -1622,6 +1681,7 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: '{"tagName":"div"}',
       filePath: "/project/index.json",
+      fileStatus: "M",
       originalContent: '{"tagName":"section"}',
     };
     setDiffView("primary", "code");
@@ -1649,6 +1709,7 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: "{}",
       filePath: "index.json",
+      fileStatus: "M",
       originalContent: "{}",
     };
     setDiffView("primary", "code");
@@ -1670,6 +1731,7 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: "{}",
       filePath: "index.json",
+      fileStatus: "M",
       originalContent: "{}",
     };
     setDiffView("primary", "code");
@@ -1699,6 +1761,7 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: "{}",
       filePath: "index.json",
+      fileStatus: "M",
       originalContent: "{}",
     };
     setDiffView("primary", "code");
@@ -1717,6 +1780,7 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: '{"tagName":"div"}',
       filePath: "one.json",
+      fileStatus: "M",
       originalContent: '{"tagName":"section"}',
     };
     setDiffView("primary", "code");
@@ -1728,6 +1792,7 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: '{"tagName":"main"}',
       filePath: "two.json",
+      fileStatus: "M",
       originalContent: '{"tagName":"aside"}',
     };
     renderCanvas();
@@ -1747,6 +1812,7 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: '{"tagName":"div"}',
       filePath: "/project/index.json",
+      fileStatus: "M",
       originalContent: '{"tagName":"div"}',
     };
     setDiffView("primary", "code");
@@ -1769,11 +1835,12 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: "also not json",
       filePath: "/project/index.json",
+      fileStatus: "M",
       originalContent: "not json {",
     };
     renderCanvas();
     await flush();
-    expect(canvasPanels[0]!.canvas?.textContent).toContain("Failed to parse");
+    expect(panelAt(0).canvas.textContent).toContain("Failed to parse");
   });
 
   test("format files parse diff content through the format host", async () => {
@@ -1783,13 +1850,14 @@ describe("git-diff mode", () => {
     ctx.gitDiffState = {
       currentContent: "# new",
       filePath: "/project/post.md",
+      fileStatus: "M",
       originalContent: "# old",
     };
     renderCanvas();
     await flush();
     expect(parseSourceForPathMock).toHaveBeenCalledWith("/project/post.md", "# old");
     expect(parseSourceForPathMock).toHaveBeenCalledWith("/project/post.md", "# new");
-    expect(canvasPanels[0]!.canvas?.textContent).toContain("parsed-md");
+    expect(panelAt(0).canvas.textContent).toContain("parsed-md");
   });
 });
 
@@ -1802,15 +1870,15 @@ describe("edit mode", () => {
     renderCanvas();
     await flush();
 
-    const column = stageEl().querySelector('[part="edit-column"]') as HTMLElement;
+    const column = htmlEl('[part="edit-column"]');
     expect(column).not.toBeNull();
     expect(column.style.maxWidth).toBe("320px");
     expect(stageEl().querySelector('[part="edit-canvas"]')).not.toBeNull();
     expect(canvasPanels.length).toBe(1);
 
-    const panel = canvasPanels[0] as unknown as CanvasPanel;
-    expect(panel.scrollContainer?.getAttribute("part")).toBe("edit-canvas");
-    expect(panel.canvas?.querySelector("p")?.textContent).toBe("Hello");
+    const panel = panelAt(0);
+    expect(panel.scrollContainer.getAttribute("part")).toBe("edit-canvas");
+    expect(panel.canvas.querySelector("p")?.textContent).toBe("Hello");
     // The real tab document mounted, so the panel is patchable.
     expect(panel.ready).toBe(true);
     // "Iframe render OK" is deleted: a debug string shipped to end users and legible in a published
@@ -1823,11 +1891,11 @@ describe("edit mode", () => {
       $media: { "--": "600px" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
+    });
     setMode("edit");
     renderCanvas();
     await flush();
-    const column = stageEl().querySelector('[part="edit-column"]') as HTMLElement;
+    const column = htmlEl('[part="edit-column"]');
     expect(column.style.maxWidth).toBe("600px");
   });
 
@@ -1838,15 +1906,15 @@ describe("edit mode", () => {
     await flush();
     // The column now exists — give it a measurable width (happy-dom performs no layout), set the
     // Persisted zoom, and re-render: the edit branch must re-fit from the LIVE column width.
-    const column = stageEl().querySelector('[part="edit-column"]') as HTMLElement;
+    const column = htmlEl('[part="edit-column"]');
     stubRect(column, { width: 800 });
     tab.session.ui.editZoom = 2;
     renderCanvas();
     await flush();
 
-    const panel = canvasPanels[0] as unknown as CanvasPanel;
-    expect(panel.canvas?.style.width).toBe("400px");
-    expect(panel.canvas?.style.transform).toBe("scale(2)");
+    const panel = panelAt(0);
+    expect(panel.canvas.style.width).toBe("400px");
+    expect(panel.canvas.style.transform).toBe("scale(2)");
     expect(panel._width).toBe(400);
   });
 
@@ -1856,8 +1924,8 @@ describe("edit mode", () => {
     renderCanvas();
     await flush();
     const gen = surfaceForPane("primary").renderGeneration;
-    const mountSpy = mock(async () => {});
-    iframeImpl = mountSpy as never;
+    const mountSpy = mock<IframeMount>(async () => {});
+    iframeImpl = mountSpy;
 
     setEditZoom(1.5);
     await flush();
@@ -1978,7 +2046,7 @@ describe("the stage's scrollbar width, published on the cell", () => {
     const doomed = registerCanvasSurface("scrollbar-teardown", stage);
     const disconnect = mock(() => {});
     doomed.stageScrollbar = {
-      observer: { disconnect } as never,
+      observer: observerStub(disconnect),
       scroller: document.createElement("div"),
     };
     cell.style.setProperty(STAGE_SCROLLBAR_VAR, "15px");
@@ -2005,7 +2073,7 @@ describe("iframe render pipeline", () => {
     expect(tab.session.canvas.scope).toBeNull();
     expect(tab.session.canvas.error).toBeNull();
     expect(notified).not.toHaveBeenCalled();
-    expect((canvasPanels[0] as unknown as CanvasPanel).ready).toBe(true);
+    expect(panelAt(0).ready).toBe(true);
   });
 
   test("a stale iframe mount bails without touching state", async () => {
@@ -2022,7 +2090,7 @@ describe("iframe render pipeline", () => {
     await flush();
     expect(tab.session.canvas.status).toBe("idle");
     expect(notified).not.toHaveBeenCalled();
-    expect((canvasPanels[0] as unknown as CanvasPanel).ready).toBe(false);
+    expect(panelAt(0).ready).toBe(false);
   });
 
   test("a rejected iframe mount REACHES A SURFACE and leaves the panel un-ready", async () => {
@@ -2035,7 +2103,7 @@ describe("iframe render pipeline", () => {
     await flush();
     // It used to be a `console.warn` — the author saw a blank canvas and nothing else.
     expect(notified).toHaveBeenCalledWith("The canvas could not be mounted.");
-    expect((canvasPanels[0] as unknown as CanvasPanel).ready).toBe(false);
+    expect(panelAt(0).ready).toBe(false);
   });
 });
 
@@ -2048,11 +2116,11 @@ describe("design mode", () => {
     await flush();
     expect(surfaceForPane("primary").panzoomWrap).not.toBeNull();
     expect(canvasPanels.length).toBe(1);
-    const panel = canvasPanels[0] as unknown as CanvasPanel;
-    expect(panel.element?.dataset.fullWidth).toBe("");
+    const panel = panelAt(0);
+    expect(panel.element.dataset.fullWidth).toBe("");
     expect(stageEl().querySelector('[part="panel-header"]')).toBeNull();
     expect(surfaceForPane("primary").panzoomWrap?.style.transform).toContain("scale(1)");
-    expect(panel.canvas?.querySelector("p")?.textContent).toBe("Hello");
+    expect(panel.canvas.querySelector("p")?.textContent).toBe("Hello");
   });
 
   test("renders a labeled base panel when a custom base width is set", async () => {
@@ -2060,18 +2128,18 @@ describe("design mode", () => {
       $media: { "--": "600px" },
       children: [{ tagName: "p", textContent: "Hello" }],
       tagName: "div",
-    } as never);
+    });
     renderCanvas();
     await flush();
-    const panel = canvasPanels[0] as unknown as CanvasPanel;
+    const panel = panelAt(0);
     expect(panel.mediaName).toBe("base");
-    expect(panel.element?.querySelector('[part="panel-header"]')?.textContent?.trim()).toBe(
+    expect(panel.element.querySelector('[part="panel-header"]')?.textContent.trim()).toBe(
       "Base (600px)",
     );
     // The declared width reaches the viewport as a custom property on the board — see
     // `canvasPanelEntry`, which carries it that way so `applyEditZoom` can still write
     // `canvas.style.width` imperatively without a template fighting it back.
-    expect(panel.element?.style.getPropertyValue("--panel-viewport-w")).toBe("600px");
+    expect(panel.element.style.getPropertyValue("--panel-viewport-w")).toBe("600px");
   });
 
   test("renders one panel per breakpoint plus base", async () => {
@@ -2079,31 +2147,24 @@ describe("design mode", () => {
       $media: { "--": "320px", md: "(min-width: 768px)" },
       children: [{ tagName: "p", textContent: "Hello" }],
       tagName: "div",
-    } as never);
+    });
     renderCanvas();
     await flush();
 
     expect(canvasPanels.length).toBe(2);
     const headers = [...stageEl().querySelectorAll('[part="panel-header"]')].map((h) =>
-      h.textContent?.trim(),
+      h.textContent.trim(),
     );
     expect(headers).toEqual(["Base (320px)", "Md (768px)"]);
     // Base panel header is highlighted when activeMedia is null
-    expect(
-      (canvasPanels[0]!.element?.querySelector('[part="panel-header"]') as HTMLElement | null)
-        ?.dataset.active,
-    ).toBe("");
+    expect(htmlEl('[part="panel-header"]', panelAt(0).element).dataset.active).toBe("");
     // Both panels rendered content (second one via deferred setTimeout)
-    for (const panel of canvasPanels as unknown as CanvasPanel[]) {
-      expect(panel.canvas?.querySelector("p")?.textContent).toBe("Hello");
+    for (const panel of canvasPanels) {
+      expect(panel.canvas.querySelector("p")?.textContent).toBe("Hello");
     }
     // The md(768) panel's viewport is sized to its breakpoint width (observable without a layout
     // Engine; the real @media now evaluates natively inside each panel's iframe viewport).
-    expect(
-      (canvasPanels[1] as unknown as CanvasPanel).element?.style.getPropertyValue(
-        "--panel-viewport-w",
-      ),
-    ).toBe("768px");
+    expect(panelAt(1).element.style.getPropertyValue("--panel-viewport-w")).toBe("768px");
   });
 
   test("every artboard of a pass mounts under that pass's generation", async () => {
@@ -2115,7 +2176,7 @@ describe("design mode", () => {
       $media: { "--": "320px", lg: "(min-width: 1024px)", md: "(min-width: 768px)" },
       children: [{ tagName: "p", textContent: "Hello" }],
       tagName: "div",
-    } as never);
+    });
 
     renderCanvas();
     await flush();
@@ -2136,7 +2197,7 @@ describe("design mode", () => {
       $media: { "--": "320px", md: "(min-width: 768px)" },
       children: [{ tagName: "p", textContent: "Hello" }],
       tagName: "div",
-    } as never);
+    });
 
     // Two passes back to back: the first pass's second artboard is still queued behind a timer when
     // The second pass starts. Reading `surfaceForPane("primary").renderGeneration` inside that timer would stamp the
@@ -2163,9 +2224,9 @@ describe("design mode", () => {
     openSyncedTab();
     const stop = mock(() => {});
     const disconnect = mock(() => {});
-    const observer = { disconnect } as never;
+    const observer = observerStub(disconnect);
     surfaceForPane("primary").centerObserver = observer;
-    canvasPanels.push({ renderScope: { stop } } as never);
+    canvasPanels.push(panelWithScope(stop));
 
     renderCanvas();
     expect(stop).toHaveBeenCalled();
@@ -2192,7 +2253,7 @@ describe("fit on entering Design", () => {
       $media: { "--": "1280px" },
       children: [{ tagName: "p", textContent: "Hello" }],
       tagName: "div",
-    } as never);
+    });
     renderCanvas();
     await flush();
     // 1280 + 32 padding = 1312 of artboard in 700px of pane.
@@ -2205,7 +2266,7 @@ describe("fit on entering Design", () => {
       $media: { "--": "1280px" },
       children: [{ tagName: "p", textContent: "Hello" }],
       tagName: "div",
-    } as never);
+    });
     renderCanvas();
     await flush();
     setPaneZoom(1);
@@ -2220,8 +2281,8 @@ describe("fit on entering Design", () => {
     renderStylebookMode.mockImplementation(() => {
       const wrap = document.createElement("div");
       stageEl().append(wrap);
-      surfaceForPane("primary").panzoomWrap = wrap as HTMLDivElement;
-      canvasPanels.push({ _width: 800 } as never);
+      surfaceForPane("primary").panzoomWrap = wrap;
+      canvasPanels.push(canvasPanelEntry(null, null, false, 800).panel);
       return Promise.resolve();
     });
     try {
@@ -2250,9 +2311,9 @@ describe("preview mode", () => {
     expect(stageEl().querySelector('[part="panzoom"]')).toBeNull();
     expect(surfaceForPane("primary").panzoomWrap).toBeNull();
     expect(canvasPanels.length).toBe(1);
-    const panel = canvasPanels[0] as unknown as CanvasPanel;
-    expect(panel.element?.dataset.fullWidth).toBe("");
-    expect(panel.canvas?.querySelector("p")?.textContent).toBe("Hello");
+    const panel = panelAt(0);
+    expect(panel.element.dataset.fullWidth).toBe("");
+    expect(panel.canvas.querySelector("p")?.textContent).toBe("Hello");
   });
 
   test("entering and leaving preview is a real mode transition", async () => {
@@ -2299,8 +2360,8 @@ describe("stylebook mode", () => {
     expect(renderStylebookMode).toHaveBeenCalledTimes(1);
     // The SURFACE is the first argument now — a stylebook draws into one pane's stage — so the
     // Helper bag is the second.
-    expect((renderStylebookMode.mock.calls[0]![0] as { paneId: string }).paneId).toBe("primary");
-    const helpers = renderStylebookMode.mock.calls[0]![1] as Record<string, unknown>;
+    const [drawnInto, helpers] = renderStylebookMode.mock.calls[0]!;
+    expect(drawnInto.paneId).toBe("primary");
     for (const key of [
       "applyTransform",
       "canvasPanelEntry",
@@ -2308,15 +2369,15 @@ describe("stylebook mode", () => {
       "observeCenterUntilStable",
       "stageHost",
       "updateActivePanelHeaders",
-    ]) {
-      expect(typeof helpers[key]).toBe("function");
+    ] as const) {
+      expect(helpers[key]).toBeTypeOf("function");
     }
   });
 
   test("re-render with unchanged filters posts a styleUpdate to live stylebook hosts", () => {
     openSyncedTab();
     setMode("stylebook");
-    const updates: Record<string, unknown>[] = [];
+    const updates: JxStyle[] = [];
     styleUpdateImpl = (style) => {
       updates.push(style);
       return 1; // A live stylebook host received it → no full rebuild.
@@ -2333,13 +2394,17 @@ describe("stylebook mode", () => {
     styleUpdateImpl = () => 0; // No stylebook iframe mounted → fast path can't apply.
     renderCanvas();
     renderCanvas();
-    expect(renderStylebookMode).toHaveBeenCalledTimes(2);
+    // Both passes rebuilt the catalogue, and both into the primary pane's stage.
+    expect(renderStylebookMode.mock.calls.map(([drawnInto]) => drawnInto.paneId)).toEqual([
+      PRIMARY_PANE,
+      PRIMARY_PANE,
+    ]);
   });
 
   test("filter changes force a full stylebook re-render", () => {
     openSyncedTab();
     setMode("stylebook");
-    const updates: Record<string, unknown>[] = [];
+    const updates: JxStyle[] = [];
     styleUpdateImpl = (style) => {
       updates.push(style);
       return 1;
@@ -2357,7 +2422,10 @@ describe("stylebook mode", () => {
     renderCanvas();
     shell.stylebook.customizedOnly = true;
     renderCanvas();
-    expect(renderStylebookMode).toHaveBeenCalledTimes(2);
+    expect(renderStylebookMode.mock.calls.map(([drawnInto]) => drawnInto.paneId)).toEqual([
+      PRIMARY_PANE,
+      PRIMARY_PANE,
+    ]);
   });
 
   test("two Stylebook panes BOTH rebuild on a filter change — neither evicts the other", () => {
@@ -2390,8 +2458,7 @@ describe("stylebook mode", () => {
     // A live stylebook host in each pane, so the cheap path is available to both.
     styleUpdateImpl = () => 1;
 
-    const rebuilt = () =>
-      renderStylebookMode.mock.calls.map((call) => (call[0] as { paneId: string }).paneId);
+    const rebuilt = () => renderStylebookMode.mock.calls.map(([drawnInto]) => drawnInto.paneId);
 
     // Pass one: both panes build their catalogue for the empty filter.
     shell.stylebook.filter = "button";
@@ -2438,13 +2505,16 @@ describe("scheduleCanvasRender", () => {
     scheduleCanvasRender();
     await rafTurn();
     await flush();
-    expect(renderWelcome).toHaveBeenCalledTimes(1);
+    // One render, and it drew the welcome screen into the primary stage.
+    expect(renderWelcome.mock.calls).toEqual([[stageEl()]]);
   });
 
   test("catches renderCanvas errors inside the frame callback", async () => {
     const tab = openSyncedTab();
     // Poison the tab UI so the dispatch's base-mode read throws inside the frame callback.
-    (tab.session as unknown as { ui: unknown }).ui = null;
+    /* SAFETY: a deliberate poison. `session.ui` is never null for a live tab, and that is the
+       point: the dispatch's base-mode read dereferences it, so the frame callback throws. */
+    (tab.session as { ui: Tab["session"]["ui"] | null }).ui = null;
     const error = spyOn(console, "error").mockImplementation(() => {});
     try {
       scheduleCanvasRender();
@@ -2462,7 +2532,8 @@ describe("scheduleCanvasRender", () => {
 describe("renderOverlays", () => {
   test("delegates to the overlays panel renderer", () => {
     renderOverlays();
-    expect(overlaysRender).toHaveBeenCalled();
+    // Exactly one paint, and the overlays panel takes no arguments: it reads its own context.
+    expect(overlaysRender.mock.calls).toEqual([[]]);
   });
 });
 
@@ -2525,7 +2596,7 @@ describe("the Document Header slot", () => {
        With the gap the page ended at an invisible line 24px below that border with nothing drawn in
        between, and the border read as a hairline over one continuous surface. */
     expect(stageEl().style.gap).toBe("0px");
-    expect((slot() as HTMLElement | null)?.dataset.placement).toBeUndefined();
+    expect(htmlEl('[part="doc-header"]').dataset.placement).toBeUndefined();
   });
 
   test("Design draws no header, and the stage stays a row", async () => {
@@ -2547,7 +2618,7 @@ describe("the Document Header slot", () => {
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
       title: "Two artboards",
-    } as never);
+    });
     expect(tab.doc.document.title).toBe("Two artboards");
     setMode("design");
     renderCanvas();
@@ -2609,7 +2680,7 @@ describe("the Document Header slot", () => {
     await flush();
     expect(stageEl().style.flexDirection).toBe("column");
 
-    delete (tab.doc.document as { title?: string }).title;
+    delete tab.doc.document.title;
     renderCanvas();
     await flush();
     expect(slot()).toBeNull();
@@ -2640,7 +2711,7 @@ describe("the Document Header slot", () => {
     const before = slot();
     expect(before).not.toBeNull();
 
-    tab.session.ui.editingFunction = { path: [], prop: "onclick" } as never;
+    tab.session.ui.editingFunction = { eventKey: "onclick", path: [], type: "event" };
     renderCanvas();
     await flush();
     expect(slot()).not.toBeNull();
@@ -2741,7 +2812,9 @@ describe("renderCanvas is addressed by pane", () => {
       tabOrder: [tab.id],
     });
     const stageless = surfaceForPane(SECONDARY_PANE);
-    stageless.wrap = null as unknown as HTMLElement;
+    /* SAFETY: a deliberate poison. A registered surface always has a stage, and this test is the
+       state where a scheduler reaches a pane that has none, so the render must paint nothing. */
+    (stageless as { wrap: HTMLElement | null }).wrap = null;
 
     expect(() => {
       renderCanvas(SECONDARY_PANE);
@@ -2786,7 +2859,9 @@ describe("a derived pane's stage", () => {
     return wrap;
   }
 
-  function lensRecord(over: Partial<Extract<PaneDerivation, { kind: "lens" }>> = {}) {
+  function lensRecord(
+    over: Partial<Extract<PaneDerivation, { kind: "lens" }>> = {},
+  ): Extract<PaneDerivation, { kind: "lens" }> {
     return {
       diff: null,
       kind: "lens",
@@ -2798,7 +2873,7 @@ describe("a derived pane's stage", () => {
       status: "ready",
       zoom: 1,
       ...over,
-    } as PaneDerivation;
+    };
   }
 
   afterEach(() => {
@@ -2840,19 +2915,19 @@ describe("a derived pane's stage", () => {
     ctx.gitDiffState = {
       currentContent: JSON.stringify({ children: [{ tagName: "p", textContent: "SLOT" }] }),
       filePath: "/project/somebody-elses.json",
+      fileStatus: "M",
       originalContent: JSON.stringify({ children: [{ tagName: "p", textContent: "SLOT" }] }),
     };
     const lensWrap = standUpLens(
       lensRecord({
         diff: {
           currentContent: JSON.stringify({ children: [{ tagName: "p", textContent: "MINE-NEW" }] }),
-          currentDoc: undefined,
           filePath: "/project/index.json",
           fileStatus: "M",
           originalContent: JSON.stringify({
             children: [{ tagName: "p", textContent: "MINE-OLD" }],
           }),
-        } as never,
+        },
         mode: "git-diff",
         preset: "diff",
       }),
@@ -2861,10 +2936,10 @@ describe("a derived pane's stage", () => {
     renderCanvas(SECONDARY_PANE);
     await flush();
 
-    const panels = surfaceForPane(SECONDARY_PANE).panels as unknown as CanvasPanel[];
+    const { panels } = surfaceForPane(SECONDARY_PANE);
     expect(panels).toHaveLength(2);
-    expect(panels[0]!.canvas?.textContent).toContain("MINE-OLD");
-    expect(panels[1]!.canvas?.textContent).toContain("MINE-NEW");
+    expect(panels[0]!.canvas.textContent).toContain("MINE-OLD");
+    expect(panels[1]!.canvas.textContent).toContain("MINE-NEW");
     expect(lensWrap.textContent).not.toContain("SLOT");
     lensWrap.remove();
   });
@@ -2968,7 +3043,7 @@ describe("a derived pane's stage", () => {
         "is still open here",
       );
       // …and the one verb that ends the follow and leaves the tab standing (§18.4).
-      expect(wrap.querySelector('[part="empty-action"]')?.textContent?.trim()).toBe(
+      expect(wrap.querySelector('[part="empty-action"]')?.textContent.trim()).toBe(
         "Keep This Document",
       );
     } finally {
@@ -3021,7 +3096,7 @@ describe("a derived pane's stage", () => {
       $media: { "--": "400px", tablet: "(min-width: 768px)", wide: "(min-width: 1200px)" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
+    });
     setMode("design");
     const lensWrap = standUpLens(lensRecord({ media: "tablet" }));
 
@@ -3033,7 +3108,7 @@ describe("a derived pane's stage", () => {
     expect(stageEl().querySelectorAll('[part="panel"]')).toHaveLength(3);
     // The lens draws exactly the artboard it names.
     const lensHeaders = [...lensWrap.querySelectorAll('[part="panel-header"]')].map((h) =>
-      h.textContent?.trim(),
+      h.textContent.trim(),
     );
     expect(lensHeaders).toHaveLength(1);
     expect(lensHeaders[0]).toContain("Tablet");
@@ -3052,7 +3127,7 @@ describe("a derived pane's stage", () => {
       $media: { "--": "400px", tablet: "(min-width: 768px)", wide: "(min-width: 1200px)" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
+    });
     setMode("design");
     const lensWrap = standUpLens(lensRecord({ media: null }));
 
@@ -3062,7 +3137,7 @@ describe("a derived pane's stage", () => {
 
     expect(stageEl().querySelectorAll('[part="panel"]')).toHaveLength(3);
     const lensHeaders = [...lensWrap.querySelectorAll('[part="panel-header"]')].map((h) =>
-      h.textContent?.trim(),
+      h.textContent.trim(),
     );
     expect(lensHeaders).toHaveLength(1);
     expect(lensHeaders[0]).toContain("Base");
@@ -3074,7 +3149,7 @@ describe("a derived pane's stage", () => {
       $media: { "--": "400px", tablet: "(min-width: 768px)" },
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
-    } as never);
+    });
     setMode("design");
     const lensWrap = standUpLens(
       lensRecord({ media: "deleted-breakpoint", status: "unavailable" }),
@@ -3167,6 +3242,7 @@ describe("git-diff · a comparison with no visual half", () => {
     ctx.gitDiffState = {
       currentContent: '{"name":"x","version":"2"}',
       filePath: "package.json",
+      fileStatus: "M",
       originalContent: '{"name":"x","version":"1"}',
     };
     renderCanvas();
@@ -3184,6 +3260,7 @@ describe("git-diff · a comparison with no visual half", () => {
     ctx.gitDiffState = {
       currentContent: "{}",
       filePath: "package.json",
+      fileStatus: "M",
       originalContent: "{}",
     };
     renderCanvas();
@@ -3200,6 +3277,7 @@ describe("git-diff · a comparison with no visual half", () => {
     ctx.gitDiffState = {
       currentContent: "b",
       filePath: "notes.txt",
+      fileStatus: "M",
       originalContent: "a",
     };
     renderCanvas();
@@ -3219,6 +3297,7 @@ describe("git-diff · a comparison with no visual half", () => {
         tagName: "div",
       }),
       filePath: "/project/index.json",
+      fileStatus: "M",
       originalContent: JSON.stringify({
         children: [{ tagName: "p", textContent: "before" }],
         tagName: "div",

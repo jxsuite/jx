@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { EXTENSION_MANIFEST, buildExtensionRegistry } from "../src/extension-registry";
 import type { FormatHostIO } from "../src/extension-registry";
+import { isString } from "../src/guards";
+import type { JsonObject } from "../types";
 
 const MD_CLASS = {
   $defs: {
@@ -92,27 +94,34 @@ const AUTH_MANIFEST = {
 
 const BASE = "/proj/project.json";
 
-function makeIO(files: Record<string, unknown>): FormatHostIO {
+/**
+ * The virtual filesystem behind `makeIO`: a path maps to a parsed JSON file, a `bare:<specifier>`
+ * key maps to the path a bare specifier resolves to, and any other string is file content that does
+ * not parse as JSON.
+ */
+type VirtualFiles = Map<string, JsonObject | string>;
+
+function makeIO(files: VirtualFiles): FormatHostIO {
   return {
     importModule: () => Promise.reject(new Error("not needed")),
     loadJson: (path) => {
-      const found = files[path];
+      const found = files.get(path);
       if (found === undefined) {
         return Promise.reject(new Error(`ENOENT: ${path}`));
       }
-      if (found === "not-json") {
+      if (isString(found)) {
         // oxlint-disable-next-line eslint/prefer-promise-reject-errors -- Deliberate non-Error rejection to exercise errorMessage()'s String() branch.
         return Promise.reject("bad file");
       }
-      return Promise.resolve(structuredClone(found) as Record<string, unknown>);
+      return Promise.resolve(structuredClone(found));
     },
     resolvePath: (base, ref) => {
       if (ref.startsWith("./") || ref.startsWith("../")) {
         const dir = base.slice(0, base.lastIndexOf("/"));
         return `${dir}/${ref.replace(/^\.\//, "")}`;
       }
-      const bare = files[`bare:${ref}`];
-      if (typeof bare === "string") {
+      const bare = files.get(`bare:${ref}`);
+      if (isString(bare)) {
         return bare;
       }
       throw new Error(`Cannot find module '${ref}'`);
@@ -120,20 +129,22 @@ function makeIO(files: Record<string, unknown>): FormatHostIO {
   };
 }
 
-function standardFiles(): Record<string, unknown> {
-  return {
-    "/nm/@acme/auth/jx-extension.json": AUTH_MANIFEST,
-    "/nm/@acme/auth/src/Auth.class.json": AUTH_MOUNT_CLASS,
-    "/nm/@acme/data/jx-extension.json": DATA_MANIFEST,
-    "/nm/@acme/data/src/D1.class.json": D1_CLASS,
-    "/nm/@acme/data/src/Mount.class.json": DATA_MOUNT_CLASS,
-    "/nm/@acme/data/src/Tables.class.json": TABLES_CLASS,
-    "/proj/local-ext/jx-extension.json": MD_MANIFEST,
-    "/proj/local-ext/schemas/project.fragment.schema.json": {},
-    "/proj/local-ext/src/Md.class.json": MD_CLASS,
-    [`bare:@acme/auth/${EXTENSION_MANIFEST}`]: "/nm/@acme/auth/jx-extension.json",
-    [`bare:@acme/data/${EXTENSION_MANIFEST}`]: "/nm/@acme/data/jx-extension.json",
-  };
+function standardFiles(): VirtualFiles {
+  return new Map(
+    Object.entries({
+      "/nm/@acme/auth/jx-extension.json": AUTH_MANIFEST,
+      "/nm/@acme/auth/src/Auth.class.json": AUTH_MOUNT_CLASS,
+      "/nm/@acme/data/jx-extension.json": DATA_MANIFEST,
+      "/nm/@acme/data/src/D1.class.json": D1_CLASS,
+      "/nm/@acme/data/src/Mount.class.json": DATA_MOUNT_CLASS,
+      "/nm/@acme/data/src/Tables.class.json": TABLES_CLASS,
+      "/proj/local-ext/jx-extension.json": MD_MANIFEST,
+      "/proj/local-ext/schemas/project.fragment.schema.json": {},
+      "/proj/local-ext/src/Md.class.json": MD_CLASS,
+      [`bare:@acme/auth/${EXTENSION_MANIFEST}`]: "/nm/@acme/auth/jx-extension.json",
+      [`bare:@acme/data/${EXTENSION_MANIFEST}`]: "/nm/@acme/data/jx-extension.json",
+    }),
+  );
 }
 
 describe("buildExtensionRegistry", () => {
@@ -159,7 +170,7 @@ describe("buildExtensionRegistry", () => {
   });
 
   test("empty and undefined extension lists build empty registries", async () => {
-    const io = makeIO({});
+    const io = makeIO(new Map());
     const fromEmpty = await buildExtensionRegistry([], io, BASE);
     const fromUndefined = await buildExtensionRegistry(undefined, io, BASE);
     expect(fromEmpty.classes).toHaveLength(0);
@@ -173,9 +184,9 @@ describe("buildExtensionRegistry", () => {
     expect(reg.formats.byExtension(".csv")).toBeUndefined();
 
     const rivalManifest = { classes: { Md2: "./src/Md2.class.json" }, name: "@acme/md2" };
-    files["/nm/@acme/md2/jx-extension.json"] = rivalManifest;
-    files["/nm/@acme/md2/src/Md2.class.json"] = { ...MD_CLASS, title: "Md2" };
-    files[`bare:@acme/md2/${EXTENSION_MANIFEST}`] = "/nm/@acme/md2/jx-extension.json";
+    files.set("/nm/@acme/md2/jx-extension.json", rivalManifest);
+    files.set("/nm/@acme/md2/src/Md2.class.json", { ...MD_CLASS, title: "Md2" });
+    files.set(`bare:@acme/md2/${EXTENSION_MANIFEST}`, "/nm/@acme/md2/jx-extension.json");
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(
       buildExtensionRegistry(["./local-ext", "@acme/md2"], makeIO(files), BASE),
@@ -183,21 +194,22 @@ describe("buildExtensionRegistry", () => {
   });
 
   test("unresolvable bare specifier names the exports requirement", async () => {
+    const io = makeIO(new Map());
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
-    await expect(buildExtensionRegistry(["@acme/missing"], makeIO({}), BASE)).rejects.toThrow(
+    await expect(buildExtensionRegistry(["@acme/missing"], io, BASE)).rejects.toThrow(
       /must export jx-extension\.json/,
     );
   });
 
   test("unreadable manifest and class files are loud errors, not silent skips", async () => {
     const files = standardFiles();
-    delete files["/nm/@acme/data/src/Tables.class.json"];
+    files.delete("/nm/@acme/data/src/Tables.class.json");
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(buildExtensionRegistry(["@acme/data"], makeIO(files), BASE)).rejects.toThrow(
       /cannot read class "Tables"/,
     );
 
-    const broken = { ...standardFiles(), "/proj/local-ext/jx-extension.json": "not-json" };
+    const broken = standardFiles().set("/proj/local-ext/jx-extension.json", "not-json");
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(buildExtensionRegistry(["./local-ext"], makeIO(broken), BASE)).rejects.toThrow(
       /cannot read manifest .*bad file/,
@@ -206,13 +218,13 @@ describe("buildExtensionRegistry", () => {
 
   test("manifest must declare a name matching a bare specifier", async () => {
     const files = standardFiles();
-    files["/nm/@acme/data/jx-extension.json"] = { ...DATA_MANIFEST, name: "@acme/other" };
+    files.set("/nm/@acme/data/jx-extension.json", { ...DATA_MANIFEST, name: "@acme/other" });
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(buildExtensionRegistry(["@acme/data"], makeIO(files), BASE)).rejects.toThrow(
       /does not match the specifier/,
     );
 
-    files["/nm/@acme/data/jx-extension.json"] = { classes: {} };
+    files.set("/nm/@acme/data/jx-extension.json", { classes: {} });
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(buildExtensionRegistry(["@acme/data"], makeIO(files), BASE)).rejects.toThrow(
       /must declare a "name"/,
@@ -221,10 +233,10 @@ describe("buildExtensionRegistry", () => {
 
   test("duplicate class names across extensions conflict", async () => {
     const files = standardFiles();
-    files["/nm/@acme/auth/jx-extension.json"] = {
+    files.set("/nm/@acme/auth/jx-extension.json", {
       classes: { Md: "./src/Auth.class.json" },
       name: "@acme/auth",
-    };
+    });
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(
       buildExtensionRegistry(["./local-ext", "@acme/auth"], makeIO(files), BASE),
@@ -233,15 +245,14 @@ describe("buildExtensionRegistry", () => {
 
   test("duplicate project section keys conflict", async () => {
     const files = standardFiles();
-    files["/nm/@acme/auth/src/Auth.class.json"] = {
+    files.set("/nm/@acme/auth/src/Auth.class.json", {
       ...TABLES_CLASS,
-      server: undefined,
       title: "Tables2",
-    };
-    files["/nm/@acme/auth/jx-extension.json"] = {
+    });
+    files.set("/nm/@acme/auth/jx-extension.json", {
       classes: { Tables2: "./src/Auth.class.json" },
       name: "@acme/auth",
-    };
+    });
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(
       buildExtensionRegistry(["@acme/data", "@acme/auth"], makeIO(files), BASE),
@@ -250,20 +261,20 @@ describe("buildExtensionRegistry", () => {
 
   test("server basePaths must live under /_jx/ and be unique", async () => {
     const files = standardFiles();
-    files["/nm/@acme/auth/src/Auth.class.json"] = {
+    files.set("/nm/@acme/auth/src/Auth.class.json", {
       ...AUTH_MOUNT_CLASS,
       server: { basePath: "/api/auth" },
-    };
+    });
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(buildExtensionRegistry(["@acme/auth"], makeIO(files), BASE)).rejects.toThrow(
       /must be under \/_jx\//,
     );
 
     const dupes = standardFiles();
-    dupes["/nm/@acme/auth/src/Auth.class.json"] = {
+    dupes.set("/nm/@acme/auth/src/Auth.class.json", {
       ...AUTH_MOUNT_CLASS,
       server: { basePath: "/_jx/data" },
-    };
+    });
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
     await expect(
       buildExtensionRegistry(["@acme/data", "@acme/auth"], makeIO(dupes), BASE),
@@ -306,7 +317,7 @@ describe("ExtensionRegistry accessors", () => {
   test("assetProviders filters to classes with an assets capability (§8.5)", async () => {
     const files = standardFiles();
     // Give the auth mount an `assets` capability method (static asset mount).
-    files["/nm/@acme/auth/src/Auth.class.json"] = {
+    files.set("/nm/@acme/auth/src/Auth.class.json", {
       ...AUTH_MOUNT_CLASS,
       $defs: {
         methods: {
@@ -314,7 +325,7 @@ describe("ExtensionRegistry accessors", () => {
           assets: { identifier: "assets", role: "assets", scope: "static", timing: ["server"] },
         },
       },
-    };
+    });
     const reg = await buildExtensionRegistry(["@acme/data", "@acme/auth"], makeIO(files), BASE);
     // Only the auth mount declares `assets`; the emit-only Tables class is not an asset provider.
     expect(reg.assetProviders().map((e) => e.name)).toEqual(["AuthMount"]);
@@ -330,7 +341,7 @@ describe("ExtensionRegistry accessors", () => {
    */
   test("headProviders filters to classes with a head capability (§8.6)", async () => {
     const files = standardFiles();
-    files["/nm/@acme/auth/src/Auth.class.json"] = {
+    files.set("/nm/@acme/auth/src/Auth.class.json", {
       ...AUTH_MOUNT_CLASS,
       $defs: {
         methods: {
@@ -338,7 +349,7 @@ describe("ExtensionRegistry accessors", () => {
           head: { identifier: "head", role: "head", scope: "static", timing: ["compiler"] },
         },
       },
-    };
+    });
     const reg = await buildExtensionRegistry(["@acme/data", "@acme/auth"], makeIO(files), BASE);
 
     expect(reg.headProviders().map((e) => e.name)).toEqual(["AuthMount"]);
@@ -353,10 +364,10 @@ describe("ExtensionRegistry accessors", () => {
 
   test("mounts without an order default to 100 and tie-break by name", async () => {
     const files = standardFiles();
-    files["/nm/@acme/auth/src/Auth.class.json"] = {
+    files.set("/nm/@acme/auth/src/Auth.class.json", {
       ...AUTH_MOUNT_CLASS,
       server: { basePath: "/_jx/auth" },
-    };
+    });
     const reg = await buildExtensionRegistry(["@acme/data", "@acme/auth"], makeIO(files), BASE);
     expect(reg.serverMounts().map((e) => e.name)).toEqual(["DataMount", "AuthMount"]);
   });
@@ -374,13 +385,13 @@ describe("ExtensionRegistry accessors", () => {
 
   test("schemas.fields fragments resolve like the other kinds (field-union extras)", async () => {
     const files = standardFiles();
-    files["/nm/@acme/data/jx-extension.json"] = {
+    files.set("/nm/@acme/data/jx-extension.json", {
       ...DATA_MANIFEST,
       schemas: {
         ...DATA_MANIFEST.schemas,
         fields: "./schemas/fields.fragment.schema.json",
       },
-    };
+    });
     const reg = await buildExtensionRegistry(["@acme/data"], makeIO(files), BASE);
     expect(reg.schemaFragments("fields")).toEqual([
       "/nm/@acme/data/schemas/fields.fragment.schema.json",

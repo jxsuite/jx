@@ -7,11 +7,12 @@ import {
   findEntry,
   queryContentType,
 } from "../src/content";
+import type { JsonObject } from "@jxsuite/schema/types";
 import type { ContentLoaderEntry } from "../src/types";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-function makeEntry(id: string, data: Record<string, unknown> = {}): ContentLoaderEntry {
+function makeEntry(id: string, data: ContentLoaderEntry["data"] = {}): ContentLoaderEntry {
   return { body: null, data, id };
 }
 
@@ -177,7 +178,12 @@ describe("queryContentType", () => {
   });
 
   test("non-array non-object filter yields no rules and keeps everything", () => {
-    const result = queryContentType(posts, { filter: "draft" as never });
+    // A collection's `filter` is read from document JSON, where nothing stops it being a string.
+    const authored: JsonObject = { filter: "draft" };
+    /* SAFETY: deliberately unsound. ContentQuery types `filter` as rules or a shorthand object, but
+       an unvalidated document can carry a string there; queryContentType tests it only with
+       Array.isArray and isNonNullObject before reading it, and keeping every entry is what this pins. */
+    const result = queryContentType(posts, { filter: authored.filter as JsonObject });
     expect(result).toHaveLength(3);
   });
 
@@ -341,10 +347,10 @@ describe("ContentEntry", () => {
    * French route, on a page whose `<html lang>` says otherwise, with nothing to report it.
    */
   describe("on a localized collection", () => {
-    const localized = [
+    const localized: ContentLoaderEntry[] = [
       { ...makeEntry("hello", { title: "Hello" }), _meta: { locale: "en" } },
       { ...makeEntry("hello", { title: "Bonjour" }), _meta: { locale: "fr-CA" } },
-    ] as unknown as ContentLoaderEntry[];
+    ];
     const project = { content: new Map([["posts", localized]]) };
 
     test("answers with the route's own language", () => {

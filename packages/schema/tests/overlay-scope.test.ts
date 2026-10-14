@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { declaresPopover, isPopover, overlayScopeFor } from "../src/overlays";
-import type { JxElement } from "../types";
+import type { JsonObject, JxElement } from "../types";
 
 /**
  * `overlayScopeFor` — the one definition of what makes a tag a popover or an invoker.
@@ -11,8 +11,19 @@ import type { JxElement } from "../types";
  * here exercises is one this package cannot refactor safely, whatever the other suites happen to
  * cover — so the tests belong beside the function.
  */
-const def = (tag: string, extra: Record<string, unknown> = {}): JxElement =>
-  ({ tagName: tag, ...extra }) as JxElement;
+/**
+ * A definition as a parsed file delivers it. `overlayScopeFor` reads definitions straight off disk,
+ * so several fixtures are deliberately off-contract (a numeric `tagName`, a string
+ * `observedAttributes`) to prove it skips rather than throws.
+ */
+function parsedDefinition(fields: JsonObject): JxElement {
+  /* SAFETY: every fixture is JSON, which is what a definition file parses to, and the function under
+     test reads each field through a guard (`isString`, `Array.isArray`) before trusting its type. */
+  return fields as JxElement;
+}
+
+const def = (tag: string, extra: JsonObject = {}): JxElement =>
+  parsedDefinition({ tagName: tag, ...extra });
 
 const INVOKER = ["popovertarget", "popovertargetaction", "command", "commandfor"];
 
@@ -52,8 +63,8 @@ describe("overlayScopeFor", () => {
 
   test("a missing or non-string tagName is skipped rather than thrown over", () => {
     const scope = overlayScopeFor([
-      {} as JxElement,
-      { tagName: 42 } as unknown as JxElement,
+      {},
+      parsedDefinition({ tagName: 42 }),
       def("jx-menu", { attributes: { popover: "auto" } }),
     ]);
     expect([...(scope.popoverTags ?? [])]).toEqual(["jx-menu"]);

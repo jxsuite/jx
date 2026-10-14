@@ -101,6 +101,9 @@ export async function mapSources(bundled: { url: string; line: number; totalMs: 
     }
     try {
       const response = await fetch(`${url}.map`);
+      /* SAFETY: `${url}.map` is the source map Bun's dev bundler emits beside the bundle it served:
+       * Source Map v3, whose required `sources` array and `mappings` string are all SourceMapFile
+       * declares. A non-JSON response throws in json() and the catch below records an empty map. */
       const sm = (await response.json()) as SourceMapFile;
       const entry = { byLine: parseMappings(sm), sm };
       maps.set(url, entry);

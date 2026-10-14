@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createCloudPlatform } from "../src/platforms/cloud";
 import { onActionRequired, resetActionReports } from "../src/account/action-required";
 import { platformErrorInfo } from "../src/platform-errors";
+import { isFunction, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type { ActionRequiredReport } from "../src/account/action-required";
 
 const PROJECT = { owner: "acme", repo: "site", branch: "main" };
@@ -37,27 +39,49 @@ const REFUSAL = {
 
 interface Route {
   status?: number;
-  body: unknown;
+  /** Sent as written when a string, and as JSON otherwise. */
+  body: JsonValue;
 }
 
+/** One request the adapter made: the arguments it passed `fetch`, as passed. */
+type FetchArgs = Parameters<typeof fetch>;
+
 /** Route fetches by URL substring (first match wins); unmatched calls get an empty 200. */
-function mockFetch(
-  routes: [string, Route | (() => Route)][],
-): { url: string; init?: RequestInit }[] {
-  const calls: { url: string; init?: RequestInit }[] = [];
-  globalThis.fetch = ((url: string, init?: RequestInit) => {
-    calls.push({ url, ...(init ? { init } : {}) });
-    for (const [needle, route] of routes) {
-      if (url.includes(needle)) {
-        const answer = typeof route === "function" ? route() : route;
-        const body =
-          typeof answer.body === "string" ? answer.body : JSON.stringify(answer.body ?? null);
-        return Promise.resolve(new Response(body, { status: answer.status ?? 200 }));
+function mockFetch(routes: [string, Route | (() => Route)][]): FetchArgs[] {
+  const calls: FetchArgs[] = [];
+  // Keeping Bun's `preconnect` makes the stub a whole `fetch`; the adapter passes string URLs.
+  globalThis.fetch = Object.assign(
+    (...args: FetchArgs) => {
+      calls.push(args);
+      const url = String(args[0]);
+      for (const [needle, route] of routes) {
+        if (url.includes(needle)) {
+          const answer = isFunction(route) ? route() : route;
+          const body = isString(answer.body) ? answer.body : JSON.stringify(answer.body);
+          return Promise.resolve(new Response(body, { status: answer.status ?? 200 }));
+        }
       }
-    }
-    return Promise.resolve(Response.json({}));
-  }) as unknown as typeof fetch;
+      return Promise.resolve(Response.json({}));
+    },
+    { preconnect: realFetch.preconnect },
+  );
   return calls;
+}
+
+/**
+ * The Error `pending` rejects with, or null when it fulfils (or when an optional method was absent
+ * and there is no promise at all). A rejection that is not an Error is rethrown, failing the test.
+ */
+async function rejectionOf(pending: Promise<unknown> | undefined): Promise<Error | null> {
+  try {
+    await pending;
+    return null;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error;
+    }
+    throw error;
+  }
 }
 
 /** Let the adapter's pending promise callbacks run. */
@@ -70,18 +94,27 @@ async function settle(turns = 5): Promise<void> {
 }
 
 /** A clock the test steps by hand: each `step()` runs the oldest timer still armed. */
-function manualTimers(): { step: () => void; armed: () => number } {
+function manualTimers() {
   const pending = new Map<number, () => void>();
   let next = 1;
-  (window as { setTimeout: unknown }).setTimeout = (fn: () => void) => {
+  const setTimeoutDouble = (fn: () => void) => {
     const id = next;
     next += 1;
     pending.set(id, fn);
     return id;
   };
-  (window as { clearTimeout: unknown }).clearTimeout = (id: number) => {
+  const clearTimeoutDouble = (id: number) => {
     pending.delete(id);
   };
+  /* Installed as plain values rather than assigned: `window.setTimeout` is typed as the DOM's timer
+     AND Bun's at once, which no double satisfies. The adapter only ever passes a callback and a
+     delay, and only hands the number it got back to `clearTimeout`. */
+  for (const [name, value] of [
+    ["setTimeout", setTimeoutDouble],
+    ["clearTimeout", clearTimeoutDouble],
+  ] as const) {
+    Object.defineProperty(window, name, { configurable: true, value, writable: true });
+  }
   return {
     armed: () => pending.size,
     step: () => {
@@ -97,8 +130,23 @@ function manualTimers(): { step: () => void; armed: () => number } {
 }
 
 /** A relay from the action's window, as the platform's landing page posts it. */
-function relay(data: unknown, origin = location.origin): void {
+function relay(data: JsonValue, origin = location.origin): void {
   window.dispatchEvent(new MessageEvent("message", { data, origin }));
+}
+
+/** The members of an action's window that the adapter touches. */
+interface PopupMembers {
+  close: () => void;
+  closed: boolean;
+  focus?: () => void;
+}
+
+/** Stand in for the window `performAction` opens. */
+function fakePopup(members: PopupMembers): Window {
+  /* SAFETY: the adapter touches only these members of the window it opened. `awaitAction` reads
+     `closed` and calls `close()`, and a joining `performAction` calls `focus()` inside a try; every
+     test that joins a running flow supplies `focus`. */
+  return members as Window;
 }
 
 let reports: ActionRequiredReport[] = [];
@@ -110,10 +158,10 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
-  (window as { open: unknown }).open = realOpen;
-  (location as { assign: unknown }).assign = realAssign;
-  (window as { setTimeout: unknown }).setTimeout = realWindowSetTimeout;
-  (window as { clearTimeout: unknown }).clearTimeout = realWindowClearTimeout;
+  window.open = realOpen;
+  location.assign = realAssign;
+  window.setTimeout = realWindowSetTimeout;
+  window.clearTimeout = realWindowClearTimeout;
   resetActionReports();
 });
 
@@ -121,18 +169,15 @@ describe("an action-required refusal on the session", () => {
   test("a refused activate throws the refusal with every member, and reports it", async () => {
     mockFetch([["/activate", { body: REFUSAL, status: 403 }]]);
     const p = createCloudPlatform(PROJECT);
-    const refused = await p.activate().then(
-      () => null,
-      (error: unknown) => error,
-    );
-    expect((refused as Error).message).toBe(REFUSAL.detail);
+    const refused = await rejectionOf(p.activate());
+    expect(refused?.message).toBe(REFUSAL.detail);
+    expect(refused).toMatchObject({ status: 403 });
     expect(platformErrorInfo(refused)).toEqual({
       actions: [JOIN],
       code: "action-required",
       heading: "Join the team",
       retry: "reload",
     });
-    expect((refused as { status?: number }).status).toBe(403);
     expect(reports).toEqual([
       { actions: [JOIN], detail: REFUSAL.detail, heading: "Join the team", retry: "reload" },
     ]);
@@ -155,7 +200,7 @@ describe("an action-required refusal on the session", () => {
       ],
     ]);
     const p = createCloudPlatform(PROJECT);
-    const refused = await p.gitCommit("msg").catch((error: unknown) => error);
+    const refused = await rejectionOf(p.gitCommit("msg"));
     expect(platformErrorInfo(refused)).toEqual({ actions: [JOIN], code: "action-required" });
     await settle();
     expect(reports).toEqual([{ actions: [JOIN] }]);
@@ -190,7 +235,7 @@ describe("an action-required refusal on the session", () => {
     await createCloudPlatform(PROJECT)
       .activate()
       .catch(() => {});
-    expect(calls[0]?.url).toBe(`${BASE}/activate`);
+    expect(calls[0]?.[0]).toBe(`${BASE}/activate`);
   });
 });
 
@@ -201,27 +246,25 @@ describe("refusals outside the session", () => {
       ["/api/v1/projects", { body: REFUSAL, status: 403 }],
     ]);
     const p = createCloudPlatform(null);
-    const created = await p
-      .createProject({
+    const created = await rejectionOf(
+      p.createProject({
         destination: { kind: "repo", owner: "acme", private: true, repo: "new-site" },
         directory: "new-site",
         name: "New site",
-      })
-      .catch((error: unknown) => error);
+      }),
+    );
     expect(platformErrorInfo(created).actions).toEqual([JOIN]);
-    const imported = await p
-      .importProject?.({ name: "site", owner: "acme" })
-      .catch((error: unknown) => error);
+    const imported = await rejectionOf(p.importProject?.({ name: "site", owner: "acme" }));
     expect(platformErrorInfo(imported)).toMatchObject({ actions: [JOIN], code: "action-required" });
   });
 
   test("cfApi names the bound project in a header and throws a refusal as itself", async () => {
     const calls = mockFetch([["/api/v1/cf/proxy", { body: REFUSAL, status: 403 }]]);
     const p = createCloudPlatform(PROJECT);
-    const refused = await p.cfApi?.("/accounts").catch((error: unknown) => error);
-    expect((refused as Error).message).toBe(REFUSAL.detail);
+    const refused = await rejectionOf(p.cfApi?.("/accounts"));
+    expect(refused?.message).toBe(REFUSAL.detail);
     expect(platformErrorInfo(refused).code).toBe("action-required");
-    expect(calls[0]?.init?.headers).toEqual({ "X-Jx-Project": "acme/site" });
+    expect(calls[0]?.[1]?.headers).toEqual({ "X-Jx-Project": "acme/site" });
   });
 
   test("a Cloudflare 403 is still Cloudflare's, and a body that is not JSON still fails", async () => {
@@ -233,7 +276,7 @@ describe("refusals outside the session", () => {
       ["/api/v1/cf/proxy/zones", { body: "Forbidden", status: 403 }],
     ]);
     const p = createCloudPlatform(PROJECT);
-    const cloudflare = await p.cfApi?.("/accounts").catch((error: unknown) => error);
+    const cloudflare = await rejectionOf(p.cfApi?.("/accounts"));
     expect(platformErrorInfo(cloudflare).code).not.toBe("action-required");
     expect(p.cfApi?.("/zones")).rejects.toThrow();
   });
@@ -242,18 +285,18 @@ describe("refusals outside the session", () => {
     const calls = mockFetch([["/api/v1/cf/proxy", { body: { result: { ok: 1 }, success: true } }]]);
     const p = createCloudPlatform(null);
     expect(await p.cfApi?.("/accounts")).toEqual({ ok: 1 });
-    expect(calls[0]?.init?.headers).toBeUndefined();
+    expect(calls[0]?.[1]?.headers).toBeUndefined();
     await p.cfApi?.("/accounts/a/pages/projects", { body: { name: "x" }, method: "POST" });
-    expect(calls[1]?.init?.headers).toEqual({ "Content-Type": "application/json" });
+    expect(calls[1]?.[1]?.headers).toEqual({ "Content-Type": "application/json" });
   });
 
   test("cfConnect names the bound project to the broker", async () => {
     mockFetch([]);
     const assigned: string[] = [];
-    (location as { assign: unknown }).assign = (url: string) => {
-      assigned.push(url);
+    location.assign = (url: string | URL) => {
+      assigned.push(String(url));
     };
-    (window as { open: unknown }).open = mock(() => null);
+    window.open = mock(() => null);
     const p = createCloudPlatform(PROJECT);
     expect(await p.cfConnect?.()).toEqual({ status: "redirect" });
     expect(assigned).toEqual(["/api/v1/cf/connect?project=acme%2Fsite"]);
@@ -321,9 +364,9 @@ describe("the platform's rows and notices in /me", () => {
 
 describe("performAction", () => {
   test("opens the action's page synchronously, inside the click that asked", () => {
-    const open = mock((_url: string, _target?: string) => null);
-    (window as { open: unknown }).open = open;
-    (location as { assign: unknown }).assign = () => {};
+    const open = mock((_url?: string | URL, _target?: string) => null);
+    window.open = open;
+    location.assign = () => {};
     void createCloudPlatform(PROJECT).performAction?.(JOIN);
     // Called before any await: the click that asked is still on the stack.
     expect(open.mock.calls[0]?.[0]).toBe(JOIN.href);
@@ -332,17 +375,17 @@ describe("performAction", () => {
 
   test("an action with no page is not one this platform performs", async () => {
     const open = mock(() => null);
-    (window as { open: unknown }).open = open;
+    window.open = open;
     expect(await createCloudPlatform(null).performAction?.({ id: "x", label: "X" })).toBeNull();
     expect(open).not.toHaveBeenCalled();
   });
 
   test("a blocked window navigates the page instead", async () => {
     const assigned: string[] = [];
-    (location as { assign: unknown }).assign = (url: string) => {
-      assigned.push(url);
+    location.assign = (url: string | URL) => {
+      assigned.push(String(url));
     };
-    (window as { open: unknown }).open = mock(() => null);
+    window.open = mock(() => null);
     expect(await createCloudPlatform(null).performAction?.(JOIN)).toEqual({ status: "redirect" });
     expect(assigned).toEqual([JOIN.href]);
   });
@@ -350,7 +393,7 @@ describe("performAction", () => {
   test("the window's own relay settles it, and nothing else does", async () => {
     manualTimers();
     const popup = { close: mock(() => {}), closed: false, focus: mock(() => {}) };
-    (window as { open: unknown }).open = mock(() => popup);
+    window.open = mock(() => fakePopup(popup));
     const p = createCloudPlatform(null);
     const pending = p.performAction?.(JOIN);
     // A second caller joins the running flow and raises its window rather than opening another.
@@ -375,7 +418,7 @@ describe("performAction", () => {
         throw new Error("cross-origin");
       },
     };
-    (window as { open: unknown }).open = mock(() => popup);
+    window.open = mock(() => fakePopup(popup));
     const p = createCloudPlatform(null);
     const pending = p.performAction?.(JOIN);
     const joined = p.performAction?.(JOIN);
@@ -386,7 +429,7 @@ describe("performAction", () => {
 
   test("a relayed error rejects, with the platform's reason or a plain one", async () => {
     manualTimers();
-    (window as { open: unknown }).open = mock(() => ({ close: () => {}, closed: false }));
+    window.open = mock(() => fakePopup({ close: () => {}, closed: false }));
     const p = createCloudPlatform(null);
     const failed = p.performAction?.(JOIN);
     relay({ reason: "Request denied", source: "jx-action", status: "error" });
@@ -400,7 +443,7 @@ describe("performAction", () => {
   test("a window closed without saying is unknown, after a grace for a late relay", async () => {
     const clock = manualTimers();
     const popup = { close: mock(() => {}), closed: false };
-    (window as { open: unknown }).open = mock(() => popup);
+    window.open = mock(() => fakePopup(popup));
     const pending = createCloudPlatform(null).performAction?.(JOIN);
     clock.step(); // Still open: the watch re-arms.
     expect(clock.armed()).toBe(1);
@@ -415,7 +458,7 @@ describe("performAction", () => {
   test("a relay that lands in the grace period wins over the closed window", async () => {
     const clock = manualTimers();
     const popup = { close: () => {}, closed: true };
-    (window as { open: unknown }).open = mock(() => popup);
+    window.open = mock(() => fakePopup(popup));
     const pending = createCloudPlatform(null).performAction?.(JOIN);
     clock.step(); // Closed: the grace timer is armed.
     relay({ source: "jx-action", status: "done" });
@@ -430,7 +473,7 @@ describe("performAction", () => {
     Date.now = () => now;
     try {
       const popup = { close: mock(() => {}), closed: false };
-      (window as { open: unknown }).open = mock(() => popup);
+      window.open = mock(() => fakePopup(popup));
       const pending = createCloudPlatform(null).performAction?.(JOIN);
       now += 16 * 60_000;
       clock.step();
@@ -459,7 +502,7 @@ async function withoutGlobal(name: string, body: () => Promise<void> | void): Pr
     if (descriptor) {
       Object.defineProperty(globalThis, name, descriptor);
     } else {
-      delete (globalThis as Record<string, unknown>)[name];
+      Reflect.deleteProperty(globalThis, name);
     }
   }
 }

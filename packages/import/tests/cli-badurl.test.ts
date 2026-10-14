@@ -6,9 +6,10 @@ console.error = (...args: unknown[]) => {
   errors.push(args.join(" "));
 };
 
-process.exit = ((code?: number) => {
+// An arrow whose body always throws is inferred to return `never`, matching `process.exit`.
+process.exit = (code?: number) => {
   throw new Error(`process.exit(${code})`);
-}) as never;
+};
 
 process.argv = [process.argv[0] ?? "bun", "cli.ts", "ftp://nope.example"];
 

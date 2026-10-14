@@ -6,14 +6,29 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isFunction } from "@jxsuite/schema/guards";
 import { Markdown } from "../src/markdown";
 import { Csv } from "../src/csv";
 import { MD_ELEMENTS } from "../src/serialize";
 
-const CLASSES: [string, string, Record<string, unknown>][] = [
-  ["Markdown.class.json", "Markdown", Markdown as unknown as Record<string, unknown>],
-  ["Csv.class.json", "Csv", Csv as unknown as Record<string, unknown>],
+type FormatClass = typeof Markdown | typeof Csv;
+
+/** A method entry in a class document's `$defs.methods`. */
+interface ClassMethodDef {
+  role?: string;
+  identifier: string;
+  scope: string;
+}
+
+const CLASSES: [string, string, FormatClass][] = [
+  ["Markdown.class.json", "Markdown", Markdown],
+  ["Csv.class.json", "Csv", Csv],
 ];
+
+/** Whether a format class (its constructor, for statics, or its prototype) owns method `name`. */
+function ownsMethod(owner: FormatClass | FormatClass["prototype"], name: string): boolean {
+  return isFunction(Object.getOwnPropertyDescriptor(owner, name)?.value);
+}
 
 function loadClassDef(file: string) {
   return JSON.parse(readFileSync(resolve(import.meta.dir, "../src", file), "utf8"));
@@ -32,25 +47,21 @@ describe.each(CLASSES)("%s capability contract", (file, title, Impl) => {
   });
 
   test("every declared capability is a static method on the implementation", () => {
-    const methods = def.$defs?.methods ?? {};
+    const methods: Record<string, ClassMethodDef> = def.$defs?.methods ?? {};
     const capabilityRoles = new Set(["parse", "serialize", "discover", "load"]);
-    const declared = Object.values(methods).filter((m: any) => capabilityRoles.has(m.role));
+    const declared = Object.values(methods).filter(
+      (m) => m.role !== undefined && capabilityRoles.has(m.role),
+    );
     expect(declared.length).toBeGreaterThan(0);
-    for (const method of declared as {
-      role: string;
-      identifier: string;
-      scope: string;
-    }[]) {
+    for (const method of declared) {
       expect(method.scope).toBe("static");
-      expect(typeof Impl[method.identifier]).toBe("function");
+      expect(ownsMethod(Impl, method.identifier)).toBe(true);
     }
   });
 
   test("instance resolve is declared and implemented", () => {
     expect(def.$defs.methods.resolve.scope).toBe("instance");
-    expect(typeof (Impl as { prototype: Record<string, unknown> }).prototype.resolve).toBe(
-      "function",
-    );
+    expect(ownsMethod(Impl.prototype, "resolve")).toBe(true);
   });
 });
 
@@ -70,7 +81,7 @@ describe("Markdown capability behavior", () => {
   test("parse transpiles markdown source to a Jx document", () => {
     const doc = Markdown.parse("---\ntitle: Hi\n---\n\n# Hello\n");
     expect(doc.title).toBe("Hi");
-    expect((doc.children as { tagName: string }[])[0]!.tagName).toBe("h1");
+    expect(doc.children).toEqual([{ tagName: "h1", textContent: "Hello" }]);
   });
 
   test("serialize roundtrips parse output", () => {

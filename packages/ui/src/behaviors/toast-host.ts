@@ -42,11 +42,13 @@ const FOCUSABLE =
 
 /** The reactive scope a `jx-toast-host` document hands its handlers. */
 export interface ToastHostState {
-  /** The key that moves focus into the stack. Empty turns the gesture off. */
-  hotkey: string;
+  /**
+   * The key that moves focus into the stack. Empty turns the gesture off, and so does null, which
+   * is what a host clearing the reflected `hotkey` attribute leaves.
+   */
+  hotkey: string | null;
   /** `polite`, `assertive` or `off`. */
   live: string;
-  [key: string]: unknown;
 }
 
 /** Where focus was when the reader entered the stack, so it can be given back. */
@@ -208,13 +210,14 @@ export function onStackClose(_state: ToastHostState, event: Event): void {
  * @param host The element itself.
  */
 export function onHostMount(state: ToastHostState, host: HTMLElement): void {
-  const root = host.getRootNode() as Document | ShadowRoot;
-  const onKeydown = (event: Event): void => {
-    const press = event as KeyboardEvent;
-    if (press.altKey || press.ctrlKey || press.metaKey) {
+  /* The document, the shadow root, or — for a detached host — its topmost ancestor: every one of
+     them is a node a keydown from inside it reaches. */
+  const root = host.getRootNode();
+  const onKeydown = (press: Event): void => {
+    if (!(press instanceof KeyboardEvent) || press.altKey || press.ctrlKey || press.metaKey) {
       return;
     }
-    const wanted = typeof state.hotkey === "string" ? state.hotkey : "";
+    const wanted = state.hotkey ?? "";
     if (wanted !== "" && press.key === wanted) {
       if (focusStack(host)) {
         press.preventDefault();

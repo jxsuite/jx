@@ -26,6 +26,15 @@ export const FIELD_TYPES = ["string", "number", "boolean", "array", "object", "r
 
 export const FORMAT_OPTIONS = ["", "image", "date", "color"];
 
+/** What a new field's add row starts as. Spread it: every add row edits its own copy. */
+export const BLANK_FIELD = { format: "", name: "", required: false, type: "string" };
+
+/** One object field's unsubmitted nested field. */
+export interface NestedFieldDraft {
+  name: string;
+  type: string;
+}
+
 /**
  * Detect the studio field type from a JSON Schema property definition.
  *

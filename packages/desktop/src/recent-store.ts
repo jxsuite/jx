@@ -12,9 +12,9 @@ const STORE_NAME = "recent-projects.json";
 
 /** Read the recent-projects list, tolerating a missing or corrupt store file. */
 export async function readRecents(): Promise<RecentProjectEntry[]> {
-  return readJsonStore(
+  return readJsonStore<RecentProjectEntry[]>(
     await migrateLegacyStore(STORE_NAME),
-    [] as RecentProjectEntry[],
+    [],
     (value): value is RecentProjectEntry[] => Array.isArray(value),
   );
 }

@@ -17,14 +17,15 @@ import {
   Session,
   subscribeSession,
 } from "../src/session";
-import type { AuthClientResult, JxAuthClient } from "../src/client";
+import type { AuthSessionResult, JxAuthClient } from "../src/client";
+import type { AuthSessionPayload } from "../src/config";
 import type { SessionInfo } from "@jxsuite/connector/types";
 
 /** A fake client whose getSession returns the given payloads in order. */
-function fakeClient(payloads: unknown[]): JxAuthClient & { calls: number } {
+function fakeClient(payloads: (AuthSessionPayload | null)[]): JxAuthClient & { calls: number } {
   const fake = {
     calls: 0,
-    getSession: (): Promise<AuthClientResult> => {
+    getSession: (): Promise<AuthSessionResult> => {
       fake.calls += 1;
       return Promise.resolve({ data: payloads.shift() ?? null });
     },
@@ -62,11 +63,11 @@ describe("client wrapper", () => {
 
   test("getAuthClient builds a real Better Auth client surface for an explicit base", () => {
     const client = getAuthClient("http://x.test/_jx/auth");
-    expect(typeof client.signIn.email).toBe("function");
-    expect(typeof client.signIn.social).toBe("function");
-    expect(typeof client.signUp.email).toBe("function");
-    expect(typeof client.signOut).toBe("function");
-    expect(typeof client.getSession).toBe("function");
+    expect(client.signIn.email).toBeTypeOf("function");
+    expect(client.signIn.social).toBeTypeOf("function");
+    expect(client.signUp.email).toBeTypeOf("function");
+    expect(client.signOut).toBeTypeOf("function");
+    expect(client.getSession).toBeTypeOf("function");
     // Same base → same instance; changed base → new instance.
     expect(getAuthClient("http://x.test/_jx/auth")).toBe(client);
     expect(getAuthClient("http://other.test/_jx/auth")).not.toBe(client);

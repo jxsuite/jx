@@ -15,13 +15,35 @@ import {
 } from "../src/runtime";
 import { elementCSS } from "./style-text.ts";
 
+import type { JxElement, JxStyle } from "@jxsuite/schema/types";
+
 try {
   GlobalRegistrator.register();
 } catch {
   /* Already registered */
 }
 
-const renderNode: (...args: Parameters<typeof _renderNode>) => HTMLElement = _renderNode as any;
+/** RenderNode for a definition with a tagName, which renders an element rather than a text node. */
+function renderNode(...args: Parameters<typeof _renderNode>): HTMLElement {
+  const node = _renderNode(...args);
+  if (!(node instanceof HTMLElement)) {
+    throw new TypeError("renderNode rendered a text node for an element definition");
+  }
+  return node;
+}
+
+/** The first match under `root`, failing the test unless it is an instance of `kind`. */
+function find<T extends Element>(
+  root: ParentNode,
+  selector: string,
+  kind: abstract new () => T,
+): T {
+  const found = root.querySelector(selector);
+  if (!(found instanceof kind)) {
+    throw new TypeError(`no ${kind.name} matches ${selector}`);
+  }
+  return found;
+}
 
 // Use unique tag names per test to avoid cross-test registration collisions
 let uid = 0;
@@ -51,7 +73,7 @@ describe("Custom Elements", () => {
 
     const span = el.querySelector("span");
     expect(span).not.toBeNull();
-    expect((span as HTMLElement).textContent).toBe("Hello");
+    expect(span?.textContent).toBe("Hello");
     el.remove();
   });
 
@@ -95,11 +117,11 @@ describe("Custom Elements", () => {
         ],
         tagName: "div",
       },
-      reactive({}) as never,
+      reactive({}),
     );
 
-    const svg = el.querySelector("svg") as Element;
-    const rect = el.querySelector("rect") as Element;
+    const svg = find(el, "svg", Element);
+    const rect = find(el, "rect", Element);
     expect(svg.namespaceURI).toBe("http://www.w3.org/2000/svg");
     // The namespace is inherited by descendants, not re-derived per tag.
     expect(rect.namespaceURI).toBe("http://www.w3.org/2000/svg");
@@ -113,11 +135,11 @@ describe("Custom Elements", () => {
         children: [{ children: [{ tagName: "mi", textContent: "x" }], tagName: "math" }],
         tagName: "div",
       },
-      reactive({}) as never,
+      reactive({}),
     );
 
-    const math = el.querySelector("math") as Element;
-    const mi = el.querySelector("mi") as Element;
+    const math = find(el, "math", Element);
+    const mi = find(el, "mi", Element);
     expect(math.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML");
     expect(mi.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML");
   });
@@ -133,13 +155,11 @@ describe("Custom Elements", () => {
         ],
         tagName: "div",
       },
-      reactive({}) as never,
+      reactive({}),
     );
 
-    expect((el.querySelector("foreignObject") as Element).namespaceURI).toBe(
-      "http://www.w3.org/2000/svg",
-    );
-    expect((el.querySelector("p") as Element).namespaceURI).toBe("http://www.w3.org/1999/xhtml");
+    expect(find(el, "foreignObject", Element).namespaceURI).toBe("http://www.w3.org/2000/svg");
+    expect(find(el, "p", Element).namespaceURI).toBe("http://www.w3.org/1999/xhtml");
   });
 
   test("$props override state defaults", async () => {
@@ -151,13 +171,14 @@ describe("Custom Elements", () => {
     });
 
     const el = document.createElement(tag);
-    (el as any).label = "overridden";
+    // Assigned through [[Set]] exactly as `el.label = …` would.
+    Object.assign(el, { label: "overridden" });
     document.body.append(el);
     await new Promise((r) => {
       setTimeout(r, 100);
     });
 
-    expect((el.querySelector("span") as HTMLElement).textContent).toBe("overridden");
+    expect(el.querySelector("span")?.textContent).toBe("overridden");
     el.remove();
   });
 
@@ -179,8 +200,7 @@ describe("Custom Elements", () => {
     // Still unregistered — yet the fix has already set the instance props as JS properties, ready
     // For whenever the upgrade lands, instead of discarding them.
     expect(customElements.get(tag)).toBeUndefined();
-    expect((el as unknown as { label: string }).label).toBe("instance-value");
-    expect((el as unknown as { value: number }).value).toBe(42);
+    expect(el).toMatchObject({ label: "instance-value", value: 42 });
   });
 
   test("props.* attributes override state defaults and are stripped", async () => {
@@ -199,11 +219,11 @@ describe("Custom Elements", () => {
       setTimeout(r, 100);
     });
 
-    expect((el.querySelector("span") as HTMLElement).textContent).toBe("From attribute");
+    expect(el.querySelector("span")?.textContent).toBe("From attribute");
     // Lifted prop attributes don't leak into the DOM; unknown keys stay untouched
     expect(el.hasAttribute("props.label")).toBe(false);
     expect(el.hasAttribute("props.unknown")).toBe(true);
-    expect((el as any).other).toBe("untouched");
+    expect("other" in el ? el.other : undefined).toBe("untouched");
     el.remove();
   });
 
@@ -217,13 +237,13 @@ describe("Custom Elements", () => {
 
     const el = document.createElement(tag);
     el.setAttribute("props.label", "attribute");
-    (el as any).label = "js property";
+    Object.assign(el, { label: "js property" });
     document.body.append(el);
     await new Promise((r) => {
       setTimeout(r, 100);
     });
 
-    expect((el.querySelector("span") as HTMLElement).textContent).toBe("js property");
+    expect(el.querySelector("span")?.textContent).toBe("js property");
     el.remove();
   });
 
@@ -245,17 +265,16 @@ describe("Custom Elements", () => {
     });
 
     expect(el.querySelector("div")).not.toBeNull();
-    expect((el as any).mountCalled).toBe(true);
+    expect("mountCalled" in el ? el.mountCalled : undefined).toBe(true);
     el.remove();
   });
 
   test("throws for non-hyphenated tagName", async () => {
-    try {
-      await defineElement({ state: {}, tagName: "nohyphen" });
-      expect(true).toBe(false);
-    } catch (error) {
-      expect((error as Error).message).toContain("must contain a hyphen");
-    }
+    const outcome = await defineElement({ state: {}, tagName: "nohyphen" }).then(
+      () => "resolved",
+      (error: Error) => error.message,
+    );
+    expect(outcome).toContain("must contain a hyphen");
   });
 
   test("skips already-registered elements", async () => {
@@ -295,8 +314,8 @@ describe("Custom Elements", () => {
 
     const child = el.querySelector(tag);
     expect(child).not.toBeNull();
-    expect(((child as HTMLElement).querySelector(".val") as HTMLElement).textContent).toBe("42");
-    expect(((child as HTMLElement).querySelector(".name") as HTMLElement).textContent).toBe("test");
+    expect(child?.querySelector(".val")?.textContent).toBe("42");
+    expect(child?.querySelector(".name")?.textContent).toBe("test");
     el.remove();
   });
 
@@ -327,19 +346,20 @@ describe("Custom Elements", () => {
           },
         ],
         tagName: tag,
-      } as never,
+      },
       scope,
       {
         _path: ["children", 0],
-        onNodeCreated: (n: HTMLElement | Text, path: unknown) => {
+        onNodeCreated: (n, path) => {
           if (n instanceof HTMLElement) {
             paths.push(`${n.tagName.toLowerCase()}@${JSON.stringify(path)}`);
           }
         },
-      } as never,
+      },
     );
-    const shape = () => [...el.children].map((c) => `${c.tagName.toLowerCase()}:${c.textContent}`);
-    expect(shape()).toEqual(["b:head", "i:a", "i:b"]);
+    const renderedChildren = () =>
+      [...el.children].map((c) => `${c.tagName.toLowerCase()}:${c.textContent}`);
+    expect(renderedChildren()).toEqual(["b:head", "i:a", "i:b"]);
     expect(paths).toEqual([
       `${tag}@["children",0]`,
       'b@["children",0,"children",0]',
@@ -352,12 +372,16 @@ describe("Custom Elements", () => {
     await new Promise((r) => {
       setTimeout(r, 0);
     });
-    expect(shape()).toEqual(["b:head", "i:a", "i:b"]);
-    (scope.rows as string[]).push("c");
+    expect(renderedChildren()).toEqual(["b:head", "i:a", "i:b"]);
+    const { rows } = scope;
+    if (!Array.isArray(rows)) {
+      throw new TypeError("state.rows is not the array the document declared");
+    }
+    rows.push("c");
     await new Promise((r) => {
       setTimeout(r, 0);
     });
-    expect(shape()).toEqual(["b:head", "i:a", "i:b", "i:c"]);
+    expect(renderedChildren()).toEqual(["b:head", "i:a", "i:b", "i:c"]);
     expect(paths.at(-1)).toBe('i@["children",0,"children",1,"map",2]');
     el.remove();
   });
@@ -376,14 +400,14 @@ describe("Custom Elements", () => {
     await new Promise((r) => {
       setTimeout(r, 100);
     });
-    expect((el.querySelector("span") as HTMLElement).textContent).toBe("initial");
+    expect(el.querySelector("span")?.textContent).toBe("initial");
 
     // Set an observed attribute — should sync to state.myLabel
     el.setAttribute("my-label", "updated");
     await new Promise((r) => {
       setTimeout(r, 50);
     });
-    expect((el as any).myLabel).toBe("updated");
+    expect("myLabel" in el ? el.myLabel : undefined).toBe("updated");
 
     el.remove();
   });
@@ -578,13 +602,13 @@ describe("prop-binding markers (setStampPropBindings)", () => {
     });
 
     const el = document.createElement(tag);
-    (el as any).title = "Stamped";
+    Object.assign(el, { title: "Stamped" });
     document.body.append(el);
     await new Promise((r) => {
       setTimeout(r, 100);
     });
 
-    const h3 = el.querySelector("h3") as HTMLElement;
+    const h3 = find(el, "h3", HTMLElement);
     expect(h3.dataset.jxBoundProp).toBe("title");
     expect(h3.textContent).toBe("Stamped");
     el.remove();
@@ -603,7 +627,7 @@ describe("prop-binding markers (setStampPropBindings)", () => {
  */
 describe("a reflected property name does not clobber the declared default", () => {
   /** Render one instance of a definition declaring a reflected key and a plain one. */
-  async function render(instance: Record<string, unknown>) {
+  async function render(instance: Omit<JxElement, "tagName">) {
     const tag = uniqueTag();
     await defineElement({
       children: [
@@ -612,7 +636,7 @@ describe("a reflected property name does not clobber the declared default", () =
       ],
       state: { quote: "DEFAULT QUOTE", title: "DEFAULT TITLE" },
       tagName: tag,
-    } as never);
+    });
     const el = renderNode({ tagName: tag, ...instance }, {}, {});
     document.body.append(el);
     await new Promise((resolve) => {
@@ -670,9 +694,9 @@ describe("the custom-element display default", () => {
    * without one, and the default is meant to be the weakest thing in the cascade rather than the
    * strongest.
    */
-  async function mount(style: Record<string, unknown>): Promise<HTMLElement> {
+  async function mount(style: JxStyle): Promise<HTMLElement> {
     const tag = uniqueTag();
-    await defineElement({ state: {}, style, tagName: tag } as never);
+    await defineElement({ state: {}, style, tagName: tag });
     const el = document.createElement(tag);
     document.body.append(el);
     await new Promise((r) => {
@@ -704,12 +728,14 @@ describe("the custom-element display default", () => {
      * these get the default AND keep their conditional declaration.
      */
     const queried = await mount({ "@(min-width: 40rem)": { display: "grid" } });
-    expect(elementCSS(queried)).toContain(`[data-jx="${queried.dataset.jx}"] { display: block }`);
-    expect(elementCSS(queried)).toContain("display: grid");
+    const queriedCss = elementCSS(queried);
+    expect(queriedCss).toContain(`[data-jx="${queried.dataset.jx}"] { display: block }`);
+    expect(queriedCss).toContain("display: grid");
 
     const hovered = await mount({ ":hover": { display: "none" } });
-    expect(elementCSS(hovered)).toContain(`[data-jx="${hovered.dataset.jx}"] { display: block }`);
-    expect(elementCSS(hovered)).toContain("display: none");
+    const hoveredCss = elementCSS(hovered);
+    expect(hoveredCss).toContain(`[data-jx="${hovered.dataset.jx}"] { display: block }`);
+    expect(hoveredCss).toContain("display: none");
   });
 
   test("a keyframe stop is a timeline value and never speaks for the author", async () => {
@@ -740,17 +766,14 @@ describe("the custom-element display default", () => {
       state: {},
       style: { color: "red", padding: "4px" },
       tagName: tag,
-    } as never);
+    });
     const host = document.createElement("div");
     document.body.append(host);
-    await Jx(
-      { children: [{ style: { color: "blue" }, tagName: tag }], tagName: "div" } as never,
-      host,
-    );
+    await Jx({ children: [{ style: { color: "blue" }, tagName: tag }], tagName: "div" }, host);
     await new Promise((r) => {
       setTimeout(r, 0);
     });
-    const el = host.querySelector(tag) as HTMLElement;
+    const el = find(host, tag, HTMLElement);
     const css = elementCSS(el);
     expect(css).toContain("padding: 4px");
     expect(css).toContain("color: blue");

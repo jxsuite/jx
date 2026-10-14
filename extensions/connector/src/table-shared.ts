@@ -12,6 +12,9 @@
  * machinery.
  */
 
+import { isJsonObject, isNumber, isRef, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+
 /** A `${...}` template span (Jx binding syntax preserved through lowering). */
 const TEMPLATE_SPAN = /(\$\{[^}]*\})/;
 
@@ -32,12 +35,13 @@ export function encodeQueryValue(value: string): string {
 /** The wire-facing query options a TableQuery/TableEntry def may carry. */
 export interface TableQueryDef {
   table?: string;
-  filter?: unknown;
-  sort?: unknown;
+  /** The content filter grammar: a rule array or an equality-object shorthand. */
+  filter?: JsonValue;
+  /** One `{ field, order }` sort rule or a list of them. */
+  sort?: JsonValue;
   limit?: number;
   offset?: number;
   include?: string | string[];
-  [key: string]: unknown;
 }
 
 /**
@@ -60,10 +64,10 @@ export function buildDataUrl(
   if (def.sort !== undefined && def.sort !== null) {
     parts.push(`sort=${encodeQueryValue(JSON.stringify(def.sort))}`);
   }
-  if (typeof def.limit === "number") {
+  if (isNumber(def.limit)) {
     parts.push(`limit=${def.limit}`);
   }
-  if (typeof def.offset === "number") {
+  if (isNumber(def.offset)) {
     parts.push(`offset=${def.offset}`);
   }
   const include = Array.isArray(def.include) ? def.include.join(",") : def.include;
@@ -82,23 +86,22 @@ export function buildDataUrl(
  * Resolve an id value: `#/$params/<name>` refs read route params, everything else passes through as
  * a string (template placeholders included).
  *
- * @param {unknown} id - The def's id value
+ * @param {JsonValue | undefined} id - The def's id value
  * @param {Record<string, string> | undefined} pathParams - Route params when known
  * @returns {string | undefined}
  */
 export function resolveIdValue(
-  id: unknown,
+  id: JsonValue | undefined,
   pathParams: Record<string, string> | undefined,
 ): string | undefined {
   if (id === null || id === undefined) {
     return undefined;
   }
-  if (typeof id === "object") {
-    const ref = (id as { $ref?: string }).$ref;
-    if (typeof ref === "string" && ref.startsWith("#/$params/")) {
-      const param = ref.slice("#/$params/".length);
-      return pathParams?.[param];
-    }
+  if (isRef(id) && id.$ref.startsWith("#/$params/")) {
+    const param = id.$ref.slice("#/$params/".length);
+    return pathParams?.[param];
+  }
+  if (Array.isArray(id) || isJsonObject(id)) {
     return undefined;
   }
   return String(id);
@@ -108,19 +111,20 @@ export function resolveIdValue(
  * Emit the JS source for a literal value inside a lowered Function body. Strings carrying `${...}`
  * become template literals (evaluated against state at runtime); everything else is inlined JSON.
  *
- * @param {unknown} value
+ * @param {JsonValue | undefined} value
  * @returns {string}
  */
-export function jsValueSource(value: unknown): string {
-  if (typeof value === "string" && value.includes("${")) {
+export function jsValueSource(value: JsonValue | undefined): string {
+  if (isString(value) && value.includes("${")) {
     const escaped = value.replaceAll("\\", String.raw`\\`).replaceAll("`", "\\`");
     return `\`${escaped}\``;
   }
-  return JSON.stringify(value) ?? "null";
+  // JSON.stringify(undefined) yields undefined rather than a string; an absent value inlines null.
+  return value === undefined ? "null" : JSON.stringify(value);
 }
 
 /** Emit the JS source of an object literal whose values go through {@link jsValueSource}. */
-export function jsObjectSource(values: Record<string, unknown> | undefined): string {
+export function jsObjectSource(values: JsonObject | undefined): string {
   if (!values || Object.keys(values).length === 0) {
     return "{}";
   }

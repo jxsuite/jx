@@ -28,6 +28,7 @@ import {
 } from "../src/services/monaco-buffer";
 import type { MonacoBuffer } from "../src/services/monaco-buffer";
 import { view } from "../src/view";
+import type { MonacoSurface } from "../src/view";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
 import type { Tab } from "../src/tabs/tab";
 import { surfaceForPane } from "../src/canvas/surface-registry";
@@ -37,13 +38,16 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-/** A Monaco stand-in with the three methods the rule reads, and honest post-dispose answers. */
-function fakeBuffer(value = "hello"): MonacoBuffer & {
+/** A Monaco stand-in with the three methods the rule reads, plus the controls a test drives. */
+interface FakeBuffer extends MonacoBuffer {
   focused: boolean;
   dispose: () => void;
-} {
+}
+
+/** A Monaco stand-in with the three methods the rule reads, and honest post-dispose answers. */
+function fakeBuffer(value = "hello"): FakeBuffer {
   let model: object | null = { id: "model" };
-  return {
+  const buffer: FakeBuffer = {
     dispose() {
       model = null;
     },
@@ -51,15 +55,32 @@ function fakeBuffer(value = "hello"): MonacoBuffer & {
     getModel: () => model,
     // Mirrors `CodeEditorWidget.getValue()`: `if (!this._modelData) return "";`
     getValue: () => (model ? value : ""),
-    hasTextFocus() {
-      return this.focused as boolean;
-    },
+    hasTextFocus: () => buffer.focused,
   };
+  return buffer;
+}
+
+/** Mount a stand-in where Studio keeps a real Monaco editor (`view.functionEditor`, a stage). */
+function asMonacoSurface(buffer: MonacoBuffer): MonacoSurface {
+  /* SAFETY: everything that reads these slots in this suite is monaco-buffer.ts (commitTabBuffers,
+     tabBufferUnsaved and the predicate under them), which reaches a mounted editor only through the
+     MonacoBuffer members — getValue, getModel, hasTextFocus, `_writes`, `_editingTab` — and the
+     afterEach empties both slots before any other code could read them. */
+  return buffer as MonacoSurface;
+}
+
+/** A tab as monaco-buffer.ts sees one: an `id` and a `documentPath`, otherwise only an identity. */
+function tabStub(id: string, documentPath: string | null = null): Tab {
+  const stub: Pick<Tab, "documentPath" | "id"> = { documentPath, id };
+  /* SAFETY: monaco-buffer.ts reads a tab's `id` (toast and Problem keys) and `documentPath` (their
+     sentences and paths) and otherwise compares it by identity against `_editingTab`; no other Tab
+     member is reached on any path these tests drive. */
+  return stub as Tab;
 }
 
 describe("bufferIsLive", () => {
   test("is false for nothing, and for an editor whose model was detached", () => {
-    const nothing = undefined as MonacoBuffer | null | undefined;
+    const nothing: MonacoBuffer | null | undefined = undefined;
     expect(bufferIsLive(null)).toBe(false);
     expect(bufferIsLive(nothing)).toBe(false);
     const buffer = fakeBuffer();
@@ -305,7 +326,7 @@ describe("commitBufferWrites", () => {
   });
 
   test("is safe on nothing, and on a buffer that never armed a commit", () => {
-    const nothing = undefined as MonacoBuffer | null | undefined;
+    const nothing: MonacoBuffer | null | undefined = undefined;
     expect(commitBufferWrites(null, "logic")).toBe(true);
     expect(commitBufferWrites(nothing, "logic")).toBe(true);
     expect(commitBufferWrites(fakeBuffer(), "source")).toBe(true);
@@ -328,10 +349,8 @@ describe("commitBufferWrites", () => {
    */
   test("a refused commit is reported, and the answer says the text is gone", () => {
     resetNotifications();
-    const buffer = fakeBuffer("state.count += 1;") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
-    buffer._editingTab = { documentPath: "pages/index.md", id: "a" } as unknown as Tab;
+    const buffer = fakeBuffer("state.count += 1;");
+    buffer._editingTab = tabStub("a", "pages/index.md");
     const writes = bufferWrites(buffer);
     writes.markTyped();
     // The freeze: `transactDoc` returns false, so `bodyWriter` never settles the buffer.
@@ -371,10 +390,8 @@ describe("commitBufferWrites", () => {
      long after the synchronous disposer has returned. The report goes with the answer. */
   test("an async parse that fails reports when it fails, not when the disposer returns", async () => {
     resetNotifications();
-    const buffer = fakeBuffer("# half a headin") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
-    buffer._editingTab = { documentPath: "pages/about.md", id: "s" } as unknown as Tab;
+    const buffer = fakeBuffer("# half a headin");
+    buffer._editingTab = tabStub("s", "pages/about.md");
     const writes = bufferWrites(buffer);
     writes.markTyped();
     writes.arm(BUFFER_COMMIT, 600, async () => {
@@ -405,9 +422,7 @@ describe("commitBufferWrites", () => {
   test("a commit already in flight is waited for, not reported as a discard", async () => {
     resetNotifications();
     const landed: string[] = [];
-    const buffer = fakeBuffer("# the page") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
+    const buffer = fakeBuffer("# the page");
     buffer._editingTab = tabA;
     const writes = bufferWrites(buffer);
     writes.markTyped();
@@ -435,9 +450,7 @@ describe("commitBufferWrites", () => {
   test("an async parse that lands says nothing", async () => {
     resetNotifications();
     const landed: string[] = [];
-    const buffer = fakeBuffer("# the page") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
+    const buffer = fakeBuffer("# the page");
     buffer._editingTab = tabA;
     const writes = bufferWrites(buffer);
     writes.markTyped();
@@ -465,10 +478,8 @@ describe("commitBufferWrites", () => {
    */
   test("a commit that throws still cancels, and is reported rather than rethrown", async () => {
     resetNotifications();
-    const buffer = fakeBuffer("return 1;") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
-    buffer._editingTab = { documentPath: "pages/index.md", id: "t" } as unknown as Tab;
+    const buffer = fakeBuffer("return 1;");
+    buffer._editingTab = tabStub("t", "pages/index.md");
     const writes = bufferWrites(buffer);
     writes.markTyped();
     writes.arm(BUFFER_COMMIT, 500, () => {
@@ -490,10 +501,8 @@ describe("commitBufferWrites", () => {
 
   test("an async commit that rejects is reported the same way", async () => {
     resetNotifications();
-    const buffer = fakeBuffer("# page") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
-    buffer._editingTab = { documentPath: "pages/about.md", id: "r" } as unknown as Tab;
+    const buffer = fakeBuffer("# page");
+    buffer._editingTab = tabStub("r", "pages/about.md");
     const writes = bufferWrites(buffer);
     writes.markTyped();
     writes.arm(BUFFER_COMMIT, 600, async () => {
@@ -521,7 +530,7 @@ describe("commitBufferWrites", () => {
 
 describe("cancelBufferWrites", () => {
   test("is safe on nothing and on a buffer that never armed anything", () => {
-    const nothing = undefined as MonacoBuffer | null | undefined;
+    const nothing: MonacoBuffer | null | undefined = undefined;
     expect(() => cancelBufferWrites(null)).not.toThrow();
     expect(() => cancelBufferWrites(nothing)).not.toThrow();
     expect(() => cancelBufferWrites(fakeBuffer())).not.toThrow();
@@ -536,12 +545,12 @@ describe("cancelBufferWrites", () => {
  * dock's editor named its tab on the instance, the source view named its tab only inside a closure,
  * so "is this buffer this tab's?" was a question one surface could answer and the other could not.
  */
-const tabA = { id: "a" } as unknown as Tab;
-const tabB = { id: "b" } as unknown as Tab;
+const tabA = tabStub("a");
+const tabB = tabStub("b");
 
 /** A buffer mounted for `tab`, with a commit armed that writes `value` into `landed`. */
 function mountedBuffer(tab: Tab | null, value: string, landed: string[], ms = 500) {
-  const buffer = fakeBuffer(value) as ReturnType<typeof fakeBuffer> & { _editingTab?: Tab | null };
+  const buffer = fakeBuffer(value);
   buffer._editingTab = tab;
   const writes = bufferWrites(buffer);
   writes.markTyped();
@@ -560,8 +569,10 @@ afterEach(() => {
 describe("commitTabBuffers", () => {
   test("runs the armed commit of every buffer mounted for the tab", async () => {
     const landed: string[] = [];
-    view.functionEditor = mountedBuffer(tabA, "return typed();", landed) as never;
-    surfaceForPane("primary").monacoEditor = mountedBuffer(tabA, "# Never saved", landed) as never;
+    view.functionEditor = asMonacoSurface(mountedBuffer(tabA, "return typed();", landed));
+    surfaceForPane("primary").monacoEditor = asMonacoSurface(
+      mountedBuffer(tabA, "# Never saved", landed),
+    );
 
     await commitTabBuffers(tabA);
 
@@ -571,7 +582,7 @@ describe("commitTabBuffers", () => {
 
   test("and no other tab's — a × on one chip is not a commit for the strip", async () => {
     const landed: string[] = [];
-    view.functionEditor = mountedBuffer(tabB, "b's handler", landed) as never;
+    view.functionEditor = asMonacoSurface(mountedBuffer(tabB, "b's handler", landed));
     await commitTabBuffers(tabA);
     expect(landed).toEqual([]);
     expect(tabBufferUnsaved(tabA)).toBe(false);
@@ -582,9 +593,7 @@ describe("commitTabBuffers", () => {
      answered yet. The source view's is exactly that: it awaits the format host before it assigns. */
   test("waits for an async commit before returning", async () => {
     const landed: string[] = [];
-    const buffer = fakeBuffer("# Never saved") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
+    const buffer = fakeBuffer("# Never saved");
     buffer._editingTab = tabA;
     const writes = bufferWrites(buffer);
     writes.markTyped();
@@ -594,7 +603,7 @@ describe("commitTabBuffers", () => {
       landed.push(text);
       writes.markSettled();
     });
-    surfaceForPane("primary").monacoEditor = buffer as never;
+    surfaceForPane("primary").monacoEditor = asMonacoSurface(buffer);
 
     await commitTabBuffers(tabA);
     expect(landed).toEqual(["# Never saved"]);
@@ -619,7 +628,7 @@ describe("commitTabBuffers", () => {
     const landed: string[] = [];
     const buffer = mountedBuffer(tabA, "return 1;", landed);
     buffer.dispose();
-    view.functionEditor = buffer as never;
+    view.functionEditor = asMonacoSurface(buffer);
     await commitTabBuffers(tabA);
     // Clause 1: a detached model answers `""`, so reading it is the deletion the flush prevents.
     expect(landed).toEqual([]);
@@ -648,9 +657,7 @@ describe("commitTabBuffers", () => {
    */
   test("the source's whole-document assign lands BEFORE the dock's body write", async () => {
     const landed: string[] = [];
-    const source = fakeBuffer("# the page") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
+    const source = fakeBuffer("# the page");
     source._editingTab = tabA;
     const writes = bufferWrites(source);
     writes.markTyped();
@@ -660,8 +667,8 @@ describe("commitTabBuffers", () => {
       landed.push(`document := ${text}`);
       writes.markSettled();
     });
-    surfaceForPane("primary").monacoEditor = source as never;
-    view.functionEditor = mountedBuffer(tabA, "typed();", landed) as never;
+    surfaceForPane("primary").monacoEditor = asMonacoSurface(source);
+    view.functionEditor = asMonacoSurface(mountedBuffer(tabA, "typed();", landed));
 
     await commitTabBuffers(tabA);
 
@@ -673,9 +680,7 @@ describe("commitTabBuffers", () => {
   test("a buffer disposed by the commit before it is never read", async () => {
     const landed: string[] = [];
     const dock = mountedBuffer(tabA, "typed();", landed);
-    const source = fakeBuffer("# the page") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
+    const source = fakeBuffer("# the page");
     source._editingTab = tabA;
     const writes = bufferWrites(source);
     writes.markTyped();
@@ -683,8 +688,8 @@ describe("commitTabBuffers", () => {
       await sleep(10);
       dock.dispose();
     });
-    surfaceForPane("primary").monacoEditor = source as never;
-    view.functionEditor = dock as never;
+    surfaceForPane("primary").monacoEditor = asMonacoSurface(source);
+    view.functionEditor = asMonacoSurface(dock);
 
     await commitTabBuffers(tabA);
     // A detached model answers `""`, and committing that is the deletion the flush exists to stop.
@@ -705,9 +710,7 @@ describe("commitTabBuffers", () => {
   test("a commit that throws is reported, and the other buffer still commits", async () => {
     resetNotifications();
     const landed: string[] = [];
-    const source = fakeBuffer("# the page") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
+    const source = fakeBuffer("# the page");
     source._editingTab = tabA;
     const writes = bufferWrites(source);
     writes.markTyped();
@@ -715,8 +718,8 @@ describe("commitTabBuffers", () => {
       await sleep(5);
       throw new Error("the format host is down");
     });
-    surfaceForPane("primary").monacoEditor = source as never;
-    view.functionEditor = mountedBuffer(tabA, "typed();", landed) as never;
+    surfaceForPane("primary").monacoEditor = asMonacoSurface(source);
+    view.functionEditor = asMonacoSurface(mountedBuffer(tabA, "typed();", landed));
 
     // It resolves rather than rejecting, which is what keeps ⌘W a gesture that does something.
     await commitTabBuffers(tabA);
@@ -734,7 +737,7 @@ describe("commitTabBuffers", () => {
 
   test("a buffer that names no tab belongs to no tab", async () => {
     const landed: string[] = [];
-    surfaceForPane("primary").monacoEditor = mountedBuffer(null, "orphan", landed) as never;
+    surfaceForPane("primary").monacoEditor = asMonacoSurface(mountedBuffer(null, "orphan", landed));
     await commitTabBuffers(tabA);
     expect(landed).toEqual([]);
     expect(tabBufferUnsaved(tabA)).toBe(false);
@@ -743,12 +746,10 @@ describe("commitTabBuffers", () => {
 
 describe("tabBufferUnsaved", () => {
   test("is the author's own typing, not a buffer that is merely ahead", () => {
-    const formatted = fakeBuffer("return 1;\n") as ReturnType<typeof fakeBuffer> & {
-      _editingTab?: Tab | null;
-    };
+    const formatted = fakeBuffer("return 1;\n");
     formatted._editingTab = tabA;
     bufferWrites(formatted).markAhead();
-    view.functionEditor = formatted as never;
+    view.functionEditor = asMonacoSurface(formatted);
     // Format-on-open, against a body `closeFunctionEditor` minified: ahead for as long as the
     // Editor is open, and nothing an author loses. Quitting must not stop to ask about it.
     expect(tabBufferUnsaved(tabA)).toBe(false);

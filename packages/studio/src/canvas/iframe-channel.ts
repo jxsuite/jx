@@ -9,6 +9,8 @@
  * plus an in-memory `fakeChannelPair` so cross-frame logic is unit-testable without a live iframe.
  */
 
+import { isNonNullObject } from "@jxsuite/schema/guards";
+
 /**
  * A typed, bidirectional message channel. `TOut` is what this side sends; `TIn` is what it
  * receives. Implementations: a real `postMessage` channel over an `<iframe>` (added with the iframe
@@ -26,8 +28,14 @@ export interface IframeChannel<TOut, TIn> {
 /** Envelope key that tags every cross-frame message so foreign `message` events are ignored. */
 const ENVELOPE = "jx:canvas";
 
-interface PostMessageTarget {
-  postMessage: (message: unknown, targetOrigin: string) => void;
+/** What crosses the frame boundary: the session token beside the typed message it authenticates. */
+export interface CanvasEnvelope<T> {
+  [ENVELOPE]: string;
+  payload: T;
+}
+
+interface PostMessageTarget<TOut> {
+  postMessage: (message: CanvasEnvelope<TOut>, targetOrigin: string) => void;
 }
 
 interface MessageSource {
@@ -46,7 +54,7 @@ interface MessageSource {
  * origin.
  */
 export function postMessageChannel<TOut, TIn>(opts: {
-  target: PostMessageTarget;
+  target: PostMessageTarget<TOut>;
   source: MessageSource;
   targetOrigin: string;
   acceptOrigin: string;
@@ -59,12 +67,15 @@ export function postMessageChannel<TOut, TIn>(opts: {
     if (acceptOrigin !== "*" && event.origin !== acceptOrigin) {
       return;
     }
-    const data = event.data as { [ENVELOPE]?: string; payload?: TIn } | null;
-    if (!data || typeof data !== "object" || data[ENVELOPE] !== token) {
+    const envelope: unknown = event.data;
+    if (!isNonNullObject(envelope) || !(ENVELOPE in envelope) || envelope[ENVELOPE] !== token) {
       return;
     }
+    /* SAFETY: The envelope carries this session's secret token, which only the peer channel holds,
+       and that peer's `post` is typed to send exactly `TIn`; a foreign page cannot forge the token. */
+    const payload = ("payload" in envelope ? envelope.payload : undefined) as TIn;
     for (const handler of handlers) {
-      handler(data.payload as TIn);
+      handler(payload);
     }
   };
   source.addEventListener("message", listener);
@@ -84,19 +95,22 @@ export function postMessageChannel<TOut, TIn>(opts: {
   };
 }
 
+/** Both ends of an in-memory channel, and the controls that deliver what they posted. */
+export interface FakeChannelPair<ParentOut, IframeOut> {
+  parent: IframeChannel<ParentOut, IframeOut>;
+  iframe: IframeChannel<IframeOut, ParentOut>;
+  flush: () => void;
+  /** Number of messages waiting to be delivered (both directions). */
+  pending: () => number;
+}
+
 /**
  * Two in-memory channels wired to each other for tests. A message `parent.post(x)` is delivered to
  * the `iframe` side's handlers (and vice versa) only when `flush()` is called — so tests drive the
  * inherently-async postMessage ordering deterministically. Messages posted _during_ a flush are
  * queued for the next flush, never delivered re-entrantly.
  */
-export function fakeChannelPair<ParentOut, IframeOut>(): {
-  parent: IframeChannel<ParentOut, IframeOut>;
-  iframe: IframeChannel<IframeOut, ParentOut>;
-  flush: () => void;
-  /** Number of messages waiting to be delivered (both directions). */
-  pending: () => number;
-} {
+export function fakeChannelPair<ParentOut, IframeOut>(): FakeChannelPair<ParentOut, IframeOut> {
   let toIframe: ParentOut[] = [];
   let toParent: IframeOut[] = [];
   const iframeHandlers = new Set<(m: ParentOut) => void>();

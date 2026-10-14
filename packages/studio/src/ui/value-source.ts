@@ -43,7 +43,16 @@ import {
   tagExpressionSchema,
   tagNameSchema,
 } from "@jxsuite/schema/defs";
-import { isFunctionDef, isRef, isTemplateString } from "@jxsuite/schema/guards";
+import {
+  isFunctionDef,
+  isJsonObject,
+  isNonNullObject,
+  isRef,
+  isString,
+  isTemplateString,
+} from "@jxsuite/schema/guards";
+import type { ReadonlyJsonObject, ReadonlyJsonValue } from "@jxsuite/schema/project-schemas";
+import type { JsonValue, JxDocumentValue } from "@jxsuite/schema/types";
 
 /** A rung of the value ladder — one way a document position can produce its value. */
 export type SlotMode = "literal" | "ref" | "template" | "expression" | "function";
@@ -73,7 +82,7 @@ export const VALUE_SOURCE_HINTS: Record<SlotMode, string> = {
 };
 
 /** Detect which rung of the ladder a raw document value occupies. */
-export function slotMode(value: unknown): SlotMode {
+export function slotMode(value: JxDocumentValue | JsonValue | undefined): SlotMode {
   if (isRef(value)) {
     return "ref";
   }
@@ -83,15 +92,13 @@ export function slotMode(value: unknown): SlotMode {
   if (isTemplateString(value)) {
     return "template";
   }
-  if (value && typeof value === "object" && "$expression" in value) {
+  if (isNonNullObject(value) && "$expression" in value) {
     return "expression";
   }
   return "literal";
 }
 
 // ─── Schema walk ────────────────────────────────────────────────────────────
-
-type SchemaNode = Record<string, unknown>;
 
 /**
  * The `on*` property shape that `@jxsuite/schema`'s generator synthesises for every EventHandler
@@ -107,40 +114,45 @@ export const EVENT_HANDLER_SCHEMA = {
 } as const;
 
 /** The `$defs` a slot position can actually reach. Anything else is a bug, not a silent no-rung. */
-const REACHABLE_DEFS: Record<string, SchemaNode> = {
-  ExpressionEntry: expressionEntrySchema as unknown as SchemaNode,
-  FunctionDef: functionDefSchema as unknown as SchemaNode,
-  RefObject: refObjectSchema as unknown as SchemaNode,
-  StyleObject: styleObjectSchema as unknown as SchemaNode,
-};
+const REACHABLE_DEFS = new Map<string, ReadonlyJsonObject>([
+  ["ExpressionEntry", expressionEntrySchema],
+  ["FunctionDef", functionDefSchema],
+  ["RefObject", refObjectSchema],
+  ["StyleObject", styleObjectSchema],
+]);
 
 /** A `{ $ref: … }` binding object: `required: ["$ref"]` with a `$ref` property. */
-function isRefObjectSchema(node: SchemaNode): boolean {
-  const { required } = node;
+function isRefObjectSchema(node: ReadonlyJsonObject): boolean {
+  const { properties, required } = node;
   return (
     Array.isArray(required) &&
     required.includes("$ref") &&
-    Boolean((node.properties as SchemaNode | undefined)?.$ref)
+    isJsonObject(properties) &&
+    Boolean(properties.$ref)
   );
 }
 
 /** A `{ $expression: … }` entry. */
-function isExpressionEntrySchema(node: SchemaNode): boolean {
+function isExpressionEntrySchema(node: ReadonlyJsonObject): boolean {
   const { required } = node;
   return Array.isArray(required) && required.includes("$expression");
 }
 
 /** A `$prototype: "Function"` declaration. */
-function isFunctionDefSchema(node: SchemaNode): boolean {
-  const proto = (node.properties as SchemaNode | undefined)?.$prototype as SchemaNode | undefined;
-  return proto?.const === "Function";
+function isFunctionDefSchema(node: ReadonlyJsonObject): boolean {
+  const { properties } = node;
+  return (
+    isJsonObject(properties) &&
+    isJsonObject(properties.$prototype) &&
+    properties.$prototype.const === "Function"
+  );
 }
 
 /**
  * A string branch that will accept `${…}`. A pattern/enum/const-constrained string will not — a
  * `TagName` or a `#/state/…` pointer is a string, but not a place a template may be typed.
  */
-function isFreeStringSchema(node: SchemaNode): boolean {
+function isFreeStringSchema(node: ReadonlyJsonObject): boolean {
   return (
     node.type === "string" &&
     node.pattern === undefined &&
@@ -155,23 +167,24 @@ interface WalkState {
   found: Set<SlotMode>;
   /** Pointers the walk could not resolve — surfaced so a schema move fails loudly. */
   unresolved: Set<string>;
-  seen: Set<SchemaNode>;
+  seen: Set<ReadonlyJsonObject>;
 }
 
-function walk(node: unknown, state: WalkState): void {
-  if (!node || typeof node !== "object") {
+function walk(schema: ReadonlyJsonValue | undefined, state: WalkState): void {
+  /* An array is an object too, but it names no keyword: the walk below found nothing in one, so
+     refusing it here is the same answer reached sooner. */
+  if (!isJsonObject(schema)) {
     return;
   }
-  const schema = node as SchemaNode;
   if (state.seen.has(schema)) {
     return;
   }
   state.seen.add(schema);
 
-  const pointer = typeof schema.$ref === "string" ? schema.$ref : undefined;
+  const pointer = isString(schema.$ref) ? schema.$ref : undefined;
   if (pointer !== undefined && Object.keys(schema).length === 1) {
     const name = pointer.startsWith("#/$defs/") ? pointer.slice("#/$defs/".length) : pointer;
-    const target = REACHABLE_DEFS[name];
+    const target = REACHABLE_DEFS.get(name);
     if (target) {
       walk(target, state);
     } else {
@@ -218,7 +231,7 @@ function walk(node: unknown, state: WalkState): void {
     state.found.add("literal");
     return;
   }
-  if (typeof schema.type === "string" && SCALAR_TYPES.has(schema.type)) {
+  if (isString(schema.type) && SCALAR_TYPES.has(schema.type)) {
     state.found.add("literal");
   }
 }
@@ -230,7 +243,7 @@ export interface DerivedCaps {
 }
 
 /** Derive the rungs a subschema permits, and report any pointer the walk could not follow. */
-export function deriveSlotCapsDetailed(schema: unknown): DerivedCaps {
+export function deriveSlotCapsDetailed(schema: ReadonlyJsonValue | undefined): DerivedCaps {
   const state: WalkState = { found: new Set(), seen: new Set(), unresolved: new Set() };
   walk(schema, state);
   return {
@@ -240,7 +253,7 @@ export function deriveSlotCapsDetailed(schema: unknown): DerivedCaps {
 }
 
 /** Derive the rungs a subschema permits, in ladder order. */
-export function deriveSlotCaps(schema: unknown): SlotMode[] {
+export function deriveSlotCaps(schema: ReadonlyJsonValue | undefined): SlotMode[] {
   return deriveSlotCapsDetailed(schema).caps;
 }
 
@@ -322,7 +335,7 @@ export type SlotPosition = keyof typeof SLOT_POSITION_SCHEMAS;
  * There is deliberately no third form. A caller may not state which rungs it wants: the rungs are
  * derived from a schema or they are not derived at all.
  */
-export type SlotCapsSource = SlotPosition | { schema: unknown };
+export type SlotCapsSource = SlotPosition | { schema: ReadonlyJsonValue };
 
 const capsCache = new Map<SlotPosition, SlotMode[]>();
 
@@ -339,7 +352,7 @@ export function capsForPosition(position: SlotPosition): SlotMode[] {
 
 /** The rungs on offer for a {@link SlotCapsSource} — a named position, or a schema handed in. */
 export function slotCaps(source: SlotCapsSource): SlotMode[] {
-  return typeof source === "string" ? capsForPosition(source) : deriveSlotCaps(source.schema);
+  return isString(source) ? capsForPosition(source) : deriveSlotCaps(source.schema);
 }
 
 /**
@@ -351,7 +364,7 @@ export function slotCaps(source: SlotCapsSource): SlotMode[] {
  * own config at runtime — which no plugin schema declares because it is not the plugin's to
  * declare. Both are stated here, once, rather than assumed at each form.
  */
-export function configFieldSchema(field: unknown): { anyOf: unknown[] } {
+export function configFieldSchema(field: ReadonlyJsonValue): ReadonlyJsonObject {
   const declared = deriveSlotCaps(field).length > 0 ? field : { type: "string" };
   return { anyOf: [declared, { $ref: "#/$defs/RefObject" }] };
 }

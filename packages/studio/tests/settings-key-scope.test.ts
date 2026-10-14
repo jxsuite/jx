@@ -33,8 +33,10 @@ import {
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 
+import type { CanvasView, EditorKind } from "../src/commands/context";
 import type { CommandRegistry } from "../src/commands/registry";
 import type { Tab } from "../src/tabs/tab";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 
 // ─── Module mocks (must precede the modules under test) ──────────────────────
@@ -64,13 +66,12 @@ const { initLayers, isModalOpen } = await import("../src/ui/layers");
 const { activeTab, closeAllTabs, openTab } = await import("../src/workspace/workspace");
 const { resetProjectShell, shell } = await import("../src/shell");
 const store = await import("../src/store");
+const { JX_MIME } = await import("../src/editor/context-menu");
 
 // ─── Clipboard ───────────────────────────────────────────────────────────────
 
-const JX_MIME = "web application/jx+json";
-
 /** The node on the clipboard — an ELEMENT, which is the thing `project.json` must never receive. */
-const COPIED = { tagName: "p", textContent: "pasted" };
+const COPIED: JxMutableNode = { tagName: "p", textContent: "pasted" };
 
 class FakeClipboardItem {
   types: string[];
@@ -79,17 +80,22 @@ class FakeClipboardItem {
     this.parts = parts;
     this.types = Object.keys(parts);
   }
-  getType(type: string) {
-    return Promise.resolve({ text: () => Promise.resolve(this.parts[type]!) } as unknown as Blob);
+  getType(type: string): Promise<Blob> {
+    const part = this.parts[type];
+    // What the platform does for a type the item does not carry (Clipboard API, `getType`).
+    if (part === undefined) {
+      return Promise.reject(new DOMException(`no "${type}" representation`, "NotFoundError"));
+    }
+    return Promise.resolve(new Blob([part], { type }));
   }
 }
 
 // ─── Environment ─────────────────────────────────────────────────────────────
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 /** The effective canvas mode, exactly as `studio.ts`'s `getCanvasMode` composes it. */
 function canvasMode(): string {
@@ -131,7 +137,7 @@ beforeAll(() => {
     },
   });
 
-  const wrap = surfaceForPane("primary").wrap as unknown as Record<string, unknown>;
+  const { wrap } = surfaceForPane("primary");
   wrap.setPointerCapture = () => {};
   wrap.releasePointerCapture = () => {};
 
@@ -182,10 +188,10 @@ beforeEach(() => {
 function openSettingsTab(): Tab {
   return openTab({
     capabilities: { modes: [SETTINGS_MODE, "stylebook", "source"] },
-    document: { name: "demo", version: "1.0.0" } as unknown as Record<string, unknown>,
+    document: { name: "demo", version: "1.0.0" },
     documentPath: PROJECT_CONFIG_PATH,
     id: PROJECT_CONFIG_PATH,
-  }) as unknown as Tab;
+  });
 }
 
 function pressDoc(key: string, init: KeyboardEventInit = {}) {
@@ -212,10 +218,10 @@ describe("selection.selectAll", () => {
           { tagName: "p", textContent: "Two" },
         ],
         tagName: "div",
-      } as unknown as Record<string, unknown>,
+      },
       documentPath: "pages/index.json",
       id: "pages/index.json",
-    }) as unknown as Tab;
+    });
   }
 
   test("selects every sibling of the selection, in document order", () => {
@@ -250,10 +256,10 @@ describe("selection.selectAll", () => {
       document: {
         children: [{ children: ["hello", { tagName: "em", textContent: "there" }], tagName: "p" }],
         tagName: "div",
-      } as unknown as Record<string, unknown>,
+      },
       documentPath: "pages/text.json",
       id: "pages/text.json",
-    }) as unknown as Tab;
+    });
     tab.session.selection = [["children", 0, "children", 1]];
     void registry.run("selection.selectAll");
     expect(tab.session.selection).toEqual([["children", 0, "children", 1]]);
@@ -281,7 +287,7 @@ describe("mode → editor kind", () => {
     }
   });
 
-  test.each([
+  test.each<[string, EditorKind, CanvasView]>([
     ["edit", "canvas", "edit"],
     ["design", "canvas", "design"],
     ["preview", "canvas", "preview"],
@@ -292,8 +298,8 @@ describe("mode → editor kind", () => {
     ["manage", "library", "design"],
     ["settings", "config", "design"],
   ])("%s → kind %s / view %s", (mode, kind, view) => {
-    expect(editorKindForMode(mode)).toBe(kind as never);
-    expect(canvasViewForMode(mode)).toBe(view as never);
+    expect(editorKindForMode(mode)).toBe(kind);
+    expect(canvasViewForMode(mode)).toBe(view);
   });
 
   test("a mode only a format declares still reads as a canvas view of the artboard", () => {
@@ -353,16 +359,13 @@ describe("⌘V over Project Settings", () => {
     const tab = resetWorkspaceWithTab({
       children: [{ tagName: "p", textContent: "one" }],
       tagName: "div",
-    }) as unknown as Tab;
+    });
 
     const event = pressDoc("v", { ctrlKey: true });
     await flush();
 
     expect(event.defaultPrevented).toBe(true);
-    expect(tab.doc.document.children).toEqual([
-      { tagName: "p", textContent: "one" },
-      COPIED,
-    ] as never);
+    expect(tab.doc.document.children).toEqual([{ tagName: "p", textContent: "one" }, COPIED]);
     expect(notified).toHaveBeenCalledWith("Pasted");
   });
 });
@@ -412,7 +415,7 @@ describe("canvas verbs over a non-canvas editor", () => {
     const tab = resetWorkspaceWithTab({
       children: [{ tagName: "p", textContent: "one" }],
       tagName: "div",
-    }) as unknown as Tab;
+    });
     tab.session.selection = [["children", 0]];
     for (const id of CANVAS_VERBS) {
       expect(`${id}: ${registry.isVisible(id)}`).toBe(`${id}: true`);

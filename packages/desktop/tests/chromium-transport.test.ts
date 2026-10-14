@@ -16,6 +16,19 @@
  */
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
+/** One request frame as the transport under test writes it. */
+interface RpcRequest {
+  id: number;
+  method: string;
+}
+
+/** Whether a decoded frame is a request: a numeric `id` and a string `method`. */
+function isRpcRequest(value: JsonValue): value is JsonValue & RpcRequest {
+  return isJsonObject(value) && isNumber(value.id) && isString(value.method);
+}
 
 /** Live sockets, so a test can drop them the way a server closing one does. */
 const sockets: ServerWebSocket<unknown>[] = [];
@@ -48,7 +61,10 @@ const server = Bun.serve({
       }
     },
     message(ws, raw) {
-      const msg = JSON.parse(raw as string) as { id: number; method: string };
+      const msg: JsonValue = JSON.parse(String(raw));
+      if (!isRpcRequest(msg)) {
+        throw new Error(`Not an RPC request: ${String(raw)}`);
+      }
       seen.push(msg.method);
       if (msg.method === "__ping") {
         ws.send(JSON.stringify({ id: msg.id, result: null }));
@@ -71,7 +87,7 @@ Object.defineProperty(globalThis, "location", {
 });
 
 // Happy-dom's WebSocket cannot reach a real server; Bun re-exposes its own when the override goes.
-const wsStr = globalThis.WebSocket?.toString() ?? "";
+const wsStr = globalThis.WebSocket.toString();
 if (wsStr.includes("WebSocketImplementation") || wsStr.includes("DOMException")) {
   // @ts-expect-error -- deleting a required global; Bun re-exposes its built-in WebSocket
   delete globalThis.WebSocket;

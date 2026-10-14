@@ -19,7 +19,7 @@
  * Settings › Data Shapes edits the project's `$defs` and this edits a content type's `schema`, and
  * they are the same object drawn with the same six controls per row — so the two documents are the
  * same card inside a different shell, and the views are one set of types. A second declaration of
- * {@link SchemaFieldView} would be the point at which the two cards start to drift, one field at a
+ * {@link DefsFieldView} would be the point at which the two cards start to drift, one field at a
  * time, with nothing failing.
  *
  * @docs studio/data/tables
@@ -29,28 +29,18 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import builderDoc from "./schema-builder.json";
 
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
-import type { DefsChoice, DefsFieldView, NestedFieldView } from "./settings-defs";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
+import type { DefsFieldView } from "./settings-defs";
 
-registerSurface("schema-builder", builderDoc as unknown as JxDocument);
-
-/** One row of a picker: a field type, a format, or a reference target. */
-export type SchemaFieldChoice = DefsChoice;
-
-/** One field of the object being edited, as the document draws it. */
-export type SchemaFieldView = DefsFieldView;
-
-/** One child of an `object` field. It carries its parent — a nested `$map` shadows `$map.item`. */
-export type NestedSchemaFieldView = NestedFieldView;
+registerSurface("schema-builder", builderDoc);
 
 /** Everything the document draws, as one value. */
 export interface SchemaBuilderView {
-  fields: SchemaFieldView[];
-  typeOptions: SchemaFieldChoice[];
-  formatOptions: SchemaFieldChoice[];
+  fields: DefsFieldView[];
+  typeOptions: SurfaceOption[];
+  formatOptions: SurfaceOption[];
   /** The content types a reference field can point at. Empty draws no target picker. */
-  targets: SchemaFieldChoice[];
+  targets: SurfaceOption[];
   /** Whether the foot of the list is offering the add button or the add form. */
   addState: "closed" | "open";
   addName: string;
@@ -94,7 +84,7 @@ export interface SchemaBuilderSurfaceHandle {
   dispose: () => void;
 }
 
-interface BuilderScope extends Record<string, unknown>, SchemaBuilderView, SchemaBuilderActions {}
+interface BuilderScope extends SchemaBuilderView, SchemaBuilderActions {}
 
 /** The view a freshly mounted surface starts on: no fields, and no add form. */
 function emptyView(): SchemaBuilderView {
@@ -124,7 +114,7 @@ export function mountSchemaBuilderSurface(
   actions: SchemaBuilderActions,
 ): SchemaBuilderSurfaceHandle {
   host.textContent = "";
-  const scope = reactive<BuilderScope>({ ...emptyView(), ...actions }) as BuilderScope;
+  const scope: BuilderScope = reactive<BuilderScope>({ ...emptyView(), ...actions });
 
   /** `null` while a mount is in flight — which is a standing surface, not a missing one. */
   let handle: SurfaceHandle | null = null;
@@ -133,13 +123,17 @@ export function mountSchemaBuilderSurface(
 
   const mount = (): Promise<HTMLElement> =>
     mountSurface("schema-builder", scope, host).then((mounted) => {
+      /* SAFETY: `schema-builder.json`'s root definition carries `tagName: "div"`, so the runtime
+         mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare
+         string. */
+      const root = mounted.root as HTMLElement;
       mounting = false;
       if (disposed) {
         mounted.dispose();
-        return mounted.root as HTMLElement;
+        return root;
       }
       handle = mounted;
-      return mounted.root as HTMLElement;
+      return root;
     });
 
   const ready = mount();

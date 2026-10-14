@@ -8,24 +8,29 @@
  * value (specs/extensions.md §13).
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { D1Dialect } from "kysely-d1";
 import { createD1HttpDialect } from "./dialects/d1-http.ts";
 import { deployWithDialect, testWithDialect } from "./provider-utils.ts";
 import type { D1Database } from "@cloudflare/workers-types";
 import type { Dialect } from "kysely";
-import type { ConnectorProvider } from "./provider-utils.ts";
+import type { JsonObject } from "@jxsuite/schema/types";
+import type { ConnectorProvider, HostEnv } from "./provider-utils.ts";
 import type { ConnectionDef } from "./types.ts";
 
 /** Resolve a D1 dialect for a connection (binding first, HTTP API fallback). */
-function d1Dialect(connection: ConnectionDef, env: Record<string, unknown>): Dialect {
+function d1Dialect(connection: ConnectionDef, env: HostEnv): Dialect {
   const { binding, databaseId, $name = "connection" } = connection;
   const bound = binding ? env[binding] : undefined;
   if (bound) {
+    /* SAFETY: a d1 connection's `binding` names the D1 database binding its bindings() fragment
+       provisions (`d1_databases[].binding`), so the env entry under that name is the D1Database
+       the Workers runtime injects; kysely-d1 receives it unchanged. */
     return new D1Dialect({ database: bound as D1Database });
   }
   const apiToken = env["CLOUDFLARE_API_TOKEN"];
   const accountId = connection.accountId ?? env["CLOUDFLARE_ACCOUNT_ID"];
-  if (typeof apiToken === "string" && typeof accountId === "string" && databaseId) {
+  if (isString(apiToken) && isString(accountId) && databaseId) {
     return createD1HttpDialect({ accountId, apiToken, databaseId });
   }
   throw new Error(
@@ -35,26 +40,25 @@ function d1Dialect(connection: ConnectionDef, env: Record<string, unknown>): Dia
 }
 
 export const D1 = {
-  bindings: (connection: ConnectionDef) => ({
-    d1_databases: [
-      {
-        binding: connection.binding ?? "DB",
-        ...(connection.databaseId === undefined ? {} : { database_id: connection.databaseId }),
-        database_name: connection.$name ?? connection.binding ?? "DB",
-      },
-    ],
-  }),
+  bindings: (connection: ConnectionDef) => {
+    const database: JsonObject = { binding: connection.binding ?? "DB" };
+    if (connection.databaseId !== undefined) {
+      database.database_id = connection.databaseId;
+    }
+    database.database_name = connection.$name ?? connection.binding ?? "DB";
+    return { d1_databases: [database] };
+  },
   deploySchema: async (
     tables: Parameters<ConnectorProvider["deploySchema"]>[0],
     connection: ConnectionDef,
-    options: { env: Record<string, unknown>; dryRun?: boolean },
+    options: { env: HostEnv; dryRun?: boolean },
   ) => {
     const dialect = d1Dialect(connection, options.env);
     return deployWithDialect(dialect, "sqlite", tables, { dryRun: options.dryRun ?? false });
   },
   dialect: d1Dialect,
   kind: "sqlite",
-  testConnection: async (connection: ConnectionDef, env: Record<string, unknown>) => {
+  testConnection: async (connection: ConnectionDef, env: HostEnv) => {
     try {
       return await testWithDialect(d1Dialect(connection, env));
     } catch (error) {

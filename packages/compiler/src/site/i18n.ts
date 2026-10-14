@@ -13,12 +13,9 @@
  */
 
 import { siteAbsoluteUrl } from "@jxsuite/schema/asset-paths";
-import {
-  canonicalizeLocale,
-  localeDirection,
-  localeOfRoute as localeForRoute,
-} from "@jxsuite/schema/locale";
+import { canonicalizeLocale, localeDirection, localeOfRoute } from "@jxsuite/schema/locale";
 import type { ResolvedI18n, TextDirection } from "@jxsuite/schema/locale";
+import type { TranslationMember } from "@jxsuite/site/context";
 
 import { servedRoute } from "./static-host.ts";
 
@@ -144,14 +141,6 @@ export interface LocaleAlternate {
   href: string;
 }
 
-/** One route in a translation set: the locale it serves, and where it lives. */
-export interface TranslationMember {
-  /** Canonical BCP 47 tag. */
-  locale: string;
-  /** Site-absolute route pattern, e.g. `/fr-ca/about/`. */
-  urlPattern: string;
-}
-
 /** A route as translation grouping sees it: its URL, and the key its document declared. */
 export interface TranslationRoute {
   /** From the document's `$translationKey`; absent when the key is derived from the path. */
@@ -167,6 +156,19 @@ export interface TranslationConflict {
   locale: string;
   /** In route order; the first is the one that keeps the set. */
   urlPatterns: string[];
+}
+
+/** Routes grouped into translation sets, and the collisions found while grouping them. */
+export interface TranslationSets {
+  conflicts: TranslationConflict[];
+  /** Keyed by `urlPattern`; members of one set share one array. */
+  sets: Map<string, TranslationMember[]>;
+}
+
+/** The `lang` a page ships with, and its `dir` when that is worth writing down. */
+export interface PageLanguage {
+  lang: string;
+  dir?: string;
 }
 
 /** Everything a page needs to know about its own locale, gathered once per build. */
@@ -198,13 +200,12 @@ export interface PageLocaleContext {
  *
  * @param {readonly TranslationRoute[]} routes - Concrete routes only
  * @param {ResolvedI18n | null} i18n
- * @returns {{ conflicts: TranslationConflict[]; sets: Map<string, TranslationMember[]> }} Sets are
- *   keyed by `urlPattern`; members of one set share one array
+ * @returns {TranslationSets} Sets are keyed by `urlPattern`; members of one set share one array
  */
 export function translationSets(
   routes: readonly TranslationRoute[],
   i18n: ResolvedI18n | null,
-): { conflicts: TranslationConflict[]; sets: Map<string, TranslationMember[]> } {
+): TranslationSets {
   const out = new Map<string, TranslationMember[]>();
   const conflicts: TranslationConflict[] = [];
   if (i18n === null) {
@@ -226,7 +227,7 @@ export function translationSets(
     if (route.translationKey !== undefined) {
       declared.add(route.urlPattern);
     }
-    const locale = localeForRoute(route.urlPattern, i18n);
+    const locale = localeOfRoute(route.urlPattern, i18n);
     if (locale === null) {
       continue;
     }
@@ -332,7 +333,7 @@ export function localeAlternates(
  * that says nothing.
  *
  * @param {object} args
- * @returns {{ lang: string; dir?: TextDirection | string }}
+ * @returns {PageLanguage}
  */
 export function pageLanguage({
   pageLang,
@@ -344,7 +345,7 @@ export function pageLanguage({
   pageDir?: string | undefined;
   routeLocale?: string | null;
   defaults?: { lang?: string | undefined; dir?: string | undefined } | undefined;
-}): { lang: string; dir?: string } {
+}): PageLanguage {
   const lang = pageLang ?? routeLocale ?? defaults?.lang ?? "en";
   const explicit = pageDir ?? defaults?.dir;
   if (explicit !== undefined) {

@@ -40,14 +40,15 @@
  * @docs studio/design/layers
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import outlineDoc from "./panel-outline.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("panel-outline", outlineDoc as unknown as JxDocument);
+registerSurface("panel-outline", outlineDoc);
 
 /**
  * One verb on a row, already resolved against THAT ROW'S node.
@@ -193,10 +194,13 @@ export interface OutlineActions {
    * `data-jx-path` is for.
    */
   contextMenu: (scope: JxScope, event: Event) => void;
-  /** Run one of the row's verbs, against the row rather than against the selection. */
-  runRow: (id: string, row: string, control: unknown) => void;
-  /** Open the `⋮` menu under its own button. */
-  overflowRow: (key: string, opener: unknown) => void;
+  /**
+   * Run one of the row's verbs, against the row rather than against the selection. `control` is the
+   * pressed button's `event.currentTarget`.
+   */
+  runRow: (id: string, row: string, control: EventTarget | null) => void;
+  /** Open the `⋮` menu under its own button, which arrives as the press's `event.currentTarget`. */
+  overflowRow: (key: string, opener: EventTarget | null) => void;
   /** The rename input's three moments. */
   editInput: (value: string) => void;
   editCommit: () => void;
@@ -221,7 +225,7 @@ export interface OutlineSurfaceHandle {
 }
 
 /** The scope the document reads: the projection, plus everything its controls can call. */
-interface OutlineScope extends Record<string, unknown>, OutlineValues, OutlineActions {}
+interface OutlineScope extends OutlineValues, OutlineActions {}
 
 /** Write a projection into the scope. */
 function project(scope: OutlineScope, values: OutlineValues): void {
@@ -236,8 +240,8 @@ function project(scope: OutlineScope, values: OutlineValues): void {
 
 /** The `part` a node's definition carries, or "" for a text node or an unmarked element. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -253,7 +257,7 @@ export function mountOutlineSurface(
   values: OutlineValues,
   actions: OutlineActions,
 ): OutlineSurfaceHandle {
-  const scope = reactive<OutlineScope>({
+  const scope: OutlineScope = reactive<OutlineScope>({
     contextMenu: actions.contextMenu,
     current: "",
     editCancel: actions.editCancel,
@@ -278,7 +282,7 @@ export function mountOutlineSurface(
     treeReady: actions.treeReady,
     typeahead: actions.typeahead,
     view: "empty",
-  }) as OutlineScope;
+  });
   project(scope, values);
 
   let mounted: SurfaceHandle | null = null;
@@ -290,12 +294,15 @@ export function mountOutlineSurface(
   const ready = mountSurface("panel-outline", scope, container, {
     onNodeCreated: (element, _path, def) => {
       /* A text node carries no `part`, so narrowing and asking are the same question — asked once,
-         rather than as a guard clause whose only reachable answer is the one below. */
-      const part = element instanceof HTMLElement ? partOf(def) : "";
-      if (part === "tree") {
-        actions.treeReady(element as HTMLElement);
-      } else if (part === "title-input") {
-        actions.editReady(element as HTMLElement);
+         as the condition around the lookup rather than as a guard clause whose only reachable
+         answer is the one below. */
+      if (element instanceof HTMLElement) {
+        const part = partOf(def);
+        if (part === "tree") {
+          actions.treeReady(element);
+        } else if (part === "title-input") {
+          actions.editReady(element);
+        }
       }
     },
   }).then((surface) => {
@@ -312,8 +319,7 @@ export function mountOutlineSurface(
        mount racing the first. Once mounted, the question is whether the root is still where it was
        put: a Navigator that painted another panel, or the stylebook's own catalogue, cleared this
        document out from under it. */
-    connected: () =>
-      !disposed && (mounted === null || (mounted.root as Node).parentNode === container),
+    connected: () => !disposed && (mounted === null || mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

@@ -54,7 +54,31 @@
 import { Glob } from "bun";
 import { dirname, join, relative } from "node:path";
 import { API } from "typescript/unstable/async";
-import { SyntaxKind } from "typescript/unstable/ast";
+import {
+  SyntaxKind,
+  isArrowFunction,
+  isBlock,
+  isCallExpression,
+  isExpressionStatement,
+  isFunctionDeclaration,
+  isFunctionExpression,
+  isIdentifier,
+  isImportDeclaration,
+  isMethodDeclaration,
+  isNamedImports,
+  isReturnStatement,
+  isStringLiteral,
+  isVariableStatement,
+} from "typescript/unstable/ast";
+import type {
+  ArrowFunction,
+  BindingName,
+  FunctionDeclaration,
+  FunctionExpression,
+  MethodDeclaration,
+  Node,
+  SourceFile,
+} from "typescript/unstable/ast";
 
 const ROOT = join(import.meta.dir, "..");
 
@@ -124,9 +148,9 @@ export const ALLOWED_SINGLE_INSTANCE: Readonly<Record<string, number>> = {};
  * counted because the rule is "this module does not consult the focus", and a file that imports the
  * binding is a file that can.
  */
-export const ALLOWED_ACTIVE_TAB_READS: Readonly<Record<string, number>> = {
+export const ALLOWED_ACTIVE_TAB_READS = {
   "src/canvas/canvas-utils.ts": 2,
-};
+} satisfies Readonly<Record<string, number>>;
 
 /**
  * The modules that compute what a STAGE looks like: its transform, its fit, its content zoom, its
@@ -352,10 +376,10 @@ const FOCUS_SCOPE_SCAN = ["src/**/*.ts"];
  * in the status bar now and addresses the focused pane by design, so the read and the subject agree
  * and the entry is gone.
  */
-export const ALLOWED_FOCUS_IN_PANE_SCOPE: Readonly<Record<string, number>> = {
+export const ALLOWED_FOCUS_IN_PANE_SCOPE = {
   "src/panels/editors.ts": 1,
   "src/settings/css-vars-editor.ts": 1,
-};
+} satisfies Readonly<Record<string, number>>;
 
 // ─── Rule 5 · only the focus owner MOVES the focus ────────────────────────────
 
@@ -389,20 +413,22 @@ const FOCUS_WRITE_SCAN = ["src/**/*.ts"];
  */
 export const ALLOWED_FOCUS_WRITES: Readonly<Record<string, number>> = {};
 
-/** A node as the compiler API hands it back; shapes vary by kind, so this stays loose. */
-type AnyNode = any;
+/** The four ways this package spells a function. */
+type ScannedFunction = ArrowFunction | FunctionDeclaration | FunctionExpression | MethodDeclaration;
 
 /** Type-only syntax, from `CallSignature` to `ImportType`; an identifier inside one is not a read. */
 const FIRST_TYPE_KIND = SyntaxKind.CallSignature;
 const LAST_TYPE_KIND = SyntaxKind.ImportType;
 
-/** The four ways this package spells a function. */
-const FUNCTION_KINDS = new Set<SyntaxKind>([
-  SyntaxKind.ArrowFunction,
-  SyntaxKind.FunctionDeclaration,
-  SyntaxKind.FunctionExpression,
-  SyntaxKind.MethodDeclaration,
-]);
+/** Whether `node` is one of the four ways this package spells a function. */
+function isScannedFunction(node: Node): node is ScannedFunction {
+  return (
+    isArrowFunction(node) ||
+    isFunctionDeclaration(node) ||
+    isFunctionExpression(node) ||
+    isMethodDeclaration(node)
+  );
+}
 
 /** Declarations that are erased before anything runs, or that are not calls. */
 const SKIP_KINDS = new Set<SyntaxKind>([
@@ -415,15 +441,15 @@ const SKIP_KINDS = new Set<SyntaxKind>([
 ]);
 
 /** Every name a parameter binds — an identifier, or the leaves of a destructuring pattern. */
-function boundNames(name: AnyNode, out: string[] = []): string[] {
+function boundNames(name: BindingName | undefined, out: string[] = []): string[] {
   if (!name) {
     return out;
   }
-  if (name.kind === SyntaxKind.Identifier) {
-    out.push(name.text as string);
+  if (isIdentifier(name)) {
+    out.push(name.text);
     return out;
   }
-  for (const element of (name.elements as AnyNode[] | undefined) ?? []) {
+  for (const element of name.elements) {
     boundNames(element.name, out);
   }
   return out;
@@ -431,17 +457,17 @@ function boundNames(name: AnyNode, out: string[] = []): string[] {
 
 /** True when some parameter of `fn` is named in `names` or typed to match `typeRe`. */
 function hasParamSaying(
-  fn: AnyNode,
-  sf: AnyNode,
+  fn: ScannedFunction,
+  sf: SourceFile,
   names: ReadonlySet<string>,
   typeRe: RegExp,
 ): boolean {
-  for (const param of (fn.parameters as AnyNode[] | undefined) ?? []) {
+  for (const param of fn.parameters) {
     if (boundNames(param.name).some((name) => names.has(name))) {
       return true;
     }
-    const type = param.type as AnyNode | undefined;
-    if (type && typeRe.test((sf.text as string).slice(type.pos, type.end))) {
+    const { type } = param;
+    if (type && typeRe.test(sf.text.slice(type.pos, type.end))) {
       return true;
     }
   }
@@ -449,7 +475,7 @@ function hasParamSaying(
 }
 
 /** True when this function's signature says which pane it is about. */
-function isPaneScoped(fn: AnyNode, sf: AnyNode): boolean {
+function isPaneScoped(fn: ScannedFunction, sf: SourceFile): boolean {
   return hasParamSaying(fn, sf, PANE_PARAM_NAMES, PANE_PARAM_TYPE_RE);
 }
 
@@ -458,21 +484,21 @@ function isPaneScoped(fn: AnyNode, sf: AnyNode): boolean {
  * one-hop rule. See {@link FOCUS_NAMES}'s docstring: a helper that has been told is a helper whose
  * own body is where the fix goes, so its callers are not charged for reaching it.
  */
-function namesItsSubject(fn: AnyNode, sf: AnyNode): boolean {
+function namesItsSubject(fn: ScannedFunction, sf: SourceFile): boolean {
   return isPaneScoped(fn, sf) || hasParamSaying(fn, sf, TAB_PARAM_NAMES, TAB_PARAM_TYPE_RE);
 }
 
 /** Does this subtree name the focus directly? Used to classify a candidate helper. */
-function readsFocusDirectly(node: AnyNode): boolean {
-  const kind: SyntaxKind = node.kind;
+function readsFocusDirectly(node: Node): boolean {
+  const { kind } = node;
   if ((kind >= FIRST_TYPE_KIND && kind <= LAST_TYPE_KIND) || SKIP_KINDS.has(kind)) {
     return false;
   }
-  if (kind === SyntaxKind.Identifier) {
-    return FOCUS_NAMES.has(node.text as string);
+  if (isIdentifier(node)) {
+    return FOCUS_NAMES.has(node.text);
   }
   let found = false;
-  node.forEachChild((child: AnyNode) => {
+  node.forEachChild((child) => {
     found ||= readsFocusDirectly(child);
   });
   return found;
@@ -480,7 +506,7 @@ function readsFocusDirectly(node: AnyNode): boolean {
 
 /** One module's parsed facts. */
 interface ModuleFacts {
-  sf: AnyNode;
+  sf: SourceFile;
   /** Local binding name → the `src/` module it was imported from, for relative imports only. */
   importedFrom: Map<string, string>;
   /**
@@ -518,23 +544,20 @@ function resolveSpecifier(from: string, spec: string, sources: Set<string>): str
  * Deliberately narrow: exactly one statement (or a concise arrow body), and the names it collects
  * are only the direct `f(…)` callees, so a body that computes anything is not a forwarder.
  *
- * @param {AnyNode} fn
+ * @param {ScannedFunction} fn
  * @returns {string[] | null} Callee names, or null when this is not a forwarder.
  */
-function forwardedCallees(fn: AnyNode): string[] | null {
-  const body = fn.body as AnyNode | undefined;
+function forwardedCallees(fn: ScannedFunction): string[] | null {
+  const { body } = fn;
   if (!body) {
     return null;
   }
-  let expr: AnyNode | undefined;
-  if (body.kind === SyntaxKind.Block) {
-    const statements = (body.statements as AnyNode[] | undefined) ?? [];
+  let expr: Node | undefined;
+  if (isBlock(body)) {
+    const { statements } = body;
     const only = statements.length === 1 ? statements[0] : undefined;
-    if (
-      only &&
-      (only.kind === SyntaxKind.ReturnStatement || only.kind === SyntaxKind.ExpressionStatement)
-    ) {
-      expr = only.expression as AnyNode | undefined;
+    if (only && (isReturnStatement(only) || isExpressionStatement(only))) {
+      expr = only.expression;
     }
   } else {
     expr = body;
@@ -543,14 +566,11 @@ function forwardedCallees(fn: AnyNode): string[] | null {
     return null;
   }
   const callees: string[] = [];
-  const collect = (node: AnyNode): void => {
-    if (
-      node.kind === SyntaxKind.CallExpression &&
-      node.expression?.kind === SyntaxKind.Identifier
-    ) {
-      callees.push(node.expression.text as string);
+  const collect = (node: Node): void => {
+    if (isCallExpression(node) && isIdentifier(node.expression)) {
+      callees.push(node.expression.text);
     }
-    node.forEachChild((child: AnyNode) => {
+    node.forEachChild((child) => {
       collect(child);
     });
   };
@@ -558,21 +578,23 @@ function forwardedCallees(fn: AnyNode): string[] | null {
   return callees.length > 0 ? callees : null;
 }
 
+/** A function-shaped top-level declaration, with the name it binds. */
+interface TopLevelFunction {
+  name: string;
+  fn: ScannedFunction;
+}
+
 /** A function-shaped top-level declaration: `function f()` or `const f = () => …`. */
-function topLevelFunctions(sf: AnyNode): { name: string; fn: AnyNode }[] {
-  const out: { name: string; fn: AnyNode }[] = [];
-  for (const st of sf.statements as AnyNode[]) {
-    if (st.kind === SyntaxKind.FunctionDeclaration && st.name?.text) {
-      out.push({ fn: st, name: st.name.text as string });
-    } else if (st.kind === SyntaxKind.VariableStatement) {
-      for (const d of st.declarationList.declarations as AnyNode[]) {
-        const init = d.initializer as AnyNode | undefined;
-        if (
-          d.name?.kind === SyntaxKind.Identifier &&
-          init &&
-          FUNCTION_KINDS.has(init.kind as SyntaxKind)
-        ) {
-          out.push({ fn: init, name: d.name.text as string });
+function topLevelFunctions(sf: SourceFile): TopLevelFunction[] {
+  const out: TopLevelFunction[] = [];
+  for (const st of sf.statements) {
+    if (isFunctionDeclaration(st) && st.name?.text) {
+      out.push({ fn: st, name: st.name.text });
+    } else if (isVariableStatement(st)) {
+      for (const d of st.declarationList.declarations) {
+        const init = d.initializer;
+        if (isIdentifier(d.name) && init && isScannedFunction(init)) {
+          out.push({ fn: init, name: d.name.text });
         }
       }
     }
@@ -581,22 +603,26 @@ function topLevelFunctions(sf: AnyNode): { name: string; fn: AnyNode }[] {
 }
 
 /** Every local binding a module's relative imports introduce, by local name. */
-function importedBindings(sf: AnyNode, from: string, sources: Set<string>): Map<string, string> {
+function importedBindings(sf: SourceFile, from: string, sources: Set<string>): Map<string, string> {
   const map = new Map<string, string>();
-  for (const st of sf.statements as AnyNode[]) {
-    if (st.kind !== SyntaxKind.ImportDeclaration || !st.importClause) {
+  for (const st of sf.statements) {
+    // A module specifier is always a string literal; the guard is what lets its text be read.
+    if (!isImportDeclaration(st) || !st.importClause || !isStringLiteral(st.moduleSpecifier)) {
       continue;
     }
-    const target = resolveSpecifier(from, st.moduleSpecifier.text as string, sources);
+    const target = resolveSpecifier(from, st.moduleSpecifier.text, sources);
     if (!target) {
       continue;
     }
-    const clause = st.importClause as AnyNode;
+    const clause = st.importClause;
     if (clause.name?.text) {
-      map.set(clause.name.text as string, target);
+      map.set(clause.name.text, target);
     }
-    for (const element of (clause.namedBindings?.elements as AnyNode[] | undefined) ?? []) {
-      map.set(element.name.text as string, target);
+    // A namespace import (`* as ns`) binds one name that is not a call target, so it adds none.
+    if (clause.namedBindings && isNamedImports(clause.namedBindings)) {
+      for (const element of clause.namedBindings.elements) {
+        map.set(element.name.text, target);
+      }
     }
   }
   return map;
@@ -697,19 +723,19 @@ export async function analyzeFocusScope(files: string[]): Promise<Map<string, Fo
     const found = new Map<string, FocusSite[]>();
     for (const [file, facts] of modules) {
       const hits = new Map<number, FocusSite>();
-      const at = (node: AnyNode, name: string, via: string | null): FocusSite => ({
-        line: (facts.sf.getLineAndCharacterOfPosition(node.getStart(facts.sf)).line as number) + 1,
+      const at = (node: Node, name: string, via: string | null): FocusSite => ({
+        line: facts.sf.getLineAndCharacterOfPosition(node.getStart(facts.sf)).line + 1,
         name,
         via,
       });
-      const walk = (node: AnyNode, inPane: boolean): void => {
-        const kind: SyntaxKind = node.kind;
+      const walk = (node: Node, inPane: boolean): void => {
+        const { kind } = node;
         if ((kind >= FIRST_TYPE_KIND && kind <= LAST_TYPE_KIND) || SKIP_KINDS.has(kind)) {
           return;
         }
-        if (FUNCTION_KINDS.has(kind)) {
+        if (isScannedFunction(node)) {
           const scoped = inPane || isPaneScoped(node, facts.sf);
-          for (const param of (node.parameters as AnyNode[] | undefined) ?? []) {
+          for (const param of node.parameters) {
             walk(param, inPane);
           }
           if (node.body) {
@@ -718,18 +744,18 @@ export async function analyzeFocusScope(files: string[]): Promise<Map<string, Fo
           return;
         }
         if (inPane) {
-          if (kind === SyntaxKind.Identifier && FOCUS_NAMES.has(node.text as string)) {
-            hits.set(node.getStart(facts.sf) as number, at(node, node.text as string, null));
+          if (isIdentifier(node) && FOCUS_NAMES.has(node.text)) {
+            hits.set(node.getStart(facts.sf), at(node, node.text, null));
           } else if (
-            kind === SyntaxKind.CallExpression &&
-            node.expression?.kind === SyntaxKind.Identifier &&
-            isFocusReader(facts, node.expression.text as string)
+            isCallExpression(node) &&
+            isIdentifier(node.expression) &&
+            isFocusReader(facts, node.expression.text)
           ) {
-            const callee = node.expression.text as string;
-            hits.set(node.getStart(facts.sf) as number, at(node, `${callee}()`, callee));
+            const callee = node.expression.text;
+            hits.set(node.getStart(facts.sf), at(node, `${callee}()`, callee));
           }
         }
-        node.forEachChild((child: AnyNode) => {
+        node.forEachChild((child) => {
           walk(child, inPane);
         });
       };

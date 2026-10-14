@@ -28,7 +28,7 @@ import { problems, resetNotifications, toasts } from "../src/services/notify";
 import { setFormats } from "../src/format/format-host";
 import { createFileIn } from "../src/files/files";
 import type { StudioFormat } from "../src/format/format-host";
-import type { DirEntry } from "../src/types";
+import type { DirEntry, StudioPlatform } from "../src/types";
 
 for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
   if (!document.querySelector(`#${id}`)) {
@@ -39,10 +39,10 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 const MARKDOWN: StudioFormat = {
   capabilities: {
@@ -71,13 +71,14 @@ const CSV: StudioFormat = {
 };
 
 let written: { path: string; content: string }[];
-let listing: Record<string, DirEntry[]>;
+/** The directory listing the mock platform serves, keyed by project-relative directory. */
+let listing: Map<string, DirEntry[]>;
 
-function install(overrides: Record<string, unknown> = {}) {
+function install(overrides: Partial<StudioPlatform> = {}) {
   written = [];
   installMockPlatform({
     listDirectory: (path: string) => {
-      const entries = listing[path];
+      const entries = listing.get(path);
       return entries ? Promise.resolve(entries) : Promise.reject(new Error(`ENOENT: ${path}`));
     },
     writeFile: (path: string, content: string) => {
@@ -90,26 +91,29 @@ function install(overrides: Record<string, unknown> = {}) {
 
 /** The validation message the open dialog is currently showing for `value`. */
 async function validationFor(value: string): Promise<string> {
-  const field = topDialog()!.querySelector('jx-textfield [part="input"]') as HTMLInputElement;
+  const field = topDialog()?.querySelector('jx-textfield [part="input"]');
+  if (!(field instanceof HTMLInputElement)) {
+    throw new Error("The open dialog has no text field input");
+  }
   field.value = value;
   field.dispatchEvent(new Event("input", { bubbles: true }));
   await flush();
   const help = topDialog()!.querySelector('jx-textfield [part="error"]');
-  return help?.textContent?.trim() ?? "";
+  return help?.textContent.trim() ?? "";
 }
 
 /** The validation message currently showing, without touching the field. */
 function currentValidation(): string {
-  return topDialog()?.querySelector('jx-textfield [part="error"]')?.textContent?.trim() ?? "";
+  return topDialog()?.querySelector('jx-textfield [part="error"]')?.textContent.trim() ?? "";
 }
 
 beforeEach(() => {
   resetNotifications();
   toasts.length = 0;
-  listing = {
-    content: [{ name: "hello.md", path: "content/hello.md", type: "file" }],
-    pages: [{ name: "index.json", path: "pages/index.json", type: "file" }],
-  };
+  listing = new Map<string, DirEntry[]>([
+    ["content", [{ name: "hello.md", path: "content/hello.md", type: "file" }]],
+    ["pages", [{ name: "index.json", path: "pages/index.json", type: "file" }]],
+  ]);
   install();
   resetStudioState({ dirs: new Map(), projectConfig: null, projectDirs: ["pages"] });
   setFormats([MARKDOWN, CSV]);
@@ -177,7 +181,7 @@ describe("naming", () => {
   });
 
   test("the project root is named as the root, not as `./`", async () => {
-    listing["."] = [];
+    listing.set(".", []);
     const pending = createFileIn({ dir: "." });
     await flush();
     expect(topDialog()!.textContent).toContain("Creating in the project root.");
@@ -291,10 +295,10 @@ describe("refusing in the field", () => {
    * screen after the reader switched away from it.
    */
   test("switching format re-runs the collision check with no keystroke", async () => {
-    listing.pages = [
+    listing.set("pages", [
       { name: "index.json", path: "pages/index.json", type: "file" },
       { name: "about.md", path: "pages/about.md", type: "file" },
-    ];
+    ]);
     install();
     const pending = createFileIn({
       dir: "pages",
@@ -458,7 +462,7 @@ describe("what gets written", () => {
   });
 
   test("nothing at all for an extension no format claims", async () => {
-    listing.styles = [];
+    listing.set("styles", []);
     const pending = createFileIn({
       dir: "styles",
       format: { kind: "choose" },

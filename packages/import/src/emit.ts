@@ -1,4 +1,5 @@
-import type { JxElement } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxElement, JxHeadEntry } from "@jxsuite/schema/types";
 import { componentize } from "./componentize.ts";
 import { stripClasses } from "./strip-classes.ts";
 import type { ComponentizeOptions, ComponentizeResult } from "./componentize.ts";
@@ -17,6 +18,19 @@ const BASE_MEDIA_KEY = "--";
 function mediaKeyWidth(key: string): number {
   const width = Number(key.replace(/^--/, ""));
   return Number.isFinite(width) ? width : -1;
+}
+
+/**
+ * The `project.json` an import writes: only keys the project schema declares, in the order they are
+ * written (`$media`, `style` and `$head` are added after the three seeded keys, when present).
+ */
+interface ImportedProjectConfig {
+  name: string;
+  imports: Record<string, string>;
+  images: { optimize: boolean };
+  $media?: Record<string, string>;
+  style?: Record<string, string>;
+  $head?: JxHeadEntry[];
 }
 
 export interface EmitResult {
@@ -123,7 +137,7 @@ export async function emitMultiPageProject({
    * nearest candidate and the wrong one: it is the site's own user-facing description, and
    * "Imported from …" is provenance, not a description of the site. The importer reports it instead.
    */
-  const projectJson: Record<string, unknown> = {
+  const projectJson: ImportedProjectConfig = {
     name: title || "Imported Site",
     imports: {},
     images: { optimize: false },
@@ -139,7 +153,7 @@ export async function emitMultiPageProject({
     const sorted = Object.entries(breakpoints).toSorted(
       ([a], [b]) => mediaKeyWidth(a) - mediaKeyWidth(b),
     );
-    projectJson.$media = { ...(projectJson.$media as object), ...Object.fromEntries(sorted) };
+    projectJson.$media = { ...projectJson.$media, ...Object.fromEntries(sorted) };
   }
 
   if (styleTokens && Object.keys(styleTokens).length > 0) {
@@ -172,10 +186,9 @@ export async function emitMultiPageProject({
          lost it on the way out, and every interpolation referencing it went dead. */
       const derived: Record<string, string> = {};
       extractStateDefaults(comp.template, derived);
-      const declared = (comp.template.state ?? {}) as Record<string, unknown>;
-      const state = { ...derived, ...declared };
+      const state = { ...derived, ...comp.template.state };
       if (Object.keys(state).length > 0) {
-        compDoc.state = state as Record<string, string>;
+        compDoc.state = state;
       }
 
       componentFiles.set(fileName, compDoc);
@@ -231,7 +244,7 @@ export async function emitMultiPageProject({
     if (!projectJson.$head) {
       projectJson.$head = [];
     }
-    (projectJson.$head as unknown[]).push({
+    projectJson.$head.push({
       tagName: "link",
       attributes: { rel: "stylesheet", href: "/assets/fonts.css" },
     });
@@ -267,19 +280,14 @@ export async function emitMultiPageProject({
   // Build $elements refs for component registration
   const elementRefs: JxElement[] =
     componentFiles.size > 0
-      ? [...componentFiles.keys()].map(
-          (f) => ({ $ref: `../components/${f}` }) as unknown as JxElement,
-        )
+      ? [...componentFiles.keys()].map((f) => ({ $ref: `../components/${f}` }))
       : [];
 
   // Write each page
   for (const [route, doc] of finalPages) {
     const pageDoc = { ...doc };
     if (elementRefs.length > 0) {
-      pageDoc.$elements = [
-        ...elementRefs,
-        ...((pageDoc.$elements as JxElement[]) ?? []),
-      ] as JxElement[];
+      prependElementRefs(pageDoc, elementRefs);
     }
     await io.write(route, `${JSON.stringify(pageDoc, null, 2)}\n`);
     files.push(route);
@@ -292,16 +300,23 @@ export async function emitMultiPageProject({
     children: [{ tagName: "slot" }],
   };
   if (elementRefs.length > 0 && layout) {
-    (layoutDoc as Record<string, unknown>).$elements = [
-      ...elementRefs,
-      ...(((layoutDoc as Record<string, unknown>).$elements as JxElement[]) ?? []),
-    ];
+    prependElementRefs(layoutDoc, elementRefs);
   }
   classesStripped += stripClasses(layoutDoc);
   await io.write(layoutPath, `${JSON.stringify(layoutDoc, null, 2)}\n`);
   files.push(layoutPath);
 
   return { classesStripped, files, projectJson: projectText };
+}
+
+/** Put the component registrations ahead of whatever `$elements` the document already declares. */
+function prependElementRefs(doc: JxElement, refs: JxElement[]): void {
+  /* SAFETY: `$elements` is the document schema's registration list, an array of element entries
+     or specifier strings. The pages and layout reaching emit are built by the import pipeline
+     (toJx, detectLayout, componentize, the AI rename pass), none of which writes anything else
+     under that key. */
+  const existing = doc.$elements as (JxElement | string)[] | undefined;
+  doc.$elements = [...refs, ...(existing ?? [])];
 }
 
 /**
@@ -318,14 +333,14 @@ function stateKey(text: string): string | undefined {
 }
 
 function extractStateDefaults(node: JxElement | string, out: Record<string, string>) {
-  if (typeof node === "string") {
+  if (isString(node)) {
     const key = stateKey(node);
     if (key && !(key in out)) {
       out[key] = "";
     }
     return;
   }
-  if (typeof node.textContent === "string") {
+  if (isString(node.textContent)) {
     const key = stateKey(node.textContent);
     if (key && !(key in out)) {
       out[key] = "";
@@ -333,7 +348,7 @@ function extractStateDefaults(node: JxElement | string, out: Record<string, stri
   }
   if (node.attributes) {
     for (const v of Object.values(node.attributes)) {
-      if (typeof v === "string") {
+      if (isString(v)) {
         const key = stateKey(v);
         if (key && !(key in out)) {
           out[key] = "";
@@ -343,7 +358,7 @@ function extractStateDefaults(node: JxElement | string, out: Record<string, stri
   }
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      extractStateDefaults(child as JxElement | string, out);
+      extractStateDefaults(child, out);
     }
   }
 }

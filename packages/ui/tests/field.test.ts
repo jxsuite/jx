@@ -10,7 +10,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildStyleRules } from "@jxsuite/runtime/css";
-import type { JxStyle } from "@jxsuite/schema/types";
+import type { JsonObject, JxStyle } from "@jxsuite/schema/types";
 import fieldDoc from "../components/jx-field.json";
 import { nameFieldControl } from "../src/behaviors/textfield.ts";
 import { registerUi } from "../src/index.ts";
@@ -46,6 +46,8 @@ afterEach(() => {
  * @returns {Promise<JxField>} The connected element, after its first render and its mount
  */
 async function row(attrs: Record<string, string> = {}, markup = ""): Promise<JxField> {
+  /* SAFETY: registerUi() in beforeAll defined jx-field, so createElement returns the upgraded
+     element, which carries every reactive property `JxField` lists from its component document. */
   const el = document.createElement("jx-field") as JxField;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -61,7 +63,25 @@ async function row(attrs: Record<string, string> = {}, markup = ""): Promise<JxF
 
 const part = (el: Element, name: string) => el.querySelector<HTMLElement>(`[part="${name}"]`)!;
 
+/** A kit control the row can name: the two props `jx-field` writes onto it. */
+type NamedControl = HTMLElement & { labelledby: string; describedby: string };
+
+/**
+ * The first slotted kit control of one tag, typed by the naming props its definition observes.
+ *
+ * @param {Element} root The row to search
+ * @param {"jx-checkbox" | "jx-textfield"} tag A kit control whose document declares both props
+ * @returns {NamedControl} The control (unchecked for absence, like the inline casts it replaced)
+ */
+function namedControl(root: Element, tag: "jx-checkbox" | "jx-textfield"): NamedControl {
+  /* SAFETY: both tags are kit elements registered in beforeAll whose component documents declare
+     `labelledby` and `describedby` as reactive string props, and every caller mounted one. */
+  return root.querySelector(tag) as NamedControl;
+}
+
 /** The element's own rules, as the sheet spells them under a test scope. */
+// SAFETY: jx-field.json is a kit component document, and its `style` block is a JxStyle tree the
+// Schema validates; the JSON import only widens its literal keys and values.
 const rules = buildStyleRules(fieldDoc.style as JxStyle, { scope: "S" }).map((rule) => rule.text);
 
 /** The one rule the element emits for a selector, WHOLE — every declaration it carries. */
@@ -80,7 +100,7 @@ describe("jx-field", () => {
       { label: "Title", description: "Shown in the Library." },
       "<jx-textfield></jx-textfield>",
     );
-    const [label, control, help] = [...el.children] as HTMLElement[];
+    const [label, control, help] = [...el.children];
     expect(label!.tagName).toBe("LABEL");
     expect(label!.getAttribute("part")).toBe("label");
     expect(label!.textContent).toBe("Title");
@@ -107,10 +127,7 @@ describe("jx-field", () => {
     /* The naming reaches the control as PROPERTIES, and the control folds them into whatever else
        it has to say about itself — which is why the row does not write `aria-labelledby` onto a
        foreign element. `jx-textfield` puts its own error and help ids in FRONT of the row's. */
-    const field = el.querySelector("jx-textfield") as HTMLElement & {
-      labelledby: string;
-      describedby: string;
-    };
+    const field = namedControl(el, "jx-textfield");
     expect(field.labelledby).toBe(`${stem}-label`);
     expect(field.describedby).toBe(`${stem}-help`);
     const input = el.querySelector("input")!;
@@ -132,10 +149,7 @@ describe("jx-field", () => {
       { label: "Title" },
       '<jx-textfield labelledby="mine" describedby="mine-help"></jx-textfield>',
     );
-    const field = el.querySelector("jx-textfield") as HTMLElement & {
-      labelledby: string;
-      describedby: string;
-    };
+    const field = namedControl(el, "jx-textfield");
     // The row names a control that has said nothing about its own name; it never overrules one.
     expect(field.labelledby).toBe("mine");
     expect(field.describedby).toBe("mine-help");
@@ -148,7 +162,7 @@ describe("jx-field", () => {
     const el = await row({ label: "Language" }, '<input type="text">');
     const input = el.querySelector("input")!;
     expect(input.getAttribute("aria-labelledby")).toBeNull();
-    expect((input as unknown as Record<string, unknown>)["labelledby"]).toBeUndefined();
+    expect("labelledby" in input).toBe(false);
     // The row still minted its stem, so its own label and sentence carry ids to point at.
     expect(part(el, "label").id).toBe(`${el.uid}-label`);
   });
@@ -157,13 +171,13 @@ describe("jx-field", () => {
     // Called directly: the element always renders a control part, so the empty-row branch of the
     // Sidecar has no reachable path through the DOM.
     const bare = document.createElement("div");
-    const state: Record<string, unknown> = {};
+    const state: Parameters<typeof nameFieldControl>[0] = {};
     nameFieldControl(state, bare);
     expect(state["uid"]).toMatch(/^jx-field-\d+$/u);
 
     const empty = document.createElement("div");
     empty.innerHTML = '<div part="control"></div>';
-    const second: Record<string, unknown> = {};
+    const second: Parameters<typeof nameFieldControl>[0] = {};
     nameFieldControl(second, empty);
     expect(second["uid"]).not.toBe(state["uid"]);
     expect(empty.querySelector('[part="control"]')!.children.length).toBe(0);
@@ -203,10 +217,7 @@ describe("jx-field", () => {
        and `jx-textfield`, which merges the row's id behind its own, would carry it as a dead
        trailing id. So the row reads its help line before it describes anything. */
     const el = await row({ label: "Visible" }, "<jx-checkbox></jx-checkbox>");
-    const box = el.querySelector("jx-checkbox") as HTMLElement & {
-      labelledby: string;
-      describedby: string;
-    };
+    const box = namedControl(el, "jx-checkbox");
     expect(box.labelledby).toBe(`${el.uid}-label`);
     expect(box.describedby).toBe("");
     expect(el.querySelector("input")!.hasAttribute("aria-describedby")).toBe(false);
@@ -220,7 +231,7 @@ describe("jx-field", () => {
       { label: "Slug" },
       '<jx-textfield></jx-textfield><span slot="help"></span>',
     );
-    const field = el.querySelector("jx-textfield") as HTMLElement & { describedby: string };
+    const field = namedControl(el, "jx-textfield");
     expect(part(el, "help").childElementCount).toBe(1);
     expect(field.describedby).toBe(`${el.uid}-help`);
   });
@@ -233,11 +244,12 @@ describe("jx-field", () => {
       { label: "Outer" },
       '<jx-field label="Inner"><jx-textfield></jx-textfield></jx-field>',
     );
+    // SAFETY: the markup above nests exactly one jx-field, a registered kit element with these props.
     const inner = el.querySelector("jx-field") as JxField;
     expect(Object.hasOwn(inner, "labelledby")).toBe(false);
     expect(Object.hasOwn(inner, "describedby")).toBe(false);
     // The inner row named its own control, from its own stem.
-    const field = inner.querySelector("jx-textfield") as HTMLElement & { labelledby: string };
+    const field = namedControl(inner, "jx-textfield");
     expect(field.labelledby).toBe(`${inner.uid}-label`);
   });
 
@@ -358,7 +370,8 @@ describe("jx-field's boxes, as rule text measured in Chrome", () => {
   });
 
   test("the label owns its own 80px box, rather than borrowing the track's", () => {
-    expect(ruleFor('S > [part="label"]')).toBe(
+    const label = ruleFor('S > [part="label"]');
+    expect(label).toBe(
       'S > [part="label"] { display: block; width: var(--jx-field-label-w); min-width: 0; ' +
         "text-align: right; color: var(--jx-fg-dim); font-family: var(--jx-font-sans); " +
         "font-size: var(--jx-text-md); line-height: var(--jx-leading-md); overflow: hidden; " +
@@ -370,7 +383,7 @@ describe("jx-field's boxes, as rule text measured in Chrome", () => {
        label in system-ui while the `jx-textfield` beside it drew Inter; the element row draws both
        in Inter. The row is now internally consistent, at the price of no longer inheriting a host
        page's font — which is what every other kit element already did. */
-    expect(ruleFor('S > [part="label"]')).toContain("font-family: var(--jx-font-sans)");
+    expect(label).toContain("font-family: var(--jx-font-sans)");
   });
 
   test("span collapses the grid to one column, and gives the label the width back", () => {
@@ -479,8 +492,10 @@ describe("the stylebook, after the row became an element", () => {
   test("jx-tabs owns its own boxes rather than a page-local class", () => {
     // The kit is at zero classes, so a page cannot keep one either. The row that held the vertical
     // Tabs carries the three declarations on the node that draws it.
+    /* SAFETY: jx-tabs.json is a committed stylebook page, a Jx document whose root carries a
+       `style` object and a `children` array of element nodes; only those members are read here. */
     const page = JSON.parse(pageText("jx-tabs.json")) as {
-      style: Record<string, unknown>;
+      style: JsonObject;
       children: { style?: Record<string, string>; attributes?: Record<string, string> }[];
     };
     expect(Object.keys(page.style).some((key) => key.includes("."))).toBe(false);

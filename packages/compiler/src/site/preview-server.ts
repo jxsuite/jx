@@ -21,24 +21,26 @@ import { MEDIA_TYPE_BY_EXTENSION } from "@jxsuite/schema/media-type";
  * Everything else is this table's own, because a shared table for `image/png` would be a second
  * source of truth for something no standard is ambiguous about.
  */
-const MIME_TYPES: Record<string, string> = {
-  ".avif": "image/avif",
-  ".css": "text/css; charset=utf-8",
-  ".gif": "image/gif",
-  ".html": "text/html; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".txt": "text/plain; charset=utf-8",
-  ".webp": "image/webp",
-  ".woff2": "font/woff2",
-  ".xml": "application/xml; charset=utf-8",
-  ...MEDIA_TYPE_BY_EXTENSION,
-};
+const MIME_TYPES = new Map(
+  Object.entries({
+    ".avif": "image/avif",
+    ".css": "text/css; charset=utf-8",
+    ".gif": "image/gif",
+    ".html": "text/html; charset=utf-8",
+    ".ico": "image/x-icon",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".txt": "text/plain; charset=utf-8",
+    ".webp": "image/webp",
+    ".woff2": "font/woff2",
+    ".xml": "application/xml; charset=utf-8",
+    ...MEDIA_TYPE_BY_EXTENSION,
+  }),
+);
 
 /**
  * Resolve a request pathname to a file inside distDir, or null. Directory URLs (with or without a
@@ -81,7 +83,8 @@ export function startPreviewServer(distDir: string, port: number): Server {
 
     if (filePath) {
       res.writeHead(200, {
-        "Content-Type": MIME_TYPES[extname(filePath).toLowerCase()] ?? "application/octet-stream",
+        "Content-Type":
+          MIME_TYPES.get(extname(filePath).toLowerCase()) ?? "application/octet-stream",
       });
       res.end(readFileSync(filePath));
       return;

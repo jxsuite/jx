@@ -59,7 +59,7 @@ describe("readJsonStore", () => {
   test("returns the parsed value when accept admits it", async () => {
     writeFileSync(storeFile(), JSON.stringify([1, 2]), "utf8");
     const accept = (v: unknown): v is number[] => Array.isArray(v);
-    expect(await readJsonStore(storeFile(), [] as number[], accept)).toEqual([1, 2]);
+    expect(await readJsonStore<number[]>(storeFile(), [], accept)).toEqual([1, 2]);
   });
 
   test("falls back when the file is missing or accept refuses", async () => {
@@ -125,15 +125,17 @@ describe("the per-path lock", () => {
   /** A rejected update must not strand every write queued behind it. */
   test("a failed update does not poison the chain", async () => {
     await updateStore(storeFile(), readStringStore, () => ({ a: "1" }));
-    let failure: unknown;
+    let failure: Error | undefined;
     try {
       await updateStore(storeFile(), readStringStore, () => {
         throw new Error("mutate failed");
       });
     } catch (error: unknown) {
-      failure = error;
+      if (error instanceof Error) {
+        failure = error;
+      }
     }
-    expect((failure as Error).message).toBe("mutate failed");
+    expect(failure?.message).toBe("mutate failed");
     await updateStore(storeFile(), readStringStore, (c) => ({ ...c, b: "2" }));
     expect(await readStringStore(storeFile())).toEqual({ a: "1", b: "2" });
   });

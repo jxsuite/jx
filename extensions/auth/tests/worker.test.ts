@@ -12,13 +12,15 @@ import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { Sqlite } from "@jxsuite/connector";
 import { Data } from "@jxsuite/connector/worker";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { Auth, createAuthMountState, getAuthForEnv, handleAuthRequest } from "../src/worker";
 import type { JxServerContext, TableDef } from "@jxsuite/connector/types";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { AuthMountOptions } from "../src/worker";
 
 const TMP = resolve(import.meta.dir, "__test-auth-worker__");
 
-const tables: Record<string, TableDef> = {
+const tables = {
   comments: {
     connection: "main",
     ownerField: "author_id",
@@ -29,7 +31,7 @@ const tables: Record<string, TableDef> = {
       type: "object",
     },
   },
-};
+} satisfies Record<string, TableDef>;
 
 const sections = {
   auth: {},
@@ -49,11 +51,7 @@ const options: AuthMountOptions = {
 const env = { BETTER_AUTH_SECRET: "worker-test-secret-0123456789", JX_PROJECT_ROOT: TMP };
 
 /** One shared ctx + both mounts, exactly like the generated worker / dev server. */
-function mountBoth(): {
-  ctx: JxServerContext;
-  auth: (req: Request) => Promise<Response>;
-  data: (req: Request) => Promise<Response>;
-} {
+function mountBoth() {
   const ctx: JxServerContext = {};
   const authHandler = Auth.mount(options, ctx);
   const dataHandler = Data.mount(
@@ -61,9 +59,9 @@ function mountBoth(): {
     ctx,
   );
   return {
-    auth: (req) => authHandler(req, env),
+    auth: (req: Request) => authHandler(req, env),
     ctx,
-    data: (req) => dataHandler(req, env),
+    data: (req: Request) => dataHandler(req, env),
   };
 }
 
@@ -83,16 +81,27 @@ function nextClientIp(): string {
   return `203.0.113.${clientIp % 254}`;
 }
 
-function jsonRequest(method: string, url: string, body: unknown, cookie = ""): Request {
-  return new Request(url, {
-    body: JSON.stringify(body),
-    headers: {
-      "Content-Type": "application/json",
-      "x-forwarded-for": nextClientIp(),
-      ...(cookie ? { cookie } : {}),
-    },
-    method,
+function jsonRequest(method: string, url: string, body: JsonObject, cookie = ""): Request {
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    "x-forwarded-for": nextClientIp(),
   });
+  if (cookie) {
+    headers.set("cookie", cookie);
+  }
+  return new Request(url, { body: JSON.stringify(body), headers, method });
+}
+
+/** The string at `keys` inside a parsed JSON response body; a missing one fails the test. */
+function stringAt(body: JsonValue, ...keys: string[]): string {
+  let current: JsonValue | undefined = body;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  if (!isString(current)) {
+    throw new Error(`Response body has no string at ${keys.join(".")}`);
+  }
+  return current;
 }
 
 async function signUp(auth: (req: Request) => Promise<Response>, email: string): Promise<string> {
@@ -119,8 +128,8 @@ afterAll(() => {
 describe("Auth.mount", () => {
   test("publishes ctx.auth and serves the Better Auth routes", async () => {
     const { ctx, auth } = mountBoth();
-    expect(typeof ctx.auth?.getSession).toBe("function");
-    expect(typeof ctx.auth?.authorize).toBe("function");
+    expect(ctx.auth?.getSession).toBeTypeOf("function");
+    expect(ctx.auth?.authorize).toBeTypeOf("function");
 
     const cookie = await signUp(auth, "mount@example.com");
     const session = await ctx.auth!.getSession(
@@ -128,7 +137,7 @@ describe("Auth.mount", () => {
       env,
     );
     expect(session).not.toBeNull();
-    expect(typeof session!.userId).toBe("string");
+    expect(session?.userId).toBeTypeOf("string");
 
     expect(await ctx.auth!.getSession(new Request("http://localhost:3000/x"), env)).toBeNull();
   });
@@ -162,8 +171,8 @@ describe("Auth.mount", () => {
       options,
     );
     expect(response.status).toBe(500);
-    const body = (await response.json()) as { error: string };
-    expect(body.error).toContain("BETTER_AUTH_SECRET");
+    const body: JsonValue = await response.json();
+    expect(stringAt(body, "error")).toContain("BETTER_AUTH_SECRET");
   });
 
   test("memoizes the Better Auth instance per env identity", async () => {
@@ -196,11 +205,10 @@ describe("data mount integration (shared ctx)", () => {
       ),
     );
     expect(created.status).toBe(201);
-    const row = (await created.json()) as Record<string, unknown>;
-    expect(row.message).toBe("mine");
+    const row: JsonValue = await created.json();
+    expect(stringAt(row, "message")).toBe("mine");
     // The declared ownerField is authoritative: stamped from the session, forged ids overwritten.
-    expect(typeof row.author_id).toBe("string");
-    expect(row.author_id).not.toBe("forged-id");
+    expect(stringAt(row, "author_id")).not.toBe("forged-id");
   });
 
   test("owner update: the owner edits their row; strangers and anonymous are denied", async () => {
@@ -213,23 +221,24 @@ describe("data mount integration (shared ctx)", () => {
         headers: { cookie: ownerCookie },
       }),
     );
-    const ownerSession = (await sessionResponse.json()) as { user: { id: string } };
+    const ownerSession: JsonValue = await sessionResponse.json();
 
     const created = await data(
       jsonRequest(
         "POST",
         "http://localhost:3000/_jx/data/comments",
-        { author_id: ownerSession.user.id, message: "owner row" },
+        { author_id: stringAt(ownerSession, "user", "id"), message: "owner row" },
         ownerCookie,
       ),
     );
     expect(created.status).toBe(201);
-    const row = (await created.json()) as { id: string };
+    const row: JsonValue = await created.json();
+    const rowId = stringAt(row, "id");
 
     const edited = await data(
       jsonRequest(
         "PATCH",
-        `http://localhost:3000/_jx/data/comments/${row.id}`,
+        `http://localhost:3000/_jx/data/comments/${rowId}`,
         { message: "edited by owner" },
         ownerCookie,
       ),
@@ -240,7 +249,7 @@ describe("data mount integration (shared ctx)", () => {
     const stranger = await data(
       jsonRequest(
         "PATCH",
-        `http://localhost:3000/_jx/data/comments/${row.id}`,
+        `http://localhost:3000/_jx/data/comments/${rowId}`,
         { message: "hijack" },
         strangerCookie,
       ),
@@ -248,7 +257,7 @@ describe("data mount integration (shared ctx)", () => {
     expect(stranger.status).toBe(404);
 
     const anonymous = await data(
-      jsonRequest("PATCH", `http://localhost:3000/_jx/data/comments/${row.id}`, {
+      jsonRequest("PATCH", `http://localhost:3000/_jx/data/comments/${rowId}`, {
         message: "anon",
       }),
     );
@@ -274,7 +283,7 @@ describe("Auth.deploySchema (push seam)", () => {
     expect(dry.applied).toBe(false);
     expect(dry.connection).toBe("main");
     expect(dry.steps.length).toBeGreaterThan(0);
-    expect(dry.steps.every((step) => step.kind === "auth")).toBe(true);
+    expect(new Set(dry.steps.map((step) => step.kind))).toEqual(new Set(["auth"]));
 
     const applied = await Auth.deploySchema({}, projectConfig, { env: pushEnv });
     expect(applied.applied).toBe(true);

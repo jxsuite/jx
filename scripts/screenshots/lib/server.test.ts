@@ -61,12 +61,11 @@ describe("assertBundleFresh", () => {
 
   test("names the source file the bundle is behind, so the report is actionable", async () => {
     const root = await fakeRepo({ bundleAgeMs: -30_000 });
+    const verdict = expect(assertBundleFresh(root)).rejects;
     // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
-    await expect(assertBundleFresh(root)).rejects.toThrow("stale bundle");
+    await verdict.toThrow("stale bundle");
     // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
-    await expect(assertBundleFresh(root)).rejects.toThrow(
-      "packages/studio/src/canvas/iframe-host.ts",
-    );
+    await verdict.toThrow("packages/studio/src/canvas/iframe-host.ts");
   });
 
   test("a nested source file counts — freshness is against the whole tree, not the top level", async () => {

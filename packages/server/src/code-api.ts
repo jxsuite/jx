@@ -7,20 +7,29 @@
 
 import { tmpdir } from "node:os";
 import { errorMessage } from "@jxsuite/schema/parse";
+import type { JsonValue } from "@jxsuite/schema/types";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { format } from "oxfmt";
 import { problem } from "./problem.ts";
 
-interface OxcLabel {
-  span: { offset: number; line: number; [key: string]: unknown };
-  [key: string]: unknown;
+/** A label's source span; oxlint's other span members pass through to the client unchanged. */
+interface OxcSpan {
+  offset: number;
+  line: number;
+  [key: string]: JsonValue;
 }
 
+interface OxcLabel {
+  span: OxcSpan;
+  [key: string]: JsonValue;
+}
+
+/** One entry of `oxlint --format=json` output; members other than `labels` pass through. */
 interface OxcDiagnostic {
   labels?: OxcLabel[];
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 interface CodeApiBody {
@@ -87,19 +96,19 @@ function unwrapFormatted(formatted: string) {
  * @param {number} headerLen
  */
 function adjustDiagnostics(diagnostics: OxcDiagnostic[], headerLen: number) {
-  return diagnostics
-    .filter((d) => {
-      const line = d.labels?.[0]?.span?.line;
-      return line == null || line > 1;
-    })
-    .map((d) => {
-      // Diagnostics are freshly parsed and serialized right after; mutate in place
-      for (const label of d.labels ?? []) {
-        label.span.line -= 1;
-        label.span.offset -= headerLen;
-      }
-      return d;
-    });
+  return diagnostics.flatMap((d) => {
+    const line = d.labels?.[0]?.span.line;
+    // A diagnostic on line 1 points at the synthetic wrapper header, not the user's code
+    if (line != null && line <= 1) {
+      return [];
+    }
+    // Diagnostics are freshly parsed and serialized right after; mutate in place
+    for (const label of d.labels ?? []) {
+      label.span.line -= 1;
+      label.span.offset -= headerLen;
+    }
+    return [d];
+  });
 }
 
 // ─── Reusable transpiler ─────────────────────────────────────────────────────
@@ -120,6 +129,8 @@ export async function handleCodeApi(req: Request, url: URL) {
 
   let body: CodeApiBody;
   try {
+    /* SAFETY: the Studio function editor is this route's only client, and it posts `{ code, args }`
+       with a string body and string parameter names; malformed JSON is refused just below. */
     body = (await req.json()) as CodeApiBody;
   } catch {
     return problem("invalidRequest", "Invalid JSON");
@@ -196,6 +207,8 @@ export async function handleCodeApi(req: Request, url: URL) {
       const output = await new Response(proc.stdout).text();
       await proc.exited;
 
+      /* SAFETY: `oxlint --format=json` prints `{ diagnostics: [...] }` whose labels each carry a
+         numeric `span.line`/`span.offset`; output that is not JSON throws into the catch below. */
       const parsed = JSON.parse(output) as { diagnostics?: OxcDiagnostic[] };
       const adjusted = adjustDiagnostics(parsed.diagnostics ?? [], headerLen);
       return Response.json({ diagnostics: adjusted });

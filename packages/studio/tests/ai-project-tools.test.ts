@@ -10,12 +10,15 @@
 import { installMockPlatform, resetWorkspaceWithTab } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createToolRegistry } from "@jxsuite/ai";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import { registerProjectTools } from "../src/services/ai-project-tools";
 import type { ProjectToolsCtx } from "../src/services/ai-project-tools";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
 import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
 import { recordingContext } from "./harness/recording-context";
-import type { CreateProjectDestination, DirEntry } from "../src/types";
+import type { CandidateDocument } from "../src/services/ai-write-report";
+import type { CreateProjectDestination, DirEntry, StudioPlatform } from "../src/types";
 
 /** The shape of the `createProject` options the create_project tool sends to the platform. */
 interface CreateOpts {
@@ -42,7 +45,7 @@ function listingFor(files: Record<string, string>) {
         name: head,
         path: prefix + head,
         type: rest.includes("/") ? "directory" : "file",
-      } as DirEntry);
+      });
     }
     return [...seen.values()];
   };
@@ -51,10 +54,10 @@ function listingFor(files: Record<string, string>) {
 function makeHarness(
   seedFiles: Record<string, string> = {},
   ctxOverrides: Partial<ProjectToolsCtx> = {},
-  platformOverrides: Record<string, unknown> = {},
+  platformOverrides: Partial<StudioPlatform> = {},
 ) {
   const { state } = installMockPlatform(
-    { listDirectory: listingFor(seedFiles), ...platformOverrides } as never,
+    { listDirectory: listingFor(seedFiles), ...platformOverrides },
     seedFiles,
   );
   const registry = createToolRegistry();
@@ -92,6 +95,7 @@ describe("ai-project-tools — list_files", () => {
     });
     const res = await registry.execute("list_files", {});
     expect(res.success).toBe(true);
+    // SAFETY: a successful list_files answers `{ entries, truncated }`, each entry a `{ path, type }`.
     const { entries } = res.data as { entries: { path: string; type: string }[] };
     const paths = entries.map((e) => e.path);
     expect(paths).toContain("pages/index.json");
@@ -109,6 +113,7 @@ describe("ai-project-tools — list_files", () => {
     }
     const { registry } = makeHarness(files);
     const res = await registry.execute("list_files", { dir: "data" });
+    // SAFETY: list_files answers `{ entries, truncated }` whether or not the listing hit its cap.
     const data = res.data as { entries: unknown[]; truncated: boolean };
     expect(data.entries.length).toBe(200);
     expect(data.truncated).toBe(true);
@@ -128,7 +133,9 @@ describe("ai-project-tools — read_file", () => {
     const { registry } = makeHarness({ "pages/index.json": '{"tagName":"div"}' });
     const ok = await registry.execute("read_file", { path: "pages/index.json" });
     expect(ok.success).toBe(true);
-    expect((ok.data as { content: string }).content).toContain("tagName");
+    // SAFETY: a successful read_file answers `{ content, truncated }`, checked as success above.
+    const { content } = ok.data as { content: string };
+    expect(content).toContain("tagName");
 
     const missing = await registry.execute("read_file", { path: "pages/nope.json" });
     expect(missing.success).toBe(false);
@@ -140,6 +147,7 @@ describe("ai-project-tools — read_file", () => {
     const { registry } = makeHarness({ "data/big.txt": big });
     const res = await registry.execute("read_file", { path: "data/big.txt" });
     expect(res.success).toBe(true);
+    // SAFETY: a successful read_file answers `{ content, truncated }`, checked as success above.
     const data = res.data as { content: string; truncated: boolean };
     expect(data.truncated).toBe(true);
     expect(data.content).toContain("[truncated:");
@@ -208,7 +216,7 @@ describe("ai-project-tools — write_file", () => {
   });
 
   test("validates doc-shaped JSON outside conventional dirs, but not plain data arrays", async () => {
-    const validate = mock(async () => [] as string[]);
+    const validate = mock(async (): Promise<string[]> => []);
     const { registry, state } = makeHarness({}, { validate });
     await registry.execute("write_file", {
       content: JSON.stringify({ tagName: "div" }),
@@ -276,7 +284,7 @@ describe("ai-project-tools — write_file", () => {
   });
 
   test("a project.json write syncs the config through onProjectConfigWritten, text and all", async () => {
-    const onProjectConfigWritten = mock((_c: object, _text: string) => {});
+    const onProjectConfigWritten = mock((_c: ProjectConfig, _text: string) => {});
     const { registry, state } = makeHarness({}, { onProjectConfigWritten });
     /* Laid out as no serializer here would lay it: the text is the model's, and the configuration
        document derives the file's layout record from it (issue 331), so the callback has to receive
@@ -356,10 +364,10 @@ describe("ai-project-tools — write_file", () => {
      moment a human opened the file. The gate has to block BEFORE the write: disk writes have no
      undo to lean on. */
   test("a schema-invalid project.json is refused before anything is written", async () => {
-    const onProjectConfigWritten = mock((_c: object) => {});
+    const onProjectConfigWritten = mock((_c: ProjectConfig) => {});
     // Clean before, broken after: an error the model's own write introduced.
-    const validateProject = mock(async (config: unknown) =>
-      (config as { extensions?: unknown }).extensions === "nope"
+    const validateProject = mock(async (config: ProjectConfig | JsonValue) =>
+      isJsonObject(config) && config["extensions"] === "nope"
         ? ["/extensions: must be object"]
         : [],
     );
@@ -384,7 +392,7 @@ describe("ai-project-tools — write_file", () => {
      blaming it for one is a loop with no exit. Same subtraction `services/ai-tools.ts` performs on
      a document edit. */
   test("a violation the file already had does not refuse an unrelated write", async () => {
-    const validateProject = mock(async (_c: unknown) => [
+    const validateProject = mock(async (_c: ProjectConfig | JsonValue) => [
       "(root): must NOT have unevaluated properties (title)",
     ]);
     const { registry, state } = makeHarness({}, { validateProject });
@@ -399,8 +407,8 @@ describe("ai-project-tools — write_file", () => {
   });
 
   test("the document validator is never used for project.json", async () => {
-    const validate = mock(async (_d: unknown) => ["/tagName: must be string"]);
-    const validateProject = mock(async (_c: unknown) => []);
+    const validate = mock(async (_d: CandidateDocument) => ["/tagName: must be string"]);
+    const validateProject = mock(async (_c: ProjectConfig | JsonValue): Promise<string[]> => []);
     const { registry, state } = makeHarness({}, { validate, validateProject });
 
     const res = await registry.execute("write_file", {
@@ -419,7 +427,7 @@ describe("ai-project-tools — write_file", () => {
   /* Kept in step with monaco-setup's DOCUMENT_FILE_MATCH — `elements/` was missing here, so an
      element document reached disk validated only by the structural sniff. */
   test("elements/*.json is gated like every other document folder", async () => {
-    const validate = mock(async (_d: unknown) => ["/tagName: must be string"]);
+    const validate = mock(async (_d: CandidateDocument) => ["/tagName: must be string"]);
     const { registry, state } = makeHarness({}, { validate });
 
     const res = await registry.execute("write_file", {
@@ -443,6 +451,7 @@ describe("ai-project-tools — search_files", () => {
     });
     const res = await registry.execute("search_files", { query: "hero" });
     expect(res.success).toBe(true);
+    // SAFETY: a successful search_files answers `{ paths, truncated }`, checked as success above.
     const { paths } = res.data as { paths: string[] };
     expect(paths.toSorted()).toEqual(["components/hero-banner.json", "pages/hero.json"]);
   });
@@ -528,7 +537,17 @@ describe("ai-project-tools — create_project", () => {
     const { registry, state } = makeHarness(
       {},
       { adoptProject: async (root) => setWorkspaceProject(root, { name: "New Site" }) },
-      { createProject, gitStatus: async () => ({ files: [], isRepo: true }) },
+      {
+        createProject,
+        gitStatus: async () => ({
+          ahead: 0,
+          behind: 0,
+          branch: "main",
+          files: [],
+          isRepo: true,
+          remotes: [],
+        }),
+      },
     );
 
     await registry.execute("create_project", { location: "/home/dev/Sites", name: "New Site" });
@@ -768,16 +787,33 @@ describe("ai-project-tools — list_starters", () => {
     const { registry } = makeHarness();
     const res = await registry.execute("list_starters", {});
     expect(res.success).toBe(true);
-    expect((res.data as { starters: unknown[] }).starters).toEqual([]);
+    // SAFETY: a successful list_starters answers `{ starters }`, checked as success above.
+    const { starters } = res.data as { starters: unknown[] };
+    expect(starters).toEqual([]);
   });
 
   test("lists platform starters when available", async () => {
     const { registry } = makeHarness(
       {},
       {},
-      { listStarters: async () => [{ id: "blog", name: "Blog" }] },
+      {
+        listStarters: async () => [
+          {
+            accent: "#000000",
+            description: "A blog.",
+            features: [],
+            id: "blog",
+            industry: "Publishing",
+            name: "Blog",
+            tagline: "Write.",
+            thumbnail: "data:,",
+          },
+        ],
+      },
     );
     const res = await registry.execute("list_starters", {});
-    expect((res.data as { starters: { id: string }[] }).starters[0]!.id).toBe("blog");
+    // SAFETY: list_starters answers `{ starters }` with the platform's own `StarterInfo` rows.
+    const { starters } = res.data as { starters: { id: string }[] };
+    expect(starters[0]?.id).toBe("blog");
   });
 });

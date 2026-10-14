@@ -21,6 +21,7 @@ import {
   layoutById,
   layoutIdFor,
   mountShell,
+  NAVIGATOR_PANEL_IDS,
   persistProjectShell,
   registerShellViewCommands,
   renameLayout,
@@ -46,11 +47,17 @@ const deps = {
   setInspectorTab,
 };
 
-function storedFor(root: string): { layouts?: LayoutPreset[]; activeLayout?: string } {
-  return JSON.parse(localStorage.getItem(`${PREFIX}${root}`) || "{}") as {
-    layouts?: LayoutPreset[];
-    activeLayout?: string;
-  };
+/** The slice of the per-project record these tests read back. */
+interface StoredLayouts {
+  layouts?: LayoutPreset[];
+  activeLayout?: string;
+}
+
+function storedFor(root: string): StoredLayouts {
+  /* SAFETY: `persistProjectShell` is the only writer of this key, and it serialises `activeLayout`
+     as the layout id string and `layouts` as `shell.layouts`, a `LayoutPreset[]`; the `"{}"`
+     fallback is the never-written record, where both members are absent. */
+  return JSON.parse(localStorage.getItem(`${PREFIX}${root}`) || "{}") as StoredLayouts;
 }
 
 function build(): CommandRegistry {
@@ -100,7 +107,7 @@ describe("the four built-in layouts", () => {
 
   test("each names a Navigator panel and an Inspector tab that actually exist", () => {
     for (const preset of shell.layouts) {
-      expect(typeof preset.navigatorPanel).toBe("string");
+      expect(NAVIGATOR_PANEL_IDS).toContain(preset.navigatorPanel);
       expect(["properties", "style", "events", "assistant"]).toContain(preset.inspectorTab);
     }
   });

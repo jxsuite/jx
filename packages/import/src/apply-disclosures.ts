@@ -21,6 +21,7 @@
  * that would lose a text run or an image is abandoned whole.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import { countLeaves } from "./apply-accordions.ts";
 
@@ -30,28 +31,22 @@ const CONTROL_ATTRIBUTES = ["aria-expanded", "aria-controls", "role", "tabindex"
 /** A panel lifted out of the flow is an overlay, and belongs to the popover pass instead. */
 const POSITIONED = new Set(["absolute", "fixed"]);
 
-function attributesOf(node: JxElement): Record<string, unknown> | undefined {
-  return node.attributes as Record<string, unknown> | undefined;
-}
-
 function childrenOf(node: JxElement): (JxElement | string)[] {
-  return Array.isArray(node.children) ? (node.children as (JxElement | string)[]) : [];
+  return Array.isArray(node.children) ? node.children : [];
 }
 
 function elementChildren(node: JxElement): JxElement[] {
-  return childrenOf(node).filter((child) => typeof child !== "string") as JxElement[];
+  return childrenOf(node).filter((child): child is JxElement => !isString(child));
 }
 
 /** Whether this control declares that it expands a named panel. */
 export function isDisclosureInvoker(node: JxElement): boolean {
-  const attributes = attributesOf(node);
+  const { attributes } = node;
   if (!attributes) {
     return false;
   }
   const controls = attributes["aria-controls"];
-  return (
-    attributes["aria-expanded"] !== undefined && typeof controls === "string" && controls.length > 0
-  );
+  return attributes["aria-expanded"] !== undefined && isString(controls) && controls.length > 0;
 }
 
 /**
@@ -61,20 +56,19 @@ export function isDisclosureInvoker(node: JxElement): boolean {
  * why a detector looking only at computed style would miss every one of them.
  */
 export function isDisclosurePanel(node: JxElement): boolean {
-  const style = node.style as Record<string, unknown> | undefined;
+  const { style } = node;
   if (POSITIONED.has(String(style?.["position"] ?? ""))) {
     return false;
   }
-  const attributes = attributesOf(node);
-  return attributes?.["hidden"] !== undefined || style?.["display"] === "none";
+  return node.attributes?.["hidden"] !== undefined || style?.["display"] === "none";
 }
 
 /** Every element carrying an `id`, so `aria-controls` can be resolved. */
 function indexById(root: JxElement): Map<string, JxElement> {
   const index = new Map<string, JxElement>();
   const visit = (node: JxElement): void => {
-    const id = attributesOf(node)?.["id"];
-    if (typeof id === "string" && !index.has(id)) {
+    const id = node.attributes?.["id"];
+    if (isString(id) && !index.has(id)) {
       index.set(id, node);
     }
     for (const child of elementChildren(node)) {
@@ -98,9 +92,7 @@ function contentOf(node: JxElement): (JxElement | string)[] {
   if (children.length > 0) {
     return children;
   }
-  return typeof node.textContent === "string" && node.textContent.length > 0
-    ? [node.textContent]
-    : [];
+  return isString(node.textContent) && node.textContent.length > 0 ? [node.textContent] : [];
 }
 
 /**
@@ -118,15 +110,15 @@ function unwrapInvoker(node: JxElement, invoker: JxElement): JxElement {
   }
   const rebuilt: (JxElement | string)[] = [];
   for (const child of children) {
-    if (child === invoker) {
-      rebuilt.push(...contentOf(child as JxElement));
-    } else if (typeof child === "string") {
+    if (isString(child)) {
       rebuilt.push(child);
+    } else if (child === invoker) {
+      rebuilt.push(...contentOf(child));
     } else {
-      rebuilt.push(unwrapInvoker(child as JxElement, invoker));
+      rebuilt.push(unwrapInvoker(child, invoker));
     }
   }
-  return { ...node, children: rebuilt as JxElement[] };
+  return { ...node, children: rebuilt };
 }
 
 export interface DisclosureResult {
@@ -159,15 +151,16 @@ export function applyDisclosures(root: JxElement): DisclosureResult {
 
       for (let index = 0; index < children.length && !applied; index += 1) {
         const branch = children[index];
-        if (typeof branch === "string") {
+        // The loop bound keeps `index` in range, so `branch` is never the out-of-bounds `undefined`.
+        if (branch === undefined || isString(branch)) {
           continue;
         }
 
-        const invoker = findInvokerIn(branch as JxElement);
+        const invoker = findInvokerIn(branch);
         if (!invoker) {
           continue;
         }
-        const panelId = String(attributesOf(invoker)!["aria-controls"]);
+        const panelId = String(invoker.attributes!["aria-controls"]);
         const panel = byId.get(panelId);
         if (!panel || !isDisclosurePanel(panel)) {
           continue;
@@ -176,7 +169,7 @@ export function applyDisclosures(root: JxElement): DisclosureResult {
           /* A second control for a panel already inside a `<details>` is now a lie to a screen
              reader: it reports a collapsed state it no longer governs. Strip what made it a
              control and leave the text. */
-          const attributes = attributesOf(invoker)!;
+          const attributes = invoker.attributes!;
           for (const name of CONTROL_ATTRIBUTES) {
             delete attributes[name];
           }
@@ -190,7 +183,7 @@ export function applyDisclosures(root: JxElement): DisclosureResult {
         }
 
         const before = countLeaves(parent);
-        const panelAttributes = { ...attributesOf(panel) };
+        const panelAttributes = { ...panel.attributes };
         delete panelAttributes["hidden"];
         delete panelAttributes["aria-hidden"];
 
@@ -198,41 +191,38 @@ export function applyDisclosures(root: JxElement): DisclosureResult {
            its own attributes would ride onto the `<summary>`. Stripping them here covers both
            shapes: `<summary>` is the control now, and a leftover `aria-expanded` on it would report
            a state the element no longer owns. */
-        const summaryBranch = unwrapInvoker(branch as JxElement, invoker);
-        const summaryAttributes = { ...attributesOf(summaryBranch) };
+        const summaryBranch = unwrapInvoker(branch, invoker);
+        const summaryAttributes = { ...summaryBranch.attributes };
         for (const name of CONTROL_ATTRIBUTES) {
           delete summaryAttributes[name];
         }
+        /* An `attributes` key the branch carried keeps its position, and one written only to be
+           deleted leaves no trace, so key order matches the branch it came from. */
         const summary: JxElement = {
           ...summaryBranch,
-          ...(Object.keys(summaryAttributes).length > 0
-            ? { attributes: summaryAttributes as Record<string, string> }
-            : {}),
+          attributes: summaryAttributes,
           tagName: "summary",
         };
         if (Object.keys(summaryAttributes).length === 0) {
           delete summary.attributes;
         }
         const details: JxElement = {
-          children: [summary, { ...panel, attributes: panelAttributes }] as JxElement[],
+          children: [summary, { ...panel, attributes: panelAttributes }],
           tagName: "details",
         };
 
         /* Placed where the FIRST of the pair sat, so the disclosure keeps the position the reader
            already associated with it. `<details>` always renders its summary above its content, so
            a panel that came first moves below the label it was always labelled by. */
-        const rebuilt = children.filter((child) => child !== branch && child !== panel) as (
-          | JxElement
-          | string
-        )[];
+        const rebuilt = children.filter((child) => child !== branch && child !== panel);
         rebuilt.splice(Math.min(index, panelIndex), 0, details);
 
-        const candidate: JxElement = { ...parent, children: rebuilt as JxElement[] };
+        const candidate: JxElement = { ...parent, children: rebuilt };
         if (countLeaves(candidate).join(" ") !== before.join(" ")) {
           continue;
         }
 
-        parent.children = rebuilt as JxElement[];
+        parent.children = rebuilt;
         claimedPanels.add(panel);
         result.converted += 1;
         applied = true;

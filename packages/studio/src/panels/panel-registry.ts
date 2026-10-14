@@ -35,15 +35,13 @@ import { activeTab } from "../workspace/workspace";
 import type { Level } from "../commands/levels";
 import type { CommandContext } from "../commands/context";
 import type { GitDiffState } from "../types";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxMutableNode, JxStateDefinition } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab, TabUi } from "../tabs/tab";
 import type { nothing, TemplateResult } from "lit-html";
-import type { renderFilesTemplate } from "../files/files";
-import type { renderGitPanel } from "./git-panel";
-import type { renderHeadTemplate } from "./head-panel";
-import type { renderImportsTemplate } from "./imports-panel";
 import type { mountSignalsPanel } from "./signals-panel";
+import type webdataJson from "../../data/webdata.json";
+import type { DockDeclaration } from "../commands/budget";
 
 /**
  * The three docks that host panels.
@@ -61,16 +59,12 @@ export type PanelDock = "navigator" | "inspector" | "bottom";
  *
  * This is `left-panel.ts`'s old `LeftPanelCtx`, moved to the registry because it is now the panel
  * CONTRACT rather than one orchestrator's private argument list. `studio.ts` still builds it: the
- * renderers it injects (the file tree, the head panel, the git panel) close over bootstrap state,
- * and injecting them is what keeps `panels/*` free of an import cycle back through `studio.ts`.
+ * hooks it injects close over bootstrap state, and injecting them is what keeps `panels/*` free of
+ * an import cycle back through `studio.ts`.
  */
 export interface NavigatorPanelDeps {
   getCanvasMode: () => string;
   setCanvasMode: (tab: Tab | null, mode: string) => void;
-  // Typed against their implementations so every call site stays checked. These are type-only
-  // Imports, so they are erased — the modules themselves are never pulled in through this file.
-  renderImportsTemplate: typeof renderImportsTemplate;
-  renderFilesTemplate: typeof renderFilesTemplate;
   /**
    * Draw the Data panel into the painted host.
    *
@@ -79,20 +73,18 @@ export interface NavigatorPanelDeps {
    * import would close a cycle through `formula-workspace.ts`. A type-only import erases.
    */
   mountSignalsPanel: typeof mountSignalsPanel;
-  renderHeadTemplate: typeof renderHeadTemplate;
-  renderGitPanel: typeof renderGitPanel;
   renderCanvas: () => void;
   /** Canvas re-render that also lets automatic `Request` entries fetch (Data panel Refresh). */
   refreshData: () => void;
-  defCategory: (def: unknown) => string;
-  defBadgeLabel: (def: unknown) => string;
+  defCategory: (def: JxStateDefinition) => string;
+  defBadgeLabel: (def: JxStateDefinition) => string;
   navigateToComponent: (path: string) => void;
-  webdata: Record<string, unknown>;
-  defaultDef: (tag: string) => Record<string, unknown>;
+  /** The bundled `data/webdata.json`, which the Elements palette builds its blocks from. */
+  webdata: typeof webdataJson;
+  defaultDef: (tag: string) => JxMutableNode;
   registerLayersDnD: () => void;
   registerElementsDnD: () => void;
   registerComponentsDnD: () => void;
-  registerFileTreeDnD: (ctx: { renderLeftPanel: () => void }) => void;
   setGitDiffState: (state: GitDiffState | null) => void;
   cloneRepository?: () => void;
 }
@@ -111,8 +103,8 @@ export interface NavigatorDocument {
   mode: string;
   /** The whole selection SET the navigator/inspector panels render against (§6.7). */
   selection: JxPath[];
-  canvas: Record<string, unknown> | null;
-  content?: { frontmatter?: Record<string, unknown> } | undefined;
+  canvas: Tab["session"]["canvas"] | null;
+  content?: { frontmatter?: Tab["doc"]["content"]["frontmatter"] } | undefined;
   documentPath?: string | null | undefined;
   ui: TabUi;
 }
@@ -215,7 +207,7 @@ export function panelContext(): CommandContext {
   ctx.project.open = projectState !== null;
   ctx.project.isMultilingual =
     (resolveI18n(projectState?.projectConfig ?? {}).i18n?.locales.length ?? 0) > 1;
-  ctx.git.dirtyCount = shell.git.status?.files?.length ?? 0;
+  ctx.git.dirtyCount = shell.git.status?.files.length ?? 0;
   ctx.document.open = activeTab.value !== null;
   return ctx;
 }
@@ -333,11 +325,10 @@ function railablePanels(): readonly PanelRecord[] {
  */
 export function railGroups(ctx: CommandContext): RailGroup[] {
   const railable = railablePanels();
-  return RAIL_GROUP_LEVELS.map(({ level, label }) => ({
-    level,
-    label,
-    panels: railable.filter((panel) => panel.level === level && isPanelVisible(panel, ctx)),
-  })).filter((group) => group.panels.length > 0);
+  return RAIL_GROUP_LEVELS.flatMap(({ level, label }) => {
+    const panels = railable.filter((panel) => panel.level === level && isPanelVisible(panel, ctx));
+    return panels.length > 0 ? [{ level, label, panels }] : [];
+  });
 }
 
 /**
@@ -355,12 +346,6 @@ export function railPanelSet(): PanelRecord[] {
   );
 }
 
-/** One tabbed region and what it declares, in `commands/budget.ts`'s shape. */
-export interface PanelDockDeclaration {
-  dock: string;
-  tabs: readonly string[];
-}
-
 /**
  * The rail's two groups as budget declarations — the `rail/*` rows `scripts/check-chrome-budget.ts`
  * counts, observed rather than written down. `commands/budget.ts` no longer carries a copy.
@@ -369,10 +354,10 @@ export interface PanelDockDeclaration {
  * to be visible in one context. Search is registered and hidden today, and it still spends its rail
  * slot — which is the point, because its arrival must not silently push the rail to five.
  */
-export function railDeclarations(): PanelDockDeclaration[] {
+export function railDeclarations(): DockDeclaration[] {
   const railable = railablePanels();
-  return RAIL_GROUP_LEVELS.map(({ level }) => ({
-    dock: `rail/${level}`,
-    tabs: railable.filter((panel) => panel.level === level).map((panel) => panel.title),
-  })).filter((declaration) => declaration.tabs.length > 0);
+  return RAIL_GROUP_LEVELS.flatMap(({ level }) => {
+    const tabs = railable.filter((panel) => panel.level === level).map((panel) => panel.title);
+    return tabs.length > 0 ? [{ dock: `rail/${level}`, tabs }] : [];
+  });
 }

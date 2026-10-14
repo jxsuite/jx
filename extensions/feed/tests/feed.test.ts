@@ -17,7 +17,13 @@ import {
   sortItems,
 } from "../src/shared.ts";
 import type { FeedItem } from "../src/shared.ts";
-import type { ContentLoaderEntry, ProjectConfig } from "@jxsuite/schema/types";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type {
+  ContentLoaderEntry,
+  JsonObject,
+  JsonValue,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 
 const SITE = "https://example.com";
 
@@ -25,22 +31,52 @@ const SECTION = {
   blog: { basePath: "/blog/", collection: "posts", title: "Example Blog" },
 };
 
-const PROJECT = {
+const PROJECT: ProjectConfig = {
   build: { trailingSlash: "always" },
   defaults: { lang: "en" },
   name: "Example",
   url: SITE,
-} as unknown as ProjectConfig;
+};
 
-function post(id: string, date: string | null, extra: Record<string, unknown> = {}) {
-  return {
-    body: `<p>${id}</p>`,
-    data: { title: id.toUpperCase(), ...(date === null ? {} : { date }), ...extra },
-    id,
-  } as unknown as ContentLoaderEntry;
+function post(
+  id: string,
+  date: string | null,
+  extra: ContentLoaderEntry["data"] = {},
+): ContentLoaderEntry {
+  // Key order matches the frontmatter a loader would produce: title, then date, then the rest.
+  const data: ContentLoaderEntry["data"] = { title: id.toUpperCase() };
+  if (date !== null) {
+    data.date = date;
+  }
+  Object.assign(data, extra);
+  return { body: `<p>${id}</p>`, data, id };
 }
 
-function emit(section: unknown, entries: ContentLoaderEntry[]) {
+/** A complete item for the model functions; each test sets only the fields it is about. */
+function feedItem(fields: Partial<FeedItem>): FeedItem {
+  return {
+    authorName: null,
+    contentHtml: null,
+    id: "",
+    published: null,
+    summary: "",
+    title: "",
+    updated: null,
+    url: "",
+    ...fields,
+  };
+}
+
+/** A serialized JSON Feed document, decoded; anything but an object fails the test that reads it. */
+function parseJsonObject(text: string): JsonObject {
+  const parsed: JsonValue = JSON.parse(text);
+  if (!isJsonObject(parsed)) {
+    throw new Error("expected a JSON object");
+  }
+  return parsed;
+}
+
+function emit(section: JsonValue, entries: ContentLoaderEntry[]) {
   return Feed.emit(section, {
     projectConfig: PROJECT,
     sections: { content: new Map([["posts", entries]]) },
@@ -111,10 +147,10 @@ describe("items", () => {
 
   test("newest first, undated last, ties broken by id", () => {
     const items = sortItems([
-      { id: "b", published: null } as FeedItem,
-      { id: "a", published: "2025-01-01T00:00:00Z" } as FeedItem,
-      { id: "c", published: "2025-06-01T00:00:00Z" } as FeedItem,
-      { id: "a2", published: null } as FeedItem,
+      feedItem({ id: "b", published: null }),
+      feedItem({ id: "a", published: "2025-01-01T00:00:00Z" }),
+      feedItem({ id: "c", published: "2025-06-01T00:00:00Z" }),
+      feedItem({ id: "a2", published: null }),
     ]);
     expect(items.map((i) => i.id)).toEqual(["c", "a", "a2", "b"]);
   });
@@ -122,8 +158,8 @@ describe("items", () => {
   test("the feed timestamp is the newest item, never the build time", () => {
     expect(
       feedUpdated([
-        { published: "2025-01-01T00:00:00Z", updated: null } as FeedItem,
-        { published: "2025-01-01T00:00:00Z", updated: "2025-09-09T00:00:00Z" } as FeedItem,
+        feedItem({ published: "2025-01-01T00:00:00Z", updated: null }),
+        feedItem({ published: "2025-01-01T00:00:00Z", updated: "2025-09-09T00:00:00Z" }),
       ]),
     ).toBe("2025-09-09T00:00:00Z");
     expect(feedUpdated([])).toBeNull();
@@ -255,7 +291,7 @@ describe("RFC 5005", () => {
   });
 
   test("paginate keeps the newest page current and the rest oldest-first", () => {
-    const items = Array.from({ length: 5 }, (_, i) => ({ id: `i${i}` }) as FeedItem);
+    const items = Array.from({ length: 5 }, (_, i) => feedItem({ id: `i${i}` }));
     const { archives, current } = paginate(items, 2);
     expect(current.map((i) => i.id)).toEqual(["i0", "i1"]);
     // Archive 1 is the oldest and stays put as entries are added; only the newest one grows.
@@ -264,7 +300,7 @@ describe("RFC 5005", () => {
 
   // A feed that fits on one page has no archive: paging it would publish empty pages to subscribe to.
   test("a feed no longer than one page is all current and has no archives", () => {
-    const items = Array.from({ length: 2 }, (_, i) => ({ id: `i${i}` }) as FeedItem);
+    const items = Array.from({ length: 2 }, (_, i) => feedItem({ id: `i${i}` }));
     expect(paginate(items, 5)).toEqual({ archives: [], current: [items[0]!, items[1]!] });
     expect(paginate(items, 2).archives).toEqual([]);
     expect(paginate([], 2)).toEqual({ archives: [], current: [] });
@@ -333,7 +369,7 @@ describe("the head capability", () => {
   });
 
   test("contributes nothing without a site url — a feed needs absolute links", () => {
-    expect(Feed.head(SECTION, { projectConfig: { name: "x" } as ProjectConfig })).toEqual([]);
+    expect(Feed.head(SECTION, { projectConfig: { name: "x" } })).toEqual([]);
   });
 });
 
@@ -349,7 +385,7 @@ describe("failure modes", () => {
   test("no site url means no feed", () => {
     const content = new Map([["posts", [post("a", "2025-01-01")]]]);
     const files = Feed.emit(SECTION, {
-      projectConfig: { name: "x" } as ProjectConfig,
+      projectConfig: { name: "x" },
       sections: { content },
     });
     expect(files).toEqual([]);
@@ -381,13 +417,13 @@ describe("failure modes", () => {
  * theirs and receives every post three times, twice in a language they do not read.
  */
 describe("a localized collection", () => {
-  const LOCALIZED_PROJECT = {
+  const LOCALIZED_PROJECT: ProjectConfig = {
     content: { blog: { format: "Markdown", source: "./content/blog/{locale}/" } },
     i18n: { defaultLocale: "en", locales: ["en", "fr-ca"] },
     url: "https://x.example",
   };
   const LOCALIZED_SECTION = { blog: { basePath: "/blog/", collection: "blog", title: "Journal" } };
-  const ENTRIES = [
+  const ENTRIES: ContentLoaderEntry[] = [
     {
       _meta: { locale: "en" },
       body: "",
@@ -400,11 +436,11 @@ describe("a localized collection", () => {
       data: { date: "2026-01-02", title: "Bonjour" },
       id: "hello",
     },
-  ] as unknown as ContentLoaderEntry[];
+  ];
 
   const emitted = () =>
     Feed.emit(LOCALIZED_SECTION, {
-      projectConfig: LOCALIZED_PROJECT as never,
+      projectConfig: LOCALIZED_PROJECT,
       sections: { content: new Map([["blog", ENTRIES]]) },
     });
 
@@ -431,9 +467,7 @@ describe("a localized collection", () => {
     expect(emitted().find((f) => f.path === "/fr-ca/feed.xml")!.content).toContain(
       'xml:lang="fr-CA"',
     );
-    const json = JSON.parse(emitted().find((f) => f.path === "/fr-ca/feed.json")!.content) as {
-      language?: string;
-    };
+    const json = parseJsonObject(emitted().find((f) => f.path === "/fr-ca/feed.json")!.content);
     expect(json.language).toBe("fr-CA");
   });
 
@@ -442,7 +476,7 @@ describe("a localized collection", () => {
    * feed and lets the client choose — which is what `hreflang` on an `alternate` link is for.
    */
   test("discovery advertises each language's feed by hreflang", () => {
-    const links = Feed.head(LOCALIZED_SECTION, { projectConfig: LOCALIZED_PROJECT as never });
+    const links = Feed.head(LOCALIZED_SECTION, { projectConfig: LOCALIZED_PROJECT });
     expect(links.map((l) => [l.attributes?.hreflang, l.attributes?.href]).toSorted()).toEqual([
       ["en", "https://x.example/feed.json"],
       ["en", "https://x.example/feed.xml"],
@@ -454,7 +488,7 @@ describe("a localized collection", () => {
   // A project whose collection is not localized keeps exactly what it had: one feed, no hreflang.
   test("an unlocalized collection is untouched", () => {
     const plain = Feed.head(LOCALIZED_SECTION, {
-      projectConfig: { url: "https://x.example" } as never,
+      projectConfig: { url: "https://x.example" },
     });
     expect(plain.every((l) => l.attributes?.hreflang === undefined)).toBe(true);
   });
@@ -464,10 +498,10 @@ describe("an entry that carries its own url", () => {
   const feed = normalizeFeedConfig(SECTION, "en").blog!;
 
   test("is announced at the loader's url, made absolute", () => {
-    const entry = {
+    const entry: ContentLoaderEntry = {
       ...post("bench-operations", "2025-01-02"),
       _meta: { route: "/kb/frappe/bench-operations", url: "/kb/frappe/bench-operations/" },
-    } as unknown as ContentLoaderEntry;
+    };
     const item = entryToItem(entry, feed, SITE, "always");
     expect(item.url).toBe("https://example.com/kb/frappe/bench-operations/");
     expect(item.id).toBe(item.url);
@@ -476,10 +510,10 @@ describe("an entry that carries its own url", () => {
   test("an entry with no url, or one that is not a site path, falls back to basePath + id", () => {
     const plain = entryToItem(post("hello", "2025-01-02"), feed, SITE, "always");
     expect(plain.url).toBe("https://example.com/blog/hello/");
-    const odd = {
+    const odd: ContentLoaderEntry = {
       ...post("odd", "2025-01-02"),
       _meta: { url: "https://elsewhere.example/odd/" },
-    } as unknown as ContentLoaderEntry;
+    };
     expect(entryToItem(odd, feed, SITE, "always").url).toBe("https://example.com/blog/odd/");
   });
 });

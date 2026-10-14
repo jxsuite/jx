@@ -7,9 +7,9 @@
  * (precedent: createAiCredentialsForm) so draft state never leaks between hosts.
  *
  * **There is no markup here.** `surfaces/ai-chat.json` draws the composer and this module says what
- * it holds — which is what let the auto-grow go entirely: the textarea grows with
- * `field-sizing: content`, where this file used to write `scrollHeight` back into `style.height` on
- * every keystroke.
+ * it holds — which is what let the auto-grow go entirely: the textarea grows with `field-sizing:
+ * content`, where this file used to write `scrollHeight` back into `style.height` on every
+ * keystroke.
  *
  * **The draft is a controlled value now, and that is safe for the reason it was not before.** The
  * lit textarea had to be uncontrolled, because a streaming repaint re-rendered the whole panel and
@@ -24,7 +24,7 @@
  * @license MIT
  */
 
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isNodeObject, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "../../state";
 import { createModelPicker } from "../../ui/ai-model-picker";
 import { openMenu } from "../../surfaces/menu";
@@ -34,8 +34,7 @@ import { primarySelection } from "../../tabs/selection";
 import { buildMessageWithContext } from "./attached-context";
 import type { ContextChip } from "./attached-context";
 import type { ChatComposerChip } from "../../surfaces/ai-chat";
-import type { MenuHandle } from "../../surfaces/menu";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { MenuHandle, OpenMenuOptions } from "../../surfaces/menu";
 
 export interface ComposerOptions {
   /** Receives the full message content (typed text + serialized context). */
@@ -80,7 +79,7 @@ export interface Composer {
   send: () => void;
   clear: () => void;
   /** Open the attach menu under the button that was pressed. */
-  openAttachMenu: (anchor: unknown) => void;
+  openAttachMenu: (anchor: EventTarget | null) => void;
   /** Take a chip off, by its kind. */
   dropChip: (kind: string) => void;
   /** The model picker's host is in the page; put the picker's own element in it. */
@@ -124,27 +123,24 @@ export function createComposer(opts: ComposerOptions): Composer {
     const selection = primarySelection(tab?.session.selection);
     let selectionChip: ContextChip | null = null;
     if (tab && selection) {
-      /* No `tagName?: string` in this cast any more. It overrode the widened type — a tag may be
-         a name or a choice between names — so the compiler could not see that this chip would
-         render `[object Object]` for a chosen one. A cast that narrows a field back to what it
-         used to be is a hole the type system cannot report. */
-      const node = getNodeAtPath(tab.doc.document as JxMutableNode, selection) as
-        | (JxMutableNode & { textContent?: string })
-        | undefined;
+      /* No cast narrows `tagName` back to a string: a tag may be a name or a choice between names,
+         and `displayTagName` is what renders either. A stale selection path resolves to nothing,
+         and a string child is not a node, so both read as a bare "element". */
+      const found = getNodeAtPath(tab.doc.document, selection);
+      const node = isNodeObject(found) ? found : undefined;
       const tag = displayTagName(node?.tagName) || "element";
-      const text = typeof node?.textContent === "string" ? node.textContent.slice(0, 40) : "";
+      const textContent = node?.textContent;
+      const text = isString(textContent) ? textContent.slice(0, 40) : "";
       selectionChip = {
         detail: `Selected element at ${JSON.stringify(selection)}: <${tag}>${text ? ` "${text}"` : ""}`,
         kind: "selection",
         label: `<${tag}>`,
       };
     }
-    return {
-      pageChip: documentPath
-        ? ({ detail: `Page: ${documentPath}`, kind: "page", label: documentPath } as ContextChip)
-        : null,
-      selectionChip,
-    };
+    const pageChip: ContextChip | null = documentPath
+      ? { detail: `Page: ${documentPath}`, kind: "page", label: documentPath }
+      : null;
+    return { pageChip, selectionChip };
   }
 
   /** Add (or refresh) a chip of the given kind — one chip per kind. */
@@ -174,7 +170,7 @@ export function createComposer(opts: ComposerOptions): Composer {
    * `openMenu` rather than a popover of this module's own — the kit menu is the settled answer, and
    * it brings roving focus, typeahead, Escape and light dismissal with it.
    */
-  function openAttachMenu(anchor: unknown): void {
+  function openAttachMenu(anchor: EventTarget | null): void {
     if (menu) {
       menu.close();
       menu = null;
@@ -182,22 +178,13 @@ export function createComposer(opts: ComposerOptions): Composer {
     }
     const opener = anchor instanceof HTMLElement ? anchor : null;
     const { pageChip, selectionChip } = contextCandidates();
-    menu = openMenu({
+    const options: OpenMenuOptions = {
       label: "Attach context",
       onClosed: (handle) => {
         if (menu === handle) {
           menu = null;
         }
       },
-      ...(opener ? { opener } : {}),
-      ...(opener
-        ? {
-            place: () => {
-              const box = rectOf(opener);
-              return { x: box.left, y: box.top - 4 };
-            },
-          }
-        : { origin: { x: 0, y: 0 } }),
       region: "assistant-attach",
       rows: [
         {
@@ -227,7 +214,17 @@ export function createComposer(opts: ComposerOptions): Composer {
           title: selectionChip ? `Selected element — ${selectionChip.label}` : "Selected element",
         },
       ],
-    });
+    };
+    if (opener) {
+      options.opener = opener;
+      options.place = () => {
+        const box = rectOf(opener);
+        return { x: box.left, y: box.top - 4 };
+      };
+    } else {
+      options.origin = { x: 0, y: 0 };
+    }
+    menu = openMenu(options);
   }
 
   // ── Input ─────────────────────────────────────────────────────────────

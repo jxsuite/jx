@@ -43,7 +43,7 @@ async function settle(): Promise<void> {
 }
 
 function freshTab(): Tab {
-  const tab = resetWorkspaceWithTab() as Tab;
+  const tab = resetWorkspaceWithTab();
   tab.session.canvas.scope = { count: 40 };
   return tab;
 }

@@ -28,21 +28,17 @@
  * @docs studio/interface/tabs
  */
 
-import { close as closePopover, openAt } from "@jxsuite/ui/behaviors/popover";
+import { close, openAt } from "@jxsuite/ui/behaviors/popover";
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { rectOf } from "../utils/geometry";
 import paneContextDoc from "./pane-context.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { JxElement } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
+import type { ViewportPoint } from "./menu";
 
-registerSurface("pane-context", paneContextDoc as unknown as JxDocument);
-
-/** One row of a `jx-select`: the value it writes and the word it prints. */
-export interface PaneContextOption {
-  value: string;
-  label: string;
-}
+registerSurface("pane-context", paneContextDoc);
 
 /**
  * One segment of a radio group — a size, a scheme, a view, a language.
@@ -74,7 +70,7 @@ export interface PaneContextParam {
   name: string;
   label: string;
   value: string;
-  options: PaneContextOption[];
+  options: SurfaceOption[];
 }
 
 /** One component test prop: a field, and the region id the screenshot pipeline addresses it by. */
@@ -108,7 +104,7 @@ export interface PaneContextView {
   editorMode: "static" | "picker";
   editorLabel: string;
   editorValue: string;
-  editorOptions: PaneContextOption[];
+  editorOptions: SurfaceOption[];
 
   viewState: "shown" | "hidden";
   views: PaneContextChoice[];
@@ -143,7 +139,7 @@ export interface PaneContextView {
   zoomLabel: string;
   fitState: "shown" | "hidden";
   fitValue: string;
-  fitOptions: PaneContextOption[];
+  fitOptions: SurfaceOption[];
 }
 
 /** What a control can ask the pane to do. Every one of them is a decision the flow owns. */
@@ -205,8 +201,7 @@ interface PopoverState {
   resolvingOpen: boolean;
 }
 
-interface PaneContextScope
-  extends Record<string, unknown>, PaneContextView, PaneContextActions, PopoverState {
+interface PaneContextScope extends PaneContextView, PaneContextActions, PopoverState {
   /** The two panel doors the document calls, which the mount owns rather than the flow. */
   openContext: (anchor: HTMLElement) => void;
   openResolving: (anchor: HTMLElement) => void;
@@ -307,8 +302,8 @@ export function emptyPaneContextView(): PaneContextView {
  * undefined at that moment and the two panels would both be filed under the same empty key.
  */
 function attrOf(def: JxElement | string, name: string): string {
-  const value = typeof def === "string" ? undefined : def.attributes?.[name];
-  return typeof value === "string" ? value : "";
+  const value = isString(def) ? undefined : def.attributes?.[name];
+  return isString(value) ? value : "";
 }
 
 /**
@@ -325,7 +320,7 @@ function attrOf(def: JxElement | string, name: string): string {
  * platform against the trigger it was opened from (ui.md §6) and these coordinates are ignored;
  * they stand for the engines that cannot.
  */
-function placeBelow(anchor: HTMLElement, panel: HTMLElement | null): { x: number; y: number } {
+function placeBelow(anchor: HTMLElement, panel: HTMLElement | null): ViewportPoint {
   const box = rectOf(anchor);
   const width = panel ? rectOf(panel).width : 0;
   const right = Math.max(0, box.right - width);
@@ -352,7 +347,7 @@ export function mountPaneContextSurface(
      module finds an invoker from a panel — so two panes mounting this surface under one id would
      hand the second pane's trigger the first pane's panel. */
   const uid = `pane-context-${paneId}`;
-  const scope = reactive<PaneContextScope>({
+  const scope: PaneContextScope = reactive<PaneContextScope>({
     ...emptyPaneContextView(),
     ...actions,
     contextOpen: false,
@@ -369,7 +364,7 @@ export function mountPaneContextSurface(
     resolvingPopoverId: `${uid}-resolving`,
     resolvingX: 0,
     resolvingY: 0,
-  }) as PaneContextScope;
+  });
   project(scope, view);
 
   const nodes = new Map<string, HTMLElement>();
@@ -378,7 +373,7 @@ export function mountPaneContextSurface(
 
   /** The panel a `data-popover` key names, once the document has drawn it. */
   const panelOf = (kind: "context" | "resolving"): PopoverElement | null =>
-    (nodes.get(`popover:${kind}`) as PopoverElement | undefined) ?? null;
+    nodes.get(`popover:${kind}`) ?? null;
 
   /**
    * Show a panel from its trigger, positioning it before and after the show.
@@ -391,7 +386,7 @@ export function mountPaneContextSurface(
     if (!panel) {
       return;
     }
-    const write = (at: { x: number; y: number }): void => {
+    const write = (at: ViewportPoint): void => {
       if (kind === "context") {
         scope.contextX = at.x;
         scope.contextY = at.y;
@@ -418,7 +413,7 @@ export function mountPaneContextSurface(
     }
     const panel = panelOf(kind);
     if (panel) {
-      closePopover(panel);
+      close(panel);
     }
   };
 
@@ -454,7 +449,7 @@ export function mountPaneContextSurface(
              `hidePopover()` queues its toggle: `canvas.setResolvingOpen { open: false }` has to be
              true of `isResolvingOpen()` on the line after it, not a task later. */
           element.addEventListener("toggle", (event) => {
-            const open = (event as Event & { newState?: string }).newState === "open";
+            const open = event.newState === "open";
             if (kind === "context") {
               scope.contextOpen = open;
             } else {
@@ -483,7 +478,7 @@ export function mountPaneContextSurface(
     },
     /* A mount still in flight has nothing in the host to ask about, and answering "no" would make
        the next repaint tear down the mount it is waiting for and start a second one. */
-    connected: () => !disposed && (mounted === null || (mounted.root as Node).parentNode === host),
+    connected: () => !disposed && (mounted === null || mounted.root.parentNode === host),
     dispose() {
       disposed = true;
       hidePanel("context");

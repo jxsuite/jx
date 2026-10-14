@@ -15,9 +15,10 @@ describe("jx cli — build completed with errors", () => {
     const result = await runEntry("cli", ["build", "/tmp/jx-cli-site"]);
     expect(result.exited).toBe(true);
     expect(result.exitCode).toBe(1);
-    expect(result.errors.join("\n")).toContain("2 error(s)");
-    expect(result.errors.join("\n")).toContain("page A failed");
-    expect(result.errors.join("\n")).toContain("page B failed");
+    const errorText = result.errors.join("\n");
+    expect(errorText).toContain("2 error(s)");
+    expect(errorText).toContain("page A failed");
+    expect(errorText).toContain("page B failed");
   });
 });
 

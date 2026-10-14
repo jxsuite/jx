@@ -1,6 +1,7 @@
 import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
 import {
   commitActiveBlock,
   getActiveElement,
@@ -68,9 +69,14 @@ describe("isEditableBlock", () => {
 
 describe("committing an anchor keeps its URL", () => {
   let el: HTMLElement;
-  const commits: { children: unknown }[] = [];
+  const commits: { children: (JxMutableNode | string)[] | null }[] = [];
 
-  function editAndCommit(innerHTML: string) {
+  /** The committed anchor element among `children`, if one was committed. */
+  function anchorIn(children: (JxMutableNode | string)[]): JxMutableNode | undefined {
+    return children.find((c): c is JxMutableNode => !isString(c) && c.tagName === "a");
+  }
+
+  function editAndCommit(innerHTML: string): (JxMutableNode | string)[] {
     el = document.createElement("p");
     el.innerHTML = innerHTML;
     document.body.append(el);
@@ -81,12 +87,12 @@ describe("committing an anchor keeps its URL", () => {
       onSplit: () => {},
     });
     stopEditing();
-    return commits.at(-1)!.children as { tagName: string; attributes?: { href: string } }[];
+    return commits.at(-1)?.children ?? [];
   }
 
   afterEach(() => {
     commits.length = 0;
-    el?.remove();
+    el.remove();
   });
 
   test("reads the URL from data-jx-href on a DE-LINKED canvas anchor", () => {
@@ -94,19 +100,19 @@ describe("committing an anchor keeps its URL", () => {
     // Click selects instead of navigating). Reading only `href` serialized every edited link as
     // `[text]()` — silently destroying the URL of any paragraph that contained one.
     const children = editAndCommit(`before <a data-jx-href="/spec">full spec</a> after`);
-    const anchorNode = children.find((c) => typeof c === "object" && c.tagName === "a")!;
+    const anchorNode = anchorIn(children)!;
     expect(anchorNode.attributes).toEqual({ href: "/spec" });
   });
 
   test("still reads a plain href when the anchor is not de-linked", () => {
     const children = editAndCommit(`go <a href="/plain">there</a>`);
-    const anchorNode = children.find((c) => typeof c === "object" && c.tagName === "a")!;
+    const anchorNode = anchorIn(children)!;
     expect(anchorNode.attributes).toEqual({ href: "/plain" });
   });
 
   test("an anchor with no URL at all commits without inventing one", () => {
     const children = editAndCommit(`an <a>anchor</a> here`);
-    const anchorNode = children.find((c) => typeof c === "object" && c.tagName === "a")!;
+    const anchorNode = anchorIn(children)!;
     expect(anchorNode.attributes).toBeUndefined();
   });
 });
@@ -141,9 +147,9 @@ describe("isInlineInContext", () => {
 
 describe("isInlineElement", () => {
   test("returns false for non-objects", () => {
-    expect(isInlineElement(null as unknown as JxMutableNode)).toBe(false);
-    expect(isInlineElement("text" as unknown as JxMutableNode)).toBe(false);
-    expect(isInlineElement(42 as unknown as JxMutableNode)).toBe(false);
+    expect(isInlineElement(null)).toBe(false);
+    expect(isInlineElement("text")).toBe(false);
+    expect(isInlineElement(42)).toBe(false);
   });
 
   test("returns true for inline tag nodes without parent", () => {
@@ -318,21 +324,17 @@ describe("normalizeChildren", () => {
   test("preserves mixed content as children array", () => {
     const result = normalizeChildren({
       children: ["text ", { tagName: "em", textContent: "bold" }, " more"],
-    }) as any;
-    expect(result.children).toBeDefined();
-    expect(result.children.length).toBe(3);
-    expect(result.children[0]).toBe("text ");
-    expect(result.children[1].tagName).toBe("em");
-    expect(result.children[2]).toBe(" more");
+    });
+    expect(result).toEqual({
+      children: ["text ", { tagName: "em", textContent: "bold" }, " more"],
+    });
   });
 
   test("merges adjacent strings in mixed content", () => {
     const result = normalizeChildren({
       children: ["a", "b", { tagName: "em", textContent: "x" }, "c", "d"],
-    }) as any;
-    expect(result.children.length).toBe(3);
-    expect(result.children[0]).toBe("ab");
-    expect(result.children[2]).toBe("cd");
+    });
+    expect(result).toEqual({ children: ["ab", { tagName: "em", textContent: "x" }, "cd"] });
   });
 
   test("single text child becomes textContent", () => {
@@ -344,9 +346,8 @@ describe("normalizeChildren", () => {
   test("single element child stays as children", () => {
     const result = normalizeChildren({
       children: [{ tagName: "strong", textContent: "bold" }],
-    }) as any;
-    expect(result.children).toBeDefined();
-    expect(result.children.length).toBe(1);
+    });
+    expect(result).toEqual({ children: [{ tagName: "strong", textContent: "bold" }] });
   });
 });
 

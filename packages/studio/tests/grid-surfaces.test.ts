@@ -21,6 +21,7 @@ import { mountPushPlanSurface } from "../src/surfaces/push-plan";
 import { mountDataActionsSurface } from "../src/surfaces/data-actions";
 import { mountGridPanelSurface } from "../src/surfaces/grid-panel";
 import { openGridViewsSurface } from "../src/surfaces/grid-views";
+import type { GridViewsActions } from "../src/surfaces/grid-views";
 import type { GridPanelActions, GridPanelView } from "../src/surfaces/grid-panel";
 
 beforeAll(() => {
@@ -207,7 +208,7 @@ describe("the grid toolbar is the kit's toolbar", () => {
     expect(bar.getAttribute("aria-orientation")).toBe("horizontal");
     // The document itself writes neither the role nor a tabindex any more.
     const module_ = await import("../src/surfaces/grid-panel.json");
-    const source = JSON.stringify(module_.default as unknown);
+    const source = JSON.stringify(module_.default);
     expect(source).not.toContain('"role":"toolbar"');
     expect(source).not.toContain("tabindex");
     // Exactly one stop, over controls of three different kinds.
@@ -298,6 +299,19 @@ describe("a popover surface owns its own slot", () => {
   const panels = () => [...layerHost("popover").querySelectorAll('[part="views-panel"]')];
 
   function open(onDismissed?: () => void) {
+    const actions: GridViewsActions = {
+      applyView: NOTHING,
+      deleteView: NOTHING,
+      reset: NOTHING,
+      saveView: NOTHING,
+      setGroup: NOTHING,
+      setSortDir: NOTHING,
+      setSortField: NOTHING,
+      toggleColumn: NOTHING,
+    };
+    if (onDismissed) {
+      actions.dismissed = onDismissed;
+    }
     return openGridViewsSurface(
       {
         columns: [],
@@ -314,17 +328,7 @@ describe("a popover surface owns its own slot", () => {
         x: 0,
         y: 0,
       },
-      {
-        applyView: NOTHING,
-        deleteView: NOTHING,
-        reset: NOTHING,
-        saveView: NOTHING,
-        setGroup: NOTHING,
-        setSortDir: NOTHING,
-        setSortField: NOTHING,
-        toggleColumn: NOTHING,
-        ...(onDismissed ? { dismissed: onDismissed } : {}),
-      },
+      actions,
       null,
     );
   }

@@ -12,15 +12,28 @@ import { Database } from "bun:sqlite";
 import { Kysely, sql } from "kysely";
 import { createBunSqliteDialect } from "../src/dialects/bun-sqlite";
 import { testWithDialect } from "../src/provider-utils";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { D1Database } from "@cloudflare/workers-types";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type { DynamicDatabase } from "../src/query";
 import type { TableDef } from "../src/types";
+
+/** Decode a posted request body: `JSON.parse` only ever yields JSON values. */
+function parseBody(init: RequestInit | undefined): JsonValue {
+  return JSON.parse(String(init?.body));
+}
+
+/** The options Supabase passes as postgres(url, options): only `prepare` is set. */
+interface PostgresOptions {
+  prepare?: boolean;
+}
 
 // Mock the postgres-js stack BEFORE importing the providers: Supabase.dialect composes
 // `postgres(url)` into PostgresJSDialect — the mock swaps in an in-memory sqlite dialect while
 // Preserving the URL wiring, so testConnection/deploySchema run real SQL.
-const postgresCalls: { url: string; options: Record<string, unknown> }[] = [];
+const postgresCalls: { url: string; options: PostgresOptions }[] = [];
 void mock.module("postgres", () => ({
-  default: (url: string, options: Record<string, unknown>) => {
+  default: (url: string, options: PostgresOptions) => {
     postgresCalls.push({ options, url });
     if (url.includes("unreachable")) {
       throw new Error("connect ECONNREFUSED (mock)");
@@ -51,12 +64,12 @@ const { Sqlite, sqliteFilePath } = await import("../src/sqlite");
 const { Supabase, resolvePostgresUrl } = await import("../src/supabase");
 const { PROVIDERS, resolveDialect } = await import("../src/connectors");
 
-const TABLES: Record<string, TableDef> = {
+const TABLES = {
   notes: {
     connection: "main",
     schema: { properties: { text: { type: "string" } }, type: "object" },
   },
-};
+} satisfies Record<string, TableDef>;
 
 describe("Sqlite provider", () => {
   test("resolves file paths from JX_PROJECT_ROOT, connection name, and file overrides", () => {
@@ -136,7 +149,18 @@ describe("D1 provider", () => {
   });
 
   test("dialect prefers the env binding and falls back to the HTTP API", () => {
-    const bound = { fake: "d1-binding" };
+    const unused = (): never => {
+      throw new Error("the D1 binding is never queried in this test");
+    };
+    const live: Omit<D1Database, "dump"> = {
+      batch: unused,
+      exec: unused,
+      prepare: unused,
+      withSession: unused,
+    };
+    /* SAFETY: D1Dialect only stores its database at construction and this test never queries it.
+       The double carries the whole live D1 API; only the deprecated alpha-only dump() is absent. */
+    const bound = live as D1Database;
     const viaBinding = D1.dialect({ binding: "DB", provider: "d1" }, { DB: bound });
     expect(viaBinding.constructor.name).toBe("D1Dialect");
 
@@ -144,7 +168,7 @@ describe("D1 provider", () => {
       { databaseId: "uuid", provider: "d1" },
       { CLOUDFLARE_ACCOUNT_ID: "acct", CLOUDFLARE_API_TOKEN: "tok" },
     );
-    expect(typeof viaHttp.createDriver).toBe("function");
+    expect(viaHttp.createDriver).toBeInstanceOf(Function);
 
     expect(() => D1.dialect({ $name: "main", provider: "d1" }, {})).toThrow("unreachable");
   });
@@ -158,11 +182,16 @@ describe("D1 provider", () => {
   test("deploySchema dry-runs through the HTTP API dialect", async () => {
     const sqls: string[] = [];
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { sql: string };
+    const { preconnect } = realFetch;
+    const handler = async (_input: string | URL | Request, init?: RequestInit) => {
+      const body = parseBody(init);
+      if (!isJsonObject(body) || !isString(body.sql)) {
+        throw new Error("D1 HTTP request body carries no sql");
+      }
       sqls.push(body.sql);
       return Response.json({ result: [{ meta: {}, results: [], success: true }], success: true });
-    }) as typeof globalThis.fetch;
+    };
+    globalThis.fetch = Object.assign(handler, { preconnect });
     try {
       const result = await D1.deploySchema(
         TABLES,
@@ -209,7 +238,7 @@ describe("Supabase provider", () => {
       { provider: "supabase", urlEnv: "SUPABASE_DB_URL" },
       { SUPABASE_DB_URL: "postgres://direct" },
     );
-    expect(typeof dialect.createDriver).toBe("function");
+    expect(dialect.createDriver).toBeInstanceOf(Function);
     const call = postgresCalls[before]!;
     expect(call.url).toBe("postgres://direct");
     expect(call.options.prepare).toBe(false);

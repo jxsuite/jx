@@ -25,7 +25,9 @@ import { createModelPicker } from "../ui/ai-model-picker";
 import { destinationPath } from "./location-fields";
 import type { CreateProjectDestination, ImportBreakpointPolicy } from "../types";
 
-import { setPendingImportBrief } from "../services/import-seed";
+import { IMPORT_MAX_BREAKPOINTS } from "@jxsuite/protocol";
+
+import { MAX_IMPORT_DEPTH, setPendingImportBrief } from "../services/import-seed";
 import type { ImportBrief } from "../services/import-seed";
 
 /** The three answers the Breakpoints control offers. */
@@ -33,17 +35,6 @@ type BreakpointMode = "all" | "limit" | "explicit";
 
 /** How a kept width matches one the site declared. */
 type BreakpointRounding = "nearest" | "down" | "up";
-
-/** The most breakpoints the control will offer to keep — `@jxsuite/import`'s own ceiling. */
-const MAX_BREAKPOINTS = 12;
-
-/**
- * The deepest crawl the pipeline accepts.
- *
- * The field said 2 while `import_site` and the endpoint both clamped to 5, so the wizard could not
- * ask for a depth the backend was willing to run.
- */
-const MAX_DEPTH = 5;
 
 export interface ImportTabCtx {
   /** The wizard's shared name/directory state (the import destination slug). */
@@ -383,8 +374,8 @@ export function importView(ctx: ImportTabCtx): ImportView {
     canVerify: canVerify(),
     depth: String(_depth),
     error: _errorMsg,
-    maxBreakpoints: String(MAX_BREAKPOINTS),
-    maxDepth: String(MAX_DEPTH),
+    maxBreakpoints: String(IMPORT_MAX_BREAKPOINTS),
+    maxDepth: String(MAX_IMPORT_DEPTH),
     maxPages: String(_maxPages),
     minFidelity: String(_minFidelity),
     prompt: _prompt,
@@ -438,6 +429,8 @@ export function setImportMaxPages(value: string): void {
 
 /** Which of the three breakpoint answers the reader chose. */
 export function setBreakpointMode(value: string): void {
+  /* SAFETY: Studio's one caller is the `bp-mode` select's change handler (surfaces/new-project.json),
+     and that select's options are `importView().breakpointModes`: "limit", "explicit" and "all". */
   _breakpointMode = value as BreakpointMode;
 }
 
@@ -453,6 +446,9 @@ export function setBreakpointWidths(value: string): void {
 
 /** Which declared width backs a kept one. */
 export function setBreakpointRounding(value: string): void {
+  /* SAFETY: Studio's one caller is the `bp-rounding` select's change handler (surfaces/
+     new-project.json), and that select's options are `importView().roundings`: "nearest", "down"
+     and "up". */
   _breakpointRounding = value as BreakpointRounding;
 }
 

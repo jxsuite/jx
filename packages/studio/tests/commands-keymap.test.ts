@@ -5,6 +5,7 @@
  * `mac` is injected everywhere so the assertions hold on any CI runner.
  */
 import { describe, expect, test } from "bun:test";
+import { isBoolean } from "@jxsuite/schema/guards";
 import {
   chordFromEvent,
   createKeymap,
@@ -148,7 +149,7 @@ describe("isMacPlatform", () => {
   });
 
   test("defaults to the ambient navigator without throwing", () => {
-    expect(typeof isMacPlatform()).toBe("boolean");
+    expect(isBoolean(isMacPlatform())).toBe(true);
   });
 });
 
@@ -206,14 +207,19 @@ describe("conflicts", () => {
   test("two commands claiming one chord in one scope throws, naming both", () => {
     const keymap = createKeymap({ mac: true });
     keymap.add({ id: "document.close", keybinding: "mod+w" });
-    let thrown: unknown;
+    let conflict: KeybindingConflictError | undefined;
     try {
       keymap.add({ id: "window.close", keybinding: "Cmd+W" });
     } catch (error) {
-      thrown = error;
+      if (!(error instanceof KeybindingConflictError)) {
+        throw error;
+      }
+      conflict = error;
     }
-    expect(thrown).toBeInstanceOf(KeybindingConflictError);
-    const conflict = thrown as KeybindingConflictError;
+    if (!conflict) {
+      throw new Error("the second claim on mod+w did not throw");
+    }
+    expect(conflict).toBeInstanceOf(KeybindingConflictError);
     expect(conflict.chord).toBe("mod+w");
     expect(conflict.scope).toBe("global");
     expect(conflict.existingId).toBe("document.close");
@@ -534,6 +540,8 @@ describe("the user's layer", () => {
     keymap.setOverrides(applied);
     applied.set("edit.redo", ["mod+alt+y"]);
     expect(keymap.overrides().has("edit.redo")).toBe(false);
+    /* SAFETY: deliberately off-contract. `overrides()` is typed as a ReadonlyMap, and this test
+       proves the map it hands out is a copy, so it has to attempt the mutation the type forbids. */
     (keymap.overrides() as Map<string, readonly string[]>).delete("file.save");
     expect(keymap.overrides().get("file.save")).toEqual(["mod+alt+s"]);
   });

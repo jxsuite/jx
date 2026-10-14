@@ -30,6 +30,7 @@ import { updateSiteConfig } from "../site-context";
 import type { LocalesActions, LocalesView } from "../surfaces/settings-locales";
 import type { LocaleRouting } from "@jxsuite/schema/locale";
 import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { ProjectConfigPatch } from "../site-context";
 
 /**
  * The form beside the file: the tag being typed, and the last write that failed.
@@ -67,9 +68,9 @@ function form(container: HTMLElement): Form {
  * value the file still holds.
  *
  * @param {HTMLElement} container
- * @param {Partial<ProjectConfig>} patch
+ * @param {ProjectConfigPatch} patch
  */
-async function persist(container: HTMLElement, patch: Partial<ProjectConfig>): Promise<void> {
+async function persist(container: HTMLElement, patch: ProjectConfigPatch): Promise<void> {
   try {
     await updateSiteConfig(patch);
     form(container).error = "";
@@ -81,7 +82,7 @@ async function persist(container: HTMLElement, patch: Partial<ProjectConfig>): P
 
 /** The live project configuration, or an empty one before a project is open. */
 function config(): ProjectConfig {
-  return (projectState?.projectConfig ?? {}) as ProjectConfig;
+  return projectState?.projectConfig ?? {};
 }
 
 /**
@@ -90,10 +91,10 @@ function config(): ProjectConfig {
  * `undefined` survives the object spread inside `updateSiteConfig` and `JSON.stringify` then drops
  * the key, so removing the last locale leaves a project with no `i18n` at all rather than one
  * declaring an empty list — which `resolveI18n` reports as "declared with no usable locale", a
- * build error for a state the author reached by deleting things. The cast is the price of
- * `exactOptionalPropertyTypes`, the same one `general-settings.ts`'s `CLEAR_URL` pays.
+ * build error for a state the author reached by deleting things. A {@link ProjectConfigPatch}, the
+ * same as `general-settings.ts`'s `CLEAR_URL`, because only the patch type can carry `undefined`.
  */
-const CLEAR_I18N = { i18n: undefined } as unknown as Partial<ProjectConfig>;
+const CLEAR_I18N: ProjectConfigPatch = { i18n: undefined };
 
 /** The routing modes, with the sentence that says what each does to a URL. */
 export const LOCALE_ROUTINGS: readonly { value: LocaleRouting; label: string }[] = [
@@ -242,9 +243,12 @@ function remove(container: HTMLElement, tag: string): void {
   const orphaned =
     current?.defaultLocale !== undefined &&
     canonicalizeLocale(current.defaultLocale) === canonicalizeLocale(tag);
-  void persist(container, {
-    i18n: { ...current, ...(orphaned ? { defaultLocale: kept[0]! } : {}), locales: kept },
-  });
+  const i18n: NonNullable<ProjectConfig["i18n"]> = { ...current };
+  if (orphaned) {
+    i18n.defaultLocale = kept[0]!;
+  }
+  i18n.locales = kept;
+  void persist(container, { i18n });
 }
 
 /**
@@ -266,9 +270,13 @@ function actions(container: HTMLElement): LocalesActions {
         void persist(container, { i18n: { ...config().i18n, defaultLocale: value } });
       },
       chooseRouting: (value: string) => {
-        void persist(container, {
-          i18n: { ...config().i18n, routing: value as LocaleRouting },
-        });
+        /* The picker's options are LOCALE_ROUTINGS, so the lookup always finds the mode; it is what
+           turns the control's string back into the routing it was drawn from. */
+        const routing = LOCALE_ROUTINGS.find((mode) => mode.value === value)?.value;
+        if (routing === undefined) {
+          return;
+        }
+        void persist(container, { i18n: { ...config().i18n, routing } });
       },
       edit: (value: string) => {
         /* Every keystroke, with no verdict check in front of it. The lit form re-rendered only when

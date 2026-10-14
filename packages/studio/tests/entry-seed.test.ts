@@ -8,21 +8,28 @@
  */
 import { resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { NewFileRequest } from "../src/files/files";
+import type { JsonObject } from "@jxsuite/schema/types";
 
-const created: Record<string, unknown>[] = [];
-const notifications: { message: string; detail?: string }[] = [];
+interface Notification {
+  message: string;
+  detail?: string;
+}
+
+const created: NewFileRequest[] = [];
+const notifications: Notification[] = [];
 let format: { extensions: string[]; name: string } | undefined = {
   extensions: [".md"],
   name: "Markdown",
 };
 let serializeFails = false;
-const serialized: { name: string; doc: Record<string, unknown> }[] = [];
+const serialized: { name: string; doc: JsonObject }[] = [];
 
 void mock.module("../src/format/format-host", () => ({
   defaultContentFormat: () => format,
   formatByName: (name?: string | null) => (name === "Markdown" ? format : undefined),
   formatForPath: () => format,
-  formatSerialize: (name: string, doc: Record<string, unknown>) => {
+  formatSerialize: (name: string, doc: JsonObject) => {
     if (serializeFails) {
       return Promise.reject(new Error("serializer offline"));
     }
@@ -34,11 +41,13 @@ void mock.module("../src/format/format-host", () => ({
 
 void mock.module("../src/services/notify", () => ({
   notify: {
-    error: (message: string, options?: { detail?: string }) =>
-      notifications.push({
-        message,
-        ...(options?.detail === undefined ? {} : { detail: options.detail }),
-      }),
+    error: (message: string, options?: { detail?: string }) => {
+      const entry: Notification = { message };
+      if (options?.detail !== undefined) {
+        entry.detail = options.detail;
+      }
+      return notifications.push(entry);
+    },
     info: () => {},
     success: () => {},
     warn: () => {},
@@ -46,7 +55,7 @@ void mock.module("../src/services/notify", () => ({
 }));
 
 void mock.module("../src/files/files", () => ({
-  createFileIn: (request: Record<string, unknown>) => {
+  createFileIn: (request: NewFileRequest) => {
     created.push(request);
     return Promise.resolve(null); // Cancelled: this file is about what was PREPARED.
   },

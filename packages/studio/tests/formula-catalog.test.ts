@@ -5,7 +5,7 @@
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 import { BLESSED_GLOBALS, BLESSED_OPERATORS } from "@jxsuite/runtime/expression";
-import { catalog as packagedCatalog, formulaEntries } from "@jxsuite/formulas";
+import { catalog, formulaEntries } from "@jxsuite/formulas";
 import { isNamedFormulaDef } from "@jxsuite/schema/guards";
 import {
   applyCatalogPick,
@@ -16,7 +16,7 @@ import {
   operatorEntries,
   packagedFormulaEntries,
 } from "../src/ui/formula-catalog";
-import type { JxStateDefinition } from "@jxsuite/schema/types";
+import type { JxExpressionNode, JxStateDefinition } from "@jxsuite/schema/types";
 
 // ─── Operator entries ─────────────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ describe("globalEntries", () => {
 
 // ─── Named formula entries ────────────────────────────────────────────────────
 
-const STATE: Record<string, JxStateDefinition> = {
+const STATE = {
   count: { default: 0 },
   handler: { $prototype: "Function", body: "x()" },
   lineTotal: {
@@ -151,7 +151,7 @@ const STATE: Record<string, JxStateDefinition> = {
     ],
   },
   plainExpr: { $expression: { operator: "!", target: { $ref: "#/state/count" } } },
-};
+} satisfies Record<string, JxStateDefinition>;
 
 describe("namedFormulaEntries", () => {
   test("picks up parameterized expression entries only", () => {
@@ -204,14 +204,18 @@ describe("namedFormulaEntries", () => {
   });
 
   test("invalid parameter entries (malformed document JSON) are dropped, not thrown on", () => {
-    const entries = namedFormulaEntries({
+    const onDisk = {
       messy: {
         $expression: { operator: "!", target: { $ref: "$args/a" } },
         // A document on disk is not type-checked: an object with no name, and a bare number, are
         // Both things a hand-edited state entry could hold.
         parameters: [{ name: "a" }, { foo: "bar" }, 42, "b"],
       },
-    } as unknown as Record<string, JxStateDefinition>);
+    };
+    /* SAFETY: deliberately untrue. `onDisk` models a hand-edited state block whose `parameters`
+       break the schema, which is exactly the input namedFormulaEntries re-checks entry by entry at
+       runtime; the assertion below is what this test exists to pin. */
+    const entries = namedFormulaEntries(onDisk as Parameters<typeof namedFormulaEntries>[0]);
     expect(entries[0]!.parameters).toEqual([{ name: "a" }, { name: "b" }]);
   });
 
@@ -239,10 +243,10 @@ describe("formulaCatalog", () => {
     const kinds = new Set(entries.map((e) => e.kind));
     expect(kinds).toEqual(new Set(["formula", "operator", "global"]));
     // STATE's `count` key shadows the packaged `count` formula — existing names never vendor.
-    const shadowed = packagedCatalog.filter((f) => f.name in STATE).length;
+    const shadowed = catalog.filter((f) => f.name in STATE).length;
     expect(shadowed).toBe(1);
     expect(entries.length).toBe(
-      1 + (packagedCatalog.length - shadowed) + BLESSED_OPERATORS.size + BLESSED_GLOBALS.size,
+      1 + (catalog.length - shadowed) + BLESSED_OPERATORS.size + BLESSED_GLOBALS.size,
     );
     // Named formulas lead the list (most specific first)
     expect(entries[0]!.name).toBe("lineTotal");
@@ -250,9 +254,7 @@ describe("formulaCatalog", () => {
 
   test("works without a state map", () => {
     const entries = formulaCatalog();
-    expect(entries.length).toBe(
-      packagedCatalog.length + BLESSED_OPERATORS.size + BLESSED_GLOBALS.size,
-    );
+    expect(entries.length).toBe(catalog.length + BLESSED_OPERATORS.size + BLESSED_GLOBALS.size);
   });
 });
 
@@ -273,7 +275,7 @@ describe("calleeEntry", () => {
 describe("packagedFormulaEntries (@jxsuite/formulas copy-in)", () => {
   test("every packaged formula appears with an ensure payload and a call insert", () => {
     const entries = packagedFormulaEntries();
-    expect(entries.length).toBe(packagedCatalog.length);
+    expect(entries.length).toBe(catalog.length);
     const clamp = entries.find((e) => e.name === "clamp")!;
     expect(clamp.kind).toBe("formula");
     expect(clamp.group).toBe("Formulas library");
@@ -290,13 +292,13 @@ describe("packagedFormulaEntries (@jxsuite/formulas copy-in)", () => {
       clamp: { $expression: { operator: "??", target: null, value: 0 }, parameters: ["value"] },
     });
     expect(entries.some((e) => e.name === "clamp")).toBe(false);
-    expect(entries.length).toBe(packagedCatalog.length - 1);
+    expect(entries.length).toBe(catalog.length - 1);
   });
 
   test("applyCatalogPick vendors the def before inserting the call node", () => {
     const entry = packagedFormulaEntries().find((e) => e.name === "sum");
-    const inserted: [string, unknown][] = [];
-    let node: unknown = null;
+    const inserted: [string, JxStateDefinition][] = [];
+    let node: JxExpressionNode | null = null;
     applyCatalogPick(entry!, (n) => (node = n), {
       onInsertDef: (name, def) => inserted.push([name, def]),
       stateEntries: {},
@@ -326,8 +328,8 @@ describe("packagedFormulaEntries (@jxsuite/formulas copy-in)", () => {
 describe("formulaEntries (@jxsuite/formulas state entries)", () => {
   test("returns one ready-to-merge state entry per catalog formula, keyed by name", () => {
     const entries = formulaEntries();
-    expect(Object.keys(entries).toSorted()).toEqual(packagedCatalog.map((f) => f.name).toSorted());
-    for (const formula of packagedCatalog) {
+    expect(Object.keys(entries).toSorted()).toEqual(catalog.map((f) => f.name).toSorted());
+    for (const formula of catalog) {
       expect(entries[formula.name]).toEqual({
         $description: formula.description,
         $expression: formula.expression,

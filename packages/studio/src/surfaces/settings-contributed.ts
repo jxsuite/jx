@@ -26,14 +26,15 @@
  * @docs studio/projects/settings
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import contributedDoc from "./settings-contributed.json";
 
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
+import type { JxElement } from "@jxsuite/schema/types";
 
-registerSurface("settings-contributed", contributedDoc as unknown as JxDocument);
+registerSurface("settings-contributed", contributedDoc);
 
 /** One entry key in a map-layout section's left column. */
 export interface ContributedEntryView {
@@ -101,7 +102,7 @@ export interface ContributedSurfaceHandle {
   dispose: () => void;
 }
 
-interface ContributedScope extends Record<string, unknown>, ContributedView, ContributedActions {}
+interface ContributedScope extends ContributedView, ContributedActions {}
 
 /** The view a freshly mounted surface starts on: a form layout with nothing in it. */
 function emptyView(): ContributedView {
@@ -119,10 +120,9 @@ function emptyView(): ContributedView {
 }
 
 /** The `part` a node was authored with, or `""` — the only thing this adapter asks about a node. */
-function partOf(def: unknown): string {
-  const attributes = (def as { attributes?: Record<string, unknown> } | null)?.attributes;
-  const part = attributes?.["part"];
-  return typeof part === "string" ? part : "";
+function partOf(def: JxElement | string): string {
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -139,7 +139,7 @@ export function mountContributedSurface(
   islands: ContributedIslands,
 ): ContributedSurfaceHandle {
   host.textContent = "";
-  const scope = reactive<ContributedScope>({ ...emptyView(), ...actions }) as ContributedScope;
+  const scope: ContributedScope = reactive<ContributedScope>({ ...emptyView(), ...actions });
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
@@ -160,12 +160,16 @@ export function mountContributedSurface(
       }
     },
   }).then((surface) => {
+    /* SAFETY: `settings-contributed.json`'s root definition carries `tagName: "section"`, so the
+       runtime mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare
+       string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
 
   return {

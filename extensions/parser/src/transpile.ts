@@ -18,10 +18,18 @@ import remarkParseFrontmatter from "remark-parse-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
 import { htmlToJx } from "@jxsuite/markup/html-to-jx";
+import {
+  isBoolean,
+  isJsonObject,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
 import { ALERT_NODE, DEFAULT_ALERT_TITLES, inlineText } from "./alerts.ts";
 import type { AlertNode } from "./alerts.ts";
-import type { MdastNode, UnifiedProcessor } from "./types.ts";
+import type { MdastNode, UnifiedFile, UnifiedPlugin, UnifiedProcessor } from "./types.ts";
 import type {
+  JsonObject,
   JsonValue,
   JxAttributeValue,
   JxDocument,
@@ -84,31 +92,42 @@ export function mdKey(key: string) {
 }
 
 /**
+ * A directive's attribute map after dot-path expansion: every leaf is the attribute string the
+ * author wrote, and every dotted segment is a nested object.
+ */
+export interface ExpandedAttributes {
+  [key: string]: string | ExpandedAttributes;
+}
+
+/**
  * Expand dot-path attribute keys into nested objects.
  *
  * @param {Record<string, string>} attrs - Flat attribute map from remark-directive
- * @returns {Record<string, unknown>} Nested object
+ * @returns {ExpandedAttributes} Nested object
  */
 export function expandDotPaths(attrs: Record<string, string>) {
-  const result: Record<string, unknown> = {};
+  const result: ExpandedAttributes = {};
 
   for (const [key, value] of Object.entries(attrs)) {
-    const dotIndex = key.indexOf(".");
-    if (dotIndex === -1) {
+    const lastDot = key.lastIndexOf(".");
+    if (lastDot === -1) {
       result[jxKey(key)] = value;
       continue;
     }
 
-    const segments = key.split(".");
     let target = result;
-    for (let i = 0; i < segments.length - 1; i++) {
-      const seg = jxKey(segments[i]!);
-      if (!(seg in target) || typeof target[seg] !== "object") {
-        target[seg] = {};
+    for (const segment of key.slice(0, lastDot).split(".")) {
+      const seg = jxKey(segment);
+      const existing = seg in target ? target[seg] : undefined;
+      if (isNonNullObject(existing)) {
+        target = existing;
+      } else {
+        const nested: ExpandedAttributes = {};
+        target[seg] = nested;
+        target = nested;
       }
-      target = target[seg] as Record<string, unknown>;
     }
-    target[jxKey(segments.at(-1) as string)] = value;
+    target[jxKey(key.slice(lastDot + 1))] = value;
   }
 
   return result;
@@ -117,17 +136,17 @@ export function expandDotPaths(attrs: Record<string, string>) {
 /**
  * Collapse a nested object back to dot-path flat attributes (inverse of expandDotPaths).
  *
- * @param {Record<string, unknown>} obj - Nested object
+ * @param {JsonObject} obj - Nested object
  * @returns {Record<string, string>} Flat attribute map
  */
-export function collapseDotPaths(obj: Record<string, unknown>) {
+export function collapseDotPaths(obj: JsonObject) {
   const result: Record<string, string> = {};
 
-  function walk(node: Record<string, unknown>, prefix: string) {
+  function walk(node: JsonObject, prefix: string) {
     for (const [key, value] of Object.entries(node)) {
       const path = prefix ? `${prefix}.${key}` : key;
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        walk(value as Record<string, unknown>, path);
+      if (isJsonObject(value)) {
+        walk(value, path);
       } else {
         result[path] = String(value);
       }
@@ -190,11 +209,11 @@ const CSS_PSEUDO_ELEMENTS = new Set(["backdrop"]);
  * `:hover` (for known CSS pseudo-class names) - `--dark` → `@--dark` (for custom property / media
  * query keys)
  *
- * @param {Record<string, unknown>} styleObj
- * @returns {Record<string, unknown>}
+ * @param {Record<string, V>} styleObj
+ * @returns {Record<string, V>} The same values under their mapped keys
  */
-export function applyStyleKeyMapping(styleObj: Record<string, unknown>) {
-  const result: Record<string, unknown> = {};
+export function applyStyleKeyMapping<V>(styleObj: Record<string, V>) {
+  const result: Record<string, V> = {};
   for (const [key, value] of Object.entries(styleObj)) {
     if (CSS_PSEUDO_ELEMENTS.has(key)) {
       result[`::${key}`] = value;
@@ -216,7 +235,7 @@ export function applyStyleKeyMapping(styleObj: Record<string, unknown>) {
  * cannot appear at the start of remark-directive attribute keys.
  *
  * @param {Record<string, string>} attrs
- * @returns {Record<string, unknown>}
+ * @returns {Record<string, string | ExpandedAttributes>}
  */
 export function expandStylePaths(attrs: Record<string, string>) {
   return applyStyleKeyMapping(expandDotPaths(attrs));
@@ -228,11 +247,11 @@ export function expandStylePaths(attrs: Record<string, string>) {
  * Strips `:` prefix from pseudo-class keys and `@` prefix from media keys before flattening with
  * collapseDotPaths.
  *
- * @param {Record<string, unknown>} styleObj
+ * @param {JsonObject} styleObj
  * @returns {Record<string, string>}
  */
-export function collapseStylePaths(styleObj: Record<string, unknown>) {
-  const normalized: Record<string, unknown> = {};
+export function collapseStylePaths(styleObj: JsonObject) {
+  const normalized: JsonObject = {};
 
   for (const [key, value] of Object.entries(styleObj)) {
     /* `::` before `:`, or a pseudo-element would match the pseudo-class arm on its second colon
@@ -319,22 +338,23 @@ const PHRASING_ELEMENTS = new Set([
  * Route directive attributes to their correct Jx locations.
  *
  * @param {Record<string, string>} attrs
- * @returns {{ props: Record<string, unknown>; attributes: Record<string, string> }}
+ * @returns {{ props: ExpandedAttributes; attributes: Record<string, JxAttributeValue> }}
  */
 function routeAttributes(attrs: Record<string, string>) {
   const expanded = expandDotPaths(attrs);
 
   // Apply style-key mapping (pseudo-classes, media queries) to the style sub-object
-  if (expanded.style && typeof expanded.style === "object") {
-    expanded.style = applyStyleKeyMapping(expanded.style as Record<string, unknown>);
+  const { style } = expanded;
+  if (isNonNullObject(style)) {
+    expanded.style = applyStyleKeyMapping(style);
   }
 
-  const props: Record<string, unknown> = {};
-  const attributes: Record<string, string> = {};
+  const props: ExpandedAttributes = {};
+  const attributes: Record<string, JxAttributeValue> = {};
 
   for (const [key, value] of Object.entries(expanded)) {
     if (HTML_ATTR_PATTERN.test(key)) {
-      attributes[key] = value as string;
+      attributes[key] = attributeValue(value);
     } else {
       props[key] = value;
     }
@@ -344,38 +364,64 @@ function routeAttributes(attrs: Record<string, string>) {
 }
 
 /**
- * Mdast node-type → Jx tagName mapping.
+ * A routed directive attribute as an element's `attributes` map holds it.
  *
- * @type {Record<string, (n: MdastNode) => string>}
+ * @param {string | ExpandedAttributes} value
+ * @returns {JxAttributeValue}
  */
-const JX_TAG_MAP: Record<string, (n: MdastNode) => string> = {
-  blockquote: () => "blockquote",
-  break: () => "br",
-  code: () => "pre",
-  delete: () => "del",
-  emphasis: () => "em",
-  heading: (n: MdastNode) => `h${n.depth}`,
-  image: () => "img",
-  inlineCode: () => "code",
-  link: () => "a",
-  list: (n: MdastNode) => (n.ordered ? "ol" : "ul"),
-  listItem: () => "li",
-  paragraph: () => "p",
-  strong: () => "strong",
-  table: () => "table",
-  tableCell: (n: MdastNode) => (n.isHeader ? "th" : "td"),
-  tableRow: () => "tr",
-  thematicBreak: () => "hr",
-};
+function attributeValue(value: string | ExpandedAttributes): JxAttributeValue {
+  /* SAFETY: a directive attribute is a string unless its key was dotted. The dotted form that
+     means something here is `name.ref="#/…"`, which `jxKey` expands to `{ $ref }`, a JxRef
+     binding. Any other nested object is carried into the map verbatim, as it always has been, so
+     the serializer can write the same dotted key back; the attribute type does not model it. */
+  return value as JxAttributeValue;
+}
+
+/** Mdast node-type → Jx tagName mapping. */
+const JX_TAG_MAP = new Map<string, (n: MdastNode) => string>([
+  ["blockquote", () => "blockquote"],
+  ["break", () => "br"],
+  ["code", () => "pre"],
+  ["delete", () => "del"],
+  ["emphasis", () => "em"],
+  ["heading", (n: MdastNode) => `h${n.depth}`],
+  ["image", () => "img"],
+  ["inlineCode", () => "code"],
+  ["link", () => "a"],
+  ["list", (n: MdastNode) => (n.ordered ? "ol" : "ul")],
+  ["listItem", () => "li"],
+  ["paragraph", () => "p"],
+  ["strong", () => "strong"],
+  ["table", () => "table"],
+  ["tableCell", (n: MdastNode) => (n.isHeader ? "th" : "td")],
+  ["tableRow", () => "tr"],
+  ["thematicBreak", () => "hr"],
+]);
+
+/**
+ * Give an element its converted content: a lone string becomes `textContent`, anything else
+ * non-empty becomes `children`.
+ *
+ * @param {JxElement} el - Mutated in place
+ * @param {(JxElement | string)[]} children
+ */
+function setContent(el: JxElement, children: (JxElement | string)[]) {
+  const [only] = children;
+  if (children.length === 1 && isString(only)) {
+    el.textContent = only;
+  } else if (children.length > 0) {
+    el.children = children;
+  }
+}
 
 /**
  * Convert a standard mdast node to a Jx element definition.
  *
- * @param {MdastNode} node
+ * @param {MdastNode | null | undefined} node - A missing node converts to null
  * @returns {JxElement | string | (JxElement | string)[] | null} Jx element or null
  */
-export function mdastNodeToJx(node: MdastNode) {
-  if (!node || typeof node !== "object") {
+export function mdastNodeToJx(node: MdastNode | null | undefined) {
+  if (!node) {
     return null;
   }
 
@@ -392,6 +438,8 @@ export function mdastNodeToJx(node: MdastNode) {
   }
 
   if (node.type === ALERT_NODE) {
+    // SAFETY: `transformAlerts` is the only producer of a `jxAlert` node, and it builds each one as
+    // A complete AlertNode (`alert`, `element` and `titleNodes` all set).
     return alertToJx(node as AlertNode);
   }
 
@@ -406,7 +454,7 @@ export function mdastNodeToJx(node: MdastNode) {
     return null;
   }
 
-  const tagFn = JX_TAG_MAP[node.type];
+  const tagFn = JX_TAG_MAP.get(node.type);
   if (!tagFn) {
     return null;
   }
@@ -424,12 +472,7 @@ export function mdastNodeToJx(node: MdastNode) {
     case "listItem":
     case "tableRow":
     case "tableCell": {
-      const children = convertChildren(node.children ?? []);
-      if (children.length === 1 && typeof children[0] === "string") {
-        [el.textContent] = children;
-      } else if (children.length > 0) {
-        el.children = children;
-      }
+      setContent(el, convertChildren(node.children ?? []));
       break;
     }
 
@@ -439,35 +482,19 @@ export function mdastNodeToJx(node: MdastNode) {
     }
 
     case "link": {
-      {
-        const linkAttrs: Record<string, JxAttributeValue> = {
-          href: node.url ?? "",
-        };
-        if (node.title) {
-          linkAttrs.title = node.title;
-        }
-        el.attributes = linkAttrs;
+      el.attributes = { href: node.url ?? "" };
+      if (node.title) {
+        el.attributes.title = node.title;
       }
-      {
-        const children = convertChildren(node.children ?? []);
-        if (children.length === 1 && typeof children[0] === "string") {
-          [el.textContent] = children;
-        } else if (children.length > 0) {
-          el.children = children;
-        }
-      }
+      setContent(el, convertChildren(node.children ?? []));
       break;
     }
 
     case "image": {
-      const imageAttrs: Record<string, JxAttributeValue> = {
-        alt: node.alt ?? "",
-        src: node.url ?? "",
-      };
+      el.attributes = { alt: node.alt ?? "", src: node.url ?? "" };
       if (node.title) {
-        imageAttrs.title = node.title;
+        el.attributes.title = node.title;
       }
-      el.attributes = imageAttrs;
       break;
     }
 
@@ -482,13 +509,11 @@ export function mdastNodeToJx(node: MdastNode) {
     }
 
     case "code": {
-      el.children = [
-        {
-          tagName: "code",
-          textContent: node.value ?? null,
-          ...(node.lang ? { className: `language-${node.lang}` } : {}),
-        },
-      ];
+      const code: JxElement = { tagName: "code", textContent: node.value ?? null };
+      if (node.lang) {
+        code.className = `language-${node.lang}`;
+      }
+      el.children = [code];
       break;
     }
 
@@ -502,16 +527,21 @@ export function mdastNodeToJx(node: MdastNode) {
       // GFM's first table row is the header row, but mdast does not mark its cells — retag them
       // To <th> so the <thead> carries real column headers (assistive tech relies on this).
       const [headerRow] = rows;
-      if (headerRow && typeof headerRow === "object" && Array.isArray(headerRow.children)) {
+      if (isNonNullObject(headerRow) && Array.isArray(headerRow.children)) {
         for (const cell of headerRow.children) {
-          if (cell && typeof cell === "object" && (cell as JxElement).tagName === "td") {
-            (cell as JxElement).tagName = "th";
+          if (isNonNullObject(cell) && cell.tagName === "td") {
+            cell.tagName = "th";
           }
         }
       }
-      const thead = rows.length > 0 ? { children: [rows[0]], tagName: "thead" } : null;
-      const tbody = rows.length > 1 ? { children: rows.slice(1), tagName: "tbody" } : null;
-      el.children = [thead, tbody].filter(Boolean) as JxElement[];
+      const sections: JxElement[] = [];
+      if (headerRow !== undefined) {
+        sections.push({ children: [headerRow], tagName: "thead" });
+      }
+      if (rows.length > 1) {
+        sections.push({ children: rows.slice(1), tagName: "tbody" });
+      }
+      el.children = sections;
       break;
     }
     default: {
@@ -540,10 +570,9 @@ function alertToJx(node: AlertNode): JxElement {
   const body = convertChildren(node.children ?? []);
 
   if (node.element) {
-    const attributes: Record<string, JxAttributeValue> = { "data-alert": node.alert };
-    if (node.titleNodes) {
-      attributes["data-title"] = inlineText(node.titleNodes).trim();
-    }
+    const attributes = node.titleNodes
+      ? { "data-alert": node.alert, "data-title": inlineText(node.titleNodes).trim() }
+      : { "data-alert": node.alert };
     const el: JxElement = { attributes, tagName: node.element };
     if (body.length > 0) {
       el.children = body;
@@ -554,8 +583,9 @@ function alertToJx(node: AlertNode): JxElement {
   const title: JxElement = { className: "jx-alert-title", tagName: "p" };
   if (node.titleNodes) {
     const inline = convertChildren(node.titleNodes);
-    if (inline.length === 1 && typeof inline[0] === "string") {
-      [title.textContent] = inline;
+    const [only] = inline;
+    if (inline.length === 1 && isString(only)) {
+      title.textContent = only;
     } else {
       title.children = inline;
     }
@@ -579,16 +609,20 @@ function alertToJx(node: AlertNode): JxElement {
  * @returns {JxElement}
  */
 function directiveToJx(node: MdastNode) {
+  /* SAFETY: mdastNodeToJx routes only container, leaf and text directive nodes here, and
+     remark-directive gives every one of them a `name`: the syntax has no nameless directive. */
+  const name = node.name as string;
+
   // Prototype directive (e.g. `:::Array`) → `{ $prototype: name, ... }` with no tagName.
-  if (PROTOTYPE_DIRECTIVE_NAMES.has(node.name as string)) {
-    return prototypeDirectiveToJx(node);
+  if (PROTOTYPE_DIRECTIVE_NAMES.has(name)) {
+    return prototypeDirectiveToJx(node, name);
   }
 
-  const el: JxElement = { tagName: node.name as string };
+  const el: JxElement = { tagName: name };
 
   if (node.attributes && Object.keys(node.attributes).length > 0) {
     const { props, attributes } = routeAttributes(node.attributes);
-    const isCustomElement = (node.name as string).includes("-");
+    const isCustomElement = name.includes("-");
     if (isCustomElement) {
       // For custom elements:
       //   - style, children, textContent, innerHTML, $-prefixed → element-level
@@ -608,7 +642,7 @@ function directiveToJx(node: MdastNode) {
           if (!el.attributes) {
             el.attributes = {};
           }
-          el.attributes[key] = value as JxAttributeValue;
+          el.attributes[key] = attributeValue(value);
         }
       }
     } else {
@@ -636,7 +670,7 @@ function directiveToJx(node: MdastNode) {
           if (!el.attributes) {
             el.attributes = {};
           }
-          el.attributes[key] = value as JxAttributeValue;
+          el.attributes[key] = attributeValue(value);
         }
       }
     }
@@ -647,12 +681,7 @@ function directiveToJx(node: MdastNode) {
 
   if (node.type === "textDirective") {
     if (node.children && node.children.length > 0) {
-      const children = convertChildren(node.children ?? []);
-      if (children.length === 1 && typeof children[0] === "string") {
-        [el.textContent] = children;
-      } else if (children.length > 0) {
-        el.children = children;
-      }
+      setContent(el, convertChildren(node.children));
     }
     return el;
   }
@@ -663,7 +692,7 @@ function directiveToJx(node: MdastNode) {
 
   if (node.children && node.children.length > 0) {
     const jxChildren: (JxElement | string)[] = [];
-    const isPhrasingParent = PHRASING_ELEMENTS.has(node.name as string);
+    const isPhrasingParent = PHRASING_ELEMENTS.has(name);
 
     for (const child of node.children) {
       if (isPhrasingParent && child.type === "paragraph") {
@@ -693,13 +722,9 @@ function directiveToJx(node: MdastNode) {
     }
 
     // Don't overwrite children if already set as an object by dot-path attributes
-    // (e.g. children.prototype="Array" children.items.ref="...")
-    if (el.children && typeof el.children === "object" && !Array.isArray(el.children)) {
-      // Children was set to a descriptor object by dot-path expansion — keep it
-    } else if (jxChildren.length === 1 && typeof jxChildren[0] === "string") {
-      [el.textContent] = jxChildren;
-    } else if (jxChildren.length > 0) {
-      el.children = jxChildren;
+    // (e.g. children.prototype="Array" children.items.ref="..."): a descriptor object stays.
+    if (!isNonNullObject(el.children) || Array.isArray(el.children)) {
+      setContent(el, jxChildren);
     }
   }
 
@@ -712,10 +737,11 @@ function directiveToJx(node: MdastNode) {
  * `map` template.
  *
  * @param {MdastNode} node
+ * @param {string} name - The directive's name, which is the prototype's
  * @returns {JxElement}
  */
-function prototypeDirectiveToJx(node: MdastNode) {
-  const el: JxElement = { $prototype: node.name as string };
+function prototypeDirectiveToJx(node: MdastNode, name: string) {
+  const el: JxElement = { $prototype: name };
 
   if (node.attributes && Object.keys(node.attributes).length > 0) {
     const expanded = expandDotPaths(node.attributes);
@@ -724,14 +750,14 @@ function prototypeDirectiveToJx(node: MdastNode) {
       if (key === "$prototype") {
         continue;
       }
-      el[key] = value as JsonValue;
+      el[key] = value;
     }
   }
 
   const children = convertChildren(node.children ?? []);
-  const template = children.find((c) => c != null && typeof c === "object");
+  const template = children.find((c): c is JxElement => !isString(c));
   if (template) {
-    el.map = template as JxElement;
+    el.map = template;
   }
   return el;
 }
@@ -739,17 +765,14 @@ function prototypeDirectiveToJx(node: MdastNode) {
 /**
  * Convert an array of mdast children to Jx elements/strings.
  *
- * @param {MdastNode[]} children
+ * @param {MdastNode[]} [children] - Absent converts to no children
  * @returns {(JxElement | string)[]}
  */
-export function convertChildren(children: MdastNode[]) {
+export function convertChildren(children?: MdastNode[]): (JxElement | string)[] {
   if (!children) {
     return [];
   }
-  return children.flatMap((n) => mdastNodeToJx(n)).filter((c) => c != null) as (
-    | JxElement
-    | string
-  )[];
+  return children.flatMap<JxElement | string>((n) => mdastNodeToJx(n) ?? []);
 }
 
 /**
@@ -762,28 +785,35 @@ export function convertChildren(children: MdastNode[]) {
  * @returns {object} Complete Jx JSON document
  */
 export function transpileJxMarkdown(source: string) {
-  const processor = (unified as unknown as () => UnifiedProcessor)()
-    .use(remarkParse)
-    .use(remarkFrontmatter, ["yaml"])
-    .use(remarkParseFrontmatter)
+  /* SAFETY: UnifiedProcessor declares only the four methods this pipeline calls (use, parse, runSync,
+     stringify) with the signatures unified 11 gives them; it is the processor narrowed, not changed.
+     `remark-parse`, `remark-frontmatter` and `remark-parse-frontmatter` are shorthand
+     `declare module` entries in the root types.d.ts, so their default imports are `any`; each
+     default-exports a unified attacher taking optional JSON settings, the UnifiedPlugin shape. */
+  const processor = (unified as () => UnifiedProcessor)()
+    .use(remarkParse as UnifiedPlugin)
+    .use(remarkFrontmatter as UnifiedPlugin, ["yaml"])
+    .use(remarkParseFrontmatter as UnifiedPlugin)
     .use(remarkGfm)
     .use(remarkDirective);
 
   const tree = processor.parse(source);
-  const vfile = { data: {} };
+  const vfile: UnifiedFile = { data: {} };
   processor.runSync(tree, vfile);
 
-  const frontmatter = (vfile.data as unknown as Record<string, unknown>)?.frontmatter ?? {};
+  const frontmatter = vfile.data.frontmatter ?? {};
 
   const doc: JxDocument = {};
 
-  for (const [key, value] of Object.entries(frontmatter)) {
-    doc[key] = value;
+  // A scalar or sequence front matter spreads exactly as `Object.entries` spreads it; numbers and
+  // Booleans have no entries.
+  if (!isNumber(frontmatter) && !isBoolean(frontmatter)) {
+    for (const [key, value] of Object.entries<JsonValue>(frontmatter)) {
+      doc[key] = value;
+    }
   }
 
-  const bodyNodes = tree.children!.filter(
-    (n: MdastNode) => n.type !== "yaml" && n.type !== "toml",
-  ) as unknown as MdastNode[];
+  const bodyNodes = tree.children!.filter((n) => n.type !== "yaml" && n.type !== "toml");
 
   const children: (JxElement | string)[] = [];
 
@@ -852,13 +882,13 @@ const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
  * @returns {string}
  */
 function jxNodeText(node: JxElement | string): string {
-  if (typeof node === "string") {
+  if (isString(node)) {
     return node;
   }
-  let out = typeof node.textContent === "string" ? node.textContent : "";
+  let out = isString(node.textContent) ? node.textContent : "";
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      out += jxNodeText(child as JxElement | string);
+      out += jxNodeText(child);
     }
   }
   return out;
@@ -879,15 +909,15 @@ export function assignHeadingIds(children?: (JxElement | string)[]): TocEntry[] 
 
   function walk(nodes: (JxElement | string)[]) {
     for (const node of nodes) {
-      if (typeof node !== "object" || node === null) {
+      if (!isNonNullObject(node)) {
         continue;
       }
       // Heading extraction reads a literal tag; a chosen one is never a heading (every candidate
       // Would have to be, and the construct exists to vary a WRAPPER), so it is simply not one.
-      const tag = typeof node.tagName === "string" ? node.tagName : "";
+      const tag = isString(node.tagName) ? node.tagName : "";
       if (tag && HEADING_TAGS.has(tag)) {
         const text = jxNodeText(node).trim();
-        let id = typeof node.id === "string" && node.id.length > 0 ? node.id : "";
+        let id = isString(node.id) && node.id.length > 0 ? node.id : "";
         if (id) {
           seen.set(id, (seen.get(id) ?? 0) + 1);
         } else {
@@ -900,7 +930,7 @@ export function assignHeadingIds(children?: (JxElement | string)[]): TocEntry[] 
         entries.push({ depth: Number(tag.slice(1)), id, text });
       }
       if (Array.isArray(node.children)) {
-        walk(node.children as (JxElement | string)[]);
+        walk(node.children);
       }
     }
   }

@@ -9,6 +9,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CLASS_METHOD_ROLES } from "../defs/class-def.schema";
 import { EXTENSION_CAPABILITIES } from "../src/format-registry";
+import { isJsonObject, isString } from "../src/guards";
 import { MEDIA_TYPE_BY_EXTENSION, mediaTypeEssence, parseMediaType } from "../src/media-type";
 import { generateClassSchema, validateClass, validateWithSchema } from "../src/schema";
 
@@ -37,9 +38,10 @@ describe("class schema ↔ format-registry drift guard", () => {
     expect([...schema.$defs.ServerBlockDef.required]).toEqual(["basePath"]);
     expect([...schema.$defs.ConnectorBlockDef.required]).toEqual(["provider", "kind"]);
     // ConnectorBlock is open ([key: string]: unknown) — a closed schema re-rejects providers.
-    expect(
-      (schema.$defs.ConnectorBlockDef as { additionalProperties?: boolean }).additionalProperties,
-    ).not.toBe(false);
+    expect(Object.entries(schema.$defs.ConnectorBlockDef)).not.toContainEqual([
+      "additionalProperties",
+      false,
+    ]);
   });
 
   test("every shipped extension class validates against the class schema", async () => {
@@ -61,7 +63,10 @@ describe("class schema ↔ format-registry drift guard", () => {
     }
     expect(classFiles.length).toBeGreaterThan(0);
     for (const file of classFiles) {
-      const doc = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+      const doc: unknown = JSON.parse(readFileSync(file, "utf8"));
+      if (!isJsonObject(doc)) {
+        throw new Error(`${file} is not a JSON object`);
+      }
       const { errors, valid } = await validateClass(doc);
       if (!valid) {
         throw new Error(`${file} failed class-schema validation: ${JSON.stringify(errors)}`);
@@ -80,9 +85,10 @@ describe("class schema ↔ format-registry drift guard", () => {
       import.meta.dir,
       "../../../extensions/parser/src/Markdown.class.json",
     );
-    const declared = (
-      JSON.parse(readFileSync(classFile, "utf8")) as { format?: { mediaType?: string } }
-    ).format?.mediaType;
+    const classDoc: unknown = JSON.parse(readFileSync(classFile, "utf8"));
+    const format = isJsonObject(classDoc) ? classDoc.format : undefined;
+    const declared =
+      isJsonObject(format) && isString(format.mediaType) ? format.mediaType : undefined;
     const served = MEDIA_TYPE_BY_EXTENSION[".md"];
 
     expect(mediaTypeEssence(declared)).toBe(mediaTypeEssence(served));

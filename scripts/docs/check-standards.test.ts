@@ -16,12 +16,11 @@ import type { SpecStatus } from "./lib/spec-status.ts";
 import { parseSpecSource } from "./lib/spec-status.ts";
 import type { ViolationCode } from "./check-standards.ts";
 import { checkStandards, EXEMPT_UNNUMBERED, UNCITED, VIOLATION_CODES } from "./check-standards.ts";
+import { HEADER } from "./test-fixtures.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const SPECS_DIR = resolve(ROOT, "specs");
 const CATALOG = resolve(ROOT, "scripts/docs/standards.json");
-
-const HEADER = "| Standard | Class | Binds | Evidence | Note |\n| --- | --- | --- | --- | --- |";
 
 /** Every code this suite has seen fire, for the meta-test. */
 const exercised = new Set<ViolationCode>();

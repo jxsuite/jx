@@ -57,19 +57,21 @@ describe("importedNames", () => {
 
 describe("patchLauncherMain", () => {
   test("swaps the flat-files branch for the temp-copy version", () => {
-    const patched = patchLauncherMain(launcher());
-    expect(patched).toContain(FLAT_FILES_PATCHED);
-    expect(patched).not.toContain(FLAT_FILES_ORIGINAL);
+    // Exactly the branch swap: every other byte of the launcher comes through unchanged.
+    expect(patchLauncherMain(launcher())).toBe(launcher(IMPORTS, FLAT_FILES_PATCHED));
   });
 
   test("never references __require, which Electrobun 2's launcher does not define", () => {
-    expect(FLAT_FILES_PATCHED).not.toContain("__require");
     expect(patchLauncherMain(launcher())).not.toContain("__require");
   });
 
   test("everything the patched branch calls is something the launcher imports", () => {
+    // Bare calls only: `console.log(`, `Date.now(` and `.substring(` are members, not imports.
+    const called = new Set(
+      Array.from(FLAT_FILES_PATCHED.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\(/g), (m) => m[1]),
+    );
+    expect(called).toEqual(new Set(REQUIRED_IMPORTS));
     for (const name of REQUIRED_IMPORTS) {
-      expect(FLAT_FILES_PATCHED).toContain(`${name}(`);
       expect(importedNames(IMPORTS).has(name)).toBe(true);
     }
   });
@@ -111,6 +113,8 @@ describe("the patched launcher, executed", () => {
       .filter((line) => !line.startsWith("import "))
       .join("\n")
       .replace("export function", "function");
+    /* SAFETY: the body ends `return entry;`, and `entry` is the `function entry(appFolderPath)`
+       that `launcher()` declares, which returns its `appEntrypointPath` string. */
     return new Function(
       "join",
       "readFileSync",

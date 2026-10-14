@@ -44,13 +44,18 @@ const route = (
   path: string,
   summary: string,
   degradation?: string,
-): StudioRoute => ({
-  method,
-  path,
-  optional: degradation !== undefined,
-  summary,
-  ...(degradation === undefined ? {} : { degradation }),
-});
+): StudioRoute => {
+  const declared: StudioRoute = {
+    method,
+    path,
+    optional: degradation !== undefined,
+    summary,
+  };
+  if (degradation !== undefined) {
+    declared.degradation = degradation;
+  }
+  return declared;
+};
 
 /**
  * Every protocol route, keyed by a stable name. Paths are the dev server's literal `/__studio/*`
@@ -496,11 +501,19 @@ export const STUDIO_ROUTES = {
 /** A stable route name in {@link STUDIO_ROUTES}. */
 export type StudioRouteName = keyof typeof STUDIO_ROUTES;
 
+/** Every route name, in declaration order. */
+function routeNames(): StudioRouteName[] {
+  /*
+   * SAFETY: StudioRouteName is derived from this very literal (`keyof typeof STUDIO_ROUTES`), its
+   * members are readonly under `as const`, and nothing in the protocol adds keys at runtime, so its
+   * own enumerable string keys are exactly the StudioRouteName members.
+   */
+  return Object.keys(STUDIO_ROUTES) as StudioRouteName[];
+}
+
 /** Names of every route a minimal (core) backend must implement. */
 export function coreRouteNames(): StudioRouteName[] {
-  return (Object.keys(STUDIO_ROUTES) as StudioRouteName[]).filter(
-    (name) => !STUDIO_ROUTES[name].optional,
-  );
+  return routeNames().filter((name) => !STUDIO_ROUTES[name].optional);
 }
 
 /**
@@ -508,7 +521,5 @@ export function coreRouteNames(): StudioRouteName[] {
  * optimisation with a fallback).
  */
 export function optionalRouteNames(): StudioRouteName[] {
-  return (Object.keys(STUDIO_ROUTES) as StudioRouteName[]).filter(
-    (name) => STUDIO_ROUTES[name].optional,
-  );
+  return routeNames().filter((name) => STUDIO_ROUTES[name].optional);
 }

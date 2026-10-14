@@ -9,13 +9,21 @@
  * component surface (cells/rows/ranges) grid-view touches.
  */
 
+import type { Options, RowData } from "tabulator-tables";
+import type { GridCellValue } from "../src/grid/grid-source";
+
+/*
+ * Cell values are `GridCellValue`, the value type `grid-view.ts` instantiates the real Tabulator
+ * with (`src/grid/tabulator-tables.d.ts`), so the fake stores and returns what the view hands it.
+ */
+
 type Handler = (...args: unknown[]) => void;
 
 export interface FakeRow {
-  data: Record<string, unknown>;
+  data: RowData<GridCellValue>;
   element: HTMLElement;
   cells: FakeCell[];
-  getData: () => Record<string, unknown>;
+  getData: () => RowData<GridCellValue>;
   getElement: () => HTMLElement;
   getCells: () => FakeCell[];
   reformat: () => void;
@@ -25,11 +33,11 @@ export interface FakeCell {
   row: FakeRow;
   field: string;
   element: HTMLElement;
-  getValue: () => unknown;
+  getValue: () => GridCellValue | undefined;
   getField: () => string;
   getElement: () => HTMLElement;
   getRow: () => FakeRow;
-  setValue: (value: unknown, mutate?: boolean) => void;
+  setValue: (value: GridCellValue, mutate?: boolean) => void;
 }
 
 export interface FakeRange {
@@ -37,7 +45,7 @@ export interface FakeRange {
   getRows: () => FakeRow[];
 }
 
-export function fakeRow(data: Record<string, unknown>): FakeRow {
+export function fakeRow(data: RowData<GridCellValue>): FakeRow {
   const row: FakeRow = {
     cells: [],
     data,
@@ -63,7 +71,7 @@ export function fakeCell(
     getRow: () => cell.row,
     getValue: () => cell.row.data[cell.field],
     row,
-    setValue: (value: unknown, _mutate?: boolean) => {
+    setValue: (value: GridCellValue, _mutate?: boolean) => {
       cell.row.data[cell.field] = value;
       // Real Tabulator fires cellEdited for programmatic setValue too.
       table?.emit("cellEdited", cell);
@@ -94,19 +102,19 @@ export class FakeTabulator {
   static registeredModules: unknown[] = [];
 
   host: HTMLElement;
-  options: Record<string, unknown>;
+  options: Options<GridCellValue>;
   handlers = new Map<string, Handler[]>();
-  data: Record<string, unknown>[];
-  replaceDataCalls: Record<string, unknown>[][] = [];
+  data: RowData<GridCellValue>[];
+  replaceDataCalls: RowData<GridCellValue>[][] = [];
   ranges: FakeRange[] = [];
-  filter: ((data: Record<string, unknown>) => boolean) | null = null;
+  filter: ((data: RowData<GridCellValue>) => boolean) | null = null;
   clearFilterCalls = 0;
   destroyed = false;
 
-  constructor(host: HTMLElement, options: Record<string, unknown>) {
+  constructor(host: HTMLElement, options: Options<GridCellValue>) {
     this.host = host;
     this.options = options;
-    this.data = (options.data as Record<string, unknown>[]) ?? [];
+    this.data = options.data ?? [];
     FakeTabulator.instances.push(this);
   }
 
@@ -130,7 +138,7 @@ export class FakeTabulator {
     }
   }
 
-  replaceData(data: Record<string, unknown>[]) {
+  replaceData(data: RowData<GridCellValue>[]) {
     this.data = data;
     this.replaceDataCalls.push(data);
     return Promise.resolve();
@@ -144,7 +152,7 @@ export class FakeTabulator {
     return this.ranges;
   }
 
-  setFilter(filter: (data: Record<string, unknown>) => boolean) {
+  setFilter(filter: (data: RowData<GridCellValue>) => boolean) {
     this.filter = filter;
   }
 

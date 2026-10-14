@@ -248,7 +248,7 @@ async function main(): Promise<void> {
       ? { mode: "all", reason: `${event} is never narrowed`, shots: [], skipped: [] }
       : decide(await changedFiles(), manifest);
 
-  const outputs: Record<string, string> = {
+  const outputs = {
     mode: decision.mode,
     // Consumed as `bun run screenshots ${{ steps.scope.outputs.only }}` — empty for `all`.
     only: decision.mode === "subset" ? `--only ${decision.shots.join(",")}` : "",

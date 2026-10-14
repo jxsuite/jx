@@ -21,7 +21,7 @@
  * has to change. This is a narrow door beside the wide one, not a replacement for it.
  */
 
-import { isRef, isTemplateString } from "@jxsuite/schema/guards";
+import { isNonNullObject, isRef, isString, isTemplateString } from "@jxsuite/schema/guards";
 import type { JxRef, JxStyle } from "@jxsuite/schema/types";
 
 /**
@@ -196,7 +196,10 @@ export function splitSelectorList(selector: string): string[] {
     }
   }
   members.push(selector.slice(start));
-  const trimmed = members.map((member) => member.trim()).filter((member) => member !== "");
+  const trimmed = members.flatMap((member) => {
+    const text = member.trim();
+    return text === "" ? [] : [text];
+  });
   return trimmed.length > 0 ? trimmed : [selector];
 }
 
@@ -257,7 +260,7 @@ function transposeOpenAttribute(selector: string, options: CanvasOverlayTranspos
       return out + selector.slice(from);
     }
     let start = at;
-    while (start > 0 && !COMPOUND_BREAK.test(selector[start - 1] as string)) {
+    while (start > 0 && !COMPOUND_BREAK.test(selector.charAt(start - 1))) {
       start -= 1;
     }
     const type = LEADING_TYPE.exec(selector.slice(start, at))?.[0]?.toLowerCase();
@@ -350,8 +353,16 @@ export const COLOR_SCHEME_STORAGE_KEY = "jx-color-scheme";
  * @docs framework/concepts/color-schemes
  */
 export function pureSchemeOf(query: string): "light" | "dark" | null {
-  const m = /^\(\s*prefers-color-scheme\s*:\s*(light|dark)\s*\)$/.exec(query.trim());
-  return (m?.[1] as "light" | "dark") ?? null;
+  const scheme = /^\(\s*prefers-color-scheme\s*:\s*(light|dark)\s*\)$/.exec(query.trim())?.[1];
+  return scheme === "light" || scheme === "dark" ? scheme : null;
+}
+
+/** The two selectors a scheme-conditional rule dual-emits under: see {@link schemeSelectors}. */
+export interface SchemeSelectorPair {
+  /** Applies inside the scheme's media query, only while no scheme is forced. */
+  auto: string;
+  /** Applies unconditionally while the root attribute forces the scheme. */
+  forced: string;
 }
 
 /**
@@ -362,13 +373,10 @@ export function pureSchemeOf(query: string): "light" | "dark" | null {
  *
  * @param {string} selector
  * @param {"light" | "dark"} scheme
- * @returns {{ auto: string; forced: string }}
+ * @returns {SchemeSelectorPair}
  * @docs framework/concepts/color-schemes
  */
-export function schemeSelectors(
-  selector: string,
-  scheme: "light" | "dark",
-): { auto: string; forced: string } {
+export function schemeSelectors(selector: string, scheme: "light" | "dark"): SchemeSelectorPair {
   if (selector === ":root" || selector === "html") {
     return {
       auto: `${selector}:where(:not([${COLOR_SCHEME_ATTR}]))`,
@@ -640,7 +648,9 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
   } = options;
   const rules: CssRule[] = [];
 
-  const isBlock = (value: unknown): value is JxStyle =>
+  /* `null` is not in the declared value type, but a style object is JSON from a document, and a
+     cleared value arrives as `null`. */
+  const isBlock = (value: JxStyle[string] | null): value is JxStyle =>
     value !== null && typeof value === "object" && !Array.isArray(value) && !isRef(value);
 
   /**
@@ -658,7 +668,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
    * the a11y lint, the canvas) assumes a block key holds ONE block; allowing it there would leave
    * those reading past it in silence, which is the failure this codebase keeps finding.
    */
-  const blocksOf = (key: string, value: unknown): JxStyle[] => {
+  const blocksOf = (key: string, value: JxStyle[string]): JxStyle[] => {
     if (isBlock(value)) {
       return [value];
     }
@@ -670,7 +680,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
 
   const declarationValue = (
     property: string,
-    value: unknown,
+    value: JxStyle[string] | null,
     reactive: boolean,
     target: CssRuleTarget,
   ): string | null => {
@@ -683,7 +693,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     if (isRef(value)) {
       return reactive ? (resolveValue?.(property, value, target) ?? null) : null;
     }
-    if (typeof value === "object") {
+    if (isNonNullObject(value)) {
       return null;
     }
     const raw = String(value);
@@ -739,7 +749,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     selector: string | null,
     declarations: readonly (readonly [string, string])[],
     target: CssRuleTarget,
-    description?: unknown,
+    description?: JxStyle[string],
   ) => {
     if (declarations.length === 0) {
       return;
@@ -753,15 +763,18 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       resolved = transposed;
     }
     const text = cssRuleText(conditions, resolved, declarations);
-    rules.push({
+    const rule: CssRule = {
       text,
       conditions: [...conditions],
       selector: resolved,
       declarations,
       target,
       key: hashCss(text),
-      ...(typeof description === "string" && description !== "" ? { description } : {}),
-    });
+    };
+    if (isString(description) && description !== "") {
+      rule.description = description;
+    }
+    rules.push(rule);
   };
 
   /**

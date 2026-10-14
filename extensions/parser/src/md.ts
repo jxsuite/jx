@@ -20,46 +20,42 @@ import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
 import { readFileSync } from "node:fs";
 import { DEFAULT_FORMAT_LOCALE } from "@jxsuite/schema/intl";
-import { basename, extname, relative, resolve as resolvePath } from "node:path";
+import { basename, extname, relative, resolve } from "node:path";
 import { globSync } from "glob";
 import { normalizeAlerts, transformAlerts } from "./alerts.ts";
 import { assignHeadingIds, mdastNodeToJx } from "./transpile.ts";
 import { highlightCodeBlocks } from "./highlight.ts";
 import { makeTemplatesInert } from "./inert.ts";
-import type { MarkdownFileResult, MdastNode, UnifiedProcessor } from "./types.ts";
-import type { JxElement } from "@jxsuite/schema/types";
+import type {
+  MarkdownFileResult,
+  MdastNode,
+  UnifiedFile,
+  UnifiedPlugin,
+  UnifiedProcessor,
+} from "./types.ts";
+import { isFunction } from "@jxsuite/schema/guards";
+import type { ContentFieldValue, JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 
 // ─── Tree utilities (inline to avoid Bun ESM resolution issues with unist-util-*) ──
 
 /**
- * Walk an AST tree, calling visitor for nodes matching the given type.
+ * Find the first node of a type in an AST tree, in document (depth-first, pre-order) order.
  *
- * @param {object} tree
- * @param {string | function} typeOrVisitor
- * @param {function} [maybeVisitor]
+ * @param {MdastNode} node
+ * @param {string} type
+ * @returns {MdastNode | null}
  */
-function visit(
-  tree: MdastNode,
-  typeOrVisitor: string | ((node: MdastNode) => void),
-  maybeVisitor?: (node: MdastNode) => void,
-) {
-  const type = typeof typeOrVisitor === "string" ? typeOrVisitor : null;
-  const visitor = type ? maybeVisitor : typeOrVisitor;
-
-  function walk(node: MdastNode) {
-    if (!node || typeof node !== "object") {
-      return;
-    }
-    if (!type || node.type === type) {
-      (visitor as (node: MdastNode) => void)(node);
-    }
-    if (Array.isArray(node.children)) {
-      for (const child of node.children) {
-        walk(child);
-      }
+function findFirst(node: MdastNode, type: string): MdastNode | null {
+  if (node.type === type) {
+    return node;
+  }
+  for (const child of node.children ?? []) {
+    const found = findFirst(child, type);
+    if (found) {
+      return found;
     }
   }
-  walk(tree as MdastNode);
+  return null;
 }
 
 /**
@@ -69,12 +65,6 @@ function visit(
  * @returns {string}
  */
 function mdastToString(node: MdastNode): string {
-  if (!node) {
-    return "";
-  }
-  if (typeof node === "string") {
-    return node;
-  }
   if (node.value) {
     return node.value;
   }
@@ -85,6 +75,15 @@ function mdastToString(node: MdastNode): string {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * The unified processor chain, through the hand-written surface `UnifiedProcessor` describes.
+ *
+ * SAFETY: `unified()` returns a remark-compatible Processor whose `use`, `parse`, `runSync` and
+ * `stringify` are the four members `UnifiedProcessor` declares; the assertion only states that
+ * surface for a type-aware linter that resolves the package's ESM-only types as `any`.
+ */
+const createProcessor = unified as () => UnifiedProcessor;
 
 /** Average reading speed. See {@link readingTime} for why this is one number and not a table. */
 const WORDS_PER_MINUTE = 200;
@@ -151,12 +150,7 @@ function readingTime(text: string) {
  * @returns {string} Plain text of first paragraph, or empty string
  */
 function extractExcerpt(tree: MdastNode) {
-  let firstParagraph: MdastNode | null = null;
-  visit(tree, "paragraph", (node: MdastNode) => {
-    if (!firstParagraph) {
-      firstParagraph = node;
-    }
-  });
+  const firstParagraph = findFirst(tree, "paragraph");
   if (!firstParagraph) {
     return "";
   }
@@ -215,14 +209,18 @@ export function processMarkdown(
     directives?: boolean;
     directiveOptions?: unknown;
     sourceRoot?: string;
-    alerts?: unknown;
+    alerts?: JsonValue;
     onUnknownAlert?: (type: string) => void;
   } = {},
 ) {
-  let processor = (unified as unknown as () => UnifiedProcessor)()
-    .use(remarkParse)
-    .use(remarkFrontmatter, ["yaml"])
-    .use(remarkParseFrontmatter)
+  /* SAFETY: `remark-parse`, `remark-frontmatter` and `remark-parse-frontmatter` are shorthand
+     `declare module` entries in the root types.d.ts, so their default imports are `any` here. Each
+     package default-exports a unified attacher taking optional JSON settings (remark-frontmatter
+     receives the `["yaml"]` preset list), which is the UnifiedPlugin shape. */
+  let processor = createProcessor()
+    .use(remarkParse as UnifiedPlugin)
+    .use(remarkFrontmatter as UnifiedPlugin, ["yaml"])
+    .use(remarkParseFrontmatter as UnifiedPlugin)
     .use(remarkGfm);
 
   if (config.directives || config.directiveOptions) {
@@ -230,25 +228,34 @@ export function processMarkdown(
   }
 
   const tree = processor.parse(source);
-  const vfile = { data: {} };
+  const vfile: UnifiedFile = { data: {} };
   processor.runSync(tree, vfile);
 
   // Callouts first, so the excerpt and word count read the alert's own text, not its `[!NOTE]` marker.
   const alerts = normalizeAlerts(config.alerts);
   if (alerts) {
-    transformAlerts(tree as unknown as MdastNode, alerts, config.onUnknownAlert);
+    transformAlerts(tree, alerts, config.onUnknownAlert);
   }
 
-  const vfileData = vfile.data as Record<string, unknown>;
-  const frontmatter = (vfileData.frontmatter ?? {}) as Record<string, unknown>;
-  const mdTree = tree as unknown as MdastNode;
-  const plainText = mdastToString(mdTree);
+  /* SAFETY: a front-matter block is a YAML mapping by convention, which yaml.parse gives as a
+     JsonObject, and no block (or an empty one) gives `{}`. A block that parses to a scalar or a
+     list is not a mapping; it is relayed as the result's `frontmatter` unchanged, as it always has
+     been, so the claimed object type does not hold for that malformed input. */
+  const frontmatter = (vfile.data.frontmatter ?? {}) as JsonObject;
+  const plainText = mdastToString(tree);
   const excerpt = extractExcerpt(tree);
   const slug = deriveSlug(filePath, config.sourceRoot);
 
-  const bodyNodes = tree.children!.filter(
+  const bodyNodes = (tree.children ?? []).filter(
     (n: MdastNode) => n.type !== "yaml" && n.type !== "toml",
-  ) as MdastNode[];
+  );
+  /*
+   * SAFETY: `filter(Boolean)` drops the nulls (and empty text), and what remains is an element, a
+   * string, or the node array a raw HTML block converts to, kept nested as one element. `$children`
+   * is declared flat, and every walk over it handles that nested array: highlightCodeBlocks and
+   * assignHeadingIds skip it (it has no `tagName` or `children`), while makeTemplatesInert and the
+   * content loader's link and asset passes descend into it as `ContentNodes`.
+   */
   const $children = bodyNodes.map((n: MdastNode) => mdastNodeToJx(n)).filter(Boolean) as (
     | JxElement
     | string
@@ -280,14 +287,19 @@ export function processMarkdown(
 /**
  * Resolve a dot-notation path within an object.
  *
- * @param {Record<string, unknown> | MarkdownFileResult} obj
+ * @param {MarkdownFileResult} obj
  * @param {string} path
- * @returns {unknown}
+ * @returns {ContentFieldValue | MarkdownFileResult | undefined}
  */
-function getNestedValue(obj: Record<string, unknown> | MarkdownFileResult, path: string) {
-  let current: unknown = obj;
+function getNestedValue(obj: MarkdownFileResult, path: string) {
+  let current: ContentFieldValue | MarkdownFileResult | undefined = obj;
   for (const k of path.split(".")) {
-    current = (current as Record<string, unknown> | undefined)?.[k];
+    /*
+     * SAFETY: `processMarkdown` builds a result out of strings, numbers, node arrays and the JSON
+     * frontmatter object, so every key a path steps through holds a content field value, or
+     * nothing, which `?.` carries to the end of the path.
+     */
+    current = (current as Record<string, ContentFieldValue | undefined> | null | undefined)?.[k];
   }
   return current;
 }
@@ -359,9 +371,10 @@ export class MarkdownCollection {
       ...processorConfig
     } = this.config;
 
-    const resolved = basePath ? resolvePath(basePath, src) : src;
+    const resolved = basePath ? resolve(basePath, src) : src;
     // Normalize to forward slashes — glob requires POSIX paths on all platforms
     const pattern = resolved.split("\\").join("/");
+    // SAFETY: with `absolute: true` and no `withFileTypes`, `globSync` returns the matched paths as strings.
     const files = (globSync as (p: string, o: { absolute: boolean }) => string[])(pattern, {
       absolute: true,
     });
@@ -373,16 +386,14 @@ export class MarkdownCollection {
 
     // Filter
     let filtered = results;
-    if (typeof filter === "function") {
-      filtered = results.filter((r: MarkdownFileResult) =>
-        (filter as (r: MarkdownFileResult) => boolean)(r),
-      );
+    if (isFunction(filter)) {
+      filtered = results.filter((r: MarkdownFileResult) => filter(r));
     }
 
     // Sort
     filtered.sort((a: MarkdownFileResult, b: MarkdownFileResult) => {
-      const aVal = getNestedValue(a, sortBy) ?? ("" as string | number);
-      const bVal = getNestedValue(b, sortBy) ?? ("" as string | number);
+      const aVal = getNestedValue(a, sortBy) ?? "";
+      const bVal = getNestedValue(b, sortBy) ?? "";
       if (aVal < bVal) {
         return sortOrder === "asc" ? -1 : 1;
       }

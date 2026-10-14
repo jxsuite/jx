@@ -20,6 +20,7 @@
  * @docs studio/design/elements
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { nothing } from "lit-html";
 import { buildComponentInstance, componentRegistry } from "../files/components";
 import { childList, getNodeAtPath } from "../store";
@@ -44,7 +45,7 @@ import type { NavigatorPanelContext, NavigatorPanelDeps, PanelBody } from "./pan
 
 /** The palette's source of blocks, as `NavigatorPanelDeps.webdata` carries it. */
 interface ElementsWebdata {
-  elements: Record<string, { tag: string }[]>;
+  elements?: Record<string, { tag: string }[]>;
 }
 
 /** The Components section's name — its accordion label AND its key in `view.elementsCollapsed`. */
@@ -99,12 +100,15 @@ function categoryViews(webdata: ElementsWebdata, filter: string): ElementCategor
  */
 function enabledNpmTags(): Set<string> {
   const tab = activeTab.value;
+  /* SAFETY: getEffectiveElements reads nothing off an object entry but `$ref` (its dedup key), and
+     this function keeps only the string entries, so typing the document's node entries as
+     JxElement is never observed. */
   const entries = getEffectiveElements(
     tab?.doc.document?.$elements as (string | JxElement)[] | undefined,
   );
   const tags = new Set<string>();
   for (const entry of entries) {
-    if (typeof entry !== "string") {
+    if (!isString(entry)) {
       continue;
     }
     const named = componentRegistry.find(
@@ -143,7 +147,9 @@ function componentViews(filter: string): ComponentCardView[] {
 /** Everything the document draws, as one value. */
 function panelValues(source: NavigatorPanelDeps): ElementsValues {
   const filter = needle();
-  const categories = categoryViews(source.webdata as unknown as ElementsWebdata, filter);
+  /* SAFETY: `webdata` is wired in studio.ts from the bundled data/webdata.json, whose `elements`
+     maps each category name to an array of `{ tag }` entries. */
+  const categories = categoryViews(source.webdata as ElementsWebdata, filter);
   const components = componentViews(filter);
   const bare = categories.length === 0 && components.length === 0;
   return {
@@ -206,6 +212,7 @@ const ACTIONS: ElementsActions = {
   },
   insertElement: (tag) => {
     if (panelDeps) {
+      // SAFETY: studio.ts wires `defaultDef` to shared.ts defaultDef, which returns a JxMutableNode.
       insertAtSelection(panelDeps.defaultDef(tag) as JxMutableNode);
     }
   },

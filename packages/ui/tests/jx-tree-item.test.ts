@@ -37,13 +37,16 @@ async function render(
 ): Promise<{ host: HTMLElement; item: ItemEl }> {
   const host = document.createElement("div");
   document.body.append(host);
-  const doc = {
+  const doc: JxDocument = {
     tagName: "div",
     children: [{ attributes, children, tagName: "jx-tree-item" }],
-  } as unknown as JxDocument;
+  };
   ({ dispose } = await mount(doc, host));
   await flush();
-  return { host, item: host.querySelector("jx-tree-item") as ItemEl };
+  /* SAFETY: the document mounted above renders exactly one jx-tree-item, which registerUi() in
+     beforeAll defined, and jx-tree-item.json declares every prop ItemEl names. */
+  const item = host.querySelector("jx-tree-item") as ItemEl;
+  return { host, item };
 }
 
 /** The emitted stylesheet for one element, by selector, with its scope folded back to `&`. */
@@ -128,8 +131,10 @@ describe("jx-tree-item", () => {
     const { item } = await render({ value: "a", label: "main", level: "1", expanded: "false" });
     /* Read as a PROPERTY: the caret is given to `jx-icon` through `$props`, and the runtime does not
        reflect a property write back to an attribute. */
-    const glyph = () =>
-      (item.querySelector("jx-icon") as unknown as { name?: string } | null)?.name;
+    const glyph = () => {
+      const icon = item.querySelector("jx-icon");
+      return icon !== null && "name" in icon ? icon.name : undefined;
+    };
     expect(item.getAttribute("aria-expanded")).toBe("false");
     expect(glyph()).toBe("caret-right");
 
@@ -194,7 +199,7 @@ describe("jx-tree-item", () => {
         attributes: { slot: "actions", type: "button" },
         textContent: "Pin",
       },
-    ] as unknown as JxElement[]);
+    ]);
     const style = rules(item);
     expect(
       style.get('& [part="icon"], & [part="status"], & [part="actions"], & [part="grip-slot"]'),
@@ -231,10 +236,12 @@ describe("jx-tree-item", () => {
         attributes: { slot: "actions", type: "button" },
         textContent: "Pin",
       },
-    ] as unknown as JxElement[]);
+    ]);
     const seen: string[] = [];
     host.addEventListener("click", (e) => {
-      seen.push((e.target as Element).localName);
+      if (e.target instanceof Element) {
+        seen.push(e.target.localName);
+      }
     });
     const pressed: string[] = [];
     item.querySelector("button")!.addEventListener("click", () => {

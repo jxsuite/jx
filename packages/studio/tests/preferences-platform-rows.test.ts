@@ -10,7 +10,8 @@
 import "./with-dom.js";
 import { installMockPlatform } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { AccountEntry, OfferedAction } from "../src/types";
+import type { AccountEntry, AccountStatus, OfferedAction } from "../src/types";
+import { JOIN_OFFER } from "./shared-fixtures";
 
 const ran: OfferedAction[] = [];
 void mock.module("../src/account/action-flow", () => ({
@@ -23,17 +24,17 @@ void mock.module("../src/account/action-flow", () => ({
 const { hydrateAccountStatus, resetAccountStatus } = await import("../src/account-status");
 const { listAccounts, revokeAccount } = await import("../src/settings/preferences-accounts");
 
-const JOIN: OfferedAction = {
-  href: "https://example.test/join",
-  id: "join",
-  label: "Join",
-  primary: true,
-};
 const LEAVE: OfferedAction = { href: "https://example.test/leave", id: "leave", label: "Leave" };
 
 async function withEntries(entries?: AccountEntry[]): Promise<void> {
   installMockPlatform({
-    getAccountStatus: async () => ({ installations: [], ...(entries ? { entries } : {}) }),
+    getAccountStatus: async () => {
+      const status: AccountStatus = { installations: [] };
+      if (entries) {
+        status.entries = entries;
+      }
+      return status;
+    },
   });
   await hydrateAccountStatus();
 }
@@ -52,7 +53,7 @@ describe("the platform's rows", () => {
   test("follow Studio's own, namespaced, in the platform's words", async () => {
     await withEntries([
       {
-        actions: [JOIN, LEAVE],
+        actions: [JOIN_OFFER, LEAVE],
         connected: true,
         detail: "Member since spring.",
         id: "team",

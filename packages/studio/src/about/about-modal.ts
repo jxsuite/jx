@@ -20,9 +20,10 @@ import { openAboutSurface } from "../surfaces/about";
 import { layerHost } from "../ui/layers";
 import { getPlatform } from "../platform";
 import { APP_NAME, BUILD_DATE, GIT_COMMIT, LINKS, VERSION } from "../version";
-import type { AboutRow, AboutSurfaceHandle } from "../surfaces/about";
+import type { AboutSurfaceHandle } from "../surfaces/about";
 import type { AppInfo } from "../types";
 import type { Command, CommandRegistry } from "../commands/registry";
+import type { SurfaceOption } from "../ui/surface";
 
 let _handle: AboutSurfaceHandle | null = null;
 
@@ -36,8 +37,8 @@ function formatBuildDate(iso: string): string {
 }
 
 /** The metadata rows, with the desktop's two appended when the platform reported them. */
-function metaRows(info: AppInfo | null): AboutRow[] {
-  const rows: AboutRow[] = [
+function metaRows(info: AppInfo | null): SurfaceOption[] {
+  const rows: SurfaceOption[] = [
     { label: "Version", value: VERSION },
     { label: "Build date", value: formatBuildDate(BUILD_DATE) },
     { label: "Commit", value: GIT_COMMIT },

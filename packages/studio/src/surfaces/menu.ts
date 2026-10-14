@@ -20,7 +20,6 @@
  * @docs studio/interface/canvas
  * @docs studio/interface/preferences
  */
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import { ensureCaret } from "@jxsuite/ui/behaviors/menu";
 import { reactive } from "../reactivity";
@@ -29,7 +28,7 @@ import { mountSurface, registerSurface } from "../ui/surface";
 import { rectOf } from "../utils/geometry";
 import menuDoc from "./menu.json";
 
-registerSurface("menu", menuDoc as unknown as JxDocument);
+registerSurface("menu", menuDoc);
 
 /**
  * What a row prints: a projection of one command record, decided by the adapter that opens the
@@ -65,12 +64,12 @@ export interface OpenMenuOptions {
   /** The menu's accessible name. */
   label: string;
   /** Where the panel opens, in viewport pixels, when `place` is not given. */
-  origin?: { x: number; y: number };
+  origin?: ViewportPoint;
   /**
    * Where the panel opens as a function of its measured box: run once the popover is shown and
    * again a frame later, so a menu that hangs off a control can put its bottom flush with a floor.
    */
-  place?: (box: DOMRect) => { x: number; y: number };
+  place?: (box: DOMRect) => ViewportPoint;
   /** The lowest edge the menu and its submenus may reach; the viewport by default. */
   floor?: () => number;
   /**
@@ -113,6 +112,12 @@ export interface MenuHandle {
   readonly setRows: (rows: readonly MenuRowProjection[]) => void;
 }
 
+/** A point in viewport pixels: where a floating panel's corner sits. */
+export interface ViewportPoint {
+  x: number;
+  y: number;
+}
+
 type MenuElement = HTMLElement & {
   open?: boolean;
   x?: number;
@@ -140,7 +145,7 @@ type ProjectedRow = Omit<
 };
 
 /** The scope shape `menu.json` reads. */
-interface MenuScope extends Record<string, unknown> {
+interface MenuScope {
   rows: ProjectedRow[];
   label: string;
   x: number;
@@ -167,7 +172,7 @@ export function placementOf(
  * Where a menu with no coordinates of its own opens on an engine that cannot anchor it: below its
  * opener, leading edges aligned — the same corner the placement names.
  */
-function belowOpener(opener: HTMLElement | null | undefined): { x: number; y: number } {
+function belowOpener(opener: HTMLElement | null | undefined): ViewportPoint {
   if (!opener) {
     return { x: 0, y: 0 };
   }
@@ -205,17 +210,6 @@ function rowById(rows: readonly ProjectedRow[], id: string): ProjectedRow | unde
   return undefined;
 }
 
-const ZERO_BOX = {
-  bottom: 0,
-  height: 0,
-  left: 0,
-  right: 0,
-  top: 0,
-  width: 0,
-  x: 0,
-  y: 0,
-} as DOMRect;
-
 /**
  * Open a menu.
  *
@@ -242,15 +236,20 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
     options.onClosed?.(handle);
   };
 
+  /* `place` is first asked before anything is laid out, so it is handed an empty box: a real
+     `DOMRect` whose every edge and dimension is zero. */
   const initial = options.place
-    ? options.place(ZERO_BOX)
+    ? options.place(new DOMRect())
     : (options.origin ?? belowOpener(options.opener));
-  const scope: MenuScope = reactive({
+  const scope: MenuScope = reactive<MenuScope>({
     floor: options.floor?.() ?? 0,
     label: options.label,
     placement: placementOf(options),
     rows: options.rows.map((row) => project(row)),
     select: (_scope: JxScope, event: Event) => {
+      /* SAFETY: `menu.json` binds this handler to `onselect` alone, and a row's `select` is raised
+         by the runtime's `dispatchEvent` statement in `jx-menu-item.json`, which always constructs
+         a `CustomEvent` whose `detail` is the row's value. */
       const id = String((event as CustomEvent).detail);
       const row = rowById(scope.rows, id);
       if (!row) {
@@ -267,7 +266,7 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
     },
     x: initial.x,
     y: initial.y,
-  }) as MenuScope;
+  });
 
   /** Put the panel where `place` says, from its box as laid out now. */
   const place = (): void => {
@@ -279,18 +278,25 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
     scope.y = at.y;
   };
 
+  /* Read through a call, not the property path: `close()` can abort the controller while the menu
+     is awaiting `jx-ready`, and a direct test after that `await` would be narrowed to the value the
+     test before it saw. */
+  const aborted = (): boolean => controller.signal.aborted;
+
   const ready = (async () => {
     const mounted = await mountSurface("menu", scope, slot, { signal: controller.signal });
-    if (controller.signal.aborted) {
+    if (aborted()) {
       // Closed before the document finished mounting; the runtime already disposed it.
       return;
     }
     ({ dispose } = mounted);
     // The document's root IS the menu, and a custom element connects asynchronously: `jx-ready` is
     // The menu saying its `popover` attribute is on and it may be shown.
+    // SAFETY: `menu.json`'s root definition carries `tagName: "jx-menu"`, so the mounted root is
+    // The kit's menu element, which reflects `open`, `x` and `y` and inherits `showPopover`.
     menu = mounted.root as MenuElement;
     menu.addEventListener("toggle", (event) => {
-      if ((event as { newState?: string }).newState === "closed") {
+      if (event.newState === "closed") {
         finish();
       }
     });
@@ -299,7 +305,7 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
         menu!.addEventListener("jx-ready", () => resolve(), { once: true });
       });
     }
-    if (controller.signal.aborted) {
+    if (aborted()) {
       return;
     }
     const source =

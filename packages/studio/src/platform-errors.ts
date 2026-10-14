@@ -14,6 +14,8 @@
 
 import { problemSlug } from "@jxsuite/protocol";
 import type { OfferedAction, RetryHint } from "@jxsuite/protocol";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 export interface PlatformErrorInfo {
   code?: string;
@@ -32,36 +34,44 @@ const RETRY_HINTS = new Set<string>(["reload", "repeat", "none"]);
  * The offered actions a wire value holds, each one checked: an action needs an `id` and a `label`
  * to be drawn at all, and anything else it carries is kept only when it has the right type. A
  * malformed entry is dropped rather than drawn as a button that does nothing.
+ *
+ * A typed `OfferedAction[]` is accepted too, and checked the same way: it is what a response body
+ * cast to its protocol type holds, and nothing has verified that cast.
  */
-export function offeredActions(value: unknown): OfferedAction[] {
+export function offeredActions(
+  value: JsonValue | readonly OfferedAction[] | undefined,
+): OfferedAction[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.flatMap((entry): OfferedAction[] => {
-    const raw = entry as Partial<Record<keyof OfferedAction, unknown>> | null;
-    if (
-      !raw ||
-      typeof raw.id !== "string" ||
-      !raw.id ||
-      typeof raw.label !== "string" ||
-      !raw.label
-    ) {
+  const entries: readonly (JsonValue | OfferedAction)[] = value;
+  return entries.flatMap((entry): OfferedAction[] => {
+    if (!isJsonObject(entry)) {
       return [];
     }
-    return [
-      {
-        id: raw.id,
-        label: raw.label,
-        ...(typeof raw.href === "string" && raw.href ? { href: raw.href } : {}),
-        ...(raw.primary === true ? { primary: true } : {}),
-      },
-    ];
+    const { href, id, label, primary } = entry;
+    if (!isString(id) || !id || !isString(label) || !label) {
+      return [];
+    }
+    const action: OfferedAction = { id, label };
+    if (isString(href) && href) {
+      action.href = href;
+    }
+    if (primary === true) {
+      action.primary = true;
+    }
+    return [action];
   });
 }
 
+/** Whether a value names one of the retry hints this client knows. */
+function isRetryHint(value: JsonValue | undefined): value is RetryHint {
+  return isString(value) && RETRY_HINTS.has(value);
+}
+
 /** The retry hint a wire value names, or undefined when it names none we know. */
-export function retryHint(value: unknown): RetryHint | undefined {
-  return typeof value === "string" && RETRY_HINTS.has(value) ? (value as RetryHint) : undefined;
+export function retryHint(value: JsonValue | undefined): RetryHint | undefined {
+  return isRetryHint(value) ? value : undefined;
 }
 
 /**
@@ -74,33 +84,37 @@ function normalizeCode(value: string): string {
 }
 
 /** Machine-readable fields carried by a thrown platform error (empty object when none). */
-export function platformErrorInfo(error: unknown): PlatformErrorInfo {
-  if (!error || typeof error !== "object") {
+export function platformErrorInfo(cause: unknown): PlatformErrorInfo {
+  /* An Error carrying the members an adapter assigned onto it passes as a JSON object here: every
+     member below is read through a check that accepts any value, so nothing trusts that typing. */
+  if (!isJsonObject(cause)) {
     return {};
   }
-  const { actions, code, heading, installUrl, retry, type } = error as {
-    actions?: unknown;
-    code?: unknown;
-    heading?: unknown;
-    installUrl?: unknown;
-    retry?: unknown;
-    type?: unknown;
-  };
-  const hint = retryHint(retry);
+  const { actions, code, heading, installUrl, retry, type } = cause;
+  const info: PlatformErrorInfo = {};
   // A problem type wins over a legacy code: it is the shape the backend is migrating toward.
-  const derived = problemSlug(type) ?? (typeof code === "string" ? normalizeCode(code) : null);
-  return {
-    ...(derived === null ? {} : { code: derived }),
-    ...(typeof installUrl === "string" ? { installUrl } : {}),
-    ...(actions === undefined ? {} : { actions: offeredActions(actions) }),
-    ...(typeof heading === "string" && heading ? { heading } : {}),
-    ...(hint === undefined ? {} : { retry: hint }),
-  };
+  const derived = problemSlug(type) ?? (isString(code) ? normalizeCode(code) : null);
+  if (derived !== null) {
+    info.code = derived;
+  }
+  if (isString(installUrl)) {
+    info.installUrl = installUrl;
+  }
+  if (actions !== undefined) {
+    info.actions = offeredActions(actions);
+  }
+  if (isString(heading) && heading) {
+    info.heading = heading;
+  }
+  if (isRetryHint(retry)) {
+    info.retry = retry;
+  }
+  return info;
 }
 
 /** The GitHub-App install link when the error is the structured needs-installation 403. */
-export function installUrlOf(error: unknown): string | null {
-  const info = platformErrorInfo(error);
+export function installUrlOf(cause: unknown): string | null {
+  const info = platformErrorInfo(cause);
   return info.code === "needs-installation-access" && info.installUrl ? info.installUrl : null;
 }
 
@@ -108,6 +122,6 @@ export function installUrlOf(error: unknown): string | null {
  * True when the error is an `action-required` refusal (HTTP 403, desktop.md §10.4) — whether the
  * backend sent the problem type or the legacy `action_required` code.
  */
-export function isActionRequired(error: unknown): boolean {
-  return platformErrorInfo(error).code === "action-required";
+export function isActionRequired(cause: unknown): boolean {
+  return platformErrorInfo(cause).code === "action-required";
 }

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import {
   DESKTOP_MANIFEST,
   describe as explain,
@@ -131,7 +133,7 @@ test("the generated stub is the two exports proc/native.ts imports", () => {
   expect(STUB_CONTENTS).toBe(
     'export const preloadScript = "";\nexport const preloadScriptSandboxed = "";\n',
   );
-  expect(STUB_PATH.endsWith("/preload/.generated/compiled.ts")).toBe(true);
+  expect(STUB_PATH).toBe("vendor/electrobun/package/src/preload/.generated/compiled.ts");
 });
 
 /* These run for real in CI: the `changes` job checks the submodule out before `bun test scripts`.
@@ -154,15 +156,14 @@ describe.skipIf(!vendored)("against the checked-out submodule", () => {
      the SDK still exports raw TypeScript. The day it ships declarations, `skipLibCheck` starts
      working and packages/desktop can rejoin the root tsconfig. */
   test("the SDK still exports raw .ts, not declarations", () => {
-    const manifest = JSON.parse(readFileSync(at(VENDOR_MANIFEST), "utf8")) as {
-      exports: Record<string, string>;
-    };
-    const entries = Object.values(manifest.exports);
+    const manifest: JsonValue = JSON.parse(readFileSync(at(VENDOR_MANIFEST), "utf8"));
+    const exportMap = isJsonObject(manifest) ? manifest.exports : undefined;
+    const entries = isJsonObject(exportMap) ? Object.values(exportMap) : [];
     expect(entries.length).toBeGreaterThan(0);
     for (const target of entries) {
       expect({
-        declaration: target.endsWith(".d.ts"),
-        source: target.endsWith(".ts"),
+        declaration: isString(target) && target.endsWith(".d.ts"),
+        source: isString(target) && target.endsWith(".ts"),
         target,
       }).toEqual({ declaration: false, source: true, target });
     }
@@ -181,7 +182,7 @@ describe.skipIf(!vendored)("against the checked-out submodule", () => {
   });
 
   test("the submodule sits where the manifests say it does", () => {
-    expect(VENDOR_MANIFEST.startsWith(`${VENDOR_DIR}/`)).toBe(true);
+    expect(VENDOR_MANIFEST).toBe(`${VENDOR_DIR}/package/package.json`);
     expect(existsSync(at(DESKTOP_MANIFEST))).toBe(true);
   });
 });

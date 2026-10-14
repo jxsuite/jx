@@ -1,10 +1,13 @@
 // oxlint-disable typescript/no-invalid-void-type -- Electrobun RPCSchema uses `void` to mark no-payload params/responses
 import type { RPCSchema } from "electrobun/main";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonObject, JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import type { FsEventPayload, ReferencesResult, RenameReport } from "@jxsuite/server/refactor";
 import type { StarterMeta } from "@jxsuite/starters";
+import type { FormatActionRequest } from "@jxsuite/studio/types";
+import type { FormatEntry } from "@jxsuite/schema/format-registry";
 import type {
   AppInfo,
+  CodeServiceResult,
   ComponentMeta,
   DataConnectionTestResult,
   DataConnectionsResponse,
@@ -17,10 +20,17 @@ import type {
   DataRowsResult,
   ExtensionCatalogEntry,
   ExtensionsInfo,
+  GitBranchesResult,
+  GitLogEntry,
+  GitStatusResult,
+  PackageInfo,
+  PackageOpResult,
+  PackageVersionInfo,
+  ProjectSchemasResponse,
+  RecentProjectEntry,
   SecretsListResponse,
-  SecretsSetRequest,
+  KeyValuePatch,
   SecretsSetResponse,
-  SettingsPatch,
 } from "@jxsuite/protocol";
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
@@ -39,90 +49,50 @@ export interface DirEntry {
    package went untypechecked. The wire shape belongs to @jxsuite/protocol; keep it there. */
 export type { ComponentMeta } from "@jxsuite/protocol";
 
-export interface SiteConfig {
-  name?: string;
-  url?: string;
-  [key: string]: unknown;
-}
-
 export interface ProjectHandle {
   root: string;
   name: string;
-  projectConfig: SiteConfig;
+  projectConfig: ProjectConfig;
 }
 
 export interface OpenProjectResult {
-  config: SiteConfig;
+  config: ProjectConfig;
   handle: ProjectHandle;
 }
 
-/** A recently-opened project, keyed by its absolute `root` path. */
-export interface RecentProjectEntry {
-  name: string;
-  root: string;
-  timestamp: number;
-}
+/** One `listFormats` row: a registry entry's wire-facing fields, without its class or its I/O. */
+export type FormatSummary = Pick<
+  FormatEntry,
+  | "capabilities"
+  | "documentKinds"
+  | "exportTarget"
+  | "extensions"
+  | "mediaType"
+  | "name"
+  | "remote"
+  | "studio"
+>;
 
-export interface CodeServiceResult {
-  code?: string;
-  diagnostics?: unknown[];
-  [key: string]: unknown;
-}
+/* Re-exported for the same reason as ComponentMeta: a recently-opened project (keyed here by its
+   absolute `root` path) is the protocol's `RecentProjectEntry`. */
+export type { RecentProjectEntry } from "@jxsuite/protocol";
+
+/* Re-exported for the same reason as ComponentMeta: the wire shape is @jxsuite/protocol's. */
+export type { CodeServiceResult } from "@jxsuite/protocol";
 
 // ─── Git types ───────────────────────────────────────────────────────────────
 
-export interface GitFileStatus {
-  /**
-   * One porcelain letter — `M`, `A`, `D`, `R`, `U` — never a word and never the raw two-column
-   * code.
-   */
-  status: string;
-  path: string;
-  /** Whether this change is in the index. Absent reads as unstaged. */
-  staged?: boolean;
-}
-
-export interface GitStatusResult {
-  branch: string;
-  files: GitFileStatus[];
-  ahead: number;
-  behind: number;
-  isRepo: boolean;
-  remotes: string[];
-}
-
-export interface GitBranchesResult {
-  current: string;
-  branches: string[];
-}
-
-export interface GitLogEntry {
-  hash: string;
-  message: string;
-  author: string;
-  date: string;
-}
-
-export interface PackageInfo {
-  name: string;
-  version: string;
-  /** True when the dependency lives in `devDependencies` rather than `dependencies`. */
-  dev?: boolean;
-}
-
-/** A dependency's pinned range beside its newest version on the registry, behind or not. */
-export interface PackageVersionInfo {
-  name: string;
-  current: string;
-  latest: string;
-  dev?: boolean;
-}
-
-/** Result of a package mutation that runs `bun install` (install / set-versions). */
-export interface PackageOpResult {
-  ok: boolean;
-  log?: string;
-}
+/* The git and package shapes are the protocol's wire contract, re-exported for the same reason as
+   ComponentMeta: this bridge serves the routes the protocol declares. */
+export type {
+  GitBranchesResult,
+  GitFileStatus,
+  GitLogEntry,
+  GitStatusResult,
+  PackageInfo,
+  PackageOpResult,
+  PackageVersionInfo,
+} from "@jxsuite/protocol";
 
 // ─── Update types ────────────────────────────────────────────────────────────
 
@@ -204,7 +174,7 @@ export interface StudioRPC {
         response: ComponentMeta[];
       };
       codeService: {
-        params: { action: string; payload: unknown };
+        params: { action: string; payload: JsonValue | undefined };
         response: CodeServiceResult | null;
       };
       locateFile: {
@@ -213,7 +183,7 @@ export interface StudioRPC {
       };
       fetchPluginSchema: {
         params: { src: string; prototype?: string; base?: string };
-        response: unknown | null;
+        response: JsonValue;
       };
       // Class / server-function resolution (mirrors dev-server /__jx_resolve__ & /__jx_server__)
       jxResolve: {
@@ -368,7 +338,7 @@ export interface StudioRPC {
       // Formats
       listFormats: {
         params: void;
-        response: Record<string, unknown>[];
+        response: FormatSummary[];
       };
       // Extensions payload — the formats channel's sibling (specs/extensions.md §9/§9.1)
       /* The studio wire shape, not `Record<string, unknown>[]`: the PAL declares
@@ -387,20 +357,11 @@ export interface StudioRPC {
       // Pre-bundled per-project entry schemas for Monaco (project.schema.json / document.schema.json)
       fetchProjectSchemas: {
         params: void;
-        response: {
-          project?: Record<string, unknown>;
-          document?: Record<string, unknown>;
-        };
+        response: ProjectSchemasResponse;
       };
       formatAction: {
-        params: {
-          format: string;
-          action: string;
-          source?: string;
-          doc?: Record<string, unknown>;
-          options?: Record<string, unknown>;
-        };
-        response: unknown;
+        params: FormatActionRequest;
+        response: JxMutableNode | string;
       };
       // Data surface + secrets — desktop twins of /__studio/data/* + /__studio/secrets
       // (@jxsuite/protocol shapes; names-only secrets, owner-console row CRUD)
@@ -422,11 +383,11 @@ export interface StudioRPC {
       };
       dataInsertRow: {
         params: DataRowInsert;
-        response: { row: Record<string, unknown> };
+        response: { row: JsonObject };
       };
       dataUpdateRow: {
         params: DataRowUpdate;
-        response: { row: Record<string, unknown> };
+        response: { row: JsonObject };
       };
       dataDeleteRow: {
         params: DataRowDelete;
@@ -437,7 +398,7 @@ export interface StudioRPC {
         response: SecretsListResponse;
       };
       setSecrets: {
-        params: SecretsSetRequest;
+        params: KeyValuePatch;
         response: SecretsSetResponse;
       };
       // Packages
@@ -585,7 +546,7 @@ export interface StudioRPC {
       };
       setWindowProject: {
         params: { root: string };
-        response: { deduped: boolean; config: SiteConfig | null };
+        response: { deduped: boolean; config: ProjectConfig | null };
       };
       getProjectRoot: {
         params: void;
@@ -622,7 +583,7 @@ export interface StudioRPC {
        * writer.
        */
       patchSettings: {
-        params: { patch: SettingsPatch };
+        params: { patch: KeyValuePatch };
         response: Record<string, string>;
       };
       /*

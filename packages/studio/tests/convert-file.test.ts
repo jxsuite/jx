@@ -21,9 +21,14 @@ import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
 import { convertFile, fileFormatCommands } from "../src/format/convert-file";
 import { invalidateUsages } from "../src/services/references";
 import { CSV_FORMAT, MARKDOWN_FORMAT, mockFormatAction } from "./format-fixture";
-import type { AnyCommand } from "../src/commands/registry";
+import { emptyContext } from "../src/commands/context";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { Command } from "../src/commands/registry";
+import type { CommandArgsSchema, CommandArgValues } from "../src/commands/command-args";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type { MockPlatformState } from "./harness";
 import type { StudioFormat } from "../src/format/format-host";
+import type { ReferenceFile, StudioPlatform } from "../src/types";
 
 /**
  * The document validator, mocked at FILE scope with a per-test answer.
@@ -46,27 +51,26 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 const PAGE_MD = "---\ntitle: About\n---\n\n# Hello\n";
 
 let state: MockPlatformState;
 
-function install(files: Record<string, string>, overrides: Record<string, unknown> = {}) {
-  ({ state } = installMockPlatform(
-    { formatAction: mockFormatAction, ...overrides } as never,
-    files,
-  ));
+function install(files: Record<string, string>, overrides: Partial<StudioPlatform> = {}) {
+  ({ state } = installMockPlatform({ formatAction: mockFormatAction, ...overrides }, files));
 }
 
 /** The platform calls that touched the filesystem, in order. */
 function fsCalls(): string[] {
-  return state.calls
-    .filter(([name]) => name === "writeFile" || name === "renameFile" || name === "deleteFile")
-    .map(([name, ...args]) => `${name} ${(args as string[])[0]}`);
+  return state.calls.flatMap(([name, path]) =>
+    name === "writeFile" || name === "renameFile" || name === "deleteFile"
+      ? [`${name} ${String(path)}`]
+      : [],
+  );
 }
 
 /**
@@ -131,7 +135,10 @@ describe("markdown to JSON", () => {
     const pending = convertFile("pages/about.md", ".json");
     await answerConfirm(true);
     await pending;
-    const written = JSON.parse(state.files.get("pages/about.json")!) as Record<string, unknown>;
+    const written: JsonValue = JSON.parse(state.files.get("pages/about.json")!);
+    if (!isJsonObject(written)) {
+      throw new Error("the converted page is not a JSON object");
+    }
     expect(written.title).toBe("About");
     expect(Array.isArray(written.children)).toBe(true);
   });
@@ -143,8 +150,9 @@ describe("markdown to JSON", () => {
     const back = convertFile("pages/about.json", ".md");
     await answerConfirm(true);
     expect(await back).toBe("pages/about.md");
-    expect(state.files.get("pages/about.md")).toContain("title: About");
-    expect(state.files.get("pages/about.md")).toContain("# Hello");
+    const markdown = state.files.get("pages/about.md");
+    expect(markdown).toContain("title: About");
+    expect(markdown).toContain("# Hello");
   });
 });
 
@@ -225,7 +233,7 @@ describe("refusals — all of them before anything moves", () => {
     install(
       { "pages/about.json": '{"tagName":"div","children":[]}' },
       {
-        formatAction: (payload: Record<string, unknown>) =>
+        formatAction: (payload) =>
           payload.action === "serialize"
             ? Promise.reject(new Error("Markdown cannot express a tag chosen at creation"))
             : mockFormatAction(payload),
@@ -320,7 +328,7 @@ describe("the open tab", () => {
     install(
       { "pages/about.json": '{"title":"About","children":[]}' },
       {
-        formatAction: (payload: Record<string, unknown>) => {
+        formatAction: (payload) => {
           if (payload.action === "parse") {
             parses += 1;
             if (parses > 1) {
@@ -366,8 +374,7 @@ describe("choosing the target", () => {
     install(
       { "pages/about.md": PAGE_MD },
       {
-        formatAction: (payload: Record<string, unknown>) =>
-          mockFormatAction({ ...payload, format: "Markdown" }),
+        formatAction: (payload) => mockFormatAction({ ...payload, format: "Markdown" }),
       },
     );
     setFormats([MARKDOWN_FORMAT, MARKDOWN_TWO, CSV_FORMAT]);
@@ -375,9 +382,10 @@ describe("choosing the target", () => {
     for (let i = 0; i < 50 && !topDialog()?.querySelector('[part="choice"] select'); i += 1) {
       await flush();
     }
-    const picker = topDialog()!.querySelector('[part="choice"] select') as HTMLElement & {
-      value: string;
-    };
+    const picker = topDialog()!.querySelector('[part="choice"] select');
+    if (!(picker instanceof HTMLSelectElement)) {
+      throw new Error("the target dialog drew no format picker");
+    }
     expect(
       [...topDialog()!.querySelectorAll("option")].map((el) => el.getAttribute("value")),
     ).toEqual([".json", ".mdx"]);
@@ -386,7 +394,7 @@ describe("choosing the target", () => {
     await flush();
     // The target dialog, then the consequences dialog — two questions, in that order.
     topDialog()!.dispatchEvent(new Event("confirm"));
-    for (let i = 0; i < 50 && !topDialog()?.textContent?.includes("about.mdx"); i += 1) {
+    for (let i = 0; i < 50 && !topDialog()?.textContent.includes("about.mdx"); i += 1) {
       await flush();
     }
     topDialog()!.dispatchEvent(new Event("confirm"));
@@ -409,13 +417,20 @@ describe("choosing the target", () => {
 
 describe("what the plan reports", () => {
   /** Give the mock a reference index, which it does not carry by default. */
-  function withReferences(files: { path: string; count: number }[]) {
+  function withReferences(counts: { path: string; count: number }[]) {
+    const files: ReferenceFile[] = counts.map((f) => ({ ...f, refs: [] }));
     install(
       { "pages/about.md": PAGE_MD },
       {
-        capabilities: { findReferences: true },
-        findReferences: () =>
-          Promise.resolve({ errors: [], files, refsTotal: files.reduce((n, f) => n + f.count, 0) }),
+        findReferences: (target) =>
+          Promise.resolve({
+            errors: [],
+            files,
+            filesReferencing: files.length,
+            path: target.path ?? null,
+            refsTotal: files.reduce((n, f) => n + f.count, 0),
+            tagName: target.tagName ?? null,
+          }),
       },
     );
   }
@@ -466,7 +481,7 @@ describe("what the plan reports", () => {
     install(
       { "pages/about.json": '{"title":"About","children":[]}' },
       {
-        formatAction: (payload: Record<string, unknown>) => {
+        formatAction: (payload) => {
           if (payload.action !== "serialize") {
             return mockFormatAction(payload);
           }
@@ -489,7 +504,7 @@ describe("what the plan reports", () => {
     install(
       { "pages/about.json": '{"title":"About","children":[]}' },
       {
-        formatAction: (payload: Record<string, unknown>) => {
+        formatAction: (payload) => {
           call += 1;
           return payload.action === "parse" && call > 1
             ? Promise.reject(new Error("unreadable"))
@@ -517,29 +532,45 @@ describe("what the plan reports", () => {
 });
 
 describe("the command record", () => {
-  const record = () =>
-    fileFormatCommands()[0]! as AnyCommand & {
-      run: (ctx: unknown, args: Record<string, unknown>) => Promise<void>;
-    };
+  /** The convert record, with the argument type `AnyCommand` erases put back. */
+  function record(): Command<CommandArgValues> {
+    const [command] = fileFormatCommands();
+    if (!command) {
+      throw new Error("fileFormatCommands() declared no record");
+    }
+    /* SAFETY: fileFormatCommands() declares this record's run as `(_ctx, args: CommandArgValues)`;
+       `AnyCommand` erases that argument type to `never` only so records of every argument type
+       share one array, so restoring it restores the record's own declaration. */
+    return command as Command<CommandArgValues>;
+  }
+
+  /** The record's declared argument schema. */
+  function argsOf(): CommandArgsSchema {
+    const { args } = record();
+    if (!args) {
+      throw new Error("file.convertFormat declares no args schema");
+    }
+    return args;
+  }
 
   test("is declared for the file context menu, and asks only for the file", () => {
-    const args = record().args as { properties: Record<string, unknown>; required: string[] };
+    const args = argsOf();
     expect(record().id).toBe("file.convertFormat");
     expect(record().menus).toEqual(["context/file"]);
     /* `required` is passed EXPLICITLY. `argsSchema` defaults it to every key, and a required
        `format` would make the row silently never render — a file row can state which file it is,
        never which format the reader wants. */
     expect(args.required).toEqual(["source"]);
-    expect(Object.keys(args.properties).toSorted()).toEqual(["format", "source"]);
+    expect(Object.keys(args.properties ?? {}).toSorted()).toEqual(["format", "source"]);
   });
 
   test("its format enum is derived when READ, not when the record was built", () => {
-    const args = record().args as { properties: { format: { enum: string[] } } };
-    expect(args.properties.format.enum).toEqual([".json", ".md"]);
+    const format = argsOf().properties?.format;
+    expect(format?.enum).toEqual([".json", ".md"]);
     setFormats([]);
     // A snapshot taken at module scope would still say [".json", ".md"] here — and the palette, the
     // AI tool list and the shot contract all read the property, not the builder.
-    expect(args.properties.format.enum).toEqual([".json"]);
+    expect(format?.enum).toEqual([".json"]);
   });
 
   test("nothing restores a convert, and the record says so rather than pretending", () => {
@@ -550,14 +581,14 @@ describe("the command record", () => {
   });
 
   test("run converts the file it names, with a stated format", async () => {
-    const pending = record().run({}, { format: ".json", source: "pages/about.md" });
+    const pending = record().run(emptyContext(), { format: ".json", source: "pages/about.md" });
     await answerConfirm(true);
     await pending;
     expect(state.files.has("pages/about.json")).toBe(true);
   });
 
   test("run with no stated format lets the one target answer for itself", async () => {
-    const pending = record().run({}, { source: "pages/about.md" });
+    const pending = record().run(emptyContext(), { source: "pages/about.md" });
     await answerConfirm(true);
     await pending;
     expect(state.files.has("pages/about.json")).toBe(true);

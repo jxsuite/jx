@@ -31,7 +31,6 @@ import { effect, pauseTracking, resetTracking } from "../reactivity";
 import { postPopoverOpen, revealCanvasPath } from "./iframe-host";
 import { primarySelection } from "../tabs/selection";
 import { updateSession } from "../store";
-import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
 
@@ -59,7 +58,7 @@ export function setOpenPopover(tab: Tab, path: JxPath | null): void {
 
 /** Open the popover containing `path`, if any. Returns whether anything changed. */
 function openPopoverFor(tab: Tab, path: JxPath | null): boolean {
-  const target = ancestorPopoverPath(tab.doc.document as JxMutableNode, path);
+  const target = ancestorPopoverPath(tab.doc.document, path);
   if (target === null || samePath(tab.session.ui.openPopover, target)) {
     return false;
   }

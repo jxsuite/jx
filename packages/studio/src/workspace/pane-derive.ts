@@ -31,12 +31,13 @@
 
 import { effect } from "../reactivity";
 import { componentRegistry } from "../files/components";
-import { getNodeAtPath, parentElementPath } from "../store";
+import { parentElementPath } from "../store";
 
 import { canvasPerf } from "../canvas/canvas-perf";
 import { canvasModeOfTab, tabOfPane } from "../canvas/canvas-surface";
 import { parseMediaEntries } from "../utils/canvas-media";
 import { getEffectiveLayoutPath, getEffectiveLocales, getEffectiveMedia } from "../site-context";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { localeLabel, translationPathFor } from "@jxsuite/schema/locale";
 import { shell } from "../shell";
 import {
@@ -97,14 +98,14 @@ export type DerivePreset = (typeof DERIVE_PRESETS)[number];
  * pinned by a test (`per-preset refusals` · "Layout's gate is the layout RESOLVING") instead of
  * being asserted here in prose.
  */
-const MODE_FOR_PRESET: Readonly<Partial<Record<DerivePreset, string>>> = {
+const MODE_FOR_PRESET: Readonly<Partial<Record<DerivePreset, keyof typeof MODE_WORDS>>> = {
   breakpoint: "design",
   code: "source",
   component: "design",
 };
 
 /** How a mode is spelled in a refusal — the words on the Editor axis, not the internal ids. */
-const MODE_WORDS: Readonly<Record<string, string>> = { design: "Design", source: "Code" };
+const MODE_WORDS = { design: "Design", source: "Code" } as const;
 
 /** Said by a diff lens whose comparison came back empty. One sentence, one home. */
 const DIFF_UNREADABLE = "Could not read this file's comparison against HEAD.";
@@ -399,9 +400,7 @@ function companionTarget(
        hit is transient — `iframe-host.ts` clears it the moment the author clicks page content —
        so the page's own layout remains the answer for a derivation created from the preset menu. */
     const hit = shell.layoutSelection;
-    const path =
-      hit?.layoutFile ??
-      getEffectiveLayoutPath(source.doc.document.$layout as string | false | undefined);
+    const path = hit?.layoutFile ?? getEffectiveLayoutPath(source.doc.document.$layout);
     return path === null
       ? {
           ...base,
@@ -421,7 +420,7 @@ function companionTarget(
              was a condition with no false branch, and an unreachable branch is a claim nobody can
              check. What stops a node path from layout A landing inside layout B is
              {@link selectInPane}, which compares against the document actually on screen. */
-          select: hit ? (hit.layoutPath as JxPath) : null,
+          select: hit ? hit.layoutPath : null,
           status: "ready",
         };
   }
@@ -534,7 +533,7 @@ export function componentPathUnderSelection(tab: Tab | null): string | null {
     if (entry?.path) {
       return entry.path;
     }
-    path = parentElementPath(path) as JxPath | null;
+    path = parentElementPath(path);
   }
   return null;
 }
@@ -758,7 +757,7 @@ function loadDiffFor(paneId: string, target: DerivedTarget, deps: DerivationDeps
          cannot re-enter, because neither of those answers carries a `diffPath`. */
       applyDerivation(paneId, deps);
     })
-    .catch((error: unknown) => {
+    .catch((error) => {
       console.error("loadDiff error:", error);
     });
 }
@@ -808,7 +807,7 @@ function probeTranslationFor(paneId: string, target: DerivedTarget, deps: Deriva
          them carries a `probePath`, so this cannot re-enter. */
       applyDerivation(paneId, deps);
     })
-    .catch((error: unknown) => {
+    .catch((error) => {
       console.error("fileExists error:", error);
     });
 }
@@ -1016,8 +1015,7 @@ export function presetRefusal(
        which `paneIsEmpty` will not collapse, whose strip drew nothing and whose stage drew nothing.
        `component` is deliberately NOT refused the same way — "select an element inside a component"
        is a rule that resolves on the next click, which is the whole point of leaving it open. */
-    return getEffectiveLayoutPath(source.doc.document.$layout as string | false | undefined) ===
-      null
+    return getEffectiveLayoutPath(source.doc.document.$layout) === null
       ? "a page with a layout — this one declares none"
       : null;
   }

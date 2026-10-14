@@ -12,13 +12,17 @@ import { flush, mountOverlayLayers, stubRect } from "./harness";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import { dismissSlashMenu, isSlashMenuOpen, showSlashMenu } from "../src/editor/slash-menu";
+import type { SlashMenuCallbacks } from "../src/editor/slash-menu";
+
+/** The command a row hands to `onSelect`. */
+type SlashCommand = Parameters<SlashMenuCallbacks["onSelect"]>[0];
 
 // ─── Environment ──────────────────────────────────────────────────────────────
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 beforeAll(() => {
   mountOverlayLayers();
@@ -127,15 +131,15 @@ describe("showFilter mode", () => {
   });
 
   test("Enter with an empty result list selects nothing and stays open", () => {
-    let selected: unknown = null;
+    const selected: SlashCommand[] = [];
     showSlashMenu(anchor, "zzz", {
       onSelect: (cmd) => {
-        selected = cmd;
+        selected.push(cmd);
       },
       showFilter: true,
     });
     pressKey("Enter");
-    expect(selected).toBeNull();
+    expect(selected).toEqual([]);
     expect(isSlashMenuOpen()).toBe(true);
   });
 
@@ -184,19 +188,21 @@ describe("outside press", () => {
 
 describe("click selection", () => {
   test("clicking a row selects its command and closes the menu", async () => {
-    let selected: { tag: string } | null = null;
+    const selected: SlashCommand[] = [];
     showSlashMenu(anchor, "img", {
       onSelect: (cmd) => {
-        selected = cmd;
+        selected.push(cmd);
       },
     });
     const [row] = await rows();
     row!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    expect(selected as unknown).toEqual({
-      description: "Insert image",
-      label: "Image",
-      tag: "img",
-    });
+    expect(selected).toEqual([
+      {
+        description: "Insert image",
+        label: "Image",
+        tag: "img",
+      },
+    ]);
     expect(isSlashMenuOpen()).toBe(false);
   });
 });

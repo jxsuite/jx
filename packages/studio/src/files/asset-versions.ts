@@ -30,13 +30,14 @@
  * paths only — a `.json` or `.md` file is never loaded by URL from the canvas, and leaving them out
  * keeps that message as small as the media set.
  *
- * Pure module state — it imports nothing but path normalization and the reactivity re-export — so
- * the canvas host can import it without dragging in the file layer.
+ * Pure module state — it imports nothing but path normalization, the primitive guards and the
+ * reactivity re-export — so the canvas host can import it without dragging in the file layer.
  *
  * @docs extending/embedding/platform-adapter
  */
 
 import { normalizeProjectPath } from "@jxsuite/schema/asset-paths";
+import { isString } from "@jxsuite/schema/guards";
 import { shallowRef } from "../reactivity";
 import type { DirEntry } from "../types";
 
@@ -161,8 +162,7 @@ export function noteListing(entries: readonly DirEntry[], since: number): void {
     if (path === "" || dirtiedSince(path, since)) {
       continue;
     }
-    const version =
-      typeof entry.version === "string" && entry.version !== "" ? entry.version : null;
+    const version = isString(entry.version) && entry.version !== "" ? entry.version : null;
     const held = versions.get(path);
     if (version === null) {
       if (held === undefined) {

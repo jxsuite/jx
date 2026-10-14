@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { EXTENSION_CAPABILITIES, FormatEntry, buildFormatRegistry } from "../src/format-registry";
 import type { FormatHostIO } from "../src/format-registry";
+import type { JsonObject } from "../types";
 
 describe("EXTENSION_CAPABILITIES", () => {
   test("includes the build-time emit role", () => {
@@ -53,22 +54,27 @@ const CSV_CLASS = {
   title: "Csv",
 };
 
+/** The namespace object `FormatHostIO.importModule` resolves to, taken from the contract itself. */
+type ModuleNamespace = Awaited<ReturnType<FormatHostIO["importModule"]>>;
+
 function makeIO(
-  files: Record<string, unknown>,
-  modules: Record<string, unknown> = {},
+  files: Readonly<Record<string, JsonObject>>,
+  modules: Readonly<Record<string, ModuleNamespace>> = {},
 ): FormatHostIO {
   return {
     importModule: async (path) => {
-      if (!(path in modules)) {
+      const namespace = modules[path];
+      if (namespace === undefined) {
         throw new Error(`no module: ${path}`);
       }
-      return modules[path] as Record<string, unknown>;
+      return namespace;
     },
     loadJson: async (path) => {
-      if (!(path in files)) {
+      const file = files[path];
+      if (file === undefined) {
         throw new Error(`not found: ${path}`);
       }
-      return files[path] as Record<string, unknown>;
+      return file;
     },
     resolvePath: (base, ref) => new URL(ref, `file://${base}`).pathname,
   };
@@ -277,5 +283,69 @@ describe("FormatEntry.call", () => {
     await expect(reg.byName("Csv")!.call("parse", "a,b")).rejects.toThrow(
       /no static "parse" method/,
     );
+  });
+
+  test("finds the class under its title on the default export, else takes the default export", async () => {
+    const parse = (source: string) => ({ tagName: `x-${source}` });
+    const io = makeIO(
+      { "/p/Markdown.class.json": MARKDOWN_CLASS, "/q/Markdown.class.json": MARKDOWN_CLASS },
+      {
+        "/p/markdown.js": { default: { Markdown: { parse } } },
+        "/q/markdown.js": { default: { parse } },
+      },
+    );
+    const titled = await buildFormatRegistry({ Markdown: "./Markdown.class.json" }, io, "/p/x");
+    const bare = await buildFormatRegistry({ Markdown: "./Markdown.class.json" }, io, "/q/x");
+    const fromTitled = await titled.byName("Markdown")!.call("parse", "titled");
+    const fromBare = await bare.byName("Markdown")!.call("parse", "bare");
+    expect([fromTitled, fromBare]).toEqual([{ tagName: "x-titled" }, { tagName: "x-bare" }]);
+  });
+
+  test("calls the method with its export as `this`", async () => {
+    const Markdown = {
+      tagName: "x-bound",
+      parse(this: { tagName: string }) {
+        return { tagName: this.tagName };
+      },
+    };
+    const io = makeIO(
+      { "/p/Markdown.class.json": MARKDOWN_CLASS },
+      { "/p/markdown.js": { Markdown } },
+    );
+    const reg = await buildFormatRegistry({ Markdown: "./Markdown.class.json" }, io, "/p/x");
+    const result = await reg.byName("Markdown")!.call("parse", "");
+    expect(result).toEqual({ tagName: "x-bound" });
+  });
+});
+
+describe("FormatEntry.implementationExport", () => {
+  test("is nullish when the module exports nothing under the class title", async () => {
+    const io = makeIO({ "/p/Csv.class.json": CSV_CLASS }, { "/p/csv.js": { Other: {} } });
+    const reg = await buildFormatRegistry({ Csv: "./Csv.class.json" }, io, "/p/x");
+    const exported = await reg.byName("Csv")!.implementationExport();
+    expect(exported).toBeUndefined();
+  });
+});
+
+describe("FormatEntry.parseDocument", () => {
+  test("parses a page source through the format's parse capability", async () => {
+    const calls: unknown[][] = [];
+    const io = makeIO(
+      { "/p/Markdown.class.json": MARKDOWN_CLASS },
+      {
+        "/p/markdown.js": {
+          Markdown: {
+            parse: (...args: unknown[]) => {
+              calls.push(args);
+              return { tagName: "my-page" };
+            },
+          },
+        },
+      },
+    );
+    const reg = await buildFormatRegistry({ Markdown: "./Markdown.class.json" }, io, "/p/x");
+    const doc = await reg.byName("Markdown")!.parseDocument("# hi", { path: "pages/index.md" });
+    expect(doc).toEqual({ tagName: "my-page" });
+    expect(calls).toEqual([["# hi", { path: "pages/index.md" }]]);
   });
 });

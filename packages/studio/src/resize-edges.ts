@@ -1,17 +1,27 @@
 /// <reference lib="dom" />
-const g = globalThis as unknown as {
-  __jxPlatform?: {
-    windowControls?: {
-      getFrame: () => Promise<{
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-      }>;
-      setFrame: (x: number, y: number, w: number, h: number) => void;
-    };
-  };
-};
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
+import type { SerializableRect } from "./canvas/iframe-protocol";
+
+/** The desktop shell's frame controls; only desktop adapters add them to the platform. */
+interface ResizeWindowControls {
+  getFrame: () => Promise<SerializableRect>;
+  setFrame: (x: number, y: number, w: number, h: number) => void;
+}
+
+/** True when `value` is a windowControls object that can at least read the window frame. */
+function isResizeWindowControls(value: unknown): value is ResizeWindowControls {
+  return isNonNullObject(value) && "getFrame" in value && isFunction(value.getFrame);
+}
+
+/** The registered platform's window controls, when it is a desktop shell that exposes them. */
+function readWindowControls(): ResizeWindowControls | undefined {
+  const platform = globalThis.__jxPlatform;
+  if (platform == null || !("windowControls" in platform)) {
+    return undefined;
+  }
+  const controls = platform.windowControls;
+  return isResizeWindowControls(controls) ? controls : undefined;
+}
 
 const EDGES = [
   "top",
@@ -30,8 +40,8 @@ const MIN_HEIGHT = 300;
 let mounted = false;
 
 export function mountResizeEdges() {
-  const wc = g.__jxPlatform?.windowControls;
-  if (!wc || !wc.getFrame || mounted) {
+  const wc = readWindowControls();
+  if (!wc || mounted) {
     return;
   }
   mounted = true;
@@ -49,27 +59,7 @@ export function mountResizeEdges() {
   document.body.append(container);
 }
 
-/**
- * @param {MouseEvent} e
- * @param {string} edge
- * @param {{
- *   getFrame: () => Promise<{ x: number; y: number; width: number; height: number }>;
- *   setFrame: (x: number, y: number, w: number, h: number) => void;
- * }} wc
- */
-async function startResize(
-  e: MouseEvent,
-  edge: string,
-  wc: {
-    getFrame: () => Promise<{
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    }>;
-    setFrame: (x: number, y: number, w: number, h: number) => void;
-  },
-) {
+async function startResize(e: MouseEvent, edge: string, wc: ResizeWindowControls) {
   e.preventDefault();
   e.stopPropagation();
 

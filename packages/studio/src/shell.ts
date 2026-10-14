@@ -21,6 +21,7 @@
  * the branch. See specs/studio.md and the level × placement matrix.
  */
 
+import { isBoolean, isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { effect, effectScope, reactive } from "./reactivity";
 import { SETTINGS } from "./services/settings/definitions";
 import { readStoredSetting, setSetting } from "./services/settings/kernel";
@@ -39,17 +40,10 @@ import {
   stringProperty,
 } from "./commands/command-args";
 import type { EffectScope } from "@vue/reactivity";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { LayoutHit } from "./canvas/iframe-protocol";
-import type { GitBranchesResult, GitDiffState, GitStatusResult } from "./types";
+import type { GitBranchesResult, GitDiffState, GitLogEntry, GitStatusResult } from "./types";
 import type { AnyCommand, CommandRegistry } from "./commands/registry";
-
-/**
- * The canvas selection when the author clicked LAYOUT chrome rather than page content — a header, a
- * footer, anything contributed by the layout file. It is deliberately NOT a document selection: the
- * node is not in the open page at all, so the properties panel shows the read-only layout panel
- * (with "Open Layout →") instead of the element inspector. See {@link setLayoutSelection}.
- */
-export type LayoutSelection = LayoutHit;
 
 /**
  * The three resizable docks around the pane grid: two flanking it, one under it.
@@ -115,23 +109,23 @@ export type NavigatorPanelId = (typeof NAVIGATOR_PANEL_IDS)[number];
  * value is the one place those old strings can still arrive from, so they are translated once, on
  * read, and then never again — there is no alias in the registry and no branch in the rail.
  */
-const RENAMED_PANEL_IDS: Readonly<Record<string, NavigatorPanelId>> = {
-  blocks: "insert",
-  head: "page",
-  imports: "packages",
+const RENAMED_PANEL_IDS = new Map<string, NavigatorPanelId>([
+  ["blocks", "insert"],
+  ["head", "page"],
+  ["imports", "packages"],
   /* Not a rename — a MERGE. The State editor is part of the Data panel now (§5.6), so a
      stored `leftTab: "state"` names a real place and lands on it, rather than returning `null` and
      booting into the default the way `problems` does. Defining a value and watching it resolve are
      one task; they were two panels. */
-  state: "data",
-};
+  ["state", "data"],
+]);
 
 /** The panel the Navigator wakes up on when nothing usable is stored. */
 export const DEFAULT_PANEL_ID: NavigatorPanelId = "layers";
 
 /** Whether a string is a declared panel id. */
 export function isNavigatorPanelId(value: unknown): value is NavigatorPanelId {
-  return typeof value === "string" && (NAVIGATOR_PANEL_IDS as readonly string[]).includes(value);
+  return typeof value === "string" && NAVIGATOR_PANEL_IDS.some((id) => id === value);
 }
 
 /**
@@ -147,10 +141,12 @@ export function isNavigatorPanelId(value: unknown): value is NavigatorPanelId {
  * drift was a control that silently did nothing.
  */
 export function requireNavigatorPanelId(value: string, source: string): NavigatorPanelId {
-  if (!isNavigatorPanelId(value)) {
+  // `find` hands back the DECLARED id, typed as one, which is the same string the caller sent.
+  const id = NAVIGATOR_PANEL_IDS.find((candidate) => candidate === value);
+  if (id === undefined) {
     throw new Error(`${source}: "${value}" is not a declared Navigator panel id.`);
   }
-  return value;
+  return id;
 }
 
 /**
@@ -166,15 +162,15 @@ export function requireNavigatorPanelId(value: string, source: string): Navigato
  * Bottom dock keeps its own `bottomTab`, which already defaults to Problems. This is exactly the
  * wedge this function exists to prevent.
  */
-export function migratePanelId(stored: unknown): NavigatorPanelId | null {
-  if (typeof stored !== "string") {
+export function migratePanelId(stored: JsonValue | undefined): NavigatorPanelId | null {
+  if (!isString(stored)) {
     return null;
   }
-  const renamed = RENAMED_PANEL_IDS[stored];
+  const renamed = RENAMED_PANEL_IDS.get(stored);
   if (renamed) {
     return renamed;
   }
-  return isNavigatorPanelId(stored) ? stored : null;
+  return NAVIGATOR_PANEL_IDS.find((id) => id === stored) ?? null;
 }
 
 /**
@@ -199,7 +195,7 @@ export const DEFAULT_INSPECTOR_TAB: InspectorTabId = "properties";
 
 /** Whether a string is a declared Inspector tab id. */
 export function isInspectorTabId(value: unknown): value is InspectorTabId {
-  return typeof value === "string" && (INSPECTOR_TAB_IDS as readonly string[]).includes(value);
+  return typeof value === "string" && INSPECTOR_TAB_IDS.some((id) => id === value);
 }
 
 /**
@@ -225,7 +221,7 @@ export const DEFAULT_BOTTOM_TAB: BottomTabId = "problems";
 
 /** Whether a string is a declared Bottom dock tab id. */
 export function isBottomTabId(value: unknown): value is BottomTabId {
-  return typeof value === "string" && (BOTTOM_TAB_IDS as readonly string[]).includes(value);
+  return typeof value === "string" && BOTTOM_TAB_IDS.some((id) => id === value);
 }
 
 /** The Studio chrome's themes — the `data-theme` stamp on `<html>` (studio-ui-guidelines.md §1.1). */
@@ -249,13 +245,9 @@ export interface DockState {
   size: number;
 }
 
-/** One row of `git log`, as the Source Control panel's History tab renders it. */
-export interface GitLogEntry {
-  hash: string;
-  message: string;
-  author: string;
-  date: string;
-}
+/* One row of `git log`, as the Source Control panel's History tab renders it: the platform's own
+   `gitLog` row, re-exported so the panels reading shell state keep one import. */
+export type { GitLogEntry } from "./types";
 
 /** Source control — project level, one copy, independent of which document is focused. */
 export interface ShellGit {
@@ -354,14 +346,20 @@ export interface ShellState {
   layout: string;
   /** Every layout this project has, built-ins included. Persisted per project root. */
   layouts: LayoutPreset[];
-  layoutSelection: LayoutSelection | null;
+  /**
+   * Layout chrome the author clicked, or `null`: a header, a footer, anything contributed by the
+   * layout file. It is deliberately NOT a document selection: the node is not in the open page at
+   * all, so the properties panel shows the read-only layout panel (with "Open Layout →") instead of
+   * the element inspector. See {@link setLayoutSelection}.
+   */
+  layoutSelection: LayoutHit | null;
   /** Which section Project Settings opens on. */
   settingsTab: string;
   stylebook: ShellStylebook;
   git: ShellGit;
 }
 
-const DOCK_STORAGE_KEY = "jx-studio-panel-widths";
+export const DOCK_STORAGE_KEY = "jx-studio-panel-widths";
 
 /**
  * The per-project record's key prefix — one namespaced record per project root (§14.8).
@@ -387,8 +385,8 @@ const PROJECT_STORAGE_PREFIX = "jx-studio-project::";
 const DEFAULT_THEME: ChromeTheme = "dark";
 
 /** Whether a string is one of the declared {@link CHROME_THEMES}. */
-function isChromeTheme(value: unknown): value is ChromeTheme {
-  return typeof value === "string" && (CHROME_THEMES as readonly string[]).includes(value);
+export function isChromeTheme(value: unknown): value is ChromeTheme {
+  return typeof value === "string" && CHROME_THEMES.some((theme) => theme === value);
 }
 
 /** Read the persisted theme, falling back to {@link DEFAULT_THEME} on an absent/unknown value. */
@@ -486,8 +484,8 @@ export const PANE_SPLIT_MAX = 0.8;
  * range, so the only way a bad value arrives is a corrupt or hand-edited record — and that is the
  * one caller that has to be defended.
  */
-function clampPaneSplit(value: unknown): number {
-  return typeof value === "number" && value >= PANE_SPLIT_MIN && value <= PANE_SPLIT_MAX
+function clampPaneSplit(value: JsonValue | undefined): number {
+  return isNumber(value) && value >= PANE_SPLIT_MIN && value <= PANE_SPLIT_MAX
     ? value
     : DEFAULT_PANE_SPLIT;
 }
@@ -497,13 +495,25 @@ export function setPaneSplit(value: number): void {
   shell.paneSplit = Math.min(PANE_SPLIT_MAX, Math.max(PANE_SPLIT_MIN, value));
 }
 
-/** Read the persisted dock record, tolerating absent/corrupt storage. */
-function readPersistedDocks(): PersistedDocks {
+/**
+ * Read the persisted dock record, tolerating absent/corrupt storage.
+ *
+ * What comes back is the parsed JSON object rather than a {@link PersistedDocks}: that interface is
+ * what {@link persistDocks} WRITES, and a stored record is untrusted input, so every member is
+ * checked where it is read.
+ */
+function readPersistedDocks(): JsonObject {
   try {
-    return JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) || "{}") as PersistedDocks;
+    const parsed: unknown = JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) || "{}");
+    return isJsonObject(parsed) ? parsed : {};
   } catch {
     return {};
   }
+}
+
+/** One state per dock, in {@link DOCK_IDS} order, each built by `make`. */
+function perDock(make: (id: DockId) => DockState): Record<DockId, DockState> {
+  return { left: make("left"), right: make("right"), bottom: make("bottom") };
 }
 
 function freshGit(): ShellGit {
@@ -613,18 +623,17 @@ export const DEFAULT_LAYOUT_ID = "design";
  */
 function createShellState(): ShellState {
   const saved = readPersistedDocks();
-  const docks = {} as Record<DockId, DockState>;
-  for (const id of DOCK_IDS) {
+  const docks = perDock((id) => {
     const width = saved[id];
-    const collapsed = saved[`${id}Collapsed` as const];
-    docks[id] = {
+    const collapsed = saved[`${id}Collapsed`];
+    return {
       // A stored `false` has to REOPEN a dock, so this cannot be the usual
       // `if (saved.x) { collapse() }` shape — that silently pins a dock shut forever for
       // Everyone who ever closed it once.
-      collapsed: typeof collapsed === "boolean" ? collapsed : DOCK_DEFAULTS[id].collapsed,
-      size: typeof width === "number" && width > 0 ? width : DOCK_DEFAULTS[id].size,
+      collapsed: isBoolean(collapsed) ? collapsed : DOCK_DEFAULTS[id].collapsed,
+      size: isNumber(width) && width > 0 ? width : DOCK_DEFAULTS[id].size,
     };
-  }
+  });
   return {
     bottomTab: isBottomTabId(saved.bottomTab) ? saved.bottomTab : DEFAULT_BOTTOM_TAB,
     docks,
@@ -652,14 +661,13 @@ function createShellState(): ShellState {
 applyStartupProfile();
 
 /*
- * The input is widened before `reactive()` sees it: `UnwrapNestedRefs<ShellState>` recurses through
- * `LayoutHit` and the git result shapes deeply enough for tsc to give up (TS2589). The proxy is
- * deep either way — only the type computation is short-circuited — and the declared annotation is
- * what every consumer sees. Same reason `tabs/tab.ts` casts its own reactive tree.
+ * SAFETY: `reactive()` returns a deep proxy carrying its target's own members, and ShellState holds
+ * no refs for `UnwrapNestedRefs` to unwrap, so the proxy IS a ShellState. The type argument is
+ * pinned to `object` because `UnwrapNestedRefs<ShellState>` recurses through `LayoutHit` and the
+ * git result shapes deeply enough for tsc to give up (TS2589). The proxy is deep either way — only
+ * the type computation is short-circuited. Same reason `tabs/tab.ts` casts its own reactive tree.
  */
-export const shell: ShellState = reactive(
-  createShellState() as unknown as Record<string, unknown>,
-) as unknown as ShellState;
+export const shell = reactive<object>(createShellState()) as ShellState;
 
 /**
  * Write the whole dock record in one shot.
@@ -693,10 +701,13 @@ export function persistDocks(): void {
 
 /** What a project's namespaced record holds: its named layouts, and the session it was left in. */
 interface PersistedProject {
-  layouts?: unknown;
-  activeLayout?: unknown;
-  /** §14.8's session — open documents per pane, the active one, and each one's view settings. */
-  session?: unknown;
+  layouts?: LayoutPreset[];
+  activeLayout?: string;
+  /**
+   * §14.8's session — open documents per pane, the active one, and each one's view settings. A
+   * session this boot has not read yet is carried over as the stored JSON it was.
+   */
+  session?: PersistedSession | JsonValue | undefined;
 }
 
 /** The project whose layouts are loaded, or `undefined` before the first sync. */
@@ -704,51 +715,63 @@ let _layoutRoot: string | null | undefined;
 
 /** Whether a parsed value is a usable {@link LayoutPreset} — a stored record is untrusted input. */
 function isLayoutPreset(value: unknown): value is LayoutPreset {
-  if (typeof value !== "object" || value === null) {
+  /* Arrays fail here where the old `typeof … === "object"` let them through, and the outcome is
+     the same: an array carries no string `id`, so it was refused one line later. */
+  if (!isJsonObject(value)) {
     return false;
   }
-  const preset = value as Partial<LayoutPreset>;
+  const { docks } = value;
   return (
-    typeof preset.id === "string" &&
-    preset.id !== "" &&
-    typeof preset.name === "string" &&
-    isNavigatorPanelId(preset.navigatorPanel) &&
-    isInspectorTabId(preset.inspectorTab) &&
-    isBottomTabId(preset.bottomTab) &&
-    DOCK_IDS.every((dock) => typeof preset.docks?.[dock]?.size === "number")
+    isString(value.id) &&
+    value.id !== "" &&
+    isString(value.name) &&
+    isNavigatorPanelId(value.navigatorPanel) &&
+    isInspectorTabId(value.inspectorTab) &&
+    isBottomTabId(value.bottomTab) &&
+    isJsonObject(docks) &&
+    DOCK_IDS.every((dock) => {
+      const entry = docks[dock];
+      return isJsonObject(entry) && isNumber(entry.size);
+    })
   );
 }
 
 /** The raw record for `root`, or `{}` for absent, corrupt or hand-edited storage. */
-function rawPersistedProject(root: string | null): PersistedProject {
+function rawPersistedProject(root: string | null): JsonObject {
   if (!root) {
     return {};
   }
   try {
-    return JSON.parse(
+    const parsed: unknown = JSON.parse(
       localStorage.getItem(`${PROJECT_STORAGE_PREFIX}${root}`) || "{}",
-    ) as PersistedProject;
+    );
+    return isJsonObject(parsed) ? parsed : {};
   } catch {
     return {};
   }
 }
 
-/** Read a project's namespaced record, tolerating absent, corrupt and hand-edited storage. */
-function readPersistedProject(root: string | null): {
+/** A project's layouts as {@link readPersistedProject} recovers them. */
+interface ProjectLayouts {
   layouts: LayoutPreset[];
   activeLayout: string | null;
-} {
-  const fresh = { activeLayout: null, layouts: builtInLayouts() };
+}
+
+/** Read a project's namespaced record, tolerating absent, corrupt and hand-edited storage. */
+function readPersistedProject(root: string | null): ProjectLayouts {
+  const fresh: ProjectLayouts = { activeLayout: null, layouts: builtInLayouts() };
   if (!root) {
     return fresh;
   }
   const parsed = rawPersistedProject(root);
-  const layouts = Array.isArray(parsed.layouts) ? parsed.layouts.filter(isLayoutPreset) : [];
+  const layouts = Array.isArray(parsed.layouts)
+    ? parsed.layouts.flatMap((entry) => (isLayoutPreset(entry) ? [entry] : []))
+    : [];
   if (layouts.length === 0) {
     return fresh;
   }
   return {
-    activeLayout: typeof parsed.activeLayout === "string" ? parsed.activeLayout : null,
+    activeLayout: isString(parsed.activeLayout) ? parsed.activeLayout : null,
     layouts,
   };
 }
@@ -903,10 +926,10 @@ export function applyLayout(id: string, deps: LayoutDeps): void {
 export function saveLayout(name: string, deps: LayoutDeps): LayoutPreset {
   const trimmed = name.trim();
   const id = layoutIdFor(trimmed);
-  const docks = {} as Record<DockId, DockState>;
-  for (const dock of DOCK_IDS) {
-    docks[dock] = { collapsed: shell.docks[dock].collapsed, size: shell.docks[dock].size };
-  }
+  const docks = perDock((dock) => ({
+    collapsed: shell.docks[dock].collapsed,
+    size: shell.docks[dock].size,
+  }));
   const preset: LayoutPreset = {
     bottomTab: isBottomTabId(shell.bottomTab) ? shell.bottomTab : DEFAULT_BOTTOM_TAB,
     docks,
@@ -1219,7 +1242,7 @@ export function toggleActivityTab(tab: NavigatorPanelId): void {
  * a long release cycle with a reader (the properties panel's layout panel) and no writer at all,
  * which is why clicking a header did nothing.
  */
-export function setLayoutSelection(selection: LayoutSelection | null): void {
+export function setLayoutSelection(selection: LayoutHit | null): void {
   shell.layoutSelection = selection;
 }
 

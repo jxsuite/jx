@@ -26,8 +26,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import { headingsOf } from "./lib/headings.ts";
-import type { Nav } from "./nav.ts";
-import { navPaths } from "./nav.ts";
+import { FENCE } from "./lib/spec-status.ts";
+import { navPaths, parseNav } from "./nav.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const DOCS_DIR = join(ROOT, "docs");
@@ -36,7 +36,6 @@ const SITE_PAGES = join(ROOT, "sites/jxsuite.com/pages");
 
 /** `[label](target)`, skipping images. Reference-style links are not used in this corpus. */
 const LINK = /(?<!!)\[(?<label>[^\]]*)\]\((?<target>[^)\s]+)(?:\s+"[^"]*")?\)/g;
-const FENCE = /^\s*(```|~~~)/;
 
 export interface LinkRef {
   file: string;
@@ -90,7 +89,7 @@ export function linksOf(source: string, file: string): LinkRef[] {
  * @returns {string[]}
  */
 export function navSlugs(navJson: string): string[] {
-  return navPaths(JSON.parse(navJson) as Nav);
+  return navPaths(parseNav(navJson));
 }
 
 /** `docs/studio/interface/tabs.md` -> `studio/interface/tabs`; `x/index.md` -> `x`. */

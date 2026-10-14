@@ -13,6 +13,8 @@ import {
   missingRequired,
   seedEntry,
 } from "../src/content/entry-model";
+import type { ContentSectionEntry } from "../src/types";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
 
 const BLOG_SCHEMA: ContentTypeSchema = {
@@ -28,7 +30,7 @@ const BLOG_SCHEMA: ContentTypeSchema = {
   type: "object",
 };
 
-function withContent(content: Record<string, unknown>): void {
+function withContent(content: Record<string, ContentSectionEntry>): void {
   resetStudioState({ projectConfig: { content } });
 }
 
@@ -122,10 +124,14 @@ describe("seedEntry", () => {
     const schema: ContentTypeSchema = {
       properties: { meta: { default: { a: 1 }, type: "object" } },
     };
-    const first = seedEntry(schema) as { meta: { a: number } };
-    const second = seedEntry(schema) as { meta: { a: number } };
-    first.meta.a = 2;
-    expect(second.meta.a).toBe(1);
+    const first = seedEntry(schema);
+    const second = seedEntry(schema);
+    const firstMeta = first["meta"];
+    if (!isJsonObject(firstMeta)) {
+      throw new Error("seedEntry dropped the object default it was given");
+    }
+    firstMeta["a"] = 2;
+    expect(second).toEqual({ meta: { a: 1 } });
   });
 
   test("answers an empty record for a collection with no schema at all", () => {

@@ -3,10 +3,10 @@
  *
  * After a mutation passes schema validation, this module attempts a lightweight headless render
  * (buildScope → renderNode into a throwaway div) and reports render-time errors back through the
- * same { ok, error } shape that applyAndValidate consumes. The model can then self-correct
- * within the round budget instead of the user discovering a blank canvas.
+ * same { ok, error } shape that applyAndValidate consumes. The model can then self-correct within
+ * the round budget instead of the user discovering a blank canvas.
  *
- * v1 scope: catches render throws only (missing $ref, malformed Function body, bad template
+ * V1 scope: catches render throws only (missing $ref, malformed Function body, bad template
  * expressions). Does NOT detect empty/zero-node output or deep-render custom element internals
  * (connectedCallback doesn't fire on detached nodes).
  *
@@ -19,11 +19,12 @@ import type { JxDocument } from "@jxsuite/schema/types";
 /**
  * Translate a render-time error into an actionable message the model can fix.
  *
- * @param {Error} err
+ * @param {unknown} cause What the render threw — an Error in practice; anything else is printed
+ *   as-is.
  * @returns {string}
  */
-function translateRenderError(err: Error): string {
-  const msg = err.message || String(err);
+function translateRenderError(cause: unknown): string {
+  const msg = (cause instanceof Error && cause.message) || String(cause);
 
   if (msg.includes("is not defined") || msg.includes("Cannot read properties of")) {
     return `Render error: ${msg}\n  → Fix: A $ref or template expression references a name that doesn't exist in state. Check that all $ref paths and \${...} expressions match entries in the document's "state" object.`;
@@ -64,7 +65,7 @@ export async function renderCheck(
 
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: translateRenderError(error as Error) };
+    return { ok: false, error: translateRenderError(error) };
   } finally {
     // Dispose all effects created synchronously by renderNode via the RUNTIME's runScoped — scope
     // Collection is per @vue/reactivity module instance, so a studio effectScope here would collect

@@ -1,7 +1,7 @@
 {
   "name": "reasoning",
   "description": "A thinking model's turns. Streamed reasoning is replayed as reasoning_content beside the answer; a turn that only thought (no text, no tool calls) is dropped from the wire, reasoning and all.",
-  "shapes": ["reasoning-replayed", "reasoning-only-dropped"],
+  "scenarios": ["reasoning-replayed", "reasoning-only-dropped"],
   "script": [
     ["sendMessage", "Pick a palette"],
     ["appendReasoning", "The brand is "],

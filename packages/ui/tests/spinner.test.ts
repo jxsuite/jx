@@ -23,6 +23,8 @@ afterEach(() => {
 });
 
 async function spinner(attrs: Record<string, string> = {}): Promise<JxSpinner> {
+  /* SAFETY: registerUi() in beforeAll defined jx-spinner from its component document, which
+     declares the `value`, `label` and `size` props `JxSpinner` lists. */
   const el = document.createElement("jx-spinner") as JxSpinner;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -143,11 +145,12 @@ describe("jx-spinner", () => {
 
     const r = rulesOf(el);
     expect(r.get('& [part="glyph"]')).toContain("animation: jx-spin var(--jx-spin-dur) linear");
-    expect(r.get('&[data-determinate] [part="glyph"]')).toContain("animation: none");
+    const determinate = r.get('&[data-determinate] [part="glyph"]');
+    expect(determinate).toContain("animation: none");
     /* A conic gradient on its own is a filled PIE. The mask is what cuts the middle out, and the
        track width is what the cut is measured from — delete either and the element draws a solid
        disc where a progress ring belongs, with nothing else in the document changing. */
-    expect(r.get('&[data-determinate] [part="glyph"]')).toContain(
+    expect(determinate).toContain(
       "mask: radial-gradient(farthest-side, transparent calc(100% - var(--jx-spin-track)), black 0)",
     );
     expect(r.get("&")).toContain("--jx-spin-track: 2px");
@@ -192,8 +195,9 @@ describe("jx-spinner", () => {
     const el = await spinner({ label: "Working" });
     const css = documentStyleText();
     const r = rulesOf(el);
-    expect(r.get("&")).toContain("--jx-spin-dur: 900ms");
-    expect(r.get("&")).not.toContain("--jx-spin-dur: 0");
+    const hostRule = r.get("&");
+    expect(hostRule).toContain("--jx-spin-dur: 900ms");
+    expect(hostRule).not.toContain("--jx-spin-dur: 0");
 
     const handle = `[data-jx="${el.dataset["jx"] ?? ""}"]`;
     const block = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
@@ -206,9 +210,9 @@ describe("jx-spinner", () => {
 
   test("the document declares its own duration, not the project's", async () => {
     // `--jx-spin-dur` belongs to the element, because project.json is not this element's file.
-    const style = documents["jx-spinner"]!.style as Record<string, unknown>;
-    expect(style["--jx-spin-dur"]).toBe("900ms");
-    expect(style["@keyframes jx-spin"]).toBeDefined();
+    const { style } = documents["jx-spinner"];
+    expect(style?.["--jx-spin-dur"]).toBe("900ms");
+    expect(style?.["@keyframes jx-spin"]).toBeDefined();
   });
 
   test("size moves the ring without moving the row it sits in", async () => {
@@ -217,16 +221,18 @@ describe("jx-spinner", () => {
     const r = rulesOf(el);
     expect(r.get('&[data-size="sm"]')).toContain("--jx-spin-size: 12px");
     expect(r.get('&[data-size="lg"]')).toContain("--jx-spin-size: 20px");
-    expect(r.get("&")).toContain("--jx-spin-size: var(--jx-icon-size, 16px)");
+    const hostRule = r.get("&");
+    expect(hostRule).toContain("--jx-spin-size: var(--jx-icon-size, 16px)");
     /* Declaring the variable moves nothing. These are the two declarations that READ it — the
        ring's own box, and the glyph inside it through the kit's icon variable. Sever both and
        `size` changes nothing on screen while every assertion above still passes. */
-    expect(r.get('& [part="glyph"]')).toContain("width: var(--jx-spin-size)");
-    expect(r.get('& [part="glyph"]')).toContain("height: var(--jx-spin-size)");
+    const glyphRule = r.get('& [part="glyph"]');
+    expect(glyphRule).toContain("width: var(--jx-spin-size)");
+    expect(glyphRule).toContain("height: var(--jx-spin-size)");
     expect(r.get('& [part="glyph-icon"]')).toBe("--jx-icon-size: var(--jx-spin-size)");
     // And the other half of the name: a non-shrinking box sitting on the middle of the text.
-    expect(r.get("&")).toContain("flex: none");
-    expect(r.get("&")).toContain("vertical-align: middle");
+    expect(hostRule).toContain("flex: none");
+    expect(hostRule).toContain("vertical-align: middle");
   });
 
   test("the ring paints in the text colour around it, never in a fixed accent", async () => {
@@ -236,8 +242,9 @@ describe("jx-spinner", () => {
        therefore paints in `currentColor`, exposed as a token so a consumer can still override it. */
     const el = await spinner({ label: "Importing", value: "40" });
     const r = rulesOf(el);
-    expect(r.get("&")).toContain("--jx-spin-color: currentColor");
-    expect(r.get("&")).toContain("--jx-spin-track-color: var(--jx-border)");
+    const hostRule = r.get("&");
+    expect(hostRule).toContain("--jx-spin-color: currentColor");
+    expect(hostRule).toContain("--jx-spin-track-color: var(--jx-border)");
     expect(r.get('& [part="glyph"]')).toContain("color: var(--jx-spin-color)");
     expect(getComputedStyle(glyph(el)).color).toBe("currentcolor");
     // Nothing this element paints with names the accent, which IS the accent button's background.
@@ -252,8 +259,8 @@ describe("jx-spinner", () => {
        glyph and no announced value, which is a state the element has no rendering for. One
        normalised predicate, #/state/progress, is what every one of them reads now. */
     const el = await spinner({ label: "Importing" });
-    const host = el as unknown as { value: unknown };
-    host.value = 0;
+    // Through the property setter, with the number a host binding writes rather than a string.
+    Object.assign(el, { value: 0 });
     await tick();
     expect(el.getAttribute("aria-valuenow")).toBe("0");
     expect(el.getAttribute("aria-valuemin")).toBe("0");
@@ -262,7 +269,7 @@ describe("jx-spinner", () => {
     expect(glyph(el).getAttribute("style")).toContain("conic-gradient(var(--jx-spin-color) 0%");
     expect(el.querySelector('[part="glyph-icon"]')!.hasAttribute("hidden")).toBe(true);
 
-    host.value = 60;
+    Object.assign(el, { value: 60 });
     await tick();
     expect(el.getAttribute("aria-valuenow")).toBe("60");
     expect(glyph(el).getAttribute("style")).toContain("conic-gradient(var(--jx-spin-color) 60%");

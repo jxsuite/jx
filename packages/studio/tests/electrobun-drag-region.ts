@@ -30,7 +30,7 @@ function normalizedRegion(value: string | null | undefined): AppRegion {
 }
 
 function inlineRegion(element: Element): AppRegion {
-  const style = element.getAttribute?.("style");
+  const style = element.getAttribute("style");
   if (!style) {
     return null;
   }
@@ -55,17 +55,21 @@ function computedRegion(element: Element): AppRegion {
   return null;
 }
 
+/** Electrobun's duck-typed element probe: any target exposing a `getAttribute` method is walked. */
+function exposesGetAttribute(target: EventTarget): target is Element {
+  return "getAttribute" in target && typeof target.getAttribute === "function";
+}
+
 /** True when `target` (or one of its ancestors) is a drag handle, per Electrobun's own walk. */
 export function isAppRegionDragTarget(target: EventTarget | null): boolean {
-  let element: Element | null =
-    target && typeof (target as Element).getAttribute === "function" ? (target as Element) : null;
+  let element: Element | null = target && exposesGetAttribute(target) ? target : null;
   let foundDragRegion = false;
 
   while (element) {
-    if (element.classList?.contains(NO_DRAG_CLASS)) {
+    if (element.classList.contains(NO_DRAG_CLASS)) {
       return false;
     }
-    if (element.classList?.contains(DRAG_CLASS)) {
+    if (element.classList.contains(DRAG_CLASS)) {
       foundDragRegion = true;
     }
 

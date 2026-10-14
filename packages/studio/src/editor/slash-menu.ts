@@ -29,12 +29,7 @@
 import { openSlashMenuSurface } from "../surfaces/slash-menu";
 import { rectOf } from "../utils/geometry";
 import type { SlashMenuRow, SlashMenuSurface, SlashMenuView } from "../surfaces/slash-menu";
-
-interface SlashCommand {
-  label: string;
-  tag: string;
-  description: string;
-}
+import type { SlashCommand } from "./inline-edit";
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 

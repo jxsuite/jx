@@ -189,7 +189,10 @@ describe("the boards a repaint keeps", () => {
     await stage.ready;
     expect(stage.panelNode("solo", "panel")!.querySelector('[part="panel-header"]')).toBeNull();
     const header = stage.panelNode("base", "panel")!.querySelector('[part="panel-header"]');
-    (header as HTMLElement).click();
+    if (!(header instanceof HTMLElement)) {
+      throw new Error("the labelled board drew no header click target");
+    }
+    header.click();
     expect(picked).toEqual(["base"]);
     stage.dispose();
   });

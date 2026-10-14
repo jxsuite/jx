@@ -7,13 +7,14 @@
  */
 import { describe, expect, test } from "bun:test";
 import { serveSite, siteContext, siteHeaders } from "../src/serve.ts";
-import type { AssetIO, ServeOptions } from "../src/serve.ts";
+import type { AssetIO, ServeOptions, SiteContext, SiteTree } from "../src/serve.ts";
 import type { SiteIO } from "../src/compose.ts";
 
 const SHELL: ServeOptions = { shell: { base: "/", runtimeUrl: "/__jx_live__/runtime.js" } };
 const PAGE = JSON.stringify({ children: ["Hello"], tagName: "main" });
 
-function tree(files: Record<string, string>): { io: SiteIO; assets: AssetIO } {
+/** One in-memory working tree. */
+function tree(files: Record<string, string>): SiteTree {
   return {
     assets: {
       bytes: (path) =>
@@ -155,9 +156,8 @@ describe("serveSite", () => {
       },
     };
     const assets: AssetIO = { bytes: () => Promise.resolve(null) };
-    const context = { config: {} as never, routes: [] as never };
     const seeded = await siteContext(tree({ "pages/index.json": PAGE }).io);
-    const withRoutes = { ...context, routes: seeded.routes };
+    const withRoutes: SiteContext = { config: {}, routes: seeded.routes };
     // oxlint-disable-next-line typescript/await-thenable -- bun test .rejects is typed `void` but returns a real Promise; the await is required.
     await expect(serveSite("/", io, assets, withRoutes, SHELL)).rejects.toThrow("disk on fire");
   });

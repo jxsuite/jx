@@ -9,7 +9,9 @@
  * validate cleanly.
  */
 
+import { isBoolean, isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { parseRefPointer } from "./columns.ts";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { ColumnFieldSchema, TableDef } from "./types.ts";
 
 export interface ValidationIssue {
@@ -21,7 +23,7 @@ export interface ValidationResult {
   valid: boolean;
   errors: ValidationIssue[];
   /** The coerced payload (schema-typed values), keyed by schema field name. */
-  value: Record<string, unknown>;
+  value: JsonObject;
 }
 
 /** Columns the data mount owns; clients may never write them. */
@@ -31,26 +33,25 @@ const READ_ONLY_FIELDS = new Set(["id", "created_at", "updated_at"]);
  * Validate (and coerce) a row payload against a table definition.
  *
  * @param {TableDef} table - The table definition from the `data` section
- * @param {unknown} payload - Parsed request body
+ * @param {JsonValue} payload - Parsed request body
  * @param {{ partial?: boolean }} [options] - `partial` skips required-field checks (PATCH)
  * @returns {ValidationResult}
  */
 export function validateRow(
   table: TableDef,
-  payload: unknown,
+  payload: JsonValue,
   options: { partial?: boolean } = {},
 ): ValidationResult {
   const { partial = false } = options;
   const errors: ValidationIssue[] = [];
-  const value: Record<string, unknown> = {};
+  const value: JsonObject = {};
 
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+  if (!isJsonObject(payload)) {
     return { errors: [{ field: "", message: "Body must be a JSON object" }], valid: false, value };
   }
-  const body = payload as Record<string, unknown>;
   const fields = table.schema.properties ?? {};
 
-  for (const [key, raw] of Object.entries(body)) {
+  for (const [key, raw] of Object.entries(payload)) {
     if (READ_ONLY_FIELDS.has(key)) {
       errors.push({ field: key, message: "Read-only field" });
       continue;
@@ -68,7 +69,7 @@ export function validateRow(
 
   if (!partial) {
     for (const required of table.schema.required ?? []) {
-      if (body[required] === undefined) {
+      if (payload[required] === undefined) {
         errors.push({ field: required, message: "Required field is missing" });
       }
     }
@@ -85,23 +86,23 @@ const INVALID = Symbol("invalid");
  *
  * @param {string} field
  * @param {ColumnFieldSchema} schema
- * @param {unknown} raw
+ * @param {JsonValue} raw
  * @param {ValidationIssue[]} errors
- * @returns {unknown} The coerced value, or the INVALID sentinel
+ * @returns {JsonValue | typeof INVALID} The coerced value, or the INVALID sentinel
  */
 function coerceField(
   field: string,
   schema: ColumnFieldSchema,
-  raw: unknown,
+  raw: JsonValue,
   errors: ValidationIssue[],
-): unknown {
-  if (raw === null || raw === undefined) {
+): JsonValue | typeof INVALID {
+  if (raw === null) {
     return null;
   }
 
   const toOne = parseRefPointer(schema.$ref);
   if (toOne) {
-    if (typeof raw !== "string" || raw === "") {
+    if (!isString(raw) || raw === "") {
       errors.push({ field, message: "Reference value must be an entry id string" });
       return INVALID;
     }
@@ -111,7 +112,7 @@ function coerceField(
   const itemsRef = schema.type === "array" ? parseRefPointer(schema.items?.$ref) : null;
   if (itemsRef) {
     const list = parseMaybeJson(raw);
-    if (!Array.isArray(list) || list.some((item) => typeof item !== "string" || item === "")) {
+    if (!Array.isArray(list) || list.some((item) => !isString(item) || item === "")) {
       errors.push({ field, message: "Reference list must be an array of entry id strings" });
       return INVALID;
     }
@@ -131,14 +132,14 @@ function coerceField(
 }
 
 /** Coerce a scalar payload value to its schema type, or INVALID. */
-function coerceScalar(schema: ColumnFieldSchema, raw: unknown): unknown {
+function coerceScalar(schema: ColumnFieldSchema, raw: JsonValue): JsonValue | typeof INVALID {
   switch (schema.type) {
     case "number":
     case "integer": {
       let num: number;
-      if (typeof raw === "number") {
+      if (isNumber(raw)) {
         num = raw;
-      } else if (typeof raw === "string" && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
+      } else if (isString(raw) && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
         num = Number(raw);
       } else {
         return INVALID;
@@ -149,7 +150,7 @@ function coerceScalar(schema: ColumnFieldSchema, raw: unknown): unknown {
       return num;
     }
     case "boolean": {
-      if (typeof raw === "boolean") {
+      if (isBoolean(raw)) {
         return raw;
       }
       if (raw === "true" || raw === "on" || raw === "1" || raw === 1) {
@@ -166,19 +167,17 @@ function coerceScalar(schema: ColumnFieldSchema, raw: unknown): unknown {
     }
     case "object": {
       const parsed = parseMaybeJson(raw);
-      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-        ? parsed
-        : INVALID;
+      return isJsonObject(parsed) ? parsed : INVALID;
     }
     default: {
-      return typeof raw === "string" ? raw : INVALID;
+      return isString(raw) ? raw : INVALID;
     }
   }
 }
 
 /** Parse JSON-looking strings (FormData carries arrays/objects as text); pass everything else. */
-function parseMaybeJson(raw: unknown): unknown {
-  if (typeof raw !== "string") {
+function parseMaybeJson(raw: JsonValue): JsonValue {
+  if (!isString(raw)) {
     return raw;
   }
   const text = raw.trim();
@@ -186,7 +185,7 @@ function parseMaybeJson(raw: unknown): unknown {
     return raw;
   }
   try {
-    return JSON.parse(text) as unknown;
+    return JSON.parse(text);
   } catch {
     return raw;
   }

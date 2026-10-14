@@ -17,12 +17,21 @@ beforeAll(() => {
   initLayers();
 });
 
+/** The modal layer `beforeAll` guarantees exists before any test runs. */
+function modalLayer(): Element {
+  const layer = document.querySelector("#layer-modal");
+  if (!layer) {
+    throw new Error("#layer-modal is missing: beforeAll creates it before every test");
+  }
+  return layer;
+}
+
 function card(): Element | null {
-  return (document.querySelector("#layer-modal") as HTMLElement).querySelector(".progress-modal");
+  return modalLayer().querySelector(".progress-modal");
 }
 
 afterEach(() => {
-  (document.querySelector("#layer-modal") as HTMLElement).innerHTML = "";
+  modalLayer().innerHTML = "";
   resetNotifications();
   resetActivities();
 });
@@ -78,7 +87,11 @@ describe("ensureDependenciesInstalled", () => {
   });
 
   test("skips install entirely in automation mode (never mutates the project)", async () => {
-    const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+    /* SAFETY: the harness registers happy-dom's GlobalRegistrator, which copies the window's members
+       onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+    const { happyDOM } = globalThis as typeof globalThis & {
+      happyDOM: { setURL: (u: string) => void };
+    };
     happyDOM.setURL("http://localhost:3000/packages/studio/index.html?automation=1");
     let installs = 0;
     let checked = 0;

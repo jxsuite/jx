@@ -36,11 +36,14 @@ import libraryDoc from "../src/surfaces/library-pane.json";
 import { LIBRARY_LAYOUTS } from "../src/browse/library-model";
 import { activities, resetActivities } from "../src/panels/activity-panel";
 import type { DirEntry } from "../src/types";
+import type { NewFileRequest } from "../src/files/files";
+import { isFunction, isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type { LibraryViewKind } from "../src/surfaces/library-pane";
 
 // ─── Seams ───────────────────────────────────────────────────────────────────
 
-const created: unknown[] = [];
+const created: NewFileRequest[] = [];
 const opened: string[] = [];
 const uploads: { dir: string | undefined; count: number }[] = [];
 let deleteAnswer = true;
@@ -48,7 +51,7 @@ let deleteAnswer = true;
 let createAnswer: string | null = "new-thing.json";
 
 void mock.module("../src/files/files.js", () => ({
-  createFileIn: (request: { dir: string }) => {
+  createFileIn: (request: NewFileRequest) => {
     created.push(request);
     return Promise.resolve(createAnswer === null ? null : `${request.dir}/${createAnswer}`);
   },
@@ -110,10 +113,25 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
+
+/**
+ * A stand-in clock, typed as the global it replaces.
+ *
+ * The Library arms its timers only as `setTimeout(callback, delay)`: the scan's Activity delay and
+ * the settle pass.
+ */
+function stubSetTimeout(
+  stand: (callback: () => void, ms?: number) => ReturnType<typeof setTimeout>,
+): typeof setTimeout {
+  /* SAFETY: the stand-in implements the one call shape the pane uses, a callback and a delay. It
+     lacks only Node's `__promisify__` member and the extra-arguments overload, and nothing under
+     test reaches either while the stub is installed. */
+  return stand as typeof setTimeout;
+}
 
 /* No IntersectionObserver: happy-dom's never fires, so a lazily-mounted preview would simply never
    load and nothing here could assert on it. Its absence takes `createPreviewObserver`'s documented
@@ -148,20 +166,48 @@ const POSTS = {
   source: "./content/",
 };
 
-const TREE: Record<string, DirEntry[]> = {
+const TREE = {
   content: [file("2024-01-02-hello.md", "content/2024-01-02-hello.md")],
   layouts: [file("main.json", "layouts/main.json")],
   pages: [file("index.json", "pages/index.json"), file("about.json", "pages/about.json")],
   public: [file("logo.png", "public/logo.png")],
-};
+} satisfies Record<string, DirEntry[]>;
 
-let host: HTMLElement;
+/* A detached placeholder until the first mount, so the teardown's `remove()` before it is a no-op
+   rather than a guard on a value that is never absent. */
+let host: HTMLElement = document.createElement("div");
+
+/** The listing a fixture tree holds for a directory, or `undefined` for one it does not hold. */
+function listingIn(tree: Record<string, DirEntry[]>, path: string): DirEntry[] | undefined {
+  return tree[path];
+}
+
+/**
+ * A real, empty directory list whose `map` is replaced. `map` is the one member `scanLibrary` reads
+ * off `projectDirs`, so this is how a suite makes the scan itself fail rather than one listing.
+ */
+function dirsMappedBy(map: () => Promise<never>[]): string[] {
+  const dirs: string[] = [];
+  return Object.assign(dirs, { map });
+}
+
+/**
+ * The body seed a creation request carried. The Library always passes a function, because the tag
+ * it seeds depends on the extension and name the reader settles on in the dialog.
+ */
+function seedOf(request: NewFileRequest | undefined) {
+  const content = request?.content;
+  if (!isFunction(content)) {
+    throw new Error("the creation request carried no seed function");
+  }
+  return content;
+}
 
 function setup(tree: Record<string, DirEntry[]> = TREE, dirs = Object.keys(TREE)) {
   installMockPlatform(
     {
       listDirectory: (path: string) => {
-        const entries = tree[path];
+        const entries = listingIn(tree, path);
         return entries ? Promise.resolve(entries) : Promise.reject(new Error(`HTTP 500: ${path}`));
       },
     },
@@ -178,7 +224,7 @@ async function mount(): Promise<HTMLElement> {
   // A live pane holds the tab id, so a second mount in the same test would be answered by the
   // Re-entrancy guard and leave the new host empty.
   detachLibraryPane("primary");
-  host?.remove();
+  host.remove();
   closeAllTabs();
   const tab = openTab({
     capabilities: { modes: ["manage"] },
@@ -195,7 +241,7 @@ async function mount(): Promise<HTMLElement> {
 }
 
 function text(): string {
-  return host.textContent ?? "";
+  return host.textContent;
 }
 
 /** Everything drawn under a part, in DOM order. */
@@ -231,6 +277,15 @@ function menuRow(id: string): HTMLElement {
   return found;
 }
 
+/** The real `<input type="file">` the Upload label wraps. */
+function uploadInput(): HTMLInputElement {
+  const input = part("upload-input");
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("the pane drew no upload input");
+  }
+  return input;
+}
+
 /** The native control inside a kit element — what a reader actually drives. */
 function control<T extends HTMLElement>(name: string, tag: string): T {
   return part(name)!.querySelector<T>(tag)!;
@@ -255,7 +310,7 @@ beforeEach(() => {
 
 afterEach(() => {
   detachLibraryPane("primary");
-  host?.remove();
+  host.remove();
 });
 
 // ─── The document and the projection ─────────────────────────────────────────
@@ -264,22 +319,21 @@ describe("the one discriminant", () => {
   /** Every `part` and `$switch` in the document, walked once. */
   function slotCases(slot: string): string[] {
     const seen: string[] = [];
-    const walk = (node: unknown): void => {
+    const walk = (node: JsonValue): void => {
       if (Array.isArray(node)) {
         for (const child of node) {
           walk(child);
         }
         return;
       }
-      if (node === null || typeof node !== "object") {
+      if (!isJsonObject(node)) {
         return;
       }
-      const el = node as Record<string, unknown>;
-      const attributes = el.attributes as Record<string, unknown> | undefined;
-      if (attributes?.part === slot && el.cases) {
-        seen.push(...Object.keys(el.cases as Record<string, unknown>));
+      const { attributes, cases } = node;
+      if (isJsonObject(attributes) && attributes.part === slot && isJsonObject(cases)) {
+        seen.push(...Object.keys(cases));
       }
-      for (const value of Object.values(el)) {
+      for (const value of Object.values(node)) {
         walk(value);
       }
     };
@@ -386,7 +440,7 @@ describe("mounting", () => {
   test("a settle pass that outlives its pane runs against nothing, least of all its successor", async () => {
     const reads: string[] = [];
     installMockPlatform({
-      listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
       readFile: (path: string) => {
         reads.push(path);
         return Promise.resolve('{"tagName":"div","children":[]}');
@@ -401,10 +455,10 @@ describe("mounting", () => {
     // The repaint — and by then the pane can be somebody else's.
     const held: (() => void)[] = [];
     const realSetTimeout = globalThis.setTimeout;
-    globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+    globalThis.setTimeout = stubSetTimeout((fn, ms) => {
       held.push(fn);
       return realSetTimeout(() => {}, ms);
-    }) as typeof setTimeout;
+    });
     try {
       setLibraryCategory("pages");
     } finally {
@@ -444,7 +498,7 @@ describe("mounting", () => {
   test("a repaint while previews are still loading does not ask for them twice", async () => {
     const reads: string[] = [];
     installMockPlatform({
-      listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
       readFile: (path: string) => {
         reads.push(path);
         return Promise.resolve('{"tagName":"div","children":[]}');
@@ -464,7 +518,7 @@ describe("mounting", () => {
 
   test("a document that cannot be rendered leaves its card without a preview, not broken", async () => {
     installMockPlatform({
-      listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
       readFile: () => Promise.reject(new Error("EIO")),
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
@@ -506,9 +560,10 @@ describe("the four states the old view called “No files found”", () => {
     await mount();
     setLibrarySearch("zzz");
     await flush();
-    expect(text()).toContain("No files match");
-    expect(text()).toContain("zzz");
-    expect(text()).toContain("5 file(s) in the project");
+    const shown = text();
+    expect(shown).toContain("No files match");
+    expect(shown).toContain("zzz");
+    expect(shown).toContain("5 file(s) in the project");
     part("reset")!.click();
     await flush();
     expect(libraryView.query).toBe("");
@@ -526,8 +581,9 @@ describe("the four states the old view called “No files found”", () => {
   test("a scan that could not read a directory says INCOMPLETE, not empty", async () => {
     setup(TREE, [...Object.keys(TREE), "broken"]);
     await mount();
-    expect(text()).toContain("This list is incomplete");
-    expect(text()).toContain("broken");
+    const shown = text();
+    expect(shown).toContain("This list is incomplete");
+    expect(shown).toContain("broken");
   });
 
   test("the banner's Retry re-scans without the reader leaving the pane", async () => {
@@ -537,7 +593,7 @@ describe("the four states the old view called “No files found”", () => {
         attempt += 1;
         return attempt <= 4
           ? Promise.reject(new Error("HTTP 500"))
-          : Promise.resolve(TREE[path] ?? []);
+          : Promise.resolve(listingIn(TREE, path) ?? []);
       },
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
@@ -557,7 +613,7 @@ describe("the four states the old view called “No files found”", () => {
         if (path === "broken") {
           return broken ? Promise.reject(new Error("HTTP 500")) : Promise.resolve([]);
         }
-        return Promise.resolve(TREE[path] ?? []);
+        return Promise.resolve(listingIn(TREE, path) ?? []);
       },
     });
     resetStudioState({ projectConfig: null, projectDirs: [...Object.keys(TREE), "broken"] });
@@ -584,8 +640,9 @@ describe("the four states the old view called “No files found”", () => {
   test("a scan that failed entirely does not claim the project is empty", async () => {
     setup({}, ["pages", "public"]);
     await mount();
-    expect(text()).toContain("the scan did not finish");
-    expect(text()).not.toContain("no files yet");
+    const shown = text();
+    expect(shown).toContain("the scan did not finish");
+    expect(shown).not.toContain("no files yet");
   });
 
   test("the failure banner's Retry re-scans", async () => {
@@ -596,7 +653,7 @@ describe("the four states the old view called “No files found”", () => {
         if (attempt === 1) {
           return Promise.reject(new Error("HTTP 500"));
         }
-        return Promise.resolve(TREE[path] ?? []);
+        return Promise.resolve(listingIn(TREE, path) ?? []);
       },
     });
     resetStudioState({ projectConfig: null, projectDirs: ["pages"] });
@@ -611,7 +668,7 @@ describe("the four states the old view called “No files found”", () => {
 // ─── The language facet ──────────────────────────────────────────────────────
 
 describe("the language facet", () => {
-  const I18N_TREE: Record<string, DirEntry[]> = {
+  const I18N_TREE = {
     layouts: [file("main.json", "layouts/main.json")],
     pages: [
       { name: "fr", path: "pages/fr", type: "directory" },
@@ -620,7 +677,7 @@ describe("the language facet", () => {
     ],
     "pages/de": [file("index.json", "pages/de/index.json")],
     "pages/fr": [file("about.json", "pages/fr/about.json")],
-  };
+  } satisfies Record<string, DirEntry[]>;
 
   /**
    * A project that declares three locales and has files under two directories — plus
@@ -630,7 +687,7 @@ describe("the language facet", () => {
   function setupI18n(locales: string[] = ["en", "fr", "de"]) {
     installMockPlatform({
       listDirectory: (path: string) => {
-        const entries = I18N_TREE[path];
+        const entries = listingIn(I18N_TREE, path);
         return entries ? Promise.resolve(entries) : Promise.reject(new Error(`HTTP 500: ${path}`));
       },
     });
@@ -649,7 +706,7 @@ describe("the language facet", () => {
   test("draws a picker of the locales PRESENT, labelled in each language's own words", async () => {
     setupI18n();
     await mount();
-    const options = [...picker()!.options].map((el) => [el.value, el.textContent?.trim()]);
+    const options = [...picker()!.options].map((el) => [el.value, el.textContent.trim()]);
     /*
      * `en` has no directory of its own and is still an option, because under
      * `prefix-except-default` the unprefixed `pages/index.json` IS its copy — and a language filter
@@ -694,8 +751,9 @@ describe("the language facet", () => {
     select.value = "fr";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
-    expect(text()).toContain("about.json");
-    expect(text()).not.toContain("main.json");
+    const filtered = text();
+    expect(filtered).toContain("about.json");
+    expect(filtered).not.toContain("main.json");
     picker()!.value = "all";
     picker()!.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
@@ -711,8 +769,9 @@ describe("the language facet", () => {
     // Filter the pane applies on the paint that happens to follow it and never again.
     libraryView.locale = "de";
     await flush();
-    expect(text()).not.toContain("about.json");
-    expect(text()).toContain("index.json");
+    const shown = text();
+    expect(shown).not.toContain("about.json");
+    expect(shown).toContain("index.json");
   });
 
   test("a filter that matched nothing names the LANGUAGE too, and Clear filters clears it", async () => {
@@ -737,7 +796,7 @@ describe("layouts", () => {
     installMockPlatform({
       listDirectory: (path: string) => {
         reads += 1;
-        return Promise.resolve(TREE[path] ?? []);
+        return Promise.resolve(listingIn(TREE, path) ?? []);
       },
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
@@ -914,7 +973,7 @@ describe("the Upload control", () => {
     await mount();
     // A LABEL around a real `<input type="file">`, so the click that opens the picker is the
     // Platform's rather than a `querySelector` and a synthetic `.click()`.
-    const input = part("upload-input") as HTMLInputElement;
+    const input = uploadInput();
     expect(input.type).toBe("file");
     expect(part("upload")!.contains(input)).toBe(true);
 
@@ -928,7 +987,7 @@ describe("the Upload control", () => {
 
   test("a picker dismissed with no file uploads nothing", async () => {
     await mount();
-    const input = part("upload-input") as HTMLInputElement;
+    const input = uploadInput();
     Object.defineProperty(input, "files", { configurable: true, value: [] });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
@@ -1000,10 +1059,9 @@ describe("creation", () => {
   test("a markdown component is seeded with its tag, through the format's own serializer", async () => {
     await mount();
     setFormats([MARKDOWN_FORMAT]);
-    installMockPlatform({ formatAction: mockFormatAction } as never);
+    installMockPlatform({ formatAction: mockFormatAction });
     await createLibraryEntry("component");
-    const seed = (created[0] as { content: (ext: string, name: string) => Promise<unknown> })
-      .content;
+    const seed = seedOf(created[0]);
     expect(await seed(".md", "my-card.md")).toContain("tagName");
     // `.json` takes the shared blank document; there is no format to ask.
     expect(await seed(".json", "my-card.json")).toBeUndefined();
@@ -1016,10 +1074,9 @@ describe("creation", () => {
     // Own template still produces something the author can finish by hand.
     await mount();
     setFormats([MARKDOWN_FORMAT]);
-    installMockPlatform({ formatAction: () => Promise.reject(new Error("boom")) } as never);
+    installMockPlatform({ formatAction: () => Promise.reject(new Error("boom")) });
     await createLibraryEntry("component");
-    const seed = (created[0] as { content: (ext: string, name: string) => Promise<unknown> })
-      .content;
+    const seed = seedOf(created[0]);
     expect(await seed(".md", "my-card.md")).toBeUndefined();
   });
 
@@ -1027,7 +1084,7 @@ describe("creation", () => {
     await mount();
     const path = await createLibraryEntry("collection:posts");
     expect(created).toHaveLength(1);
-    const request = created[0] as Record<string, unknown>;
+    const request = created[0]!;
     expect(request.dir).toBe("content");
     expect(request.format).toEqual({ ext: ".json", kind: "fixed" });
     // "Content", not "Library": the creation really is the content module's, and a Problem from it
@@ -1036,7 +1093,7 @@ describe("creation", () => {
     // The whole point. `default`s land, a required field with no default gets its type's empty
     // Value, and an optional one with neither is omitted — so the entry is valid the moment it
     // Exists instead of arriving as an empty file.
-    expect(JSON.parse(request.content as string)).toEqual({ draft: false, title: "" });
+    expect(JSON.parse(String(request.content))).toEqual({ draft: false, title: "" });
     expect(path).toBe("content/new-thing.json");
     // Opened exactly once, by the entry editor. Opening it again here would swap the form for the
     // Generic editor on the same tab.
@@ -1075,15 +1132,16 @@ describe("a slow scan", () => {
     installMockPlatform({
       listDirectory: async (path: string) => {
         await gate;
-        return TREE[path] ?? [];
+        return listingIn(TREE, path) ?? [];
       },
     });
     resetStudioState({ projectConfig: null, projectDirs: ["pages"] });
 
     // The row appears on a timer, so the clock is what is faked — not the platform.
     const realSetTimeout = globalThis.setTimeout;
-    globalThis.setTimeout = ((fn: () => void, ms?: number) =>
-      realSetTimeout(fn, ms === SCAN_ACTIVITY_DELAY_MS ? 0 : ms)) as typeof setTimeout;
+    globalThis.setTimeout = stubSetTimeout((fn, ms) =>
+      realSetTimeout(fn, ms === SCAN_ACTIVITY_DELAY_MS ? 0 : ms),
+    );
     try {
       await mount();
       await flush();
@@ -1104,19 +1162,18 @@ describe("a slow scan", () => {
 
   test("a slow scan that then fails FAILS its row rather than leaving it running", async () => {
     const realSetTimeout = globalThis.setTimeout;
-    globalThis.setTimeout = ((fn: () => void, ms?: number) =>
-      realSetTimeout(fn, ms === SCAN_ACTIVITY_DELAY_MS ? 0 : ms)) as typeof setTimeout;
+    globalThis.setTimeout = stubSetTimeout((fn, ms) =>
+      realSetTimeout(fn, ms === SCAN_ACTIVITY_DELAY_MS ? 0 : ms),
+    );
     // A scan that is slow AND then fails: the row is up before the failure arrives, so the failure
     // Has to land ON it rather than beside it.
     resetStudioState({
       projectConfig: null,
-      projectDirs: {
-        map: () => [
-          new Promise((_resolve, reject) => {
-            realSetTimeout(() => reject(new Error("the dev server went away")), 5);
-          }),
-        ],
-      },
+      projectDirs: dirsMappedBy(() => [
+        new Promise<never>((_resolve, reject) => {
+          realSetTimeout(() => reject(new Error("the dev server went away")), 5);
+        }),
+      ]),
     });
     try {
       await mount();
@@ -1134,7 +1191,12 @@ describe("a slow scan", () => {
     // `scanLibrary` never rejects, so the pane's outer catch only fires when the scan itself is
     // Unrunnable — a corrupt project record here, a dead platform in the field. It must not take
     // The pane down with it.
-    resetStudioState({ projectConfig: null, projectDirs: 7 });
+    resetStudioState({
+      projectConfig: null,
+      projectDirs: dirsMappedBy(() => {
+        throw new TypeError("projectDirs.map is not a function");
+      }),
+    });
     await mount();
     const problem = problems.at(-1)!;
     expect(problem.message).toBe("Could not scan the project's files.");
@@ -1189,7 +1251,7 @@ describe("the per-file context menu", () => {
   test("duplicates beside the original, with a -copy suffix", async () => {
     const written: string[] = [];
     installMockPlatform({
-      listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
       readFile: () => Promise.resolve("# Hello"),
       writeFile: (path: string) => {
         written.push(path);
@@ -1221,7 +1283,9 @@ describe("the per-file context menu", () => {
         return Promise.resolve();
       },
       listDirectory: (path: string) =>
-        Promise.resolve((TREE[path] ?? []).filter((entry) => !removed.includes(entry.path))),
+        Promise.resolve(
+          (listingIn(TREE, path) ?? []).filter((entry) => !removed.includes(entry.path)),
+        ),
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
     await openContextMenu();
@@ -1235,7 +1299,7 @@ describe("the per-file context menu", () => {
   test("a failing delete is reported against the path, not swallowed", async () => {
     installMockPlatform({
       deleteFile: () => Promise.reject(new Error("EACCES")),
-      listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
     await openContextMenu();
@@ -1266,7 +1330,7 @@ describe("the per-file context menu", () => {
     const gone = card.dataset.path!;
     installMockPlatform({
       listDirectory: (dir: string) =>
-        Promise.resolve((TREE[dir] ?? []).filter((entry) => entry.path !== gone)),
+        Promise.resolve((listingIn(TREE, dir) ?? []).filter((entry) => entry.path !== gone)),
     });
     await refreshLibrary();
     card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
@@ -1276,7 +1340,7 @@ describe("the per-file context menu", () => {
 
   test("a failing rename and a failing duplicate report the same way", async () => {
     installMockPlatform({
-      listDirectory: (path: string) => Promise.resolve(TREE[path] ?? []),
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
       readFile: () => Promise.reject(new Error("EIO")),
       renameFile: () => Promise.reject(new Error("EPERM")),
     });

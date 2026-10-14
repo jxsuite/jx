@@ -7,8 +7,9 @@
  */
 import { describe, expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
+import type { ImportSiteOptions, ImportSiteResult } from "../src/run.ts";
 
-const importSite = mock((_opts: Record<string, unknown>) =>
+const importSite = mock((_opts: ImportSiteOptions): Promise<ImportSiteResult> =>
   Promise.resolve({
     outDir: resolve("clone-out"),
     pages: [{ route: "pages/index.json", title: "Cloned", nodeCount: 42 }],
@@ -45,7 +46,7 @@ process.argv = [
   "--verify",
 ];
 
-const cliModule = (await import("../src/cli")) as { ready?: Promise<unknown> };
+const cliModule = await import("../src/cli");
 await cliModule.ready;
 
 describe("jx-import CLI when verification does not meet the bar", () => {
@@ -65,7 +66,7 @@ describe("jx-import CLI when verification does not meet the bar", () => {
   });
 
   test("defaults the bar to 25 when --min-fidelity is not given", () => {
-    const opts = importSite.mock.calls[0]?.[0] as { verify: { minFidelity: number } };
-    expect(opts.verify.minFidelity).toBe(25);
+    const opts = importSite.mock.calls[0]?.[0];
+    expect(opts?.verify).toMatchObject({ minFidelity: 25 });
   });
 });

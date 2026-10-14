@@ -41,17 +41,16 @@ import { clearLayerSlot, getLayerSlot } from "../ui/layers";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
 import slashMenuDoc from "./slash-menu.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("slash-menu", slashMenuDoc as unknown as JxDocument);
+registerSurface("slash-menu", slashMenuDoc);
 
 /** The popover slot id; the region is `overlay.menu:slash-menu`, which is what the shots crop. */
 const SLOT = "slash-menu";
 
 /** One offer, as the document reads it. */
-export interface SlashMenuRow extends Record<string, unknown> {
+export interface SlashMenuRow {
   /**
    * The element's tag — unique in the list, so it is the repeater's key AND the row's `value`,
    * which is what a picked row names in its `select` event.
@@ -103,7 +102,7 @@ export interface SlashMenuSurface {
 }
 
 /** The scope `slash-menu.json` reads. */
-interface SlashMenuScope extends Record<string, unknown> {
+interface SlashMenuScope {
   x: number;
   y: number;
   showFilter: boolean;
@@ -168,7 +167,7 @@ export function openSlashMenuSurface(
   let mounted: SurfaceHandle | null = null;
   let closed = false;
 
-  const scope = reactive<SlashMenuScope>({
+  const scope: SlashMenuScope = reactive<SlashMenuScope>({
     activeId: activeIdOf(view),
     expanded: view.rows.length > 0,
     filter: view.filter,
@@ -184,6 +183,9 @@ export function openSlashMenuSurface(
          one bubbling handler on the listbox replaces a closure per row, and the position the flow
          wants is resolved here against the list the panel is showing rather than baked into the
          row when it was drawn. */
+      /* SAFETY: `slash-menu.json` binds this handler to the listbox's `onselect` alone, and `select`
+         is raised by the `dispatchEvent` statement in `jx-option.json`, which the runtime always
+         constructs as a `CustomEvent` whose `detail` is the row's value. */
       const tag = String((event as CustomEvent<unknown>).detail);
       const index = scope.rows.findIndex((row) => row.key === tag);
       if (index !== -1) {
@@ -194,7 +196,7 @@ export function openSlashMenuSurface(
     showFilter: view.showFilter,
     x: view.x,
     y: view.y,
-  }) as SlashMenuScope;
+  });
 
   const finish = (fromPlatform: boolean): void => {
     if (closed) {
@@ -210,12 +212,20 @@ export function openSlashMenuSurface(
     }
   };
 
+  /* Read through a call, not the property path: `close()` can abort the controller while the panel
+     is awaiting `jx-ready`, and a direct test after that `await` would be narrowed to the value the
+     test before it saw. */
+  const aborted = (): boolean => controller.signal.aborted;
+
   const ready = (async () => {
     const surface = await mountSurface("slash-menu", scope, slot, { signal: controller.signal });
-    if (controller.signal.aborted) {
+    if (aborted()) {
       return;
     }
     mounted = surface;
+    /* SAFETY: `slash-menu.json`'s root definition carries `tagName: "jx-popover"`, so the mounted
+       root is the kit's popover element, which reflects `open` and inherits `showPopover` and
+       `hidePopover` from HTMLElement. */
     panel = surface.root as PopoverElement;
     /* The region rides on the PANEL as well as on the slot `getLayerSlot` stamped: a popover is
        `position: fixed` in the top layer, so the slot around it has a zero-height box and the
@@ -223,7 +233,7 @@ export function openSlashMenuSurface(
        takes the last match in document order, which is the panel. */
     panel.setAttribute(REGION_ATTR, overlayRegion("popover", SLOT));
     panel.addEventListener("toggle", (event) => {
-      if ((event as { newState?: string }).newState === "closed") {
+      if (event.newState === "closed") {
         finish(true);
       }
     });
@@ -234,7 +244,7 @@ export function openSlashMenuSurface(
         panel!.addEventListener("jx-ready", () => resolve(), { once: true });
       });
     }
-    if (controller.signal.aborted) {
+    if (aborted()) {
       return;
     }
     panel.showPopover(anchor instanceof HTMLElement ? { source: anchor } : undefined);

@@ -122,7 +122,7 @@ export function negotiateLocale(
   available: readonly string[],
   fallback: string,
 ): string {
-  if (typeof header !== "string" || header.trim() === "") {
+  if (header === null || header === undefined || header.trim() === "") {
     return fallback;
   }
   for (const { range } of parseAcceptLanguage(header)) {

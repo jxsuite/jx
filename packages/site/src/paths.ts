@@ -101,35 +101,43 @@ export function candidatePaths(requestPath: string): string[] {
   return candidates;
 }
 
-/** Content types a site origin serves by extension. Anything unlisted is served as a download. */
-const CONTENT_TYPES: Record<string, string> = {
-  avif: "image/avif",
-  css: "text/css; charset=utf-8",
-  csv: "text/csv; charset=utf-8",
-  gif: "image/gif",
-  htm: "text/html; charset=utf-8",
-  html: "text/html; charset=utf-8",
-  ico: "image/x-icon",
-  jpeg: "image/jpeg",
-  jpg: "image/jpeg",
-  js: "text/javascript; charset=utf-8",
-  json: "application/json; charset=utf-8",
-  map: "application/json; charset=utf-8",
-  md: "text/markdown; charset=utf-8",
-  mjs: "text/javascript; charset=utf-8",
-  mp4: "video/mp4",
-  otf: "font/otf",
-  pdf: "application/pdf",
-  png: "image/png",
-  svg: "image/svg+xml",
-  ttf: "font/ttf",
-  txt: "text/plain; charset=utf-8",
-  webm: "video/webm",
-  webp: "image/webp",
-  woff: "font/woff",
-  woff2: "font/woff2",
-  xml: "application/xml; charset=utf-8",
-};
+/**
+ * Content types a site origin serves by extension. Anything unlisted is served as a download.
+ *
+ * A `Map` rather than an object literal so a lookup only ever finds a listed extension: indexing a
+ * plain object by a path's extension also reaches `Object.prototype`, and `x.constructor` would
+ * come back as a function instead of falling through to the download type.
+ */
+const CONTENT_TYPES = new Map(
+  Object.entries({
+    avif: "image/avif",
+    css: "text/css; charset=utf-8",
+    csv: "text/csv; charset=utf-8",
+    gif: "image/gif",
+    htm: "text/html; charset=utf-8",
+    html: "text/html; charset=utf-8",
+    ico: "image/x-icon",
+    jpeg: "image/jpeg",
+    jpg: "image/jpeg",
+    js: "text/javascript; charset=utf-8",
+    json: "application/json; charset=utf-8",
+    map: "application/json; charset=utf-8",
+    md: "text/markdown; charset=utf-8",
+    mjs: "text/javascript; charset=utf-8",
+    mp4: "video/mp4",
+    otf: "font/otf",
+    pdf: "application/pdf",
+    png: "image/png",
+    svg: "image/svg+xml",
+    ttf: "font/ttf",
+    txt: "text/plain; charset=utf-8",
+    webm: "video/webm",
+    webp: "image/webp",
+    woff: "font/woff",
+    woff2: "font/woff2",
+    xml: "application/xml; charset=utf-8",
+  }),
+);
 
 /**
  * The Content-Type a site origin serves a path as.
@@ -142,5 +150,5 @@ const CONTENT_TYPES: Record<string, string> = {
 export function contentTypeFor(path: string): string {
   const dot = path.lastIndexOf(".");
   const extension = dot === -1 ? "" : path.slice(dot + 1).toLowerCase();
-  return CONTENT_TYPES[extension] ?? "application/octet-stream";
+  return CONTENT_TYPES.get(extension) ?? "application/octet-stream";
 }

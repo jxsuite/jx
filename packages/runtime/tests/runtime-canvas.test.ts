@@ -17,7 +17,11 @@ import {
   transposeCanvasPopoverSelector,
   transposeCanvasUnits,
 } from "../src/runtime";
+import type { JxRenderOptions } from "../src/types.ts";
 import { adoptedCSS, elementCSS } from "./style-text.ts";
+
+import type { JxElement } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
 
 try {
   GlobalRegistrator.register();
@@ -25,7 +29,33 @@ try {
   /* Already registered */
 }
 
-const renderNode: (...args: Parameters<typeof _renderNode>) => HTMLElement = _renderNode as any;
+/** Every definition these tests render is an element, so a Text result is a runtime regression. */
+function renderNode(...args: Parameters<typeof _renderNode>): HTMLElement {
+  const node = _renderNode(...args);
+  if (!(node instanceof HTMLElement)) {
+    throw new Error("renderNode returned a Text node for an element definition");
+  }
+  return node;
+}
+
+/** Fresh render options that stamp every created element the way Studio's stamper does. */
+const stampedOptions = (): JxRenderOptions => ({
+  _path: [],
+  onNodeCreated: (n) => {
+    if (n instanceof HTMLElement) {
+      n.dataset.jxPath = "[]";
+    }
+  },
+});
+
+/** The element a defined component rendered for `part`, or a thrown Error naming what is missing. */
+function partOf(host: Element, part: string): HTMLElement {
+  const el = host.querySelector(`[part="${part}"]`);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`<${host.localName}> rendered no [part="${part}"] element`);
+  }
+  return el;
+}
 
 // Every hook is GLOBAL module state. Reset every one after every test.
 afterEach(() => {
@@ -245,7 +275,7 @@ describe("setCanvasDelinkAnchors", () => {
 describe("applyAttributes anchor de-link", () => {
   test("flag off: an <a href> keeps a live href", () => {
     const el = renderNode(
-      { attributes: { href: "https://example.com" }, tagName: "a" } as any,
+      { attributes: { href: "https://example.com" }, tagName: "a" },
       reactive({}),
     );
     expect(el.getAttribute("href")).toBe("https://example.com");
@@ -255,7 +285,7 @@ describe("applyAttributes anchor de-link", () => {
   test("flag on: an <a href> is stamped on data-jx-href, href stays null", () => {
     setCanvasDelinkAnchors(true);
     const el = renderNode(
-      { attributes: { href: "https://example.com" }, tagName: "a" } as any,
+      { attributes: { href: "https://example.com" }, tagName: "a" },
       reactive({}),
     );
     expect(el.dataset.jxHref).toBe("https://example.com");
@@ -264,7 +294,7 @@ describe("applyAttributes anchor de-link", () => {
 
   test("flag on: an <area href> is also de-linked", () => {
     setCanvasDelinkAnchors(true);
-    const el = renderNode({ attributes: { href: "/zone" }, tagName: "area" } as any, reactive({}));
+    const el = renderNode({ attributes: { href: "/zone" }, tagName: "area" }, reactive({}));
     expect(el.dataset.jxHref).toBe("/zone");
     expect(el.getAttribute("href")).toBeNull();
   });
@@ -272,10 +302,7 @@ describe("applyAttributes anchor de-link", () => {
   test("flag on: a non-anchor element keeps its href untouched", () => {
     setCanvasDelinkAnchors(true);
     // A "link" element is neither A nor AREA, so canvasAttrName leaves it alone.
-    const el = renderNode(
-      { attributes: { href: "/styles.css" }, tagName: "link" } as any,
-      reactive({}),
-    );
+    const el = renderNode({ attributes: { href: "/styles.css" }, tagName: "link" }, reactive({}));
     expect(el.getAttribute("href")).toBe("/styles.css");
     expect(el.dataset.jxHref).toBeUndefined();
   });
@@ -283,7 +310,7 @@ describe("applyAttributes anchor de-link", () => {
   test("flag on: a non-href attribute on an anchor is untouched", () => {
     setCanvasDelinkAnchors(true);
     const el = renderNode(
-      { attributes: { href: "/page", target: "_blank" } as any, tagName: "a" } as any,
+      { attributes: { href: "/page", target: "_blank" }, tagName: "a" },
       reactive({}),
     );
     // The href is de-linked, but target is a normal attribute either way.
@@ -294,10 +321,7 @@ describe("applyAttributes anchor de-link", () => {
   test("de-link applies to a reactive ($ref) href too", async () => {
     setCanvasDelinkAnchors(true);
     const state = reactive({ url: "/first" });
-    const el = renderNode(
-      { attributes: { href: { $ref: "#/state/url" } }, tagName: "a" } as any,
-      state,
-    );
+    const el = renderNode({ attributes: { href: { $ref: "#/state/url" } }, tagName: "a" }, state);
     expect(el.dataset.jxHref).toBe("/first");
     expect(el.getAttribute("href")).toBeNull();
     state.url = "/second";
@@ -329,7 +353,7 @@ describe("setCanvasAssetResolver", () => {
 
   test("a literal src is resolved", () => {
     setCanvasAssetResolver(prefixResolver);
-    const el = renderNode({ src: "/hero.jpg", tagName: "img" } as never, reactive({}));
+    const el = renderNode({ src: "/hero.jpg", tagName: "img" }, reactive({}));
     expect(el.getAttribute("src")).toBe("/raw/hero.jpg");
   });
 
@@ -338,7 +362,7 @@ describe("setCanvasAssetResolver", () => {
   test("a $ref-bound src is resolved, inside the effect", async () => {
     setCanvasAssetResolver(prefixResolver);
     const state = reactive({ hero: "/hero.jpg" });
-    const el = renderNode({ src: { $ref: "#/state/hero" }, tagName: "img" } as never, state);
+    const el = renderNode({ src: { $ref: "#/state/hero" }, tagName: "img" }, state);
     expect(el.getAttribute("src")).toBe("/raw/hero.jpg");
     // And again when the binding changes — the resolution is part of the effect, not a one-off.
     state.hero = "/other.jpg";
@@ -350,40 +374,28 @@ describe("setCanvasAssetResolver", () => {
 
   test("a templated src is resolved", () => {
     setCanvasAssetResolver(prefixResolver);
-    const el = renderNode(
-      { src: "${state.dir}/a.png", tagName: "img" } as never,
-      reactive({ dir: "/img" }),
-    );
+    const el = renderNode({ src: "${state.dir}/a.png", tagName: "img" }, reactive({ dir: "/img" }));
     expect(el.getAttribute("src")).toBe("/raw/img/a.png");
   });
 
   test("the attributes spelling of the same reference", () => {
     setCanvasAssetResolver(prefixResolver);
-    const el = renderNode(
-      { attributes: { src: "/hero.jpg" }, tagName: "img" } as never,
-      reactive({}),
-    );
+    const el = renderNode({ attributes: { src: "/hero.jpg" }, tagName: "img" }, reactive({}));
     expect(el.getAttribute("src")).toBe("/raw/hero.jpg");
   });
 
   test("poster too, in both spellings", () => {
     setCanvasAssetResolver(prefixResolver);
     // As a top-level key it is a DOM property; as an `attributes` entry it is an attribute.
-    const asProp = renderNode({ poster: "/p.jpg", tagName: "video" } as never, reactive({}));
-    expect((asProp as unknown as { poster: string }).poster).toBe("/raw/p.jpg");
-    const asAttr = renderNode(
-      { attributes: { poster: "/p.jpg" }, tagName: "video" } as never,
-      reactive({}),
-    );
+    const asProp = renderNode({ poster: "/p.jpg", tagName: "video" }, reactive({}));
+    expect("poster" in asProp ? asProp.poster : undefined).toBe("/raw/p.jpg");
+    const asAttr = renderNode({ attributes: { poster: "/p.jpg" }, tagName: "video" }, reactive({}));
     expect(asAttr.getAttribute("poster")).toBe("/raw/p.jpg");
   });
 
   test("every srcset candidate, descriptors preserved", () => {
     setCanvasAssetResolver(prefixResolver);
-    const el = renderNode(
-      { srcset: "/a.png 1x, /b.png 2x", tagName: "img" } as never,
-      reactive({}),
-    );
+    const el = renderNode({ srcset: "/a.png 1x, /b.png 2x", tagName: "img" }, reactive({}));
     expect(el.getAttribute("srcset")).toBe("/raw/a.png 1x, /raw/b.png 2x");
   });
 
@@ -391,17 +403,14 @@ describe("setCanvasAssetResolver", () => {
     setCanvasAssetResolver((value) =>
       value === "/skip.png" ? null : `/raw/${value.replace(/^\//, "")}`,
     );
-    const el = renderNode(
-      { srcset: "/skip.png 1x, /b.png 2x", tagName: "img" } as never,
-      reactive({}),
-    );
+    const el = renderNode({ srcset: "/skip.png 1x, /b.png 2x", tagName: "img" }, reactive({}));
     expect(el.getAttribute("srcset")).toBe("/skip.png 1x, /raw/b.png 2x");
   });
 
   test("url() inside a style value, in the rule and the toCSSText paths", () => {
     setCanvasAssetResolver(prefixResolver);
     const el = renderNode(
-      { style: { backgroundImage: "url('/bg.png')" }, tagName: "div" } as never,
+      { style: { backgroundImage: "url('/bg.png')" }, tagName: "div" },
       reactive({}),
     );
     expect(elementCSS(el)).toContain("background-image: url('/raw/bg.png')");
@@ -412,10 +421,10 @@ describe("setCanvasAssetResolver", () => {
      document that backs the page instead of at the page. A `<link href>` is the opposite. */
   test("href is an asset on <link> and a destination on <a>", () => {
     setCanvasAssetResolver(prefixResolver);
-    const anchor = renderNode({ href: "/about", tagName: "a" } as never, reactive({}));
+    const anchor = renderNode({ href: "/about", tagName: "a" }, reactive({}));
     expect(anchor.getAttribute("href")).toBe("/about");
     const link = renderNode(
-      { attributes: { href: "/styles/main.css", rel: "stylesheet" }, tagName: "link" } as never,
+      { attributes: { href: "/styles/main.css", rel: "stylesheet" }, tagName: "link" },
       reactive({}),
     );
     expect(link.getAttribute("href")).toBe("/raw/styles/main.css");
@@ -423,7 +432,7 @@ describe("setCanvasAssetResolver", () => {
 
   test("a resolver that returns null leaves the value exactly as written", () => {
     setCanvasAssetResolver(() => null);
-    const el = renderNode({ src: "/hero.jpg", tagName: "img" } as never, reactive({}));
+    const el = renderNode({ src: "/hero.jpg", tagName: "img" }, reactive({}));
     expect(el.getAttribute("src")).toBe("/hero.jpg");
   });
 
@@ -433,7 +442,7 @@ describe("setCanvasAssetResolver", () => {
       calls += 1;
       return `/raw/${value}`;
     });
-    renderNode({ src: "", tagName: "img" } as never, reactive({}));
+    renderNode({ src: "", tagName: "img" }, reactive({}));
     expect(calls).toBe(0);
   });
 
@@ -443,23 +452,25 @@ describe("setCanvasAssetResolver", () => {
    * hook.
    */
   test("with NO resolver, every value is byte-identical", () => {
+    const styledCase = { style: { backgroundImage: "url('/bg.png')" }, tagName: "div" };
     const cases = [
       { src: "/hero.jpg", tagName: "img" },
       { srcset: "/a.png 1x, /b.png 2x", tagName: "img" },
       { attributes: { poster: "/p.jpg" }, tagName: "video" },
-      { style: { backgroundImage: "url('/bg.png')" }, tagName: "div" },
+      styledCase,
       { attributes: { href: "/styles/main.css" }, tagName: "link" },
     ];
     for (const def of cases) {
-      const el = renderNode(def as never, reactive({}));
+      const el = renderNode(def, reactive({}));
       for (const [key, expected] of Object.entries(def)) {
-        if (key === "tagName" || key === "style" || key === "attributes") {
+        // `style` and `attributes` hold objects, and are checked by the styled render below.
+        if (key === "tagName" || !isString(expected)) {
           continue;
         }
-        expect(el.getAttribute(key)).toBe(expected as string);
+        expect(el.getAttribute(key)).toBe(expected);
       }
     }
-    const styled = renderNode(cases[3] as never, reactive({}));
+    const styled = renderNode(styledCase, reactive({}));
     expect(elementCSS(styled)).toContain("background-image: url('/bg.png')");
     expect(toCSSText({ maskImage: "url(/m.svg)" })).toBe("mask-image: url(/m.svg)");
   });
@@ -475,18 +486,18 @@ describe("setCanvasAssetResolver", () => {
       children: [{ src: "${state.src}", tagName: "img" }],
       state: { src: { default: "" } },
       tagName: "canvas-props-img",
-    } as never);
+    });
     const el = renderNode(
-      { $props: { src: "/hero.jpg" }, tagName: "canvas-props-img" } as never,
+      { $props: { src: "/hero.jpg" }, tagName: "canvas-props-img" },
       reactive({}),
     );
-    expect((el as unknown as { src: string }).src).toBe("/raw/hero.jpg");
+    expect("src" in el ? el.src : undefined).toBe("/raw/hero.jpg");
   });
 
   test("a non-URL attribute is never resolved, however it is written", () => {
     setCanvasAssetResolver(prefixResolver);
     const el = renderNode(
-      { attributes: { alt: "/hero.jpg", "data-x": "/hero.jpg" }, tagName: "img" } as never,
+      { attributes: { alt: "/hero.jpg", "data-x": "/hero.jpg" }, tagName: "img" },
       reactive({}),
     );
     expect(el.getAttribute("alt")).toBe("/hero.jpg");
@@ -512,7 +523,7 @@ describe("$head asset resolution", () => {
           { attributes: { href: "/styles/main.css", rel: "stylesheet" }, tagName: "link" },
         ],
         tagName: "div",
-      } as never,
+      },
       target,
     );
     expect(
@@ -536,9 +547,9 @@ describe("setCanvasDelinkPopovers", () => {
 
   test("flag off (production and preview) leaves the attribute and the selector alone", () => {
     const el = renderNode(
-      { attributes: { popover: "auto" }, tagName: "nav" } as never,
+      { attributes: { popover: "auto" }, tagName: "nav" },
       reactive({}),
-      { _path: [], onNodeCreated: (n: HTMLElement) => (n.dataset.jxPath = "[]") } as never,
+      stampedOptions(),
     );
     expect(el.getAttribute("popover")).toBe("auto");
     const styled = stamped();
@@ -549,9 +560,9 @@ describe("setCanvasDelinkPopovers", () => {
   test("flag on renames popover on a node the studio can address", () => {
     setCanvasDelinkPopovers(true);
     const el = renderNode(
-      { attributes: { popover: "auto" }, tagName: "nav" } as never,
+      { attributes: { popover: "auto" }, tagName: "nav" },
       reactive({}),
-      { _path: [], onNodeCreated: (n: HTMLElement) => (n.dataset.jxPath = "[]") } as never,
+      stampedOptions(),
     );
     expect(el.dataset.jxPopover).toBe("auto");
     expect(el.getAttribute("popover")).toBeNull();
@@ -559,10 +570,7 @@ describe("setCanvasDelinkPopovers", () => {
 
   test("an UNSTAMPED node keeps its native popover — a component's own internals", () => {
     setCanvasDelinkPopovers(true);
-    const el = renderNode(
-      { attributes: { popover: "auto" }, tagName: "nav" } as never,
-      reactive({}),
-    );
+    const el = renderNode({ attributes: { popover: "auto" }, tagName: "nav" }, reactive({}));
     expect(el.getAttribute("popover")).toBe("auto");
     expect(el.dataset.jxPopover).toBeUndefined();
   });
@@ -573,13 +581,15 @@ describe("setCanvasDelinkPopovers", () => {
     // Directly so a reordering fails here rather than silently un-gating the rewrite.
     setCanvasDelinkPopovers(true);
     const seen: boolean[] = [];
-    renderNode({ attributes: { popover: "auto" }, tagName: "nav" } as never, reactive({}), {
+    renderNode({ attributes: { popover: "auto" }, tagName: "nav" }, reactive({}), {
       _path: [],
-      onNodeCreated: (n: HTMLElement) => {
-        seen.push(n.hasAttribute("popover"));
-        n.dataset.jxPath = "[]";
+      onNodeCreated: (n) => {
+        if (n instanceof HTMLElement) {
+          seen.push(n.hasAttribute("popover"));
+          n.dataset.jxPath = "[]";
+        }
       },
-    } as never);
+    });
     expect(seen).toEqual([false]);
   });
 
@@ -598,15 +608,15 @@ describe("setCanvasDelinkPopovers", () => {
         { attributes: { commandfor: "x", part: "trigger" }, tagName: "button" },
       ],
       tagName: "cv-panel",
-    } as never);
+    });
     const host = document.createElement("cv-panel");
     host.dataset.jxPath = '["children",0]';
     document.body.append(host);
     await new Promise((r) => {
       setTimeout(r, 0);
     });
-    const panel = host.querySelector('[part="panel"]') as HTMLElement;
-    const trigger = host.querySelector('[part="trigger"]') as HTMLElement;
+    const panel = partOf(host, "panel");
+    const trigger = partOf(host, "trigger");
     expect(panel.hasAttribute("popover")).toBe(false);
     expect(panel.dataset.jxPopover).toBe("auto");
     expect(trigger.hasAttribute("commandfor")).toBe(false);
@@ -629,14 +639,14 @@ describe("setCanvasDelinkPopovers", () => {
         },
       ],
       tagName: "cv-styled-panel",
-    } as never);
+    });
     const host = document.createElement("cv-styled-panel");
     host.dataset.jxPath = "[]";
     document.body.append(host);
     await new Promise((r) => {
       setTimeout(r, 0);
     });
-    const panel = host.querySelector('[part="panel"]') as HTMLElement;
+    const panel = partOf(host, "panel");
     const css = elementCSS(panel);
     expect(panel.dataset.jxPopover).toBe("auto");
     expect(css).toContain("[data-jx-popover-open] { display: flex }");
@@ -653,7 +663,7 @@ describe("setCanvasDelinkPopovers", () => {
     await defineElement({
       children: [{ attributes: { part: "panel", popover: "auto" }, tagName: "div" }],
       tagName: "cv-shell-panel",
-    } as never);
+    });
     const stampedHost = document.createElement("cv-shell-panel");
     stampedHost.dataset.jxPath = "[]";
     const plainHost = document.createElement("cv-shell-panel");
@@ -661,12 +671,8 @@ describe("setCanvasDelinkPopovers", () => {
     await new Promise((r) => {
       setTimeout(r, 0);
     });
-    expect(
-      (stampedHost.querySelector('[part="panel"]') as HTMLElement).hasAttribute("popover"),
-    ).toBe(false);
-    expect((plainHost.querySelector('[part="panel"]') as HTMLElement).getAttribute("popover")).toBe(
-      "auto",
-    );
+    expect(partOf(stampedHost, "panel").hasAttribute("popover")).toBe(false);
+    expect(partOf(plainHost, "panel").getAttribute("popover")).toBe("auto");
     stampedHost.remove();
     plainHost.remove();
   });
@@ -722,11 +728,8 @@ describe("setCanvasDelinkCommands", () => {
     document.body.replaceChildren();
   });
 
-  function stampedRender(def: Record<string, unknown>): HTMLElement {
-    return renderNode(def as never, reactive({}), {
-      _path: [],
-      onNodeCreated: (n: HTMLElement) => (n.dataset.jxPath = "[]"),
-    } as never) as HTMLElement;
+  function stampedRender(def: JxElement): HTMLElement {
+    return renderNode(def, reactive({}), stampedOptions());
   }
 
   test("flag on renames commandfor, inert and a dialog's open on a stamped node", () => {
@@ -759,14 +762,11 @@ describe("setCanvasDelinkCommands", () => {
   test("an UNSTAMPED node keeps its native invoker — a component's own internals", () => {
     setCanvasDelinkCommands(true);
     const button = renderNode(
-      { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" } as never,
+      { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" },
       reactive({}),
     );
     expect(button.getAttribute("commandfor")).toBe("d");
-    const dialog = renderNode(
-      { attributes: { open: true }, tagName: "dialog" } as never,
-      reactive({}),
-    );
+    const dialog = renderNode({ attributes: { open: true }, tagName: "dialog" }, reactive({}));
     expect(dialog.hasAttribute("open")).toBe(true);
   });
 

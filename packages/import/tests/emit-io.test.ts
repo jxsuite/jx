@@ -9,6 +9,7 @@
 import { describe, expect, test } from "bun:test";
 import { emitMultiPageProject, emitProject } from "../src/emit.ts";
 import { memoryIo } from "./memory-io.ts";
+import { parseJxDocument, parseProjectConfig } from "@jxsuite/schema/parse";
 import type { JxElement } from "@jxsuite/schema/types";
 
 describe("emitMultiPageProject through a memory sink", () => {
@@ -33,8 +34,9 @@ describe("emitMultiPageProject through a memory sink", () => {
     });
 
     // Nothing absolute, nothing back-slashed, and the returned list IS the set that was written.
-    expect(result.files.toSorted()).toEqual([...files.keys()].toSorted());
-    expect(result.files.toSorted()).toEqual([
+    const written = result.files.toSorted();
+    expect(written).toEqual([...files.keys()].toSorted());
+    expect(written).toEqual([
       "layouts/base.json",
       "pages/blog/first-post.json",
       "pages/index.json",
@@ -44,12 +46,12 @@ describe("emitMultiPageProject through a memory sink", () => {
     expect(result.files.every((f) => !f.startsWith("/") && !f.includes("\\"))).toBe(true);
     expect(dirs).toEqual(["pages", "layouts", "components", "public"]);
 
-    const project = JSON.parse(result.projectJson) as Record<string, unknown>;
+    const project = parseProjectConfig(result.projectJson, "project.json");
     expect(text("project.json")).toBe(result.projectJson);
     expect(project.name).toBe("Sink Site");
     expect(project.style).toEqual({ "--brand": "#3b82f6" });
     // Base first, then ascending — `$media`'s order is the order Studio offers the sizes in.
-    expect(Object.keys(project.$media as object)).toEqual(["--", "--640", "--1024"]);
+    expect(Object.keys(project.$media ?? {})).toEqual(["--", "--640", "--1024"]);
     expect(project.$head).toEqual([
       { tagName: "link", attributes: { rel: "stylesheet", href: "/assets/fonts.css" } },
     ]);
@@ -57,17 +59,20 @@ describe("emitMultiPageProject through a memory sink", () => {
     // The @font-face url() is rewritten to the served path, with the `public/` prefix dropped.
     expect(text("public/assets/fonts.css")).toContain("url(/assets/fonts/l.woff2)");
 
-    const nested = JSON.parse(text("pages/blog/first-post.json")) as { textContent: string };
+    const nested = parseJxDocument(
+      text("pages/blog/first-post.json"),
+      "pages/blog/first-post.json",
+    );
     expect(nested.textContent).toBe("Post");
-    const layout = JSON.parse(text("layouts/base.json")) as { children: { tagName: string }[] };
-    expect(layout.children.map((c) => c.tagName)).toEqual(["header", "slot"]);
+    const layout = parseJxDocument(text("layouts/base.json"), "layouts/base.json");
+    expect(layout.children).toMatchObject([{ tagName: "header" }, { tagName: "slot" }]);
   });
 
   test("components land under components/ and are referenced by every page", async () => {
     const { io, text } = memoryIo();
     const card = (title: string): JxElement => ({
       tagName: "article",
-      children: [{ tagName: "h3", textContent: title }] as JxElement[],
+      children: [{ tagName: "h3", textContent: title }],
     });
 
     const result = await emitMultiPageProject({
@@ -75,15 +80,15 @@ describe("emitMultiPageProject through a memory sink", () => {
       title: "Componentized",
       sourceUrl: "https://sink.example/",
       pages: new Map<string, JxElement>([
-        ["pages/index.json", { tagName: "div", children: [card("A"), card("B")] as JxElement[] }],
+        ["pages/index.json", { tagName: "div", children: [card("A"), card("B")] }],
       ]),
       componentizeOptions: { minInstances: 2, minDepth: 1 },
     });
 
     const components = result.files.filter((f) => f.startsWith("components/"));
     expect(components.length).toBeGreaterThan(0);
-    const page = JSON.parse(text("pages/index.json")) as { $elements: { $ref: string }[] };
-    expect(page.$elements[0]?.$ref).toBe(`../${components[0]}`);
+    const page = parseJxDocument(text("pages/index.json"), "pages/index.json");
+    expect(page.$elements?.[0]).toMatchObject({ $ref: `../${components[0]}` });
   });
 
   test("the class strip runs on the way out and is counted, never on the way in", async () => {

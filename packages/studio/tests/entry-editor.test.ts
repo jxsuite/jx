@@ -34,8 +34,9 @@ import {
 } from "../src/content/entry-editor";
 import { mountEntryEditorSurface } from "../src/surfaces/entry-editor";
 import type { EntryEditorView } from "../src/surfaces/entry-editor";
-import type { StudioPlatform } from "../src/types";
+import { DRAFT_MEANING } from "../src/content/draft-state";
 import type { Tab } from "../src/tabs/tab";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const BLOG_SCHEMA = {
   properties: {
@@ -89,7 +90,7 @@ function seedFiles(files: Record<string, string>): void {
     {
       formatAction: mockFormatAction,
       listFormats: async () => [MARKDOWN_FORMAT],
-    } as Partial<StudioPlatform>,
+    },
     files,
   );
   seedMarkdownFormat();
@@ -109,16 +110,15 @@ async function openEntry(path: string, source: string): Promise<Tab> {
   if (!tab) {
     throw new Error(`fixture did not open ${path}`);
   }
-  return tab as unknown as Tab;
+  return tab;
 }
 
 /** The reviewer's reproduction case, verbatim: a JSON entry that HAS its required field. */
-function adaSource(extra: Record<string, unknown> = {}): string {
+function adaSource(extra: JsonObject = {}): string {
   return JSON.stringify({ bio: "Mathematician", name: "Ada Lovelace", ...extra });
 }
 
-const openAda = (extra?: Record<string, unknown>) =>
-  openEntry("content/authors/ada.json", adaSource(extra));
+const openAda = (extra?: JsonObject) => openEntry("content/authors/ada.json", adaSource(extra));
 
 /** A Markdown entry of the same shape — the other storage shape, same editor. */
 function openPost(frontmatter = "title: Hello\npubDate: 2026-01-01\n"): Promise<Tab> {
@@ -141,17 +141,24 @@ function part(host: HTMLElement, name: string): HTMLElement | null {
   return host.querySelector<HTMLElement>(`[part="${name}"]`);
 }
 
-function fieldValue(host: HTMLElement, prop: string): unknown {
+/** The native control `jx-textfield` draws for a text field: an `<input>`, or a `<textarea>`. */
+function fieldControl(
+  host: HTMLElement,
+  prop: string,
+): HTMLInputElement | HTMLTextAreaElement | null {
   const el = host.querySelector(`[data-prop="${prop}"] [part="text"] [part="input"]`);
-  return (el as unknown as { value?: unknown } | null)?.value;
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
+}
+
+function fieldValue(host: HTMLElement, prop: string): string | undefined {
+  return fieldControl(host, prop)?.value;
 }
 
 function typeInto(host: HTMLElement, prop: string, value: string): void {
-  const el = host.querySelector(
-    `[data-prop="${prop}"] [part="text"] [part="input"]`,
-  ) as HTMLElement & {
-    value: string;
-  };
+  const el = fieldControl(host, prop);
+  if (!el) {
+    throw new Error(`no text control drawn for field "${prop}"`);
+  }
   el.value = value;
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -426,7 +433,7 @@ describe("drafts", () => {
     expect(entryDraftPill(await openAda({ draft: true }))).toEqual({
       draft: true,
       text: "Draft",
-      title: expect.stringContaining("does not exclude") as unknown as string,
+      title: DRAFT_MEANING,
     });
 
     const published = entryDraftPill(await openAda());

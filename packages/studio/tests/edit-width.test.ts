@@ -15,7 +15,7 @@ import {
   standUpPaneGrid,
   stubRect,
 } from "./harness";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { initShellRefs } from "../src/store";
 import {
   EDIT_CANVAS_GUTTER,
@@ -58,7 +58,7 @@ function openTabWithMedia(media: Record<string, string> = DESKTOP_FIRST): Tab {
     $media: media,
     children: [{ tagName: "p", textContent: "Hi" }],
     tagName: "div",
-  } as never);
+  });
   return activeTab.value!;
 }
 
@@ -88,7 +88,7 @@ function standUpColumn(available: number, initialWidth?: number): HTMLElement {
     configurable: true,
     value: () => {
       const cap = Number(column.style.maxWidth.replace("px", "") || Number.NaN);
-      return { width: Math.min(Number.isNaN(cap) ? available : cap, available) } as DOMRect;
+      return new DOMRect(0, 0, Math.min(Number.isNaN(cap) ? available : cap, available), 0);
     },
   });
   return column;
@@ -182,7 +182,11 @@ describe("setEditWidth / editWidthOfPane", () => {
     const first = openTabWithMedia();
     setEditWidth(PRIMARY_PANE, first, 700);
     // `resetWorkspaceWithTab` mints one fixed id, so the other document is named directly.
-    const second = { id: "another-tab", session: { ui: { activeMedia: null } } } as unknown as Tab;
+    const second: Tab = {
+      ...first,
+      id: "another-tab",
+      session: { ...first.session, ui: { ...first.session.ui, activeMedia: null } },
+    };
     expect(editWidthOfPane(PRIMARY_PANE, second)).toBeNull();
     expect(editWidthOfPane(PRIMARY_PANE, first)).toBeNull();
   });
@@ -338,7 +342,13 @@ describe("mountEditWidthHandle", () => {
     const slot = document.createElement("div");
     slot.setAttribute("part", `handle-${side}-slot`);
     slot.style.display = "contents";
-    const handle = document.createElement("jx-split") as SplitElement;
+    // The kit is not registered here, so the element's share and bounds start as plain properties.
+    const handle: SplitElement = Object.assign(document.createElement("jx-split"), {
+      collapse: 0,
+      max: 1,
+      min: 0,
+      value: 0,
+    });
     handle.setAttribute("part", "edit-handle");
     handle.dataset.side = side;
     slot.append(handle);
@@ -454,17 +464,10 @@ describe("mountEditWidthHandle", () => {
     openTabWithMedia();
     const column = standUpColumn(1400, 1000);
     const handle = handleBeside(column);
-    let inputs = 0;
-    const add = handle.addEventListener.bind(handle);
-    handle.addEventListener = ((type: string, ...rest: unknown[]) => {
-      if (type === "input") {
-        inputs += 1;
-      }
-      (add as (...args: unknown[]) => void)(type, ...rest);
-    }) as typeof handle.addEventListener;
+    const added = spyOn(handle, "addEventListener");
     mountEditWidthHandle(surface, handle, column, 1);
     mountEditWidthHandle(surface, handle, column, 1);
-    expect(inputs).toBe(1);
+    expect(added.mock.calls.filter(([type]) => type === "input")).toHaveLength(1);
     drag(handle, -60);
     expect(column.style.maxWidth).toBe("880px");
   });
@@ -478,36 +481,27 @@ describe("mountEditWidthHandle", () => {
     openTabWithMedia();
     const column = standUpColumn(1400, 1000);
     const old = handleBeside(column);
-    const removed: string[] = [];
-    const off = old.removeEventListener.bind(old);
-    old.removeEventListener = ((type: string, ...rest: unknown[]) => {
-      removed.push(type);
-      (off as (...args: unknown[]) => void)(type, ...rest);
-    }) as typeof old.removeEventListener;
-    const offWindow = globalThis.removeEventListener.bind(globalThis);
-    let resizeListeners = 0;
-    globalThis.removeEventListener = ((type: string, ...rest: unknown[]) => {
-      if (type === "resize") {
-        resizeListeners -= 1;
-      }
-      (offWindow as (...args: unknown[]) => void)(type, ...rest);
-    }) as typeof globalThis.removeEventListener;
+    const removed = spyOn(old, "removeEventListener");
+    const removedFromWindow = spyOn(globalThis, "removeEventListener");
+    const removedTypes = () => removed.mock.calls.map(([type]) => type);
     try {
       mountEditWidthHandle(surface, old, column, 1);
       // Still in the document: a repeat mount releases nothing.
       mountEditWidthHandle(surface, old, column, 1);
-      expect(removed).toEqual([]);
+      expect(removedTypes()).toEqual([]);
       old.parentElement!.remove();
       const fresh = handleBeside(column);
       mountEditWidthHandle(surface, fresh, column, 1);
-      expect(removed.toSorted()).toEqual(["change", "input", "keydown", "pointerdown"]);
+      expect(removedTypes().toSorted()).toEqual(["change", "input", "keydown", "pointerdown"]);
       /* At least the old handle's — the sweep also releases what earlier tests left detached,
          which is the same policy doing the same job. */
-      expect(resizeListeners).toBeLessThanOrEqual(-1);
+      expect(
+        removedFromWindow.mock.calls.filter(([type]) => type === "resize").length,
+      ).toBeGreaterThanOrEqual(1);
       drag(fresh, -60);
       expect(column.style.maxWidth).toBe("880px");
     } finally {
-      globalThis.removeEventListener = offWindow;
+      removedFromWindow.mockRestore();
     }
   });
 

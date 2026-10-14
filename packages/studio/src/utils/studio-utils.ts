@@ -6,7 +6,8 @@
 
 import { collectionForFile } from "../content/collection-match";
 import { defaultContentFormat } from "../format/format-host";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
+import type { CssFontPreset } from "../panels/style-utils";
 
 /**
  * Convert camelCase property name to "Title Case" label (e.g. "backgroundColor" → "Background
@@ -40,30 +41,41 @@ export function kebabToLabel(val: string) {
 }
 
 /**
+ * What a css-meta or html-meta entry says about the field that edits it: its label, and the keys
+ * {@link inferInputType} picks the control from. Every other key an entry carries is ignored here.
+ */
+export interface FieldControlMeta {
+  readonly $label?: string | undefined;
+  /** `true` on a shorthand row; css-meta puts the shorthand's own name on each longhand. */
+  readonly $shorthand?: string | boolean | undefined;
+  readonly $input?: string | undefined;
+  readonly $units?: readonly string[] | undefined;
+  readonly format?: string | undefined;
+  readonly type?: string | undefined;
+  readonly enum?: readonly JsonValue[] | undefined;
+  readonly examples?: readonly JsonValue[] | undefined;
+  readonly presets?: readonly (CssFontPreset | JsonValue)[] | undefined;
+}
+
+/**
  * Get display label from metadata entry or prop name
  *
- * @param {{ $label?: string; [key: string]: unknown } | null | undefined} entry
+ * @param {FieldControlMeta | null | undefined} entry
  * @param {string} prop
  * @returns {string}
  */
-export function propLabel(
-  entry: { $label?: string; [key: string]: unknown } | null | undefined,
-  prop: string,
-) {
+export function propLabel(entry: FieldControlMeta | null | undefined, prop: string) {
   return entry?.$label || camelToLabel(prop);
 }
 
 /**
  * Label for HTML attributes — handles kebab-case (aria-label → "Aria Label")
  *
- * @param {{ $label?: string; [key: string]: unknown } | null | undefined} entry
+ * @param {FieldControlMeta | null | undefined} entry
  * @param {string} attr
  * @returns {string}
  */
-export function attrLabel(
-  entry: { $label?: string; [key: string]: unknown } | null | undefined,
-  attr: string,
-) {
+export function attrLabel(entry: FieldControlMeta | null | undefined, attr: string) {
   if (entry?.$label) {
     return entry.$label;
   }
@@ -92,17 +104,17 @@ export function attrLabel(
  * @param {unknown} format - A schema entry's `format`
  * @returns {boolean}
  */
-export function isMediaFormat(format: unknown): boolean {
+export function isMediaFormat(format: unknown): format is "image" | "uri-reference" {
   return format === "image" || format === "uri-reference";
 }
 
 /**
  * Determine input widget type from a css-meta entry
  *
- * @param {Record<string, unknown>} entry
+ * @param {FieldControlMeta} entry
  * @returns {string}
  */
-export function inferInputType(entry: Record<string, unknown>) {
+export function inferInputType(entry: FieldControlMeta) {
   if (entry.$shorthand === true) {
     return "shorthand";
   }
@@ -248,6 +260,9 @@ export function parseCemType(typeText: string | undefined | null) {
  * both required for document snapshots and clipboard payloads.
  */
 export function jsonClone<T>(value: T): T {
+  /* SAFETY: callers pass documents and clipboard payloads, which are JSON-shaped, and a JSON round
+     trip rebuilds such a value with the same structure. The only keys it loses hold undefined or a
+     function, which is the normalization this helper exists to perform. */
   // oxlint-disable-next-line unicorn/prefer-structured-clone -- structuredClone throws on reactive proxies; JSON normalization is the point
   return JSON.parse(JSON.stringify(value)) as T;
 }

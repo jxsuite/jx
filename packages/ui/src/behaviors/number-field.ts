@@ -41,7 +41,6 @@ export interface NumberFieldState {
   value: string;
   /** Whether the control is holding something it cannot parse as a number. */
   badInput: boolean;
-  [key: string]: unknown;
 }
 
 const HOST = "jx-number-field";
@@ -65,7 +64,7 @@ function controlOf(host: HTMLElement): HTMLInputElement | null {
  */
 function mirror(state: NumberFieldState, control: HTMLInputElement): void {
   state.value = control.value;
-  state.badInput = control.validity?.badInput === true;
+  state.badInput = control.validity.badInput;
 }
 
 /**
@@ -115,16 +114,15 @@ export function stepBy(state: NumberFieldState, event: Event, n: number): void {
  * @param state The element's reactive scope.
  * @param event The keyboard event.
  */
-export function onNumberKeydown(state: NumberFieldState, event: Event): void {
-  const key = event as KeyboardEvent;
-  if (!key.shiftKey) {
+export function onNumberKeydown(state: NumberFieldState, event: KeyboardEvent): void {
+  if (!event.shiftKey) {
     return;
   }
-  if (key.key === "ArrowUp") {
-    key.preventDefault();
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
     stepBy(state, event, 10);
-  } else if (key.key === "ArrowDown") {
-    key.preventDefault();
+  } else if (event.key === "ArrowDown") {
+    event.preventDefault();
     stepBy(state, event, -10);
   }
 }

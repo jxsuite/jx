@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { resolveLayout } from "../src/site/layout-resolver";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { JxElement } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JxDocument, JxElement } from "@jxsuite/schema/types";
 
 const FIXTURES = join(import.meta.dir, "_fixtures_layout");
 
@@ -14,9 +15,30 @@ function cleanup() {
   rmSync(FIXTURES, { force: true, recursive: true });
 }
 
-/** @param {string} name @param {unknown} content */
-function writeLayout(name: string, content: unknown) {
+/** @param {string} name @param {JsonObject} content */
+function writeLayout(name: string, content: JsonObject) {
   writeFileSync(join(FIXTURES, "layouts", name), JSON.stringify(content), "utf8");
+}
+
+/** The message a pending resolution rejected with, or null when it resolved. */
+async function rejectionOf(pending: Promise<JxDocument>): Promise<string | null> {
+  try {
+    await pending;
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/** The first element child of `node` with the given tag, if its children are a plain list. */
+function childTagged(node: JxElement | undefined, tagName: string): JxElement | undefined {
+  const children = node?.children;
+  if (!Array.isArray(children)) {
+    return undefined;
+  }
+  return children.find(
+    (child): child is JxElement => !isString(child) && child.tagName === tagName,
+  );
 }
 
 // ─── resolveLayout ──────────────────────────────────────────────────────────
@@ -36,13 +58,7 @@ describe("resolveLayout", () => {
 
   test("throws when layout file not found", async () => {
     const page = { $layout: "./layouts/missing.json" };
-    let failure: unknown;
-    try {
-      await resolveLayout(page, {}, "/tmp");
-    } catch (error) {
-      failure = error;
-    }
-    expect((failure as Error | undefined)?.message).toContain("Layout not found");
+    expect(await rejectionOf(resolveLayout(page, {}, "/tmp"))).toContain("Layout not found");
   });
 
   test("distributes page children into layout slots", async () => {
@@ -68,9 +84,9 @@ describe("resolveLayout", () => {
         children: [{ tagName: "p", textContent: "Page content" }],
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
-      const main = result.children.find((c: JxElement) => c.tagName === "main");
-      expect(main.children[0].textContent).toBe("Page content");
+      const result = await resolveLayout(page, {}, FIXTURES);
+      const main = childTagged(result, "main");
+      expect(main).toHaveProperty(["children", 0, "textContent"], "Page content");
     } finally {
       cleanup();
     }
@@ -98,13 +114,13 @@ describe("resolveLayout", () => {
         ],
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
-      const nav = result.children.find((c: JxElement) => c.tagName === "nav");
-      expect(nav.children[0].tagName).toBe("a");
-      expect(nav.children[0].textContent).toBe("Link");
+      const result = await resolveLayout(page, {}, FIXTURES);
+      const nav = childTagged(result, "nav");
+      expect(nav).toHaveProperty(["children", 0, "tagName"], "a");
+      expect(nav).toHaveProperty(["children", 0, "textContent"], "Link");
 
-      const main = result.children.find((c: JxElement) => c.tagName === "main");
-      expect(main.children[0].textContent).toBe("Main content");
+      const main = childTagged(result, "main");
+      expect(main).toHaveProperty(["children", 0, "textContent"], "Main content");
     } finally {
       cleanup();
     }
@@ -124,9 +140,9 @@ describe("resolveLayout", () => {
         state: { pageVar: "from-page" },
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
-      expect(result.state.layoutVar).toBe("from-layout");
-      expect(result.state.pageVar).toBe("from-page");
+      const result = await resolveLayout(page, {}, FIXTURES);
+      expect(result.state?.layoutVar).toBe("from-layout");
+      expect(result.state?.pageVar).toBe("from-page");
     } finally {
       cleanup();
     }
@@ -146,8 +162,8 @@ describe("resolveLayout", () => {
         state: { shared: "page-value" },
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
-      expect(result.state.shared).toBe("page-value");
+      const result = await resolveLayout(page, {}, FIXTURES);
+      expect(result.state?.shared).toBe("page-value");
     } finally {
       cleanup();
     }
@@ -172,7 +188,7 @@ describe("resolveLayout", () => {
         title: "About Us",
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
+      const result = await resolveLayout(page, {}, FIXTURES);
       expect(result._pageTitle).toBe("About Us");
       expect(result._pageHead).toHaveLength(1);
     } finally {
@@ -185,7 +201,7 @@ describe("resolveLayout", () => {
     try {
       writeLayout("clean.json", { children: [], tagName: "div" });
       const page = { $layout: "./layouts/clean.json" };
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
+      const result = await resolveLayout(page, {}, FIXTURES);
       expect(result.$layout).toBeUndefined();
     } finally {
       cleanup();
@@ -206,7 +222,7 @@ describe("resolveLayout", () => {
       };
       const project = { defaults: { layout: "./layouts/default.json" } };
 
-      const result = (await resolveLayout(page, project, FIXTURES)) as any;
+      const result = await resolveLayout(page, project, FIXTURES);
       expect(result.className).toBe("default-layout");
     } finally {
       cleanup();
@@ -238,9 +254,9 @@ describe("resolveLayout", () => {
         children: [{ tagName: "p", textContent: "Main content" }],
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
-      const aside = result.children.find((c: JxElement) => c.tagName === "aside");
-      expect(aside.children[0].textContent).toBe("Default sidebar");
+      const result = await resolveLayout(page, {}, FIXTURES);
+      const aside = childTagged(result, "aside");
+      expect(aside).toHaveProperty(["children", 0, "textContent"], "Default sidebar");
     } finally {
       cleanup();
     }
@@ -251,13 +267,7 @@ describe("resolveLayout", () => {
     try {
       writeFileSync(join(FIXTURES, "layouts", "bad.json"), "{ not valid json", "utf8");
       const page = { $layout: "./layouts/bad.json" };
-      let failure: unknown;
-      try {
-        await resolveLayout(page, {}, FIXTURES);
-      } catch (error) {
-        failure = error;
-      }
-      expect((failure as Error | undefined)?.message).toContain("Invalid layout JSON");
+      expect(await rejectionOf(resolveLayout(page, {}, FIXTURES))).toContain("Invalid layout JSON");
     } finally {
       cleanup();
     }
@@ -282,9 +292,9 @@ describe("resolveLayout", () => {
         children: [{ tagName: "p", textContent: "Nested content" }],
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
+      const result = await resolveLayout(page, {}, FIXTURES);
       expect(result.tagName).toBe("html");
-      const body = result.children.find((c: JxElement) => c.tagName === "body");
+      const body = childTagged(result, "body");
       expect(body).toBeDefined();
     } finally {
       cleanup();
@@ -306,9 +316,9 @@ describe("resolveLayout", () => {
         children: [{ tagName: "p" }],
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
-      expect(result.$media["--md"]).toBe("(min-width: 768px)");
-      expect(result.$media["--lg"]).toBe("(min-width: 1024px)");
+      const result = await resolveLayout(page, {}, FIXTURES);
+      expect(result.$media?.["--md"]).toBe("(min-width: 768px)");
+      expect(result.$media?.["--lg"]).toBe("(min-width: 1024px)");
     } finally {
       cleanup();
     }
@@ -329,9 +339,9 @@ describe("resolveLayout", () => {
         style: { fontSize: "16px" },
       };
 
-      const result = (await resolveLayout(page, {}, FIXTURES)) as any;
-      expect(result.style.color).toBe("red");
-      expect(result.style.fontSize).toBe("16px");
+      const result = await resolveLayout(page, {}, FIXTURES);
+      expect(result.style?.color).toBe("red");
+      expect(result.style?.fontSize).toBe("16px");
     } finally {
       cleanup();
     }

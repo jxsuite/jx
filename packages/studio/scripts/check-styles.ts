@@ -186,6 +186,12 @@ export interface Finding {
   text: string;
 }
 
+/** One scan's verdicts: the findings that fail the gate, and the ones it only reports. */
+export interface ScanFindings {
+  errors: Finding[];
+  warnings: Finding[];
+}
+
 /* ------------------------------------------------------------------------- focus-ring rule --- */
 
 /** One place a stylesheet takes the focus ring away, and the rule that gives it back. */
@@ -365,13 +371,13 @@ const BANNED_IDENTIFIERS: readonly { name: string; instead: string }[] = [
  * entry names the owning module, and the check fails if a count is too HIGH or too LOW, so the list
  * can only ratchet down.
  */
-export const SILENT_CATCH_BUDGET: Readonly<Record<string, number>> = {
+export const SILENT_CATCH_BUDGET: ReadonlyMap<string, number> = new Map([
   // Owner: platforms/devserver.ts — a probe whose failure means "no path", already returned below.
-  "src/platforms/devserver.ts": 1,
+  ["src/platforms/devserver.ts", 1],
   // Owner: panels/signals-panel.ts — a JSON default typed one character at a time.
-  "src/panels/signals-panel.ts": 1,
+  ["src/panels/signals-panel.ts", 1],
   // Owner: ui/schema-form.ts — two debounced JSON fields, mid-keystroke parse failures.
-};
+]);
 
 /**
  * A `catch` whose block contains NOTHING — not a statement, not even a comment.
@@ -482,7 +488,7 @@ export function countBareCatches(code: string): number {
 /* ------------------------------------------------------------------ hard-coded colour rule --- */
 
 /** Hex + tokenizable-px findings for one file. */
-export function scanHex(rel: string, source: string): { errors: Finding[]; warnings: Finding[] } {
+export function scanHex(rel: string, source: string): ScanFindings {
   const errors: Finding[] = [];
   const warnings: Finding[] = [];
   const isData = DATA_FILES.some((f) => rel.endsWith(f));
@@ -542,7 +548,8 @@ export function keyframeNames(source: string): [string, number][] {
   const re = /(?:"@keyframes\s+([^"\s]+)"|@keyframes\s+([\w-]+))/g;
   let match: RegExpExecArray | null = re.exec(source);
   while (match !== null) {
-    found.push([match[1] ?? match[2]!, source.slice(0, match.index).split("\n").length]);
+    // Exactly one alternative captures, and its group is never empty.
+    found.push([match.slice(1).find(Boolean)!, source.slice(0, match.index).split("\n").length]);
     match = re.exec(source);
   }
   return found;
@@ -571,10 +578,7 @@ export function keyframeNames(source: string): [string, number][] {
  * @param rel Repo-relative path, for the finding
  * @param source The document's raw text, so a finding carries the line it is on
  */
-export function scanJsonStyle(
-  rel: string,
-  source: string,
-): { errors: Finding[]; warnings: Finding[] } {
+export function scanJsonStyle(rel: string, source: string): ScanFindings {
   const errors: Finding[] = [];
   const warnings: Finding[] = [];
   for (const block of jsonStyleBlocks(source)) {
@@ -751,11 +755,17 @@ function skipParens(src: string, i: number): number {
   return src.length;
 }
 
+/** A quoted string's body, with `${…}` spans collapsed, and the index just past its close. */
+interface QuotedString {
+  body: string;
+  end: number;
+}
+
 /**
  * Read the quoted string starting at `i` (which points at the opening quote), returning its body
  * with every `${…}` span collapsed to {@link INTERP}, plus the index just past the closing quote.
  */
-function readQuoted(src: string, i: number): { body: string; end: number } {
+function readQuoted(src: string, i: number): QuotedString {
   const quote = src[i]!;
   let body = "";
   let j = i + 1;
@@ -899,7 +909,8 @@ export function extractEmittedClasses(source: string): Map<string, number> {
     const open = m.index + m[0].length - 1;
     const body = source.slice(open, skipParens(source, open));
     for (const k of body.matchAll(OBJECT_KEY_RE)) {
-      const key = k[1] ?? k[2] ?? k[3]!;
+      // Exactly one alternative captures: a double-quoted, single-quoted or bare key, never empty.
+      const key = k.slice(1).find(Boolean)!;
       if (!key.includes(INTERP)) {
         addAll(attrTokens(key), m.index);
       }
@@ -938,7 +949,7 @@ const COMMENT_RE = /\/\*[\s\S]*?\*\//g;
 const SELECTOR_CLASS_RE = /\.(-?[_a-zA-Z][\w-]*)/g;
 const STYLE_BLOCK_RE = /<style[^>]*>([\s\S]*?)<\/style>/gi;
 /** A `{ … }` block holding at least one `prop: value` declaration — i.e. this text is a stylesheet. */
-const CSS_SHAPE_RE = /\{[^{}]*[a-z-]{2,}\s*:\s*[^{}]+\}/;
+const CSS_RULE_BLOCK_RE = /\{[^{}]*[a-z-]{2,}\s*:\s*[^{}]+\}/;
 
 /**
  * The selector preludes of a stylesheet: every run of text that ends at a `{`. Tracking the braces
@@ -1038,7 +1049,10 @@ function splitSelectors(prelude: string): string[] {
     current += c;
   }
   out.push(current);
-  return out.map((s) => normalizeSelector(s)).filter((s) => s.length > 0);
+  return out.flatMap((s) => {
+    const selector = normalizeSelector(s);
+    return selector.length > 0 ? [selector] : [];
+  });
 }
 
 /**
@@ -1119,6 +1133,12 @@ export function focusKey(file: string, selector: string): string {
   return `${file} → ${selector}`;
 }
 
+/** One stylesheet's focus-ring findings, and the suppressions it contains. */
+export interface FocusRingScan {
+  findings: Finding[];
+  suppressed: string[];
+}
+
 /**
  * One stylesheet's focus-ring findings, plus the suppressions it actually contains.
  *
@@ -1129,7 +1149,7 @@ export function checkFocusRings(
   rel: string,
   css: string,
   allowances: readonly FocusRingAllowance[] = FOCUS_RING_ALLOWANCES,
-): { findings: Finding[]; suppressed: string[] } {
+): FocusRingScan {
   const rules = extractRules(css);
   const restores = new Set<string>();
   for (const rule of rules) {
@@ -1187,7 +1207,7 @@ export function checkFocusRings(
  * like a stylesheet are ignored, so a lit `html` template isn't mined for selectors.
  */
 export function extractCssTemplates(source: string): string[] {
-  return templateLiterals(source).filter((t) => CSS_SHAPE_RE.test(t));
+  return templateLiterals(source).filter((t) => CSS_RULE_BLOCK_RE.test(t));
 }
 
 /* --------------------------------------------------------------------- overlay-stacking rule --- */
@@ -1308,7 +1328,7 @@ const CONTRAST_PAIRS: readonly { fg: string; bg: string; ratio: number; why: str
  * A ratchet, like every other allowance in this file: an entry may be deleted when the colour is
  * fixed, and adding one needs the same written justification as lowering a coverage threshold.
  */
-const CONTRAST_DEBT: Readonly<Record<string, string>> = {
+const CONTRAST_DEBT: ReadonlyMap<string, string> = new Map([
   /*
    * 3.68:1. White on the Jx brand blue (`--spectrum-accent-color-700`, #3b82f6) misses the 4.5:1
    * that normal-size text owes. It clears the 3:1 that SC 1.4.3 allows large text and SC 1.4.11
@@ -1320,8 +1340,8 @@ const CONTRAST_DEBT: Readonly<Record<string, string>> = {
    * a different foreground for accent surfaces changes what a button looks like. Neither belongs in
    * a change whose subject is the gate.
    */
-  "--accent-fg on --accent": "3.68:1 — white on the brand blue; see the comment above.",
-};
+  ["--accent-fg on --accent", "3.68:1 — white on the brand blue; see the comment above."],
+]);
 
 /** `--token: var(--spectrum-x, #hex)` — the fallback is the value this rule reads. */
 const TOKEN_FALLBACK_RE =
@@ -1384,7 +1404,7 @@ export function contrastFindings(css: string): Finding[] {
       continue;
     }
     const ratio = contrastRatio(fg, bg);
-    const debt = CONTRAST_DEBT[key];
+    const debt = CONTRAST_DEBT.get(key);
     if (ratio >= pair.ratio) {
       if (debt !== undefined) {
         findings.push({
@@ -1660,9 +1680,9 @@ export async function collect(root: string): Promise<StyleCheckResult> {
   const staleAllowed = [...ALLOWED_ORPHANS].filter((name) => !orphaned.has(name)).toSorted();
 
   const silentCatches: StyleCheckResult["silentCatches"] = [];
-  for (const file of new Set([...bareCatches.keys(), ...Object.keys(SILENT_CATCH_BUDGET)])) {
+  for (const file of new Set([...bareCatches.keys(), ...SILENT_CATCH_BUDGET.keys()])) {
     const found = bareCatches.get(file) ?? 0;
-    const allowed = SILENT_CATCH_BUDGET[file] ?? 0;
+    const allowed = SILENT_CATCH_BUDGET.get(file) ?? 0;
     if (found !== allowed) {
       silentCatches.push({ allowed, file, found });
     }
@@ -1670,11 +1690,11 @@ export async function collect(root: string): Promise<StyleCheckResult> {
 
   const overlayOrder = overlayOrderFindings(stacked);
 
-  const staleFocusRings = FOCUS_RING_ALLOWANCES.filter(
-    (a) => !suppressedRings.has(focusKey(a.file, normalizeSelector(a.selector))),
-  )
-    .map((a) => focusKey(a.file, a.selector))
-    .toSorted();
+  const staleFocusRings = FOCUS_RING_ALLOWANCES.flatMap((a) =>
+    suppressedRings.has(focusKey(a.file, normalizeSelector(a.selector)))
+      ? []
+      : [focusKey(a.file, a.selector)],
+  ).toSorted();
 
   const tokensCss = await Bun.file(join(root, "styles", "tokens.css"))
     .text()
@@ -1884,7 +1904,7 @@ export function report(result: StyleCheckResult): number {
   }
 
   const pxNote = pxWarnings.length > 0 ? ` (${pxWarnings.length} px token nudge(s) above)` : "";
-  const silentTotal = Object.values(SILENT_CATCH_BUDGET).reduce((a, b) => a + b, 0);
+  const silentTotal = [...SILENT_CATCH_BUDGET.values()].reduce((a, b) => a + b, 0);
   console.log(
     `✓ check-styles: no hard-coded colours, no undefined classes ` +
       `(${ALLOWED_ORPHANS.size} allow-listed orphan(s) remaining), no banned identifiers, ` +
@@ -1893,7 +1913,7 @@ export function report(result: StyleCheckResult): number {
       `:focus-visible restore, no Spectrum name (${SPECTRUM_ALLOWED.length} allowed), ` +
       `the four overlay layers strictly stacked, ` +
       `${CONTRAST_PAIRS.length} contrast pair(s) checked ` +
-      `(${Object.keys(CONTRAST_DEBT).length} on the debt list), ` +
+      `(${CONTRAST_DEBT.size} on the debt list), ` +
       `and studio-ui-guidelines.md §1.1 agrees with tokens.css, ` +
       `every animation name defined once${pxNote}.`,
   );

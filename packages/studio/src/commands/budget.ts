@@ -112,9 +112,9 @@ export interface BudgetViolation {
 
 /** Commands declaring the primary Command Bar cluster. */
 export function primaryCommandIds(commands: readonly BudgetableRecord[]): string[] {
-  return commands
-    .filter((command) => (command.menus ?? []).includes("commandbar/primary"))
-    .map((command) => command.id);
+  return commands.flatMap((command) =>
+    (command.menus ?? []).includes("commandbar/primary") ? [command.id] : [],
+  );
 }
 
 /**

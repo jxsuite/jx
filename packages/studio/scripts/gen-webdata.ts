@@ -8,14 +8,14 @@
  * Usage: bun run studio/gen-webdata.js
  */
 
-import { listAll as listElements } from "@webref/elements";
+import { listAll } from "@webref/elements";
 import css from "@webref/css";
 import idl from "@webref/idl";
 import { writeFileSync } from "node:fs";
 
 // ─── Element categories for the blocks panel ─────────────────────────────────
 
-const CATEGORIES: Record<string, string[]> = {
+const CATEGORIES = {
   Form: [
     "form",
     "input",
@@ -102,20 +102,41 @@ const CATEGORIES: Record<string, string[]> = {
     "hr",
     "wbr",
   ],
-};
+} satisfies Record<string, string[]>;
+
+// ─── What the @webref packages hand back (they ship no types) ─────────────────
+
+/** One property entry in @webref/css. */
+interface WebrefCssProperty {
+  legacyAliasOf?: string;
+  styleDeclaration?: string[];
+  initial?: string;
+}
+
+/** The part of @webref/css's `listAll()` result this script reads. */
+interface WebrefCss {
+  properties: WebrefCssProperty[];
+}
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   const [elementsData, cssData, idlData] = await Promise.all([
-    listElements(),
+    listAll(),
     css.listAll(),
     idl.parseAll(),
   ]);
 
+  /* @webref/elements ships no declarations; the repo's types.d.ts declares its listAll() result,
+     spec shortname → { elements: [{ name, obsolete? }] }, as its README documents. */
+  const specs = new Map(Object.entries(elementsData));
+  /* SAFETY: @webref/css's listAll() resolves to { properties: [...] } whose entries carry the
+     members WebrefCssProperty names, as its README documents; it ships no declarations either. */
+  const cssProperties = (cssData as WebrefCss).properties;
+
   // 1. Collect all non-obsolete tags
   const tagSet = new Set<string>();
-  for (const { elements } of Object.values(/** @type {Record<string, any>} */ (elementsData))) {
+  for (const { elements } of specs.values()) {
     for (const el of elements) {
       if (!el.obsolete) {
         tagSet.add(el.name);
@@ -140,9 +161,9 @@ async function main() {
 
   // Collect uncategorized HTML elements into "Other"
   const htmlTags = new Set<string>();
-  const elementsDataAny = elementsData as Record<string, any>;
-  if (elementsDataAny.html) {
-    for (const el of elementsDataAny.html.elements) {
+  const html = specs.get("html");
+  if (html) {
+    for (const el of html.elements) {
       if (!el.obsolete) {
         htmlTags.add(el.name);
       }
@@ -155,7 +176,7 @@ async function main() {
 
   // 3. Extract CSS properties (non-legacy, with camelCase name)
   const cssProps: [string, string][] = [];
-  for (const prop of (cssData as any).properties) {
+  for (const prop of cssProperties) {
     if (prop.legacyAliasOf) {
       continue;
     }
@@ -180,8 +201,8 @@ async function main() {
         if (
           member.type === "attribute" &&
           member.name?.startsWith("on") &&
-          typeof member.idlType?.idlType === "string" &&
-          member.idlType.idlType === "EventHandler"
+          // A union type's `idlType` is an array, which never equals the name.
+          member.idlType?.idlType === "EventHandler"
         ) {
           handlerSet.add(member.name);
         }

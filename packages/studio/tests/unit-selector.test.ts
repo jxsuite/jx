@@ -15,44 +15,44 @@ import { UNIT_RE } from "../src/ui/unit-selector";
 
 describe("UNIT_RE", () => {
   test("matches integer + unit", () => {
-    const m = "500px".match(UNIT_RE)!;
+    const m = UNIT_RE.exec("500px")!;
     expect(m[1]).toBe("500");
     expect(m[2]).toBe("px");
   });
 
   test("matches decimal + unit", () => {
-    const m = "1.5rem".match(UNIT_RE)!;
+    const m = UNIT_RE.exec("1.5rem")!;
     expect(m[1]).toBe("1.5");
     expect(m[2]).toBe("rem");
   });
 
   test("matches percent", () => {
-    const m = "100%".match(UNIT_RE)!;
+    const m = UNIT_RE.exec("100%")!;
     expect(m[1]).toBe("100");
     expect(m[2]).toBe("%");
   });
 
   test("matches unitless number (optional unit group is undefined)", () => {
-    const m = "0".match(UNIT_RE)!;
+    const m = UNIT_RE.exec("0")!;
     expect(m[1]).toBe("0");
     expect(m[2]).toBeUndefined();
   });
 
   test("matches negative value", () => {
-    const m = "-10px".match(UNIT_RE)!;
+    const m = UNIT_RE.exec("-10px")!;
     expect(m[1]).toBe("-10");
     expect(m[2]).toBe("px");
   });
 
   test("does not match keyword", () => {
-    expect("auto".match(UNIT_RE)).toBeNull();
+    expect(UNIT_RE.exec("auto")).toBeNull();
   });
 
   test("does not match value with space before unit", () => {
-    expect("500 px".match(UNIT_RE)).toBeNull();
+    expect(UNIT_RE.exec("500 px")).toBeNull();
   });
 
   test("does not match unknown unit", () => {
-    expect("500abc".match(UNIT_RE)).toBeNull();
+    expect(UNIT_RE.exec("500abc")).toBeNull();
   });
 });

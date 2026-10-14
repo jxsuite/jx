@@ -66,6 +66,7 @@
  * @docs studio/editing/frontmatter
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { projectState } from "../store";
 import { workspace } from "../workspace/workspace";
 import { tabOfPane } from "../canvas/canvas-surface";
@@ -90,18 +91,18 @@ import { activeRegistry } from "../commands/active-registry";
 import { invalidateLayoutCache } from "../site-context";
 import { mountDocHeaderSurface } from "../surfaces/doc-header";
 
-import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonValue, JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import type { FmSchemaEntry } from "./frontmatter-fields";
 import type * as MediaPickerModule from "../ui/media-picker";
 import type {
   DocHeaderActions,
-  DocHeaderChoice,
   DocHeaderRawEntry,
   DocHeaderRow,
   DocHeaderSurface,
   DocHeaderView,
 } from "../surfaces/doc-header";
+import type { SurfaceOption } from "../ui/surface";
 
 /** What one row of the card writes. The document knows the control; this knows the document. */
 interface RowCommit {
@@ -120,7 +121,13 @@ interface RowCommit {
  * drawing a header the second `ref` to fire silently took the card away from the first, leaving one
  * pane's Document Header frozen on the frontmatter of the moment it lost the handle.
  */
-interface HeaderCard {
+interface HeaderCard extends HeaderCardState {
+  /** Handed to the surface once, when it is mounted; every one of them reads `commits`. */
+  actions: DocHeaderActions;
+}
+
+/** Everything a card holds except its actions, which are built over this and read it lazily. */
+interface HeaderCardState {
   /** The pane this card is drawn for. Held rather than looked up: an action has to answer it. */
   paneId: string;
   el: HTMLElement;
@@ -128,8 +135,6 @@ interface HeaderCard {
   surface: DocHeaderSurface | null;
   /** This pane's rows, by key. Rebuilt with each projection. */
   commits: Map<string, RowCommit>;
-  /** Handed to the surface once, when it is mounted; every one of them reads `commits`. */
-  actions: DocHeaderActions;
   /** Text edits waiting out {@link LIVE_PREVIEW}, one per row key. */
   pending: Map<string, { commit: () => void; timer: ReturnType<typeof setTimeout> }>;
 }
@@ -194,15 +199,20 @@ export function attachDocumentHeaderHost(paneId: string, el: HTMLElement | null)
   if (!el) {
     return;
   }
-  const card: HeaderCard = {
-    actions: {} as DocHeaderActions,
+  const state: HeaderCardState = {
     commits: new Map(),
     el,
     paneId,
     pending: new Map(),
     surface: null,
   };
-  card.actions = makeActions(card);
+  /* The same object, not a copy: the actions read `state.commits`, which a projection reassigns.
+     `settle` runs only on a reader's toggle, long after `card` is bound. */
+  const card: HeaderCard = Object.assign(state, {
+    actions: makeActions(state, () => {
+      settle(card);
+    }),
+  });
   _hosts.set(paneId, card);
   paint(paneId, card);
 }
@@ -236,14 +246,12 @@ export function mount() {
         void tab.doc.mode;
         void tab.documentPath;
         void tab.doc.document;
-        void tab.doc.document?.title;
-        void tab.doc.document?.$head;
-        void tab.doc.document?.$layout;
-        const fm = tab.doc.content?.frontmatter;
-        if (fm) {
-          for (const key of Object.keys(fm)) {
-            void fm[key];
-          }
+        void tab.doc.document.title;
+        void tab.doc.document.$head;
+        void tab.doc.document.$layout;
+        const fm = tab.doc.content.frontmatter;
+        for (const key of Object.keys(fm)) {
+          void fm[key];
         }
       }
       render();
@@ -309,12 +317,13 @@ export function render() {
  * @returns {boolean}
  */
 export function hasDocumentHeader(tab: Tab): boolean {
-  const fm = tab.doc.content?.frontmatter ?? {};
+  const fm = tab.doc.content.frontmatter;
   const doc = tab.doc.document;
   if (Object.keys(fm).length > 0) {
     return true;
   }
-  if (typeof doc?.title === "string" || (doc?.$head?.length ?? 0) > 0) {
+  // `title` is typed a string, but a document read off disk may carry any JSON there.
+  if (isString(doc.title) || (doc.$head?.length ?? 0) > 0) {
     return true;
   }
   // A page always has one, even an empty one: Title and Route are the two facts it must state.
@@ -368,7 +377,7 @@ function paint(paneId: string, card: HeaderCard): void {
  */
 function viewFor(tab: Tab, paneId: string, card: HeaderCard): DocHeaderView {
   const isContent = tab.doc.mode === "content";
-  const fm = (tab.doc.content?.frontmatter ?? {}) as Record<string, unknown>;
+  const fm = tab.doc.content.frontmatter;
   // ONE view of the document's head material, whichever realm it lives in: frontmatter keys for a
   // Markdown page, root properties for a JSON one.
   const headDoc = isContent ? buildHeadDoc(tab.doc.document, fm) : tab.doc.document;
@@ -437,7 +446,7 @@ function titleRow(
   applyMutation: (fn: (doc: JxMutableNode) => void) => void,
   commits: Map<string, RowCommit>,
 ): DocHeaderRow {
-  const title = typeof headDoc.title === "string" ? headDoc.title : "";
+  const title = isString(headDoc.title) ? headDoc.title : "";
   commits.set("title", {
     clear: () =>
       applyMutation((d) => {
@@ -485,7 +494,7 @@ function layoutRow(
   const current = headDoc.$layout;
   const defaultPath = projectState?.projectConfig?.defaults?.layout;
   const defaultLabel = defaultPath ? layoutName(defaultPath) : "";
-  const options: DocHeaderChoice[] = [
+  const options: SurfaceOption[] = [
     { label: defaultLabel ? `Default (${defaultLabel})` : "Default", value: "__default__" },
     { label: "None", value: "__none__" },
     ...entries.map((l) => ({ label: l.name, value: l.path })),
@@ -544,7 +553,7 @@ function fieldRow(
   tab: Tab,
   field: string,
   entry: FmSchemaEntry,
-  value: unknown,
+  value: JsonValue | undefined,
   requiredFields: Set<string>,
   commits: Map<string, RowCommit>,
 ): DocHeaderRow {
@@ -564,15 +573,15 @@ function fieldRow(
  * they cannot see, and the Page panel remains the surface that adds and removes them.
  */
 function rawEntries(head: JxHeadEntry[]): DocHeaderRawEntry[] {
-  return head
-    .filter(
-      (e: JxHeadEntry) => !isManagedEntry(e) && !isGoogleFontEntry(e) && !isGoogleFontPreconnect(e),
-    )
-    .map((entry, index) => ({
-      key: `raw:${index}`,
-      label: entryLabel(entry),
-      value: entryValue(entry),
-    }));
+  const rows: DocHeaderRawEntry[] = [];
+  for (const entry of head) {
+    if (isManagedEntry(entry) || isGoogleFontEntry(entry) || isGoogleFontPreconnect(entry)) {
+      continue;
+    }
+    // The key counts the LISTED entries, as the index of the filtered list it replaces did.
+    rows.push({ key: `raw:${rows.length}`, label: entryLabel(entry), value: entryValue(entry) });
+  }
+  return rows;
 }
 
 // ─── The actions ─────────────────────────────────────────────────────────────
@@ -582,8 +591,9 @@ function rawEntries(head: JxHeadEntry[]): DocHeaderRawEntry[] {
  *
  * Made once per host and handed to the surface at mount, so every one of them reads the CURRENT
  * commit table rather than closing over the projection that was standing when the card was drawn.
+ * `settleCard` repaints the whole card, which needs these actions, so it is handed in.
  */
-function makeActions(card: HeaderCard): DocHeaderActions {
+function makeActions(card: HeaderCardState, settleCard: () => void): DocHeaderActions {
   const flush = (key: string): void => {
     const waiting = card.pending.get(key);
     if (waiting) {
@@ -645,7 +655,7 @@ function makeActions(card: HeaderCard): DocHeaderActions {
       } catch {
         // Storage full or unavailable — this card still folds, the next one just opens.
       }
-      settle(card);
+      settleCard();
     },
     setNumber: (key, value) => now(key, value),
     setRawOpen: (open) => {
@@ -660,7 +670,7 @@ function makeActions(card: HeaderCard): DocHeaderActions {
       } else {
         _rawOpen.delete(tab.id);
       }
-      settle(card);
+      settleCard();
     },
     upload: (key) => {
       flush(key);

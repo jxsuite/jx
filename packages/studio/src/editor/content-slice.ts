@@ -14,10 +14,17 @@
  * @docs studio/editing/writing
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** A block's content as a children array — the form both storage shapes normalize to. */
 export type Content = (JxMutableNode | string)[];
+
+/** A block's content in the form it is stored: `children` for markup, folded `textContent` else. */
+export interface StoredContent {
+  children?: Content;
+  textContent?: string;
+}
 
 /**
  * The content of `node` as a children array, whichever way it is stored.
@@ -30,18 +37,16 @@ export function contentOf(node: JxMutableNode | undefined | null): Content {
     return [];
   }
   if (Array.isArray(node.children)) {
-    return node.children as Content;
+    return node.children;
   }
-  return typeof node.textContent === "string" && node.textContent.length > 0
-    ? [node.textContent]
-    : [];
+  return isString(node.textContent) && node.textContent.length > 0 ? [node.textContent] : [];
 }
 
 /** The rendered text length of a content array. */
 export function contentLength(children: Content): number {
   let n = 0;
   for (const child of children) {
-    n += typeof child === "string" ? child.length : contentLength(contentOf(child));
+    n += isString(child) ? child.length : contentLength(contentOf(child));
   }
   return n;
 }
@@ -60,7 +65,7 @@ export function sliceContent(children: Content, start: number, end: number): Con
     if (pos >= end) {
       break;
     }
-    if (typeof child === "string") {
+    if (isString(child)) {
       const childEnd = pos + child.length;
       if (childEnd > start) {
         const text = child.slice(
@@ -102,7 +107,7 @@ function withContent(node: JxMutableNode, children: Content): JxMutableNode {
   if (children.length === 0) {
     return { ...rest, textContent: "" };
   }
-  if (children.length === 1 && typeof children[0] === "string") {
+  if (children.length === 1 && isString(children[0])) {
     return { ...rest, textContent: children[0] };
   }
   return { ...rest, children };
@@ -115,12 +120,12 @@ function withContent(node: JxMutableNode, children: Content): JxMutableNode {
 export function normalizeContent(children: Content): Content {
   const out: Content = [];
   for (const child of children) {
-    if (typeof child === "string") {
+    if (isString(child)) {
       if (child.length === 0) {
         continue;
       }
       const prev = out.at(-1);
-      if (typeof prev === "string") {
+      if (isString(prev)) {
         out[out.length - 1] = prev + child;
         continue;
       }
@@ -152,15 +157,12 @@ export function spliceAcross(
 }
 
 /** `{ children }` when the content carries markup, else the folded `{ textContent }` form. */
-export function toStored(children: Content): {
-  children?: Content;
-  textContent?: string;
-} {
+export function toStored(children: Content): StoredContent {
   const normalized = normalizeContent(children);
   if (normalized.length === 0) {
     return { textContent: "" };
   }
-  if (normalized.length === 1 && typeof normalized[0] === "string") {
+  if (normalized.length === 1 && isString(normalized[0])) {
     return { textContent: normalized[0] };
   }
   return { children: normalized };

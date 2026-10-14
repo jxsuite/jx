@@ -8,6 +8,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
+import { childList } from "../src/state";
+import { isString } from "@jxsuite/schema/guards";
 import {
   mutateDuplicateNode,
   mutateInsertNode,
@@ -41,7 +43,16 @@ function makeTab(): Tab {
       tagName: "div",
     },
     id: `history-test-${tabCount}`,
-  }) as Tab;
+  });
+}
+
+/** The root's first child, raw. Every document in this file opens on an element there. */
+function firstChild(tab: Tab): JxMutableNode {
+  const [first] = childList(toRaw(tab.doc.document));
+  if (first === undefined || isString(first)) {
+    throw new Error("the root's first child should be an element");
+  }
+  return first;
 }
 
 function docJson(tab: Tab): string {
@@ -93,9 +104,7 @@ describe("coalescing a typing run", () => {
     expect(tab.history.snapshots.length).toBe(depth + 2);
 
     undo(tab);
-    expect((toRaw(tab.doc.document).children as JxMutableNode[])[0]!.textContent).toBe(
-      "first visit",
-    );
+    expect(firstChild(tab).textContent).toBe("first visit");
   });
 
   test("an unrelated edit between runs breaks the run", () => {
@@ -136,7 +145,7 @@ describe("coalescing a typing run", () => {
     );
 
     undo(tab);
-    const node = (toRaw(tab.doc.document).children as JxMutableNode[])[0]!;
+    const node = firstChild(tab);
     expect(node.textContent).toBe("one");
     expect(node.children).toBeUndefined();
   });
@@ -151,7 +160,7 @@ describe("coalescing a typing run", () => {
     undo(tab);
     // Not `midRun` — the whole run is one edit.
     expect(docJson(tab)).not.toBe(midRun);
-    expect((toRaw(tab.doc.document).children as JxMutableNode[])[0]!.textContent).toBe("one");
+    expect(firstChild(tab).textContent).toBe("one");
   });
 });
 
@@ -222,7 +231,7 @@ describe("a gate that refuses", () => {
 
     // And the log is intact: undo still works once the freeze lifts, and redo returns the edit.
     undo(tab);
-    expect((toRaw(tab.doc.document).children as JxMutableNode[])[0]!.textContent).toBe("one");
+    expect(firstChild(tab).textContent).toBe("one");
     const indexAfterUndo = tab.history.index;
     tab.doc.dirty = false;
 
@@ -230,7 +239,7 @@ describe("a gate that refuses", () => {
     try {
       redo(tab);
       expect(tab.history.index).toBe(indexAfterUndo);
-      expect((toRaw(tab.doc.document).children as JxMutableNode[])[0]!.textContent).toBe("one");
+      expect(firstChild(tab).textContent).toBe("one");
       expect(tab.doc.dirty).toBe(false);
     } finally {
       setTransactGate(null);
@@ -254,7 +263,7 @@ describe("patch-based history entries", () => {
   test("un-instrumented transactions store a full snapshot", () => {
     const tab = makeTab();
     transactDoc(tab, (t) => {
-      (t.doc.document as Record<string, unknown>).className = "custom";
+      t.doc.document.className = "custom";
     });
     const [, entry] = tab.history.snapshots;
     expect(entry!.document).not.toBeNull();
@@ -344,9 +353,7 @@ describe("randomized undo/redo equivalence", () => {
   }
 
   function randomEdit(tab: Tab, rand: () => number) {
-    const doc = toRaw(tab.doc.document) as JxMutableNode;
-    const children = doc.children as JxMutableNode[];
-    const n = children.length;
+    const n = childList(toRaw(tab.doc.document)).length;
     const pick = Math.floor(rand() * 7);
     switch (pick) {
       case 0: {

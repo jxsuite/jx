@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ComponentMeta, DirEntry } from "../src/rpc-schema";
 import type { StudioSchema } from "../src/handlers";
+import { expectStudioSchema } from "./_studio-schema";
 
 const mockOpenExternal = mock((url: string) => url.startsWith("https://"));
 
@@ -45,8 +46,7 @@ const { createProjectSession, pickProjectFile } = await import("../src/project-s
 
 const FIXTURES = join(import.meta.dir, "_fixtures_handlers");
 
-type CreateProjectOpts = Parameters<typeof createProject>[0];
-const noDialog = () => setDirectoryDialog(null as unknown as () => Promise<string | null>);
+const noDialog = () => setDirectoryDialog(null);
 
 function setup() {
   mkdirSync(FIXTURES, { recursive: true });
@@ -329,10 +329,9 @@ describe("handleRenameFile", () => {
         to: "components/my-button.json",
       });
 
-      const index = JSON.parse(await handleReadFile({ path: "pages/index.json" })) as {
-        children: { $ref: string }[];
-      };
-      expect(index.children[0]?.$ref).toBe("../components/my-button.json");
+      expect(JSON.parse(await handleReadFile({ path: "pages/index.json" }))).toEqual({
+        children: [{ $ref: "../components/my-button.json" }],
+      });
       expect(report.references.refsUpdated).toBe(1);
       expect(report.tag).toMatchObject({ from: "my-counter", to: "my-button" });
     } finally {
@@ -659,7 +658,8 @@ describe("searchFiles", () => {
       expect(hit!.name).toBe("about.json");
       expect(hit!.type).toBe("file");
       expect(hit!.size).toBe(2);
-      expect(typeof hit!.modified).toBe("string");
+      // A timestamp Date can read, not merely some string.
+      expect(Date.parse(hit!.modified ?? "")).not.toBeNaN();
     } finally {
       cleanup();
     }
@@ -740,9 +740,10 @@ describe("fetchPluginSchema", () => {
         }),
       );
 
-      const schema = (await fetchPluginSchema({
+      const schema = await fetchPluginSchema({
         src: "./Counter.class.json",
-      })) as StudioSchema;
+      });
+      expectStudioSchema(schema);
       expect(schema).not.toBeNull();
       expect(schema.description).toBe("A counter component");
       expect(schema.properties.initial).toBeDefined();
@@ -788,10 +789,11 @@ describe("fetchPluginSchema", () => {
         }),
       );
 
-      const schema = (await fetchPluginSchema({
+      const schema = await fetchPluginSchema({
         base: "file:///components/page.json",
         src: "./Widget.class.json",
-      })) as StudioSchema;
+      });
+      expectStudioSchema(schema);
       expect(schema).not.toBeNull();
       expect(schema.properties.size.default).toBe("md");
     } finally {
@@ -836,9 +838,10 @@ describe("fetchPluginSchema", () => {
         }),
       );
 
-      const schema = (await fetchPluginSchema({
+      const schema = await fetchPluginSchema({
         src: "./Child.class.json",
-      })) as StudioSchema;
+      });
+      expectStudioSchema(schema);
       expect(schema).not.toBeNull();
       expect(schema.properties.baseField).toBeDefined();
       expect(schema.properties.childField).toBeDefined();
@@ -868,10 +871,11 @@ describe("fetchPluginSchema", () => {
         }),
       );
 
-      const schema = (await fetchPluginSchema({
+      const schema = await fetchPluginSchema({
         prototype: "Timer",
         src: "./something.ts",
-      })) as StudioSchema;
+      });
+      expectStudioSchema(schema);
       expect(schema).not.toBeNull();
       expect(schema.properties.interval.default).toBe(1000);
     } finally {
@@ -928,6 +932,8 @@ describe("fetchPluginSchema", () => {
         `export class MyPlugin { static schema = { type: "object", properties: { x: { type: "number" } } }; }`,
       );
 
+      /* SAFETY: a module export answers with its class's static `schema`, and MyPlugin's above is
+         `{ type, properties }`, the StudioSchema members this test reads. */
       const schema = (await fetchPluginSchema({
         prototype: "MyPlugin",
         src: "./MyPlugin.ts",
@@ -1123,7 +1129,7 @@ describe("openProject", () => {
       const result = await openProject();
       expect(result).toBeNull();
     } finally {
-      setFileDialog(null as unknown as () => Promise<string | null>);
+      setFileDialog(null);
       cleanup();
     }
   });
@@ -1135,7 +1141,7 @@ describe("openProject", () => {
       setFileDialog(async () => join(FIXTURES, "other.json"));
       await expect(openProject()).rejects.toThrow("not a project.json");
     } finally {
-      setFileDialog(null as unknown as () => Promise<string | null>);
+      setFileDialog(null);
       cleanup();
     }
   });
@@ -1156,7 +1162,7 @@ describe("openProject", () => {
       expect(result!.handle.root).toBe(FIXTURES);
       expect(getProjectRoot()).toBe(FIXTURES);
     } finally {
-      setFileDialog(null as unknown as () => Promise<string | null>);
+      setFileDialog(null);
       cleanup();
     }
   });
@@ -1170,7 +1176,7 @@ describe("openProject", () => {
       expect(result).not.toBeNull();
       expect(result!.handle.name).toBe("_fixtures_handlers");
     } finally {
-      setFileDialog(null as unknown as () => Promise<string | null>);
+      setFileDialog(null);
       cleanup();
     }
   });
@@ -1199,7 +1205,7 @@ describe("pickProjectFile", () => {
       // THE POINT OF THE FUNCTION: the process-global root is where it was.
       expect(getProjectRoot()).toBe("/somewhere/else");
     } finally {
-      setFileDialog(null as unknown as () => Promise<string | null>);
+      setFileDialog(null);
       cleanup();
     }
   });
@@ -1215,7 +1221,7 @@ describe("pickProjectFile", () => {
       setFileDialog(async () => join(FIXTURES, "other.json"));
       await expect(pickProjectFile()).rejects.toThrow("not a project.json");
     } finally {
-      setFileDialog(null as unknown as () => Promise<string | null>);
+      setFileDialog(null);
       cleanup();
     }
   });
@@ -1226,7 +1232,7 @@ describe("pickProjectFile", () => {
       setFileDialog(async () => null);
       expect(await pickProjectFile()).toBeNull();
 
-      setFileDialog(null as unknown as () => Promise<string | null>);
+      setFileDialog(null);
       await expect(pickProjectFile()).rejects.toThrow("No file dialog configured");
     } finally {
       cleanup();
@@ -1293,21 +1299,19 @@ describe("createProject", () => {
   });
 
   test("throws when the request carries no usable path destination", async () => {
+    // What a cloud client sends; the desktop request type has no repo members, so it is not a literal.
+    const repoDestination = { kind: "repo", owner: "me", private: false, repo: "x" };
     armDialog();
     try {
-      await expect(
-        createProject({ directory: "x", name: "X" } as unknown as CreateProjectOpts),
-      ).rejects.toThrow("A destination folder is required.");
+      await expect(createProject({ directory: "x", name: "X" })).rejects.toThrow(
+        "A destination folder is required.",
+      );
       await expect(
         createProject({ destination: { kind: "path", parent: "" }, directory: "x", name: "X" }),
       ).rejects.toThrow("A destination folder is required.");
       // A repo destination belongs to the cloud platform; the desktop backend only writes to disk.
       await expect(
-        createProject({
-          destination: { kind: "repo", owner: "me", private: false, repo: "x" },
-          directory: "x",
-          name: "X",
-        } as unknown as CreateProjectOpts),
+        createProject({ destination: repoDestination, directory: "x", name: "X" }),
       ).rejects.toThrow("A destination folder is required.");
       // The missing destination is reported, never papered over by opening a picker.
       expect(dialog).not.toHaveBeenCalled();
@@ -1389,7 +1393,7 @@ describe("createProject", () => {
         name: "My App",
         template: "mobile-first",
       });
-      const media = (result.config as { $media?: Record<string, string> }).$media;
+      const media = result.config.$media;
       expect(media?.["--"]).toBe("375px");
       expect(media?.["--lg"]).toBe("(min-width: 1024px)");
       expect(dialog).not.toHaveBeenCalled();
@@ -1409,7 +1413,7 @@ describe("createProject", () => {
         directory: "my-designed-site",
         name: "My Designed Site",
       });
-      const { style } = result.config as { style?: Record<string, string> };
+      const { style } = result.config;
       expect(style?.["--color-primary"]).toBe("#ff5500");
       expect(dialog).not.toHaveBeenCalled();
     } finally {

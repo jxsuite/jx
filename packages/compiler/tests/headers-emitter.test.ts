@@ -40,7 +40,7 @@ describe("the Content-Security-Policy", () => {
     return sources;
   };
   const cspFor = (build: Build, html = "<p>hi</p>") =>
-    buildHeaderRules(build, sourcesFor(html)).rules.find((r) => r.pattern === "/*")?.headers?.[
+    buildHeaderRules(build, sourcesFor(html)).rules.find((r) => r.pattern === "/*")?.headers[
       "Content-Security-Policy"
     ];
 

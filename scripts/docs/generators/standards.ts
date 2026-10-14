@@ -10,6 +10,7 @@ import {
   CITED,
   compareIds,
   CONFORMANCE_VOCAB,
+  isConformance,
   statusOfAnchor,
   tierOf,
   TIER_ORDER,
@@ -141,7 +142,7 @@ export function generateStandards(): string {
   }
   rowsOut.push(`| _(backlog)_ | ${new Set(reg.backlog.map((b) => b.id)).size} | — |`);
   lines.push(...rowsOut, "", "## Standards Jx implements", "");
-  const cited = rows.filter((r) => CITED.has(r.cls as never));
+  const cited = rows.filter((r) => isConformance(r.cls) && CITED.has(r.cls));
   if (cited.length === 0) {
     lines.push("_No standards are cited yet._");
   } else {

@@ -35,6 +35,15 @@ export const CODE_DEBOUNCE = 500;
  */
 export const LIVE_PREVIEW = 350;
 
+/**
+ * How long a keystroke in a `<head>` field waits before it is written: the Search-appearance
+ * dialog's fields (a document mutation the previews repaint from) and Project Settings' `$head`
+ * rows (a `project.json` write). Both time each field separately, so editing one field and then
+ * another inside the window lands both, and a `change` (blur, or a clear button) commits at once,
+ * so nothing is lost to the wait.
+ */
+export const HEAD_EDIT_DEBOUNCE = 300;
+
 /*
  * `STATUS_MESSAGE = 3000` used to live here: how long a transient message stayed in the status bar
  * before it erased itself. It had one reader, `statusMessage`, which is deleted — the bar carries

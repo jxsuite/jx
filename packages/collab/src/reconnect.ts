@@ -89,11 +89,7 @@ export function createReconnectScheduler(
   connect: () => void,
   opts: ReconnectPolicy & ReconnectWakeSources = {},
 ): ReconnectScheduler {
-  const win =
-    opts.win ??
-    (typeof window === "undefined"
-      ? undefined
-      : (window as Pick<Window, "addEventListener" | "removeEventListener">));
+  const win = opts.win ?? (typeof window === "undefined" ? undefined : window);
   const doc = opts.doc ?? (typeof document === "undefined" ? undefined : document);
   let attempt = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -118,9 +114,9 @@ export function createReconnectScheduler(
     fire();
   };
 
-  const onPageShow = (event: Event) => {
+  const onPageShow = (event: PageTransitionEvent) => {
     // A fresh load is not a wake: only a page restored from the back/forward cache was frozen.
-    if ((event as PageTransitionEvent).persisted) {
+    if (event.persisted) {
       wake();
     }
   };

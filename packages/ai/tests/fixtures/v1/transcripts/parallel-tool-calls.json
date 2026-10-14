@@ -1,7 +1,7 @@
 {
   "name": "parallel-tool-calls",
   "description": "Two tool calls in one assistant turn, with the turn's reasoning replayed beside them. Each call gets its own tool reply in call order; one succeeded and one failed, and the wire carries both verbatim.",
-  "shapes": ["parallel-tool-calls", "reasoning-replayed", "tool-result-message"],
+  "scenarios": ["parallel-tool-calls", "reasoning-replayed", "tool-result-message"],
   "script": [
     ["sendMessage", "Make the title red and the body serif"],
     ["appendReasoning", "Two independent style edits."],

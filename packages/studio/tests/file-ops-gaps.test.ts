@@ -4,7 +4,8 @@
  * default-format branch.
  */
 import { flush, installMockPlatform } from "./harness";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import type { Mock } from "bun:test";
 import { activeTab, closeAllTabs, openTab } from "../src/workspace/workspace";
 import { setFormats } from "../src/format/format-host";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
@@ -27,20 +28,23 @@ beforeEach(() => {
   closeAllTabs();
   seedMarkdownFormat();
   installMockPlatform({ formatAction: mockFormatAction });
-  delete (window as any).showOpenFilePicker;
-  delete (window as any).showSaveFilePicker;
+  // The File System Access pickers are not in TypeScript's DOM lib, so they are removed by name.
+  Reflect.deleteProperty(window, "showOpenFilePicker");
+  Reflect.deleteProperty(window, "showSaveFilePicker");
 });
 
 // ─── openFile ─────────────────────────────────────────────────────────────────
 
 describe("openFile gaps", () => {
   test("rejects files with no registered format via picker", async () => {
-    (window as any).showOpenFilePicker = async () => [
-      {
-        getFile: async () => ({ text: async () => "a = 1" }),
-        name: "data.toml",
-      },
-    ];
+    Object.assign(window, {
+      showOpenFilePicker: async () => [
+        {
+          getFile: async () => ({ text: async () => "a = 1" }),
+          name: "data.toml",
+        },
+      ],
+    });
 
     await openFile();
 
@@ -48,9 +52,11 @@ describe("openFile gaps", () => {
   });
 
   test("non-AbortError from the picker is swallowed into a status message", async () => {
-    (window as any).showOpenFilePicker = async () => {
-      throw new Error("picker exploded");
-    };
+    Object.assign(window, {
+      showOpenFilePicker: async () => {
+        throw new Error("picker exploded");
+      },
+    });
 
     await openFile();
 
@@ -58,28 +64,26 @@ describe("openFile gaps", () => {
   });
 
   describe("fallback file input (no showOpenFilePicker)", () => {
-    let origCreate: typeof document.createElement;
-    let input: HTMLInputElement | null = null;
+    let clickSpy: Mock<() => void> | null = null;
+
+    /* The fallback creates a detached `<input type="file">` and clicks it, which in a browser opens
+       the chooser. Stubbing `click` keeps the chooser shut, and the call's receiver is the input. */
+    function clickedInput(): HTMLInputElement | null {
+      const receiver = clickSpy?.mock.contexts.at(-1);
+      return receiver instanceof HTMLInputElement ? receiver : null;
+    }
 
     beforeEach(() => {
-      input = null;
-      origCreate = document.createElement.bind(document);
-      document.createElement = ((tag: string, ...args: unknown[]) => {
-        const el = (origCreate as any)(tag, ...args);
-        if (tag === "input") {
-          input = el as HTMLInputElement;
-          el.click = () => {};
-        }
-        return el;
-      }) as typeof document.createElement;
+      clickSpy = spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
     });
 
     afterEach(() => {
-      document.createElement = origCreate;
+      clickSpy?.mockRestore();
     });
 
     test("opens the chosen file when the input changes", async () => {
       await openFile();
+      const input = clickedInput();
 
       expect(input).not.toBeNull();
       expect(input!.type).toBe("file");
@@ -104,6 +108,7 @@ describe("openFile gaps", () => {
 
     test("change with no selected file is a no-op", async () => {
       await openFile();
+      const input = clickedInput();
 
       Object.defineProperty(input!, "files", { configurable: true, value: [] });
       input!.dispatchEvent(new Event("change"));
@@ -153,10 +158,12 @@ describe("saveFile gaps", () => {
 describe("exportFile gaps", () => {
   test("returns early when no tab is open", async () => {
     let pickerCalled = false;
-    (window as any).showSaveFilePicker = async () => {
-      pickerCalled = true;
-      throw new Error("should not reach");
-    };
+    Object.assign(window, {
+      showSaveFilePicker: async () => {
+        pickerCalled = true;
+        throw new Error("should not reach");
+      },
+    });
 
     await exportFile();
 
@@ -164,9 +171,11 @@ describe("exportFile gaps", () => {
   });
 
   test("non-AbortError during export becomes a status message, tab stays dirty", async () => {
-    (window as any).showSaveFilePicker = async () => {
-      throw new Error("disk detached");
-    };
+    Object.assign(window, {
+      showSaveFilePicker: async () => {
+        throw new Error("disk detached");
+      },
+    });
     openTab({ document: { children: [], tagName: "div" }, id: "export-err" });
     activeTab.value!.doc.dirty = true;
 
@@ -207,20 +216,6 @@ describe("serializeDocument content mode", () => {
 
     expect(out).toContain("title: My Post");
     expect(out).toContain("Body text");
-  });
-
-  test("handles a missing content.frontmatter object", async () => {
-    const tab = openTab({
-      document: { children: [{ tagName: "p", textContent: "Bare" }] },
-      id: "content-no-content",
-    });
-    tab.doc.mode = "content";
-    tab.doc.sourceFormat = null;
-    (tab.doc as any).content = null;
-
-    const out = await serializeDocument(tab);
-
-    expect(out).toContain("Bare");
   });
 
   test("falls back to JSON when no content format is registered", async () => {

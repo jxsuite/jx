@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { PLAN } from "../test-fixtures.ts";
 import { splitFrontmatter } from "./frontmatter.ts";
 import type { PlanDoc } from "./plans.ts";
 import {
@@ -16,9 +17,6 @@ import {
   specOrder,
   topoWaves,
 } from "./plans.ts";
-
-/** Built at runtime so no line of this file is itself a plan citation. */
-const PLAN = "plan:";
 
 function plan(id: string, frontmatter: string, body = "# A plan\n\n## Context\n\nWhy.\n"): PlanDoc {
   return parsePlanSource(`---\n${frontmatter}\n---\n\n${body}`, `plans/${id}.md`, id);

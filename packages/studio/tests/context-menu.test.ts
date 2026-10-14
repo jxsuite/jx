@@ -25,6 +25,7 @@ import { emptyContext } from "../src/commands/context";
 
 import type { ElementMenuTarget } from "../src/editor/context-menu";
 import type { JxPath } from "../src/state";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
 // ─── Layer hosts ─────────────────────────────────────────────────────────────
@@ -71,10 +72,8 @@ class FakeClipboardItem {
   }
 }
 
-interface FakeReadItem {
-  types: string[];
-  getType: (t: string) => Promise<Blob>;
-}
+/** The members of a `ClipboardItem` that a paste reads. */
+type FakeReadItem = Pick<ClipboardItem, "getType" | "types">;
 
 let written: FakeClipboardItem[] = [];
 let writtenText: string[] = [];
@@ -89,7 +88,7 @@ function fakeItem(parts: Record<string, string>) {
 }
 
 const originalClipboardDesc = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-const originalClipboardItem = (globalThis as Record<string, unknown>).ClipboardItem;
+const originalClipboardItemDesc = Object.getOwnPropertyDescriptor(globalThis, "ClipboardItem");
 
 Object.defineProperty(navigator, "clipboard", {
   configurable: true,
@@ -116,15 +115,23 @@ Object.defineProperty(navigator, "clipboard", {
     },
   },
 });
-(globalThis as Record<string, unknown>).ClipboardItem = FakeClipboardItem;
+Object.defineProperty(globalThis, "ClipboardItem", {
+  configurable: true,
+  value: FakeClipboardItem,
+  writable: true,
+});
 
 afterAll(async () => {
   if (originalClipboardDesc) {
     Object.defineProperty(navigator, "clipboard", originalClipboardDesc);
   } else {
-    delete (navigator as unknown as Record<string, unknown>).clipboard;
+    Reflect.deleteProperty(navigator, "clipboard");
   }
-  (globalThis as Record<string, unknown>).ClipboardItem = originalClipboardItem;
+  if (originalClipboardItemDesc) {
+    Object.defineProperty(globalThis, "ClipboardItem", originalClipboardItemDesc);
+  } else {
+    Reflect.deleteProperty(globalThis, "ClipboardItem");
+  }
   // The clipboard verbs report through `notify` now; nothing to drain, only a store to empty.
   resetNotifications();
   await new Promise((resolve) => {
@@ -150,6 +157,25 @@ function select(path: JxPath | null) {
 
 function doc(): JxMutableNode {
   return activeTab.value!.doc.document;
+}
+
+/** A node's element children; a repeater slot or a text child fails the test rather than lying. */
+function elementsOf(node: JxMutableNode): JxMutableNode[] {
+  const { children } = node;
+  if (!Array.isArray(children)) {
+    throw new TypeError("expected the node to carry a children array");
+  }
+  return children.map((child) => {
+    if (isString(child)) {
+      throw new TypeError(`expected an element child, got text "${child}"`);
+    }
+    return child;
+  });
+}
+
+/** The active document's root children, every one of which is an element in these fixtures. */
+function rootChildren(): JxMutableNode[] {
+  return elementsOf(doc());
 }
 
 /** Every rendered row, in order. Rows are addressed by command id, never by their label. */
@@ -190,7 +216,7 @@ function titleOf(id: string): string {
 
 /** A slot container the surface left empty prints nothing, exactly as it shows nothing. */
 function shownText(el: Element | null): string | undefined {
-  return el?.textContent?.trim() || undefined;
+  return el?.textContent.trim() || undefined;
 }
 
 function chordOf(id: string): string | undefined {
@@ -263,7 +289,7 @@ describe("copyNode", () => {
     resetWorkspaceWithTab({
       children: [
         {
-          attributes: { "data-bound": { $ref: "#/x" } as never, hidden: "", title: 'a"b' },
+          attributes: { "data-bound": { $ref: "#/x" }, hidden: "", title: 'a"b' },
           style: { color: "red", margin: "0" },
           tagName: "a",
           textContent: "hi",
@@ -328,7 +354,7 @@ describe("cutNode", () => {
       tagName: "p",
       textContent: "A",
     });
-    const children = doc().children as JxMutableNode[];
+    const children = rootChildren();
     expect(children.length).toBe(1);
     expect(children[0]!.textContent).toBe("B");
   });
@@ -336,11 +362,11 @@ describe("cutNode", () => {
   test("refuses to cut the root or a missing node", async () => {
     select([]);
     await cutNode();
-    expect((doc().children as JxMutableNode[]).length).toBe(2);
+    expect(rootChildren().length).toBe(2);
 
     select(["children", 9]);
     await cutNode();
-    expect((doc().children as JxMutableNode[]).length).toBe(2);
+    expect(rootChildren().length).toBe(2);
   });
 
   /**
@@ -362,7 +388,7 @@ describe("cutNode", () => {
     }
     // The copy landed (it is the half that worked), and the document kept the node.
     expect(workspace.clipboard).not.toBeNull();
-    expect((doc().children as JxMutableNode[]).length).toBe(2);
+    expect(rootChildren().length).toBe(2);
     expect(toasts.some((t) => t.message === "Cut")).toBe(false);
   });
 });
@@ -376,7 +402,7 @@ describe("pasteNode", () => {
     ];
     select(["children", 0]);
     await pasteNode();
-    const children = doc().children as JxMutableNode[];
+    const children = rootChildren();
     expect(children.length).toBe(3);
     expect(children[1]).toEqual({ tagName: "h2", textContent: "X" });
   });
@@ -385,7 +411,7 @@ describe("pasteNode", () => {
     readResult = [fakeItem({ "text/html": "<h3>Title</h3>" })];
     select(["children", 1]);
     await pasteNode();
-    const children = doc().children as JxMutableNode[];
+    const children = rootChildren();
     expect(children.length).toBe(3);
     expect(children[2]!.tagName).toBe("h3");
   });
@@ -394,14 +420,14 @@ describe("pasteNode", () => {
     readResult = [fakeItem({ "text/plain": JSON.stringify({ tagName: "em", textContent: "e" }) })];
     select(["children", 0]);
     await pasteNode();
-    expect((doc().children as JxMutableNode[])[1]!.tagName).toBe("em");
+    expect(rootChildren()[1]!.tagName).toBe("em");
   });
 
   test("wraps plain text in a paragraph", async () => {
     readResult = [fakeItem({ "text/plain": "  hello world  " })];
     select(["children", 0]);
     await pasteNode();
-    expect((doc().children as JxMutableNode[])[1]).toEqual({
+    expect(rootChildren()[1]).toEqual({
       tagName: "p",
       textContent: "hello world",
     });
@@ -411,7 +437,7 @@ describe("pasteNode", () => {
     readResult = [fakeItem({ "text/plain": "   " })];
     select(["children", 0]);
     await pasteNode();
-    expect((doc().children as JxMutableNode[]).length).toBe(2);
+    expect(rootChildren().length).toBe(2);
   });
 
   test("appends to the root children when the root is selected", async () => {
@@ -420,7 +446,7 @@ describe("pasteNode", () => {
     ];
     select([]);
     await pasteNode();
-    const children = doc().children as JxMutableNode[];
+    const children = rootChildren();
     expect(children.length).toBe(3);
     expect(children[2]!.tagName).toBe("h4");
   });
@@ -430,14 +456,14 @@ describe("pasteNode", () => {
     workspace.clipboard = { tagName: "blockquote", textContent: "fb" };
     select(["children", 0]);
     await pasteNode();
-    expect((doc().children as JxMutableNode[])[1]!.tagName).toBe("blockquote");
+    expect(rootChildren()[1]!.tagName).toBe("blockquote");
   });
 
   test("does nothing when no clipboard data exists anywhere", async () => {
     readResult = null;
     select(["children", 0]);
     await pasteNode();
-    expect((doc().children as JxMutableNode[]).length).toBe(2);
+    expect(rootChildren().length).toBe(2);
   });
 
   test("does nothing without an active tab", async () => {
@@ -454,9 +480,7 @@ describe("style clipboard", () => {
     select(["children", 0]);
     copyStyles();
     expect(workspace.styleClipboard).toEqual({ color: "red" });
-    expect(workspace.styleClipboard).not.toBe(
-      (doc().children as JxMutableNode[])[0]!.style as never,
-    );
+    expect(Object.is(workspace.styleClipboard, rootChildren()[0]!.style)).toBe(false);
   });
 
   test("copyStyles is a no-op without style or selection", () => {
@@ -473,7 +497,7 @@ describe("style clipboard", () => {
     workspace.styleClipboard = { fontWeight: "bold" };
     select(["children", 1]);
     pasteStyles();
-    expect((doc().children as JxMutableNode[])[1]!.style).toEqual({ fontWeight: "bold" });
+    expect(rootChildren()[1]!.style).toEqual({ fontWeight: "bold" });
   });
 
   test("pasteStyles reaches EVERY selected element, in ONE undo step (§6.7)", () => {
@@ -485,7 +509,7 @@ describe("style clipboard", () => {
       ["children", 1],
     ];
     pasteStyles();
-    const children = doc().children as JxMutableNode[];
+    const children = rootChildren();
     expect(children[0]!.style).toEqual({ fontWeight: "bold" });
     expect(children[1]!.style).toEqual({ fontWeight: "bold" });
     expect(tab.history.index).toBe(before + 1);
@@ -498,8 +522,8 @@ describe("style clipboard", () => {
       ["children", 1],
     ];
     pasteStyles();
-    const children = doc().children as JxMutableNode[];
-    expect(children[0]!.style).not.toBe(children[1]!.style as never);
+    const children = rootChildren();
+    expect(children[0]!.style).not.toBe(children[1]!.style);
   });
 
   test("cutNode removes every selected node but keeps the PRIMARY on the clipboard", async () => {
@@ -510,19 +534,19 @@ describe("style clipboard", () => {
       ["children", 1],
     ];
     await cutNode();
-    expect((doc().children as JxMutableNode[]).length).toBe(0);
+    expect(rootChildren().length).toBe(0);
     expect(tab.history.index).toBe(before + 1);
   });
 
   test("pasteStyles is a no-op without a style clipboard or selection", () => {
     select(["children", 1]);
     pasteStyles();
-    expect((doc().children as JxMutableNode[])[1]!.style).toBeUndefined();
+    expect(rootChildren()[1]!.style).toBeUndefined();
 
     workspace.styleClipboard = { color: "blue" };
     select(null);
     pasteStyles();
-    expect((doc().children as JxMutableNode[])[1]!.style).toBeUndefined();
+    expect(rootChildren()[1]!.style).toBeUndefined();
   });
 });
 
@@ -608,9 +632,7 @@ describe("element command records", () => {
 
   test("Paste inside and Paste after refuse a repeater's absent child list", () => {
     const ctx = emptyContext();
-    const onArray = elementCommands(
-      stubDeps(stubTarget(["children", 0], { $prototype: "Array" } as JxMutableNode)),
-    );
+    const onArray = elementCommands(stubDeps(stubTarget(["children", 0], { $prototype: "Array" })));
     expect(onArray.find((c) => c.id === "edit.pasteInside")!.enablement!(ctx)).toBe(false);
     expect(onArray.find((c) => c.id === "edit.pasteAfter")!.enablement!(ctx)).toBe(false);
   });
@@ -630,6 +652,9 @@ describe("element command records", () => {
     const commands = elementCommands(stubDeps());
     const ctx = emptyContext();
     for (const command of commands) {
+      /* SAFETY: every record `elementCommands` builds has an argument-less `run` and declares no
+         `args`, so the `never` slot `AnyCommand` erases its argument to is never read; `undefined`
+         is exactly what `registry.run(id)` passes them. */
       await command.run(ctx, undefined as never);
     }
     expect(doc().children).toHaveLength(2);
@@ -724,7 +749,7 @@ describe("showContextMenu", () => {
           $prototype: "Array",
           items: { $ref: "#/state/rows" },
           map: { tagName: "li", textContent: "i" },
-        } as never,
+        },
       ],
       state: { rows: { default: [], type: "array" } },
       tagName: "div",
@@ -757,11 +782,11 @@ describe("showContextMenu", () => {
 
     await rightClick(["children", 0]);
     itemById("selection.duplicate").click();
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "A", "B"]);
+    expect(rootChildren().map((c) => c.textContent)).toEqual(["A", "A", "B"]);
 
     await rightClick(["children", 1]);
     itemById("selection.delete").click();
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "B"]);
+    expect(rootChildren().map((c) => c.textContent)).toEqual(["A", "B"]);
   });
 
   test("the record's own gate refuses Duplicate on an unspliceable target", async () => {
@@ -771,7 +796,7 @@ describe("showContextMenu", () => {
           $prototype: "Array",
           items: { $ref: "#/state/rows" },
           map: { tagName: "li", textContent: "i" },
-        } as never,
+        },
       ],
       state: { rows: { default: [], type: "array" } },
       tagName: "div",
@@ -784,11 +809,11 @@ describe("showContextMenu", () => {
     expect(() => contextMenuRegistry().run("selection.duplicate")).toThrow(
       "a repeater's template or a switch case",
     );
-    expect((doc().children as JxMutableNode[])[0]!.map).toEqual({
+    expect(rootChildren()[0]!.map).toEqual({
       tagName: "li",
       textContent: "i",
     });
-    expect((doc().children as JxMutableNode[]).length).toBe(1);
+    expect(rootChildren().length).toBe(1);
   });
 
   test("does nothing without a tab or for a missing node", async () => {
@@ -862,7 +887,8 @@ describe("showContextMenu", () => {
 
 describe("menu keyboard", () => {
   function focusedId(): string | undefined {
-    return (document.activeElement as HTMLElement | null)?.dataset?.commandId;
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? active.dataset.commandId : undefined;
   }
 
   test("opens with the first row focused and a roving tabindex", async () => {
@@ -944,7 +970,7 @@ describe("menu keyboard", () => {
     await rightClick(["children", 1]);
     itemById("edit.pasteStyles").click();
     await flush();
-    expect((doc().children as JxMutableNode[])[1]!.style).toBeUndefined();
+    expect(rootChildren()[1]!.style).toBeUndefined();
     expect(menuItems().length).toBeGreaterThan(0);
   });
 
@@ -991,7 +1017,7 @@ describe("context menu actions", () => {
     itemById("selection.duplicate").click();
     await flush();
     expect(menuItems().length).toBe(0);
-    const children = doc().children as JxMutableNode[];
+    const children = rootChildren();
     expect(children.length).toBe(3);
     expect(children[1]!.textContent).toBe("A");
   });
@@ -1009,14 +1035,14 @@ describe("context menu actions", () => {
     await rightClick(["children", 0]);
     itemById("selection.insertBefore").click();
     await flush();
-    let children = doc().children as JxMutableNode[];
+    let children = rootChildren();
     expect(children.length).toBe(3);
     expect(children[0]).toEqual({ children: [], tagName: "p" });
 
     await rightClick(["children", 1]); // Original "A" node
     itemById("selection.insertAfter").click();
     await flush();
-    children = doc().children as JxMutableNode[];
+    children = rootChildren();
     expect(children.length).toBe(4);
     expect(children[2]).toEqual({ children: [], tagName: "p" });
   });
@@ -1025,16 +1051,16 @@ describe("context menu actions", () => {
     await rightClick(["children", 0]);
     itemById("selection.wrap").click();
     await flush();
-    const wrapper = (doc().children as JxMutableNode[])[0]!;
+    const wrapper = rootChildren()[0]!;
     expect(wrapper.tagName).toBe("div");
-    expect((wrapper.children as JxMutableNode[])[0]!.textContent).toBe("A");
+    expect(elementsOf(wrapper)[0]!.textContent).toBe("A");
   });
 
   test("Delete removes the node", async () => {
     await rightClick(["children", 0]);
     itemById("selection.delete").click();
     await flush();
-    const children = doc().children as JxMutableNode[];
+    const children = rootChildren();
     expect(children.length).toBe(1);
     expect(children[0]!.textContent).toBe("B");
   });
@@ -1063,7 +1089,7 @@ describe("context menu actions", () => {
     await rightClick(["children", 1]);
     itemById("edit.pasteStyles").click();
     await flush();
-    expect((doc().children as JxMutableNode[])[1]!.style).toEqual({ color: "red" });
+    expect(rootChildren()[1]!.style).toEqual({ color: "red" });
   });
 
   test("Paste inside appends clipboard nodes into the node", async () => {
@@ -1075,8 +1101,8 @@ describe("context menu actions", () => {
     await rightClick(["children", 0]);
     itemById("edit.pasteInside").click();
     await flush();
-    const target = (doc().children as JxMutableNode[])[0]!;
-    expect((target.children as JxMutableNode[])[0]).toEqual({
+    const target = rootChildren()[0]!;
+    expect(elementsOf(target)[0]).toEqual({
       tagName: "span",
       textContent: "i",
     });
@@ -1087,7 +1113,7 @@ describe("context menu actions", () => {
     await rightClick(["children", 0]);
     itemById("edit.pasteInside").click();
     await flush();
-    expect((doc().children as JxMutableNode[])[0]!.children).toBeUndefined();
+    expect(rootChildren()[0]!.children).toBeUndefined();
   });
 
   test("Paste after inserts clipboard nodes as following siblings", async () => {
@@ -1095,7 +1121,7 @@ describe("context menu actions", () => {
     await rightClick(["children", 0]);
     itemById("edit.pasteAfter").click();
     await flush();
-    expect((doc().children as JxMutableNode[])[1]).toEqual({ tagName: "hr" });
+    expect(rootChildren()[1]).toEqual({ tagName: "hr" });
   });
 
   test("Paste after with an empty clipboard changes nothing", async () => {
@@ -1103,7 +1129,7 @@ describe("context menu actions", () => {
     await rightClick(["children", 0]);
     itemById("edit.pasteAfter").click();
     await flush();
-    expect((doc().children as JxMutableNode[]).length).toBe(2);
+    expect(rootChildren().length).toBe(2);
   });
 
   test("Repeat... delegates to the repeater conversion", async () => {
@@ -1121,14 +1147,15 @@ describe("context menu actions", () => {
     await rightClick(["children", 0]);
     itemById("selection.convertToComponent").click();
     await flush();
-    expect(convertToComponent).toHaveBeenCalledTimes(1);
+    // Exactly one call, and with nothing: the record forwards no argument to the conversion.
+    expect(convertToComponent.mock.calls).toEqual([[]]);
   });
 
   test("Set Title with a rerender hook lazily loads the layers panel editor", async () => {
     await rightClick(["children", 0], { rerender: () => {} });
     itemById("selection.setTitle").click();
     await flush(4); // Await the dynamic import; the Outline holds no rows, so it returns early
-    expect((doc().children as JxMutableNode[]).length).toBe(2);
+    expect(rootChildren().length).toBe(2);
   });
 });
 
@@ -1136,7 +1163,7 @@ describe("context menu actions", () => {
 
 describe("component rows", () => {
   beforeEach(() => {
-    componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "x-card" });
     resetWorkspaceWithTab({
       children: [{ tagName: "x-card" }, { textContent: "no tag" }],
       tagName: "div",
@@ -1145,8 +1172,9 @@ describe("component rows", () => {
 
   test("registered components get Edit Component instead of Convert to Component", async () => {
     await rightClick(["children", 0]);
-    expect(menuIds()).toContain("selection.editComponent");
-    expect(menuIds()).not.toContain("selection.convertToComponent");
+    const ids = menuIds();
+    expect(ids).toContain("selection.editComponent");
+    expect(ids).not.toContain("selection.convertToComponent");
   });
 
   test("…and get it from EVERY host, not just one that remembered a hook", async () => {
@@ -1191,16 +1219,16 @@ describe("the menu's mutating rows need a canvas, as Delete already did", () => 
     const tab = resetWorkspaceWithTab({
       children: [{ tagName: "p" }, { tagName: "p" }],
       tagName: "div",
-    } as never);
+    });
     tab.session.ui.canvasMode = mode;
-    const target = {
+    const target: ElementMenuTarget = {
       node: { tagName: "p" },
       path: ["children", 1],
       // A rerender hook is where Set Title draws its inline editor — a real precondition of its
       // Own, unrelated to the rule under test.
       rerender: () => {},
-    } as unknown as ElementMenuTarget;
-    return elementCommands(stubDeps(target, { color: "red" } as JxStyle));
+    };
+    return elementCommands(stubDeps(target, { color: "red" }));
   }
 
   const live = (records: AnyCommand[], id: string) => {

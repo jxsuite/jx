@@ -1,32 +1,35 @@
 import "./with-dom.js";
+import { installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
+import { isString } from "@jxsuite/schema/guards";
 import { setProjectState } from "../src/state";
 import { getEffectiveElements, getEffectiveMedia, getEffectiveStyle } from "../src/site-context";
 import { computeRelativePath } from "../src/files/components";
 import { parseSourceForPath } from "../src/files/file-ops";
-import { registerPlatform } from "../src/platform";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
-import type { StudioPlatform } from "../src/types";
-import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type { JxElementTagName, JxMutableNode, JxRef } from "@jxsuite/schema/types";
 
 seedMarkdownFormat();
-registerPlatform({
-  formatAction: mockFormatAction,
-} as unknown as StudioPlatform);
+installMockPlatform({ formatAction: mockFormatAction });
 
 const loadMarkdown = (source: string) => parseSourceForPath("doc.md", source);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/** A component registry row, as far as auto-discovery reads it. */
+interface RegistryRow {
+  path: string;
+  source: string;
+  tagName: string;
+}
+
 /**
  * Collect all unique tag names from a Jx node tree. Mirrors the inline collectTags in
  * renderCanvasLive.
- *
- * @param {any} node
  */
-function collectTags(node?: any) {
-  const tags = new Set();
-  if (!node || typeof node !== "object") {
+function collectTags(node?: JxMutableNode | string | null): Set<JxElementTagName> {
+  const tags = new Set<JxElementTagName>();
+  if (!node || isString(node)) {
     return tags;
   }
   if (node.tagName) {
@@ -45,22 +48,17 @@ function collectTags(node?: any) {
 /**
  * Simulate the auto-discovery logic from renderCanvasLive: scan the document tree for tag names,
  * match against componentRegistry, and produce $ref entries for each match.
- *
- * @param {any} doc
- * @param {any} documentPath
- * @param {any[]} componentRegistry
- * @param {any[]} existingElements
  */
 function autoDiscoverElements(
-  doc: any,
-  documentPath: any,
-  componentRegistry: any[],
-  existingElements: any[],
-) {
+  doc: JxMutableNode,
+  documentPath: string | null,
+  componentRegistry: RegistryRow[],
+  existingElements: JxRef[],
+): JxRef[] {
   const effectiveElements = [...existingElements];
-  const existingRefs = new Set(effectiveElements.map((e) => (typeof e === "string" ? e : e?.$ref)));
+  const existingRefs = new Set(effectiveElements.map((e) => e.$ref));
   for (const tag of collectTags(doc)) {
-    const comp = componentRegistry.find((c: any) => c.tagName === tag);
+    const comp = componentRegistry.find((c) => c.tagName === tag);
     if (comp && comp.source !== "npm") {
       const relPath = computeRelativePath(documentPath, comp.path);
       if (!existingRefs.has(relPath)) {
@@ -177,7 +175,7 @@ describe("buildDocBase", () => {
 // ─── Component auto-discovery ───────────────────────────────────────────────
 
 describe("autoDiscoverElements", () => {
-  const registry = [
+  const registry: RegistryRow[] = [
     { path: "components/hero.json", source: "jx", tagName: "hero" },
     {
       path: "components/product-showcase.json",
@@ -237,7 +235,7 @@ describe("autoDiscoverElements", () => {
     const doc = { children: [{ tagName: "hero" }], tagName: "div" };
     const existing = [{ $ref: "../../components/hero.json" }];
     const result = autoDiscoverElements(doc, "content/pages/home.md", registry, existing);
-    const heroRefs = result.filter((e) => e.$ref?.includes("hero"));
+    const heroRefs = result.filter((e) => e.$ref.includes("hero"));
     expect(heroRefs.length).toBe(1);
   });
 
@@ -245,9 +243,10 @@ describe("autoDiscoverElements", () => {
     const doc = { children: [{ tagName: "cta-banner" }], tagName: "div" };
     const existing = [{ $ref: "../../components/hero.json" }];
     const result = autoDiscoverElements(doc, "content/pages/home.md", registry, existing);
-    expect(result.length).toBe(2);
-    expect(result[0].$ref).toBe("../../components/hero.json");
-    expect(result[1].$ref).toBe("../../components/cta-banner.json");
+    expect(result).toEqual([
+      { $ref: "../../components/hero.json" },
+      { $ref: "../../components/cta-banner.json" },
+    ]);
   });
 });
 
@@ -298,30 +297,30 @@ describe("getEffectiveElements", () => {
 
   test("returns empty array when no doc elements and no site config", () => {
     expect(getEffectiveElements()).toEqual([]);
-    expect(getEffectiveElements()).toEqual([]);
   });
 
   test("returns site elements when doc has none", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: { $elements: [{ $ref: "./components/hero.json" }] },
-    } as any);
+    });
     const result = getEffectiveElements();
     expect(result).toEqual([{ $ref: "./components/hero.json" }]);
   });
 
   test("merges site and doc elements with dedup", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: {
         $elements: [{ $ref: "./components/hero.json" }, { $ref: "./components/footer.json" }],
       },
-    } as any);
+    });
     const docEls = [{ $ref: "./components/hero.json" }, { $ref: "./components/nav.json" }];
     const result = getEffectiveElements(docEls);
-    expect(result.length).toBe(3);
-    const refs = result.map((e) => (e as { $ref: string }).$ref);
-    expect(refs).toContain("./components/hero.json");
-    expect(refs).toContain("./components/footer.json");
-    expect(refs).toContain("./components/nav.json");
+    // Site entries first, then the document's, with the duplicate hero dropped.
+    expect(result).toEqual([
+      { $ref: "./components/hero.json" },
+      { $ref: "./components/footer.json" },
+      { $ref: "./components/nav.json" },
+    ]);
   });
 });
 
@@ -331,23 +330,23 @@ describe("loadMarkdown state", () => {
   test("sets mode to content", async () => {
     const result = await loadMarkdown("# Hello\n\nSome text");
     // Content mode is inferred: non-component markdown → document has children, no tagName
-    expect((result.document as JxMutableNode).children).toBeDefined();
-    expect((result.document as JxMutableNode).tagName).toBeUndefined();
+    expect(result.document.children).toBeDefined();
+    expect(result.document.tagName).toBeUndefined();
   });
 
   test("parses frontmatter", async () => {
     const md = '---\ntitle: "My Page"\n---\n\n# Hello';
     const result = await loadMarkdown(md);
-    expect((result.frontmatter as Record<string, unknown>).title).toBe("My Page");
+    expect(result.frontmatter.title).toBe("My Page");
   });
 
   test("converts directives to custom element nodes", async () => {
     const md = "::hero\n\n::cta-banner\n";
     const result = await loadMarkdown(md);
-    const doc = result.document as JxMutableNode;
+    const doc = result.document;
     expect(doc.tagName).toBeUndefined();
     const children = Array.isArray(doc.children) ? doc.children : [];
-    const tags = children.map((c) => (c as JxMutableNode).tagName);
+    const tags = children.map((c) => (isString(c) ? undefined : c.tagName));
     expect(tags).toContain("hero");
     expect(tags).toContain("cta-banner");
   });
@@ -355,7 +354,7 @@ describe("loadMarkdown state", () => {
   test("document has no $elements (components must be auto-discovered)", async () => {
     const md = "::hero\n\n::cta-banner\n";
     const result = await loadMarkdown(md);
-    expect((result.document as JxMutableNode).$elements).toBeUndefined();
+    expect(result.document.$elements).toBeUndefined();
   });
 
   test("documentPath is null (must be set by caller)", async () => {
@@ -382,9 +381,9 @@ describe("getEffectiveStyle", () => {
   });
 
   test("returns site style when doc has none", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: { style: { color: "blue", fontFamily: "sans-serif" } },
-    } as any);
+    });
     expect(getEffectiveStyle()).toEqual({
       color: "blue",
       fontFamily: "sans-serif",
@@ -392,30 +391,29 @@ describe("getEffectiveStyle", () => {
   });
 
   test("doc style overrides site style on conflict", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: { style: { color: "blue", fontFamily: "sans-serif" } },
-    } as any);
+    });
     const result = getEffectiveStyle({ color: "red" });
     expect(result.color).toBe("red");
     expect(result.fontFamily).toBe("sans-serif");
   });
 
   test("shallow-merges nested selector objects (e.g. & li)", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: {
         style: { "& li": { margin: "0", padding: "4px" } },
       },
-    } as any);
+    });
     const result = getEffectiveStyle({
       "& li": { color: "red", margin: "8px" },
     });
-    expect((result["& li"] as JxStyle).margin).toBe("8px");
-    expect((result["& li"] as JxStyle).padding).toBe("4px");
-    expect((result["& li"] as JxStyle).color).toBe("red");
+    // The document's margin wins, the site's padding survives, and the document's color is added.
+    expect(result["& li"]).toEqual({ color: "red", margin: "8px", padding: "4px" });
   });
 
   test("flat CSS custom properties from site config (project style is implicitly :root)", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: {
         style: {
           "--bg-primary": "#0a0a0a",
@@ -424,7 +422,7 @@ describe("getEffectiveStyle", () => {
           fontFamily: "system-ui",
         },
       },
-    } as any);
+    });
     const result = getEffectiveStyle();
     expect(result["--bg-primary"]).toBe("#0a0a0a");
     expect(result["--text-primary"]).toBe("#fafafa");
@@ -455,11 +453,11 @@ describe("flat project style (implicit :root)", () => {
   });
 
   test("doc style overrides project CSS variables on conflict", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: {
         style: { "--bg": "#000", "--text": "#fff", color: "var(--text)" },
       },
-    } as any);
+    });
     const result = getEffectiveStyle({ "--bg": "#111" });
     expect(result["--bg"]).toBe("#111");
     expect(result["--text"]).toBe("#fff");
@@ -467,7 +465,7 @@ describe("flat project style (implicit :root)", () => {
   });
 
   test("full pipeline: flat site config → effective style", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: {
         style: {
           "--bg-primary": "#0a0a0a",
@@ -477,7 +475,7 @@ describe("flat project style (implicit :root)", () => {
           fontFamily: "system-ui",
         },
       },
-    } as any);
+    });
     const result = getEffectiveStyle();
     expect(result["--bg-primary"]).toBe("#0a0a0a");
     expect(result["--text-primary"]).toBe("#fafafa");
@@ -503,11 +501,11 @@ describe("getEffectiveMedia", () => {
   });
 
   test("returns site media when doc has none", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: {
         $media: { "--md": "(min-width: 768px)", "--sm": "(min-width: 640px)" },
       },
-    } as any);
+    });
     expect(getEffectiveMedia()).toEqual({
       "--md": "(min-width: 768px)",
       "--sm": "(min-width: 640px)",
@@ -515,11 +513,11 @@ describe("getEffectiveMedia", () => {
   });
 
   test("doc media overrides site media on conflict", () => {
-    setProjectState({
+    resetStudioState({
       projectConfig: {
         $media: { "--md": "(min-width: 768px)", "--sm": "(min-width: 640px)" },
       },
-    } as any);
+    });
     const result = getEffectiveMedia({ "--sm": "(min-width: 600px)" });
     expect(result["--sm"]).toBe("(min-width: 600px)");
     expect(result["--md"]).toBe("(min-width: 768px)");

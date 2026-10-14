@@ -21,18 +21,19 @@
  * @docs framework/site/i18n
  */
 
-import type {
-  JxDocument,
-  JxElement,
-  JxStateDefinition,
-  ProjectConfig,
-} from "@jxsuite/schema/types";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JxDocument, JxElement, JxStateObject, ProjectConfig } from "@jxsuite/schema/types";
 import { localeDirection, localeLabel, localeOfRoute } from "@jxsuite/schema/locale";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
 
-/** One member of a route's translation set — the shape `<head>` and `$page.alternates` share. */
+/**
+ * One route in a translation set: the locale it serves, and where it lives. The shape `<head>` and
+ * `$page.alternates` share.
+ */
 export interface TranslationMember {
+  /** Canonical BCP 47 tag. */
   locale: string;
+  /** Site-absolute route pattern, e.g. `/fr-ca/about/`. */
   urlPattern: string;
 }
 
@@ -41,7 +42,6 @@ export interface SiteRoute {
   urlPattern: string;
   sourcePath?: string;
   _pathParams?: Record<string, string>;
-  [key: string]: unknown;
 }
 
 /**
@@ -78,10 +78,17 @@ export function injectContext(
   }
 
   // $site context — read-only project-level data
+  const localeFields: JxStateObject = {};
+  if (i18n !== null) {
+    localeFields.defaultLocale = i18n.defaultLocale;
+    localeFields.locales = i18n.locales;
+  }
+  /* Project state is spread last, so a key it shares with the fields above overrides it in place.
+     A spread, not `Object.assign`: an authored `__proto__` key stays an own data property. */
   doc.state.$site = {
     name: projectConfig.name ?? "Jx Site",
     url: projectConfig.url ?? "",
-    ...(i18n === null ? {} : { defaultLocale: i18n.defaultLocale, locales: i18n.locales }),
+    ...localeFields,
     ...projectConfig.state,
   };
 
@@ -93,7 +100,7 @@ export function injectContext(
    * `$lang` still wins over the route's locale, so this is the resolved answer, not the prefix.
    */
   const pageLang =
-    (typeof doc.$lang === "string" ? doc.$lang : undefined) ??
+    (isString(doc.$lang) ? doc.$lang : undefined) ??
     localeOfRoute(route.urlPattern, i18n) ??
     projectConfig.defaults?.lang;
   /*
@@ -114,19 +121,25 @@ export function injectContext(
     label: localeLabel(member.locale),
     url: member.urlPattern,
   }));
-  doc.state.$page = {
+  const page: JxStateObject = {
     params: route._pathParams ?? {},
     title: doc.title ?? doc._pageTitle ?? projectConfig.name ?? "",
     url: route.urlPattern,
-    ...(alternates.length > 0 && { alternates }),
-    ...(pageLang === undefined ? {} : { dir: localeDirection(pageLang), locale: pageLang }),
   };
+  if (alternates.length > 0) {
+    page.alternates = alternates;
+  }
+  if (pageLang !== undefined) {
+    page.dir = localeDirection(pageLang);
+    page.locale = pageLang;
+  }
+  doc.state.$page = page;
 
   // Merge project-level state into page state (page wins on conflicts)
   if (projectConfig.state) {
     for (const [key, value] of Object.entries(projectConfig.state)) {
       if (key !== "$site" && key !== "$page" && !(key in doc.state)) {
-        doc.state[key] = value as JxStateDefinition;
+        doc.state[key] = value;
       }
     }
   }
@@ -143,12 +156,11 @@ export function injectContext(
     }
     for (const [name, srcPath] of Object.entries(projectConfig.imports)) {
       if (!(name in doc.imports)) {
-        const src = srcPath as string;
         // Only rebase relative paths — bare/npm specifiers pass through unmodified
         doc.imports[name] =
-          rebaseImport && (src.startsWith("./") || src.startsWith("../"))
-            ? rebaseImport(src, route)
-            : src;
+          rebaseImport && (srcPath.startsWith("./") || srcPath.startsWith("../"))
+            ? rebaseImport(srcPath, route)
+            : srcPath;
       }
     }
   }
@@ -160,12 +172,10 @@ export function injectContext(
     } else {
       const seen = new Set<string>();
       const merged: (string | JxElement)[] = [];
-      for (const entry of [
-        ...projectConfig.$elements,
-        ...(doc.$elements as (string | JxElement)[]),
-      ]) {
-        const key =
-          typeof entry === "string" ? entry : /** @type {{ $ref?: string }} */ entry?.$ref;
+      for (const entry of [...projectConfig.$elements, ...doc.$elements]) {
+        /* `$elements` is authored JSON, so an entry typed as an element can still be `null`; the
+           object check keeps such an entry keyless (and dropped) instead of throwing. */
+        const key = isString(entry) ? entry : isNonNullObject(entry) ? entry.$ref : undefined;
         if (key && !seen.has(key)) {
           seen.add(key);
           merged.push(entry);

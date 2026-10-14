@@ -18,8 +18,7 @@
 
 import "./with-dom.js";
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetStudioState } from "./harness";
-import { registerPlatform } from "../src/platform";
+import { installMockPlatform, resetStudioState } from "./harness";
 import { invalidateUsages, usageWarning } from "../src/services/references";
 import {
   loadMediaUsages,
@@ -27,7 +26,7 @@ import {
   peekMediaUsages,
   retryMediaUsages,
 } from "../src/files/media-usage";
-import type { ReferenceFile, ReferencesResult, StudioPlatform } from "../src/types";
+import type { ReferenceFile, ReferencesResult } from "../src/types";
 
 function hit(path: string, ref: string, count = 1, refType = "attr"): ReferenceFile {
   return { count, path, refs: [{ count, ref, refType }] };
@@ -44,25 +43,31 @@ function result(path: string, files: ReferenceFile[]): ReferencesResult {
   };
 }
 
+/** What {@link install} hands back: the paths the double was asked about, in order. */
+interface InstalledIndex {
+  asked: string[];
+}
+
 /**
  * A host whose reference index answers per queried path. `null` for `findReferences` is a host
  * without the capability at all.
  */
-function install(answers: Record<string, ReferencesResult | Error> | null): { asked: string[] } {
+function install(answers: Record<string, ReferencesResult | Error> | null): InstalledIndex {
   const asked: string[] = [];
-  const platform = (answers === null
-    ? {}
-    : {
-        findReferences: async (target: { path?: string }) => {
-          asked.push(target.path ?? "");
-          const answer = answers[target.path ?? ""];
-          if (answer instanceof Error) {
-            throw answer;
-          }
-          return answer ?? result(target.path ?? "", []);
-        },
-      }) as unknown as StudioPlatform;
-  registerPlatform(platform);
+  if (answers === null) {
+    installMockPlatform();
+    return { asked };
+  }
+  installMockPlatform({
+    findReferences: async (target: { path?: string }) => {
+      asked.push(target.path ?? "");
+      const answer = answers[target.path ?? ""];
+      if (answer instanceof Error) {
+        throw answer;
+      }
+      return answer ?? result(target.path ?? "", []);
+    },
+  });
   return { asked };
 }
 
@@ -168,14 +173,14 @@ describe("peekMediaUsages", () => {
 describe("retryMediaUsages", () => {
   test("asks again after a failure", async () => {
     let fail = true;
-    registerPlatform({
+    installMockPlatform({
       findReferences: async (target: { path?: string }) => {
         if (fail) {
           throw new Error("index unavailable");
         }
         return result(target.path ?? "", [hit("pages/index.json", "/hero.jpg")]);
       },
-    } as unknown as StudioPlatform);
+    });
     const first = await loadMediaUsages("public/hero.jpg");
     expect(first.status).toBe("failed");
     fail = false;

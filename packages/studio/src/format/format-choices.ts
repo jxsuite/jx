@@ -11,6 +11,7 @@
  * context menu is built during a render and cannot await anything.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { collectionForFile } from "../content/collection-match";
 import { documentExtensions, formatByExtension, formatForPath, getFormats } from "./format-host";
 import { projectState } from "../store";
@@ -76,7 +77,7 @@ function declaresDocumentKind(kinds: readonly string[]): boolean {
  */
 function isLayoutPath(path: string): boolean {
   const declared = projectState?.projectConfig?.layout;
-  if (typeof declared !== "string") {
+  if (!isString(declared)) {
     return false;
   }
   return normalize(declared).toLowerCase() === normalize(path).toLowerCase();

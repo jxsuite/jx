@@ -29,15 +29,16 @@
  * @docs studio/editing/writing
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import blockActionBarDoc from "./block-action-bar.json";
 
 import type { JxScope } from "@jxsuite/runtime/types";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import { rectOf } from "../utils/geometry";
 
-registerSurface("block-action-bar", blockActionBarDoc as unknown as JxDocument);
+registerSurface("block-action-bar", blockActionBarDoc);
 
 /** One button, already decided: what it is called, what it draws, and why it cannot act. */
 export interface BlockBarTool {
@@ -116,7 +117,7 @@ export interface BlockBarActions {
 }
 
 /** The scope `block-action-bar.json` reads. */
-interface BlockBarScope extends BlockBarView, Record<string, unknown> {
+interface BlockBarScope extends BlockBarView {
   linkValue: string;
   linkExisting: boolean;
   linkApplyLabel: string;
@@ -167,8 +168,8 @@ export function emptyBlockBarView(): BlockBarView {
 
 /** A node definition's `part`, as written in the document. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -180,9 +181,10 @@ function partOf(def: JxElement | string): string {
  * same shape `surfaces/schema-form.ts` and `surfaces/properties-panel.ts` use.
  */
 function commandIdOf(state: JxScope | undefined): string {
-  const item = (state?.["$map"] as { item?: Record<string, unknown> } | undefined)?.item;
-  const id = item?.["id"];
-  return typeof id === "string" ? id : "";
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const id = isJsonObject(item) ? item["id"] : undefined;
+  return isString(id) ? id : "";
 }
 
 /** The bar's mounted surface, and every handle the flow is allowed to reach back through. */
@@ -250,22 +252,29 @@ export function mountBlockActionBar(host: HTMLElement, actions: BlockBarActions)
     linkApplyLabel: "Apply",
     linkExisting: false,
     linkInput: (_scope: JxScope, event: Event) => {
-      const value = (event.target as { value?: unknown } | null)?.value;
-      scope.linkValue = typeof value === "string" ? value : "";
+      const { target } = event;
+      const value = target !== null && "value" in target ? target.value : undefined;
+      scope.linkValue = isString(value) ? value : "";
     },
     linkValue: "",
     linkX: 0,
     linkY: 0,
     openMergeTags: (_scope: JxScope, event: Event) => {
       event.stopPropagation();
+      // SAFETY: Only the merge-tags `jx-action-button`'s `onclick` binds this handler, and during
+      // Dispatch `currentTarget` is the element the listener sits on.
       actions.openMergeTags(event.currentTarget as HTMLElement);
     },
     openOverflow: (_scope: JxScope, event: Event) => {
       event.stopPropagation();
+      // SAFETY: Only the overflow `jx-action-button`'s `onclick` binds this handler, and during
+      // Dispatch `currentTarget` is the element the listener sits on.
       actions.openOverflow(event.currentTarget as HTMLElement);
     },
     openTagMenu: (_scope: JxScope, event: Event) => {
       event.stopPropagation();
+      // SAFETY: Only the tag `jx-action-button`'s `onclick` binds this handler, and during
+      // Dispatch `currentTarget` is the element the listener sits on.
       actions.openTagMenu(event.currentTarget as HTMLElement);
     },
     removeLink: () => {
@@ -274,7 +283,7 @@ export function mountBlockActionBar(host: HTMLElement, actions: BlockBarActions)
     },
     run: (id: string) => actions.run(id),
     selectParent: () => actions.selectParent(),
-  }) as BlockBarScope;
+  });
 
   /* One mount for the life of the window, and no teardown to write. The bar is chrome the app
      never takes down: `dismissBlockActionBar` hides it through `visible`, and its layer slot is
@@ -295,6 +304,8 @@ export function mountBlockActionBar(host: HTMLElement, actions: BlockBarActions)
         return;
       }
       if (part === "link") {
+        // SAFETY: `part: "link"` is the document's `jx-popover`, whose class carries `open` and the
+        // `showPopover({ source })` overload that PopoverElement names.
         linkEl = element as PopoverElement;
         return;
       }

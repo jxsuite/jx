@@ -36,10 +36,14 @@ import {
   suggestFor,
   validateArgs,
 } from "../../../scripts/check-shot-contract";
-import type { CommandTable, ContractCounts } from "../../../scripts/check-shot-contract";
+import type {
+  CommandRecord,
+  CommandTable,
+  ContractCounts,
+} from "../../../scripts/check-shot-contract";
+import { FIXTURES } from "./shared-fixtures";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
-const FIXTURES = "scripts/screenshots/fixtures/contract";
 
 async function runCheck(args: string[]) {
   const proc = Bun.spawn([process.execPath, join("scripts", "check-shot-contract.ts"), ...args], {
@@ -62,17 +66,21 @@ async function runCheck(args: string[]) {
 }
 
 /** A projection built by hand, so the pure rules are tested without importing the studio. */
-function table(entries: { id: string; args?: object; scriptable?: boolean }[] = []): CommandTable {
+function table(
+  entries: { id: string; args?: CommandRecord["args"]; scriptable?: boolean }[] = [],
+): CommandTable {
   return new Map(
-    entries.map((entry) => [
-      entry.id,
-      {
+    entries.map((entry): [string, CommandRecord] => {
+      const record: CommandRecord = {
         id: entry.id,
         scriptable: entry.scriptable !== false,
         source: "fixture",
-        ...(entry.args ? { args: entry.args } : {}),
-      },
-    ]),
+      };
+      if (entry.args) {
+        record.args = entry.args;
+      }
+      return [entry.id, record];
+    }),
   );
 }
 
@@ -569,13 +577,8 @@ describe("loadCommandTable", () => {
   });
 
   test("a module declaring none of the three exports is an error, not an empty projection", async () => {
-    let thrown: unknown;
-    try {
-      await loadCommandTable(["packages/studio/src/commands/budget.ts"]);
-    } catch (error) {
-      thrown = error;
-    }
-    expect((thrown as Error | undefined)?.message).toBe(
+    expect(loadCommandTable(["packages/studio/src/commands/budget.ts"])).rejects.toHaveProperty(
+      "message",
       "packages/studio/src/commands/budget.ts exports none of defaultCommandSet(), seedIds() or " +
         "AUTOMATION_COMMANDS",
     );

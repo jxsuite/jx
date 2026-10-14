@@ -25,9 +25,8 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import pickerDoc from "./ai-model-picker.json";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("ai-model-picker", pickerDoc as unknown as JxDocument);
+registerSurface("ai-model-picker", pickerDoc);
 
 /** One row the control offers. Already a label — the flow decides what a row is called. */
 export interface ModelPickerRow {
@@ -79,8 +78,7 @@ interface ModelPickerFlags {
   hasFailure: boolean;
 }
 
-interface ModelPickerScope
-  extends Record<string, unknown>, ModelPickerView, ModelPickerActions, ModelPickerFlags {}
+interface ModelPickerScope extends ModelPickerView, ModelPickerActions, ModelPickerFlags {}
 
 /** The view plus the flag the document switches on. */
 function derive(view: ModelPickerView): ModelPickerView & ModelPickerFlags {
@@ -103,7 +101,7 @@ export function createModelPickerSurface(
 ): ModelPickerSurface {
   const host = document.createElement("div");
   host.style.display = "contents";
-  const scope = reactive({ ...derive(view), ...actions }) as ModelPickerScope;
+  const scope: ModelPickerScope = reactive<ModelPickerScope>({ ...derive(view), ...actions });
 
   /** `null` while a mount is in flight — which is a standing surface, not a missing one. */
   let handle: SurfaceHandle | null = null;

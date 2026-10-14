@@ -18,7 +18,10 @@
 
 import { extractClosestEdge } from "@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge";
 import { getReorderDestinationIndex } from "@atlaskit/pragmatic-drag-and-drop-hitbox/util/get-reorder-destination-index";
-import type { Edge } from "@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge";
+import type { Edge } from "@atlaskit/pragmatic-drag-and-drop-hitbox/types";
+import type { ElementDragPayload } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
+import type { DropTargetRecord } from "@atlaskit/pragmatic-drag-and-drop/types";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import {
   activateTab,
   closePane,
@@ -54,8 +57,13 @@ export interface FileDragData extends Record<string, unknown> {
 
 export type TabDropSourceData = TabDragData | FileDragData;
 
-/** A slot in a strip — a chip's edge, or the strip's own empty tail when `tabId` is absent. */
-export interface TabSlotTarget extends Record<string, unknown> {
+/**
+ * A slot in a strip — a chip's edge, or the strip's own empty tail when `tabId` is absent.
+ *
+ * Target records are keyed by symbols as well as strings (pragmatic-dnd's `DropTargetRecord`), and
+ * a chip's carries one: `attachClosestEdge` stores the edge under a symbol key.
+ */
+export interface TabSlotTarget extends Record<string | symbol, unknown> {
   type: "tab-slot";
   paneId: string;
   tabId?: string;
@@ -63,17 +71,17 @@ export interface TabSlotTarget extends Record<string, unknown> {
   index: number;
 }
 
-export interface TabSlotRefusedTarget extends Record<string, unknown> {
+export interface TabSlotRefusedTarget extends Record<string | symbol, unknown> {
   type: "tab-slot-refused";
 }
 
 /** The right band of the last pane's stage, armed only while the grid is under {@link MAX_PANES}. */
-export interface PaneEdgeTarget extends Record<string, unknown> {
+export interface PaneEdgeTarget extends Record<string | symbol, unknown> {
   type: "pane-edge";
   paneId: string;
 }
 
-export interface PaneEdgeRefusedTarget extends Record<string, unknown> {
+export interface PaneEdgeRefusedTarget extends Record<string | symbol, unknown> {
   type: "pane-edge-refused";
 }
 
@@ -93,8 +101,11 @@ export type TabDropTarget =
  * anything else this module has no branch for) is refused at the SOURCE and never reaches a target
  * closure at all.
  */
-export function isTabDropSource(data: Record<string, unknown>): data is TabDropSourceData {
-  return data.type === "tab" || (data.type === "file-tree" && data.entryType === "file");
+export function isTabDropSource(data: unknown): data is TabDropSourceData {
+  return (
+    isJsonObject(data) &&
+    (data.type === "tab" || (data.type === "file-tree" && data.entryType === "file"))
+  );
 }
 
 /**
@@ -142,7 +153,7 @@ function edgeIndex(target: TabSlotTarget, edge: Edge | null): number {
 }
 
 async function resolveTabSlotDrop(source: TabDropSourceData, target: TabSlotTarget): Promise<void> {
-  const edge = extractClosestEdge(target as unknown as Record<string | symbol, unknown>);
+  const edge = extractClosestEdge(target);
   if (source.type === "tab") {
     if (source.paneId === target.paneId) {
       const pane = paneById(target.paneId);
@@ -202,18 +213,23 @@ async function resolvePaneEdgeDrop(
  * `undefined` for a drag cancelled off every target — both are legal and both mean nothing landed.
  */
 export async function resolveTabDrop(
-  source: { data: Record<string, unknown> },
-  target: { data: Record<string, unknown> } | undefined,
+  source: Pick<ElementDragPayload, "data">,
+  target: Pick<DropTargetRecord, "data"> | undefined,
 ): Promise<void> {
   if (!target || !isTabDropSource(source.data)) {
     return;
   }
   const sourceData = source.data;
   if (target.data.type === "tab-slot") {
+    /* SAFETY: a `tab-slot` record is only ever produced by `tab-strip.ts`'s two `getData`
+       closures (a chip's and a strip tail's), and both write a string `paneId` and a numeric
+       `index` beside the type, with `tabId` only on a chip's. */
     await resolveTabSlotDrop(sourceData, target.data as TabSlotTarget);
     return;
   }
   if (target.data.type === "pane-edge") {
+    /* SAFETY: a `pane-edge` record is only ever produced by `pane-grid.ts`'s edge-zone `getData`,
+       whose `PaneEdgeData` pairs that type with a string `paneId`. */
     await resolvePaneEdgeDrop(sourceData, target.data as PaneEdgeTarget);
   }
   // `tab-slot-refused` / `pane-edge-refused` / anything else: nothing.

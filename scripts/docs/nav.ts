@@ -61,8 +61,8 @@ export function isUnder(path: string, prefix: string): boolean {
 /** One section's pages, in the order the sidebar draws them: its own rows, then each group's. */
 export function sectionPaths(section: NavSection): string[] {
   return [
-    ...(section.pages ?? []).map((page) => page.path),
-    ...(section.groups ?? []).flatMap((group) => group.pages.map((page) => page.path)),
+    ...section.pages.map((page) => page.path),
+    ...section.groups.flatMap((group) => group.pages.map((page) => page.path)),
   ];
 }
 
@@ -80,8 +80,7 @@ export function navProblems(nav: Nav): string[] {
     `header, and compiler.md §8.1)`;
 
   for (const section of nav.sections) {
-    const pages = section.pages ?? [];
-    const groups = section.groups ?? [];
+    const { pages, groups } = section;
 
     if (pages.length === 0) {
       problems.push(empty("pages", `section "${section.path}"`));
@@ -110,7 +109,36 @@ export function navProblems(nav: Nav): string[] {
   return problems;
 }
 
-/** Parse the manifest at `path`. */
+/** A section as `docs/nav.json` holds it: a hand edit can drop its `pages` or `groups` key. */
+interface NavFileSection extends Omit<NavSection, "groups" | "pages"> {
+  pages?: NavPage[];
+  groups?: NavGroup[];
+}
+
+/** The manifest as written, before `readNav()` gives every section both arrays. */
+interface NavFile {
+  id: string;
+  sections: NavFileSection[];
+}
+
+/**
+ * Parse the text of the manifest. A section missing `pages` or `groups` reads as an empty array, so
+ * `navProblems()` reports it as empty rather than the walk crashing on it.
+ */
+export function parseNav(text: string): Nav {
+  /* SAFETY: the text is the committed docs/nav.json. NavFile is the shape `navProblems()` judges,
+   * with the two arrays a hand edit can drop typed optional and defaulted below; the golden tests in
+   * nav.test.ts hold the committed file to it. */
+  const file = JSON.parse(text) as NavFile;
+  return {
+    ...file,
+    sections: file.sections.map((section) =>
+      Object.assign(section, { pages: section.pages ?? [], groups: section.groups ?? [] }),
+    ),
+  };
+}
+
+/** Parse the manifest at `path`; see {@link parseNav}. */
 export function readNav(path: string): Nav {
-  return JSON.parse(readFileSync(path, "utf8")) as Nav;
+  return parseNav(readFileSync(path, "utf8"));
 }

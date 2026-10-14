@@ -13,7 +13,7 @@ import {
   findDialogDefects,
   isDialog,
 } from "../src/dialogs";
-import type { JxElement, JxStyle } from "../types";
+import type { JxElement, JxTagExpression } from "../types";
 
 /** A conforming modal: named, closes on Escape, and carries its own close button. */
 function goodDialog(id = "confirm", extra: Partial<JxElement> = {}): JxElement {
@@ -66,20 +66,24 @@ describe("constants", () => {
   test("isDialog reads the tag, lowercased, and nothing else", () => {
     expect(isDialog({ tagName: "DIALOG" })).toBe(true);
     expect(isDialog({ tagName: "div", attributes: { role: "dialog" } })).toBe(false);
-    expect(isDialog({ tagName: { $expression: { operator: "?:" } } } as unknown as JxElement)).toBe(
-      false,
-    );
+    const chosen: JxTagExpression = {
+      initial: "div",
+      operator: "?:",
+      target: { $ref: "#/state/modal" },
+      value: "dialog",
+    };
+    expect(isDialog({ tagName: { $expression: chosen } })).toBe(false);
   });
 });
 
 describe("documentHasDialog", () => {
   test("answers for a dialog anywhere in the tree, and for none", () => {
-    expect(documentHasDialog({ tagName: "div" } as never)).toBe(false);
+    expect(documentHasDialog({ tagName: "div" })).toBe(false);
     expect(
       documentHasDialog({
         children: [{ children: [{ tagName: "dialog" }], tagName: "section" }],
         tagName: "div",
-      } as never),
+      }),
     ).toBe(true);
   });
 });
@@ -92,8 +96,8 @@ describe("dialogIdsIn", () => {
         $switch: { $ref: "#/state/x" },
         cases: { on: goodDialog("b") },
         tagName: "div",
-      } as JxElement,
-      { $prototype: "Array", items: { $ref: "#/state/items" }, map: goodDialog("c") } as never,
+      },
+      { $prototype: "Array", items: { $ref: "#/state/items" }, map: goodDialog("c") },
       goodDialog("a"),
       panel("not-a-dialog"),
     );
@@ -110,7 +114,7 @@ describe("a conforming document reports nothing", () => {
   });
 
   test("a custom command with a handler on its target", () => {
-    const handled = goodDialog("confirm", { oncommand: { $ref: "#/state/onCommand" } } as never);
+    const handled = goodDialog("confirm", { oncommand: { $ref: "#/state/onCommand" } });
     const d = doc(opener(), opener("confirm", "--rotate"), handled);
     expect(rules(d)).toEqual([]);
   });
@@ -145,7 +149,7 @@ describe("invoker-not-button", () => {
       {
         attributes: { command: { $ref: "#/state/cmd" }, commandfor: "confirm" },
         tagName: "div",
-      } as never,
+      },
       goodDialog(),
     );
     expect(rules(d)).toContain("invoker-not-button");
@@ -162,7 +166,7 @@ describe("command-invalid", () => {
   test("a --custom command is not", () => {
     const d = doc(
       opener("confirm", "--anything"),
-      goodDialog("confirm", { oncommand: { $ref: "#/state/h" } } as never),
+      goodDialog("confirm", { oncommand: { $ref: "#/state/h" } }),
     );
     expect(rules(d)).not.toContain("command-invalid");
   });
@@ -234,7 +238,7 @@ describe("dialog-no-invoker", () => {
   test("one that is open by declaration, or opened by a button, is not", () => {
     const declared = doc(goodDialog("confirm", { attributes: { open: "" } }));
     expect(rules(declared)).not.toContain("dialog-no-invoker");
-    const property = doc(goodDialog("confirm", { open: true } as never));
+    const property = doc(goodDialog("confirm", { open: true }));
     expect(rules(property)).not.toContain("dialog-no-invoker");
     const opened = doc(opener(), goodDialog());
     expect(rules(opened)).not.toContain("dialog-no-invoker");
@@ -242,7 +246,7 @@ describe("dialog-no-invoker", () => {
 
   test("an anonymous dialog is not judged — there is nothing to name it by", () => {
     const anonymous = goodDialog("x");
-    delete (anonymous as { id?: string }).id;
+    delete anonymous.id;
     const d = doc(anonymous);
     expect(rules(d)).not.toContain("dialog-no-invoker");
   });
@@ -313,12 +317,13 @@ describe("dialog-display, and its repair", () => {
       base: ["display"],
       openDisplay: null,
     });
-    expect(
-      dialogDisplayRepair({ ":open": { display: "flex" }, display: "grid" } as JxStyle),
-    ).toEqual({ base: ["display"], openDisplay: null });
-    const bracket = { "[open]": { display: "flex" }, display: "grid" } as JxStyle;
+    expect(dialogDisplayRepair({ ":open": { display: "flex" }, display: "grid" })).toEqual({
+      base: ["display"],
+      openDisplay: null,
+    });
+    const bracket = { "[open]": { display: "flex" }, display: "grid" };
     expect(dialogDisplayRepair(bracket)).toEqual({ base: ["display"], openDisplay: null });
-    const pseudo = { "&:open": { display: "flex" }, display: "grid" } as JxStyle;
+    const pseudo = { "&:open": { display: "flex" }, display: "grid" };
     expect(dialogDisplayRepair(pseudo)).toEqual({ base: ["display"], openDisplay: null });
     expect(dialogDisplayRepair({ "&[open]": { display: "grid" } })).toBeNull();
     expect(dialogDisplayRepair()).toBeNull();
@@ -336,7 +341,7 @@ describe("a command aimed at a custom element whose definition declares popover"
         { attributes: { id: "p1" }, tagName: "jx-popover" },
       ],
       tagName: "div",
-    } as unknown as JxElement;
+    };
     expect(findDialogDefects(page).map((d) => d.rule)).toEqual(["command-target-mismatch"]);
     expect(findDialogDefects(page, { popoverTags: new Set(["jx-popover"]) })).toEqual([]);
   });
@@ -344,14 +349,13 @@ describe("a command aimed at a custom element whose definition declares popover"
 
 describe("a custom element that forwards command and commandfor", () => {
   const scope = { invokerTags: new Set(["jx-button"]), popoverTags: new Set(["jx-popover"]) };
-  const page = (tag: string): JxElement =>
-    ({
-      children: [
-        { attributes: { command: "toggle-popover", commandfor: "p1" }, tagName: tag },
-        { attributes: { id: "p1" }, tagName: "jx-popover" },
-      ],
-      tagName: "div",
-    }) as unknown as JxElement;
+  const page = (tag: string): JxElement => ({
+    children: [
+      { attributes: { command: "toggle-popover", commandfor: "p1" }, tagName: tag },
+      { attributes: { id: "p1" }, tagName: "jx-popover" },
+    ],
+    tagName: "div",
+  });
 
   test("is an invoker with the scope, and a defect without it", () => {
     expect(findDialogDefects(page("jx-button")).map((d) => d.rule)).toEqual(["invoker-not-button"]);

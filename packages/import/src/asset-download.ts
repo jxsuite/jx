@@ -179,12 +179,12 @@ export async function downloadAssets(
     const relativePath = `/assets/${subdir}/${filename}`;
 
     try {
-      const headers: Record<string, string> = {
+      const headers = new Headers({
         "User-Agent":
           "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      };
+      });
       if (sourceUrl) {
-        headers["Referer"] = sourceUrl;
+        headers.set("Referer", sourceUrl);
       }
       const response = await fetch(url, { headers, redirect: "follow" });
       if (!response.ok) {

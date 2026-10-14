@@ -30,7 +30,7 @@ export function canonicalRevOf(doc: Doc): number {
  * Flip canonical to "source", seeding the text from `serialized` (the flipper's serialization of
  * the current structure). No-op (false) when source already holds the lock.
  */
-export function acquireSourceCanonical(doc: Doc, serialized: string, origin: unknown): boolean {
+export function acquireSourceCanonical(doc: Doc, serialized: string, origin: string): boolean {
   if (canonicalOf(doc) === "source") {
     return false;
   }
@@ -44,7 +44,7 @@ export function acquireSourceCanonical(doc: Doc, serialized: string, origin: unk
 }
 
 /** Flip canonical back to "structure" (the mirror is the caller's responsibility beforehand). */
-export function releaseSourceCanonical(doc: Doc, origin: unknown): boolean {
+export function releaseSourceCanonical(doc: Doc, origin: string): boolean {
   if (canonicalOf(doc) !== "source") {
     return false;
   }
@@ -64,6 +64,9 @@ export function otherSourceEditors(
 ): number[] {
   const editors: number[] = [];
   for (const [clientId, raw] of awareness.getStates()) {
+    /* SAFETY: a peer publishes its own awareness state, so nothing is guaranteed about it, and
+       `Partial` keeps every field optional. The fields are only compared with `===` against a
+       literal or `path`, so a malformed state fails the match instead of being misread. */
     const state = raw as Partial<CollabAwarenessState>;
     if (clientId !== selfClientId && state.mode === "source" && state.focusedPath === path) {
       editors.push(clientId);
@@ -78,12 +81,17 @@ export function otherSourceEditors(
  */
 export function isSourceReconciler(awareness: Awareness, path: string): boolean {
   const self = awareness.clientID;
+  /* SAFETY: every awareness state is peer-published and unchecked (this one is our own, but read
+     back through the same untyped map). `Partial` keeps every field optional, and each is only
+     compared with `===`/`!==` against a literal or `path`, so a malformed state fails the match. */
   const selfState = awareness.getStates().get(self) as Partial<CollabAwarenessState> | undefined;
   if (selfState?.mode !== "source" || selfState.focusedPath !== path) {
     return false;
   }
   let lowest = self;
   for (const [clientId, raw] of awareness.getStates()) {
+    /* SAFETY: peer-published and unchecked; `mode`, `focusedPath` and `canWrite` are only compared
+       with `===`/`!==` against a literal or `path`, so a malformed state just loses the election. */
     const state = raw as Partial<CollabAwarenessState>;
     if (
       state.mode === "source" &&

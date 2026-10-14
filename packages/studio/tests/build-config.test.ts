@@ -6,11 +6,14 @@
  * the split between the two paths, which a one-line edit to the shared options could erase without
  * any build failing.
  */
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { STUDIO_ASSETS } from "../src/hosting/layout";
+import type { StudioAsset } from "../src/hosting/layout";
 import { writeAssetManifest } from "../src/hosting/stage";
 import {
   forgetReleasePreload,
@@ -76,8 +79,13 @@ describe("forgetReleasePreload", () => {
     temps.push(d);
     return d;
   };
-  const manifest = (r: string) =>
-    JSON.parse(readFileSync(join(r, "dist", "manifest.json"), "utf8")) as Record<string, unknown>;
+  const manifest = (r: string): JsonObject => {
+    const parsed = JSON.parse(readFileSync(join(r, "dist", "manifest.json"), "utf8"));
+    if (!isJsonObject(parsed)) {
+      throw new TypeError("dist/manifest.json is not a JSON object");
+    }
+    return parsed;
+  };
 
   test("rewrites a release manifest without its preload list, keeping the rest", async () => {
     const r = root();
@@ -87,7 +95,7 @@ describe("forgetReleasePreload", () => {
     const after = manifest(r);
     expect("preload" in after).toBe(false);
     expect(after.shell).toBe("index.html");
-    expect(after.assets).toEqual(STUDIO_ASSETS);
+    expect(after.assets).toEqual<readonly StudioAsset[]>(STUDIO_ASSETS);
   });
 
   test("writes a field-less manifest for a checkout that was never built", async () => {

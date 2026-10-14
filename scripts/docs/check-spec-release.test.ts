@@ -50,8 +50,9 @@ describe("normalizedBody", () => {
   test("release metadata and wrapping are invisible; the body is not", () => {
     const a = spec("0.1.0-draft", "One paragraph\nwrapped here.");
     const b = spec("0.1.1-draft", "One paragraph wrapped here.");
-    expect(normalizedBody(a)).toBe(normalizedBody(b));
-    expect(normalizedBody(a)).not.toBe(normalizedBody(spec("0.1.0-draft", "Another paragraph.")));
+    const body = normalizedBody(a);
+    expect(body).toBe(normalizedBody(b));
+    expect(body).not.toBe(normalizedBody(spec("0.1.0-draft", "Another paragraph.")));
   });
 });
 

@@ -27,7 +27,7 @@ describe("harness smoke", () => {
   test("state + tab reset", () => {
     resetStudioState();
     const tab = resetWorkspaceWithTab();
-    expect(tab?.doc.document).toBeTruthy();
+    expect(tab.doc.document).toBeTruthy();
   });
   test("stubRect + setValue", async () => {
     const el = await renderInto(html`<input />`);

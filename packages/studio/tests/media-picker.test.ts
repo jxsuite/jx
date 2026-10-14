@@ -28,7 +28,17 @@ import {
   stubRect,
   testFile,
 } from "./harness";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import * as storeActual from "../src/store";
 import type { DirEntry } from "../src/types";
 
@@ -50,10 +60,10 @@ const { initLayers, layerHost } = await import("../src/ui/layers");
 
 const realRaf = globalThis.requestAnimationFrame;
 let rafQueue: FrameRequestCallback[] = [];
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   rafQueue.push(cb);
   return rafQueue.length;
-}) as typeof requestAnimationFrame;
+};
 
 function runRaf() {
   const queue = rafQueue;
@@ -69,14 +79,7 @@ afterAll(() => {
 
 // ─── Platform with a directory tree (media-picker reads entry.type) ─────────
 
-interface Entry {
-  name: string;
-  path: string;
-  type: "file" | "directory";
-  size?: number;
-}
-
-const defaultTree: Record<string, Entry[]> = {
+const defaultTree = {
   public: [
     { name: "logo.png", path: "public/logo.png", type: "file" },
     { name: "clip.mp4", path: "public/clip.mp4", type: "file" },
@@ -87,9 +90,9 @@ const defaultTree: Record<string, Entry[]> = {
     { name: "missing", path: "public/missing", type: "directory" },
   ],
   "public/img": [{ name: "photo.JPG", path: "public/img/photo.JPG", type: "file" }],
-};
+} satisfies Record<string, DirEntry[]>;
 
-function installTree(tree: Record<string, Entry[]>, canvasUrl?: string) {
+function installTree(tree: Record<string, DirEntry[]>, canvasUrl?: string) {
   installMockPlatform({
     ...(canvasUrl != null && { canvasUrl }),
     listDirectory: async (dir: string) => {
@@ -97,7 +100,7 @@ function installTree(tree: Record<string, Entry[]>, canvasUrl?: string) {
       if (!entries) {
         throw new Error(`ENOENT: ${dir}`);
       }
-      return entries as unknown as DirEntry[];
+      return entries;
     },
   });
 }
@@ -119,15 +122,15 @@ function rowPaths(): (string | undefined)[] {
 
 /** Each row's caption, or `undefined` where the file's size is unknown. */
 function captions(): (string | undefined)[] {
-  return rows().map((row) => row.querySelector('[part="row-caption"]')?.textContent?.trim());
+  return rows().map((row) => row.querySelector('[part="row-caption"]')?.textContent.trim());
 }
 
 function emptyLine(): string | null {
-  return panel()?.querySelector('[part="empty"]')?.textContent?.trim() ?? null;
+  return panel()?.querySelector('[part="empty"]')?.textContent.trim() ?? null;
 }
 
 function moreLine(): string | null {
-  return panel()?.querySelector('[part="more"]')?.textContent?.trim() ?? null;
+  return panel()?.querySelector('[part="more"]')?.textContent.trim() ?? null;
 }
 
 function filterInput(): HTMLInputElement {
@@ -138,18 +141,43 @@ function filterInput(): HTMLInputElement {
 function closeFromPlatform() {
   const open = panel();
   if (open) {
-    (open as HTMLElement & { hidePopover: () => void }).hidePopover();
+    open.hidePopover();
   }
+}
+
+/** The one element drawn under a part, failing the test by name when it is missing. */
+function partIn(host: HTMLElement, name: string): HTMLElement {
+  const found = host.querySelector(`[part="${name}"]`);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`the field drew no ${name} part`);
+  }
+  return found;
 }
 
 /** The Browse control — the handle `ui/regions.ts` derives its region from. */
 function browseButton(host: HTMLElement): HTMLElement {
-  return host.querySelector('[part="browse"]') as HTMLElement;
+  return partIn(host, "browse");
 }
 
 /** The Upload control, which opens the OS file picker. */
 function uploadButton(host: HTMLElement): HTMLElement {
-  return host.querySelector('[part="upload"]') as HTMLElement;
+  return partIn(host, "upload");
+}
+
+/**
+ * Press Upload with `HTMLInputElement.prototype.click` stubbed, and return the input it clicked.
+ * The real click() would open an OS dialog; in happy-dom there is nothing to open, and the call's
+ * receiver is the picker the field built.
+ */
+function pressUpload(host: HTMLElement): HTMLInputElement | null {
+  const click = spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+  try {
+    pointer(uploadButton(host), "click");
+    const receiver = click.mock.contexts.at(-1);
+    return receiver instanceof HTMLInputElement ? receiver : null;
+  } finally {
+    click.mockRestore();
+  }
 }
 
 function fieldInput(host: HTMLElement): HTMLInputElement {
@@ -441,7 +469,7 @@ describe("the media browser", () => {
 
   test("more than 50 entries are listed to the cap and the rest are counted", async () => {
     invalidateMediaCache();
-    const many: Entry[] = [];
+    const many: DirEntry[] = [];
     for (let i = 0; i < 60; i++) {
       many.push({ name: `pic-${i}.png`, path: `public/pic-${i}.png`, type: "file" });
     }
@@ -457,23 +485,7 @@ describe("the media browser", () => {
 describe("media picker upload", () => {
   test("the Upload button opens a multi-file picker restricted to media types", async () => {
     const host = await mountField("");
-    let created: HTMLInputElement | null = null;
-    const realCreate = document.createElement.bind(document);
-    document.createElement = ((tag: string) => {
-      const el = realCreate(tag);
-      if (tag === "input") {
-        created = el as HTMLInputElement;
-        // The real click() would open an OS dialog; nothing to do in happy-dom.
-        (el as HTMLInputElement).click = () => {};
-      }
-      return el;
-    }) as typeof document.createElement;
-
-    try {
-      pointer(uploadButton(host), "click");
-    } finally {
-      document.createElement = realCreate;
-    }
+    const created = pressUpload(host);
 
     expect(created).not.toBeNull();
     expect(created!.type).toBe("file");
@@ -485,21 +497,7 @@ describe("media picker upload", () => {
     installMockPlatform();
     const commits: string[] = [];
     const host = await mountField("", (v) => commits.push(v));
-    let created: HTMLInputElement | null = null;
-    const realCreate = document.createElement.bind(document);
-    document.createElement = ((tag: string) => {
-      const el = realCreate(tag);
-      if (tag === "input") {
-        created = el as HTMLInputElement;
-        (el as HTMLInputElement).click = () => {};
-      }
-      return el;
-    }) as typeof document.createElement;
-    try {
-      pointer(uploadButton(host), "click");
-    } finally {
-      document.createElement = realCreate;
-    }
+    const created = pressUpload(host);
     // Happy-dom's `files` is read-only, and the OS is what would have written it.
     Object.defineProperty(created!, "files", {
       configurable: true,
@@ -514,21 +512,7 @@ describe("media picker upload", () => {
     installMockPlatform();
     const commits: string[] = [];
     const host = await mountField("", (v) => commits.push(v));
-    let created: HTMLInputElement | null = null;
-    const realCreate = document.createElement.bind(document);
-    document.createElement = ((tag: string) => {
-      const el = realCreate(tag);
-      if (tag === "input") {
-        created = el as HTMLInputElement;
-        (el as HTMLInputElement).click = () => {};
-      }
-      return el;
-    }) as typeof document.createElement;
-    try {
-      pointer(uploadButton(host), "click");
-    } finally {
-      document.createElement = realCreate;
-    }
+    const created = pressUpload(host);
     created!.dispatchEvent(new Event("change"));
     await flush();
     expect(commits).toEqual([]);
@@ -590,12 +574,12 @@ describe("media field thumbnail for a content entry", () => {
  * than a zero.
  */
 describe("browse list metadata", () => {
-  const sizedTree: Record<string, Entry[]> = {
+  const sizedTree = {
     public: [
       { name: "logo.png", path: "public/logo.png", size: 86_016, type: "file" },
       { name: "clip.mp4", path: "public/clip.mp4", type: "file" },
     ],
-  };
+  } satisfies Record<string, DirEntry[]>;
 
   /** Fire `load` on a rendered thumbnail with the intrinsic size a real decode would report. */
   function loadThumb(img: HTMLImageElement, width: number, height: number) {
@@ -605,7 +589,11 @@ describe("browse list metadata", () => {
   }
 
   function firstThumb(): HTMLImageElement {
-    return panel()!.querySelector('[part="row-thumb"]') as HTMLImageElement;
+    const img = panel()!.querySelector('[part="row-thumb"]');
+    if (!(img instanceof HTMLImageElement)) {
+      throw new Error("the first row drew no thumbnail");
+    }
+    return img;
   }
 
   beforeEach(() => {

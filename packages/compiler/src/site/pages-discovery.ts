@@ -17,14 +17,20 @@
  */
 
 import { readFileSync, readdirSync } from "node:fs";
-import { parseJxDocument } from "@jxsuite/schema/parse";
-import { compareRoutes, fileToRoute as routeShape } from "@jxsuite/site/routes";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import { errorMessage, parseJxDocument } from "@jxsuite/schema/parse";
+import { compareRoutes, fileToRoute as routeFromFileName } from "@jxsuite/site/routes";
 import { extname, join, relative, resolve } from "node:path";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { FormatRegistry } from "@jxsuite/schema/format-registry";
-import type { JxDocument, JxPathsDef, ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  FormatRegistry,
+  PathParams,
+  ResolvePathsContext,
+} from "@jxsuite/schema/format-registry";
+import type { JsonValue, JxDocument, JxPathsDef, ProjectConfig } from "@jxsuite/schema/types";
 import { localeOfRoute } from "./i18n.ts";
 import type { ResolvedI18n } from "./i18n.ts";
+import type { ProjectSections } from "./project-sections.ts";
 
 interface Route {
   urlPattern: string; // URL pattern (e.g. "/blog/:slug")
@@ -69,7 +75,7 @@ export async function readPageDocument(
         `e.g. "@jxsuite/parser".`,
     );
   }
-  return (await entry.call("parse", source)) as JxDocument;
+  return await entry.parseDocument(source);
 }
 
 /**
@@ -165,9 +171,7 @@ async function declaredTranslationKey(
   } catch {
     return null;
   }
-  return typeof doc.$translationKey === "string" && doc.$translationKey !== ""
-    ? doc.$translationKey
-    : null;
+  return isString(doc.$translationKey) && doc.$translationKey !== "" ? doc.$translationKey : null;
 }
 
 /**
@@ -230,10 +234,7 @@ async function walkDir(
     }
 
     const relativePath = relative(pagesRoot, fullPath);
-    const route = await fileToRoute(relativePath, fullPath, registry);
-    if (route) {
-      routes.push(route);
-    }
+    routes.push(await fileToRoute(relativePath, fullPath, registry));
   }
 }
 
@@ -246,14 +247,14 @@ async function walkDir(
  * @returns {Promise<Route>}
  */
 async function fileToRoute(relativePath: string, absolutePath: string, registry?: FormatRegistry) {
-  const { isCatchAll, isDynamic, params, urlPattern } = routeShape(relativePath);
+  const { isCatchAll, isDynamic, params, urlPattern } = routeFromFileName(relativePath);
 
   // Peek at the page to extract $layout if present
   let $layout: string | null = null;
   try {
     const doc = await readPageDocument(absolutePath, registry);
     const layout = doc.$layout;
-    if (typeof layout === "string") {
+    if (isString(layout)) {
       $layout = layout;
     }
   } catch {
@@ -288,16 +289,16 @@ const PATH_ENTRY_META = "_meta";
  * parameters and nothing else, and a route with no entry of its own correctly falls back to its
  * template's own modification time.
  *
- * @param {Record<string, unknown>} pathEntry
+ * @param {PathParams} pathEntry
  * @returns {string | null}
  */
-function entryMtime(pathEntry: Record<string, unknown>): string | null {
+function entryMtime(pathEntry: PathParams): string | null {
   const meta = pathEntry[PATH_ENTRY_META];
-  if (meta === null || typeof meta !== "object") {
+  if (!isJsonObject(meta)) {
     return null;
   }
-  const { mtime } = meta as { mtime?: unknown };
-  return typeof mtime === "string" && mtime !== "" ? mtime : null;
+  const { mtime } = meta;
+  return isString(mtime) && mtime !== "" ? mtime : null;
 }
 
 /**
@@ -333,7 +334,7 @@ function traversalIn(url: string): string | null {
  *
  * @param {Route[]} routes - Discovered route table
  * @param {string} projectRoot - Project root for resolving $ref paths
- * @param {Record<string, unknown>} [sections] - Loaded project sections (projectData results)
+ * @param {ProjectSections} [sections] - Loaded project sections (projectData results)
  * @param {ExtensionRegistry} [registry] - Extension registry (formats view reads non-JSON pages)
  * @param {ProjectConfig} [projectConfig] - Already-loaded project config
  * @returns {Promise<Route[]>} Expanded routes with concrete paths
@@ -341,7 +342,7 @@ function traversalIn(url: string): string | null {
 export async function expandDynamicRoutes(
   routes: Route[],
   projectRoot: string,
-  sections: Record<string, unknown> = {},
+  sections: ProjectSections = {},
   registry?: ExtensionRegistry,
   projectConfig?: ProjectConfig,
   i18n?: ResolvedI18n | null,
@@ -351,7 +352,7 @@ export async function expandDynamicRoutes(
    * Every dynamic page's pattern, so an extension can tell a route no page produces from one a
    * different page does.
    */
-  const dynamicPatterns = routes.filter((r) => r.isDynamic).map((r) => r.urlPattern);
+  const dynamicPatterns = routes.flatMap((r) => (r.isDynamic ? [r.urlPattern] : []));
 
   for (const route of routes) {
     if (!route.isDynamic) {
@@ -360,8 +361,7 @@ export async function expandDynamicRoutes(
     }
 
     // Read the page to look for $paths
-    /** @type {Record<string, unknown>} */
-    let raw;
+    let raw: JxDocument;
     try {
       raw = await readPageDocument(route.sourcePath, registry?.formats);
     } catch {
@@ -413,15 +413,20 @@ export async function expandDynamicRoutes(
       }
 
       const mtime = entryMtime(pathEntry);
-      expanded.push({
+      /* `urlPattern` is already one of `route`'s own keys, so the spread fixes its position and
+         adding `sourceMtime` last leaves every key where the expanded route always had it. */
+      const concrete: Route = {
         ...route,
         _pathParams: params,
         isCatchAll: false,
         isDynamic: false,
         params: [],
-        ...(mtime === null ? {} : { sourceMtime: mtime }),
         urlPattern: concreteUrl,
-      });
+      };
+      if (mtime !== null) {
+        concrete.sourceMtime = mtime;
+      }
+      expanded.push(concrete);
     }
   }
 
@@ -437,25 +442,25 @@ export async function expandDynamicRoutes(
  *
  * @param {import("@jxsuite/schema/types").JxPathsDef} $paths - The $paths declaration
  * @param {string} projectRoot
- * @param {Record<string, unknown>} sections - Loaded project sections keyed by section key
+ * @param {ProjectSections} sections - Loaded project sections keyed by section key
  * @param {ExtensionRegistry} [registry]
  * @param {ProjectConfig} [projectConfig]
  * @param {string | null} [locale] - The locale the route being expanded belongs to
  * @param {Route} [route] - The dynamic page being expanded; its pattern and parameter names reach
  *   an extension's `resolvePaths` so it can produce exactly the parameters this page needs
  * @param {readonly string[]} [patterns] - The pattern of every dynamic page in the project
- * @returns {Promise<Record<string, unknown>[]>} Array of { paramName: value } objects
+ * @returns {Promise<PathParams[]>} Array of { paramName: value } objects
  */
 async function resolvePathEntries(
   $paths: JxPathsDef,
   projectRoot: string,
-  sections: Record<string, unknown>,
+  sections: ProjectSections,
   registry?: ExtensionRegistry,
   projectConfig?: ProjectConfig,
   locale?: string | null,
   route?: Pick<Route, "urlPattern" | "params">,
   patterns?: readonly string[],
-): Promise<Record<string, unknown>[]> {
+): Promise<PathParams[]> {
   // Legacy: array of param objects
   if (Array.isArray($paths)) {
     return $paths;
@@ -463,31 +468,38 @@ async function resolvePathEntries(
 
   // Explicit values: { values: ["en", "fr"], param: "lang" }
   if ("values" in $paths && Array.isArray($paths.values)) {
-    const param = typeof $paths.param === "string" ? $paths.param : "value";
-    return ($paths.values as unknown[]).map((v) => ({ [param]: v }));
+    const param = isString($paths.param) ? $paths.param : "value";
+    return $paths.values.map((v) => ({ [param]: v }));
   }
 
   // Data file ref: { "$ref": "./data/products.json", param: "id", field: "sku" }
-  if ("$ref" in $paths && typeof $paths.$ref === "string" && $paths.$ref) {
+  if ("$ref" in $paths && isString($paths.$ref) && $paths.$ref) {
     const refPath = $paths.$ref;
     const filePath = resolve(projectRoot, refPath);
-    let data: unknown;
+    let data: JsonValue;
     try {
-      data = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+      // SAFETY: JSON.parse only ever yields JSON values; its `any` return type says nothing more.
+      data = JSON.parse(readFileSync(filePath, "utf8")) as JsonValue;
     } catch (error) {
-      const err = error as Error;
-      console.warn(`Warning: $paths.$ref could not load "${refPath}": ${err.message}`);
+      console.warn(`Warning: $paths.$ref could not load "${refPath}": ${errorMessage(error)}`);
       return [];
     }
     if (!Array.isArray(data)) {
       console.warn(`Warning: $paths.$ref "${refPath}" must be a JSON array`);
       return [];
     }
-    const param = typeof $paths.param === "string" ? $paths.param : "id";
-    const field = typeof $paths.field === "string" ? $paths.field : "id";
-    return (data as Record<string, unknown>[]).map((item: Record<string, unknown>) => ({
-      [param]: item[field] ?? item.id ?? String(item),
-    }));
+    const param = isString($paths.param) ? $paths.param : "id";
+    const field = isString($paths.field) ? $paths.field : "id";
+    return data.map((item) => {
+      /* A null row has no field to read and no meaningful string form: fail the build rather than
+         emit a route whose parameter is the literal "null". */
+      if (item === null) {
+        throw new TypeError(`$paths.$ref "${refPath}" contains a null entry`);
+      }
+      return {
+        [param]: (isJsonObject(item) ? (item[field] ?? item.id) : undefined) ?? String(item),
+      };
+    });
   }
 
   // Extension-discriminated: the first key with a registered resolvePaths discriminator routes
@@ -497,14 +509,20 @@ async function resolvePathEntries(
     if (!entry?.project) {
       continue;
     }
-    return (await entry.call("resolvePaths", $paths, {
+    const context: ResolvePathsContext = {
       data: sections[entry.project.key],
       locale,
       projectConfig,
       root: projectRoot,
-      ...(route === undefined ? {} : { params: route.params, urlPattern: route.urlPattern }),
-      ...(patterns === undefined ? {} : { patterns }),
-    })) as Record<string, unknown>[];
+    };
+    if (route !== undefined) {
+      context.params = route.params;
+      context.urlPattern = route.urlPattern;
+    }
+    if (patterns !== undefined) {
+      context.patterns = patterns;
+    }
+    return await entry.call("resolvePaths", $paths, context);
   }
 
   console.warn(`Warning: unrecognized $paths shape — skipping`);

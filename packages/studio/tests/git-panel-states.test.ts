@@ -16,7 +16,11 @@ import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { flush } from "./harness";
 import gitPanelDoc from "../src/surfaces/git-panel.json";
-import type { StudioPlatform } from "../src/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { GitPanelDeps } from "../src/panels/git-panel";
+import type { ShellGit } from "../src/shell";
+import type { GitStatusResult, ProjectState, StudioPlatform } from "../src/types";
 
 let mockPlatform: Partial<StudioPlatform>;
 
@@ -55,13 +59,13 @@ void mock.module("../src/packages/pull-package-sync.js", () => ({
   pullWithPackageSync: async () => {},
 }));
 
-const { setProjectState } = (await import("../src/state.js")) as any;
+const { setProjectState } = await import("../src/state.js");
 const { resetProjectShell, shell } = await import("../src/shell.js");
-const { cleanupGitPanel, gitPanelValues, mountGitPanel, platformSupportsClone, renderGitPanel } =
+const { cleanupGitPanel, gitPanelValues, mountGitPanel, platformSupportsClone } =
   await import("../src/panels/git-panel.js");
 
 /** Stage project-level source-control state — the panel reads nothing else. */
-function stageGit(patch: Record<string, unknown>) {
+function stageGit(patch: Partial<ShellGit>) {
   resetProjectShell();
   shell.leftTab = "git";
   Object.assign(shell.git, patch);
@@ -87,11 +91,15 @@ function controlName(panel: HTMLElement, part: string): string | null | undefine
 }
 
 /** Mount the panel and let the document — and every kit element in it — settle. */
-async function draw(deps: Record<string, unknown> = {}): Promise<HTMLElement> {
+async function draw(deps: GitPanelDeps = {}): Promise<HTMLElement> {
   const host = panelHost();
   mountGitPanel(host, deps);
   await flush(6);
-  return host.querySelector(".panel-content") as HTMLElement;
+  const content = host.querySelector(".panel-content");
+  if (!(content instanceof HTMLElement)) {
+    throw new Error("panelHost() builds a .panel-content inside the host");
+  }
+  return content;
 }
 
 beforeEach(() => {
@@ -116,8 +124,16 @@ beforeEach(() => {
 });
 
 /** A repository whose read has landed, with whatever the test wants changed about it. */
-function seedRepo(status: Record<string, unknown> = {}) {
-  setProjectState({ name: "test-project" });
+/** Install a project carrying only the fields given. */
+function openProject(fields: Partial<ProjectState>): void {
+  /* SAFETY: the panel reads exactly two things from projectState: whether one is open (its
+     no-project guard) and `name`, for the GitHub repository it offers to create. Nothing it draws
+     reads a root, a config or a directory listing. */
+  setProjectState(fields as ProjectState);
+}
+
+function seedRepo(status: Partial<GitStatusResult> = {}) {
+  openProject({ name: "test-project" });
   stageGit({
     branches: { branches: ["main", "dev"], current: "main" },
     status: {
@@ -149,7 +165,7 @@ describe("the four moods", () => {
   });
 
   test("a first read still in flight draws the loading line and nothing else", async () => {
-    setProjectState({ name: "test-project" });
+    openProject({ name: "test-project" });
     stageGit({ loading: true, status: null });
     const panel = await draw();
     expect(panel.querySelector('[part="status"][data-view="loading"]')).toBeNull();
@@ -160,7 +176,7 @@ describe("the four moods", () => {
   });
 
   test("a project git is not tracking offers both ways to start", async () => {
-    setProjectState({ name: "test-project" });
+    openProject({ name: "test-project" });
     stageGit({
       status: { ahead: 0, behind: 0, branch: "", files: [], isRepo: false, remotes: [] },
     });
@@ -256,10 +272,11 @@ describe("the sync bar and branch row wrap rather than squeeze (studio-ui-guidel
 
   /* Read from the DOCUMENT, as tab-strip.test.ts does for its chip: what can be checked without a
      layout engine is that the declarations which produce the wrap are the ones written. */
-  const { style } = gitPanelDoc as unknown as {
-    style: Record<string, Record<string, string>>;
+  const style: JsonObject = gitPanelDoc.style;
+  const rule = (selector: string): JsonObject => {
+    const block = style[selector];
+    return isJsonObject(block) ? block : {};
   };
-  const rule = (selector: string) => style[selector] ?? {};
 
   test("both rows wrap, at a basis rather than a breakpoint", () => {
     expect(rule('& [part="sync-bar"]').flexWrap).toBe("wrap");
@@ -292,15 +309,16 @@ describe("the sync bar and branch row wrap rather than squeeze (studio-ui-guidel
     /* Every labelled button wraps its words rather than hold a nowrap width. The list is derived
        from the document, so a labelled button added later without joining the rule fails here. */
     const labelled: string[] = [];
-    const visit = (node: unknown): void => {
+    const visit = (node: JsonValue): void => {
       if (Array.isArray(node)) {
         for (const item of node) {
           visit(item);
         }
-      } else if (node && typeof node === "object") {
-        const element = node as { tagName?: unknown; attributes?: { part?: string } };
-        if (element.tagName === "jx-button" && element.attributes?.part) {
-          labelled.push(element.attributes.part);
+      } else if (isJsonObject(node)) {
+        const { attributes, tagName } = node;
+        const part = isJsonObject(attributes) ? attributes.part : undefined;
+        if (tagName === "jx-button" && isString(part) && part !== "") {
+          labelled.push(part);
         }
         for (const [key, child] of Object.entries(node)) {
           if (key !== "style") {
@@ -311,7 +329,9 @@ describe("the sync bar and branch row wrap rather than squeeze (studio-ui-guidel
     };
     visit(gitPanelDoc);
     expect(labelled.length).toBeGreaterThan(0);
-    const wrapping = Object.entries(style).find(([, block]) => block.whiteSpace === "normal");
+    const wrapping = Object.entries(style).find(
+      ([, block]) => isJsonObject(block) && block.whiteSpace === "normal",
+    );
     expect(wrapping?.[0].split(", ").toSorted()).toEqual(
       [...new Set(labelled)].map((part) => `& [part="${part}"] > [part="control"]`).toSorted(),
     );
@@ -394,7 +414,7 @@ describe("the projection on its own", () => {
   });
 
   test("a repository with no branches at all still names its checked-out one", () => {
-    setProjectState({ name: "p" });
+    openProject({ name: "p" });
     stageGit({
       branches: null,
       status: { ahead: 0, behind: 0, branch: "trunk", files: [], isRepo: true, remotes: [] },
@@ -405,7 +425,7 @@ describe("the projection on its own", () => {
   });
 
   test("a repository with neither reads as an em dash rather than as nothing", () => {
-    setProjectState({ name: "p" });
+    openProject({ name: "p" });
     stageGit({
       branches: null,
       status: { ahead: 0, behind: 0, branch: "", files: [], isRepo: true, remotes: [] },
@@ -445,7 +465,7 @@ test("a panel taken down while its mount is still in flight leaves nothing behin
   // The Navigator can paint another panel one tick after this one — or a project can close — so the
   // Mount that lands afterwards has to dispose itself rather than appear in a container nobody is
   // Looking at.
-  setProjectState({ name: "test-project" });
+  openProject({ name: "test-project" });
   stageGit({
     status: { ahead: 0, behind: 0, branch: "main", files: [], isRepo: true, remotes: [] },
   });
@@ -454,9 +474,4 @@ test("a panel taken down while its mount is still in flight leaves nothing behin
   cleanupGitPanel();
   await flush(6);
   expect(host.querySelector('[part="git-panel"]')).toBeNull();
-});
-
-test("the lit renderer is a stub the Navigator no longer draws through", () => {
-  // It survives only because `NavigatorPanelDeps` still declares the injection.
-  expect(renderGitPanel({})).toBeDefined();
 });

@@ -10,7 +10,7 @@ import {
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isNumber } from "@jxsuite/schema/guards";
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
 import {
   attachInstruction,
@@ -38,8 +38,10 @@ import { defaultDef, unsafeTags } from "./shared";
 import { elementAtPoint } from "../utils/geometry";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
-import type { JxElement, JxMutableNode } from "@jxsuite/schema/types";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { ComponentEntry } from "../files/components.js";
+import type { ElementDragPayload } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import type { DropTargetRecord } from "@atlaskit/pragmatic-drag-and-drop/types";
 
 interface DragCanDragArgs {
   element: HTMLElement;
@@ -51,17 +53,10 @@ interface DragPreviewArgs {
   nativeSetDragImage: ((image: Element, x: number, y: number) => void) | null;
 }
 
-interface DragDropSourceArgs {
-  source: { data: Record<string, unknown>; element: HTMLElement };
-}
-
-interface DragSelfArgs {
-  self: { data: Record<string, unknown> };
-}
-
-interface DragMonitorDropArgs {
-  source: { data: Record<string, unknown>; element: HTMLElement };
-  location: { current: { dropTargets: { data: Record<string, unknown> }[] } };
+/** Where a drop instruction inserts: the parent's path and the index among its children. */
+interface DropSlot {
+  parent: JxPath;
+  index: number;
 }
 
 /**
@@ -122,23 +117,25 @@ export function registerLayersDnD() {
   view.dndCleanups = [];
   _layersFrame = requestAnimationFrame(() => {
     _layersFrame = null;
-    const container = leftPanel?.querySelector(OUTLINE_ROOT) as HTMLElement | null;
+    const container = leftPanel?.querySelector<HTMLElement>(OUTLINE_ROOT);
     if (!container) {
       return;
     }
 
-    for (const row of container.querySelectorAll("[data-dnd-row]") as NodeListOf<HTMLElement>) {
-      const rowPath = (row.dataset.value as string)
+    for (const row of container.querySelectorAll<HTMLElement>("[data-dnd-row]")) {
+      /* SAFETY: every `[data-dnd-row]` row is a `jx-tree-item` from panel-outline.json, and the
+         element reflects its `value` (the row's path key) onto the host as `data-value`. */
+      const rowPath: JxPath = (row.dataset.value as string)
         .split("/")
-        .map((s: string) => (/^\d+$/.test(s) ? Math.trunc(Number(s)) : s)) as JxPath;
-      const rowDepth = Math.trunc(Number(row.dataset.dndDepth as string)) || 0;
+        .map((s: string) => (/^\d+$/.test(s) ? Math.trunc(Number(s)) : s));
+      const rowDepth = Math.trunc(Number(row.dataset.dndDepth)) || 0;
       const isVoid = Object.hasOwn(row.dataset, "dndVoid");
       const isExpanded = Object.hasOwn(row.dataset, "dndExpanded");
 
       const cleanup = combine(
         draggable({
           canDrag({ element: _el, input }: DragCanDragArgs) {
-            const target = elementAtPoint(input.clientX, input.clientY) as HTMLElement;
+            const target = elementAtPoint(input.clientX, input.clientY);
             if (target?.closest(OUTLINE_ACTIONS)) {
               return false;
             }
@@ -169,9 +166,10 @@ export function registerLayersDnD() {
         }),
         dropTargetForElements({
           element: row,
-          canDrop({ source }: DragDropSourceArgs) {
-            const srcPath = source.data.path as JxPath | undefined;
-            if (srcPath && isAncestor(srcPath, rowPath)) {
+          canDrop({ source }) {
+            // Only a tree-node drag carries a path array; a file-tree drag's `path` is a string.
+            const srcPath = source.data.path;
+            if (Array.isArray(srcPath) && isAncestor(srcPath, rowPath)) {
               return false;
             }
             return true;
@@ -193,12 +191,12 @@ export function registerLayersDnD() {
                 input,
                 mode: isExpanded ? "expanded" : "standard",
               },
-            ) as Record<string | symbol, unknown>;
+            );
           },
-          onDragEnter({ self }: DragSelfArgs) {
+          onDragEnter({ self }) {
             showLayerDropGap(row, self.data, container);
           },
-          onDrag({ self }: DragSelfArgs) {
+          onDrag({ self }) {
             showLayerDropGap(row, self.data, container);
           },
           // No onDragLeave clear — the gap persists while the pointer crosses dead space
@@ -213,7 +211,7 @@ export function registerLayersDnD() {
 
     // Global monitor
     const monitorCleanup = monitorForElements({
-      onDrop({ source, location }: DragMonitorDropArgs) {
+      onDrop({ source, location }) {
         clearLayerDropGap(container);
         const [target] = location.current.dropTargets;
         if (!target) {
@@ -224,7 +222,13 @@ export function registerLayersDnD() {
           return;
         }
         const srcData = source.data;
-        const targetPath = target.data.path as JxPath;
+        /* Only an Outline row's data carries a path. The Logic tab's statement rows attach tree-item
+           instructions too, and the drags they accept (statements) are ones applyDropInstruction
+           ignores, so a drop there has nothing to apply. */
+        const targetPath = target.data.path;
+        if (!Array.isArray(targetPath)) {
+          return;
+        }
 
         // If the source had children, persist collapse at the new location
         const srcRow = srcData.type === "tree-node" && source.element;
@@ -243,7 +247,7 @@ export function registerLayersDnD() {
           }
         }
       },
-      onDropTargetChange({ location }: DragMonitorDropArgs) {
+      onDropTargetChange({ location }) {
         // Clear the layer gap when the drag moves onto a non-tree target (e.g. a canvas
         // Element). When there is no target at all, keep the gap so it persists.
         const [inner] = location.current.dropTargets;
@@ -259,14 +263,12 @@ export function registerLayersDnD() {
 /** Register DnD on component rows — called from renderLeftPanel when tab=components */
 export function registerComponentsDnD() {
   requestAnimationFrame(() => {
-    const container = leftPanel?.querySelector(".components-section") as HTMLElement | null;
+    const container = leftPanel?.querySelector<HTMLElement>(".components-section");
     if (!container) {
       return;
     }
 
-    for (const row of container.querySelectorAll(
-      "[data-component-tag]",
-    ) as NodeListOf<HTMLElement>) {
+    for (const row of container.querySelectorAll<HTMLElement>("[data-component-tag]")) {
       const tagName = row.dataset.componentTag;
       if (!tagName) {
         continue;
@@ -303,11 +305,12 @@ export function registerComponentsDnD() {
 /** Register DnD on element (HTML block) rows */
 export function registerElementsDnD() {
   requestAnimationFrame(() => {
-    const container = leftPanel?.querySelector('[part="content"]') as HTMLElement | null;
+    const container = leftPanel?.querySelector<HTMLElement>('[part="content"]');
     if (!container) {
       return;
     }
-    for (const row of container.querySelectorAll("[data-block-tag]") as NodeListOf<HTMLElement>) {
+    for (const row of container.querySelectorAll<HTMLElement>("[data-block-tag]")) {
+      // SAFETY: the selector matched on `data-block-tag`, so the attribute is present and this is its text.
       const tag = row.dataset.blockTag as string;
       const preview = row.querySelector(".element-card-preview");
       if (preview && !preview.firstChild) {
@@ -338,22 +341,22 @@ export function registerElementsDnD() {
  */
 function hideDescendantRows(parentRow: HTMLElement, container: HTMLElement) {
   const prefix = `${parentRow.dataset.value}/`;
-  const rows = container.querySelectorAll(OUTLINE_ROWS);
+  const rows = container.querySelectorAll<HTMLElement>(OUTLINE_ROWS);
   for (const r of rows) {
-    if ((r as HTMLElement).dataset.value?.startsWith(prefix)) {
-      (r as HTMLElement).style.display = "none";
+    if (r.dataset.value?.startsWith(prefix)) {
+      r.style.display = "none";
     }
   }
 }
 
 /**
  * @param {HTMLElement} rowEl
- * @param {Record<string, unknown>} data
+ * @param {DropTargetRecord["data"]} data The row's own drop-target data, carrying its instruction.
  * @param {HTMLElement} container
  */
 export function showLayerDropGap(
   rowEl: HTMLElement,
-  data: Record<string, unknown>,
+  data: DropTargetRecord["data"],
   container: HTMLElement,
 ) {
   const instruction = extractInstruction(data);
@@ -379,18 +382,18 @@ export function showLayerDropGap(
   view._currentDropTargetRow = rowEl;
 
   // Shift rows to create gap
-  const rows = [...container.querySelectorAll(OUTLINE_ROWS)];
+  const rows = [...container.querySelectorAll<HTMLElement>(OUTLINE_ROWS)];
   const targetIdx = rows.indexOf(rowEl);
   const gap = view.layerDragSourceHeight;
 
-  for (let i = 0; i < rows.length; i++) {
-    if ((rows[i] as HTMLElement).dataset.dragging !== undefined) {
+  for (const [i, row] of rows.entries()) {
+    if (row.dataset.dragging !== undefined) {
       continue;
     }
     if (instruction.type === "reorder-above") {
-      (rows[i] as HTMLElement).style.transform = i >= targetIdx ? `translateY(${gap}px)` : "";
+      row.style.transform = i >= targetIdx ? `translateY(${gap}px)` : "";
     } else {
-      (rows[i] as HTMLElement).style.transform = i > targetIdx ? `translateY(${gap}px)` : "";
+      row.style.transform = i > targetIdx ? `translateY(${gap}px)` : "";
     }
   }
 }
@@ -401,16 +404,51 @@ export function clearLayerDropGap(container: HTMLElement) {
     delete view._currentDropTargetRow.dataset.drop;
     view._currentDropTargetRow = null;
   }
-  const rows = container.querySelectorAll(OUTLINE_ROWS);
+  const rows = container.querySelectorAll<HTMLElement>(OUTLINE_ROWS);
   for (const r of rows) {
-    (r as HTMLElement).style.transform = "";
+    r.style.transform = "";
     // Also clear `display:none` left by hideDescendantRows. The row has no `style`
     // Lit binding, so an imperative style set during the drag survives the post-drop re-render on
     // Whichever row keeps that key — and a move is exactly the edit that hands a key to a different
     // Node. (The rows ARE keyed, by `pathKey`; the earlier form of this note said they were not,
     // Which made the wrong thing sound load-bearing. What is load-bearing is the missing binding.)
-    (r as HTMLElement).style.display = "";
+    r.style.display = "";
   }
+}
+
+/**
+ * Where a drop instruction lands relative to `targetPath`.
+ *
+ * `make-child` appends to the target itself. A reorder lands beside it, which needs a parent and a
+ * numeric index, so a reorder (or any other instruction) around a root-level path answers
+ * `undefined`: the drop cannot land there at all. `null` is an instruction that lands but inserts
+ * nothing, which this module does not apply.
+ *
+ * @param {JxMutableNode} doc
+ * @param {string} type
+ * @param {JxPath} targetPath
+ * @returns {DropSlot | null | undefined}
+ */
+function dropSlot(
+  doc: JxMutableNode,
+  type: string,
+  targetPath: JxPath,
+): DropSlot | null | undefined {
+  if (type === "make-child") {
+    return { index: childList(getNodeAtPath(doc, targetPath)).length, parent: targetPath };
+  }
+  const parent = parentElementPath(targetPath);
+  const index = childIndex(targetPath);
+  if (!parent || !isNumber(index)) {
+    return undefined;
+  }
+  if (type === "reorder-above") {
+    return { index, parent };
+  }
+  if (type === "reorder-below") {
+    return { index: index + 1, parent };
+  }
+  return null;
 }
 
 /**
@@ -420,89 +458,39 @@ export function clearLayerDropGap(container: HTMLElement) {
  *
  * @param {Tab | null} tab
  * @param {{ type: string }} instruction
- * @param {Record<string, unknown>} srcData
+ * @param {ElementDragPayload["data"]} srcData The drag source's own data, as `getInitialData` made
+ *   it.
  * @param {JxPath} targetPath
  */
 export function applyDropInstruction(
   tab: Tab | null,
   instruction: { type: string },
-  srcData: Record<string, unknown>,
+  srcData: ElementDragPayload["data"],
   targetPath: JxPath,
 ) {
   if (!tab) {
     return;
   }
-  const doc = tab.doc.document as JxMutableNode;
   if (srcData.type === "tree-node") {
+    /* SAFETY: both minters of a "tree-node" payload — an Outline row's `getInitialData` and the
+       block action bar's drag handle — set `path` to the dragged node's JxPath. */
     const fromPath = srcData.path as JxPath;
-    const targetParent = parentElementPath(targetPath) as JxPath;
-    const targetIdx = childIndex(targetPath) as number;
-    // Reordering requires a parent and a numeric index; root-level paths can't be
-    // Reordered around.
-    if (instruction.type !== "make-child" && (!targetParent || typeof targetIdx !== "number")) {
-      return;
-    }
-
-    switch (instruction.type) {
-      case "reorder-above": {
-        transactDoc(tab, (t) => mutateMoveNode(t, fromPath, targetParent, targetIdx));
-        break;
-      }
-      case "reorder-below": {
-        transactDoc(tab, (t) => mutateMoveNode(t, fromPath, targetParent, targetIdx + 1));
-        break;
-      }
-      case "make-child": {
-        const target = getNodeAtPath(doc, targetPath);
-        const len = childList(target).length;
-        transactDoc(tab, (t) => mutateMoveNode(t, fromPath, targetPath, len));
-        break;
-      }
-      default: {
-        break;
-      }
+    const slot = dropSlot(tab.doc.document, instruction.type, targetPath);
+    if (slot) {
+      transactDoc(tab, (t) => mutateMoveNode(t, fromPath, slot.parent, slot.index));
     }
   } else if (srcData.type === "block") {
-    const targetParent = parentElementPath(targetPath) as JxPath;
-    const targetIdx = childIndex(targetPath) as number;
-    if (instruction.type !== "make-child" && (!targetParent || typeof targetIdx !== "number")) {
+    const slot = dropSlot(tab.doc.document, instruction.type, targetPath);
+    if (slot === undefined) {
       return;
     }
-
-    switch (instruction.type) {
-      case "reorder-above": {
-        transactDoc(tab, (t) =>
-          mutateInsertNode(
-            t,
-            targetParent,
-            targetIdx,
-            structuredClone(srcData.fragment as JxMutableNode),
-          ),
-        );
-        break;
-      }
-      case "reorder-below": {
-        transactDoc(tab, (t) =>
-          mutateInsertNode(
-            t,
-            targetParent,
-            targetIdx + 1,
-            structuredClone(srcData.fragment as JxMutableNode),
-          ),
-        );
-        break;
-      }
-      case "make-child": {
-        const target = getNodeAtPath(doc, targetPath);
-        const len = childList(target).length;
-        transactDoc(tab, (t) =>
-          mutateInsertNode(t, targetPath, len, structuredClone(srcData.fragment as JxMutableNode)),
-        );
-        break;
-      }
-      default: {
-        break;
-      }
+    /* SAFETY: every minter of a "block" payload — the Insert palette's element and component cards
+       and the file drop (`file-drop-action.ts`) — sets `fragment` to the JxMutableNode it inserts. */
+    const fragment = srcData.fragment as JxMutableNode;
+    if (slot) {
+      transactDoc(tab, (t) =>
+        mutateInsertNode(t, slot.parent, slot.index, structuredClone(fragment)),
+      );
     }
 
     /* Auto-import to `$elements` if the dropped block is a custom component.
@@ -510,18 +498,20 @@ export function applyDropInstruction(
        had its own duplicate rule and matched a local component by `ref.endsWith(basename)`, so
        dropping `./components/card.json` into a page that already imported `./vendor/card.json`
        counted as already imported and produced an element the page could not resolve. */
-    const fragment = srcData.fragment as JxMutableNode | undefined;
-    const tag = fragment?.tagName;
+    const tag = fragment.tagName;
     if (displayTagName(tag).includes("-")) {
       const comp = componentRegistry.find((c: ComponentEntry) => c.tagName === tag);
-      const before = (tab.doc.document?.$elements ?? []) as ElementsEntry[];
+      /* SAFETY: `$elements` holds module specifiers and `{ $ref }` imports; the document type and
+         files/elements.ts spell an inline entry as JxMutableNode and JxElement respectively, two
+         editor views of the same JSON object that enableElement only compares by `$ref`. */
+      const before = (tab.doc.document.$elements ?? []) as ElementsEntry[];
       const after = comp ? enableElement(before, comp, tab.documentPath ?? null) : before;
       // Only when the list actually GREW. A component the registry cannot name — an npm entry with
       // No package, a local one with no path — returns the list unchanged, and writing that back
       // Would put an empty `$elements: []` on a document that had none.
       if (after.length !== before.length) {
         transact(tab, (d: JxMutableNode) => {
-          d.$elements = after as (string | JxElement)[];
+          d.$elements = after;
         });
       }
     }

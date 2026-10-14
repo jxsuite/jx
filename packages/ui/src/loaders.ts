@@ -17,11 +17,16 @@
  * @docs extending/ui-kit
  */
 
-/** A module the runtime imports on first use, keyed as the kit's documents spell their `$src`. */
-export type KitModuleLoader = () => Promise<Record<string, unknown>>;
+import type { JxScope } from "@jxsuite/runtime/types";
+
+/**
+ * A module the runtime imports on first use, keyed as the kit's documents spell their `$src`. The
+ * namespace it resolves to is read into scope, export by export, as `KIT_MODULES` entries are.
+ */
+export type KitModuleLoader = () => Promise<JxScope>;
 
 /** Behaviour modules as loaders, under the `$src` specifiers the documents use. */
-export const KIT_LOADERS: Readonly<Record<string, KitModuleLoader>> = {
+export const KIT_LOADERS = {
   "jx-ui:/behaviors/color-area.ts": () => import("./behaviors/color-area.ts"),
   "jx-ui:/behaviors/color-field.ts": () => import("./behaviors/color-field.ts"),
   "jx-ui:/behaviors/color-slider.ts": () => import("./behaviors/color-slider.ts"),
@@ -44,4 +49,4 @@ export const KIT_LOADERS: Readonly<Record<string, KitModuleLoader>> = {
   "jx-ui:/behaviors/toast-host.ts": () => import("./behaviors/toast-host.ts"),
   "jx-ui:/color.ts": () => import("./color.ts"),
   "jx-ui:/icons.ts": () => import("./icons.ts"),
-};
+} as const satisfies Readonly<Record<string, KitModuleLoader>>;

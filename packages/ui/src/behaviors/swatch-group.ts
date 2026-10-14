@@ -38,7 +38,6 @@ export interface SwatchGroupState {
   value?: string;
   /** The group's accessible name. */
   label?: string;
-  [key: string]: unknown;
 }
 
 /** A swatch element with the property accessors its own document installs. */
@@ -67,9 +66,7 @@ const watched = new WeakMap<HTMLElement, MutationObserver>();
 /** The group an event's `currentTarget` is. */
 function hostOf(event: Event): GroupElement | null {
   const target = event.currentTarget;
-  return target instanceof HTMLElement && target.localName === GROUP
-    ? (target as GroupElement)
-    : null;
+  return target instanceof HTMLElement && target.localName === GROUP ? target : null;
 }
 
 /** Whether `group` is the nearest group around `node` — a key inside a nested group is its own. */
@@ -147,12 +144,12 @@ export function focusSwatch(group: HTMLElement, index: number): SwatchElement | 
  *
  * @param group The `jx-swatch-group` element.
  */
-export function syncSwatches(group: HTMLElement): void {
+export function syncSwatches(group: GroupElement): void {
   const swatches = swatchesOf(group);
   if (swatches.length === 0) {
     return;
   }
-  const value = String((group as GroupElement).value ?? "");
+  const value = String(group.value ?? "");
   const enabled = swatches.filter((swatch) => !isDisabled(swatch));
   const chosen = enabled.find((swatch) => valueOf(swatch) === value);
   const caret = chosen ?? enabled[0] ?? null;
@@ -233,7 +230,7 @@ export function onSwatchGroupSelect(scope: SwatchGroupState, event: Event): void
     return;
   }
   event.stopPropagation();
-  const value = String((event as CustomEvent<unknown>).detail ?? "");
+  const value = "detail" in event ? String(event.detail ?? "") : "";
   if (value === String(scope.value ?? "")) {
     return;
   }

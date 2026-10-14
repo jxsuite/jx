@@ -33,11 +33,11 @@ const ENTRIES = ["studio.ts", "canvas/iframe-entry.ts"];
  * Only ever shrinks. An entry earns its place by having a CONTRACTUAL emitted path (studio.md §11.1
  * — the two entries land flat at `dist/<name>.js` and are never hashed); nothing else does.
  */
-const ALLOWED: Record<string, string> = {
+const ALLOWED = {
   "studio.ts": "Entry. Anchors the bundle base for every other module.",
   "canvas/iframe-entry.ts": "Entry, in the canvas realm. Same anchor, its own document.",
   "services/bundle-base.ts": "Owns the base. Mentions the term only in prose.",
-};
+} satisfies Record<string, string>;
 
 function sourceFiles(): string[] {
   return [...new Glob("**/*.ts").scanSync(SRC)].map((f) => toPosixPath(f)).toSorted();

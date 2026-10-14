@@ -7,7 +7,7 @@
  * `tests/command-args.test.ts` never saw it; these tests are the row's own.
  */
 import { describe, expect, test } from "bun:test";
-import { argsSchema, coerceArgs, describeShape, integerArg } from "../src/commands/command-args";
+import { argsSchema, coerceArgs, coercionRowOf, integerArg } from "../src/commands/command-args";
 
 describe("integerArg", () => {
   test("returns a whole number", () => {
@@ -29,10 +29,10 @@ describe("integerArg", () => {
 
 describe("the integer row", () => {
   test("a bare integer type is its own row; a bounded one stays the bounded row", () => {
-    expect(describeShape({ type: "integer" })).toBe("integer");
-    expect(describeShape({ maximum: 9, minimum: 1, type: "integer" })).toBe("bounded-number");
+    expect(coercionRowOf({ type: "integer" })).toBe("integer");
+    expect(coercionRowOf({ maximum: 9, minimum: 1, type: "integer" })).toBe("bounded-number");
     // A half-open integer reads as a bare integer, as a half-open number reads as a plain one.
-    expect(describeShape({ minimum: 0, type: "integer" })).toBe("integer");
+    expect(coercionRowOf({ minimum: 0, type: "integer" })).toBe("integer");
   });
 
   test("coerceArgs routes the bare form to integerArg, so 1.5 is refused before run", () => {

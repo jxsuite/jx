@@ -62,6 +62,11 @@
       }
     }
   ],
+  // ai-deslop (github.com/maharshi365/deslop): rules that reject low-evidence code: assertions with
+  // no stated invariant, `unknown` leaking past an I/O boundary, ad hoc `typeof` narrowing, open
+  // dictionaries, renamed imports and duplicated contracts. Its type-aware half lives in
+  // .oxlintrc.typecheck.json, because `oxlint .` here runs without type information.
+  "jsPlugins": ["ai-deslop"],
   "plugins": ["jsdoc", "import", "unicorn", "oxc", "typescript"],
   "rules": {
     // ─── Configured (enabled with options) ────────────────────────────────────
@@ -237,7 +242,45 @@
 
     // ─── Docs traceability tags (scripts/docs/check-doc-refs.ts validates targets) ─
     // `@docs <docs-page-path>` links code to its user-documentation page.
-    "jsdoc/check-tag-names": ["error", { "definedTags": ["docs"] }]
+    "jsdoc/check-tag-names": ["error", { "definedTags": ["docs"] }],
+
+    // ─── deslop: the recommended set, plus three of its opt-in rules ──────────
+    // Every rule is at error and none is waived for tests or scripts. The one option set is
+    // `allowInTypeGuards`: `typeof` is how a decoder recognises a JSON primitive, so it may appear
+    // inside a function whose return type is a type predicate (`value is T`) and nowhere else.
+    // Narrow a value by calling a guard (`@jxsuite/schema/guards` holds the primitive ones), or
+    // decode it once at its I/O boundary. `typeof x === "undefined"` existence probes are allowed
+    // by the rule itself. The opt-in `canonical-class-names` is Tailwind-only and jx has none.
+    // An assertion that survives carries a `// SAFETY: <invariant>` comment on its statement.
+    // `no-duplicate-consts` and `no-duplicate-types` only compare files one oxlint worker saw, so
+    // `bun run lint` passes `--threads 1`: across several workers a duplicate pair can go unseen.
+    "deslop/no-array-filter-map": "error",
+    "deslop/no-call-only-assertions": "error",
+    "deslop/no-chained-type-assertions": "error",
+    "deslop/no-conditional-empty-object-spread": "error",
+    "deslop/no-duplicate-consts": "error",
+    "deslop/no-duplicate-types": "error",
+    "deslop/no-known-value-widening": "error",
+    "deslop/no-module-mocking": "error",
+    "deslop/no-object-parameters": "error",
+    "deslop/no-pass-through-type-alias": "error",
+    "deslop/no-poor-substring-tests": "error",
+    "deslop/no-reduce-accumulator-copy": "error",
+    "deslop/no-reflect-apply": "error",
+    "deslop/no-reflect-get": "error",
+    "deslop/no-renamed-imports": "error",
+    "deslop/no-repeated-expect-call": "error",
+    "deslop/no-runtime-typeof": ["error", { "allowInTypeGuards": true }],
+    "deslop/no-shape-in-symbol-names": "error",
+    "deslop/no-unknown-parameters": "error",
+    "deslop/no-unknown-returns": "error",
+    "deslop/no-unknown-type-aliases": "error",
+    "deslop/no-unsafe-dictionary-type": "error",
+    "deslop/no-widen-then-assert": "error",
+    "deslop/require-safety-comment-for-type-assertion": "error",
+    // The recommended config's AST-level standard rules. `no-unreachable` (correctness) and
+    // `oxc/no-accumulating-spread` (perf) are already on through their categories.
+    "typescript/no-require-imports": "error"
   },
   "settings": {
     "jsdoc": {

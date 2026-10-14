@@ -18,13 +18,15 @@ import { resolveLayout } from "../src/site/layout-resolver";
 import { mergeHead, renderHead } from "@jxsuite/site/head-merger";
 import { injectContext } from "../src/site/context-injection";
 import { buildSite } from "../src/site/site-build";
+import { isJsonObject, isNodeObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 import { hashOf } from "../src/site/csp.ts";
 import { _testResetNpmCacheBase, _testSetNpmCacheBase } from "../src/site/image-cache.ts";
 
 const TMP = resolve(import.meta.dir, "__test-site__");
 
-/** @param {string} path @param {unknown} obj */
-function writeJSON(path: string, obj: unknown) {
+/** @param {string} path @param {JsonValue} obj */
+function writeJSON(path: string, obj: JsonValue) {
   mkdirSync(resolve(TMP, ...path.split("/").slice(0, -1)), { recursive: true });
   writeFileSync(resolve(TMP, path), JSON.stringify(obj, null, 2), "utf8");
 }
@@ -157,6 +159,15 @@ describe("pages-discovery", () => {
 
 // ── layout-resolver ───────────────────────────────────────────────────────────
 
+/** The element at `children[index]` of `node`; a string, absent or repeater child fails the test. */
+function childElement(node: JxElement, index: number): JxElement {
+  const child = Array.isArray(node.children) ? node.children[index] : undefined;
+  if (!isNodeObject(child)) {
+    throw new TypeError(`expected an element at children[${index}]`);
+  }
+  return child;
+}
+
 describe("layout-resolver", () => {
   const projectConfig = {
     defaults: { layout: "./layouts/base.json" },
@@ -168,17 +179,18 @@ describe("layout-resolver", () => {
       title: "Test",
     };
 
-    const result = (await resolveLayout(pageDoc, projectConfig, TMP)) as any;
+    const result = await resolveLayout(pageDoc, projectConfig, TMP);
 
     // Should have the layout structure
     expect(result.tagName).toBe("div");
     expect(result.children).toHaveLength(3); // Header, main, footer
 
     // Main should now contain the page's <p> instead of <slot>
-    const [, main] = result.children as any;
+    const main = childElement(result, 1);
     expect(main.tagName).toBe("main");
-    expect(main.children[0].tagName).toBe("p");
-    expect(main.children[0].children[0]).toBe("Hello");
+    const paragraph = childElement(main, 0);
+    expect(paragraph.tagName).toBe("p");
+    expect(Array.isArray(paragraph.children) ? paragraph.children[0] : undefined).toBe("Hello");
   });
 
   it("returns page as-is when no layout", async () => {
@@ -202,11 +214,11 @@ describe("head-merger", () => {
 
     const merged = mergeHead(siteHead, [], pageHead, {
       title: "Test",
-    }) as any[];
+    });
 
     const names = merged
       .filter((e) => e.tagName === "meta" && e.attributes?.name)
-      .map((e) => (e as any).attributes.name);
+      .map((e) => e.attributes?.name);
 
     expect(names).toContain("generator");
     expect(names).toContain("description");
@@ -217,9 +229,9 @@ describe("head-merger", () => {
     const siteHead = [{ attributes: { content: "Site", name: "description" }, tagName: "meta" }];
     const pageHead = [{ attributes: { content: "Page", name: "description" }, tagName: "meta" }];
 
-    const merged = mergeHead(siteHead, [], pageHead, {}) as any[];
+    const merged = mergeHead(siteHead, [], pageHead, {});
     const desc = merged.find((e) => e.tagName === "meta" && e.attributes?.name === "description");
-    expect((desc as any).attributes.content).toBe("Page");
+    expect(desc?.attributes?.content).toBe("Page");
   });
 
   it("renders to valid HTML", async () => {
@@ -358,6 +370,31 @@ describe("buildSite", () => {
       expect(existsSync(emitted) && readFileSync(emitted, "utf8").includes("418")).toBe(false);
       rmSync(root, { force: true, recursive: true });
     });
+
+    it("a status authored as a decimal string still matches its policy", async () => {
+      const root = mkdtempSync(join(tmpdir(), "jx-redirect-"));
+      mkdirSync(join(root, "pages"), { recursive: true });
+      // Schema-invalid, but project.json is not validated at build time.
+      writeFileSync(
+        join(root, "project.json"),
+        JSON.stringify({
+          build: { outDir: "./dist" },
+          name: "String Status",
+          redirects: { "/was": { destination: "/is", status: "301" } },
+        }),
+        "utf8",
+      );
+      writeFileSync(
+        join(root, "pages/index.json"),
+        JSON.stringify({ children: ["hi"], tagName: "div" }),
+        "utf8",
+      );
+      const result = await buildSite(root, { verbose: false });
+      expect(result.errors).toEqual([]);
+      expect(readFileSync(join(root, "dist/_redirects"), "utf8")).toBe("/was /is 301\n");
+      expect(existsSync(join(root, "dist/was/index.html"))).toBe(true);
+      rmSync(root, { force: true, recursive: true });
+    });
   });
 
   it("takes lang and dir from the page, not only the site", async () => {
@@ -447,7 +484,7 @@ describe("buildSite — color scheme", () => {
 
   beforeAll(async () => {
     rmSync(SCHEME_TMP, { force: true, recursive: true });
-    const write = (path: string, obj: unknown) => {
+    const write = (path: string, obj: JsonValue) => {
       mkdirSync(resolve(SCHEME_TMP, ...path.split("/").slice(0, -1)), { recursive: true });
       writeFileSync(resolve(SCHEME_TMP, path), JSON.stringify(obj, null, 2), "utf8");
     };
@@ -477,8 +514,9 @@ describe("buildSite — color scheme", () => {
     const html = readFileSync(resolve(SCHEME_TMP, "dist/index.html"), "utf8");
     const marker = 'localStorage.getItem("jx-color-scheme")';
     expect(html).toContain(marker);
-    expect(html.indexOf(marker)).toBe(html.lastIndexOf(marker));
-    expect(html.indexOf(marker)).toBeLessThan(html.indexOf("<style>"));
+    const first = html.indexOf(marker);
+    expect(first).toBe(html.lastIndexOf(marker));
+    expect(first).toBeLessThan(html.indexOf("<style>"));
   });
 
   it("dual-emits scheme token overrides and the color-scheme triplet", async () => {
@@ -493,13 +531,18 @@ describe("buildSite — color scheme", () => {
 
 // ── Server worker generation ─────────────────────────────────────────────────
 
+/** What the emitted worker module exports: a Workers-style fetch handler taking request and env. */
+interface PortableWorkerModule {
+  default: { fetch: (req: Request, env: Record<string, string>) => Promise<Response> };
+}
+
 describe("buildSite — server worker", () => {
   const SERVER_TMP = resolve(import.meta.dir, "__test-site-server__");
 
   beforeAll(() => {
     rmSync(SERVER_TMP, { force: true, recursive: true });
 
-    const writeJ = (p: string, obj: unknown) => {
+    const writeJ = (p: string, obj: JsonValue) => {
       mkdirSync(resolve(SERVER_TMP, ...p.split("/").slice(0, -1)), {
         recursive: true,
       });
@@ -574,10 +617,8 @@ describe("buildSite — server worker", () => {
     try {
       const portable = join(portableDir, "worker.mjs");
       copyFileSync(resolve(SERVER_TMP, "dist/worker.js"), portable);
-      const mod = (await import(portable)) as {
-        default: { fetch: (req: Request, env: unknown) => Promise<Response> };
-      };
-      expect(typeof mod.default.fetch).toBe("function");
+      const mod: PortableWorkerModule = await import(portable);
+      expect(mod.default.fetch).toBeFunction();
 
       const response = await mod.default.fetch(
         new Request("http://localhost/_jx/server/sendForm", {
@@ -602,7 +643,7 @@ describe("buildSite — cloudflare-pages adapter", () => {
   beforeAll(() => {
     rmSync(PAGES_TMP, { force: true, recursive: true });
 
-    const writeJ = (p: string, obj: unknown) => {
+    const writeJ = (p: string, obj: JsonValue) => {
       mkdirSync(resolve(PAGES_TMP, ...p.split("/").slice(0, -1)), {
         recursive: true,
       });
@@ -703,7 +744,7 @@ describe("buildSite — cloudflare images service", () => {
   async function setupProject(adapter: string) {
     rmSync(CF_IMG_TMP, { force: true, recursive: true });
 
-    const writeJ = (p: string, obj: unknown) => {
+    const writeJ = (p: string, obj: JsonValue) => {
       mkdirSync(resolve(CF_IMG_TMP, ...p.split("/").slice(0, -1)), {
         recursive: true,
       });
@@ -1070,6 +1111,38 @@ describe("buildSite — component compilation errors", () => {
   });
 });
 
+// ── Trailing slash written as null ───────────────────────────────────────────
+
+describe("buildSite — trailingSlash null", () => {
+  const NULL_TS_TMP = resolve(import.meta.dir, "__test-site-trailing-slash-null__");
+
+  beforeAll(() => {
+    rmSync(NULL_TS_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(NULL_TS_TMP, "pages"), { recursive: true });
+    writeFileSync(
+      resolve(NULL_TS_TMP, "project.json"),
+      JSON.stringify({ build: { outDir: "./dist", trailingSlash: null }, name: "Null TS" }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(NULL_TS_TMP, "pages/about.json"),
+      JSON.stringify({ children: [{ children: ["About"], tagName: "p" }], title: "About" }),
+      "utf8",
+    );
+  });
+
+  afterAll(() => {
+    rmSync(NULL_TS_TMP, { force: true, recursive: true });
+  });
+
+  it('writes pages as "always" does when project.json sets it to null', async () => {
+    const result = await buildSite(NULL_TS_TMP);
+    expect(result.errors).toEqual([]);
+    expect(existsSync(resolve(NULL_TS_TMP, "dist/about/index.html"))).toBe(true);
+    expect(existsSync(resolve(NULL_TS_TMP, "dist/about.html"))).toBe(false);
+  });
+});
+
 // ── Trailing slash "never" ───────────────────────────────────────────────────
 
 describe("buildSite — trailingSlash never", () => {
@@ -1264,7 +1337,7 @@ This is a markdown page.
 describe("buildSite — export sidecars alongside HTML", () => {
   const EXP_TMP = resolve(import.meta.dir, "__test-site-export-sidecar__");
 
-  function writeExportSite(page: Record<string, unknown>) {
+  function writeExportSite(page: JsonObject) {
     rmSync(EXP_TMP, { force: true, recursive: true });
     mkdirSync(resolve(EXP_TMP, "pages"), { recursive: true });
     writeFileSync(
@@ -1814,7 +1887,7 @@ describe("buildSite — the emitted policy authorizes the page it was built from
 
 describe("buildSite — locale routing", () => {
   const I18N_TMP = resolve(import.meta.dir, "__test-site-i18n__");
-  const page = (rel: string, doc: object) => {
+  const page = (rel: string, doc: JsonObject) => {
     const abs = resolve(I18N_TMP, "pages", rel);
     mkdirSync(resolve(abs, ".."), { recursive: true });
     writeFileSync(abs, JSON.stringify(doc), "utf8");
@@ -1984,9 +2057,10 @@ describe("buildSite — installability and disclosure files", () => {
     const read = (rel: string) => readFileSync(resolve(WK_TMP, "dist", rel), "utf8");
 
     expect(JSON.parse(read("manifest.webmanifest")).short_name).toBe("PWA Site");
-    expect(read(".well-known/security.txt")).toContain("Expires: 2099-01-01T00:00:00Z");
+    const securityTxt = read(".well-known/security.txt");
+    expect(securityTxt).toContain("Expires: 2099-01-01T00:00:00Z");
     // Canonicalized through the same BCP 47 implementation as i18n.locales.
-    expect(read(".well-known/security.txt")).toContain("Preferred-Languages: en");
+    expect(securityTxt).toContain("Preferred-Languages: en");
 
     const html = read("index.html");
     expect(html).toContain('<link href="/manifest.webmanifest" rel="manifest">');
@@ -2003,17 +2077,17 @@ describe("buildSite — installability and disclosure files", () => {
 describe("buildSite — service worker", () => {
   const SW_TMP = resolve(import.meta.dir, "__test-site-sw__");
   /** `undefined` means the key is absent, which is a different instruction from `false`. */
-  const project = (serviceWorker?: unknown) =>
-    writeFileSync(
-      resolve(SW_TMP, "project.json"),
-      JSON.stringify({
-        build: { outDir: "./dist" },
-        name: "SW Site",
-        url: "https://sw.example",
-        ...(serviceWorker === undefined ? {} : { serviceWorker }),
-      }),
-      "utf8",
-    );
+  const project = (serviceWorker?: JsonValue) => {
+    const config: JsonObject = {
+      build: { outDir: "./dist" },
+      name: "SW Site",
+      url: "https://sw.example",
+    };
+    if (serviceWorker !== undefined) {
+      config.serviceWorker = serviceWorker;
+    }
+    writeFileSync(resolve(SW_TMP, "project.json"), JSON.stringify(config), "utf8");
+  };
 
   beforeAll(() => {
     rmSync(SW_TMP, { force: true, recursive: true });
@@ -2388,9 +2462,12 @@ describe("buildSite — image optimization cache logging", () => {
     const result = await buildSite(IMG_TMP, { verbose: true });
     expect(result.errors).toHaveLength(0);
     // Verify cache was saved, with the image this build actually processed.
-    const manifest = JSON.parse(
+    const manifest: JsonValue = JSON.parse(
       readFileSync(resolve(IMG_TMP, ".cache/images/manifest.json"), "utf8"),
-    ) as { entries: Record<string, unknown> };
+    );
+    if (!isJsonObject(manifest) || !isJsonObject(manifest.entries)) {
+      throw new TypeError("the image cache manifest has no entries object");
+    }
     expect(Object.keys(manifest.entries).length).toBeGreaterThan(0);
   });
 });
@@ -3136,7 +3213,7 @@ describe("buildSite — extension asset mount errors and missing refs", () => {
 describe("buildSite — sitemap options", () => {
   const SM_TMP = resolve(import.meta.dir, "__test-site-sitemap__");
 
-  function writeSite(config: Record<string, unknown>) {
+  function writeSite(config: JsonObject) {
     rmSync(SM_TMP, { force: true, recursive: true });
     mkdirSync(resolve(SM_TMP, "pages"), { recursive: true });
     writeFileSync(resolve(SM_TMP, "project.json"), JSON.stringify(config), "utf8");

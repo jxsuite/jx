@@ -3,6 +3,7 @@ import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
 import { documentStyleText, mount } from "@jxsuite/runtime";
+import { isExpandedSignal, isString } from "@jxsuite/schema/guards";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
@@ -17,14 +18,13 @@ const flush = () =>
   });
 
 type TabsEl = HTMLElement & { selected: string };
-type TabEl = HTMLElement & { value: string; label: string; selected: boolean };
 
 let dispose: (() => void) | null = null;
 
 interface Mounted {
   host: HTMLElement;
   tabs: TabsEl;
-  rows: TabEl[];
+  rows: HTMLElement[];
   changes: string[];
   closes: string[];
   clicked: string[];
@@ -39,25 +39,51 @@ async function render(doc: JxDocument): Promise<Mounted> {
   document.body.append(host);
   ({ dispose } = await mount(doc, host));
   await flush();
+  /* SAFETY: every document strip() builds renders exactly one jx-tabs, which registerUi() in
+     beforeAll defined, and jx-tabs.json declares the `selected` prop TabsEl names. */
   const tabs = host.querySelector("jx-tabs") as TabsEl;
   const changes: string[] = [];
   const closes: string[] = [];
   const clicked: string[] = [];
-  host.addEventListener("change", (e) => changes.push(String((e as CustomEvent).detail)));
-  host.addEventListener("close", (e) => closes.push(String((e as CustomEvent).detail)));
+  host.addEventListener("change", (e) => changes.push(detailText(e)));
+  host.addEventListener("close", (e) => closes.push(detailText(e)));
   // What a slotted control's OWN handler saw. Bound in the capture phase at the ancestor so it
   // Records the click whether or not the tab's actions container stops it afterwards.
   host.addEventListener(
     "click",
     (e) => {
-      const probe = (e.target as Element).closest?.<HTMLElement>("[data-probe]");
+      const probe =
+        e.target instanceof Element ? e.target.closest<HTMLElement>("[data-probe]") : null;
       if (probe) {
         clicked.push(probe.dataset["probe"] ?? "");
       }
     },
     true,
   );
-  return { changes, clicked, closes, host, rows: tabsOf(tabs) as TabEl[], tabs };
+  return { changes, clicked, closes, host, rows: tabsOf(tabs), tabs };
+}
+
+/** An event's `detail` as text: a CustomEvent's payload, and `"undefined"` for an event with none. */
+function detailText(e: Event): string {
+  return String("detail" in e ? e.detail : undefined);
+}
+
+/** The consumer's own `<button>` in a row's `actions` slot. */
+function pinOf(row: Element): HTMLButtonElement {
+  const pin = row.querySelector('[part="actions"] button');
+  if (!(pin instanceof HTMLButtonElement)) {
+    throw new Error("the row has no button in its actions slot");
+  }
+  return pin;
+}
+
+/** The consumer's mark in one of a row's slot containers. */
+function probeIn(row: Element, part: string): HTMLElement {
+  const probe = row.querySelector(`[part="${part}"] [data-probe]`);
+  if (!(probe instanceof HTMLElement)) {
+    throw new Error(`the row has no mark in its ${part} slot`);
+  }
+  return probe;
 }
 
 /** Press a key where a keyboard would: at the focused node, or at `fallback`. */
@@ -83,7 +109,7 @@ function rules(el: HTMLElement): Map<string, string> {
   return out;
 }
 
-const carets = (rows: TabEl[]) => rows.map((row) => row.getAttribute("tabindex"));
+const carets = (rows: HTMLElement[]) => rows.map((row) => row.getAttribute("tabindex"));
 
 /** A `<span data-probe="…">` for one of the tab's slots. */
 function mark(slot: string, text: string, extra: Record<string, string> = {}): JxElement {
@@ -91,7 +117,7 @@ function mark(slot: string, text: string, extra: Record<string, string> = {}): J
     attributes: { "data-probe": slot, slot, ...extra },
     tagName: "span",
     textContent: text,
-  } as unknown as JxElement;
+  };
 }
 
 /** A real `<button>` in `slot="actions"` — what a consumer's pin toggle is. */
@@ -106,7 +132,7 @@ function actionButton(name: string, tabindex: string): JxElement {
     },
     tagName: "button",
     textContent: "◎",
-  } as unknown as JxElement;
+  };
 }
 
 interface TabSpec {
@@ -116,22 +142,31 @@ interface TabSpec {
   label?: string;
 }
 
+/** The attributes one fixture tab writes; a boolean attribute is present as `""` or absent. */
+interface TabAttributes {
+  id: string;
+  value: string;
+  label?: string;
+  closable?: "";
+  dirty?: "";
+}
+
 function tab(value: string, spec: TabSpec = {}): JxElement {
-  const attributes: Record<string, string> = { id: `tab-${value}`, value };
+  const attributes: TabAttributes = { id: `tab-${value}`, value };
   if (spec.label !== undefined) {
-    attributes["label"] = spec.label;
+    attributes.label = spec.label;
   }
   if (spec.closable) {
-    attributes["closable"] = "";
+    attributes.closable = "";
   }
   if (spec.dirty) {
-    attributes["dirty"] = "";
+    attributes.dirty = "";
   }
-  return {
-    attributes,
-    tagName: "jx-tab",
-    ...(spec.children ? { children: spec.children } : {}),
-  } as unknown as JxElement;
+  const element: JxElement = { attributes: { ...attributes }, tagName: "jx-tab" };
+  if (spec.children) {
+    element.children = spec.children;
+  }
+  return element;
 }
 
 function strip(tabs: JxElement[], selected = "one"): JxDocument {
@@ -140,7 +175,7 @@ function strip(tabs: JxElement[], selected = "one"): JxDocument {
       { attributes: { label: "Open documents", selected }, children: tabs, tagName: "jx-tabs" },
     ],
     tagName: "div",
-  } as unknown as JxDocument;
+  };
 }
 
 /** The decorated tab every slot test starts from: a marker, a pill, a control, a dot and a ✕. */
@@ -180,10 +215,15 @@ describe("jx-tab slots", () => {
     const slots: { name: string | undefined; part: string | undefined }[] = [];
     const attr = (node: JxElement, name: string): string | undefined => {
       const value = node.attributes?.[name];
-      return typeof value === "string" ? value : undefined;
+      return isString(value) ? value : undefined;
     };
     const walk = (node: JxElement, part?: string): void => {
-      for (const child of (node.children ?? []) as JxElement[]) {
+      // A text child can hold no slot, and the tab's template maps no repeater.
+      const children = Array.isArray(node.children) ? node.children : [];
+      for (const child of children) {
+        if (isString(child)) {
+          continue;
+        }
         if (child.tagName === "slot") {
           slots.push({ name: attr(child, "name"), part });
           continue;
@@ -191,7 +231,7 @@ describe("jx-tab slots", () => {
         walk(child, attr(child, "part") ?? part);
       }
     };
-    walk(doc as unknown as JxElement);
+    walk(doc);
     expect(slots).toEqual([
       { name: "icon", part: "icon" },
       { name: "status", part: "status" },
@@ -199,7 +239,7 @@ describe("jx-tab slots", () => {
     ]);
     // Each container is named, because a `part` on the slot itself would name nothing (ui.md
     // §3.2) — the CONTAINER is what a rule and a `:empty` test key on.
-    expect(slots.every((slot) => typeof slot.part === "string")).toBe(true);
+    expect(slots.every((slot) => slot.part !== undefined)).toBe(true);
   });
 
   test("a marker draws before the label; a pill and a control after it and before the dot and the ✕", async () => {
@@ -245,7 +285,7 @@ describe("jx-tab slots", () => {
     const { rows } = await render(
       strip([
         tab("one", {
-          children: [{ tagName: "b", textContent: "stray" } as unknown as JxElement],
+          children: [{ tagName: "b", textContent: "stray" }],
           closable: true,
           label: "hello.md",
         }),
@@ -285,8 +325,9 @@ describe("jx-tab's accessible name survives the slots", () => {
        slots become the name. Nothing can lint that — a bound role switches the naming rules off —
        so the contract lives in the prop's own description and this is what holds it there. */
     const doc = documents["jx-tab"]!;
-    const label = doc.state!["label"] as { description: string };
-    expect(label.description).toContain("REQUIRED once anything is slotted");
+    const label = doc.state?.["label"];
+    const description = isExpandedSignal(label) ? label.description : undefined;
+    expect(description).toContain("REQUIRED once anything is slotted");
     expect(doc.attributes!["aria-label"]).toBe("${state.label || null}");
   });
 });
@@ -299,7 +340,7 @@ describe("jx-tab's slots and the click", () => {
     // Leaked through would be a VISIBLE selection change rather than a no-op.
     expect(pin).toBeNull();
 
-    const own = rows[0]!.querySelector('[part="actions"] button') as HTMLButtonElement;
+    const own = pinOf(rows[0]!);
     tabs.selected = "two";
     own.click();
     // The control's own handler ran — it is the click's target, and `stopPropagation` at the
@@ -313,12 +354,12 @@ describe("jx-tab's slots and the click", () => {
   test("a click on a mark in icon or status IS a click on the tab", async () => {
     const { rows, tabs, changes } = await render(decorated());
     tabs.selected = "two";
-    (rows[0]!.querySelector('[part="status"] [data-probe]') as HTMLElement).click();
+    probeIn(rows[0]!, "status").click();
     expect(changes).toEqual(["one"]);
     expect(tabs.selected).toBe("one");
 
     tabs.selected = "two";
-    (rows[0]!.querySelector('[part="icon"] [data-probe]') as HTMLElement).click();
+    probeIn(rows[0]!, "icon").click();
     expect(changes).toEqual(["one", "one"]);
   });
 });
@@ -327,7 +368,7 @@ describe("jx-tab's slots and the keyboard", () => {
   test("Enter and Space on a slotted control belong to the control", async () => {
     const { rows, tabs, changes } = await render(decorated());
     tabs.selected = "two";
-    const pin = rows[0]!.querySelector('[part="actions"] button') as HTMLButtonElement;
+    const pin = pinOf(rows[0]!);
     pin.focus();
     expect(document.activeElement).toBe(pin);
     /* A focusable control the keyboard cannot operate is SC 2.1.1, not a rough edge. If the strip
@@ -344,7 +385,7 @@ describe("jx-tab's slots and the keyboard", () => {
 
   test("the arrows move on from the tab the focused control is IN", async () => {
     const { rows, tabs } = await render(decorated());
-    const pin = rows[0]!.querySelector('[part="actions"] button') as HTMLButtonElement;
+    const pin = pinOf(rows[0]!);
     pin.focus();
     // Focus genuinely reaches a tab's slotted descendant, so the active tab is the one that
     // CONTAINS the key's target. Resolving only exact targets would send the caret to the first.
@@ -364,7 +405,7 @@ describe("jx-tab's slots and the keyboard", () => {
 
   test("Delete from a slotted control closes the tab that holds it", async () => {
     const { rows, tabs, closes } = await render(decorated());
-    const pin = rows[0]!.querySelector('[part="actions"] button') as HTMLButtonElement;
+    const pin = pinOf(rows[0]!);
     pin.focus();
     const event = key(tabs, "Delete");
     expect(event.defaultPrevented).toBe(true);
@@ -381,10 +422,12 @@ describe("jx-tab's slots and the keyboard", () => {
     const { rows } = await render(decorated());
     expect(rows[0]!.querySelector('[part="close"]')!.getAttribute("tabindex")).toBe("0");
     expect(rows[1]!.querySelector('[part="close"]')!.getAttribute("tabindex")).toBe("-1");
-    const page = stylebookTab as unknown as { children: { textContent?: string }[] };
     expect(
-      page.children.some((child) =>
-        child.textContent?.includes("in the tab order only while its tab is the current one"),
+      stylebookTab.children.some(
+        (child) =>
+          "textContent" in child &&
+          isString(child.textContent) &&
+          child.textContent.includes("in the tab order only while its tab is the current one"),
       ),
     ).toBe(true);
   });

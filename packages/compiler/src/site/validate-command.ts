@@ -26,7 +26,8 @@ import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { findDialogDefects } from "@jxsuite/schema/dialogs";
 import { findPopoverDefects, overlayScopeFor } from "@jxsuite/schema/overlays";
 import type { OverlayScope } from "@jxsuite/schema/overlays";
-import type { JxElement } from "@jxsuite/schema/types";
+import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
 import { loadProjectConfig } from "./site-loader.ts";
 import { readBundledProjectSchemas } from "./schema-command.ts";
@@ -88,12 +89,14 @@ export interface ProjectTreeValidationResult {
 
 // Minimal structural types for the optional `ajv` dependency (same pattern as validate-project).
 interface AjvValidateFn {
-  (doc: unknown): boolean;
+  (doc: JsonValue): boolean;
   errors?: unknown[] | null;
 }
+/** What `compile` receives: parsed JSON, or the class schema generateClassSchema builds in memory. */
+type AjvSchemaInput = JsonValue | ReturnType<typeof generateClassSchema>;
 interface AjvInstance {
-  compile: (schema: unknown) => AjvValidateFn;
-  addSchema: (schema: unknown) => AjvInstance;
+  compile: (schema: AjvSchemaInput) => AjvValidateFn;
+  addSchema: (schema: JsonValue) => AjvInstance;
 }
 type AjvCtor = new (opts: {
   allErrors: boolean;
@@ -104,8 +107,18 @@ type AddFormatsFn = (ajv: AjvInstance) => void;
 
 async function loadAjv(): Promise<{ Ajv: AjvCtor; addFormats: AddFormatsFn }> {
   try {
-    // The schemas are JSON Schema 2020-12, so use the matching Ajv build.
-    const { default: Ajv } = (await import("ajv/dist/2020")) as unknown as { default: AjvCtor };
+    /*
+     * The schemas are JSON Schema 2020-12, so use the matching Ajv build.
+     * SAFETY: the default export of `ajv/dist/2020` is the Ajv2020 class. AjvCtor restates, in
+     * JSON terms, only the three constructor options, `compile`, `addSchema` and the validate
+     * function's call and `errors` used below; ajv reports a schema value it cannot use as a thrown
+     * error.
+     */
+    const { default: Ajv } = (await import("ajv/dist/2020")) as { default: AjvCtor };
+    /*
+     * SAFETY: ajv-formats' default export is the plugin function that takes an Ajv instance and
+     * registers the formats on it; AddFormatsFn states only that call.
+     */
     // @ts-expect-error — resolved through @jxsuite/schema's dependency
     const { default: addFormats } = (await import("ajv-formats")) as { default: AddFormatsFn };
     return { addFormats, Ajv };
@@ -141,7 +154,7 @@ export async function validateProjectTree(
       continue;
     }
     checked += 1;
-    const entry = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    const entry = readJson(path);
     const unresolvable = collectUnresolvableRefs(entry);
     if (unresolvable.length > 0) {
       issues.push({
@@ -180,6 +193,12 @@ export async function validateProjectTree(
   const scope = overlayScopeFor(
     walkClassFiles(root).flatMap((file) => {
       try {
+        /*
+         * SAFETY: not schema-checked here; the class-schema pass below reports a malformed
+         * definition. overlayScopeFor tolerates any parsed JSON in this slot: it skips `null`,
+         * reads `tagName` through isString (a primitive or array has none, so it is skipped), and
+         * reads `observedAttributes` through Array.isArray.
+         */
         return [JSON.parse(readFileSync(file, "utf8")) as JxElement];
       } catch {
         // A malformed definition is reported by the class-schema pass below, not here.
@@ -193,9 +212,13 @@ export async function validateProjectTree(
         continue; // Validated against the class schema below.
       }
       checked += 1;
-      const doc = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+      const doc = readJson(file);
       if (validateDoc(doc)) {
-        // Only a well-formed document is judged; a schema error is the report for the rest.
+        /*
+         * Only a well-formed document is judged; a schema error is the report for the rest.
+         * SAFETY: validateDoc just accepted `doc` against the bundled document schema, which is
+         * the JSON Schema rendering of JxElement.
+         */
         lint.push(...lintDocument(doc as JxElement, relative(root, file), scope));
       } else {
         issues.push({ errors: validateDoc.errors ?? [], file: relative(root, file) });
@@ -209,7 +232,7 @@ export async function validateProjectTree(
   const validateClass = classAjv.compile(generateClassSchema());
   for (const file of walkClassFiles(root)) {
     checked += 1;
-    const doc = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    const doc = readJson(file);
     if (!validateClass(doc)) {
       issues.push({ errors: validateClass.errors ?? [], file: relative(root, file) });
     }
@@ -230,11 +253,10 @@ export async function validateProjectTree(
       addFormats(fragAjv);
       for (const specifier of SHIPPED_RESOURCE_SPECIFIERS) {
         const resourcePath = selfRequire.resolve(specifier);
-        const resource = JSON.parse(readFileSync(resourcePath, "utf8")) as Record<string, unknown>;
-        fragAjv.addSchema(resource);
+        fragAjv.addSchema(readJson(resourcePath));
       }
       try {
-        fragAjv.compile(JSON.parse(readFileSync(fragmentPath, "utf8")));
+        fragAjv.compile(readJson(fragmentPath));
       } catch (error) {
         issues.push({
           errors: [{ message: error instanceof Error ? error.message : String(error) }],
@@ -246,6 +268,14 @@ export async function validateProjectTree(
 
   const fatalLint = options.strict === true && lint.some((finding) => finding.severity === "error");
   return { checked, issues, lint, valid: issues.length === 0 && !fatalLint };
+}
+
+/**
+ * Read and parse a JSON file. `JSON.parse` without a reviver only ever produces JSON values, so the
+ * declared type is exact; what shape of JSON it is stays for the caller to check.
+ */
+function readJson(path: string): JsonValue {
+  return JSON.parse(readFileSync(path, "utf8"));
 }
 
 /** The three lints over one document, as findings that name their file. */
@@ -300,26 +330,29 @@ export function formatProjectTreeLint(result: ProjectTreeValidationResult): stri
  * Walks only subschema keyword positions, since `examples`/`default`/`const`/`enum` hold instance
  * data and Jx document examples legitimately contain `$ref` strings of their own.
  *
- * @param {Record<string, unknown>} entry - Parsed committed entry document
+ * @param {JsonValue} entry - Parsed committed entry document
  * @returns {{ ref: string; reason: string }[]} One entry per offending `$ref`
  */
-function collectUnresolvableRefs(
-  entry: Record<string, unknown>,
-): { ref: string; reason: string }[] {
+function collectUnresolvableRefs(entry: JsonValue): { ref: string; reason: string }[] {
   const out: { ref: string; reason: string }[] = [];
-  const seen = new Set<Record<string, unknown>>();
+  const seen = new Set<JsonObject>();
 
   const resolvePointer = (pointer: string): boolean => {
-    let current: unknown = entry;
+    let current: JsonValue | undefined = entry;
     for (const raw of pointer.slice(1).split("/")) {
       if (raw === "") {
         continue;
       }
       const segment = raw.replaceAll("~1", "/").replaceAll("~0", "~");
-      if (typeof current !== "object" || current === null) {
+      if (!isNonNullObject(current)) {
         return false;
       }
-      current = (current as Record<string, unknown>)[segment];
+      /*
+       * SAFETY: `current` is a JSON object or array. Both are read by string key here, exactly as
+       * the original property access did (an array segment such as "0" is a string key too); the
+       * result is only compared with `undefined`, so JsonObject merely types the lookup.
+       */
+      current = (current as JsonObject)[segment];
       if (current === undefined) {
         return false;
       }
@@ -327,13 +360,13 @@ function collectUnresolvableRefs(
     return true;
   };
 
-  const walk = (node: unknown): void => {
-    if (!isRecord(node) || seen.has(node)) {
+  const walk = (node: JsonValue): void => {
+    if (!isJsonObject(node) || seen.has(node)) {
       return;
     }
     seen.add(node);
     const ref = node.$ref;
-    if (typeof ref === "string") {
+    if (isString(ref)) {
       if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(ref)) {
         out.push({ reason: "is an absolute URI editors resolve over the network", ref });
       } else if (!ref.startsWith("#")) {
@@ -352,7 +385,7 @@ function collectUnresolvableRefs(
         for (const item of value) {
           walk(item);
         }
-      } else if (isRecord(value)) {
+      } else if (isJsonObject(value)) {
         // Map-valued keywords hold subschemas one level down; single-valued ones are the schema.
         walk(value);
         if (MAP_SUBSCHEMA_KEYWORDS.has(keyword)) {
@@ -365,11 +398,6 @@ function collectUnresolvableRefs(
   };
   walk(entry);
   return out;
-}
-
-/** True for a plain object (a candidate subschema node). */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Keywords whose values map names to subschemas. */
@@ -446,10 +474,12 @@ export function formatProjectTreeIssues(result: ProjectTreeValidationResult): st
   for (const issue of result.issues) {
     lines.push(`${issue.file}:`);
     for (const error of issue.errors) {
-      const { instancePath, message } = (error ?? {}) as {
-        instancePath?: string;
-        message?: string;
-      };
+      /*
+       * An ajv error object or a `{ message }` record. Destructuring a primitive, an array or a
+       * null slot (via `{}`) yields neither member, so the fallback covers every non-object.
+       */
+      const fields: JsonObject = isJsonObject(error) ? error : {};
+      const { instancePath, message } = fields;
       lines.push(`  - ${instancePath || "/"}: ${message ?? JSON.stringify(error)}`);
     }
   }

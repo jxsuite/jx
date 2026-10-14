@@ -34,9 +34,14 @@ import {
   mountOverlayLayers,
 } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 import { setProjectAdopter } from "../src/services/project-adoption";
 import { resetNotifications, toasts } from "../src/services/notify";
 import { workspace } from "../src/workspace/workspace";
+import type { MockPlatformState } from "./harness";
+import type { StarterInfo, StudioPlatform } from "../src/types";
+import { JOIN_LINK } from "./shared-fixtures";
 
 const { openNewProjectModal } = await import("../src/new-project/new-project-modal");
 const { initLayers } = await import("../src/ui/layers");
@@ -50,12 +55,12 @@ function click(el: Element | null | undefined): void {
 
 /** The global backend-failure strip at the foot of the body. */
 function errorText(): string | null {
-  return npPart("failure")?.textContent?.trim() ?? null;
+  return npPart("failure")?.textContent.trim() ?? null;
 }
 
 /** The inline destination-validation message rendered under the Location/Directory fields. */
 function destinationError(): string | null {
-  return npPart("destination-failure")?.textContent?.trim() ?? null;
+  return npPart("destination-failure")?.textContent.trim() ?? null;
 }
 
 /** The Browse… button beside the Location field (absent without `platform.pickDirectory`). */
@@ -65,15 +70,39 @@ function browseButton(): HTMLButtonElement | null {
 
 /** The inline validation message under the Project Name field. */
 function nameError(): string | null {
-  return npPart("name-failure")?.textContent?.trim() ?? null;
+  return npPart("name-failure")?.textContent.trim() ?? null;
+}
+
+/** What a create resolves with: the new project's root and its config. */
+type CreatedProject = Awaited<ReturnType<StudioPlatform["createProject"]>>;
+
+/** What the wizard hands `createProject`. */
+type CreateProjectOptions = Parameters<StudioPlatform["createProject"]>[0];
+
+/** The options of the first `createProject` call in the mock platform's log, or a failure. */
+function createProjectOptions(state: MockPlatformState): JsonObject {
+  const options = state.calls.find((c) => c[0] === "createProject")?.[1];
+  if (!isJsonObject(options)) {
+    throw new Error("createProject was never called with an options object");
+  }
+  return options;
+}
+
+/** The topmost `jx-dialog` in the dialog layer — the offer drawn over the wizard. */
+function topmostDialog(): HTMLElement {
+  const offer = [...document.querySelectorAll("#layer-dialog jx-dialog")].at(-1);
+  if (!(offer instanceof HTMLElement)) {
+    throw new Error("no jx-dialog is open in the dialog layer");
+  }
+  return offer;
 }
 
 /** The source context line on the second step. */
 function contextText(): string {
-  return npPart("context")?.textContent?.trim() ?? "";
+  return npPart("context")?.textContent.trim() ?? "";
 }
 
-const SAMPLE_STARTERS = [
+const SAMPLE_STARTERS: StarterInfo[] = [
   {
     accent: "#b45309",
     description: "Full description of the bistro starter.",
@@ -85,6 +114,7 @@ const SAMPLE_STARTERS = [
     thumbnail: "data:image/png;base64,AAAA",
   },
   {
+    accent: "#0f766e",
     description: "A shop.",
     features: [],
     id: "shop",
@@ -164,7 +194,7 @@ describe("openNewProjectModal — wizard lifecycle", () => {
 
   test("shows the Import tab when the platform supports importSite", async () => {
     installMockPlatform({
-      importSite: (async () => ({ config: {}, root: "/r" })) as never,
+      importSite: async () => ({ config: {}, root: "/r" }),
     });
     void openNewProjectModal();
     await flush(3);
@@ -236,7 +266,7 @@ describe("openNewProjectModal — the starter gallery", () => {
   });
 
   test("starters lead, with the first selected and the scratch card last", async () => {
-    installMockPlatform({ listStarters: (async () => SAMPLE_STARTERS) as never });
+    installMockPlatform({ listStarters: async () => SAMPLE_STARTERS });
     void openNewProjectModal();
     await flush(4);
     const all = npCards();
@@ -252,12 +282,12 @@ describe("openNewProjectModal — the starter gallery", () => {
   });
 
   test("an arriving starter list does not override a card the user already picked", async () => {
-    let release: (v: unknown) => void = () => {};
+    let release: (starters: StarterInfo[]) => void = () => {};
     installMockPlatform({
-      listStarters: (() =>
-        new Promise((resolve) => {
+      listStarters: () =>
+        new Promise<StarterInfo[]>((resolve) => {
           release = resolve;
-        })) as never,
+        }),
     });
     void openNewProjectModal();
     await flush(3);
@@ -273,7 +303,7 @@ describe("openNewProjectModal — the starter gallery", () => {
 
   test("selecting a starter threads its id into createProject", async () => {
     const { state } = installMockPlatform({
-      listStarters: (async () => SAMPLE_STARTERS) as never,
+      listStarters: async () => SAMPLE_STARTERS,
     });
     void openNewProjectModal();
     await flush(4);
@@ -289,14 +319,14 @@ describe("openNewProjectModal — the starter gallery", () => {
     await flush();
     npPress("Confirm");
     await flush(2);
-    const call = state.calls.find((c) => c[0] === "createProject");
-    expect(call?.[1]).toMatchObject({ name: "My Diner", starter: "shop" });
-    expect((call![1] as { template?: string }).template).toBeUndefined();
+    const options = createProjectOptions(state);
+    expect(options).toMatchObject({ name: "My Diner", starter: "shop" });
+    expect(options.template).toBeUndefined();
   });
 
   test("the scratch card creates the blank template", async () => {
     const { state } = installMockPlatform({
-      listStarters: (async () => SAMPLE_STARTERS) as never,
+      listStarters: async () => SAMPLE_STARTERS,
     });
     void openNewProjectModal();
     await flush(4);
@@ -310,13 +340,13 @@ describe("openNewProjectModal — the starter gallery", () => {
     await flush();
     npPress("Confirm");
     await flush(2);
-    const call = state.calls.find((c) => c[0] === "createProject");
-    expect(call?.[1]).toMatchObject({ name: "Empty Site", template: "blank" });
-    expect((call![1] as { starter?: string }).starter).toBeUndefined();
+    const options = createProjectOptions(state);
+    expect(options).toMatchObject({ name: "Empty Site", template: "blank" });
+    expect(options.starter).toBeUndefined();
   });
 
   test("openNewProjectModal({ tab: 'starter' }) opens on the gallery", async () => {
-    installMockPlatform({ listStarters: (async () => SAMPLE_STARTERS) as never });
+    installMockPlatform({ listStarters: async () => SAMPLE_STARTERS });
     void openNewProjectModal({ tab: "starter" });
     await flush(4);
     expect(npPart("tabs")?.dataset.selection).toBe("starter");
@@ -325,9 +355,9 @@ describe("openNewProjectModal — the starter gallery", () => {
 
   test("a failing listStarters leaves the gallery usable", async () => {
     installMockPlatform({
-      listStarters: (async () => {
+      listStarters: async () => {
         throw new Error("nope");
-      }) as never,
+      },
     });
     void openNewProjectModal();
     await flush(4);
@@ -337,7 +367,7 @@ describe("openNewProjectModal — the starter gallery", () => {
   });
 
   test("switching tabs and back keeps the gallery", async () => {
-    installMockPlatform({ listStarters: (async () => SAMPLE_STARTERS) as never });
+    installMockPlatform({ listStarters: async () => SAMPLE_STARTERS });
     void openNewProjectModal();
     await flush(4);
     npPickTab("agent");
@@ -467,12 +497,12 @@ describe("openNewProjectModal — destination", () => {
     npPress("Confirm");
 
     const result = await promise;
-    const call = state.calls.find((c) => c[0] === "createProject") as unknown[];
-    expect((call[1] as { destination: unknown }).destination).toEqual({
+    const options = createProjectOptions(state);
+    expect(options.destination).toEqual({
       kind: "path",
       parent: "/home/dev/Sites",
     });
-    expect((call[1] as { directory: string }).directory).toBe("placed-site");
+    expect(options.directory).toBe("placed-site");
     // The mock scaffolds under exactly the parent the user named.
     expect(result?.root).toBe("/home/dev/Sites/placed-site");
   });
@@ -491,12 +521,12 @@ describe("openNewProjectModal — destination", () => {
     let picks = 0;
     let release: (value: string | null) => void = () => {};
     installMockPlatform({
-      pickDirectory: (() => {
+      pickDirectory: () => {
         picks += 1;
         return new Promise<string | null>((resolve) => {
           release = resolve;
         });
-      }) as never,
+      },
     });
     void openNewProjectModal();
     await flush(3);
@@ -524,7 +554,7 @@ describe("openNewProjectModal — destination", () => {
   });
 
   test("a cancelled Browse… leaves the typed Location untouched", async () => {
-    installMockPlatform({ pickDirectory: (async () => null) as never });
+    installMockPlatform({ pickDirectory: async () => null });
     void openNewProjectModal();
     await flush(3);
     npPress("Confirm");
@@ -551,9 +581,9 @@ describe("openNewProjectModal — destination", () => {
     const reason =
       'Jx Studio could not look up where "Sites" is: Failed to fetch. Type the folder\'s path into Location instead.';
     installMockPlatform({
-      pickDirectory: (async () => {
+      pickDirectory: async () => {
         throw new Error(reason);
-      }) as never,
+      },
     });
     void openNewProjectModal();
     await flush(3);
@@ -611,15 +641,15 @@ describe("openNewProjectModal — submit", () => {
   });
 
   test("creates the project, shows progress, initialises git, and resolves", async () => {
-    let resolveCreate: (v: unknown) => void = () => {};
-    const created: unknown[] = [];
+    let resolveCreate: (project: CreatedProject) => void = () => {};
+    const created: CreateProjectOptions[] = [];
     const { state } = installMockPlatform({
-      createProject: ((opts: unknown) => {
+      createProject: (opts) => {
         created.push(opts);
-        return new Promise((resolve) => {
+        return new Promise<CreatedProject>((resolve) => {
           resolveCreate = resolve;
         });
-      }) as never,
+      },
     });
 
     const promise = openNewProjectModal();
@@ -644,7 +674,7 @@ describe("openNewProjectModal — submit", () => {
     expect(result).toEqual({
       config: { name: "My Site" },
       root: "/home/dev/Sites/my-site",
-    } as never);
+    });
     await flush();
     expect(npDialog()).toBeNull();
     // Name + Location only — no url, adapter, description or design in the payload.
@@ -672,15 +702,14 @@ describe("openNewProjectModal — submit", () => {
     await flush();
     npPress("Confirm");
     await promise;
-    const call = state.calls.find((c) => c[0] === "createProject") as unknown[];
-    expect((call[1] as { directory: string }).directory).toBe("site-x");
+    expect(createProjectOptions(state).directory).toBe("site-x");
   });
 
   test("createProject failure surfaces the error and keeps the wizard open", async () => {
     installMockPlatform({
-      createProject: (async () => {
+      createProject: async () => {
         throw new Error("disk full");
-      }) as never,
+      },
     });
     let settled = false;
     const promise = openNewProjectModal();
@@ -710,12 +739,12 @@ describe("openNewProjectModal — submit", () => {
   test("a structured needs_installation_access failure renders the install link", async () => {
     const installUrl = "https://github.com/apps/jx-suite/installations/new";
     installMockPlatform({
-      createProject: (async () => {
+      createProject: async () => {
         throw Object.assign(new Error("GitHub blocked repository creation."), {
           code: "needs_installation_access",
           installUrl,
         });
-      }) as never,
+      },
     });
     const promise = openNewProjectModal();
     await flush(3);
@@ -738,8 +767,6 @@ describe("openNewProjectModal — submit", () => {
   });
 });
 
-const JOIN = { href: "https://example.test/join", id: "join", label: "Join" };
-
 describe("openNewProjectModal — an action-required refusal", () => {
   /* Creating a repository is something a backend may refuse until the user acts (desktop.md §10.4).
      The refusal's actions are offered over the modal, and one that is done runs the create again,
@@ -748,16 +775,16 @@ describe("openNewProjectModal — an action-required refusal", () => {
     let attempts = 0;
     const performAction = async () => ({ status: "done" }) as const;
     installMockPlatform({
-      createProject: (async (opts: { name: string }) => {
+      createProject: async (opts) => {
         attempts += 1;
         if (attempts === 1) {
           throw Object.assign(new Error("Creating repositories needs a team membership."), {
-            actions: [JOIN],
+            actions: [JOIN_LINK],
             code: "action_required",
           });
         }
         return { config: { name: opts.name }, root: "/home/dev/Sites/joined" };
-      }) as never,
+      },
       performAction,
     });
     setProjectAdopter(async () => {});
@@ -773,27 +800,26 @@ describe("openNewProjectModal — an action-required refusal", () => {
     npPress("Confirm");
     await flush(3);
 
-    const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
-    const offer = dialogs.at(-1) as HTMLElement;
+    const offer = topmostDialog();
     expect(offer.querySelector('[part="message"]')?.textContent).toBe(
       "Creating repositories needs a team membership.",
     );
     offer.dispatchEvent(new Event("confirm"));
     const result = await promise;
     expect(attempts).toBe(2);
-    expect(result).toEqual({ config: { name: "Joined" }, root: "/home/dev/Sites/joined" } as never);
+    expect(result).toEqual({ config: { name: "Joined" }, root: "/home/dev/Sites/joined" });
   });
 
   test("a declined offer leaves the error standing and asks no more", async () => {
     let attempts = 0;
     installMockPlatform({
-      createProject: (async () => {
+      createProject: async () => {
         attempts += 1;
         throw Object.assign(new Error("Creating repositories needs a team membership."), {
-          actions: [JOIN],
+          actions: [JOIN_LINK],
           code: "action_required",
         });
-      }) as never,
+      },
       performAction: async () => ({ status: "canceled" }),
     });
     const promise = openNewProjectModal();
@@ -806,7 +832,7 @@ describe("openNewProjectModal — an action-required refusal", () => {
     await flush();
     npPress("Confirm");
     await flush(3);
-    const offer = [...document.querySelectorAll("#layer-dialog jx-dialog")].at(-1) as HTMLElement;
+    const offer = topmostDialog();
     offer.dispatchEvent(new Event("cancel"));
     await flush(3);
     expect(attempts).toBe(1);
@@ -842,7 +868,7 @@ describe("openNewProjectModal — adoption", () => {
     expect(result).toEqual({
       config: { name: "My Site" },
       root: "/home/dev/Sites/my-site",
-    } as never);
+    });
     expect(workspace.projectRoot).toBe("/home/dev/Sites/my-site");
     expect(state.calls.map((c) => c[0])).toContain("gitInit");
   });

@@ -6,15 +6,15 @@ import type { GitBranchesResult, GitFileStatus, GitLogEntry, GitStatusResult } f
  * `parseGitStatus` so the two backends say the same thing about the same change; anything not here
  * passes through as itself.
  */
-const STATUS_LETTERS: Record<string, string> = {
-  A: "A",
-  C: "C",
-  D: "D",
-  M: "M",
-  R: "R",
-  T: "T",
-  U: "U",
-};
+const STATUS_LETTERS = new Map<string, string>([
+  ["A", "A"],
+  ["C", "C"],
+  ["D", "D"],
+  ["M", "M"],
+  ["R", "R"],
+  ["T", "T"],
+  ["U", "U"],
+]);
 
 /**
  * `git status --porcelain=v1` → the panel's rows.
@@ -53,10 +53,10 @@ export function parsePorcelainV1(out: string): GitFileStatus[] {
     const path = arrow === -1 ? rest : rest.slice(arrow + " -> ".length);
     const [x = " ", y = " "] = xy;
     if (x !== " ") {
-      files.push({ path, staged: true, status: STATUS_LETTERS[x] ?? x });
+      files.push({ path, staged: true, status: STATUS_LETTERS.get(x) ?? x });
     }
     if (y !== " ") {
-      files.push({ path, staged: false, status: STATUS_LETTERS[y] ?? y });
+      files.push({ path, staged: false, status: STATUS_LETTERS.get(y) ?? y });
     }
   }
   return files;

@@ -6,6 +6,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { handleCodeApi, resolveOxlintBin } from "../src/code-api";
 
+/** The code API answers every `/__studio/code/<action>` POST it knows; `null` means it declined. */
+function handled(res: Response | null): Response {
+  if (res === null) {
+    throw new Error("handleCodeApi declined a request it was expected to answer");
+  }
+  return res;
+}
+
 afterEach(() => {
   delete process.env.JX_OXLINT_BIN;
 });
@@ -22,7 +30,7 @@ describe("code-api — oxlint unavailable", () => {
       method: "POST",
     });
     const res = await handleCodeApi(req, url);
-    const data = await (res as Response).json();
+    const data = await handled(res).json();
     expect(data).toEqual({ diagnostics: [] });
   });
 });

@@ -4,6 +4,7 @@
  * binding from a shadow-doc context path, and the per-expression trace/error guarding.
  */
 import { describe, expect, test } from "bun:test";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import { bindRepeaterContext, cloneLiveScope, evaluateLiveExprs } from "../src/canvas/iframe-eval";
 
 describe("cloneLiveScope", () => {
@@ -11,7 +12,11 @@ describe("cloneLiveScope", () => {
     const defs = { items: [1, 2], title: "Home" };
     const clone = cloneLiveScope(defs, null);
     expect(clone).toEqual({ items: [1, 2], title: "Home" });
-    (clone.items as number[]).push(3);
+    const { items } = clone;
+    if (!Array.isArray(items)) {
+      throw new TypeError("expected the cloned `items` to be an array");
+    }
+    items.push(3);
     expect(defs.items).toEqual([1, 2]);
   });
 
@@ -36,7 +41,7 @@ describe("cloneLiveScope", () => {
         throw new Error("nope");
       },
     });
-    const clone = cloneLiveScope(defs as Record<string, unknown>, null);
+    const clone = cloneLiveScope(defs, null);
     expect(clone.ok).toBe(1);
     expect(clone.boom).toBeNull();
   });
@@ -60,7 +65,7 @@ describe("bindRepeaterContext", () => {
     const bound = bindRepeaterContext(scope, SHADOW, ["children", 0, "map", "children", 0]);
     expect(bound["$map/item"]).toEqual({ title: "First" });
     expect(bound["$map/index"]).toBe(0);
-    expect((bound.$map as { item: unknown }).item).toEqual({ title: "First" });
+    expect(bound.$map).toHaveProperty("item", { title: "First" });
     // The base scope is still reachable through the prototype chain.
     expect(bound.products).toEqual([{ title: "First" }, { title: "Second" }]);
   });
@@ -78,7 +83,11 @@ describe("bindRepeaterContext", () => {
     };
     const bound = bindRepeaterContext({}, shadow, ["children", 0, "map"]);
     expect(bound["$map/item"]).toEqual({ n: 1 });
-    (bound["$map/item"] as { n: number }).n = 99;
+    const item = bound["$map/item"];
+    if (!isJsonObject(item)) {
+      throw new TypeError("expected the bound `$map/item` to be a plain object");
+    }
+    item["n"] = 99;
     expect(shadow.children[0]!.items[0]!.n).toBe(1);
   });
 

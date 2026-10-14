@@ -24,10 +24,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import mediaDoc from "./media-pane.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("media-pane", mediaDoc as unknown as JxDocument);
+registerSurface("media-pane", mediaDoc);
 
 /**
  * Which element the stage draws the file in.
@@ -105,7 +104,7 @@ export interface MediaSurfaceHandle {
  * `$switch` discriminant derived here — "is there a list" is a restatement of the list, and a view
  * that had to keep the two in step would be a second place to get it wrong.
  */
-interface MediaScope extends Record<string, unknown>, MediaView, MediaActions {
+interface MediaScope extends MediaView, MediaActions {
   hasUsageFiles: boolean;
 }
 
@@ -141,7 +140,7 @@ export function mountMediaSurface(
   actions: MediaActions,
 ): MediaSurfaceHandle {
   host.replaceChildren();
-  const scope = reactive<MediaScope>({
+  const scope: MediaScope = reactive<MediaScope>({
     copyRef: actions.copyRef,
     extLabel: "",
     facts: "",
@@ -159,7 +158,7 @@ export function mountMediaSurface(
     usageFiles: [],
     usageHeadline: "",
     usageState: "hidden",
-  }) as MediaScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;
@@ -171,9 +170,11 @@ export function mountMediaSurface(
   const ready = mountSurface("media-pane", scope, host).then((surface) => {
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+    } else {
+      mounted = surface;
     }
-    mounted = surface;
+    /* SAFETY: `media-pane.json`'s root definition is a `div` element, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     return surface.root as HTMLElement;
   });
 

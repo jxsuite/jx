@@ -8,21 +8,33 @@ import { elementAtPoint, elementsAtPoint, rectOf, rectOfRange } from "../src/uti
 describe("geometry funnel helpers", () => {
   test("rectOf returns the element's bounding rect", () => {
     const el = document.createElement("div");
-    const fake = { height: 4, left: 1, top: 2, width: 3 } as DOMRect;
+    const fake = new DOMRect(1, 2, 3, 4);
     el.getBoundingClientRect = () => fake;
     expect(rectOf(el)).toBe(fake);
   });
 
   test("elementAtPoint delegates to the root's elementFromPoint", () => {
     const marker = document.createElement("span");
-    const root = { elementFromPoint: () => marker } as unknown as Document;
+    const root = document.implementation.createHTMLDocument();
+    const asked: number[][] = [];
+    root.elementFromPoint = (x, y) => {
+      asked.push([x, y]);
+      return marker;
+    };
     expect(elementAtPoint(10, 20, root)).toBe(marker);
+    expect(asked).toEqual([[10, 20]]);
   });
 
   test("elementsAtPoint delegates to the root's elementsFromPoint", () => {
     const marker = document.createElement("span");
-    const root = { elementsFromPoint: () => [marker] } as unknown as Document;
+    const root = document.implementation.createHTMLDocument();
+    const asked: number[][] = [];
+    root.elementsFromPoint = (x, y) => {
+      asked.push([x, y]);
+      return [marker];
+    };
     expect(elementsAtPoint(10, 20, root)).toEqual([marker]);
+    expect(asked).toEqual([[10, 20]]);
   });
 
   test("rectOfRange returns a rect with the DOMRect shape", () => {
@@ -41,8 +53,9 @@ describe("geometry funnel helpers", () => {
   });
 
   test("rectOfRange delegates to the range's getBoundingClientRect", () => {
-    const fake = { height: 9, width: 8, x: 6, y: 7 } as DOMRect;
-    const range = { getBoundingClientRect: () => fake } as unknown as Range;
+    const fake = new DOMRect(6, 7, 8, 9);
+    const range = document.createRange();
+    range.getBoundingClientRect = () => fake;
     expect(rectOfRange(range)).toBe(fake);
   });
 });

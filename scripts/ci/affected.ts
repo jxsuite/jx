@@ -451,7 +451,7 @@ async function main(): Promise<void> {
   const byDir = new Map(workspaces.map((w) => [w.dir, w]));
   const include = decision.testDirs.map((dir) => ({ dir, flag: byDir.get(dir)!.flag }));
 
-  const outputs: Record<string, string> = {
+  const outputs = {
     mode: decision.mode,
     reason: decision.reason,
     test_matrix: JSON.stringify({ include }),
@@ -460,7 +460,7 @@ async function main(): Promise<void> {
     gate_lens_mutants: String(decision.lensMutants),
     gate_bundle: JSON.stringify(decision.bundles),
     has_bundle: String(decision.bundles.length > 0),
-  };
+  } satisfies Record<string, string>;
 
   const outFile = process.env.GITHUB_OUTPUT;
   if (outFile) {

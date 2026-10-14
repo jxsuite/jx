@@ -84,12 +84,12 @@ export function normalizeServiceWorker(
  * no benefit.
  */
 function configId(config: ServiceWorkerConfig): string {
-  const shape = JSON.stringify({
+  const fingerprint = JSON.stringify({
     fallback: config.offlineFallback ?? null,
     precache: [...(config.precache ?? [])].toSorted(),
     scope: config.scope ?? "/",
   });
-  return createHash("sha256").update(shape, "utf8").digest("hex").slice(0, 8);
+  return createHash("sha256").update(fingerprint, "utf8").digest("hex").slice(0, 8);
 }
 
 /**

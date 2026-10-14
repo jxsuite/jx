@@ -329,22 +329,26 @@ describe("the brokered Cloudflare row", () => {
 
 describe("the credentials-changed seam", () => {
   test("a revoke announces itself, and unsubscribing stops it", () => {
-    const listener = mock(() => {});
-    const off = onCredentialsChanged(listener);
-    revokeAccount("ai");
-    expect(listener).toHaveBeenCalledTimes(1);
+    const heard: string[] = [];
+    const off = onCredentialsChanged(() => {
+      heard.push("revoke");
+    });
+    expect(revokeAccount("ai")).toBe(true);
+    expect(heard).toEqual(["revoke"]);
     off();
-    revokeAccount("ai");
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(revokeAccount("ai")).toBe(true);
+    expect(heard).toEqual(["revoke"]);
   });
 
-  test("notify reaches every subscriber", () => {
-    const one = mock(() => {});
-    const two = mock(() => {});
-    onCredentialsChanged(one);
-    onCredentialsChanged(two);
+  test("notify reaches every subscriber, in subscription order", () => {
+    const heard: string[] = [];
+    onCredentialsChanged(() => {
+      heard.push("one");
+    });
+    onCredentialsChanged(() => {
+      heard.push("two");
+    });
     notifyCredentialsChanged();
-    expect(one).toHaveBeenCalledTimes(1);
-    expect(two).toHaveBeenCalledTimes(1);
+    expect(heard).toEqual(["one", "two"]);
   });
 });

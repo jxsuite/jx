@@ -318,7 +318,7 @@ describe("assetCapabilities", () => {
   test("an oversized file is refused before the round trip, naming the limit", async () => {
     const { state } = installMockPlatform({
       assetCapabilities: { maxUploadBytes: 1024 },
-    } as never);
+    });
     const big = testFile("huge.png");
     Object.defineProperty(big, "size", { value: 4096 });
 
@@ -328,7 +328,7 @@ describe("assetCapabilities", () => {
   });
 
   test("the rest of the batch still lands", async () => {
-    installMockPlatform({ assetCapabilities: { maxUploadBytes: 1024 } } as never);
+    installMockPlatform({ assetCapabilities: { maxUploadBytes: 1024 } });
     const big = testFile("huge.png");
     Object.defineProperty(big, "size", { value: 4096 });
 
@@ -340,7 +340,7 @@ describe("assetCapabilities", () => {
   test("a declared accept narrows the picker; absent, Studio's own default stands", () => {
     installMockPlatform();
     expect(uploadAccept()).toContain("image/*");
-    installMockPlatform({ assetCapabilities: { accept: "image/png" } } as never);
+    installMockPlatform({ assetCapabilities: { accept: "image/png" } });
     expect(uploadAccept()).toBe("image/png");
   });
 });

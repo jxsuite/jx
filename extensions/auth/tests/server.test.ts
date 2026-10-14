@@ -16,6 +16,8 @@ import {
   getSessionContext,
   splitSqlStatements,
 } from "../src/server";
+import type { HostEnv } from "@jxsuite/connector/provider-utils";
+import type { ConnectionDef } from "@jxsuite/connector/types";
 import type { AuthProjectConfig, AuthSection } from "../src/config";
 
 const TMP = resolve(import.meta.dir, "__test-auth-server__");
@@ -88,7 +90,7 @@ describe("getAuthMigrations", () => {
     let called = 0;
     const connectors = {
       sqlite: {
-        dialect: (connection: Parameters<typeof Sqlite.dialect>[0], e: Record<string, unknown>) => {
+        dialect: (connection: ConnectionDef, e: HostEnv) => {
           called += 1;
           return Sqlite.dialect(connection, e);
         },
@@ -120,10 +122,10 @@ describe("createJxAuth + getSessionContext", () => {
       new Request("http://localhost:3000/anything", { headers: { cookie } }),
     );
     expect(session).not.toBeNull();
-    expect(typeof session!.userId).toBe("string");
+    expect(session?.userId).toBeTypeOf("string");
     // The role column exists but is unset — assigned via the data grid, never at sign-up.
-    expect(session!.role).toBeUndefined();
-    expect((session!.user as { email: string }).email).toBe("kevin@example.com");
+    expect(session?.role).toBeUndefined();
+    expect(session?.user?.email).toBe("kevin@example.com");
 
     const anonymous = await getSessionContext(auth, new Request("http://localhost:3000/x"));
     expect(anonymous).toBeNull();

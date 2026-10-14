@@ -6,8 +6,8 @@
  * @docs extending/extensions/search
  */
 
-import type { JxElement } from "@jxsuite/schema/types";
-import { displayTagName } from "@jxsuite/schema/guards";
+import type { JsonValue, JxElement } from "@jxsuite/schema/types";
+import { displayTagName, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 
 /** One collection's index configuration inside the `search` project section. */
 export interface SearchCollectionConfig {
@@ -23,11 +23,17 @@ export interface SearchCollectionConfig {
   sectionDepth?: number;
 }
 
-/** The raw `search` project section (schemas/project.fragment.schema.json). */
+/**
+ * The raw `search` project section (schemas/project.fragment.schema.json).
+ *
+ * A collection's members are all optional here, `basePath` included: the schema requires it, but
+ * this is the value before anything validated it, and {@link normalizeSearchConfig} defaults a
+ * missing one to `/` rather than rejecting it.
+ */
 export interface SearchSection {
   engine?: "minisearch";
   output?: string;
-  collections?: Record<string, SearchCollectionConfig>;
+  collections?: Record<string, Partial<SearchCollectionConfig>>;
 }
 
 /** A fully-defaulted collection config. */
@@ -45,8 +51,15 @@ export const DEFAULT_FIELDS = ["title", "heading", "text"];
 export const DEFAULT_SECTION_DEPTH = 3;
 
 /** Apply schema defaults to a raw `search` section value. */
-export function normalizeSearchConfig(sectionValue?: unknown): NormalizedSearchConfig {
-  const section = (sectionValue ?? {}) as SearchSection;
+export function normalizeSearchConfig(sectionValue?: JsonValue): NormalizedSearchConfig {
+  /*
+   * SAFETY: a JSON object here is the project's `search` section, whose member shapes
+   * schemas/project.fragment.schema.json defines and `jx validate` and the editor enforce. This
+   * normalizer only fills defaults for absent members; it never re-validates member types. Any
+   * other value (absent, null, a scalar, an array) has none of the section's members, so it reads
+   * as an empty section.
+   */
+  const section: SearchSection = isJsonObject(sectionValue) ? (sectionValue as SearchSection) : {};
   const collections: Record<string, NormalizedCollectionConfig> = {};
   for (const [name, raw] of Object.entries(section.collections ?? {})) {
     collections[name] = {
@@ -85,13 +98,13 @@ export function jxTreeToText(children?: (JxElement | string)[]): string {
 }
 
 /** The five entities the parser's escaping and an author's markup commonly leave in `innerHTML`. */
-const ENTITIES: Record<string, string> = {
-  "&#36;": "$",
-  "&amp;": "&",
-  "&gt;": ">",
-  "&lt;": "<",
-  "&quot;": '"',
-};
+const ENTITIES = new Map<string, string>([
+  ["&#36;", "$"],
+  ["&amp;", "&"],
+  ["&gt;", ">"],
+  ["&lt;", "<"],
+  ["&quot;", '"'],
+]);
 
 /**
  * The text of an `innerHTML` string: tags dropped, the common entities decoded.
@@ -103,26 +116,30 @@ const ENTITIES: Record<string, string> = {
 function innerHtmlText(html: string): string {
   return html
     .replaceAll(/<[^>]*>/g, " ")
-    .replaceAll(/&#36;|&amp;|&gt;|&lt;|&quot;/g, (entity) => ENTITIES[entity]!);
+    .replaceAll(/&#36;|&amp;|&gt;|&lt;|&quot;/g, (entity) => ENTITIES.get(entity) ?? entity);
 }
 
 function collectText(children: (JxElement | string)[] | undefined): string[] {
   const parts: string[] = [];
   for (const node of children ?? []) {
-    if (typeof node === "string") {
+    if (isString(node)) {
       parts.push(node);
       continue;
     }
-    if (typeof node !== "object" || node === null) {
+    /*
+     * The tree is a format class's `load` output, which nothing validates: a `null` child in
+     * hand-written JSON is skipped rather than allowed to throw on the reads below.
+     */
+    if (!isNonNullObject(node)) {
       continue;
     }
-    if (typeof node.textContent === "string") {
+    if (isString(node.textContent)) {
       parts.push(node.textContent);
-    } else if (typeof node.innerHTML === "string") {
+    } else if (isString(node.innerHTML)) {
       parts.push(innerHtmlText(node.innerHTML));
     }
     if (Array.isArray(node.children)) {
-      parts.push(...collectText(node.children as (JxElement | string)[]));
+      parts.push(...collectText(node.children));
     }
   }
   return parts;
@@ -174,9 +191,9 @@ export function splitEntry(
       continue;
     }
     const parts = current ? current.parts : preambleParts;
-    if (typeof node === "string") {
+    if (isString(node)) {
       parts.push(node);
-    } else if (typeof node === "object" && node !== null) {
+    } else if (isNonNullObject(node)) {
       parts.push(jxTreeToText([node]));
     }
   }
@@ -207,7 +224,7 @@ function normalizeText(parts: readonly string[]): string {
 function headingOf(
   node: JxElement | string,
 ): { heading: string; anchor: string; depth: number } | null {
-  if (typeof node !== "object" || node === null || !node.tagName) {
+  if (!isNonNullObject(node) || !node.tagName) {
     return null;
   }
   const match = HEADING_TAG.exec(displayTagName(node.tagName));
@@ -215,7 +232,7 @@ function headingOf(
     return null;
   }
   return {
-    anchor: typeof node.id === "string" ? node.id : "",
+    anchor: isString(node.id) ? node.id : "",
     depth: Number(match[1]),
     heading: jxTreeToText([node]),
   };

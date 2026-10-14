@@ -17,6 +17,7 @@
  * (happy-dom's `elementFromPoint` returns null) and lives in iframe-interaction.
  */
 
+import { isNumber } from "@jxsuite/schema/guards";
 import { parseJxPath } from "./path-mapping";
 import { rectOf } from "../utils/geometry";
 import { childIndex, parentElementPath } from "../state";
@@ -48,7 +49,7 @@ function isRowLayout(parent: HTMLElement): boolean {
   const isGrid = display === "grid" || display === "inline-grid";
   return (
     (isFlex && style.flexDirection.startsWith("row")) ||
-    (isGrid && (style.gridAutoFlow ?? "").startsWith("column"))
+    (isGrid && style.gridAutoFlow.startsWith("column"))
   );
 }
 
@@ -78,11 +79,11 @@ export function computeInsertZones(
   shadowDoc: JxMutableNode,
 ): InsertZone[] | null {
   void shadowDoc;
-  const serialized = targetEl.dataset?.jxPath;
+  const serialized = targetEl.dataset.jxPath;
   if (serialized == null) {
     return null;
   }
-  const targetPath = parseJxPath(serialized) as JxPath;
+  const targetPath = parseJxPath(serialized);
 
   // Empty container: one centered "+" that inserts as the container's first child.
   if (targetEl.classList.contains(EMPTY_CONTAINER_CLASS)) {
@@ -99,7 +100,7 @@ export function computeInsertZones(
     return null;
   }
   const childIdx = childIndex(targetPath);
-  if (typeof childIdx !== "number") {
+  if (!isNumber(childIdx)) {
     return null;
   }
 

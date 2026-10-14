@@ -43,15 +43,12 @@ describe("the JSON-Schema description", () => {
      * helpers by hand, with nothing checking it, so a fourth could ship while the schema went on
      * telling authors it did not exist.
      */
-    const branches = expressionNodeSchema.oneOf as readonly {
-      description?: string;
-      title?: string;
-    }[];
-    const call = branches.find((branch) => branch.title?.startsWith("call —"));
-    expect(call?.description).toBeString();
+    const call = expressionNodeSchema.oneOf.find((branch) => branch.title.startsWith("call —"));
+    const description = call !== undefined && "description" in call ? call.description : undefined;
+    expect(description).toBeString();
     for (const path of INTL_HELPER_PATHS) {
-      expect(call!.description).toContain(path);
+      expect(description).toContain(path);
     }
-    expect(call!.description).toContain(intlHelpersClause());
+    expect(description).toContain(intlHelpersClause());
   });
 });

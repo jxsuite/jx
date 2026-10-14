@@ -20,14 +20,14 @@ const BASE: JxMutableNode = {
   tagName: "div",
 };
 
-function fresh(): { ydoc: Y.Doc; mirror: JxMutableNode } {
+function fresh() {
   const ydoc = new Y.Doc();
   seedStructure(ydoc, BASE);
   return { mirror: structuredClone(BASE), ydoc };
 }
 
 /** Apply ops to both representations and assert they agree. */
-function applyBoth(state: { ydoc: Y.Doc; mirror: JxMutableNode }, ops: JxDocOp[]) {
+function applyBoth(state: ReturnType<typeof fresh>, ops: JxDocOp[]) {
   for (const op of ops) {
     applyDocOpToDoc(state.mirror, op);
   }
@@ -158,14 +158,18 @@ describe("applyDocOpsToY mirrors the plain applier", () => {
 
   test("an unknown op kind throws a plain error (not CollabPathError)", () => {
     const { ydoc } = fresh();
-    expect(() =>
-      applyDocOpsToY(ydoc, [{ op: "explode" } as unknown as JxDocOp], LOCAL_ORIGIN),
-    ).toThrow("unknown-doc-op:explode");
+    // A wire-shaped op whose kind is outside the vocabulary, as a peer on a newer build could send.
+    const foreign = { op: "explode" };
+    /* SAFETY: deliberately NOT a valid JxDocOp. applyDocOpsToY dispatches on `.op` alone, matches no
+       known kind for "explode", and throws before reading any other member, which is the behavior
+       this test pins. */
+    const ops = [foreign as JxDocOp];
+    expect(() => applyDocOpsToY(ydoc, ops, LOCAL_ORIGIN)).toThrow("unknown-doc-op:explode");
   });
 });
 
 describe("two docs wired memory-to-memory converge", () => {
-  function wirePair(): { a: Y.Doc; b: Y.Doc } {
+  function wirePair() {
     const a = new Y.Doc();
     const b = new Y.Doc();
     seedStructure(a, BASE);
@@ -188,9 +192,12 @@ describe("two docs wired memory-to-memory converge", () => {
       LOCAL_ORIGIN,
     );
     expect(yDocToJson(a)).toEqual(yDocToJson(b));
-    const doc = yDocToJson(a) as { children: { tagName?: string; textContent?: string }[] };
-    expect(doc.children[0]!.tagName).toBe("nav");
-    expect(doc.children[1]!.textContent).toBe("From A");
+    const { children } = yDocToJson(a);
+    if (!Array.isArray(children)) {
+      throw new TypeError("expected the converged root to keep its children array");
+    }
+    expect(children[0]).toMatchObject({ tagName: "nav" });
+    expect(children[1]).toMatchObject({ textContent: "From A" });
   });
 
   test("concurrent sibling inserts both survive (CRDT merge)", () => {
@@ -215,21 +222,38 @@ describe("two docs wired memory-to-memory converge", () => {
     Y.applyUpdate(b, updateA);
     const docA = yDocToJson(a);
     expect(yDocToJson(b)).toEqual(docA);
-    expect((docA as { children: unknown[] }).children).toHaveLength(5);
+    expect(docA.children).toHaveLength(5);
   });
 });
+
+/** One replayed remote transaction: the ops it converted to (null = diff fallback) and the docs. */
+interface RemoteCapture {
+  ops: JxDocOp[] | null;
+  observed: boolean;
+  b: Y.Doc;
+  before: JxMutableNode;
+}
+
+/** The members of a Y event that yEventsToDocOps reads off a plain-object (non-instanceof) fake. */
+interface FakeEventFields {
+  path: readonly unknown[];
+  target?: { doc: Y.Doc | null };
+}
+
+/** A malformed or stale Y event, for the defensive bails no live transaction can reach. */
+function fakeEvent(fields: FakeEventFields): Y.YEvent<Y.AbstractType<unknown>> {
+  /* SAFETY: yEventsToDocOps reads `path` on every event, `target.doc` only on the granular branch,
+     and otherwise only `instanceof` checks, which a plain object fails exactly as a non-array,
+     non-text event would. Each fake supplies the members of the one branch it drives. */
+  return fields as Y.YEvent<Y.AbstractType<unknown>>;
+}
 
 describe("yEventsToDocOps (fast inbound path)", () => {
   /**
    * Replay one remote transaction from A into B and convert B's deep events INSIDE the observer
    * callback (yjs forbids reading event.changes after the transaction), like the bridge does.
    */
-  function captureRemote(mutate: (a: Y.Doc) => void): {
-    ops: JxDocOp[] | null;
-    observed: boolean;
-    b: Y.Doc;
-    before: JxMutableNode;
-  } {
+  function captureRemote(mutate: (a: Y.Doc) => void): RemoteCapture {
     const a = new Y.Doc();
     const b = new Y.Doc();
     seedStructure(a, BASE);
@@ -239,7 +263,7 @@ describe("yEventsToDocOps (fast inbound path)", () => {
     let observed = false;
     b.getMap("structure").observeDeep((events) => {
       observed = true;
-      ops = yEventsToDocOps(events as unknown as Y.YEvent<never>[]);
+      ops = yEventsToDocOps(events);
     });
     mutate(a);
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)));
@@ -339,7 +363,7 @@ describe("yEventsToDocOps (fast inbound path)", () => {
   });
 
   test("a path with a non-string/number segment bails to null", () => {
-    const fake = { path: [Symbol("weird")] } as unknown as Y.YEvent<never>;
+    const fake = fakeEvent({ path: [Symbol("weird")] });
     expect(yEventsToDocOps([fake])).toBeNull();
   });
 
@@ -349,8 +373,15 @@ describe("yEventsToDocOps (fast inbound path)", () => {
      as a whole child replacement. */
   test("a remote edit inside a bare-string child becomes set-child", () => {
     const result = captureRemote((a) => {
-      const children = a.getMap("structure").get("children") as Y.Array<unknown>;
-      (children.get(2) as Y.Text).insert(5, "r");
+      const children = a.getMap("structure").get("children");
+      if (!(children instanceof Y.Array)) {
+        throw new TypeError("expected the seeded root children to be a Y.Array");
+      }
+      const loose = children.get(2);
+      if (!(loose instanceof Y.Text)) {
+        throw new TypeError("expected the bare-string child to be a Y.Text");
+      }
+      loose.insert(5, "r");
     });
     expect(assertFaithful(result)).toEqual([
       { index: 2, node: "looser", op: "set-child", parentPath: [] },
@@ -364,7 +395,10 @@ describe("yEventsToDocOps (fast inbound path)", () => {
      real YTextEvent prototype (instanceof matters here, unlike the plain-object fakes below)
      and an own `path` that shadows YEvent's getter. */
   test("a Y.Text event off the bare-string-child shape bails to null", () => {
-    const fake = Object.create(Y.YTextEvent.prototype) as Y.YEvent<never>;
+    /* SAFETY: the object really inherits YTextEvent.prototype, so the `instanceof Y.YTextEvent`
+       branch sees it as one; the only member yEventsToDocOps reads on that branch before bailing
+       is `path`, which the defineProperty below supplies. */
+    const fake = Object.create(Y.YTextEvent.prototype) as Y.YEvent<Y.AbstractType<unknown>>;
     Object.defineProperty(fake, "path", { value: ["oops"] });
     expect(yEventsToDocOps([fake])).toBeNull();
   });
@@ -373,20 +407,14 @@ describe("yEventsToDocOps (fast inbound path)", () => {
      API — a live container always has a doc and always resolves — but a malformed or stale event
      must degrade to "reconcile by diffing", never to a wrong op. */
   test("a granular event whose container has no doc bails to null", () => {
-    const fake = {
-      path: ["children", 0, "style"],
-      target: { doc: null },
-    } as unknown as Y.YEvent<never>;
+    const fake = fakeEvent({ path: ["children", 0, "style"], target: { doc: null } });
     expect(yEventsToDocOps([fake])).toBeNull();
   });
 
   test("a granular event addressing a node that no longer exists bails to null", () => {
     const doc = new Y.Doc();
     seedStructure(doc, BASE);
-    const fake = {
-      path: ["children", 99, "style"],
-      target: { doc },
-    } as unknown as Y.YEvent<never>;
+    const fake = fakeEvent({ path: ["children", 99, "style"], target: { doc } });
     expect(yEventsToDocOps([fake])).toBeNull();
   });
 
@@ -403,7 +431,7 @@ describe("yEventsToDocOps (fast inbound path)", () => {
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
     let ops: JxDocOp[] | null | "unset" = "unset";
     b.getMap("structure").observeDeep((events) => {
-      ops = yEventsToDocOps(events as unknown as Y.YEvent<never>[]);
+      ops = yEventsToDocOps(events);
     });
     // One transaction splicing two disjoint children arrays: neither path contains the other, so
     // The overlap guard passes and the multi-array guard must bail.
@@ -428,12 +456,34 @@ describe("yEventsToDocOps (fast inbound path)", () => {
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
     let ops: JxDocOp[] | null | "unset" = "unset";
     b.getMap("structure").observeDeep((events) => {
-      ops = yEventsToDocOps(events as unknown as Y.YEvent<never>[]);
+      ops = yEventsToDocOps(events);
     });
+    const items = a.getMap("structure").get("items");
+    if (!(items instanceof Y.Array)) {
+      throw new TypeError("expected the off-contract key to hold the Y.Array set above");
+    }
     a.transact(() => {
-      (a.getMap("structure").get("items") as Y.Array<unknown>).insert(0, ["x"]);
+      items.insert(0, ["x"]);
     });
     Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)));
     expect(ops).toBeNull();
+  });
+
+  /* A children array written by an off-contract peer: a plain object or a number where this
+     package's writers store a node Y.Map, a Y.Text or a schema-version-1 string. Converting it
+     must bail to "reconcile by diffing" rather than throw out of the observer. */
+  test.each([
+    ["a plain object", { tagName: "span" }],
+    ["a number", 7],
+  ])("an off-contract children item (%s) bails to null", (_label, item) => {
+    const result = captureRemote((a) => {
+      const children = a.getMap("structure").get("children");
+      if (!(children instanceof Y.Array)) {
+        throw new TypeError("expected seedStructure to store the root children as a Y.Array");
+      }
+      children.insert(1, [item]);
+    });
+    expect(result.observed).toBe(true);
+    expect(result.ops).toBeNull();
   });
 });

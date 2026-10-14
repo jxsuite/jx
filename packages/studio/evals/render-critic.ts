@@ -1,10 +1,10 @@
 /**
  * Render-critic.js — shadow-render grader for the AI-assistant eval harness.
  *
- * The shadow-render critic (docs/extending/contributing/ai-evals.md). Mounts a produced Jx
- * document with the *real* @jxsuite/runtime under happy-dom (the same render path the Studio canvas
- * uses, see packages/studio/src/canvas/canvas-live-render.ts) and reports any error it surfaces:
- * thrown errors during scope-building or node rendering, and console.error/warn (unresolved $ref /
+ * The shadow-render critic (docs/extending/contributing/ai-evals.md). Mounts a produced Jx document
+ * with the _real_ @jxsuite/runtime under happy-dom (the same render path the Studio canvas uses,
+ * see packages/studio/src/canvas/canvas-live-render.ts) and reports any error it surfaces: thrown
+ * errors during scope-building or node rendering, and console.error/warn (unresolved $ref /
  * $prototype, reactive-binding failures, etc.).
  *
  * Error strings are written LLM-first (Fowler's "Sensors"): each one names the failure and how to
@@ -14,7 +14,7 @@
  */
 
 import { buildScope, renderNode, setSkipServerFunctions } from "@jxsuite/runtime";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 /** @typedef {{ pass: boolean; errors: string[] }} GradeResult */
 
@@ -47,10 +47,10 @@ function asSensorMessage(raw: string): string {
  *
  * Assumes happy-dom is already registered globally (import "./with-dom.ts" once per process).
  *
- * @param {unknown} doc - The produced Jx document (raw, not reactive).
+ * @param {JsonValue} doc - The produced Jx document (raw, not reactive).
  * @returns {Promise<GradeResult>}
  */
-export async function renderCritic(doc: unknown): Promise<{ pass: boolean; errors: string[] }> {
+export async function renderCritic(doc: JsonValue): Promise<{ pass: boolean; errors: string[] }> {
   const errors: string[] = [];
 
   // Capture the runtime's own diagnostics — it warns (not throws) on most soft failures
@@ -74,9 +74,12 @@ export async function renderCritic(doc: unknown): Promise<{ pass: boolean; error
     // Otherwise the harness would hang on proxy calls it can't service.
     setSkipServerFunctions(true);
 
+    /* SAFETY: deliberately unchecked. Whether this JSON is a renderable document is the question
+       the critic exists to answer, so it goes to the runtime as one, and a document that is not
+       surfaces as a throw or a console diagnostic, both of which are collected into `errors`. */
     const renderDoc = structuredClone(doc) as JxDocument;
     const $defs = await buildScope(renderDoc, {}, "http://eval.local/");
-    const el = renderNode(renderDoc as JxElement, $defs, { _path: [] });
+    const el = renderNode(renderDoc, $defs, { _path: [] });
     host.append(el);
   } catch (error) {
     errors.push(

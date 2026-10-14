@@ -28,16 +28,28 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
-import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
-import type { JsonObject as SchemaJsonObject, JsonValue } from "@jxsuite/schema/types";
-/* Type-only, so it is erased: see the import rule above. */
+import {
+  isBigInt,
+  isBoolean,
+  isFunction,
+  isJsonObject,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
+import type { ChatStore, ChatUsage } from "@jxsuite/ai/chat-state";
+import type { LiveMessage, OpenAIMessage } from "@jxsuite/ai/messages";
+import type {
+  ProxyStreamingClientOptions,
+  StreamEvent,
+  StreamingClient,
+} from "@jxsuite/ai/streaming-client";
+import type { AiWrite, ToolResult } from "@jxsuite/ai/tools";
+import type { JsonObject, JsonPrimitive, JsonValue, JxMutableNode } from "@jxsuite/schema/types";
+/* Type-only, so they are erased: see the import rule above. */
+import type { PendingAsk } from "../../src/services/ai-ask";
 import type * as AiWritesExports from "../../src/services/ai-writes";
-
-/** Plain JSON, the only thing a golden holds (the schema package's own recursive definition). */
-export type Json = JsonValue;
-
-/** A JSON object. */
-export type JsonObject = SchemaJsonObject;
+import type { ProjectConfigCommit } from "../../src/tabs/project-config";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const AI_WRITES = resolve(import.meta.dir, "../../src/services/ai-writes.ts");
@@ -45,70 +57,122 @@ const AI_WRITES = resolve(import.meta.dir, "../../src/services/ai-writes.ts");
 // ─── Snapshots ────────────────────────────────────────────────────────────────
 
 /**
+ * What a trace snapshots, named by owner. JSON-shaped data and the literals the recorder builds
+ * around it are spelled structurally; the records the recorder and its scenarios capture are named
+ * by the module that owns them. The ledger, the store and the scenarios also hand over values the
+ * static types cannot describe (a proxied store's method arguments, a reactive document read
+ * through its proxy), and {@link jsonSafe} classifies every value at run time regardless.
+ */
+export type TraceSubject =
+  | JsonPrimitive
+  | undefined
+  | readonly TraceSubject[]
+  | TraceRecord
+  | OpenAIMessage
+  | AiWrite
+  | ToolResult
+  | ChatUsage
+  | ChatCall
+  | ClientCall
+  | JxMutableNode
+  | PendingAsk
+  | ProxyStreamingClientOptions
+  | ProjectConfigCommit;
+
+/** An object literal of trace subjects, keyed by name. */
+export interface TraceRecord {
+  [key: string]: TraceSubject;
+}
+
+/** An object the serializer is inside: the value it came from, and what it was handed instead. */
+interface OpenObject {
+  source: object;
+  standIn: readonly TraceSubject[] | TraceRecord;
+}
+
+/**
  * A JSON-safe deep copy, taken NOW. Reactive proxies are read through (their own `ownKeys`),
  * `undefined` and functions are dropped the way `JSON.stringify` drops them, Maps and Sets become
  * objects and arrays, and a cycle is marked rather than followed.
+ *
+ * The platform serializer does the walking. Its replacer sees one property at a time with its
+ * holder as `this`, reads the property itself, and hands back a JSON value or a plain stand-in for
+ * the serializer to descend into: what a `toJSON` method returns is never used, a boxed primitive
+ * is copied like any other object, and the serializer never reaches a cycle to throw on. The text
+ * is then parsed back and decoded through {@link isJsonValue}.
  */
-export function jsonSafe(value: unknown): Json {
-  const stack = new Set<object>();
-  const walk = (input: unknown): Json | undefined => {
-    if (input === null) {
-      return null;
+export function jsonSafe(value: TraceSubject): JsonValue {
+  /* The objects being written, outermost first. A property arrives with the stand-in that holds
+     it as `this`, so everything opened after that stand-in is a finished sibling subtree. */
+  const open: OpenObject[] = [];
+  // Wrapped in an array so a top-level undefined is written as null, as it is inside any array.
+  const text = JSON.stringify([value], function snapshot(key) {
+    while (open.length > 0 && open.at(-1)?.standIn !== this) {
+      open.pop();
     }
-    switch (typeof input) {
-      case "string":
-      case "boolean": {
-        return input;
-      }
-      case "number": {
-        return Number.isFinite(input) ? input : String(input);
-      }
-      case "bigint": {
-        return `${input}n`;
-      }
-      case "undefined":
-      case "function":
-      case "symbol": {
-        return undefined;
-      }
-      default: {
-        break;
-      }
+    /* Read the property itself, not the replacer's second argument: by then the serializer has
+       already swapped in whatever the value's `toJSON` returned. */
+    const source: unknown = this[key];
+    if (source === null || isString(source) || isBoolean(source)) {
+      return source;
     }
-    const obj = input as object;
-    if (stack.has(obj)) {
+    if (isNumber(source)) {
+      return Number.isFinite(source) ? source : String(source);
+    }
+    if (isBigInt(source)) {
+      return `${source}n`;
+    }
+    // What is left is undefined, a function, a symbol, or an object; JSON keeps only the object.
+    if (!isNonNullObject(source)) {
+      return;
+    }
+    if (open.some((entry) => entry.source === source)) {
       return "<cycle>";
     }
-    stack.add(obj);
-    try {
-      if (Array.isArray(obj)) {
-        return obj.map((item) => walk(item) ?? null);
+    let standIn: OpenObject["standIn"];
+    if (Array.isArray(source)) {
+      standIn = [...source];
+    } else if (source instanceof Map) {
+      standIn = Object.fromEntries(source);
+    } else if (source instanceof Set) {
+      standIn = [...source];
+    } else if (source instanceof Error) {
+      standIn = { error: source.message };
+    } else if (typeof AbortSignal !== "undefined" && source instanceof AbortSignal) {
+      standIn = { aborted: source.aborted };
+    } else {
+      // Assigned name by name, as the hand-written walk this replaced built its copy.
+      const copy: TraceRecord = {};
+      for (const [name, item] of Object.entries(source)) {
+        copy[name] = item;
       }
-      if (obj instanceof Map) {
-        return walk(Object.fromEntries(obj)) ?? null;
-      }
-      if (obj instanceof Set) {
-        return walk([...obj]) ?? null;
-      }
-      if (obj instanceof Error) {
-        return { error: obj.message };
-      }
-      if (typeof AbortSignal !== "undefined" && obj instanceof AbortSignal) {
-        return { aborted: obj.aborted };
-      }
-      const out: JsonObject = {};
-      for (const [key, item] of Object.entries(obj)) {
-        const json = walk(item);
-        if (json !== undefined) {
-          out[key] = json;
-        }
-      }
-      return out;
-    } finally {
-      stack.delete(obj);
+      standIn = copy;
     }
-  };
-  return walk(value) ?? null;
+    open.push({ source, standIn });
+    return standIn;
+  });
+  const parsed: unknown = JSON.parse(text);
+  if (!isJsonValue(parsed) || !Array.isArray(parsed)) {
+    throw new Error("A snapshot is written as a one-item JSON array");
+  }
+  return parsed[0] ?? null;
+}
+
+/**
+ * True for what `JSON.parse` can produce: null, booleans, finite numbers, strings, and nests of
+ * them.
+ */
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || isString(value) || isBoolean(value)) {
+    return true;
+  }
+  if (isNumber(value)) {
+    return Number.isFinite(value);
+  }
+  if (Array.isArray(value)) {
+    return value.every((item) => isJsonValue(item));
+  }
+  return isJsonObject(value) && Object.values(value).every((item) => isJsonValue(item));
 }
 
 /** Machine-specific absolute paths, replaced by stable placeholders. Longest first. */
@@ -133,7 +197,7 @@ export interface ChatCall {
   chat: number;
   /** The method name, or `set <prop>` for a top-level property write. */
   method: string;
-  args: Json[];
+  args: JsonValue[];
 }
 
 /** Where recorded stores write. Several stores may share one log; each gets its own number. */
@@ -166,27 +230,31 @@ export function recordChatState<T extends object>(
 ): T {
   log.chats += 1;
   const chat = log.chats;
-  const wrappers = new Map<string, { real: unknown; wrapper: unknown }>();
+  type Method = (...args: never[]) => void;
+  const wrappers = new Map<string, { real: Method; wrapper: Method }>();
   const proxy = new Proxy(chatState, {
     get(target, key) {
-      const value: unknown = Reflect.get(target, key);
-      if (typeof key !== "string" || typeof value !== "function") {
+      /* SAFETY: `key` is the property this very read asked the proxy for, so indexing `target` by
+         it is the same [[Get]] (receiver `target`) Reflect.get would perform; a key `target` lacks
+         reads undefined either way, which the type of `value` admits. */
+      const value: unknown = target[key as keyof T];
+      if (!isString(key) || !isFunction(value)) {
         return value;
       }
       const cached = wrappers.get(key);
       if (cached?.real === value) {
         return cached.wrapper;
       }
-      const real = value as (...args: unknown[]) => unknown;
-      const wrapper = (...args: unknown[]) => {
+      // The wrapper takes what the real method takes, and hands back whatever it returned.
+      const wrapper = (...args: never[]) => {
         log.calls.push({ args: args.map((arg) => jsonSafe(arg)), chat, method: key });
-        return real.apply(target, args);
+        return value.apply(target, args);
       };
       wrappers.set(key, { real: value, wrapper });
       return wrapper;
     },
     set(target, key, value) {
-      if (typeof key === "string") {
+      if (isString(key)) {
         log.calls.push({ args: [jsonSafe(value)], chat, method: `set ${key}` });
       }
       return Reflect.set(target, key, value);
@@ -197,7 +265,7 @@ export function recordChatState<T extends object>(
 }
 
 /** The log a recorded store writes to, or undefined for a store that was never recorded. */
-export function chatCallsOf(chatState: object): ChatCall[] | undefined {
+export function chatCallsOf(chatState: ChatStore): ChatCall[] | undefined {
   return chatLogs.get(chatState)?.calls;
 }
 
@@ -225,7 +293,7 @@ export function digestPrompt(prompt: string): PromptDigest {
 export interface ClientCall {
   /** Which spied client (1-based, per log) took the call. */
   client: number;
-  messages: Json[];
+  messages: JsonValue[];
   tools: string[];
   systemPrompt: PromptDigest;
   /** The abort signal's state when the call began. */
@@ -244,6 +312,59 @@ export interface ClientCallLog {
 
 export function createClientCallLog(): ClientCallLog {
   return { calls: [], clients: 0, prompts: [] };
+}
+
+/*
+ * What a `streamChat` call actually received. The client's declared signature promises all four
+ * arguments, but scenarios do call it without them — the "only ever asks" golden records a call
+ * with no signal — so these readers take the argument as it may really arrive.
+ */
+
+/** The system prompt as text; a missing one is the empty prompt. */
+function receivedPrompt(systemPrompt: string | null | undefined): string {
+  return String(systemPrompt ?? "");
+}
+
+/** The abort signal's state when the call began. */
+function receivedSignal(signal: AbortSignal | null | undefined): ClientCall["signal"] {
+  if (signal === null || signal === undefined) {
+    return "none";
+  }
+  return signal.aborted ? "aborted" : "live";
+}
+
+/** The advertised tool names, in order, read off OpenAI function-calling definitions. */
+function receivedToolNames(tools: readonly object[] | null | undefined): string[] {
+  return (tools ?? []).map((tool) => {
+    const fn = "function" in tool ? tool.function : undefined;
+    const name = isNonNullObject(fn) && "name" in fn ? fn.name : undefined;
+    return isString(name) ? name : "<unnamed>";
+  });
+}
+
+/**
+ * True for one message on the OpenAI chat-completions wire, which every round is projected onto
+ * (`toOpenAIMessages`, `ChatStore.toMessagesArray`) before `streamChat` is handed it.
+ */
+function isOpenAIMessage(value: unknown): value is OpenAIMessage {
+  if (!isNonNullObject(value) || !("role" in value) || !("content" in value)) {
+    return false;
+  }
+  switch (value.role) {
+    case "user":
+    case "system": {
+      return isString(value.content);
+    }
+    case "assistant": {
+      return value.content === null || isString(value.content);
+    }
+    case "tool": {
+      return isString(value.content) && "tool_call_id" in value && isString(value.tool_call_id);
+    }
+    default: {
+      return false;
+    }
+  }
 }
 
 /**
@@ -265,21 +386,25 @@ export function spyStreamingClient<C extends StreamingClient>(
     systemPrompt: string,
     signal: AbortSignal,
   ): AsyncGenerator<StreamEvent> {
-    log.prompts.push(String(systemPrompt ?? ""));
+    log.prompts.push(receivedPrompt(systemPrompt));
+    if (!messages.every((message) => isOpenAIMessage(message))) {
+      throw new Error("streamChat is handed each round projected onto the OpenAI chat wire");
+    }
+    const snapshot = jsonSafe(messages);
     log.calls.push({
       client: index,
-      messages: (jsonSafe(messages) as Json[] | null) ?? [],
-      signal: signal ? (signal.aborted ? "aborted" : "live") : "none",
-      systemPrompt: digestPrompt(String(systemPrompt ?? "")),
-      tools: ((tools ?? []) as { function?: { name?: string } }[]).map(
-        (tool) => tool.function?.name ?? "<unnamed>",
-      ),
+      messages: Array.isArray(snapshot) ? snapshot : [],
+      signal: receivedSignal(signal),
+      systemPrompt: digestPrompt(receivedPrompt(systemPrompt)),
+      tools: receivedToolNames(tools),
     });
     yield* client.streamChat(messages, tools, systemPrompt, signal);
   }
   return new Proxy(client, {
     get(target, key) {
-      return key === "streamChat" ? streamChat : Reflect.get(target, key);
+      /* SAFETY: `key` is the property this read asked the proxy for, so indexing `target` by it is
+         the same [[Get]] Reflect.get would perform, and the trap's result is untyped either way. */
+      return key === "streamChat" ? streamChat : target[key as keyof C];
     },
   });
 }
@@ -288,8 +413,8 @@ export function spyStreamingClient<C extends StreamingClient>(
 
 export type AiWritesEvent =
   | { op: "beginTurn"; id: string }
-  | { op: "recordWrite"; write: Json }
-  | { op: "endTurn"; id: string; filed: Json[] }
+  | { op: "recordWrite"; write: JsonValue }
+  | { op: "endTurn"; id: string; filed: JsonValue[] }
   | { op: "resetAiWrites" };
 
 export interface AiWritesSpy {
@@ -315,6 +440,8 @@ export async function installAiWritesSpy(): Promise<AiWritesSpy> {
   if (installed) {
     return installed;
   }
+  /* SAFETY: AI_WRITES is the absolute path of src/services/ai-writes.ts, the very module
+     AiWritesModule is the `typeof` of, so the namespace this import resolves to has its exports. */
   const real = (await import(AI_WRITES)) as AiWritesModule;
   const {
     MAX_TURNS,
@@ -375,11 +502,11 @@ export interface TraceParts {
   chatCalls: ChatCall[];
   clientCalls: ClientCall[];
   aiWrites: AiWritesEvent[];
-  finalMessages: unknown;
-  finalState: unknown;
-  finalDocument: unknown;
-  historyIndex: unknown;
-  extra?: Record<string, unknown>;
+  finalMessages: TraceSubject;
+  finalState: TraceSubject;
+  finalDocument: TraceSubject;
+  historyIndex: TraceSubject;
+  extra?: Record<string, JsonValue | undefined>;
 }
 
 const MSG_ID = /\bmsg_(\d+)_(\d+)\b/g;
@@ -390,14 +517,14 @@ const VOLATILE_IDS: [RegExp, string][] = [
 ];
 const TIMESTAMP_KEYS = new Set(["createdAt", "timestamp", "updatedAt"]);
 
-function eachString(value: Json, visit: (text: string) => void): void {
-  if (typeof value === "string") {
+function eachString(value: JsonValue, visit: (text: string) => void): void {
+  if (isString(value)) {
     visit(value);
   } else if (Array.isArray(value)) {
     for (const item of value) {
       eachString(item, visit);
     }
-  } else if (value && typeof value === "object") {
+  } else if (isJsonObject(value)) {
     for (const item of Object.values(value)) {
       eachString(item, visit);
     }
@@ -409,7 +536,7 @@ function eachString(value: Json, visit: (text: string) => void): void {
  * counter chat-state stamps into them), so `msg#1` is always the first message the trace minted
  * whatever ran before it in the process; other volatile ids by first appearance.
  */
-function placeholderTable(raw: Json): Map<string, string> {
+function placeholderTable(raw: JsonValue): Map<string, string> {
   const messages = new Map<string, number>();
   const others: [string, string][] = [];
   const seen = new Set<string>();
@@ -440,24 +567,29 @@ function placeholderTable(raw: Json): Map<string, string> {
   return table;
 }
 
-function normalizeWith(value: Json, table: Map<string, string>, key?: string): Json {
-  if (typeof value === "number" && key !== undefined && TIMESTAMP_KEYS.has(key)) {
+/** One string with its machine paths and volatile ids replaced by their placeholders. */
+function normalizeText(text: string, table: Map<string, string>): string {
+  let out = normalizePaths(text);
+  if (table.size > 0) {
+    out = out.replaceAll(MSG_ID, (id) => table.get(id) ?? id);
+    for (const [pattern] of VOLATILE_IDS) {
+      out = out.replaceAll(pattern, (id) => table.get(id) ?? id);
+    }
+  }
+  return out;
+}
+
+function normalizeWith(value: JsonValue, table: Map<string, string>, key?: string): JsonValue {
+  if (isNumber(value) && key !== undefined && TIMESTAMP_KEYS.has(key)) {
     return "<ts>";
   }
-  if (typeof value === "string") {
-    let out = normalizePaths(value);
-    if (table.size > 0) {
-      out = out.replaceAll(MSG_ID, (id) => table.get(id) ?? id);
-      for (const [pattern] of VOLATILE_IDS) {
-        out = out.replaceAll(pattern, (id) => table.get(id) ?? id);
-      }
-    }
-    return out;
+  if (isString(value)) {
+    return normalizeText(value, table);
   }
   if (Array.isArray(value)) {
     return value.map((item) => normalizeWith(item, table));
   }
-  if (value && typeof value === "object") {
+  if (isJsonObject(value)) {
     const out: JsonObject = {};
     for (const [k, item] of Object.entries(value)) {
       out[k] = normalizeWith(item, table, k);
@@ -468,15 +600,71 @@ function normalizeWith(value: Json, table: Map<string, string>, key?: string): J
 }
 
 /** Replace every volatile value in a JSON tree with its stable placeholder. */
-export function normalizeVolatile(raw: Json): Json {
+export function normalizeVolatile(raw: JsonValue): JsonValue {
   return normalizeWith(raw, placeholderTable(raw));
 }
 
-function sameJson(a: Json | undefined, b: Json | undefined): boolean {
+/*
+ * The typed parts of a trace, normalised exactly as `normalizeWith` would normalise their JSON
+ * snapshots inside the whole trace: every string through `normalizeText`, every JSON payload
+ * through `normalizeWith` under the key it sits at (none for an array item). A number is only ever
+ * rewritten under a timestamp key, and none of these typed fields is one. The literal `op` and
+ * `signal` values hold no path and no id, so they pass through as they are.
+ */
+
+function normalizeChatCall(call: ChatCall, table: Map<string, string>): ChatCall {
+  return {
+    args: call.args.map((arg) => normalizeWith(arg, table)),
+    chat: call.chat,
+    method: normalizeText(call.method, table),
+  };
+}
+
+function normalizeClientCall(call: ClientCall, table: Map<string, string>): ClientCall {
+  return {
+    client: call.client,
+    messages: call.messages.map((message) => normalizeWith(message, table)),
+    signal: call.signal,
+    systemPrompt: {
+      hash: normalizeText(call.systemPrompt.hash, table),
+      headings: call.systemPrompt.headings.map((heading) => normalizeText(heading, table)),
+      length: call.systemPrompt.length,
+    },
+    tools: call.tools.map((tool) => normalizeText(tool, table)),
+  };
+}
+
+function normalizeAiWritesEvent(event: AiWritesEvent, table: Map<string, string>): AiWritesEvent {
+  switch (event.op) {
+    case "beginTurn": {
+      return { id: normalizeText(event.id, table), op: event.op };
+    }
+    case "recordWrite": {
+      return { op: event.op, write: normalizeWith(event.write, table, "write") };
+    }
+    case "endTurn": {
+      return {
+        filed: event.filed.map((write) => normalizeWith(write, table)),
+        id: normalizeText(event.id, table),
+        op: event.op,
+      };
+    }
+    default: {
+      return event;
+    }
+  }
+}
+
+/** A prompt digest as the JSON a trace carries, in the key order `digestPrompt` builds it. */
+function digestJson(digest: PromptDigest): JsonObject {
+  return { hash: digest.hash, headings: digest.headings, length: digest.length };
+}
+
+function sameJson(a: JsonValue | undefined, b: JsonValue | undefined): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function callLine(prefix: string, method: string, args: Json[]): string {
+function callLine(prefix: string, method: string, args: JsonValue[]): string {
   if (method.startsWith("set ")) {
     return `${prefix}${method} = ${JSON.stringify(args[0] ?? null)}`;
   }
@@ -488,36 +676,35 @@ function callLine(prefix: string, method: string, args: Json[]): string {
  * `carried` (how many of the previous call's messages it opens with, unchanged) plus `added`, and a
  * tool list or prompt identical to the previous call's is written `"= previous"`.
  */
-function compressClientCalls(calls: Json[]): Json[] {
-  const multi = new Set(calls.map((call) => (call as { client: number }).client)).size > 1;
-  return calls.map((value, i) => {
-    const call = value as unknown as ClientCall & { messages: Json[] };
-    const prev = i > 0 ? (calls[i - 1] as unknown as ClientCall) : undefined;
+function compressClientCalls(calls: ClientCall[]): JsonValue[] {
+  const multi = new Set(calls.map((call) => call.client)).size > 1;
+  return calls.map((call, i) => {
+    const prev = i > 0 ? calls[i - 1] : undefined;
     let carried = 0;
     if (prev && prev.messages.length <= call.messages.length) {
       const head = call.messages.slice(0, prev.messages.length);
       carried = sameJson(head, prev.messages) ? prev.messages.length : 0;
     }
-    return {
-      round: i + 1,
-      ...(multi ? { client: call.client } : {}),
-      signal: call.signal,
-      messages: { added: call.messages.slice(carried), carried },
-      systemPrompt:
-        prev && sameJson(prev.systemPrompt as unknown as Json, call.systemPrompt as unknown as Json)
-          ? "= previous"
-          : (call.systemPrompt as unknown as Json),
-      tools: prev && sameJson(prev.tools, call.tools) ? "= previous" : call.tools,
-    };
+    // Built key by key so the golden's key order stays round, client, signal, messages, ...
+    const round: JsonObject = { round: i + 1 };
+    if (multi) {
+      round.client = call.client;
+    }
+    round.signal = call.signal;
+    round.messages = { added: call.messages.slice(carried), carried };
+    const digest = digestJson(call.systemPrompt);
+    round.systemPrompt =
+      prev && sameJson(digestJson(prev.systemPrompt), digest) ? "= previous" : digest;
+    round.tools = prev && sameJson(prev.tools, call.tools) ? "= previous" : call.tools;
+    return round;
   });
 }
 
 /** The ledger as the events that fed it, plus each filed turn grouped by the file it touched. */
-function buildLedger(events: Json[]): Json {
+function buildLedger(events: AiWritesEvent[]): JsonValue {
   const lines: string[] = [];
-  const turns: Json[] = [];
-  for (const value of events) {
-    const event = value as unknown as AiWritesEvent;
+  const turns: JsonValue[] = [];
+  for (const event of events) {
     switch (event.op) {
       case "beginTurn": {
         lines.push(`beginTurn(${JSON.stringify(event.id)})`);
@@ -530,8 +717,13 @@ function buildLedger(events: Json[]): Json {
       case "endTurn": {
         lines.push(`endTurn(${JSON.stringify(event.id)}) filed ${event.filed.length}`);
         if (event.filed.length > 0) {
-          const files = new Map<string, Json[]>();
-          for (const write of event.filed as JsonObject[]) {
+          const files = new Map<string, JsonValue[]>();
+          for (const write of event.filed) {
+            if (!isJsonObject(write)) {
+              throw new Error(
+                "A filed write snapshots an AiWrite record, which is always an object",
+              );
+            }
             const { path, ...rest } = write;
             const file = String(path);
             files.set(file, [...(files.get(file) ?? []), rest]);
@@ -555,7 +747,7 @@ function buildLedger(events: Json[]): Json {
  * Assemble one scenario's trace: snapshot, number the volatile ids across the whole thing, then
  * render the call logs as one line per call so a golden diff reads as a list of calls.
  */
-export function buildTrace(parts: TraceParts): Json {
+export function buildTrace(parts: TraceParts): JsonValue {
   const raw = jsonSafe({
     aiWrites: parts.aiWrites,
     chatCalls: parts.chatCalls,
@@ -565,23 +757,34 @@ export function buildTrace(parts: TraceParts): Json {
     finalMessages: parts.finalMessages ?? null,
     finalState: parts.finalState ?? null,
     historyIndex: parts.historyIndex ?? null,
-  }) as JsonObject;
-  const n = normalizeVolatile(raw) as JsonObject;
-  const chatCalls = n.chatCalls as unknown as ChatCall[];
+  });
+  if (!isJsonObject(raw)) {
+    throw new Error("A snapshot of an object literal is always a JSON object");
+  }
+  // The table is built over the WHOLE snapshot, so an id's placeholder is its order in the trace.
+  const table = placeholderTable(raw);
+  /** One snapshot field, normalised under its own key; a field the snapshot dropped is null. */
+  const field = (key: string): JsonValue => {
+    const value = raw[key];
+    return value === undefined ? null : normalizeWith(value, table, key);
+  };
+  const chatCalls = parts.chatCalls.map((call) => normalizeChatCall(call, table));
   const multiChat = new Set(chatCalls.map((call) => call.chat)).size > 1;
   const trace: JsonObject = {
     chatCalls: chatCalls.map((call) =>
       callLine(multiChat ? `[chat ${call.chat}] ` : "", call.method, call.args),
     ),
-    clientCalls: compressClientCalls(n.clientCalls as Json[]),
-    ledger: buildLedger(n.aiWrites as Json[]),
-    finalMessages: n.finalMessages ?? null,
-    finalState: n.finalState ?? null,
-    finalDocument: n.finalDocument ?? null,
-    historyIndex: n.historyIndex ?? null,
+    clientCalls: compressClientCalls(
+      parts.clientCalls.map((call) => normalizeClientCall(call, table)),
+    ),
+    ledger: buildLedger(parts.aiWrites.map((event) => normalizeAiWritesEvent(event, table))),
+    finalMessages: field("finalMessages"),
+    finalState: field("finalState"),
+    finalDocument: field("finalDocument"),
+    historyIndex: field("historyIndex"),
   };
   if (parts.extra) {
-    trace.extra = n.extra ?? null;
+    trace.extra = field("extra");
   }
   return trace;
 }
@@ -590,15 +793,7 @@ export function buildTrace(parts: TraceParts): Json {
  * A chat message as the golden records it: its normalised id, role and content, the reasoning and
  * tool calls it carries, and nothing that is a clock.
  */
-export function messageShape(message: unknown): Json {
-  const m = message as {
-    id?: string;
-    role?: string;
-    content?: string;
-    reasoningContent?: string;
-    toolCallId?: string;
-    toolCalls?: { id: string; name: string; arguments: string; result?: unknown }[];
-  };
+export function messageRecord(m: LiveMessage): JsonValue {
   return jsonSafe({
     id: m.id,
     role: m.role,
@@ -621,8 +816,8 @@ export const UPDATING_GOLDENS = process.env.JX_UPDATE_GOLDENS === "1";
 
 export interface Difference {
   path: string;
-  expected: Json | undefined;
-  actual: Json | undefined;
+  expected: JsonValue | undefined;
+  actual: JsonValue | undefined;
 }
 
 function childPath(path: string, key: string): string {
@@ -631,45 +826,40 @@ function childPath(path: string, key: string): string {
 
 /** The first place two JSON trees disagree, depth-first in document order, or null. */
 export function firstDifference(
-  expected: Json | undefined,
-  actual: Json | undefined,
+  expected: JsonValue | undefined,
+  actual: JsonValue | undefined,
   path = "$",
 ): Difference | null {
   if (expected === actual) {
     return null;
   }
-  const bothObjects =
-    expected !== null &&
-    actual !== null &&
-    typeof expected === "object" &&
-    typeof actual === "object" &&
-    Array.isArray(expected) === Array.isArray(actual);
-  if (!bothObjects) {
-    return { actual, expected, path };
-  }
-  if (Array.isArray(expected)) {
-    const other = actual as Json[];
-    for (let i = 0; i < Math.max(expected.length, other.length); i++) {
-      const diff = firstDifference(expected[i], other[i], `${path}[${i}]`);
+  // Two arrays, or two objects, are compared member by member; any other pair simply differs.
+  if (Array.isArray(expected) && Array.isArray(actual)) {
+    for (let i = 0; i < Math.max(expected.length, actual.length); i++) {
+      const diff = firstDifference(expected[i], actual[i], `${path}[${i}]`);
       if (diff) {
         return diff;
       }
     }
     return null;
   }
-  const e = expected as JsonObject;
-  const a = actual as JsonObject;
-  const keys = [...Object.keys(e), ...Object.keys(a).filter((key) => !(key in e))];
-  for (const key of keys) {
-    const diff = firstDifference(e[key], a[key], childPath(path, key));
-    if (diff) {
-      return diff;
+  if (isJsonObject(expected) && isJsonObject(actual)) {
+    const keys = [
+      ...Object.keys(expected),
+      ...Object.keys(actual).filter((key) => !(key in expected)),
+    ];
+    for (const key of keys) {
+      const diff = firstDifference(expected[key], actual[key], childPath(path, key));
+      if (diff) {
+        return diff;
+      }
     }
+    return null;
   }
-  return null;
+  return { actual, expected, path };
 }
 
-function show(value: Json | undefined): string {
+function show(value: JsonValue | undefined): string {
   if (value === undefined) {
     return "<missing>";
   }
@@ -684,9 +874,13 @@ function show(value: Json | undefined): string {
  *
  * @throws {Error} Naming the first differing path, both values, and how to re-record
  */
-export function matchGolden(file: string, actual: Json): void {
+export function matchGolden(file: string, actual: JsonValue): void {
   const shown = relative(REPO_ROOT, file);
-  const expected = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Json) : undefined;
+  /* SAFETY: JSON.parse without a reviver can only produce null, booleans, finite numbers, strings,
+     arrays and plain objects of those — exactly JsonValue. */
+  const expected = existsSync(file)
+    ? (JSON.parse(readFileSync(file, "utf8")) as JsonValue)
+    : undefined;
   if (UPDATING_GOLDENS) {
     if (expected === undefined || firstDifference(expected, actual)) {
       mkdirSync(dirname(file), { recursive: true });

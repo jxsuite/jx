@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { evaluatePermission, ruleRole } from "../src/authorize";
-import type { AuthorizeInput, SessionInfo } from "@jxsuite/connector/types";
+import type { AuthorizeInput, PermissionRule, SessionInfo } from "@jxsuite/connector/types";
 
 const user: SessionInfo = { role: "editor", userId: "u1" };
 const plain: SessionInfo = { userId: "u2" };
@@ -99,7 +99,13 @@ describe("evaluatePermission", () => {
   });
 
   test("unknown rules fail closed with 403", () => {
-    const denied = evaluatePermission(input({ rule: "sometimes" as never, session: user }));
+    /*
+     * SAFETY: "sometimes" is deliberately outside PermissionRule — rules arrive from project.json,
+     * which the type cannot police, and this test pins the evaluator's fail-closed default branch.
+     */
+    const denied = evaluatePermission(
+      input({ rule: "sometimes" as PermissionRule, session: user }),
+    );
     expect(denied).toMatchObject({ allow: false, status: 403 });
     expect(denied.error).toContain('Unknown permission rule "sometimes"');
   });

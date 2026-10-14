@@ -10,13 +10,27 @@
  * produces for the matching built page.
  */
 
-import { documentUrlPattern as routePattern } from "@jxsuite/site/routes";
+import { documentUrlPattern } from "@jxsuite/site/routes";
 import { getPlatform } from "./platform";
 import { loadExtensions } from "./format/format-host";
-import type { JxMutableNode, JxPathsDef } from "@jxsuite/schema/types";
+import { isJsonObject, isRef, isString } from "@jxsuite/schema/guards";
+import type {
+  JsonObject,
+  JsonValue,
+  JxDocumentValue,
+  JxMutableNode,
+  JxPathsDef,
+  JxStateDefinition,
+} from "@jxsuite/schema/types";
 
 /** Param name → candidate values, in `$paths` declaration order. */
 export type ParamValues = Record<string, string[]>;
+
+/** One entry of a resolved ContentCollection, as `/__jx_resolve__` serializes it to JSON. */
+interface ResolvedContentEntry {
+  id?: JsonValue;
+  data?: JsonObject;
+}
 
 /**
  * Route derivation is `@jxsuite/site/routes`, re-exported so this module stays the studio's one
@@ -34,14 +48,21 @@ export { documentUrlPattern, dynamicRouteParams } from "@jxsuite/site/routes";
  * The `$paths` declaration of an open document. JSON pages carry it on the document root;
  * format-class pages (markdown) keep it in the frontmatter.
  *
- * @param {{ document?: unknown; frontmatter?: Record<string, unknown> }} doc
+ * @param {{
+ *   document?: JxMutableNode | null;
+ *   frontmatter?: Record<string, JxDocumentValue | undefined> | null;
+ * }} doc
  * @returns {JxPathsDef | null}
  */
 export function pagePathsDef(doc: {
   document?: JxMutableNode | null;
-  frontmatter?: Record<string, unknown> | null;
+  frontmatter?: Record<string, JxDocumentValue | undefined> | null;
 }) {
-  const fromDoc = (doc.document as { $paths?: JxPathsDef } | null | undefined)?.$paths;
+  const fromDoc = doc.document?.$paths;
+  /* SAFETY: frontmatter `$paths` is the format-page form of the root `$paths` block
+     (site-architecture.md §4.3). Its only consumer, loadParamValues, re-checks every JxPathsDef
+     shape (array, contentType, values, $ref) before reading it and turns any other value into an
+     empty result, so an off-shape block degrades to "no candidates" rather than a crash. */
   const fromFrontmatter = doc.frontmatter?.$paths as JxPathsDef | undefined;
   return fromDoc ?? fromFrontmatter ?? null;
 }
@@ -67,15 +88,15 @@ export function loadParamValues(
   pathsDef: JxPathsDef | null,
 ) {
   if (!pathsDef) {
-    return Promise.resolve({} as ParamValues);
+    return Promise.resolve<ParamValues>({});
   }
   const key = `${documentPath ?? ""}::${JSON.stringify(pathsDef)}`;
   let pending = valueCache.get(key);
   if (!pending) {
-    pending = resolveParamValues(pathsDef).catch((error: unknown) => {
+    pending = resolveParamValues(pathsDef).catch((error): ParamValues => {
       valueCache.delete(key);
       console.warn("page-params: failed to enumerate $paths values:", error);
-      return {} as ParamValues;
+      return {};
     });
     valueCache.set(key, pending);
   }
@@ -104,21 +125,19 @@ async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
   // Discriminator member on JxPathsDef, so narrow to string. Resolved through the backend's
   // ContentCollection pipeline (the same one the canvas's ContentEntry uses), so every offered
   // Value is guaranteed to resolve in preview.
-  if (
-    "contentType" in pathsDef &&
-    typeof pathsDef.contentType === "string" &&
-    pathsDef.contentType
-  ) {
+  if ("contentType" in pathsDef && isString(pathsDef.contentType) && pathsDef.contentType) {
     const param = pathsDef.param ?? "slug";
     const field = pathsDef.field ?? "id";
-    const entries = (await resolveContentCollection(pathsDef.contentType)) as {
-      id?: unknown;
-      data?: Record<string, unknown>;
-    }[];
-    const out: ParamValues = { [param]: [] };
-    if (!Array.isArray(entries)) {
+    const resolved = await resolveContentCollection(pathsDef.contentType);
+    const out = { [param]: [] } satisfies ParamValues;
+    if (!Array.isArray(resolved)) {
       return out;
     }
+    /* SAFETY: a resolved ContentCollection is its entries array, each `{ id, data }` (the parser's
+       ContentLoaderEntry after the JSON hop). Off-shape entries stay harmless: a primitive reads as
+       having no id and is skipped, and a null throws on `.id`, which loadParamValues catches and
+       degrades to an empty result. */
+    const entries = resolved as ResolvedContentEntry[];
     for (const entry of entries) {
       pushValue(out, param, field === "id" ? entry.id : (entry.data?.[field] ?? entry.id));
     }
@@ -128,7 +147,7 @@ async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
   // Explicit values: { values: ["en", "fr"], param: "lang" }
   if ("values" in pathsDef && Array.isArray(pathsDef.values)) {
     const param = pathsDef.param ?? "value";
-    const out: ParamValues = { [param]: [] };
+    const out = { [param]: [] } satisfies ParamValues;
     for (const value of pathsDef.values) {
       pushValue(out, param, value);
     }
@@ -137,17 +156,18 @@ async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
 
   // Data file ref: { "$ref": "./data/products.json", param: "id", field: "sku" } — `$ref` also
   // Reaches here as an open discriminator key, so narrow to a non-empty string.
-  if ("$ref" in pathsDef && typeof pathsDef.$ref === "string" && pathsDef.$ref) {
+  if ("$ref" in pathsDef && isString(pathsDef.$ref) && pathsDef.$ref) {
     const param = pathsDef.param ?? "id";
     const field = pathsDef.field ?? "id";
     const content = await getPlatform().readFile(pathsDef.$ref.replace(/^\.\//, ""));
-    const data = JSON.parse(content) as unknown;
-    const out: ParamValues = { [param]: [] };
+    // SAFETY: JSON.parse only ever produces JSON values.
+    const data = JSON.parse(content) as JsonValue;
+    const out = { [param]: [] } satisfies ParamValues;
     if (!Array.isArray(data)) {
       return out;
     }
-    for (const item of data as Record<string, unknown>[]) {
-      pushValue(out, param, item?.[field] ?? item?.id ?? item);
+    for (const item of data) {
+      pushValue(out, param, isJsonObject(item) ? (item[field] ?? item.id ?? item) : item);
     }
     return out;
   }
@@ -179,9 +199,9 @@ async function contentCollectionSrc(): Promise<string> {
  * fetch on platforms that predate `resolveClass`.
  *
  * @param {string} contentType
- * @returns {Promise<unknown>}
+ * @returns {Promise<JsonValue>}
  */
-async function resolveContentCollection(contentType: string) {
+async function resolveContentCollection(contentType: string): Promise<JsonValue> {
   const body = {
     $prototype: "ContentCollection",
     $src: await contentCollectionSrc(),
@@ -189,26 +209,28 @@ async function resolveContentCollection(contentType: string) {
   };
   const platform = getPlatform();
   if (platform.resolveClass) {
-    return platform.resolveClass(body);
+    /* SAFETY: resolveClass hands back the backend's parsed `/__jx_resolve__` response, and that
+       endpoint answers with a JSON body, so the value is a JSON value. */
+    return platform.resolveClass(body) as Promise<JsonValue>;
   }
   return fetch("/__jx_resolve__", {
     body: JSON.stringify(body),
     headers: { "content-type": "application/json" },
     method: "POST",
-  }).then((res) => {
+  }).then((res): Promise<JsonValue> => {
     if (!res.ok) {
       throw new Error(`Class resolution failed: ${res.status}`);
     }
-    return res.json() as Promise<unknown>;
+    return res.json();
   });
 }
 
 /**
  * @param {ParamValues} out
  * @param {string} param
- * @param {unknown} value
+ * @param {JsonValue | undefined} value
  */
-function pushValue(out: ParamValues, param: string, value: unknown) {
+function pushValue(out: ParamValues, param: string, value: JsonValue | undefined) {
   if (value === null || value === undefined || value === "") {
     return;
   }
@@ -245,15 +267,15 @@ export function substitutePreviewParams(
   if (Object.keys(params).length === 0) {
     return renderDoc;
   }
-  const doc = substituteParamRefs(renderDoc, params) as JxMutableNode & {
-    state?: Record<string, unknown>;
-    title?: unknown;
-  };
+  /* SAFETY: a render document is a JSON tree (it reaches the canvas iframe by structured clone and
+     is serialized back to disk), so its root is a JSON object; substituteObjectRefs rebuilds it key
+     for key, replacing only `$params` ref values with strings, so the copy keeps the node's shape. */
+  const doc = substituteObjectRefs(renderDoc as JsonObject, params) as JxMutableNode;
   doc.state ??= {};
   doc.state.$page = {
     params: { ...params },
-    title: typeof doc.title === "string" ? doc.title : "",
-    url: routePattern(documentPath),
+    title: isString(doc.title) ? doc.title : "",
+    url: documentUrlPattern(documentPath),
   };
   return doc;
 }
@@ -263,21 +285,20 @@ export function substitutePreviewParams(
  * These are the entries `substitutePreviewParams` rewrites, and the ones `resolveParamBoundState`
  * bakes.
  *
- * @param {Record<string, unknown> | null | undefined} state - The ORIGINAL document state (with
- *   `$ref`s intact — substitution removes the marker)
+ * @param {Record<string, JxStateDefinition> | null | undefined} state - The ORIGINAL document state
+ *   (with `$ref`s intact — substitution removes the marker)
  * @returns {string[]}
  */
-export function paramBoundStateKeys(state: Record<string, unknown> | null | undefined) {
+export function paramBoundStateKeys(state: Record<string, JxStateDefinition> | null | undefined) {
   if (!state) {
     return [];
   }
   return Object.keys(state).filter((key) => {
-    const entry = state[key] as Record<string, unknown> | null;
+    const entry = state[key];
     return (
-      entry &&
-      typeof entry === "object" &&
-      typeof entry.$prototype === "string" &&
-      typeof entry.$src === "string" &&
+      isJsonObject(entry) &&
+      isString(entry.$prototype) &&
+      isString(entry.$src) &&
       JSON.stringify(entry).includes('"#/$params/')
     );
   });
@@ -306,24 +327,30 @@ export async function resolveParamBoundState(
     return;
   }
   const platform = getPlatform();
-  if (!platform.resolveClass) {
+  const { resolveClass } = platform;
+  if (!resolveClass) {
     return;
   }
-  const { state } = renderDoc as { state?: Record<string, unknown> };
+  const { state } = renderDoc;
   if (!state) {
     return;
   }
   await Promise.all(
     keys.map(async (key) => {
+      /* Keys come from paramBoundStateKeys, which only selects plain-object entries; substitution
+         keeps such an entry an object unless the whole entry was a param ref (then a string). */
       const entry = state[key];
-      if (!entry || typeof entry !== "object") {
+      if (!isJsonObject(entry)) {
         return;
       }
+      const body = { ...entry };
+      if (docBase) {
+        body.$base = docBase;
+      }
       try {
-        state[key] = await platform.resolveClass!({
-          ...(entry as Record<string, unknown>),
-          ...(docBase ? { $base: docBase } : {}),
-        });
+        /* SAFETY: the backend answers with the class's resolved JSON value (no `$prototype`), which
+           the runtime reads as a naked-value state entry, so it is a JxStateDefinition. */
+        state[key] = (await resolveClass.call(platform, body)) as JxStateDefinition;
       } catch (error) {
         console.warn(`page-params: failed to resolve state.${key} for preview:`, error);
       }
@@ -332,22 +359,28 @@ export async function resolveParamBoundState(
 }
 
 /**
- * @param {unknown} node
+ * @param {JsonValue} node
  * @param {Record<string, string>} params
- * @returns {unknown} — a rebuilt copy with matched param refs replaced by literals
+ * @returns {JsonValue} — a rebuilt copy with matched param refs replaced by literals
  */
-function substituteParamRefs(node: unknown, params: Record<string, string>): unknown {
+function substituteParamRefs(node: JsonValue, params: Record<string, string>): JsonValue {
   const replaced = paramRefValue(node, params);
   if (replaced !== null) {
     return replaced;
   }
-  if (!node || typeof node !== "object") {
-    return node;
-  }
   if (Array.isArray(node)) {
     return node.map((item) => substituteParamRefs(item, params));
   }
-  const out: Record<string, unknown> = {};
+  return isJsonObject(node) ? substituteObjectRefs(node, params) : node;
+}
+
+/**
+ * @param {JsonObject} node
+ * @param {Record<string, string>} params
+ * @returns {JsonObject} — a rebuilt copy of every member, param refs replaced by literals
+ */
+function substituteObjectRefs(node: JsonObject, params: Record<string, string>): JsonObject {
+  const out: JsonObject = {};
   for (const [key, value] of Object.entries(node)) {
     out[key] = substituteParamRefs(value, params);
   }
@@ -358,17 +391,13 @@ function substituteParamRefs(node: unknown, params: Record<string, string>): unk
  * The chosen literal for a `{ "$ref": "#/$params/<name>" }` value, or null when the value is not a
  * param ref (or no value was chosen for it).
  *
- * @param {unknown} value
+ * @param {JsonValue} value
  * @param {Record<string, string>} params
  * @returns {string | null}
  */
-function paramRefValue(value: unknown, params: Record<string, string>) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+function paramRefValue(value: JsonValue, params: Record<string, string>) {
+  if (!isRef(value) || !value.$ref.startsWith("#/$params/")) {
     return null;
   }
-  const ref = (value as { $ref?: unknown }).$ref;
-  if (typeof ref !== "string" || !ref.startsWith("#/$params/")) {
-    return null;
-  }
-  return params[ref.slice("#/$params/".length)] ?? null;
+  return params[value.$ref.slice("#/$params/".length)] ?? null;
 }

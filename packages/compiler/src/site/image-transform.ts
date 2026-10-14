@@ -23,10 +23,12 @@ import {
 import { getCached, getImageCacheDir, setCached } from "./image-cache.ts";
 import { imgLoadingAttrs } from "./img-loading.ts";
 import { resolveAssetUrl } from "@jxsuite/schema/asset-paths";
+import { isNodeObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { errorMessage } from "@jxsuite/schema/parse";
 
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { ImageConfig, ImageManifest, ImageVariant } from "./image-optimizer.ts";
-import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
+import type { JxAttributeValue, JxDocument, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 import type { CacheManifest } from "./image-cache.ts";
 
 const SKIP_EXTENSIONS = new Set([".svg", ".gif"]);
@@ -61,7 +63,7 @@ async function resolveCfMeta(absoluteSrc: string, metaCache: ImageMetaCache) {
       if (!sharpWarned) {
         sharpWarned = true;
         console.warn(
-          `Could not read image dimensions (${(error as Error).message}) — ` +
+          `Could not read image dimensions (${errorMessage(error)}) — ` +
             `emitting srcsets without width/height attributes.`,
         );
       }
@@ -91,7 +93,7 @@ function buildCloudflareSrcset(
   originalWidth: number,
   hash: string | null,
 ) {
-  const quality = config.quality?.webp ?? 80;
+  const quality = config.quality.webp ?? 80;
   const separator = src.startsWith("/") ? "" : "/";
   const suffix = hash ? `?v=${hash}` : "";
   return config.widths
@@ -145,9 +147,6 @@ async function resolveManifest(
  * @returns {boolean}
  */
 function shouldSkip(src: string) {
-  if (typeof src !== "string") {
-    return true;
-  }
   if (!src) {
     return true;
   }
@@ -181,7 +180,7 @@ function isAllowedRemote(src: string, config: ImageConfig) {
   if (!config.remoteDomains?.length) {
     return false;
   }
-  if (typeof src !== "string" || !src.startsWith("https://")) {
+  if (!src.startsWith("https://")) {
     return false;
   }
   if (src.includes("${")) {
@@ -269,12 +268,8 @@ async function walkAndTransform(
   mounts: readonly AssetMount[],
   containerWidth: number | null = null,
 ) {
-  if (!node || typeof node !== "object") {
-    return;
-  }
-
   if (node.tagName === "img") {
-    await transformImgNode(
+    const wrapped = await transformImgNode(
       node,
       config,
       projectRoot,
@@ -286,12 +281,13 @@ async function walkAndTransform(
     );
     // Wrapping rewrote this node into a `<picture>` whose children this pass just authored.
     // Descending into them would find the `<img>` and wrap it again, forever.
-    if (node.tagName !== "img") {
+    if (wrapped) {
       return;
     }
   }
 
-  if (typeof node.innerHTML === "string" && node.innerHTML.includes("<img")) {
+  // A document is authored JSON, so `innerHTML` is checked rather than trusted to be a string.
+  if (isString(node.innerHTML) && node.innerHTML.includes("<img")) {
     node.innerHTML = await transformInnerHtmlImages(
       node.innerHTML,
       config,
@@ -307,7 +303,8 @@ async function walkAndTransform(
     // Every descendant is bounded by the narrowest literal max-width above it.
     const inner = containerWidthOf(node, containerWidth);
     for (const child of node.children) {
-      if (typeof child === "string") {
+      // Text children carry no images, and a non-object child (an authored `null`) is skipped.
+      if (!isNodeObject(child)) {
         continue;
       }
       await walkAndTransform(
@@ -335,12 +332,12 @@ interface PictureSource {
  * takes the FIRST source it can decode, so this order is the whole negotiation.
  */
 const PICTURE_FORMAT_ORDER: readonly string[] = ["avif", "webp", "jpeg", "png"];
-const MEDIA_TYPES: Record<string, string> = {
-  avif: "image/avif",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-};
+const MEDIA_TYPES = new Map<string, string>([
+  ["avif", "image/avif"],
+  ["jpeg", "image/jpeg"],
+  ["png", "image/png"],
+  ["webp", "image/webp"],
+]);
 
 interface ResolvedVariants {
   /** Candidate list for the `<img>` itself, in the preferred format. */
@@ -359,7 +356,7 @@ interface ResolvedVariants {
  * the allowlist, a missing file, an explicit `data-no-optimize`. Both callers treat null the same
  * way: leave the markup alone apart from the loading attributes.
  *
- * @param {string} src
+ * @param {JxAttributeValue | undefined} src - The `src` as written, which may be bound or absent
  * @param {boolean} optedOut - `data-no-optimize` is present
  * @param {ImageConfig} config
  * @param {string} projectRoot
@@ -370,7 +367,7 @@ interface ResolvedVariants {
  * @returns {Promise<ResolvedVariants | null>}
  */
 async function resolveVariants(
-  src: string,
+  src: JxAttributeValue | undefined,
   optedOut: boolean,
   config: ImageConfig,
   projectRoot: string,
@@ -380,7 +377,7 @@ async function resolveVariants(
   mounts: readonly AssetMount[],
 ): Promise<ResolvedVariants | null> {
   // Bound ($ref) or missing srcs cannot be optimized at build time.
-  if (typeof src !== "string" || optedOut) {
+  if (!isString(src) || optedOut) {
     return null;
   }
   const remote = isAllowedRemote(src, config);
@@ -423,12 +420,10 @@ async function resolveVariants(
     ...PICTURE_FORMAT_ORDER.filter((format) => config.formats.includes(format)),
     ...config.formats.filter((format) => !PICTURE_FORMAT_ORDER.includes(format)),
   ];
-  const available = ordered
-    .map((format) => ({
-      srcset: buildSrcset(manifest.variants, format),
-      type: MEDIA_TYPES[format] ?? `image/${format}`,
-    }))
-    .filter((source) => source.srcset !== "");
+  const available = ordered.flatMap((format): PictureSource[] => {
+    const srcset = buildSrcset(manifest.variants, format);
+    return srcset === "" ? [] : [{ srcset, type: MEDIA_TYPES.get(format) ?? `image/${format}` }];
+  });
 
   const dims =
     manifest.original?.width && manifest.original.height
@@ -491,8 +486,8 @@ function fallbackVariant(variants: ImageVariant[], formats: readonly string[]): 
 const CSS_LENGTH = /^(\d+(?:\.\d+)?)(px|rem)$/;
 
 /** A CSS length in px, but only when it is a plain `px`/`rem` literal. `null` for anything else. */
-function pxLength(value: unknown): number | null {
-  if (typeof value !== "string") {
+function pxLength(value: JxStyle[string]): number | null {
+  if (!isString(value)) {
     return null;
   }
   const match = CSS_LENGTH.exec(value.trim());
@@ -514,8 +509,9 @@ function containerWidthOf(
   node: JxMutableNode | JxDocument,
   inherited: number | null,
 ): number | null {
-  const style = node.style as Record<string, unknown> | undefined;
-  if (!style || typeof style !== "object") {
+  // Authored JSON: a `style` that is not an object (a CSS string, say) declares no width here.
+  const { style } = node;
+  if (!isNonNullObject(style)) {
     return inherited;
   }
   const declared = pxLength(style.maxWidth) ?? pxLength(style.width);
@@ -552,7 +548,7 @@ async function transformImgNode(
   imageRefs: Map<string, ImageManifest>,
   mounts: readonly AssetMount[],
   containerWidth: number | null = null,
-) {
+): Promise<boolean> {
   if (!node.attributes) {
     node.attributes = {};
   }
@@ -562,14 +558,14 @@ async function transformImgNode(
    * fixed set of node-level DOM properties and `src` is not among them, so an image written that
    * way used to acquire a `srcset` and lose its `src` — the fallback the srcset exists to have.
    */
-  if (attrs.src === undefined && typeof node.src === "string") {
+  if (attrs.src === undefined && isString(node.src)) {
     attrs.src = node.src;
     delete node.src;
   }
 
   const variants = config.optimize
     ? await resolveVariants(
-        attrs.src as string,
+        attrs.src,
         attrs["data-no-optimize"] !== undefined,
         config,
         projectRoot,
@@ -586,15 +582,12 @@ async function transformImgNode(
    * guess, so it outranks it — and an image with neither keeps whatever the project chose.
    */
   const ownWidth = containerWidthOf(node, containerWidth);
-  const resolvedSizes =
-    (attrs.sizes as string | undefined) ?? sizesForContainer(ownWidth) ?? config.sizes;
+  const resolvedSizes = attrs.sizes ?? sizesForContainer(ownWidth) ?? config.sizes;
 
   if (variants) {
     if (variants.srcset !== "") {
       attrs.srcset = variants.srcset;
-      if (resolvedSizes !== undefined) {
-        attrs.sizes = resolvedSizes;
-      }
+      attrs.sizes = resolvedSizes;
       if (variants.fallbackSrc !== undefined) {
         attrs.src = variants.fallbackSrc;
       }
@@ -609,8 +602,10 @@ async function transformImgNode(
   Object.assign(attrs, imgLoadingAttrs(attrs, config.lazyLoad));
 
   if (variants && variants.sources.length > 0) {
-    wrapInPicture(node, variants.sources, resolvedSizes ?? "");
+    wrapInPicture(node, variants.sources, resolvedSizes);
+    return true;
   }
+  return false;
 }
 
 /**
@@ -623,37 +618,38 @@ async function transformImgNode(
  *
  * @param {JxMutableNode | JxDocument} node - The `<img>` node, mutated into a `<picture>`
  * @param {PictureSource[]} sources
- * @param {string} sizes
+ * @param {JxAttributeValue} sizes
  */
 function wrapInPicture(
   node: JxMutableNode | JxDocument,
   sources: readonly PictureSource[],
-  sizes: string,
+  sizes: JxAttributeValue,
 ) {
-  const imgAttrs: Record<string, unknown> = { ...node.attributes };
-  const inheritedSizes = (imgAttrs.sizes as string | undefined) ?? sizes;
+  const imgAttrs = { ...node.attributes };
+  const inheritedSizes = imgAttrs.sizes ?? sizes;
   delete imgAttrs.srcset;
   delete imgAttrs.sizes;
-  const img: Record<string, unknown> = { attributes: imgAttrs, tagName: "img" };
+  const img: JxMutableNode = { attributes: imgAttrs, tagName: "img" };
   if (node.style !== undefined) {
     img.style = node.style;
     delete node.style;
   }
 
+  const children = sources.map((source): JxMutableNode => {
+    const attributes: Record<string, JxAttributeValue> = {};
+    // An empty `sizes` is not a neutral default — omit it and let the browser assume 100vw.
+    if (inheritedSizes !== "") {
+      attributes.sizes = inheritedSizes;
+    }
+    attributes.srcset = source.srcset;
+    attributes.type = source.type;
+    return { attributes, tagName: "source" };
+  });
+  children.push(img);
+
   node.tagName = "picture";
   node.attributes = {};
-  node.children = [
-    ...sources.map((source) => ({
-      attributes: {
-        // An empty `sizes` is not a neutral default — omit it and let the browser assume 100vw.
-        ...(inheritedSizes === "" ? {} : { sizes: inheritedSizes }),
-        srcset: source.srcset,
-        type: source.type,
-      },
-      tagName: "source",
-    })),
-    img,
-  ] as (string | JxMutableNode)[];
+  node.children = children;
 }
 
 const IMG_TAG_RE = /<img\b([^>]*)>/gi;

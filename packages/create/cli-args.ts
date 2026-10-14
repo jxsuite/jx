@@ -17,20 +17,24 @@ export interface CliArgs {
 export function parseCliArgs(argv: string[]): CliArgs {
   const positional: string[] = [];
   let template: string | undefined;
-  for (let i = 0; i < argv.length; i += 1) {
-    // Safe: i < argv.length. The cast sheds `undefined` from noUncheckedIndexedAccess.
-    const arg = argv[i] as string;
+  // One iterator drives the loop, so `--template` can consume its value token with next().
+  const tokens = argv.values();
+  for (const arg of tokens) {
     if (arg === "--template") {
-      template = argv[i + 1];
-      i += 1;
+      template = tokens.next().value;
     } else if (arg.startsWith("--template=")) {
       template = arg.slice("--template=".length);
     } else {
       positional.push(arg);
     }
   }
-  return {
-    ...(positional[0] !== undefined ? { dest: positional[0] } : {}),
-    ...(template !== undefined ? { template } : {}),
-  };
+  const args: CliArgs = {};
+  const [dest] = positional;
+  if (dest !== undefined) {
+    args.dest = dest;
+  }
+  if (template !== undefined) {
+    args.template = template;
+  }
+  return args;
 }

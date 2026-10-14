@@ -25,25 +25,19 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import pickerDoc from "./cf-account-picker.json";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { CfAccount } from "../publish/pages-service";
 
-registerSurface("cf-account-picker", pickerDoc as unknown as JxDocument);
-
-/** One account the grant reaches, as the list draws it. */
-export interface CfAccountPickerRow {
-  id: string;
-  name: string;
-}
+registerSurface("cf-account-picker", pickerDoc);
 
 /** What the flow knows. Every one of these may change while the dialog is up. */
 export interface CfAccountPickerView {
   /** The listing is in flight. Its own state, because "not yet asked" is not "reaches nothing". */
   loading: boolean;
-  accounts: CfAccountPickerRow[];
+  accounts: CfAccount[];
   /** The last refusal — a listing that failed, or an account the broker would not accept. */
   failure: string;
   /** The id being committed, so its own row can say so rather than the whole list going grey. */
@@ -88,15 +82,14 @@ interface CfAccountPickerFlags {
 }
 
 /** One row, as the document reads it: what it says, and whether it may be pressed. */
-interface CfAccountPickerScopeRow extends CfAccountPickerRow {
+interface CfAccountPickerScopeRow extends CfAccount {
   /** This row's own button text — "Selecting…" while it is the one being committed. */
   label: string;
   /** Every row is disabled while any commit is in flight: one answer at a time. */
   busy: boolean;
 }
 
-interface CfAccountPickerScope
-  extends Record<string, unknown>, CfAccountPickerView, CfAccountPickerFlags {
+interface CfAccountPickerScope extends CfAccountPickerView, CfAccountPickerFlags {
   choose: (id: string) => void;
   retry: () => void;
   closed: () => void;
@@ -150,8 +143,12 @@ export function openCfAccountPickerSurface(options: CfAccountPickerOptions): CfA
     closed = true;
     options.onClosed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
-  const scope = reactive({
+  const scope: CfAccountPickerScope = reactive<CfAccountPickerScope>({
     ...derive({ accounts: [], choosing: "", failure: "", loading: true }),
     choose: (id: string) => {
       options.onChoose(id);
@@ -160,18 +157,20 @@ export function openCfAccountPickerSurface(options: CfAccountPickerOptions): CfA
     retry: () => {
       options.onRetry();
     },
-  }) as CfAccountPickerScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("cf-account-picker", scope, slot).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `cf-account-picker.json`'s root definition is a `jx-dialog` element, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     showModal(element);
@@ -186,7 +185,7 @@ export function openCfAccountPickerSurface(options: CfAccountPickerOptions): CfA
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       mounted?.dispose();
       mounted = null;

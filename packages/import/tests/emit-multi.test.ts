@@ -18,9 +18,9 @@ function makePrecomputed(): ComponentizeResult {
       {
         tagName: "a",
         attributes: { href: "${state.href}", "data-count": 5, target: "_blank" },
-        children: [{ tagName: "span", textContent: "${state.title}" }] as JxElement[],
+        children: [{ tagName: "span", textContent: "${state.title}" }],
       },
-    ] as JxElement[],
+    ],
   };
 
   const staticTemplate: JxElement = {
@@ -41,17 +41,15 @@ function makePrecomputed(): ComponentizeResult {
         "pages/index.json",
         {
           tagName: "div",
-          $elements: [{ tagName: "aside" }] as JxElement[],
-          children: [
-            { tagName: "hero-card", $props: { title: "A", href: "/a", caption: "one" } },
-          ] as JxElement[],
+          $elements: [{ tagName: "aside" }],
+          children: [{ tagName: "hero-card", $props: { title: "A", href: "/a", caption: "one" } }],
         },
       ],
       [
         "pages/about.json",
         {
           tagName: "div",
-          children: [{ tagName: "site-footer" }] as JxElement[],
+          children: [{ tagName: "site-footer" }],
         },
       ],
     ]),
@@ -253,7 +251,7 @@ describe("emitMultiPageProject", () => {
         children: [
           { tagName: "h3", textContent: title },
           { tagName: "p", textContent: "desc" },
-        ] as JxElement[],
+        ],
       });
 
       await emitMultiPageProject({
@@ -261,7 +259,7 @@ describe("emitMultiPageProject", () => {
         title: "No Comp",
         sourceUrl: "https://example.com",
         pages: new Map<string, JxElement>([
-          ["pages/index.json", { tagName: "div", children: [card("A"), card("B")] as JxElement[] }],
+          ["pages/index.json", { tagName: "div", children: [card("A"), card("B")] }],
         ]),
         componentizeOptions: false,
       });
@@ -315,7 +313,7 @@ describe("emitMultiPageProject", () => {
         precomputedComponents: makePrecomputed(),
         layout: {
           tagName: "main",
-          children: [{ tagName: "slot" }] as JxElement[],
+          children: [{ tagName: "slot" }],
         },
       });
 

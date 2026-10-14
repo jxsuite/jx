@@ -42,19 +42,15 @@ import { parentCursorToIframe } from "../canvas/iframe-overlay";
 import { clearDragGhost, moveDragGhost, setDragGhost } from "./drag-ghost";
 import { getNodeAtPath } from "../store";
 import { activeTab } from "../workspace/workspace";
-import type { DragHost } from "../canvas/iframe-host";
+import type { HostState } from "../canvas/iframe-host";
+import type { ElementDragPayload } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import type { Tab } from "../tabs/tab";
 import type { DragSrcKind, ParentToIframe } from "../canvas/iframe-protocol";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-
-/** A parent-viewport pointer position (pragmatic's `location.current.input`). */
-interface Cursor {
-  x: number;
-  y: number;
-}
+import type { ViewportPoint } from "../surfaces/menu";
 
 interface MonitorDragArgs {
-  source: { data: Record<string, unknown> };
+  source: { data: ElementDragPayload["data"] };
   location: {
     current: { input: { clientX: number; clientY: number } };
     // Pragmatic resets `current` back to `initial` when a drag is CANCELLED (Escape / dropped on no
@@ -62,6 +58,12 @@ interface MonitorDragArgs {
     // Snap-back rather than an explicit flag (single-sourced through pragmatic, per the spec).
     initial?: { input: { clientX: number; clientY: number } };
   };
+}
+
+/** The two leg messages one cursor position yields. */
+export interface DragMessages {
+  move: ParentToIframe;
+  drop: ParentToIframe;
 }
 
 /**
@@ -72,11 +74,11 @@ interface MonitorDragArgs {
  * the move-preview and the authoritative drop never use a divergent coordinate transform.
  */
 export function buildDragMessages(
-  cursor: Cursor,
+  cursor: ViewportPoint,
   dragSeq: number,
   scale: number,
   iframeRect: { left: number; top: number },
-): { move: ParentToIframe; drop: ParentToIframe } {
+): DragMessages {
   const local = parentCursorToIframe(cursor, iframeRect, scale);
   return {
     drop: { cursor: local, dragSeq, kind: "drop" },
@@ -85,7 +87,7 @@ export function buildDragMessages(
 }
 
 /** The cursor of a monitor event in parent-viewport coords. */
-function cursorOf(location: MonitorDragArgs["location"]): Cursor {
+function cursorOf(location: MonitorDragArgs["location"]): ViewportPoint {
   return { x: location.current.input.clientX, y: location.current.input.clientY };
 }
 
@@ -97,11 +99,13 @@ function cursorOf(location: MonitorDragArgs["location"]): Cursor {
  * the iframe's `canDrop` rejects ancestor/self targets). Anything else (e.g. a row missing a path)
  * is ignored.
  */
-function dragSrcOf(data: Record<string, unknown>): DragSrcKind | null {
+function dragSrcOf(data: ElementDragPayload["data"]): DragSrcKind | null {
   if (data.type === "block") {
     return { type: "block" };
   }
   if (data.type === "tree-node" && Array.isArray(data.path)) {
+    /* SAFETY: both minters of a "tree-node" payload, an Outline row's `getInitialData` and the block
+       action bar's drag handle, set `path` to the dragged node's JxPath. */
     return { path: data.path as (string | number)[], type: "tree-node" };
   }
   return null;
@@ -120,20 +124,22 @@ function dragSrcOf(data: Record<string, unknown>): DragSrcKind | null {
  *
  * @param {Tab | null} tab The document the source path is addressed in.
  * @param {DragSrcKind} src
- * @param {Record<string, unknown>} data
+ * @param {ElementDragPayload["data"]} data
  * @returns {string}
  */
 export function ghostLabel(
   tab: Tab | null,
   src: DragSrcKind,
-  data: Record<string, unknown>,
+  data: ElementDragPayload["data"],
 ): string {
   if (src.type === "block") {
+    /* SAFETY: every "block" payload minter (the palette and component cards in dnd.ts, the asset
+       file drop) sets `fragment` to the JxMutableNode the drop inserts. */
     const fragment = data.fragment as JxMutableNode | undefined;
     return displayTagName(fragment?.tagName) || "block";
   }
-  const doc = tab?.doc.document as JxMutableNode | undefined;
-  const node = doc ? (getNodeAtPath(doc, src.path) as JxMutableNode | undefined) : undefined;
+  const doc = tab?.doc.document;
+  const node = doc ? getNodeAtPath(doc, src.path) : undefined;
   return displayTagName(node?.tagName) || "node";
 }
 
@@ -150,9 +156,9 @@ const DROP_RESULT_TIMEOUT = 250;
  */
 interface CoordSession {
   src: DragSrcKind;
-  srcData: Record<string, unknown>;
+  srcData: ElementDragPayload["data"];
   /** The host whose iframe currently holds the session, or null while off-canvas. */
-  host: DragHost | null;
+  host: HostState | null;
   /** The session id the bound host was started with (for move/drop tagging). */
   seq: number;
   /** The drag ghost's label (computed once at start; the dragged thing doesn't change). */
@@ -161,9 +167,9 @@ interface CoordSession {
 
 /** Begin a session bound to `host`: bump+post dragStart, show the ghost, record the seq. */
 function startSession(
-  host: DragHost,
+  host: HostState,
   src: DragSrcKind,
-  srcData: Record<string, unknown>,
+  srcData: ElementDragPayload["data"],
 ): CoordSession {
   const seq = beginDragSession(host, src, srcData);
   // The label names a node in the TARGET pane's document — `host` is the artboard the cursor is
@@ -180,7 +186,7 @@ function startSession(
  *   new panel's iframe drives the rest.
  * - No host (inside→outside) → dragEnd the old + unbind; the ghost keeps following off-canvas.
  */
-function sessionDrag(session: CoordSession, cursor: Cursor): void {
+function sessionDrag(session: CoordSession, cursor: ViewportPoint): void {
   moveDragGhost(cursor.x, cursor.y);
   const target = liveDragHostAt(cursor);
   if (target === session.host) {
@@ -212,7 +218,7 @@ function sessionDrag(session: CoordSession, cursor: Cursor): void {
  * the affordances if no reply arrives (iframe reloaded mid-drag). Drops off-canvas release retained
  * data.
  */
-function sessionDrop(session: CoordSession, cursor: Cursor): void {
+function sessionDrop(session: CoordSession, cursor: ViewportPoint): void {
   const target = liveDragHostAt(cursor);
   // Migrate first if the drop landed on a different panel than the last move bound.
   if (target && target !== session.host) {
@@ -281,7 +287,7 @@ export function registerCanvasDndBridge(): () => void {
   let session: CoordSession | null = null;
   // The in-flight pragmatic source (set in onDragStart, cleared in onDrop) so a nativeDragEnter can
   // Bind a session for a drag whose cursor entered an iframe before the parent ever bound a host.
-  let pending: { src: DragSrcKind; srcData: Record<string, unknown> } | null = null;
+  let pending: Pick<CoordSession, "src" | "srcData"> | null = null;
 
   // Bind/migrate the live pragmatic session when its NATIVE stream enters an unclaimed iframe:
   // Chromium delivers dragover to the frame under the cursor, so a drag from the palette/layers
@@ -353,7 +359,8 @@ export function registerCanvasDndBridge(): () => void {
         return;
       }
       pending = null;
-      const cursor = location.current.input ? cursorOf(location) : { x: 0, y: 0 };
+      // Pragmatic's DragLocation always carries an `input`, cancelled drags included.
+      const cursor = cursorOf(location);
       if (!session) {
         // Never bound a host (dropped off every canvas) — just hide the ghost; nothing to apply.
         clearDragGhost();

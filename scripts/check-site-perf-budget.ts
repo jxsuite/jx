@@ -25,7 +25,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-interface Budget {
+export interface Budget {
   tolerance?: number;
   /** Page path in dist → gzip ceiling for the page and everything it eagerly loads. */
   pages?: Record<string, number>;
@@ -51,6 +51,7 @@ export function eagerRefs(html: string): string[] {
     if (href === undefined || !href.startsWith("/") || href.startsWith("//")) {
       continue;
     }
+    // SAFETY: `split` always yields at least one element, so slot 0 is the path before any `?`/`#`.
     seen.add(href.replace(/^\//, "").split(/[?#]/)[0] as string);
   }
   return [...seen];
@@ -71,6 +72,8 @@ export function main(): number {
     return 0;
   }
 
+  /* SAFETY: perf-budget.json is the site's own committed budget, written by hand in the `Budget`
+   * shape; every member is optional and defaulted here, so an omitted section budgets nothing. */
   const {
     tolerance = 0,
     pages = {},

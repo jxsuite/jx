@@ -6,6 +6,7 @@
  * tools go through `transactDoc`, `write_file` goes straight to disk, and the caveat used to be
  * appended to the MODEL-facing tool summary rather than shown to the person holding ⌘Z.
  */
+import type { LiveMessage } from "@jxsuite/ai/messages";
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   MAX_TURNS,
@@ -16,6 +17,20 @@ import {
   turnAnchor,
   writesForTurn,
 } from "../src/services/ai-writes";
+
+/** A transcript message with only what `turnAnchor` reads: who spoke, what, and any tool calls. */
+function message(
+  id: string,
+  role: LiveMessage["role"],
+  content = "",
+  toolCalls?: NonNullable<LiveMessage["toolCalls"]>,
+): LiveMessage {
+  const built: LiveMessage = { content, id, role, timestamp: 0 };
+  if (toolCalls) {
+    built.toolCalls = toolCalls;
+  }
+  return built;
+}
 
 const doc = (path: string) => ({ disk: false, ok: true, path, tool: "update_style" });
 const disk = (path: string) => ({ disk: true, ok: true, path, tool: "write_file" });
@@ -106,27 +121,35 @@ describe("summarizeWrites", () => {
    an assistant message carrying text or tool calls (panels/ai-chat/chat-view.ts). */
 describe("turnAnchor", () => {
   test("stops at the message the turn answers", () => {
-    const m = (id: string, role: string, content = "", toolCalls?: unknown[]) =>
-      ({ content, id, role, timestamp: 0, ...(toolCalls ? { toolCalls } : {}) }) as never;
-    const earlier = [m("a0", "assistant", "An earlier turn's answer."), m("u1", "user", "hi")];
+    const earlier = [
+      message("a0", "assistant", "An earlier turn's answer."),
+      message("u1", "user", "hi"),
+    ];
     // The turn drew nothing: an empty placeholder and a tool reply are not drawn.
-    expect(turnAnchor([...earlier, m("p", "assistant"), m("t", "tool", "{}")], "u1")).toBeNull();
     expect(
-      turnAnchor([...earlier, m("r", "assistant", "", [{}]), m("t", "tool", "{}")], "u1"),
+      turnAnchor([...earlier, message("p", "assistant"), message("t", "tool", "{}")], "u1"),
+    ).toBeNull();
+    expect(
+      turnAnchor(
+        [
+          ...earlier,
+          message("r", "assistant", "", [{ arguments: "{}", id: "call_r", name: "read_document" }]),
+          message("t", "tool", "{}"),
+        ],
+        "u1",
+      ),
     ).toBe("r");
     // With no user message to stop at, the whole transcript is the turn.
-    expect(turnAnchor([m("a0", "assistant", "text")])).toBe("a0");
+    expect(turnAnchor([message("a0", "assistant", "text")])).toBe("a0");
   });
 
   /* Another chat opened from Chat History while the turn waited on a tool: the transcript was
      replaced, and the stopped call's reply landed in it. Nothing drawn there is this turn's. */
   test("a transcript that no longer holds the turn's user message has no anchor", () => {
-    const m = (id: string, role: string, content = "") =>
-      ({ content, id, role, timestamp: 0 }) as never;
     const replaced = [
-      m("old_u", "user", "B"),
-      m("old_a", "assistant", "B's answer"),
-      m("t", "tool"),
+      message("old_u", "user", "B"),
+      message("old_a", "assistant", "B's answer"),
+      message("t", "tool"),
     ];
     expect(turnAnchor(replaced, "u1")).toBeNull();
   });

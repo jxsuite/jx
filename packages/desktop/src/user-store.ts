@@ -27,6 +27,15 @@
 
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { RecentProjectEntry } from "./rpc-schema";
+
+/**
+ * What a store file holds, written whole as JSON: a string map (settings, credentials) or the
+ * recent-projects list.
+ */
+export type StoreDocument = Record<string, string> | readonly RecentProjectEntry[];
 
 /** Distinguishes concurrent temp files from this process, as the pid distinguishes processes. */
 let writeSeq = 0;
@@ -58,13 +67,14 @@ function withStoreLock<T>(file: string, work: () => Promise<T>): Promise<T> {
  */
 export async function readStringStore(file: string): Promise<Record<string, string>> {
   try {
-    const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    // SAFETY: JSON.parse with no reviver yields only JSON values; the shape is checked below.
+    const parsed = JSON.parse(await readFile(file, "utf8")) as JsonValue;
+    if (!isJsonObject(parsed)) {
       return {};
     }
     const out: Record<string, string> = {};
     for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === "string") {
+      if (isString(value)) {
         out[key] = value;
       }
     }
@@ -87,7 +97,8 @@ export async function readJsonStore<T>(
   accept: (value: unknown) => value is T,
 ): Promise<T> {
   try {
-    const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+    // SAFETY: JSON.parse with no reviver yields only JSON values, and `accept` decides the shape.
+    const parsed = JSON.parse(await readFile(file, "utf8")) as JsonValue;
     return accept(parsed) ? parsed : fallback;
   } catch {
     return fallback;
@@ -100,7 +111,7 @@ export async function readJsonStore<T>(
  * Not exported for direct use by a store that also reads — see {@link updateStore}, which holds the
  * lock across both halves.
  */
-async function writeAtomically(file: string, value: unknown): Promise<void> {
+async function writeAtomically(file: string, value: StoreDocument): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
   writeSeq += 1;
   const temp = `${file}.${process.pid}.${writeSeq}.tmp`;
@@ -112,7 +123,7 @@ async function writeAtomically(file: string, value: unknown): Promise<void> {
 }
 
 /** Replace a store's contents wholesale, atomically. */
-export function writeStore(file: string, value: unknown): Promise<void> {
+export function writeStore(file: string, value: StoreDocument): Promise<void> {
   return withStoreLock(file, () => writeAtomically(file, value));
 }
 
@@ -125,7 +136,7 @@ export function writeStore(file: string, value: unknown): Promise<void> {
  *
  * @returns Whatever `mutate` produced, i.e. the store as it now stands on disk.
  */
-export function updateStore<T>(
+export function updateStore<T extends StoreDocument>(
   file: string,
   read: (file: string) => Promise<T>,
   mutate: (current: T) => T,

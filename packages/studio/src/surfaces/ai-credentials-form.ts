@@ -29,18 +29,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import credentialsDoc from "./ai-credentials-form.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("ai-credentials-form", credentialsDoc as unknown as JxDocument);
-
-/** One row of the listed catalogue, as the combobox draws it. */
-export interface CredentialsModelRow {
-  /** The model id — the row's key, and what a pick writes into the model draft. */
-  value: string;
-  /** What the row reads. */
-  label: string;
-}
+registerSurface("ai-credentials-form", credentialsDoc);
 
 /** What the form says right now. Every field is the flow's, never a state it derives. */
 export interface AiCredentialsView {
@@ -51,7 +42,7 @@ export interface AiCredentialsView {
   modelDraft: string;
   baseUrlDraft: string;
   /** The catalogue the last successful listing returned; empty draws no chevron on the field. */
-  models: CredentialsModelRow[];
+  models: SurfaceOption[];
   /** A listing is in flight: the button says so and refuses a second one. */
   modelsLoading: boolean;
   /** What the fetch button reads — including while it is working, and once a list has landed. */
@@ -88,11 +79,10 @@ interface AiCredentialsFlags {
   /** Whether there is a refusal to draw beside the fetch button. */
   hasError: boolean;
   /** The catalogue as the kit's combobox draws it — the list, never a corpus it matches against. */
-  modelOptions: CredentialsModelRow[];
+  modelOptions: SurfaceOption[];
 }
 
-interface AiCredentialsScope
-  extends Record<string, unknown>, AiCredentialsView, AiCredentialsActions, AiCredentialsFlags {}
+interface AiCredentialsScope extends AiCredentialsView, AiCredentialsActions, AiCredentialsFlags {}
 
 /** The view plus the flags the document renders from. */
 function derive(view: AiCredentialsView): AiCredentialsView & AiCredentialsFlags {
@@ -119,7 +109,7 @@ export function createAiCredentialsSurface(
 ): AiCredentialsSurface {
   const host = document.createElement("div");
   host.style.display = "contents";
-  const scope = reactive({ ...derive(view), ...actions }) as AiCredentialsScope;
+  const scope: AiCredentialsScope = reactive<AiCredentialsScope>({ ...derive(view), ...actions });
 
   /** `null` while a mount is in flight — which is a standing surface, not a missing one. */
   let handle: SurfaceHandle | null = null;

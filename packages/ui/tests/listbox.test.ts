@@ -24,6 +24,7 @@ import { findA11yDefects } from "@jxsuite/schema/a11y";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
+import type { ComboboxRow } from "../src/behaviors/combobox.ts";
 import { mountListbox, optionsOf, syncListbox } from "../src/behaviors/listbox.ts";
 
 /** Let the runtime's queued render and the sidecar's observer settle. */
@@ -49,21 +50,6 @@ type OptionEl = HTMLElement & {
 };
 type ListboxEl = HTMLElement & { label: string; labelledby: string; active: string };
 
-interface RowSpec {
-  value: string;
-  label?: string;
-  description?: string;
-  disabled?: boolean;
-  face?: string;
-  swatch?: string;
-  line?: string;
-  weight?: string;
-  slant?: string;
-  variant?: string;
-  transform?: string;
-  decoration?: string;
-}
-
 beforeAll(async () => {
   await registerUi();
 });
@@ -72,7 +58,12 @@ afterEach(() => {
 });
 
 /** A listbox holding the given rows, rendered, with its sidecar settled. */
-async function listbox(rows: RowSpec[], props: Record<string, unknown> = {}): Promise<ListboxEl> {
+async function listbox(
+  rows: ComboboxRow[],
+  props: Partial<Pick<ListboxEl, "active" | "label" | "labelledby">> = {},
+): Promise<ListboxEl> {
+  /* SAFETY: registerUi() in beforeAll defined jx-listbox, so createElement returns the upgraded
+     element, and jx-listbox.json declares the label, labelledby and active props ListboxEl names. */
   const list = document.createElement("jx-listbox") as ListboxEl;
   list.setAttribute("id", "lb");
   Object.assign(list, { label: "Results", ...props });
@@ -84,8 +75,10 @@ async function listbox(rows: RowSpec[], props: Record<string, unknown> = {}): Pr
 }
 
 /** Replace a listbox's rows, the way a filter re-run does. */
-function fill(list: HTMLElement, rows: RowSpec[]): OptionEl[] {
+function fill(list: HTMLElement, rows: ComboboxRow[]): OptionEl[] {
   const made = rows.map((row, index) => {
+    /* SAFETY: registerUi() in beforeAll defined jx-option, so createElement returns the upgraded
+       element, and jx-option.json declares every prop OptionEl names. */
     const option = document.createElement("jx-option") as OptionEl;
     option.id = `lb-o${index}`;
     Object.assign(option, { label: row.value, ...row });
@@ -99,14 +92,14 @@ const rowsOf = (list: Element) => [...list.querySelectorAll<OptionEl>("jx-option
 const flags = (list: Element) => rowsOf(list).map((row) => row.getAttribute("aria-selected"));
 
 /** Every emitted CSS rule scoped to this element's own document, in source order. */
-function rules(el: Element): string[] {
-  const scope = `[data-jx="${(el as HTMLElement).dataset["jx"]}"]`;
+function rules(el: HTMLElement): string[] {
+  const scope = `[data-jx="${el.dataset["jx"]}"]`;
   return documentStyleText()
     .split("\n")
     .filter((line) => line.startsWith(scope) || line.includes(`{ ${scope}`));
 }
 /** The first emitted rule whose selector carries `selector`. */
-const ruleFor = (el: Element, selector: string) =>
+const ruleFor = (el: HTMLElement, selector: string) =>
   rules(el).find((line) => line.slice(0, line.indexOf("{") + 1).includes(selector)) ?? "";
 
 describe("jx-listbox", () => {
@@ -119,7 +112,7 @@ describe("jx-listbox", () => {
        contain — or from a caret in another realm — is what aria-activedescendant is for, and a tab
        stop here would put the reader somewhere the keyboard contract does not live. */
     expect(list.hasAttribute("tabindex")).toBe(false);
-    const written = Object.keys(documents["jx-listbox"]?.attributes ?? {});
+    const written = Object.keys(documents["jx-listbox"].attributes ?? {});
     expect(written).not.toContain("tabindex");
     expect(written).not.toContain("aria-activedescendant");
   });
@@ -158,7 +151,7 @@ describe("jx-listbox", () => {
     const list = await listbox([{ value: "a" }, { value: "b" }]);
     const calls: unknown[] = [];
     for (const row of rowsOf(list)) {
-      row.scrollIntoView = (options?: unknown) => {
+      row.scrollIntoView = (options?: boolean | ScrollIntoViewOptions) => {
         calls.push([row.id, options]);
       };
     }
@@ -173,6 +166,8 @@ describe("jx-listbox", () => {
 
   test("owns its own rows and not a nested listbox's", async () => {
     const outer = await listbox([{ value: "a" }]);
+    /* SAFETY: registerUi() in beforeAll defined jx-listbox, so createElement returns the upgraded
+       element, and jx-listbox.json declares the label, labelledby and active props ListboxEl names. */
     const inner = document.createElement("jx-listbox") as ListboxEl;
     inner.label = "Inner";
     outer.append(inner);
@@ -262,8 +257,9 @@ describe("jx-option", () => {
     expect(styleOf(upper)).toContain("--jx-row-transform: uppercase");
     expect(styleOf(wavy)).toContain("--jx-row-decoration: underline wavy");
     /* A channel the row was not given falls back to the row's own, never to a value of its own. */
-    expect(styleOf(plain)).toContain("--jx-row-weight: inherit");
-    expect(styleOf(plain)).toContain("--jx-row-decoration: inherit");
+    const plainStyle = styleOf(plain);
+    expect(plainStyle).toContain("--jx-row-weight: inherit");
+    expect(plainStyle).toContain("--jx-row-decoration: inherit");
     expect(upper!.querySelector('[part="label"]')?.textContent).toBe("Uppercase");
     const rule = ruleFor(bold!, '[part="label"]');
     expect(rule).toContain("font-weight: var(--jx-row-weight, inherit)");
@@ -277,7 +273,7 @@ describe("jx-option", () => {
     const list = await listbox([{ value: "a" }, { disabled: true, value: "b" }]);
     const heard: unknown[] = [];
     list.addEventListener("select", (event) => {
-      heard.push((event as CustomEvent<unknown>).detail);
+      heard.push("detail" in event ? event.detail : undefined);
     });
     const [a, b] = rowsOf(list);
     a!.click();
@@ -312,7 +308,7 @@ describe("jx-option", () => {
         attributes: { "aria-label": "Results", role: "listbox" },
         children: [{ attributes: { label: "Alpha", value: "a" }, tagName: "jx-option" }],
         tagName: "div",
-      } as never),
+      }),
     ).toEqual([]);
   });
 });
@@ -325,10 +321,9 @@ describe("sidecar sync coalescing", () => {
     expect(flags(list)).toEqual(["false", "true"]);
 
     // Hold the frame: the sidecar must not sync per record while rows rebuild.
-    const queued: (() => void)[] = [];
+    const queued: FrameRequestCallback[] = [];
     const original = globalThis.requestAnimationFrame;
-    const held = globalThis as { requestAnimationFrame: (cb: () => void) => number };
-    held.requestAnimationFrame = (cb: () => void) => {
+    globalThis.requestAnimationFrame = (cb) => {
       queued.push(cb);
       return queued.length;
     };
@@ -339,7 +334,7 @@ describe("sidecar sync coalescing", () => {
       await tick();
       expect(queued).toHaveLength(1);
       for (const frame of queued.splice(0)) {
-        frame();
+        frame(performance.now());
       }
       await tick();
       // The single sync ran with the burst's settled answer.
@@ -353,7 +348,9 @@ describe("sidecar sync coalescing", () => {
   test("syncs synchronously, per mutation, where the platform has no requestAnimationFrame", async () => {
     const list = await listbox([{ value: "a" }, { value: "b" }]);
     const original = globalThis.requestAnimationFrame;
-    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    /* The DOM lib types the global as always present, which is the very assumption this test
+       retracts; Object.assign performs the same plain property write without restating that type. */
+    Object.assign(globalThis, { requestAnimationFrame: undefined });
     try {
       list.active = "lb-o1";
       await tick();

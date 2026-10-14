@@ -9,11 +9,22 @@ import {
 import { activeCanvasSurface, surfaceForPane } from "../src/canvas/canvas-surface";
 import { PRIMARY_PANE, SECONDARY_PANE, closeAllTabs, workspace } from "../src/workspace/workspace";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { CanvasPanel } from "../src/types";
 
 /* The panels of the FOCUSED pane's stage. Panels belong to a pane's surface now, not to the
    app (`src/canvas/canvas-surface.ts`); the array identity is stable, so a module-level
    binding still sees what the render mutated. */
 const canvasPanels = activeCanvasSurface().panels;
+
+/** An artboard record named for its breakpoint: the only member the active-panel lookup reads. */
+function board(mediaName: string | null): CanvasPanel {
+  /* SAFETY: `panelOfSurface` (and `getActivePanel` over it) reads nothing of a record but
+     `mediaName`, which it only compares with `===` against "base" and the tab's `activeMedia`
+     (`string | null`); a surface teardown reaches only `renderScope?.`. So the DOM members are
+     never touched, and a null `mediaName`, which this suite uses to pin the null-media branch, is
+     compared rather than dereferenced. */
+  return { mediaName } as CanvasPanel;
+}
 
 beforeEach(() => {
   resetStudioState();
@@ -51,50 +62,50 @@ describe("getActivePanel", () => {
   });
 
   test("returns the only panel when there is exactly one", () => {
-    const panel = { mediaName: "anything" };
-    canvasPanels.push(panel as never);
-    expect(getActivePanel()).toBe(panel as never);
+    const panel = board("anything");
+    canvasPanels.push(panel);
+    expect(getActivePanel()).toBe(panel);
   });
 
   test("activeMedia null resolves to the base panel", () => {
     resetWorkspaceWithTab();
-    const base = { mediaName: "base" };
-    const md = { mediaName: "md" };
-    canvasPanels.push(md as never, base as never);
-    expect(getActivePanel()).toBe(base as never);
+    const base = board("base");
+    const md = board("md");
+    canvasPanels.push(md, base);
+    expect(getActivePanel()).toBe(base);
   });
 
   test("activeMedia null resolves to a null-media panel", () => {
     resetWorkspaceWithTab();
-    const plain = { mediaName: null };
-    const md = { mediaName: "md" };
-    canvasPanels.push(md as never, plain as never);
-    expect(getActivePanel()).toBe(plain as never);
+    const plain = board(null);
+    const md = board("md");
+    canvasPanels.push(md, plain);
+    expect(getActivePanel()).toBe(plain);
   });
 
   test("named activeMedia resolves to the matching panel", () => {
     const tab = resetWorkspaceWithTab();
     tab.session.ui.activeMedia = "md";
-    const base = { mediaName: "base" };
-    const md = { mediaName: "md" };
-    canvasPanels.push(base as never, md as never);
-    expect(getActivePanel()).toBe(md as never);
+    const base = board("base");
+    const md = board("md");
+    canvasPanels.push(base, md);
+    expect(getActivePanel()).toBe(md);
   });
 
   test("falls back to the first panel when nothing matches", () => {
     const tab = resetWorkspaceWithTab();
     tab.session.ui.activeMedia = "xl";
-    const sm = { mediaName: "sm" };
-    const md = { mediaName: "md" };
-    canvasPanels.push(sm as never, md as never);
-    expect(getActivePanel()).toBe(sm as never);
+    const sm = board("sm");
+    const md = board("md");
+    canvasPanels.push(sm, md);
+    expect(getActivePanel()).toBe(sm);
   });
 
   test("no active tab behaves like activeMedia null", () => {
     closeAllTabs();
-    const base = { mediaName: "base" };
-    canvasPanels.push({ mediaName: "md" } as never, base as never);
-    expect(getActivePanel()).toBe(base as never);
+    const base = board("base");
+    canvasPanels.push(board("md"), base);
+    expect(getActivePanel()).toBe(base);
   });
 });
 
@@ -127,15 +138,15 @@ describe("panelOfSurface in a breakpoint lens", () => {
       zoom: 1,
     };
     const side = surfaceForPane(SECONDARY_PANE);
-    const base = { mediaName: "base" };
-    const md = { mediaName: "md" };
+    const base = board("base");
+    const md = board("md");
     side.panels.length = 0;
-    side.panels.push(base as never, md as never);
-    canvasPanels.push(base as never, md as never);
+    side.panels.push(base, md);
+    canvasPanels.push(base, md);
 
-    expect(panelOfSurface(side)).toBe(md as never);
+    expect(panelOfSurface(side)).toBe(md);
     // …and the pane that owns the tab still answers with the tab's, which is the base artboard.
-    expect(getActivePanel()).toBe(base as never);
+    expect(getActivePanel()).toBe(base);
     side.panels.length = 0;
   });
 });
@@ -196,7 +207,7 @@ describe("bubbleInlinePath", () => {
   test("defaults missing tagNames to div (non-inline)", () => {
     const anonDoc: JxMutableNode = {
       children: [{ children: [{ textContent: "x" }] }],
-    } as JxMutableNode;
+    };
     const result = bubbleInlinePath(anonDoc, ["children", 0, "children", 0]);
     expect(result).toEqual(["children", 0, "children", 0]);
   });

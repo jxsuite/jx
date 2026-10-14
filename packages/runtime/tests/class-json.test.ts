@@ -1,8 +1,13 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
-import { describe, test, expect, mock, spyOn } from "bun:test";
+import { describe, test, expect, spyOn } from "bun:test";
 import { buildScope, resolvePrototype, isSignal } from "@jxsuite/runtime";
-import { resolve as resolvePath, join } from "node:path";
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
+import { isRef } from "@vue/reactivity";
+import { resolve, join } from "node:path";
+import { BASE } from "./base-url.ts";
+
+import type { JsonObject } from "@jxsuite/schema/types";
 
 try {
   GlobalRegistrator.register();
@@ -12,7 +17,6 @@ try {
 
 const __filename = import.meta.filename;
 const __dirname = join(__filename, "..");
-const BASE = "http://localhost/";
 
 // ─── .class.json self-contained class schema ────────────────────────────────
 
@@ -165,29 +169,46 @@ const classWithInitializer = {
   title: "Initer",
 };
 
+/** Answer every `fetch` from `respond`, keeping Bun's `preconnect` so the stub is a whole `fetch`. */
+function stubFetch(respond: (url: string) => Promise<Response>) {
+  const { preconnect } = fetch;
+  const stub = (input: RequestInfo | URL) => respond(String(input));
+  return spyOn(globalThis, "fetch").mockImplementation(Object.assign(stub, { preconnect }));
+}
+
 // Mock fetch to serve .class.json content based on URL
-function setupFetchMock(classDefMap: any) {
-  const originalFetch = global.fetch;
-  global.fetch = mock((url) => {
-    const urlStr = typeof url === "string" ? url : url.toString();
+function setupFetchMock(classDefMap: Record<string, JsonObject>) {
+  const originalFetch = globalThis.fetch;
+  const spy = stubFetch(async (urlStr) => {
     for (const [pattern, def] of Object.entries(classDefMap)) {
       if (urlStr.includes(pattern)) {
-        return Promise.resolve({
-          json: () => Promise.resolve(def),
-          ok: true,
-        });
+        return Response.json(def);
       }
     }
     // Fall through to 404 for unknown .class.json urls
     if (urlStr.endsWith(".class.json")) {
-      return Promise.resolve({ ok: false, status: 404 });
+      return new Response(null, { status: 404 });
     }
     // Let non-class-json requests through (shouldn't happen in these tests)
-    return originalFetch(url);
-  }) as unknown as typeof fetch;
+    return originalFetch(urlStr);
+  });
   return () => {
-    global.fetch = originalFetch;
+    spy.mockRestore();
   };
+}
+
+/** Resolve a prototype that must come back as a signal; anything else fails the test here. */
+async function resolveSignal(...args: Parameters<typeof resolvePrototype>) {
+  const sig = await resolvePrototype(...args);
+  if (!isRef(sig)) {
+    throw new Error(`resolvePrototype(${args[2]}) did not return a signal`);
+  }
+  return sig;
+}
+
+/** Whether a resolved instance carries the `add(a, b)` method classWithStaticMethod defines. */
+function hasAdd(value: unknown): value is { add: (a: number, b: number) => number } {
+  return isNonNullObject(value) && "add" in value && isFunction(value.add);
 }
 
 // ─── resolveClassJson — self-contained ──────────────────────────────────────
@@ -198,11 +219,11 @@ describe("resolveClassJson — self-contained", () => {
       "Adder.class.json": selfContainedClassDef,
     });
     try {
-      const sig = (await resolvePrototype(
+      const sig = await resolveSignal(
         { $prototype: "Adder", $src: "./Adder.class.json", a: 3, b: 7 },
         {},
         "$sum",
-      )) as any;
+      );
       expect(isSignal(sig)).toBe(true);
       expect(sig.value).toBe(10);
     } finally {
@@ -215,7 +236,7 @@ describe("resolveClassJson — self-contained", () => {
       "Greeter.class.json": classWithValueProp,
     });
     try {
-      const sig = (await resolvePrototype(
+      const sig = await resolveSignal(
         {
           $prototype: "Greeter",
           $src: "./Greeter.class.json",
@@ -223,7 +244,7 @@ describe("resolveClassJson — self-contained", () => {
         },
         {},
         "$greeting",
-      )) as any;
+      );
       expect(isSignal(sig)).toBe(true);
       expect(sig.value).toBe("Hello Alice");
     } finally {
@@ -236,11 +257,11 @@ describe("resolveClassJson — self-contained", () => {
       "Adder.class.json": selfContainedClassDef,
     });
     try {
-      const sig = (await resolvePrototype(
+      const sig = await resolveSignal(
         { $prototype: "Adder", $src: "./Adder.class.json" },
         {},
         "$sum",
-      )) as any;
+      );
       expect(sig.value).toBe(0); // 0 + 0
     } finally {
       restore();
@@ -252,13 +273,12 @@ describe("resolveClassJson — self-contained", () => {
       "Secret.class.json": privateFieldsClassDef,
     });
     try {
-      const sig = (await resolvePrototype(
+      const sig = await resolveSignal(
         { $prototype: "Secret", $src: "./Secret.class.json" },
         {},
         "$s",
-      )) as any;
-      expect(sig.value.priv).toBe("hidden");
-      expect(sig.value.pub).toBe("visible");
+      );
+      expect(sig.value).toMatchObject({ priv: "hidden", pub: "visible" });
     } finally {
       restore();
     }
@@ -269,12 +289,12 @@ describe("resolveClassJson — self-contained", () => {
       "Secret.class.json": privateFieldsClassDef,
     });
     try {
-      const sig = (await resolvePrototype(
+      const sig = await resolveSignal(
         { $prototype: "Secret", $src: "./Secret.class.json", data: "custom" },
         {},
         "$s",
-      )) as any;
-      expect(sig.value.priv).toBe("custom");
+      );
+      expect(sig.value).toMatchObject({ priv: "custom" });
     } finally {
       restore();
     }
@@ -285,11 +305,11 @@ describe("resolveClassJson — self-contained", () => {
       "Adder.class.json": selfContainedClassDef,
     });
     try {
-      const sig = (await resolvePrototype(
+      const sig = await resolveSignal(
         { $prototype: "Adder", $src: "./Adder.class.json", a: 2, b: 3 },
         {},
         "$sum",
-      )) as any;
+      );
       expect(isSignal(sig)).toBe(true);
       expect(sig.value).toBe(5);
     } finally {
@@ -308,14 +328,17 @@ describe("classFromSchema — via resolvePrototype", () => {
     try {
       // Static methods aren't directly testable via resolve since resolve()
       // Returns instance, but instance methods work
-      const val = (await resolvePrototype(
+      const val = await resolveSignal(
         { $prototype: "Utils", $src: "./Utils.class.json" },
         {},
         "$u",
-      )) as any;
+      );
       // Instance returned as value (no resolve, no value prop) — wrapped in ref
-      expect(typeof val.value.add).toBe("function");
-      expect(val.value.add(2, 3)).toBe(5);
+      const instance = val.value;
+      if (!hasAdd(instance)) {
+        throw new Error("the resolved instance has no add() method");
+      }
+      expect(instance.add(2, 3)).toBe(5);
     } finally {
       restore();
     }
@@ -326,12 +349,12 @@ describe("classFromSchema — via resolvePrototype", () => {
       "Tagged.class.json": classWithConstructorBody,
     });
     try {
-      const val = (await resolvePrototype(
+      const val = await resolveSignal(
         { $prototype: "Tagged", $src: "./Tagged.class.json", prefix: "test" },
         {},
         "$t",
-      )) as any;
-      expect(val.value.tag).toBe("test-tagged");
+      );
+      expect(val.value).toMatchObject({ tag: "test-tagged" });
     } finally {
       restore();
     }
@@ -342,11 +365,11 @@ describe("classFromSchema — via resolvePrototype", () => {
       "Initer.class.json": classWithInitializer,
     });
     try {
-      const val = (await resolvePrototype(
+      const val = await resolveSignal(
         { $prototype: "Initer", $src: "./Initer.class.json" },
         {},
         "$i",
-      )) as any;
+      );
       expect(val.value).toEqual([]);
     } finally {
       restore();
@@ -359,11 +382,11 @@ describe("classFromSchema — via resolvePrototype", () => {
     });
     try {
       // Auto-wrapped as ref; resolve() returns a number, not the instance
-      const val = (await resolvePrototype(
+      const val = await resolveSignal(
         { $prototype: "Adder", $src: "./Adder.class.json", a: 1, b: 1 },
         {},
         "$a",
-      )) as any;
+      );
       // Resolve() returns a number, not the instance, so we can't check class name directly
       expect(val.value).toBe(2);
     } finally {
@@ -376,7 +399,7 @@ describe("classFromSchema — via resolvePrototype", () => {
 
 describe("resolveClassJson — hybrid $implementation", () => {
   test("follows $implementation to JS module via resolveExternalPrototype", async () => {
-    const parserDir = resolvePath(__dirname, "..", "..", "..", "extensions", "parser", "src");
+    const parserDir = resolve(__dirname, "..", "..", "..", "extensions", "parser", "src");
     const hybridDef = {
       $implementation: "./markdown.js",
       $prototype: "Class",
@@ -385,8 +408,8 @@ describe("resolveClassJson — hybrid $implementation", () => {
     const schemaSrc = `file://${join(parserDir, "MdFile.class.json")}`;
     const restore = setupFetchMock({ "MdFile.class.json": hybridDef });
     try {
-      const fixtureDir = resolvePath(__dirname, "..", "..", "..", "examples", "content", "posts");
-      const sig = (await resolvePrototype(
+      const fixtureDir = resolve(__dirname, "..", "..", "..", "examples", "content", "posts");
+      const sig = await resolveSignal(
         {
           $prototype: "Markdown",
           $src: schemaSrc,
@@ -394,9 +417,9 @@ describe("resolveClassJson — hybrid $implementation", () => {
         },
         {},
         "$post",
-      )) as any;
+      );
       expect(isSignal(sig)).toBe(true);
-      expect(sig.value.slug).toBe("getting-started");
+      expect(sig.value).toMatchObject({ slug: "getting-started" });
     } finally {
       restore();
     }
@@ -407,37 +430,31 @@ describe("resolveClassJson — hybrid $implementation", () => {
        absolute, so it fails exactly like the first attempt. The point is that the retry itself
        runs (rather than skipping straight to the "no base" error), and that a caller with no
        working implementation still gets a signal back via the dev proxy. */
-    const parserDir = resolvePath(__dirname, "..", "..", "..", "extensions", "parser", "src");
+    const parserDir = resolve(__dirname, "..", "..", "..", "extensions", "parser", "src");
     const hybridDef = {
       $implementation: "./NoSuchModule.js",
       $prototype: "Class",
       title: "Ghost",
     };
     const schemaSrc = `file://${join(parserDir, "Ghost.class.json")}`;
-    const originalFetch = global.fetch;
+    const originalFetch = globalThis.fetch;
     let proxyCalled = false;
-    global.fetch = mock((url) => {
-      const urlStr = typeof url === "string" ? url : url.toString();
+    const fetchSpy = stubFetch(async (urlStr) => {
       if (urlStr.includes("Ghost.class.json")) {
-        return Promise.resolve({ json: () => Promise.resolve(hybridDef), ok: true });
+        return Response.json(hybridDef);
       }
       if (urlStr.includes("__jx_resolve__")) {
         proxyCalled = true;
-        return Promise.resolve({ json: () => Promise.resolve(42), ok: true });
+        return Response.json(42);
       }
-      return originalFetch(url);
-    }) as unknown as typeof fetch;
+      return originalFetch(urlStr);
+    });
     try {
-      const sig = (await resolvePrototype(
-        { $prototype: "Ghost", $src: schemaSrc },
-        {},
-        "$g",
-        BASE,
-      )) as any;
+      const sig = await resolveSignal({ $prototype: "Ghost", $src: schemaSrc }, {}, "$g", BASE);
       expect(proxyCalled).toBe(true);
       expect(isSignal(sig)).toBe(true);
     } finally {
-      global.fetch = originalFetch;
+      fetchSpy.mockRestore();
     }
   });
 });
@@ -447,23 +464,19 @@ describe("resolveClassJson — hybrid $implementation", () => {
 describe("resolveClassJson — fallback", () => {
   test("falls back to dev proxy when fetch fails", async () => {
     // Mock fetch to fail for the .class.json
-    const originalFetch = global.fetch;
+    const originalFetch = globalThis.fetch;
     let proxyCalled = false;
-    global.fetch = mock((url, _opts) => {
-      const urlStr = typeof url === "string" ? url : url.toString();
+    const fetchSpy = stubFetch(async (urlStr) => {
       if (urlStr.endsWith(".class.json")) {
-        return Promise.reject(new Error("Network error"));
+        throw new Error("Network error");
       }
       // Dev proxy call
       if (urlStr.includes("__jx_resolve__")) {
         proxyCalled = true;
-        return Promise.resolve({
-          json: () => Promise.resolve(42),
-          ok: true,
-        });
+        return Response.json(42);
       }
-      return originalFetch(url);
-    }) as any;
+      return originalFetch(urlStr);
+    });
 
     try {
       const sig = await resolvePrototype(
@@ -474,7 +487,7 @@ describe("resolveClassJson — fallback", () => {
       expect(proxyCalled).toBe(true);
       expect(isSignal(sig)).toBe(true);
     } finally {
-      global.fetch = originalFetch;
+      fetchSpy.mockRestore();
     }
   });
 });
@@ -520,7 +533,7 @@ describe("resolveExternalPrototype — .class.json enforcement", () => {
       "Adder.class.json": selfContainedClassDef,
     });
     try {
-      const sig = await resolvePrototype(
+      const sig = await resolveSignal(
         {
           $prototype: "Adder",
           $src: "http://localhost/Adder.class.json",
@@ -531,7 +544,7 @@ describe("resolveExternalPrototype — .class.json enforcement", () => {
         "$sum",
       );
       expect(isSignal(sig)).toBe(true);
-      expect((sig as any).value).toBe(3);
+      expect(sig.value).toBe(3);
     } finally {
       restore();
     }
@@ -596,7 +609,7 @@ describe("buildScope — import map", () => {
     };
     const scope = await buildScope(doc, {}, BASE);
     // Function should still resolve normally — not redirected via import map
-    expect(typeof scope.increment).toBe("function");
+    expect(scope.increment).toBeInstanceOf(Function);
   });
 
   test("non-.class.json import value warns and skips", async () => {

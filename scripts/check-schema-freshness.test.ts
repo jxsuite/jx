@@ -15,6 +15,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 import {
   candidatePaths,
@@ -38,12 +40,15 @@ interface Job {
   "timeout-minutes"?: number;
 }
 interface Workflow {
-  on: Record<string, unknown>;
+  on: JsonObject;
   permissions: Record<string, string>;
   concurrency?: { group: string; "cancel-in-progress"?: boolean };
   jobs: Record<string, Job>;
 }
 
+/* SAFETY: schemas.yml is a GitHub Actions workflow, and Actions' workflow syntax fixes `on`,
+   `permissions`, `concurrency` and `jobs.<id>` to the shapes `Workflow` names (GitHub refuses to
+   run a file that breaks it). Every test below reads only those keys. */
 const workflow = Bun.YAML.parse(await Bun.file(WORKFLOW).text()) as Workflow;
 const workflowText = await Bun.file(WORKFLOW).text();
 
@@ -116,14 +121,15 @@ describe("pointerDelta", () => {
 });
 
 describe("classifySchema", () => {
-  test.each([
+  const cases: [string, SchemaKind][] = [
     ["packages/schema/schema.json", "core"],
     ["packages/schema/class-schema.json", "core"],
     ["packages/schema/schemas/project.core.schema.json", "core"],
     ["packages/starters/sites/blog/document.schema.json", "entry"],
     ["examples/project.schema.json", "entry"],
     ["extensions/parser/schemas/project.fragment.schema.json", "fragment"],
-  ] as [string, SchemaKind][])("%s is %s", (path, kind) => {
+  ];
+  test.each(cases)("%s is %s", (path, kind) => {
     expect(classifySchema(path)).toBe(kind);
   });
 });
@@ -271,14 +277,14 @@ describe("the generators this gate runs", () => {
   });
 
   test("are real package scripts", async () => {
-    const manifest = (await Bun.file("package.json").json()) as {
-      scripts: Record<string, string>;
-    };
+    const manifest: JsonValue = await Bun.file("package.json").json();
+    const scripts =
+      isJsonObject(manifest) && isJsonObject(manifest.scripts) ? manifest.scripts : {};
     for (const generator of GENERATORS) {
-      expect(manifest.scripts).toHaveProperty(generator[2] as string);
+      expect(scripts).toHaveProperty(generator[2]);
     }
-    expect(manifest.scripts["schema:verify"]).toBe("bun scripts/check-schema-freshness.ts");
-    expect(manifest.scripts["schema:sync"]).toBe("bun scripts/check-schema-freshness.ts --fix");
+    expect(scripts["schema:verify"]).toBe("bun scripts/check-schema-freshness.ts");
+    expect(scripts["schema:sync"]).toBe("bun scripts/check-schema-freshness.ts --fix");
   });
 });
 

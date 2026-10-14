@@ -27,7 +27,28 @@ let tab: Tab;
 let tabCount = 0;
 
 function doc(): JxMutableNode {
-  return toRaw(tab.doc.document) as JxMutableNode;
+  return toRaw(tab.doc.document);
+}
+
+/** A complete, ready panel: classifyOps only asks whether every panel is `ready`. */
+function readyPanel(): CanvasPanel {
+  return {
+    _width: null,
+    canvas: document.createElement("div"),
+    element: document.createElement("div"),
+    mediaName: "",
+    ready: true,
+    renderScope: null,
+    scrollContainer: document.createElement("div"),
+    viewport: document.createElement("div"),
+  };
+}
+
+/** An op kind outside the `JxPatchOp` union, the shape a newer producer's batch could carry. */
+function foreignOp(kind: string): JxPatchOp {
+  /* SAFETY: deliberately false. classifyOps switches on `op.op` and reads nothing else of an op
+     whose kind matches no case: its default branch only formats `${op.op}-unsupported`. */
+  return { op: kind, path: [] } as JxPatchOp;
 }
 
 function reason(op: JxPatchOp): string {
@@ -47,13 +68,9 @@ beforeEach(() => {
       tagName: "div",
     },
     id: `patcher-gaps-${tabCount}`,
-  }) as Tab;
+  });
 
-  canvasPanels.push({
-    canvas: document.createElement("div"),
-    mediaName: "",
-    ready: true,
-  } as unknown as CanvasPanel);
+  canvasPanels.push(readyPanel());
 
   initCanvasPatcher({
     renderOverlays: () => {},
@@ -169,13 +186,15 @@ describe("structural container verdicts (insert / remove / move)", () => {
 
 describe("unsupported ops", () => {
   test("an unknown op kind is rejected with an -unsupported reason", () => {
-    expect(reason({ op: "frobnicate", path: [] } as unknown as JxPatchOp)).toBe(
-      "frobnicate-unsupported",
-    );
+    expect(reason(foreignOp("frobnicate"))).toBe("frobnicate-unsupported");
   });
 
   test("a fresh doc mutation keeps prior verdicts intact (sanity)", () => {
-    (doc().children as JxMutableNode[]).push({ tagName: "em", textContent: "tail" });
+    const { children } = doc();
+    if (!Array.isArray(children)) {
+      throw new TypeError("expected the fixture root's children array");
+    }
+    children.push({ tagName: "em", textContent: "tail" });
     expect(classifyOps(tab, [{ op: "set-style", path: ["children", 3] }]).patchable).toBe(true);
   });
 });

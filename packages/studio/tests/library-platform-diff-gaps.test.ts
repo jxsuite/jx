@@ -31,6 +31,7 @@ import { resetActivities } from "../src/panels/activity-panel";
 import { createDevServerPlatform } from "../src/platforms/devserver";
 import { createCloudPlatform } from "../src/platforms/cloud";
 import type { DirEntry } from "../src/types";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 // ─── Seams ───────────────────────────────────────────────────────────────────
 
@@ -79,10 +80,10 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 /* Same reason as library-pane.test.ts: happy-dom's IntersectionObserver never fires, so its absence
    takes `createPreviewObserver`'s documented degraded path instead of stalling every preview. */
@@ -95,14 +96,21 @@ function file(name: string, path: string): DirEntry {
   return { name, path, type: "file" };
 }
 
-const TREE: Record<string, DirEntry[]> = {
+const TREE = {
   content: [file("2024-01-02-hello.md", "content/2024-01-02-hello.md")],
   layouts: [file("main.json", "layouts/main.json")],
   pages: [file("index.json", "pages/index.json"), file("about.json", "pages/about.json")],
   public: [file("logo.png", "public/logo.png")],
-};
+} satisfies Record<string, DirEntry[]>;
 
-let host: HTMLElement;
+/** The listing a fixture tree holds for a directory, or `undefined` for one it does not hold. */
+function listingIn(tree: Record<string, DirEntry[]>, path: string): DirEntry[] | undefined {
+  return tree[path];
+}
+
+/* A detached placeholder until the first mount, so the teardown's `remove()` before it is a no-op
+   rather than a guard on a value that is never absent. */
+let host: HTMLElement = document.createElement("div");
 
 function setup(listDirectory: (path: string) => Promise<DirEntry[]>, dirs = Object.keys(TREE)) {
   installMockPlatform({ listDirectory });
@@ -111,7 +119,7 @@ function setup(listDirectory: (path: string) => Promise<DirEntry[]>, dirs = Obje
 
 async function mount(): Promise<HTMLElement> {
   detachLibraryPane("primary");
-  host?.remove();
+  host.remove();
   closeAllTabs();
   const tab = openTab({
     capabilities: { modes: ["manage"] },
@@ -125,6 +133,15 @@ async function mount(): Promise<HTMLElement> {
   await flush();
   await flush();
   return host;
+}
+
+/** The one element a selector names under `root`, failing the test by name when it is missing. */
+function drawn(selector: string, root: ParentNode = host): HTMLElement {
+  const found = root.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`nothing is drawn for ${selector}`);
+  }
+  return found;
 }
 
 /** Menus on screen. The kit's menu is a popover on the platform's own top layer. */
@@ -145,17 +162,17 @@ describe("the Library pane", () => {
     setLibraryCategory("all");
     setLibraryLayout("cards");
     setLibrarySearch("");
-    setup((path) => Promise.resolve(TREE[path] ?? []));
+    setup((path) => Promise.resolve(listingIn(TREE, path) ?? []));
   });
 
   afterEach(() => {
     detachLibraryPane("primary");
-    host?.remove();
+    host.remove();
   });
 
   test("a click on a card opens THAT card's path, not the first one drawn", async () => {
     await mount();
-    const card = host.querySelector('[part="card"][data-path="public/logo.png"]') as HTMLElement;
+    const card = drawn('[part="card"][data-path="public/logo.png"]');
     expect(card).not.toBeNull();
     card.click();
     await flush();
@@ -165,14 +182,14 @@ describe("the Library pane", () => {
   test("the EMPTY state carries its own Retry, and pressing it re-scans", async () => {
     let broken = true;
     setup((path) =>
-      broken ? Promise.reject(new Error("HTTP 500")) : Promise.resolve(TREE[path] ?? []),
+      broken ? Promise.reject(new Error("HTTP 500")) : Promise.resolve(listingIn(TREE, path) ?? []),
     );
     await mount();
     // Nothing was read, so the list is empty AND incomplete: the banner is drawn above the body and
     // The empty state inside it. They are two buttons, and this is the second one.
-    const empty = host.querySelector('[part="empty"]') as HTMLElement;
+    const empty = drawn('[part="empty"]');
     expect(empty.textContent).toContain("the scan did not finish");
-    const retry = empty.querySelector('[part="retry"]') as HTMLElement;
+    const retry = drawn('[part="retry"]', empty);
     expect(host.querySelectorAll('[part="retry"]').length).toBeGreaterThan(1);
 
     broken = false;
@@ -186,7 +203,7 @@ describe("the Library pane", () => {
   test("a drop into All whose destination prompt is cancelled uploads nothing", async () => {
     setLibraryCategory("all");
     await mount();
-    const body = host.querySelector('[part="body"]') as HTMLElement;
+    const body = drawn('[part="body"]');
     dragEvent(body, "drop", [testFile("shot.png")]);
     await flush();
     // The drop really did reach the upload flow — it is waiting on the destination.
@@ -199,7 +216,7 @@ describe("the Library pane", () => {
   test("…and the same drop, answered, uploads into the folder the author named", async () => {
     setLibraryCategory("all");
     await mount();
-    const body = host.querySelector('[part="body"]') as HTMLElement;
+    const body = drawn('[part="body"]');
     dragEvent(body, "drop", [testFile("shot.png")]);
     await flush();
     await answerPromptDialog("assets/media/");
@@ -209,7 +226,7 @@ describe("the Library pane", () => {
 
   test("an outside mousedown dismisses the context menu, and the next right-click reopens one", async () => {
     await mount();
-    const card = host.querySelector('[part="card"]') as HTMLElement;
+    const card = drawn('[part="card"]');
     card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
     expect(menus()).toBe(1);
@@ -225,30 +242,55 @@ describe("the Library pane", () => {
     card.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
     expect(menus()).toBe(1);
-    const open = document.querySelector(
-      '#layer-popover jx-menu-item[data-command-id="open"]',
-    ) as HTMLElement;
+    const open = drawn('#layer-popover jx-menu-item[data-command-id="open"]', document);
     open.click();
     await flush();
     expect(opened.length).toBe(1);
   });
 });
 
+// ─── Network and window stand-ins ────────────────────────────────────────────
+
+const realFetch = globalThis.fetch;
+
+/** Install `answer` as the global `fetch`, keeping Bun's `preconnect` so the stub is a whole one. */
+function stubFetch(
+  answer: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): void {
+  globalThis.fetch = Object.assign(answer, { preconnect: realFetch.preconnect });
+}
+
+/** The popup cfConnect gets back from `window.open`. */
+function connectPopup(members: Pick<Window, "close" | "closed">): Window {
+  /* SAFETY: cfConnect touches the window `window.open` returns only through `closed` (the poll's
+     canceled check and cleanup's guard) and `close()` (cleanup). It calls `focus()` only on a
+     SECOND concurrent flow, and no test here starts one. */
+  return members as Window;
+}
+
+/** A connection-route reply: `fetchCfConnection` reads only `ok` and the parsed body. */
+function connectionReply(body: JsonValue): Response {
+  const reply: Pick<Response, "json" | "ok"> = { json: () => Promise.resolve(body), ok: true };
+  /* SAFETY: every fetch cfConnect makes is `fetchCfConnection`'s GET, which checks `res.ok` and then
+     reads `res.json()` and nothing else. A plain object keeps the body a single microtask away,
+     which the hand-drained clock in this test counts on. */
+  return reply as Response;
+}
+
 // ─── Dev-server adapter: buildSite ───────────────────────────────────────────
 
 describe("the dev-server adapter's buildSite", () => {
-  const realFetch = globalThis.fetch;
   let calls: { method: string; path: string }[] = [];
 
-  function serve(body: unknown, status = 200): void {
+  function serve(body: JsonValue, status = 200): void {
     calls = [];
-    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    stubFetch((input, init) => {
       calls.push({
         method: init?.method ?? "GET",
         path: new URL(String(input), "http://localhost").pathname,
       });
       return Promise.resolve(Response.json(body, { status }));
-    }) as typeof fetch;
+    });
   }
 
   afterEach(() => {
@@ -283,8 +325,6 @@ describe("the dev-server adapter's buildSite", () => {
 // ─── Cloud adapter: the cfConnect poll ───────────────────────────────────────
 
 describe("the cloud adapter's cfConnect poll", () => {
-  const realFetch = globalThis.fetch;
-
   afterEach(() => {
     globalThis.fetch = realFetch;
   });
@@ -293,7 +333,7 @@ describe("the cloud adapter's cfConnect poll", () => {
     /* Call 1 is the BASELINE, taken before the popup opens — it is what tells the poll that the row
        it later finds is new rather than left over from a previous session. */
     let checks = 0;
-    globalThis.fetch = ((input: RequestInfo | URL) => {
+    stubFetch((input) => {
       if (String(input).includes("/api/v1/cf/connection")) {
         checks += 1;
         return Promise.resolve(
@@ -301,18 +341,22 @@ describe("the cloud adapter's cfConnect poll", () => {
         );
       }
       return Promise.resolve(Response.json({}));
-    }) as typeof fetch;
+    });
 
     const realOpen = window.open;
     const realTimeout = window.setTimeout;
-    const popup = { close: mock(() => {}), closed: false };
+    const close = mock(() => {});
+    const popup = connectPopup({ close, closed: false });
     const delays: (number | undefined)[] = [];
-    (window as { open: unknown }).open = mock(() => popup);
-    (window as { setTimeout: unknown }).setTimeout = ((fn: () => void, ms?: number) => {
+    window.open = mock(() => popup);
+    const arm = (fn: () => void, ms?: number) => {
       delays.push(ms);
       queueMicrotask(fn);
       return 1;
-    }) as unknown as typeof window.setTimeout;
+    };
+    /* SAFETY: while this stub is installed the only window timers are cfConnect's poll, armed with a
+       zero-argument arrow and a numeric delay; the constant id is never cleared before it fires. */
+    window.setTimeout = arm as typeof window.setTimeout;
 
     try {
       const p = createCloudPlatform(null);
@@ -324,10 +368,10 @@ describe("the cloud adapter's cfConnect poll", () => {
          it. Without the re-arm the second check never happens and the promise never settles. */
       expect(checks).toBe(4);
       expect(delays).toEqual([1500, 1500, 1500]);
-      expect(popup.close).toHaveBeenCalled();
+      expect(close).toHaveBeenCalled();
     } finally {
-      (window as { open: unknown }).open = realOpen;
-      (window as { setTimeout: unknown }).setTimeout = realTimeout;
+      window.open = realOpen;
+      window.setTimeout = realTimeout;
     }
   });
 
@@ -345,21 +389,17 @@ describe("the cloud adapter's cfConnect poll", () => {
   test("the timer it re-armed is the one cleanup clears — nothing polls after the promise settles", async () => {
     let connected = false;
     const fetched: string[] = [];
-    globalThis.fetch = ((input: RequestInfo | URL) => {
+    stubFetch((input) => {
       fetched.push(String(input));
-      return Promise.resolve({
-        json: () =>
-          Promise.resolve(
-            connected ? { accountId: "acct", connected: true } : { connected: false },
-          ),
-        ok: true,
-      } as unknown as Response);
-    }) as typeof fetch;
+      return Promise.resolve(
+        connectionReply(connected ? { accountId: "acct", connected: true } : { connected: false }),
+      );
+    });
 
     const realOpen = window.open;
     const realTimeout = window.setTimeout;
     const realClear = window.clearTimeout;
-    const popup = { close: () => {}, closed: false };
+    const popup = connectPopup({ close: () => {}, closed: false });
     /* A hand-driven timer table, which is the whole point: the sibling test above returns the same
        id (1) for every arm, so the re-armed handle and the stale one are indistinguishable and
        `cleanup`'s `clearTimeout` cannot be wrong. Here every arm gets its own id and `clearTimeout`
@@ -368,16 +408,21 @@ describe("the cloud adapter's cfConnect poll", () => {
     const armed = new Map<number, () => void>();
     const cleared: number[] = [];
     let nextId = 0;
-    (window as { open: unknown }).open = () => popup;
-    (window as { setTimeout: unknown }).setTimeout = ((fn: () => void) => {
+    window.open = () => popup;
+    const arm = (fn: () => void) => {
       nextId += 1;
       armed.set(nextId, fn);
       return nextId;
-    }) as unknown as typeof window.setTimeout;
-    (window as { clearTimeout: unknown }).clearTimeout = ((id: number) => {
+    };
+    const disarm = (id: number) => {
       cleared.push(id);
       armed.delete(id);
-    }) as unknown as typeof window.clearTimeout;
+    };
+    /* SAFETY: while this stub is installed the only window timers are cfConnect's poll, armed with a
+       zero-argument arrow, and its handles are the numeric ids `arm` mints. */
+    window.setTimeout = arm as typeof window.setTimeout;
+    /* SAFETY: cfConnect only ever clears ids that `arm` handed out, which are numbers. */
+    window.clearTimeout = disarm as typeof window.clearTimeout;
 
     /** Fire one armed timer, exactly as the platform would: it is consumed, then it runs. */
     async function fire(id: number): Promise<void> {
@@ -425,9 +470,9 @@ describe("the cloud adapter's cfConnect poll", () => {
       }
       expect([armed.size, fetched.length]).toEqual([0, settledAt]);
     } finally {
-      (window as { open: unknown }).open = realOpen;
-      (window as { setTimeout: unknown }).setTimeout = realTimeout;
-      (window as { clearTimeout: unknown }).clearTimeout = realClear;
+      window.open = realOpen;
+      window.setTimeout = realTimeout;
+      window.clearTimeout = realClear;
     }
   });
 });

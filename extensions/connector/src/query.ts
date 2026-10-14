@@ -9,42 +9,61 @@
  * empty.
  */
 
+import { isBoolean, isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import type { ExpressionBuilder, ExpressionWrapper, SelectQueryBuilder, SqlBool } from "kysely";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { ColumnSpec } from "./columns.ts";
 
-/** One filter rule of the shared content grammar. */
+/**
+ * One filter rule of the shared content grammar. Rules arrive as wire JSON, and normalization only
+ * requires a string `field`: an absent or unrecognized `op` matches everything (see
+ * ruleExpression).
+ */
 export interface FilterRule {
   field: string;
-  op: string;
-  value?: unknown;
+  op?: JsonValue;
+  value?: JsonValue;
 }
 
+/** One sort rule; any `order` other than "desc" sorts ascending. */
 export interface SortRule {
   field: string;
-  order?: string;
+  order?: JsonValue;
 }
 
-/** Loosely-typed database shape for dynamic tables (columns are only known at runtime). */
-export type DynamicDatabase = Record<string, Record<string, unknown>>;
+/**
+ * A value a SQL driver reads or binds: JSON scalars and structures (postgres json columns, arrays),
+ * 64-bit integers, blobs and timestamps.
+ */
+export type SqlValue = JsonValue | bigint | Uint8Array | Date;
 
-type DynamicSelect = SelectQueryBuilder<DynamicDatabase, string, Record<string, unknown>>;
+/** One dynamic-table row keyed by physical column name (columns are only known at runtime). */
+export type DynamicRow = Record<string, SqlValue>;
+
+/** Database shape for dynamic tables: every table is a bag of runtime-known columns. */
+export type DynamicDatabase = Record<string, DynamicRow>;
+
+type DynamicSelect = SelectQueryBuilder<DynamicDatabase, string, DynamicRow>;
 type DynamicEb = ExpressionBuilder<DynamicDatabase, string>;
 type BoolExpr = ExpressionWrapper<DynamicDatabase, string, SqlBool>;
+
+/** A wire rule object naming a string `field` — the one requirement filter and sort rules share. */
+function isFieldRule(rule: JsonValue): rule is JsonObject & { field: string } {
+  return isJsonObject(rule) && isString(rule.field);
+}
 
 /**
  * Normalize a wire filter (rule array or equality-object shorthand) into rules.
  *
- * @param {unknown} filter
+ * @param {JsonValue | undefined} filter
  * @returns {FilterRule[]}
  */
-export function normalizeFilter(filter: unknown): FilterRule[] {
+export function normalizeFilter(filter: JsonValue | undefined): FilterRule[] {
   if (Array.isArray(filter)) {
-    return (filter as FilterRule[]).filter(
-      (rule) => rule && typeof rule === "object" && typeof rule.field === "string",
-    );
+    return filter.filter((rule) => isFieldRule(rule));
   }
-  if (filter && typeof filter === "object") {
-    return Object.entries(filter as Record<string, unknown>).map(([field, value]) => ({
+  if (isJsonObject(filter)) {
+    return Object.entries(filter).map(([field, value]) => ({
       field,
       op: "==",
       value,
@@ -54,11 +73,9 @@ export function normalizeFilter(filter: unknown): FilterRule[] {
 }
 
 /** Normalize a wire sort (single rule or list) into rules. */
-export function normalizeSort(sort: unknown): SortRule[] {
+export function normalizeSort(sort: JsonValue | undefined): SortRule[] {
   const list = Array.isArray(sort) ? sort : sort ? [sort] : [];
-  return (list as SortRule[]).filter(
-    (rule) => rule && typeof rule === "object" && typeof rule.field === "string",
-  );
+  return list.filter((rule) => isFieldRule(rule));
 }
 
 /** Resolve a grammar field name to its physical column (`author` → `author_id` for refs). */
@@ -140,13 +157,13 @@ function ruleExpression(
     }
     default: {
       // Unknown ops match everything, like the in-memory evaluator.
-      return eb.lit(true as SqlBool);
+      return eb.lit<SqlBool>(true);
     }
   }
 }
 
 /** LIKE pattern for `contains`: JSON columns match the JSON-encoded element. */
-function containsPattern(spec: ColumnSpec | null, value: unknown): string {
+function containsPattern(spec: ColumnSpec | null, value: JsonValue | undefined): string {
   if (spec?.storage === "json") {
     const encoded = JSON.stringify(value);
     return `%${escapeLike(encoded)}%`;
@@ -160,7 +177,7 @@ function escapeLike(text: string): string {
 }
 
 /** Coerce a filter probe value to the column's storage representation. */
-function storageValue(spec: ColumnSpec | null, value: unknown): string | number {
+function storageValue(spec: ColumnSpec | null, value: JsonValue | undefined): string | number {
   if (spec?.storage === "boolean") {
     const truthy = value === true || value === "true" || value === 1 || value === "1";
     return truthy ? 1 : 0;
@@ -168,10 +185,10 @@ function storageValue(spec: ColumnSpec | null, value: unknown): string | number 
   if (spec?.storage === "json") {
     return JSON.stringify(value);
   }
-  if (typeof value === "number") {
+  if (isNumber(value)) {
     return value;
   }
-  if (typeof value === "boolean") {
+  if (isBoolean(value)) {
     return value ? 1 : 0;
   }
   return String(value);

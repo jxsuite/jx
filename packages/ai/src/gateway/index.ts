@@ -23,7 +23,7 @@ export {
   isAiSessionId,
   upstreamCacheHints,
 } from "../cache-hints.ts";
-export { createChatHandler } from "./chat.ts";
+export { createChatHandler, DEFAULT_UPSTREAM_BASE_URL } from "./chat.ts";
 export { modelsResponse } from "./models.ts";
 export { normalizeOpenAIStream } from "./normalize.ts";
 export { problemResponse } from "./problem.ts";

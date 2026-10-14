@@ -26,7 +26,9 @@ import { defaultCommands, noopCommandDeps } from "../src/commands/defaults";
 import { contentCommands } from "../src/content/entry-commands";
 import { BUFFER_COMMIT, bufferWrites } from "../src/services/monaco-buffer";
 import { view } from "../src/view";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { MonacoBuffer } from "../src/services/monaco-buffer";
+import type { MonacoSurface } from "../src/view";
+import type { PeerPresence } from "../src/collab/collab-state";
 import type { Tab } from "../src/tabs/tab";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 
@@ -34,23 +36,40 @@ let host: HTMLElement;
 
 function open(id: string, documentPath: string | null = `/project/${id}.json`) {
   return openTab({
-    document: { children: [], tagName: "div" } as JxMutableNode,
+    document: { children: [], tagName: "div" },
     documentPath,
     id,
   });
 }
 
 function tabs(): HTMLElement[] {
-  return [...host.querySelectorAll('[part="tab"]')] as HTMLElement[];
+  return [...host.querySelectorAll<HTMLElement>('[part="tab"]')];
 }
 
 function strip(): HTMLElement {
-  return host.querySelector('[part="tabs"]') as HTMLElement;
+  return host.querySelector<HTMLElement>('[part="tabs"]')!;
 }
 
 /** One pane strip's outer row, where the focused-pane mark lives. */
 function stripRow(into: HTMLElement): HTMLElement | null {
   return into.querySelector<HTMLElement>('[part="strip-row"]');
+}
+
+/** Another client in the session, focused on `focusedPath`. */
+function peerFocusedOn(focusedPath: string): PeerPresence {
+  return { clientId: 2, state: { focusedPath, user: { color: "#4f9cf9", login: "peer" } } };
+}
+
+/**
+ * Seat a buffer stub in an editor slot (`view.functionEditor`, a surface's `monacoEditor`), where a
+ * real Monaco would sit while the author types.
+ */
+function asMonacoSurface(buffer: MonacoBuffer): MonacoSurface {
+  /* SAFETY: Of the modules that read these slots, the close flows driven here reach only
+     `services/monaco-buffer.ts` (workspace and the tab strip never touch them), and it types every
+     editor it is handed as `MonacoBuffer`, the slice this stub implements in full. Each describe's
+     afterEach empties both slots, so no later render pass hands the stub to Monaco's own API. */
+  return buffer as MonacoSurface;
 }
 
 // Happy-dom performs no layout (scrollWidth/clientWidth are 0); stub them to fake overflow.
@@ -77,7 +96,7 @@ beforeEach(() => {
     <div id="layer-dialog"></div>
   `;
   initLayers();
-  host = document.querySelector("#tab-strip") as HTMLElement;
+  host = document.querySelector<HTMLElement>("#tab-strip")!;
   closeAllTabs();
   mount(host);
 });
@@ -172,7 +191,7 @@ describe("tab strip interactions", () => {
     open("a");
     open("b");
     await flush();
-    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
     await flush();
     expect(workspace.tabs.has("a")).toBe(false);
     expect(tabs().length).toBe(1);
@@ -204,7 +223,7 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
     await flush();
     const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
@@ -226,7 +245,7 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
     await flush();
     const dialog = topDialog()!;
     dialog.dispatchEvent(new Event("secondary"));
@@ -239,9 +258,9 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
     await flush();
-    (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
+    topDialog()!.dispatchEvent(new Event("confirm"));
     await flush(6);
     expect(state.files.get("/project/a.json")).toContain('"tagName": "div"');
     expect(workspace.tabs.has("a")).toBe(false);
@@ -256,9 +275,9 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
     await flush();
-    (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
+    topDialog()!.dispatchEvent(new Event("confirm"));
     await flush(6);
     // Closing on top of a failed write is the loss the prompt exists to prevent.
     expect(workspace.tabs.has("a")).toBe(true);
@@ -270,9 +289,9 @@ describe("tab strip interactions", () => {
     a.doc.dirty = true;
     const state = collabState(a);
     state.active = true;
-    state.peers = [{ clientId: 2, state: { focusedPath: "/project/a.json" } as never }];
+    state.peers = [peerFocusedOn("/project/a.json")];
     await flush();
-    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
     await flush();
     // The shared session lives on with the remaining peer — closing is safe, no prompt.
     expect(topDialog()).toBeNull();
@@ -285,9 +304,9 @@ describe("tab strip interactions", () => {
     const state = collabState(a);
     state.active = true;
     // A peer exists but is focused on a different doc — nobody else holds THIS doc.
-    state.peers = [{ clientId: 2, state: { focusedPath: "/project/other.json" } as never }];
+    state.peers = [peerFocusedOn("/project/other.json")];
     await flush();
-    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+    tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
     await flush();
     expect(topDialog()).not.toBeNull();
     expect(workspace.tabs.has("a")).toBe(true);
@@ -310,9 +329,9 @@ describe("tab strip interactions", () => {
 
     test("is prompted even with peers still on the doc — nothing was published", async () => {
       const a = openReadOnly("a");
-      collabState(a).peers = [{ clientId: 2, state: { focusedPath: "/project/a.json" } as never }];
+      collabState(a).peers = [peerFocusedOn("/project/a.json")];
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
       expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
@@ -321,7 +340,7 @@ describe("tab strip interactions", () => {
     test("is offered discard-or-keep, never a Save it cannot honour", async () => {
       openReadOnly("a");
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
       const dialog = topDialog()!;
       expect(dialog.getAttribute("headline")).toBe("Changes Cannot Be Saved");
@@ -341,9 +360,9 @@ describe("tab strip interactions", () => {
       const { state } = installMockPlatform();
       openReadOnly("a");
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
-      (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
+      topDialog()!.dispatchEvent(new Event("confirm"));
       await flush(6);
       expect(workspace.tabs.has("a")).toBe(false);
       // The old flow's Save wrote nothing and said "Saved just now" anyway; this one writes nothing
@@ -379,7 +398,7 @@ describe("tab strip interactions", () => {
 
     /** What `bodyWriter` does when the commit lands: the document has it, the buffer settles. */
     function landBody(tab: Tab, body: string) {
-      (tab.doc.document as unknown as { body?: string }).body = body;
+      tab.doc.document["body"] = body;
       tab.doc.dirty = true;
       view.functionEditor?._writes?.markSettled();
       surfaceForPane("primary").monacoEditor?._writes?.markSettled();
@@ -392,28 +411,32 @@ describe("tab strip interactions", () => {
 
     test("the dock's armed commit runs before the gate, so ⌘W prompts and Save has the text", async () => {
       const a = open("a");
-      view.functionEditor = typingBuffer(a, "typed();", (body) => landBody(a, body)) as never;
+      view.functionEditor = asMonacoSurface(
+        typingBuffer(a, "typed();", (body) => landBody(a, body)),
+      );
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
 
       // The commit landed WHILE the tab was still open — which is the only moment it could.
-      expect((a.doc.document as unknown as { body?: string }).body).toBe("typed();");
+      expect(a.doc.document["body"]).toBe("typed();");
       expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
     });
 
     test("the source view's commit is awaited — it parses before it assigns", async () => {
       const a = open("a");
-      surfaceForPane("primary").monacoEditor = typingBuffer(a, "# Never saved", async (text) => {
-        await Promise.resolve();
-        landBody(a, text);
-      }) as never;
+      surfaceForPane("primary").monacoEditor = asMonacoSurface(
+        typingBuffer(a, "# Never saved", async (text) => {
+          await Promise.resolve();
+          landBody(a, text);
+        }),
+      );
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
 
-      expect((a.doc.document as unknown as { body?: string }).body).toBe("# Never saved");
+      expect(a.doc.document["body"]).toBe("# Never saved");
       expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
     });
@@ -429,9 +452,9 @@ describe("tab strip interactions", () => {
         hasTextFocus: () => false,
       };
       bufferWrites(buffer).markTyped();
-      surfaceForPane("primary").monacoEditor = buffer as never;
+      surfaceForPane("primary").monacoEditor = asMonacoSurface(buffer);
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
 
       expect(a.doc.dirty).toBe(false); // Nothing made it dirty, and it is still unsaved work
@@ -459,9 +482,9 @@ describe("tab strip interactions", () => {
         hasTextFocus: () => false,
       };
       bufferWrites(buffer).markTyped();
-      surfaceForPane("primary").monacoEditor = buffer as never;
+      surfaceForPane("primary").monacoEditor = asMonacoSurface(buffer);
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
 
       await flush();
@@ -487,14 +510,16 @@ describe("tab strip interactions", () => {
     test("a tab destroyed inside the commit's await is not prompted about", async () => {
       const a = open("a");
       a.doc.dirty = true; // The gate fires on this, if it is ever reached.
-      surfaceForPane("primary").monacoEditor = typingBuffer(a, "# Never saved", async (text) => {
-        // The project switch, arriving mid-parse. It takes every tab with it, unprompted.
-        closeAllTabs();
-        await Promise.resolve();
-        landBody(a, text);
-      }) as never;
+      surfaceForPane("primary").monacoEditor = asMonacoSurface(
+        typingBuffer(a, "# Never saved", async (text) => {
+          // The project switch, arriving mid-parse. It takes every tab with it, unprompted.
+          closeAllTabs();
+          await Promise.resolve();
+          landBody(a, text);
+        }),
+      );
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
 
       expect(workspace.tabs.has("a")).toBe(false);
@@ -516,7 +541,7 @@ describe("tab strip interactions", () => {
       const a = open("a");
       const state = collabState(a);
       state.active = true;
-      state.peers = [{ clientId: 2, state: { focusedPath: "/project/a.json" } as never }];
+      state.peers = [peerFocusedOn("/project/a.json")];
       // What the freeze leaves: `bodyWriter` was refused, so the buffer never settled and the
       // Document is not even dirty.
       const buffer = {
@@ -526,9 +551,9 @@ describe("tab strip interactions", () => {
         hasTextFocus: () => false,
       };
       bufferWrites(buffer).markTyped();
-      view.functionEditor = buffer as never;
+      view.functionEditor = asMonacoSurface(buffer);
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
 
       expect(a.doc.dirty).toBe(false);
@@ -547,9 +572,9 @@ describe("tab strip interactions", () => {
         hasTextFocus: () => false,
       };
       bufferWrites(buffer).markAhead();
-      view.functionEditor = buffer as never;
+      view.functionEditor = asMonacoSurface(buffer);
       await flush();
-      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
+      tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!.click();
       await flush();
 
       expect(topDialog()).toBeNull();
@@ -616,7 +641,7 @@ describe("tab strip interactions", () => {
       await flush();
       let answering = confirmCloseAll("Opening another project");
       await flush();
-      (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
+      topDialog()!.dispatchEvent(new Event("confirm"));
       expect(await answering).toBe(true);
       expect(state.files.has("/project/a.json")).toBe(true);
       expect(state.files.has("/project/b.json")).toBe(true);
@@ -631,7 +656,7 @@ describe("tab strip interactions", () => {
       await flush();
       answering = confirmCloseAll("Opening another project");
       await flush();
-      (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
+      topDialog()!.dispatchEvent(new Event("confirm"));
       expect(await answering).toBe(false);
     });
 
@@ -645,7 +670,7 @@ describe("tab strip interactions", () => {
         hasTextFocus: () => false,
       };
       bufferWrites(buffer).markTyped();
-      surfaceForPane("primary").monacoEditor = buffer as never;
+      surfaceForPane("primary").monacoEditor = asMonacoSurface(buffer);
       return tab;
     }
 
@@ -713,7 +738,7 @@ describe("tab strip interactions", () => {
       const a = open("a");
       const state = collabState(a);
       state.active = true;
-      state.peers = [{ clientId: 2, state: { focusedPath: "/project/a.json" } as never }];
+      state.peers = [peerFocusedOn("/project/a.json")];
       const buffer = {
         _editingTab: a,
         getModel: () => ({}),
@@ -721,7 +746,7 @@ describe("tab strip interactions", () => {
         hasTextFocus: () => false,
       };
       bufferWrites(buffer).markTyped();
-      view.functionEditor = buffer as never;
+      view.functionEditor = asMonacoSurface(buffer);
       await flush();
       const answering = confirmCloseAll("Opening another project");
       await flush();
@@ -765,7 +790,7 @@ describe("tab strip interactions", () => {
         a.doc.dirty = true;
         writes.markSettled();
       });
-      view.functionEditor = buffer as never;
+      view.functionEditor = asMonacoSurface(buffer);
       await flush();
 
       const answering = confirmCloseAll("Opening another project");
@@ -785,7 +810,7 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    const closeBtn = tabs()[0]!.querySelector('[part="close"]') as HTMLElement;
+    const closeBtn = tabs()[0]!.querySelector<HTMLElement>('[part="close"]')!;
     // Remove the tab out from under the strip, then click the stale button.
     workspace.tabs.delete("a");
     closeBtn.click();
@@ -875,10 +900,15 @@ describe("active tab reveal", () => {
   test("a re-render without an activation change does not re-reveal", async () => {
     const a = open("a");
     await flush();
-    const spy = spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    const revealed: Element[] = [];
+    const spy = spyOn(Element.prototype, "scrollIntoView").mockImplementation(
+      function captureReveal(this: Element) {
+        revealed.push(this);
+      },
+    );
     a.doc.dirty = true;
     await flush();
-    expect(spy).not.toHaveBeenCalled();
+    expect(revealed).toEqual([]);
     spy.mockRestore();
   });
 });
@@ -912,7 +942,7 @@ describe("pin, reorder and preview", () => {
 
   test("a preview chip renders italic-classed and double-clicking commits to it", async () => {
     openTab({
-      document: { children: [], tagName: "div" } as JxMutableNode,
+      document: { children: [], tagName: "div" },
       documentPath: "/project/p.json",
       id: "p",
       preview: true,
@@ -927,7 +957,7 @@ describe("pin, reorder and preview", () => {
 
   test("an edit promotes a preview tab without a click", async () => {
     const p = openTab({
-      document: { children: [], tagName: "div" } as JxMutableNode,
+      document: { children: [], tagName: "div" },
       documentPath: "/project/p.json",
       id: "p",
       preview: true,
@@ -951,7 +981,7 @@ describe("per-pane strips", () => {
     splitRight();
     await flush();
 
-    const second = document.querySelector("#tab-strip-2") as HTMLElement;
+    const second = document.querySelector<HTMLElement>("#tab-strip-2")!;
     expect([...host.querySelectorAll('[part="label"]')].map((e) => e.textContent)).toEqual([
       "a.json",
     ]);
@@ -1109,7 +1139,7 @@ describe("the strip is a real tablist", () => {
       projectRoot: "/demo",
     });
     openTab({
-      document: { draft: true, tagName: "div" } as unknown as JxMutableNode,
+      document: { draft: true, tagName: "div" },
       documentPath: "content/notes/one.json",
       id: "content/notes/one.json",
       openedFrom: { documentPath: "pages/index.md", tabId: "parent" },
@@ -1162,7 +1192,7 @@ describe("the strip is a real tablist", () => {
        close button's is carried. */
     expect(pins()).toEqual(["-1", "0"]);
 
-    const pin = tabs()[1]!.querySelector('[part="pin"]') as HTMLElement;
+    const pin = tabs()[1]!.querySelector<HTMLElement>('[part="pin"]')!;
     pin.focus();
     const event = key("Enter");
     // A focusable control the keyboard cannot operate is SC 2.1.1. The strip steps aside.
@@ -1192,13 +1222,13 @@ describe("tab context menu", () => {
    * what makes every assertion below addressable by record rather than by rendered text.
    */
   function menuItems(): HTMLElement[] {
-    return [...document.querySelectorAll("#layer-popover jx-menu-item")] as HTMLElement[];
+    return [...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item")];
   }
 
   /** A row's label without the `Needs …` sentence a disabled row prints under it. */
   function labelOf(el: Element): string {
     const description = el.querySelector("[slot=description]")?.textContent ?? "";
-    return (el.textContent ?? "").replace(description, "").trim();
+    return el.textContent.replace(description, "").trim();
   }
 
   function labels(): string[] {
@@ -1320,7 +1350,7 @@ describe("tab context menu", () => {
 
   test("right-click activates the chip it was aimed at, so the rows describe THAT tab", async () => {
     const preview = openTab({
-      document: { children: [], tagName: "div" } as JxMutableNode,
+      document: { children: [], tagName: "div" },
       documentPath: "/project/preview.json",
       id: "preview",
       preview: true,
@@ -1391,7 +1421,7 @@ describe("tab context menu", () => {
 
     row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    expect((entry.doc.document as unknown as Record<string, unknown>).draft).toBeTrue();
+    expect(entry.doc.document["draft"]).toBeTrue();
 
     rightClick(tabs()[0]!);
     await flush(3);
@@ -1406,9 +1436,10 @@ describe("tab context menu", () => {
 
     rightClick(tabs()[0]!);
     await flush(3);
-    expect(labels()).not.toContain("Set Draft");
+    const rows = labels();
+    expect(rows).not.toContain("Set Draft");
     // The rows that need nothing of the tab are still there.
-    expect(labels()).toContain("Close Document");
+    expect(rows).toContain("Close Document");
     /* A no-arg row names no state, so it stays a plain `menuitem` with no `aria-checked` at all —
        and no description line under its label, which is reserved for a `requires` sentence. Under
        the old menu this could not be had either way: declaring `selects` to keep one checkbox row
@@ -1476,12 +1507,10 @@ describe("tab context menu", () => {
 
     rightClick(tabs()[0]!, { clientX: 2000, clientY: 2000 });
     await flush(3);
-    const menu = document.querySelector("#layer-popover jx-menu") as HTMLElement & {
-      x: number;
-      y: number;
-    };
-    expect(menu.x).toBe(2000);
-    expect(menu.y).toBe(2000);
+    // The kit menu carries its placement as `x` / `y` properties.
+    const menu = document.querySelector("#layer-popover jx-menu")!;
+    expect("x" in menu ? menu.x : null).toBe(2000);
+    expect("y" in menu ? menu.y : null).toBe(2000);
 
     rightClick(tabs()[1]!);
     await flush(3);
@@ -1497,9 +1526,9 @@ describe("tab context menu", () => {
     // Re-render so the chevron is measured in.
     workspace.tabs.get("a")!.doc.dirty = true;
     await flush();
-    (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    );
+    host
+      .querySelector<HTMLElement>('[part="overflow"]:not([hidden])')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(document.querySelectorAll("#layer-popover jx-menu")).toHaveLength(1);
 
@@ -1531,9 +1560,7 @@ describe("a derivation chip sits on the tab row's baseline grid", () => {
      declarations agree, and a 19px strip against a 28px one is left to the screenshot lane. The
      numbers: `4px` top and bottom on each, plus the 2px underline the tab reserves, so a lens's
      one-chip row is the same height as the tab row in the pane beside it. */
-  const { style } = doc as unknown as {
-    style: Record<string, Record<string, string>>;
-  };
+  const { style } = doc;
 
   test("its block padding is a tab chip's, and it reserves the same underline", () => {
     const chip = style['& [part="derivation"]']!;

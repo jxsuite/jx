@@ -12,6 +12,7 @@
  * through the panel's island seam (specs/studio-ui-guidelines.md §9.4) — the box is drawn by one
  * document and filled by another, and nothing in this file renders anything.
  */
+import { isString } from "@jxsuite/schema/guards";
 import { openGridCellSurface } from "../surfaces/grid-cell";
 import { mountMediaPicker } from "../ui/media-picker";
 import { listCollectionEntryIds } from "./sources/content-source";
@@ -25,8 +26,9 @@ export function hasPopoverEditor(column: GridColumn): boolean {
 
 /** Target content-type name of a relationship column (`#/content/<name>` on the schema). */
 export function referenceTargetType(column: GridColumn): string | null {
-  const ref = (column.schema as { $ref?: string } | undefined)?.$ref;
-  if (typeof ref !== "string" || !ref.startsWith("#/content/")) {
+  // The schema is the project's own JSON, so `$ref` is checked rather than trusted to be a string.
+  const ref = column.schema?.$ref;
+  if (!isString(ref) || !ref.startsWith("#/content/")) {
     return null;
   }
   return ref.slice("#/content/".length);
@@ -47,7 +49,7 @@ export interface CellPopoverArgs {
  * The clamp is the panel's own width and a floor for its height, because a cell near the right edge
  * of a wide grid is exactly where a relationship column tends to be.
  */
-function placement(anchor: CellPopoverArgs["anchor"]): { x: number; y: number } {
+function placement(anchor: CellPopoverArgs["anchor"]) {
   return {
     x: Math.max(4, Math.min(anchor.left, window.innerWidth - 340)),
     y: Math.max(4, Math.min(anchor.bottom + 2, window.innerHeight - 200)),

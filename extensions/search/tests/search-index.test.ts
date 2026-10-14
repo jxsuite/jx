@@ -5,8 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { SearchIndex } from "../src/search-index";
-import type { SearchIndexEnvelope } from "../src/search-index";
-import type { ContentLoaderEntry } from "@jxsuite/schema/types";
+import type { EmitContext, SearchIndexEnvelope } from "../src/search-index";
+import type { ContentFieldValue, ContentLoaderEntry, ProjectConfig } from "@jxsuite/schema/types";
 
 const DOCS_ENTRIES: ContentLoaderEntry[] = [
   {
@@ -27,10 +27,17 @@ const DOCS_ENTRIES: ContentLoaderEntry[] = [
     data: { title: "Install" },
     id: "start/install",
   },
-] as unknown as ContentLoaderEntry[];
+];
 
-function sections(): Record<string, unknown> {
+function sections(): NonNullable<EmitContext["sections"]> {
   return { content: new Map([["docs", DOCS_ENTRIES]]) };
+}
+
+/** The envelope inside `emit`'s output, which is always exactly one file. */
+function envelopeOf(files: { path: string; content: string }[]): SearchIndexEnvelope {
+  // SAFETY: `SearchIndex.emit` returns one file whose content is `JSON.stringify` of the
+  // SearchIndexEnvelope it built, so parsing it back yields that envelope's shape.
+  return JSON.parse(files[0]!.content) as SearchIndexEnvelope;
 }
 
 const SECTION = {
@@ -55,7 +62,7 @@ describe("SearchIndex.emit", () => {
     expect(files).toHaveLength(1);
     expect(files[0]!.path).toBe("/search-index.json");
 
-    const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
+    const envelope = envelopeOf(files);
     expect(envelope.version).toBe(1);
     expect(envelope.engine).toBe("minisearch");
     expect(envelope.fields.toSorted()).toEqual(["heading", "text", "title"]);
@@ -93,7 +100,7 @@ describe("SearchIndex.emit", () => {
 
   test("the preamble and the sections partition the entry, losing no text", () => {
     const files = SearchIndex.emit(SECTION, { projectConfig: {}, sections: sections() });
-    const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
+    const envelope = envelopeOf(files);
     const entry = envelope.documents.filter((d) => d.id.startsWith("docs:framework/site"));
 
     const indexed = entry
@@ -117,7 +124,7 @@ describe("SearchIndex.emit", () => {
       { projectConfig: { build: { trailingSlash: "never" } }, sections: sections() },
     );
     expect(files[0]!.path).toBe("/idx/search.json");
-    const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
+    const envelope = envelopeOf(files);
     expect(envelope.documents[0]!.url).toBe("/docs/framework/site");
     expect(envelope.documents[1]!.url).toBe("/docs/framework/site#routing");
   });
@@ -127,7 +134,7 @@ describe("SearchIndex.emit", () => {
       { collections: { docs: { basePath: "/docs/", sections: false } } },
       { projectConfig: {}, sections: sections() },
     );
-    const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
+    const envelope = envelopeOf(files);
     expect(envelope.documents.map((d) => d.id)).toEqual([
       "docs:framework/site",
       "docs:start/install",
@@ -139,13 +146,13 @@ describe("SearchIndex.emit", () => {
       { collections: { ghost: { basePath: "/g/" } } },
       { projectConfig: {}, sections: sections() },
     );
-    const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
+    const envelope = envelopeOf(files);
     expect(envelope.documents).toEqual([]);
   });
 
   test("tolerates a missing content section entirely", () => {
     const files = SearchIndex.emit(SECTION, { projectConfig: {} });
-    const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
+    const envelope = envelopeOf(files);
     expect(envelope.documents).toEqual([]);
   });
 });
@@ -167,10 +174,17 @@ describe("SearchIndex.emit — the per-entry opt-out", () => {
     warn.mockRestore();
   });
 
-  // `search` is spread rather than assigned so the absent-key case really is absent — a key set to
-  // Undefined would survive `entry.data` and be a third shape rather than the second.
-  const withSearch = (search?: unknown): ContentLoaderEntry[] =>
-    [
+  /*
+   * `search` is set only when given, so the absent-key case really is absent: a key set to
+   * undefined would survive `entry.data` and be a third shape rather than the second.
+   */
+  const withSearch = (search?: ContentFieldValue): ContentLoaderEntry[] => {
+    const data: ContentLoaderEntry["data"] = {};
+    if (search !== undefined) {
+      data.search = search;
+    }
+    data.title = "Spec changelog";
+    return [
       {
         $children: [
           { tagName: "p", textContent: "Every changelog entry of every spec." },
@@ -178,16 +192,17 @@ describe("SearchIndex.emit — the per-entry opt-out", () => {
           { tagName: "p", textContent: "0.9.0 the kit has a colour family." },
         ],
         body: "",
-        data: { ...(search === undefined ? {} : { search }), title: "Spec changelog" },
+        data,
         id: "extending/reference/spec-changelog",
       },
       DOCS_ENTRIES[1]!,
-    ] as unknown as ContentLoaderEntry[];
+    ];
+  };
 
-  const ids = (search?: unknown) => {
+  const ids = (search?: ContentFieldValue) => {
     const content = new Map([["docs", withSearch(search)]]);
     const files = SearchIndex.emit(SECTION, { projectConfig: {}, sections: { content } });
-    const envelope = JSON.parse(files[0]!.content) as SearchIndexEnvelope;
+    const envelope = envelopeOf(files);
     return envelope.documents.map((d) => d.id);
   };
 
@@ -222,7 +237,7 @@ describe("SearchIndex.emit — the per-entry opt-out", () => {
  * so a reader is not handed the other language.
  */
 describe("SearchIndex.emit — a localized collection", () => {
-  const ENTRIES = [
+  const ENTRIES: ContentLoaderEntry[] = [
     {
       $children: [{ tagName: "p", textContent: "English body." }],
       _meta: { locale: "en" },
@@ -237,16 +252,16 @@ describe("SearchIndex.emit — a localized collection", () => {
       data: { title: "Bonjour" },
       id: "hello",
     },
-  ] as unknown as ContentLoaderEntry[];
+  ];
 
   const CONFIG = { collections: { blog: { basePath: "/blog/" } } };
-  const emit = (i18n: Record<string, unknown>) =>
-    JSON.parse(
+  const emit = (i18n: NonNullable<ProjectConfig["i18n"]>) =>
+    envelopeOf(
       SearchIndex.emit(CONFIG, {
         projectConfig: { i18n },
         sections: { content: new Map([["blog", ENTRIES]]) },
-      })[0]!.content,
-    ) as SearchIndexEnvelope;
+      }),
+    );
 
   test("each entry is indexed at its own locale's URL", () => {
     const { documents } = emit({ defaultLocale: "en", locales: ["en", "fr-ca"] });
@@ -258,6 +273,30 @@ describe("SearchIndex.emit — a localized collection", () => {
     const { documents } = emit({ defaultLocale: "en", locales: ["en", "fr-ca"] });
     expect(documents.map((d) => d.id)).toEqual(["blog:en:hello", "blog:fr-CA:hello"]);
     expect(new Set(documents.map((d) => d.id)).size).toBe(documents.length);
+  });
+
+  // A section document is in its entry's language too, or a scoped search would drop the deep link.
+  test("a localized entry's section documents carry its locale and its URL", () => {
+    const sectioned: ContentLoaderEntry = {
+      $children: [
+        { id: "intro", tagName: "h2", textContent: "Introduction" },
+        { tagName: "p", textContent: "Texte francais." },
+      ],
+      _meta: { locale: "fr-ca" },
+      body: "",
+      data: { title: "Bonjour" },
+      id: "hello",
+    };
+    const { documents } = envelopeOf(
+      SearchIndex.emit(CONFIG, {
+        projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "fr-ca"] } },
+        sections: { content: new Map([["blog", [sectioned]]]) },
+      }),
+    );
+    expect(documents.map(({ id, locale, url }) => ({ id, locale, url }))).toEqual([
+      { id: "blog:fr-CA:hello", locale: "fr-CA", url: "/fr-ca/blog/hello/" },
+      { id: "blog:fr-CA:hello#intro", locale: "fr-CA", url: "/fr-ca/blog/hello/#intro" },
+    ]);
   });
 
   // Under prefix-always the default locale is prefixed too — that asymmetry is routing's meaning.
@@ -279,22 +318,32 @@ describe("SearchIndex.emit — a localized collection", () => {
 });
 
 describe("an entry that carries its own url", () => {
-  const routed = (id: string, route: string, url: string | undefined, text: string) =>
-    ({
+  const routed = (
+    id: string,
+    route: string,
+    url: string | undefined,
+    text: string,
+  ): ContentLoaderEntry => {
+    const meta: NonNullable<ContentLoaderEntry["_meta"]> = { route };
+    if (url !== undefined) {
+      meta.url = url;
+    }
+    return {
       $children: [{ tagName: "p", textContent: text }],
-      _meta: { route, ...(url === undefined ? {} : { url }) },
+      _meta: meta,
       body: "",
       data: { title: id },
       id,
-    }) as unknown as ContentLoaderEntry;
+    };
+  };
 
   const emitRouted = (entries: ContentLoaderEntry[]) =>
-    JSON.parse(
+    envelopeOf(
       SearchIndex.emit(
         { collections: { kb: { basePath: "/docs/" } } },
         { projectConfig: {}, sections: { content: new Map([["kb", entries]]) } },
-      )[0]!.content,
-    ) as SearchIndexEnvelope;
+      ),
+    );
 
   test("is indexed at the loader's url, not basePath + id", () => {
     const { documents } = emitRouted([
@@ -309,7 +358,7 @@ describe("an entry that carries its own url", () => {
   });
 
   test("a section deep link is appended to that url", () => {
-    const entry = {
+    const entry: ContentLoaderEntry = {
       $children: [
         { id: "backups", tagName: "h2", textContent: "Backups" },
         { tagName: "p", textContent: "y" },
@@ -318,7 +367,7 @@ describe("an entry that carries its own url", () => {
       body: "",
       data: { title: "Bench" },
       id: "bench-operations",
-    } as unknown as ContentLoaderEntry;
+    };
     const { documents } = emitRouted([entry]);
     expect(documents.map((d) => d.url)).toEqual([
       "/kb/frappe/bench-operations/",

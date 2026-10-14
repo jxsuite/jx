@@ -39,6 +39,7 @@ import toml from "@shikijs/langs/toml";
 import typescript from "@shikijs/langs/typescript";
 import xml from "@shikijs/langs/xml";
 import yaml from "@shikijs/langs/yaml";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import type { HighlighterCore } from "shiki/core";
 import { caddyfile } from "./grammars/caddyfile.ts";
@@ -106,7 +107,7 @@ export function highlightFence(code: string, info: string): (JxElement | string)
     for (const token of line) {
       const span: JxElement = { tagName: "span", textContent: token.content };
       if (token.htmlStyle && Object.keys(token.htmlStyle).length > 0) {
-        span.style = token.htmlStyle as Record<string, string>;
+        span.style = token.htmlStyle;
       }
       out.push(span);
     }
@@ -122,17 +123,17 @@ export function highlightFence(code: string, info: string): (JxElement | string)
  */
 export function highlightCodeBlocks(nodes: (JxElement | string)[]): void {
   for (const node of nodes) {
-    if (!node || typeof node !== "object") {
+    if (!isNonNullObject(node)) {
       continue;
     }
     if (node.tagName === "pre" && Array.isArray(node.children)) {
       for (const child of node.children) {
-        if (!child || typeof child !== "object" || child.tagName !== "code") {
+        if (!isNonNullObject(child) || child.tagName !== "code") {
           continue;
         }
         const lang = /^language-(\S+)/.exec(child.className ?? "")?.[1];
         const code = child.textContent;
-        if (!lang || typeof code !== "string" || code.length === 0) {
+        if (!lang || !isString(code) || code.length === 0) {
           continue;
         }
         const spans = highlightFence(code, lang);
@@ -146,7 +147,7 @@ export function highlightCodeBlocks(nodes: (JxElement | string)[]): void {
       continue;
     }
     if (Array.isArray(node.children)) {
-      highlightCodeBlocks(node.children as (JxElement | string)[]);
+      highlightCodeBlocks(node.children);
     }
   }
 }

@@ -7,7 +7,7 @@
  */
 
 import { projectState, stripEventHandlers } from "../store";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isMappedArray, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { canvasModeOfTab } from "./canvas-surface";
 import { toRaw } from "../reactivity";
 import {
@@ -20,7 +20,6 @@ import {
   resolveLayoutDoc,
 } from "../site-context";
 import { documentBase } from "./canvas-origin";
-import { getPlatform, hasPlatform } from "../platform";
 import { componentRegistry, computeRelativePath } from "../files/components";
 import { prepareForEditMode } from "../utils/edit-display";
 import {
@@ -29,10 +28,10 @@ import {
   substitutePreviewParams,
 } from "../page-params";
 import { isComponentDoc, substitutePreviewProps } from "../component-props";
-import { assetContextFor } from "./asset-refs";
+import { assetContextFor, hostAssetDeclarations } from "./asset-refs";
 
 import type { AssetContext } from "./asset-refs";
-import type { JxElement, JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import type { JxElement, JxMutableNode, JxPath, JxStyle } from "@jxsuite/schema/types";
 import type { ComponentEntry } from "../files/components.js";
 import type { LayoutMarker } from "./path-mapping";
 import type { Tab } from "../tabs/tab";
@@ -55,19 +54,20 @@ function findPageContentPrefix(
   node: JxMutableNode,
   path: (string | number)[] = [],
 ): { prefix: (string | number)[]; offset: number } | null {
-  if (!node || typeof node !== "object") {
+  // Document JSON can hold a null or scalar where a node belongs; neither has page content.
+  if (!isNonNullObject(node)) {
     return null;
   }
   if (Array.isArray(node.children)) {
     const firstPageIdx = node.children.findIndex(
-      (child) => child && typeof child === "object" && !child.$__layout,
+      (child) => isNonNullObject(child) && !child.$__layout,
     );
     if (firstPageIdx !== -1) {
       return { offset: firstPageIdx, prefix: [...path, "children"] };
     }
     for (let i = 0; i < node.children.length; i++) {
       const child = node.children[i];
-      if (child && typeof child === "object" && child.$__layout) {
+      if (isNonNullObject(child) && child.$__layout) {
         const found = findPageContentPrefix(child, [...path, "children", i]);
         if (found) {
           return found;
@@ -87,13 +87,14 @@ function findPageContentPrefix(
  * editor can open the layout with that node selected. See {@link LayoutMarker}.
  */
 export function markLayoutNodes(node: JxMutableNode, file: string, path: JxPath = []) {
-  if (!node || typeof node !== "object") {
+  // Layout JSON can hold a null or scalar where a node belongs; there is nothing to mark on it.
+  if (!isNonNullObject(node)) {
     return;
   }
   node.$__layout = { file, path } satisfies LayoutMarker;
   if (Array.isArray(node.children)) {
     for (const [i, child] of node.children.entries()) {
-      if (typeof child === "string") {
+      if (isString(child)) {
         continue;
       }
       markLayoutNodes(child, file, [...path, "children", i]);
@@ -101,7 +102,10 @@ export function markLayoutNodes(node: JxMutableNode, file: string, path: JxPath 
   }
   if (Array.isArray(node.$elements)) {
     for (const [i, el] of node.$elements.entries()) {
-      if (typeof el !== "string") {
+      if (!isString(el)) {
+        /* SAFETY: a non-string `$elements` entry is an inline element definition or a `{ $ref }`
+           import. markLayoutNodes stamps `$__layout` and walks `children` / `$elements`, which a
+           `$ref` entry simply lacks, so it is marked as a childless node. */
         markLayoutNodes(el as JxMutableNode, file, [...path, "$elements", i]);
       }
     }
@@ -157,7 +161,7 @@ export async function resolveCanvasDocument(
   /** How the canvas must address project media, or null when its origin serves the site URL space. */
   assets: AssetContext | null;
   mapperCtx: WireMapperCtx;
-  siteStyle: Record<string, unknown> | null;
+  siteStyle: JxStyle | null;
 }> {
   const S = { documentPath: tab?.documentPath, mode: tab?.doc.mode };
   const canvasMode = modeOverride ?? canvasModeOfTab(tab);
@@ -180,7 +184,7 @@ export async function resolveCanvasDocument(
   if (isPage && tab?.session.ui.showLayout !== false) {
     const layoutPath = getEffectiveLayoutPath(doc.$layout);
     if (layoutPath) {
-      const layoutDoc = (await resolveLayoutDoc(layoutPath)) as JxMutableNode | null;
+      const layoutDoc = await resolveLayoutDoc(layoutPath);
       if (layoutDoc) {
         // The SAME normalization resolveLayoutDoc reads the file with, so the marker's `file` is a
         // Path the editor can hand straight to navigateToComponent when the author asks to open it.
@@ -210,10 +214,7 @@ export async function resolveCanvasDocument(
    * — design and edit swap every bound src for a transparent pixel, so they never reached the
    * network to fail.
    */
-  const assets = assetContextFor(S.documentPath, {
-    fileBaseUrl: fileBase,
-    ...(hasPlatform() ? { space: getPlatform().assetSpace } : {}),
-  });
+  const assets = assetContextFor(S.documentPath, hostAssetDeclarations());
 
   // Substitute chosen dynamic route params ({$ref: "#/$params/x"} → literal), inject state.$page,
   // And bake the substituted class-prototype state entries via the backend resolver — in every
@@ -222,10 +223,8 @@ export async function resolveCanvasDocument(
   // (posted as shadowDoc), whose $refs must survive for editing/serialization.
   if (isPage && tab) {
     const { previewParams } = tab.session.ui;
-    if (previewParams && Object.keys(previewParams).length > 0) {
-      const boundKeys = paramBoundStateKeys(
-        (doc as { state?: Record<string, unknown> }).state ?? null,
-      );
+    if (Object.keys(previewParams).length > 0) {
+      const boundKeys = paramBoundStateKeys(doc.state ?? null);
       renderDoc = substitutePreviewParams(renderDoc, previewParams, S.documentPath);
       await resolveParamBoundState(renderDoc, boundKeys, docBase);
     }
@@ -253,30 +252,29 @@ export async function resolveCanvasDocument(
   const arrayPaths = new Set<string>();
   if (canvasMode !== "preview") {
     (function findArrayPaths(node: JxMutableNode, path: (string | number)[]) {
-      if (!node || typeof node !== "object") {
+      // Document JSON can hold a null or scalar where a node belongs; it holds no repeater.
+      if (!isNonNullObject(node)) {
         return;
       }
-      if ((node as unknown as { $prototype?: string }).$prototype === "Array") {
+      if (node.$prototype === "Array") {
         arrayPaths.add(path.join("/"));
-        const mapDef = (node as JxMutableNode).map;
-        if (mapDef && typeof mapDef === "object") {
+        const mapDef = node.map;
+        if (isNonNullObject(mapDef)) {
           findArrayPaths(mapDef, [...path, "map"]);
         }
         return;
       }
       if (Array.isArray(node.children)) {
-        for (let i = 0; i < node.children.length; i++) {
-          const child = node.children[i];
-          if (typeof child === "string") {
+        for (const [i, child] of node.children.entries()) {
+          if (isString(child)) {
             continue;
           }
-          findArrayPaths(child!, [...path, "children", i]);
+          findArrayPaths(child, [...path, "children", i]);
         }
-      } else if (
-        node.children &&
-        typeof node.children === "object" &&
-        (node.children as unknown as { $prototype?: string }).$prototype === "Array"
-      ) {
+      } else if (isMappedArray(node.children)) {
+        /* SAFETY: the bare mapped-array slot is a repeater node in all but its declared type, and
+           the walk reads only what isMappedArray just established (`$prototype`) and its `map`
+           template, an element definition. */
         findArrayPaths(node.children as JxMutableNode, [...path, "children"]);
       }
       if (node.$switch && node.cases) {
@@ -295,14 +293,19 @@ export async function resolveCanvasDocument(
   const isLayoutDoc =
     S.documentPath != null &&
     (S.documentPath.startsWith("layouts/") || S.documentPath.startsWith("./layouts/"));
+  /* SAFETY: a document's `$elements` entries are tag-name strings, `{ $ref }` imports or inline
+     element definitions, each a JxElement or a string; getEffectiveElements only dedups them by the
+     string itself or by `$ref`. */
   const effectiveElements = getEffectiveElements(renderDoc.$elements as (JxElement | string)[]);
   if ((S.mode === "content" || layoutWrapped || isLayoutDoc) && componentRegistry.length > 0) {
     const existingRefs = new Set(
-      effectiveElements.map((e: JxElement | string) => (typeof e === "string" ? e : e?.$ref)),
+      // A null entry in a document's `$elements` names nothing, so it contributes no ref.
+      effectiveElements.map((e: JxElement | string) => (isNonNullObject(e) ? e.$ref : e)),
     );
     const collectTags = (node: JxMutableNode): Set<string> => {
       const tags = new Set<string>();
-      if (!node || typeof node !== "object") {
+      // Document JSON can hold a null or scalar where a node belongs; it carries no tag.
+      if (!isNonNullObject(node)) {
         return tags;
       }
       if (node.tagName) {
@@ -310,7 +313,7 @@ export async function resolveCanvasDocument(
       }
       if (Array.isArray(node.children)) {
         for (const child of node.children) {
-          if (typeof child !== "string") {
+          if (!isString(child)) {
             for (const t of collectTags(child)) {
               tags.add(t);
             }
@@ -331,24 +334,12 @@ export async function resolveCanvasDocument(
     }
   }
   if (effectiveElements.length > 0) {
-    renderDoc.$elements = effectiveElements as (string | JxMutableNode | { $ref: string })[];
+    renderDoc.$elements = effectiveElements;
   }
   renderDoc.imports = getEffectiveImports(renderDoc.imports);
-  // The effective-media/head getters return the merged value or undefined. Optional properties
-  // Cannot be assigned undefined under exactOptionalPropertyTypes, so clear them by deleting the key
-  // When the getter yields nothing.
-  const media = getEffectiveMedia(renderDoc.$media);
-  if (media === undefined) {
-    delete renderDoc.$media;
-  } else {
-    renderDoc.$media = media as NonNullable<JxMutableNode["$media"]>;
-  }
-  const head = getEffectiveHead(renderDoc.$head);
-  if (head === undefined) {
-    delete renderDoc.$head;
-  } else {
-    renderDoc.$head = head as NonNullable<JxMutableNode["$head"]>;
-  }
+  // The effective-media/head getters always answer a value: the merge, or an empty one.
+  renderDoc.$media = getEffectiveMedia(renderDoc.$media);
+  renderDoc.$head = getEffectiveHead(renderDoc.$head);
 
   return {
     assets,
@@ -361,6 +352,6 @@ export async function resolveCanvasDocument(
       pageContentPrefix,
     },
     renderDoc,
-    siteStyle: (projectState?.projectConfig?.style as Record<string, unknown>) ?? null,
+    siteStyle: projectState?.projectConfig?.style ?? null,
   };
 }
