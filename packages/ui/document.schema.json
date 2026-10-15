@@ -14902,6 +14902,32 @@
                 }
               ]
             },
+            "fit-tolerance": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
+            "fitTolerance": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
             "flex": {
               "oneOf": [
                 {
@@ -15266,19 +15292,6 @@
                 }
               ]
             },
-            "flow-tolerance": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "$ref": "#/$defs/v1/$defs/RefObject"
-                }
-              ]
-            },
             "flowFrom": {
               "oneOf": [
                 {
@@ -15293,19 +15306,6 @@
               ]
             },
             "flowInto": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "$ref": "#/$defs/v1/$defs/RefObject"
-                }
-              ]
-            },
-            "flowTolerance": {
               "oneOf": [
                 {
                   "type": "string"
@@ -25276,6 +25276,19 @@
                 }
               ]
             },
+            "timeline-trigger-range": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
             "timeline-trigger-source": {
               "oneOf": [
                 {
@@ -25394,6 +25407,19 @@
               ]
             },
             "timelineTriggerName": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                }
+              ]
+            },
+            "timelineTriggerRange": {
               "oneOf": [
                 {
                   "type": "string"
