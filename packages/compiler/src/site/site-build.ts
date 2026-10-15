@@ -467,6 +467,14 @@ export async function buildSite(
       }
     }
 
+    /*
+     * A component is a JavaScript module the page loads, and the page rewrite (`rewriteHtmlBase`) never
+     * reads it: the `/assets/` URLs the compiler writes into it for a `$src` function (a static import,
+     * or the dynamic one a `$lazy` function becomes) are re-rooted here, or they name files a site
+     * served from a path does not have.
+     */
+    const componentBase = siteBasePath(projectConfig.url);
+
     for (const file of componentFiles) {
       try {
         const componentPath = resolve(componentsDir, file);
@@ -477,7 +485,8 @@ export async function buildSite(
             const depTag = componentTagByPath.get(depPath);
             return depTag ? `./${depTag}.js` : refPath.replace(/\.json$/, ".js");
           },
-          rewriteSrc: rewriteSidecarSrc,
+          rewriteSrc: (specifier: string, docDir: string | null) =>
+            withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),
         };
         if (projectConfig.$media) {
           elementOptions.$media = projectConfig.$media;
@@ -1535,7 +1544,12 @@ async function compilePage(
     lang: language.lang,
     prePaintScheme: false, // Injected via the merged <head> above, not the target template
     projectStyle: projectConfig.style ?? null,
-    rewriteSrc: (specifier: string) => rewriteSidecarSrc(specifier, dirname(route.sourcePath)),
+    /*
+     * The page's own module (`app.js`) is JavaScript the page loads, like a component: the page
+     * rewrite does not read it, so its `/assets/` imports are re-rooted on the site base here.
+     */
+    rewriteSrc: (specifier: string) =>
+      withBase(basePath, rewriteSidecarSrc(specifier, dirname(route.sourcePath))),
     title,
   };
   /*
