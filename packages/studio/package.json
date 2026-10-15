@@ -82,9 +82,9 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.6",
     "@types/mdast": "^4.0.4",
-    "@webref/css": "^8.7.6",
-    "@webref/elements": "^2.9.1",
-    "@webref/idl": "^3.85.1"
+    "@webref/css": "^8.7.7",
+    "@webref/elements": "^2.9.2",
+    "@webref/idl": "^3.85.2"
   },
   "//vue-reactivity": "Exact pin required — must match @jxsuite/runtime to avoid cross-boundary proxy bugs"
 }
