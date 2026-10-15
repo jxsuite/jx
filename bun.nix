@@ -497,9 +497,9 @@
     url = "https://registry.npmjs.org/@better-fetch/fetch/-/fetch-1.3.2.tgz";
     hash = "sha512-Gs7n99b5tqUC6cQAPbV0uED3IraHB6xQbHLQ/C3l7ZFafHScOx9pQ+DYmP5blbLFShVWLqxNUlI9wi4xU/X+ow==";
   };
-  "@cloudflare/workers-types@5.20261010.1" = fetchurl {
-    url = "https://registry.npmjs.org/@cloudflare/workers-types/-/workers-types-5.20261010.1.tgz";
-    hash = "sha512-Csvu2Wsd8JWnP8HNg/uAAEYzoGw+eKEvoftoHrbMWuFDoC0g6e5XSP8XO9vJsdjjVpPaURdFoL3g/xpZSdQr3Q==";
+  "@cloudflare/workers-types@5.20261011.1" = fetchurl {
+    url = "https://registry.npmjs.org/@cloudflare/workers-types/-/workers-types-5.20261011.1.tgz";
+    hash = "sha512-6dgFMnwq6Wn238QWGHHb93gqIXjbSQMALcurXmI+9SHkM0QeEdHDhbyxwnE8v1m41MUzCtNO/gnTRwI4FsS9fQ==";
   };
   "@commitlint/cli@21.2.3" = fetchurl {
     url = "https://registry.npmjs.org/@commitlint/cli/-/cli-21.2.3.tgz";
@@ -1401,13 +1401,13 @@
     url = "https://registry.npmjs.org/@ungap/structured-clone/-/structured-clone-1.4.0.tgz";
     hash = "sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==";
   };
-  "@vue/reactivity@3.5.43" = fetchurl {
-    url = "https://registry.npmjs.org/@vue/reactivity/-/reactivity-3.5.43.tgz";
-    hash = "sha512-G/c9GyOZNI2jVaaS6OX1EF1SSFSv7H0ERqNTl4+DTFMlZmB5eVAB53aLQNam/7NL2NPtaDD7RdVrzf8uJzMuOA==";
+  "@vue/reactivity@3.5.44" = fetchurl {
+    url = "https://registry.npmjs.org/@vue/reactivity/-/reactivity-3.5.44.tgz";
+    hash = "sha512-u+QJdKeBBEADkPdevsL+6E12QlYVfBD8Zcw5qjDQKtamI6l14KyqazJMobhCKelhWN5zpyKUiEDoTyHE93cqWw==";
   };
-  "@vue/shared@3.5.43" = fetchurl {
-    url = "https://registry.npmjs.org/@vue/shared/-/shared-3.5.43.tgz";
-    hash = "sha512-uksS7YGMR5NZyr4JNq0Rp+QyLns0ueaz20KwzIPW9R0LH1Vnt4E+XUM29PNseEbf1www2gOuhuDi5AKOIXag9Q==";
+  "@vue/shared@3.5.44" = fetchurl {
+    url = "https://registry.npmjs.org/@vue/shared/-/shared-3.5.44.tgz";
+    hash = "sha512-H82XLH0DjmSOdbEwO15x3QTo1f5PWEtv237eLpYKc0mqLu+B8hnq16lFWmuBmNurkeiG3wr+oM1FhOll/YVFRg==";
   };
   "@webref/css@8.7.6" = fetchurl {
     url = "https://registry.npmjs.org/@webref/css/-/css-8.7.6.tgz";

@@ -302,6 +302,8 @@ Nothing changes for a site at a domain root. `"url": "https://example.com"` has 
 
 Three things stay as you wrote them, because they don't mean _from the site root_ in the first place: full URLs (`https://…`), links that start with `./` or `../`, and plain fragments (`#top`).
 
+The build re-roots the URLs it writes, in pages and in the modules it generates: a component's `$src` import, including the dynamic one a `$lazy` function becomes, names the bundle under your path. It does not rewrite your own code. A URL in a string your script holds, or in a prop a component renders at runtime, is yours to build from `$site.url`.
+
 :::doc-tip
 `bunx jx dev` answers both spellings. `localhost:3000/` works exactly as before, and `localhost:3000/m/my-site/` serves the same pages, so you can click through the URLs the build actually emits without deploying first.
 :::
