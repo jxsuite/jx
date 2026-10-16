@@ -62,6 +62,7 @@ export default {
         "prettier-plugin-marko",
         "@zackad/prettier-plugin-twig",
         "@shopify/prettier-plugin-liquid",
+        "@astrojs/compiler-rs",
       ],
     },
 
