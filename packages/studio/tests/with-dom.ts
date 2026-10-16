@@ -14,15 +14,18 @@ try {
  * `requestAnimationFrame`, say) for one to surface as an unhandled rejection and take the whole test
  * file down with it. The canvas bridge is exercised through `fakeChannelPair`, never through a real
  * page load, so the fetch was never wanted here.
+ *
+ * happy-dom 21 made iframe page loading opt-in, so this restates the default rather than changing
+ * it. It stays explicit because a suite that turns it on would reintroduce the unhandled rejections.
  */
 /* SAFETY: GlobalRegistrator.register() copies the happy-dom window's members onto globalThis,
    `happyDOM` (the DetachedWindowAPI that owns `settings`) among them. Both members stay optional
    because the guard below must tolerate a runtime where registration did not take place. */
 const { happyDOM } = globalThis as {
-  happyDOM?: { settings?: { disableIframePageLoading?: boolean } };
+  happyDOM?: { settings?: { enableIframePageLoading?: boolean } };
 };
 if (happyDOM?.settings) {
-  happyDOM.settings.disableIframePageLoading = true;
+  happyDOM.settings.enableIframePageLoading = false;
 }
 
 /*

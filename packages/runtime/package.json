@@ -37,6 +37,6 @@
     "@vue/reactivity": "3.5.44"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.6"
+    "@happy-dom/global-registrator": "^21.0.3"
   }
 }
