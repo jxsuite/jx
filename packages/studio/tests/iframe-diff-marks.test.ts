@@ -1,8 +1,8 @@
 /**
  * The frame half of change highlighting: the injected stylesheet and the mark stamping.
  *
- * Exercised by importing the frame's modules directly, because `with-dom.ts` sets
- * `disableIframePageLoading` — there is no live frame in a test, and there does not need to be:
+ * Exercised by importing the frame's modules directly, because `with-dom.ts` leaves
+ * `enableIframePageLoading` off — there is no live frame in a test, and there does not need to be:
  * `applyDiffMarks` takes a container and reads stamped attributes off it.
  */
 

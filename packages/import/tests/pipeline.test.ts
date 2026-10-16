@@ -40,7 +40,8 @@ function fakeBrowser(pages: Record<string, { title: string; html: string }>): Fa
         setViewport: () => Promise.resolve(),
         goto: (url) => {
           const entry = pages[url] ?? { title: "Missing", html: "<p>not found</p>" };
-          win = new Window({ url });
+          // The UA-default probe needs its about:blank iframe loaded, opt-in since happy-dom 21.
+          win = new Window({ url, settings: { enableIframePageLoading: true } });
           win.document.title = entry.title;
           win.document.body.innerHTML = entry.html;
           Object.assign(globalThis, {

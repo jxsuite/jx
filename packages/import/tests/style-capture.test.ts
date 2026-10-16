@@ -11,7 +11,12 @@ import type { JxElement } from "@jxsuite/schema/types";
 import { recordingPage } from "./memory-io.ts";
 import type { RecordingPage } from "./memory-io.ts";
 
-GlobalRegistrator.register({ url: "https://example.com/" });
+/* The UA-default probe in captureStyles runs in an about:blank iframe, whose contentDocument only
+   exists once happy-dom loads the frame. Iframe page loading is opt-in since happy-dom 21. */
+GlobalRegistrator.register({
+  url: "https://example.com/",
+  settings: { enableIframePageLoading: true },
+});
 
 // Browsers give CSSStyleDeclaration a Symbol.iterator but happy-dom does not, and the
 // `for (const name of rule.style)` loop in collectCustomProps needs it — patch it in.
