@@ -43,8 +43,9 @@
     "puppeteer-core": "^25.12.0"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^21.0.3",
     "@types/pngjs": "^6.0.5",
-    "happy-dom": "^20.10.6"
+    "happy-dom": "^21.0.3"
   },
   "optionalDependencies": {
     "@jxsuite/compiler": "workspace:^"
