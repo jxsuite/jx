@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
-    "happy-dom": "^20.10.6"
+    "happy-dom": "^21.0.1"
   },
   "optionalDependencies": {
     "@jxsuite/compiler": "workspace:^"

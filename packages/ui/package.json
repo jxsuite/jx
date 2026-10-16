@@ -62,7 +62,7 @@
     "@jxsuite/schema": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.6",
+    "@happy-dom/global-registrator": "^21.0.1",
     "@phosphor-icons/core": "^2.1.1"
   }
 }
