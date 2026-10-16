@@ -138,8 +138,9 @@ let
   registryPort = "48732";
 
   # Optional imports the launcher's graph names but never needs installed: dbus-ts is Linux-portal
-  # glue resolved at runtime, and the Prettier plugins are probed by oxfmt only for languages a
-  # project actually formats. This is electrobun.config.ts's `build.bun.external` list, and
+  # glue resolved at runtime, and oxfmt probes the Prettier plugins and the Astro compiler
+  # (@astrojs/compiler-rs, an optional peer since oxfmt 0.73) only for languages a project actually
+  # formats. This is electrobun.config.ts's `build.bun.external` list, and
   # tests/nix-bundle-completeness.test.ts holds the two equal.
   resolveExternals = [
     "dbus-ts"
@@ -151,6 +152,7 @@ let
     "prettier-plugin-marko"
     "@zackad/prettier-plugin-twig"
     "@shopify/prettier-plugin-liquid"
+    "@astrojs/compiler-rs"
   ];
 
   # Browser-only libraries the studio build has already bundled into `assets/studio`. They are
