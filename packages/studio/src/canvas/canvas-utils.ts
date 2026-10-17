@@ -874,6 +874,7 @@ export const CANVAS_MODES = [
   "preview",
   "source",
   "stylebook",
+  "tokens",
   "grid",
   "git-diff",
 ] as const;
@@ -1144,7 +1145,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         description:
           "Switch the active document's editor mode. edit and design put its element tree on " +
           "the canvas, where the document tools work; preview renders it as a visitor sees it; " +
-          "source shows the JSON; stylebook, grid and git-diff open other editors. Use it to " +
+          "source shows the JSON; stylebook, tokens, grid and git-diff open other editors. Use it to " +
           "return a document to edit or design when the tree tools are refused.",
         name: "set_canvas_mode",
         /* `after.editor.kind` rather than the tab's own field: it is the gate's read (`treeEditable`

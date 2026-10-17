@@ -177,6 +177,14 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *   — an `inspector/…` id on a control that is not in the Inspector. `ui/regions.ts` derives it now,
  *   scoped to the one Inspector, and the number falls the way this file says a number should: because
  *   a hand-stamp became unnecessary.
+ *
+ *   **10 → 11 with the Styles workspace's Variables view**, and `pane.primary/variables` is the one
+ *   that arrived. `css-variables-shot` photographs that view, and the only derived id it could
+ *   otherwise expect is `pane.primary`, which exists whatever the pane shows: a `styles.open` that
+ *   landed on Elements, or a view that never mounted, would pass and photograph the wrong surface for
+ *   `studio/design/tokens`. The view stamps its root through `paneRegion()`, as
+ *   `pane.primary/media-library` and `pane.primary/frontmatter` do, and the id is counted for the
+ *   same reason they are: a view authors it, no registry does.
  * - `unstable` `{reason, until}` escape hatches. **2** after Project Settings became a document and
  *   retired the five `settings.selectEntry` steps. **2 → 1 when `media.browse` landed as a
  *   record**: `media-picker-shot`'s hatch existed only because the id had none, and its step stays
@@ -192,7 +200,7 @@ export const CONTRACT_BUDGET = {
   clipSelectors: 0,
   argSelectors: 0,
   inputSteps: 14,
-  nonDerivedRegions: 10,
+  nonDerivedRegions: 11,
   unstable: 1,
 } as const;
 

@@ -63,7 +63,7 @@ Click a section to show it, or reach a group's list with :kbd[⇥] and walk it w
 Press :kbd[Esc] or **Close** to dismiss it. The keyboard goes back to whatever you opened it from.
 
 :::doc-note
-Under the list, **Moved** names what used to be here and where it is going: **Colors and fonts** to the **Styles** workspace, **Hosting and domain** to **Publish**, and **head and SEO defaults** are also on the **Page tab** in Design (they are still editable under **Advanced › Site head**). Each one's button closes the dialog and takes you there; the Page tab button also opens the Inspector on its Page tab. The editors for colors and fonts and for hosting arrive with a Variables view in Styles and a Hosting view in Publish. Until those views are in your build, set either as text: **Advanced › Raw JSON › Edit as code** opens `project.json`, where tokens are the `--` keys of `style` and the adapter is `build.adapter`.
+Under the list, **Moved** names what used to be here and where it went: **Colors and fonts** to the **Variables** view of the **Styles** workspace, **Hosting and domain** to **Publish**, and **head and SEO defaults** are also on the **Page tab** in Design (they are still editable under **Advanced › Site head**). Each one's button closes the dialog and takes you there; the Page tab button also opens the Inspector on its Page tab. The hosting editor arrives with a Hosting view in Publish. Until that view is in your build, set the adapter as text: **Advanced › Raw JSON › Edit as code** opens `project.json`, where it is `build.adapter`.
 :::
 
 ## Changes save as you make them
@@ -76,7 +76,7 @@ There is no Save or Apply button, because there is nothing to confirm: every sec
 - **A section that cannot be shown says so.** If a section fails to load, the dialog says which one and why in the space the section would have used, rather than showing an empty column.
 
 :::doc-tip
-`project.json` is also a document you can open: **[Project Styles](/docs/studio/design/stylebook)** in the Styles workspace edits its design tokens and element defaults, and its Code editor shows the raw file. While that tab is open, a change made here is a step in its history, so :kbd[⌘Z] in that tab takes it back. Inside the dialog :kbd[⌘Z] reaches only the text field you are typing in, because the dialog is modal: to take back a change it has already saved, close it and undo from that tab.
+`project.json` is also a document you can open: **[Project Styles](/docs/studio/design/stylebook)** in the Styles workspace edits its element defaults (the **Elements** view) and its [design tokens](/docs/studio/design/tokens) (the **Variables** view), and its **Code** view shows the raw file. While that tab is open, a change made here is a step in its history, so :kbd[⌘Z] in that tab takes it back. Inside the dialog :kbd[⌘Z] reaches only the text field you are typing in, because the dialog is modal: to take back a change it has already saved, close it and undo from that tab.
 :::
 
 ## Overview
@@ -87,7 +87,7 @@ What the site _is_:
 - **Description**: one or two sentences about the site, used by search engines and link previews. Studio stores it as the site-wide `<meta name="description">` tag, so it also shows up in the **Site head** section; clearing it here removes the tag.
 - **Production URL**: where the published site lives, as a full address starting with `http://` or `https://`. Sitemap generation is switched on by having one, and absolute links are built from it. Clearing the field turns the sitemap back off.
 - **Favicon**: click **Upload Favicon** and pick an image; Studio copies it into your project and shows the current one beside the button.
-- **Global Styles**: **Edit Global Styles** closes the dialog and opens **[Project Styles](/docs/studio/design/stylebook)** in the Styles workspace, where the design tokens and default element styles live with the canvas beside them. It runs **Open Project Styles**, which is also on :kbd[⌘K].
+- **Global Styles**: **Go to Styles** closes the dialog and switches to the Styles workspace (:kbd[⌘4]), where the CSS variables and default element styles live with the canvas beside them. See **[Project Styles](/docs/studio/design/stylebook)**.
 
 A value the section refuses (a blank name, an address that isn't a full URL) is reported under the control that caused it, and the stored value stays as it was.
 

@@ -15,8 +15,9 @@ import type { JsonLayout } from "@jxsuite/schema/json-layout";
  * The project's configuration file, project-relative.
  *
  * Named here rather than at the four places that used to spell it, because it is a DOCUMENT PATH —
- * `inferModes` answers `["stylebook", "source"]` for it (editor kind `config`), and
- * `tabs/project-config.ts` binds the tab at this path as the configuration document.
+ * `inferModes` answers `["stylebook", "tokens", "source"]` for it (the Styles workspace's Elements,
+ * Variables and Code views; editor kind `config`), and `tabs/project-config.ts` binds the tab at
+ * this path as the configuration document.
  */
 export const PROJECT_CONFIG_PATH = "project.json";
 
@@ -411,7 +412,10 @@ export function createTab({
  */
 function inferModes(documentPath: string | null | undefined, sourceFormat: string | null) {
   if (documentPath === PROJECT_CONFIG_PATH) {
-    return ["stylebook", "source"];
+    /* Elements, Variables and Code: the Styles workspace's three views. Spelled here rather than
+       imported from `style/project-styles` (`STYLES_TAB_MODES`), whose imports reach `store`,
+       which imports this module; `tests/project-config.test.ts` holds the two lists equal. */
+    return ["stylebook", "tokens", "source"];
   }
   const format = formatByName(sourceFormat) ?? formatForPath(documentPath);
   if (format) {

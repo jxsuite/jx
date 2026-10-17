@@ -10,8 +10,9 @@
  *   file a content collection owns (collection-match.ts is the one matcher), because an entry is
  *   written in Content even when it is opened from somewhere else.
  * - **Media**: the media home and every media file's viewer.
- * - **Styles**: `project.json`, in either of its editors (Project Styles or the source). Project
- *   Settings is a dialog over every workspace (§17.1), not a tab, so it belongs to none.
+ * - **Styles**: `project.json`, in any of its three views: Elements (`stylebook`), Variables
+ *   (`tokens`) and Code (`source`). Project Settings is a dialog over every workspace (§17.1), not
+ *   a tab, so it belongs to none.
  * - **Publish**: the publish home and every comparison (`git-diff`).
  * - **Design**: everything else: pages, templates, components and every other file.
  *

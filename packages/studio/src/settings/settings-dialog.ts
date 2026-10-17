@@ -31,6 +31,7 @@ import type { SettingsPaneMount } from "../panels/settings-pane";
 import type { DialogLayerHandle } from "../ui/surface";
 import type { InspectorTabId } from "../shell";
 import type { WorkspaceId } from "../workspace/workspace-ids";
+import type { StylesView } from "../style/project-styles";
 
 /** The open dialog, or `null` while none is up. */
 let _dialog: DialogLayerHandle | null = null;
@@ -51,12 +52,24 @@ let _pane: SettingsPaneMount | null = null;
  * document open there is no tab to show and asking would only file a refusal; the dock is still
  * opened, which is where the tab appears once one is.
  *
+ * A row that names a Styles view ("Colors and fonts → Styles › Variables") runs `styles.open` with
+ * that view instead, which is the same workspace switch followed by the view.
+ *
  * @param {WorkspaceId} workspace
  * @param {InspectorTabId} [inspector]
+ * @param {StylesView} [view]
  * @returns {Promise<void>} Settles once every command the row runs has settled
  */
-async function openMoved(workspace: WorkspaceId, inspector?: InspectorTabId): Promise<void> {
+async function openMoved(
+  workspace: WorkspaceId,
+  inspector?: InspectorTabId,
+  view?: StylesView,
+): Promise<void> {
   closeSettingsDialog();
+  if (view !== undefined) {
+    await runActiveReported("styles.open", { view }, "Settings");
+    return;
+  }
   await runActiveReported("view.setWorkspace", { workspace }, "Settings");
   if (inspector === undefined) {
     return;
@@ -84,8 +97,8 @@ export async function openSettingsDialog(): Promise<void> {
   const dialog = openSettingsDialogSurface({
     body: (host) => {
       _pane = mountSettingsPane(host, {
-        openMoved: (workspace, inspector) => {
-          void openMoved(workspace, inspector);
+        openMoved: (workspace, inspector, view) => {
+          void openMoved(workspace, inspector, view);
         },
       });
     },

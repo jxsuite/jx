@@ -170,7 +170,8 @@ describe("css vars — Manage contexts when Settings refuses to open", () => {
     expect(asked).toEqual([{ section: "contexts" }]);
     expect(problems).toHaveLength(1);
     expect(problems[0]!.message).toBe("chunk load failed");
-    expect(problems[0]!.source).toBe("Settings");
+    // Filed under the workspace the editor lives in, as the Variables view's own button files it.
+    expect(problems[0]!.source).toBe("Styles");
     expect(problems[0]!.severity).toBe("error");
     resetNotifications();
     setActiveRegistry(null);

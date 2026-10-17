@@ -23,6 +23,8 @@ import { activeTab } from "../workspace/workspace";
 import { shell } from "../shell";
 import { componentRegistry } from "../files/components";
 import { mountStylebookLayersSurface } from "../surfaces/panel-stylebook-layers";
+import { PROJECT_VARIABLES_VIEW } from "../style/project-styles";
+import { ref } from "../reactivity";
 
 import type { StylebookEntry } from "./stylebook-panel";
 import type {
@@ -34,10 +36,24 @@ import type {
 import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxStyle } from "@jxsuite/schema/types";
 
-/** What the panel is drawn from: the catalogue, and what selecting a row does. */
+/**
+ * Which list the Outline draws: the element catalogue beside the Elements view, the custom
+ * properties beside the Variables view. Derived from the pane's view, never stored, so the
+ * Navigator cannot show one list while the pane shows the other.
+ */
+export type StylebookLayersList = "elements" | "variables";
+
+/** The list that goes with a canvas mode: Variables for the `tokens` editor, else Elements. */
+export function stylebookListOf(mode: string): StylebookLayersList {
+  return mode === PROJECT_VARIABLES_VIEW ? "variables" : "elements";
+}
+
+/** What the panel is drawn from: the catalogue, the list, and what selecting a row does. */
 export interface StylebookLayersCtx {
   selectStylebookTag: (tag: string, media?: string | null, opts?: { panCanvas?: boolean }) => void;
   stylebookMeta: { $sections: { label: string; elements: StylebookEntry[] }[] };
+  /** Which list to draw. Absent is the element catalogue. */
+  list?: StylebookLayersList;
 }
 
 /** The row's own padding at depth 0, and what each level of nesting adds (the Outline's too). */
@@ -104,10 +120,15 @@ function elementRows(
 }
 
 /** The custom properties the open file declares, in the order it declares them. */
-function variableRows(rootStyle: JxStyle): StylebookVariableView[] {
+function variableRows(rootStyle: JxStyle, current: string | null): StylebookVariableView[] {
   return Object.entries(rootStyle)
     .filter(([k]) => k.startsWith("--"))
-    .map(([name, value]) => ({ key: name, name, value: String(value) }));
+    .map(([name, value]) => ({
+      key: name,
+      name,
+      selected: name === current,
+      value: String(value),
+    }));
 }
 
 /**
@@ -145,11 +166,11 @@ export function stylebookLayersValues(ctx: StylebookLayersCtx): StylebookLayersV
     });
   }
 
-  const variables = variableRows(rootStyle);
+  const variables = variableRows(rootStyle, shell.stylebook.variable);
   return {
     hasVariables: variables.length > 0,
     rows,
-    tab: shell.stylebook.tab,
+    tab: ctx.list ?? "elements",
     variables,
   };
 }
@@ -161,7 +182,15 @@ export function stylebookLayersValues(ctx: StylebookLayersCtx): StylebookLayersV
  * one Navigator, so a mount into a DIFFERENT node is the old one being replaced, and holding both
  * would leave the first one's effects running against a scope nobody writes any more.
  */
-let standing: { host: HTMLElement; handle: StylebookLayersSurfaceHandle } | null = null;
+let standing: {
+  /**
+   * The latest ctx: the handlers read it, not the one the first mount closed over, because the same
+   * surface is updated in place when the pane moves between Elements and Variables.
+   */
+  ctx: StylebookLayersCtx;
+  host: HTMLElement;
+  handle: StylebookLayersSurfaceHandle;
+} | null = null;
 
 /**
  * Keep the selected row on screen after a repaint.
@@ -201,18 +230,48 @@ export function mountStylebookLayersPanel(ctx: StylebookLayersCtx, host: HTMLEle
   }
   const values = stylebookLayersValues(ctx);
   if (standing) {
+    standing.ctx = ctx;
     standing.handle.update(values);
   } else {
     standing = {
+      ctx,
       handle: mountStylebookLayersSurface(target, values, {
         selectRow: (path) => {
-          ctx.selectStylebookTag(path, undefined, { panCanvas: true });
+          (standing?.ctx ?? ctx).selectStylebookTag(path, undefined, { panCanvas: true });
+        },
+        /* Pointing the Variables view at a property is a SHELL write, not a call into the view:
+           the view watches it and brings the row on screen, so the Outline needs no handle on a
+           pane it does not own. */
+        selectVariable: (name) => {
+          selectStylebookVariable(name);
+          if (standing) {
+            standing.handle.update(stylebookLayersValues(standing.ctx));
+          }
+          revealSelectedRow(target);
         },
       }),
       host: target,
     };
   }
   revealSelectedRow(target);
+}
+
+/**
+ * How many times a variable has been chosen. The Variables view tracks it beside the name, so
+ * choosing the property already chosen (after scrolling away from it) brings it back again.
+ */
+export const variableRequests = ref(0);
+
+/**
+ * Point the Variables view at one custom property. The Outline's variable rows call this, and the
+ * view (`style/variables-view.ts`) scrolls the property's row into view and puts the keyboard on
+ * its value.
+ *
+ * @param {string} name A custom property, `--accent`
+ */
+export function selectStylebookVariable(name: string): void {
+  shell.stylebook.variable = name;
+  variableRequests.value += 1;
 }
 
 /**

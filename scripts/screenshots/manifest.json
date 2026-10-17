@@ -324,10 +324,16 @@
       "docs": ["studio/design"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listing-card.json",
-        "view": "stylebook"
+        "file": "pages/index.md",
+        "view": "edit"
       },
       "steps": [
+        {
+          "args": {
+            "view": "elements"
+          },
+          "cmd": "styles.open"
+        },
         {
           "args": {
             "zoom": 0.6
@@ -425,12 +431,15 @@
       },
       "steps": [
         {
+          "args": {
+            "view": "variables"
+          },
           "cmd": "styles.open"
         }
       ],
       "expect": [
         {
-          "region": "pane.primary"
+          "region": "pane.primary/variables"
         }
       ],
       "capture": [

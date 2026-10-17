@@ -2,7 +2,9 @@
 title: "Project Styles"
 description: "Project Styles in Jx Studio: set the default look of every heading, button, and link in one catalog, live at every breakpoint."
 spec:
+  - studio.md#7.1
   - studio.md#7.4
+  - studio.md#22.7
 code:
   - packages/studio/src/settings/settings-document.ts
   - packages/studio/src/panels/stylebook-panel.ts
@@ -13,21 +15,24 @@ code:
   - packages/studio/src/panels/pane-context.ts
   - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/style/project-styles.ts
+  - packages/studio/src/panels/layers-panel.ts
+  - packages/studio/src/surfaces/panel-stylebook-layers.ts
+  - packages/studio/src/surfaces/stylebook-chrome.ts
 ---
 
 # Project Styles
 
-Project Styles catalogs your elements: every heading, paragraph, button, list, table, and form control, plus your components, rendered as specimen cards with their current default styles. Instead of styling one `h2` on one page, you style what _every_ `h2` looks like, in one place. Open it with the **Styles** workspace tab in the Command Bar (:kbd[⌘4]), or with **Open Project Styles** on :kbd[⌘K]; both work whether or not the project file is already open. Once it is, **Project Styles** also appears in the **Editor** control on the pane's context bar, beside the other editors that file supports; files that don't support it don't offer it. See **[Modes and views](/docs/studio/interface/modes)**.
+Project Styles catalogs your elements: every heading, paragraph, button, list, table, and form control, plus your components, rendered as specimen cards with their current default styles. Instead of styling one `h2` on one page, you style what _every_ `h2` looks like, in one place. Project Styles is the **Styles** workspace: click **Styles** in the Command Bar (:kbd[⌘4]), or run **Go to Styles** from :kbd[⌘K], whether or not the project file is already open. It shows your project file in three views, chosen with the **Editor** control on the pane's context bar: **Elements**, the catalog this page describes; **Variables**, your site's CSS custom properties (see **[Design tokens](/docs/studio/design/tokens)**); and **Code**, the file as text. See **[Modes and views](/docs/studio/interface/modes)**.
 
 ![Jx Studio Project Styles showing element defaults across breakpoints](../../images/stylebook.png)
 
-Your project file opens here, because that's the natural home for site-wide defaults. It is the same document that **[Project settings](/docs/studio/projects/settings)** shows as a form and the Code editor shows as raw JSON: three readings of one file, sharing one undo history and one unsaved-changes flag. Opening Project Styles on a component or another JSON document styles that file's element defaults instead.
+Your project file opens here, because that's the natural home for site-wide defaults. **[Project settings](/docs/studio/projects/settings)** edits other parts of the same file, and the three views are three readings of it, sharing one undo history and one unsaved-changes flag. A component or another JSON document also offers **Elements** in its own **Editor** control, which styles that file's element defaults instead.
 
 ## Read the catalog
 
 Like Design mode, Project Styles shows one panel per breakpoint, all rendering the same catalog, so an element default that changes at Tablet is visibly different in the Tablet panel. The catalog renders through the real runtime, exactly as the defaults will render on your pages.
 
-Two controls sit above the canvas: a **Filter** box to narrow the catalog by name, and a **Customized** toggle to show only the elements you've already styled. The **Outline** panel mirrors the catalog as a tree and marks customized entries with a dot: elements with their nested parts (a table with its rows and cells), then your components.
+Two controls sit above the canvas: a **Filter** box to narrow the catalog by name, and a **Customized** toggle to show only the elements you've already styled. The **Outline** panel mirrors the catalog as a tree and marks customized entries with a dot: elements with their nested parts (a table with its rows and cells), then your components. Switch the pane to **Variables** and the Outline lists your CSS custom properties instead; click one to jump to it in the Variables view.
 
 ## Style an element type
 
@@ -47,6 +52,8 @@ The scope chip is the difference between "this heading" and "every heading":
 - On your project file with nothing selected, the line reads **every page in this project**. That is the file's own root style (`:root` and `body` on every route), so there is no tag to count, and the band says as much instead of printing a number it can't stand behind.
 
 The chip is there before your first keystroke, which is the point: this catalog widens every edit from one element to a whole tag, and you should not have to discover that from the result.
+
+An element default you set here is an edit to the open file like any other: the tab shows its unsaved dot and **Save** (:kbd[⌘S]) writes it. The **Variables** view saves differently, and says so at its top: a variable change is written as you make it, together with any element default still waiting for Save.
 
 A value that arrives from your project's tokens rather than from this file carries an inherited chip reading **from site tokens**, so a default you did not write here is never mistaken for one you did. It has nowhere to jump to, because that value lives in the project's site-wide style, and you edit it in **[Design tokens](/docs/studio/design/tokens)**.
 
@@ -68,5 +75,3 @@ Element defaults are saved as tag-named rules in the open file's top-level `styl
 
 - Name the values your defaults are built from in **[Design tokens](/docs/studio/design/tokens)**.
 - See how Project Styles fits among the editors and views in **[Modes and views](/docs/studio/interface/modes)**.
-  - packages/studio/src/surfaces/panel-stylebook-layers.ts
-  - packages/studio/src/surfaces/stylebook-chrome.ts

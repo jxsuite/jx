@@ -301,8 +301,12 @@ export interface ShellGit {
 /** The stylebook catalogue's selection and filters — project level, like the styles they edit. */
 export interface ShellStylebook {
   selection: string | null;
-  /** "elements" | "variables" */
-  tab: string;
+  /**
+   * The custom property the Variables view is pointed at (`--accent`), chosen from the Outline's
+   * variable rows, or `null`. Which LIST the Outline draws is not stored here: it follows the view
+   * the pane is in (Elements or Variables), so the two can never disagree.
+   */
+  variable: string | null;
   filter: string;
   customizedOnly: boolean;
 }
@@ -587,7 +591,7 @@ function freshGit(): ShellGit {
 }
 
 function freshStylebook(): ShellStylebook {
-  return { customizedOnly: false, filter: "", selection: null, tab: "elements" };
+  return { customizedOnly: false, filter: "", selection: null, variable: null };
 }
 
 /**

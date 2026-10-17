@@ -38,6 +38,7 @@ import { workspaceInfo } from "../workspace/workspace-ids";
 import type { SettingsPaneHandle, SettingsPaneValues } from "../surfaces/settings-pane";
 import type { InspectorTabId } from "../shell";
 import type { WorkspaceId } from "../workspace/workspace-ids";
+import type { StylesView } from "../style/project-styles";
 
 /** What the body says when the section that is current is registered by nobody. */
 const NO_SECTIONS = "No settings sections.";
@@ -59,8 +60,12 @@ const MOVED: readonly {
   workspace: WorkspaceId;
   place?: string;
   inspector?: InspectorTabId;
+  /** The Styles view the place IS, for a row that moved into one of them. */
+  view?: StylesView;
 }[] = [
-  { what: "Colors and fonts", workspace: "styles" },
+  /* The design tokens are the Variables view, not whichever Styles view was last open: a button
+     that says "Variables" and lands on the element catalogue would have the author hunting. */
+  { place: "Styles › Variables", view: "variables", what: "Colors and fonts", workspace: "styles" },
   { what: "Hosting and domain", workspace: "publish" },
   { inspector: "page", place: "Page tab", what: "Head and SEO defaults", workspace: "design" },
 ];
@@ -69,9 +74,9 @@ const MOVED: readonly {
 export interface SettingsPaneOptions {
   /**
    * A Moved footnote's button: close the dialog and go to the named workspace, and to the named
-   * Inspector tab there when the row names one.
+   * Inspector tab or Styles view there when the row names one.
    */
-  openMoved: (workspace: WorkspaceId, inspector?: InspectorTabId) => void;
+  openMoved: (workspace: WorkspaceId, inspector?: InspectorTabId, view?: StylesView) => void;
 }
 
 /** The mounted editor. */
@@ -175,7 +180,7 @@ export function mountSettingsPane(
     openMoved: (workspace: string) => {
       const target = movedRow(workspace);
       if (target !== null) {
-        options.openMoved(target.workspace, target.inspector);
+        options.openMoved(target.workspace, target.inspector, target.view);
       }
     },
     selectSection: (key: string) => {

@@ -1,7 +1,12 @@
 ---
 title: "Design tokens"
 description: "Design tokens in Jx Studio: define colors, fonts, and sizes once for the whole site and reuse them from every picker."
+spec:
+  - studio.md#7.1
 code:
+  - packages/studio/src/style/variables-view.ts
+  - packages/studio/src/surfaces/styles-variables.ts
+  - packages/studio/src/surfaces/settings-css-vars.ts
   - packages/studio/src/settings/css-vars-editor.ts
   - packages/studio/src/style/project-styles.ts
   - packages/studio/src/style/token-ref.ts
@@ -14,26 +19,26 @@ code:
 
 A design token is a named value: **Primary Blue** instead of `#3b82f6`, **Body Serif** instead of a font list. Define it once for the site and reference it everywhere; change it once and everywhere updates. Tokens are what keep a growing site on one palette instead of thirty slightly different blues.
 
-![Project Styles in the Styles workspace, where the site's design tokens live](../../images/css-variables.png)
+![The Variables view in the Styles workspace, listing the site's CSS custom properties by group](../../images/css-variables.png)
 
 ## Define tokens
 
-Tokens are the `--` keys of the `style` block in `project.json`, and they belong to the **Styles** workspace (:kbd[⌘4]). The **Outline** there lists every token the project defines under **Variables**.
+Tokens are your site's CSS custom properties: the `--` keys of the `style` block in `project.json`. You edit them in the **Variables** view of the **Styles** workspace. Click **Styles** in the Command Bar (:kbd[⌘4], or **Go to Styles** from :kbd[⌘K]) and choose **Variables** in the pane's **Editor** control. In [Project settings](/docs/studio/projects/settings), the **Moved** footnote's **Colors and fonts** button opens the same view. The **Outline** beside it lists every token the project defines; click one to jump to its row.
 
 :::doc-note
-The token editor described below is no longer a section of [Project settings](/docs/studio/projects/settings): the dialog's **Moved** footnote sends **Colors and fonts** to the Styles workspace, whose Variables view hosts the editor. Until that view is in your build, edit tokens as text: open **Project settings › Advanced › Raw JSON** and choose **Edit as code**, which opens `project.json` in the Styles workspace's Code editor.
+A change in the Variables view is saved to `project.json` as you make it, so there is nothing to save afterwards. Because tokens and element defaults live in the same file, the write also saves any element default from the **Elements** view that was still waiting for **Save**, and the view says so at its top. Undo is the exception: :kbd[⌘Z] takes a change back in the open file, which then shows its unsaved dot until you **Save** (:kbd[⌘S]).
 :::
 
 Tokens are grouped by what they name:
 
-- **Colors**: each row has a color swatch (click it for a native picker), the token's name, and its value. Edits appear on the canvas immediately.
+- **Colors**: each row has a color swatch (click it for a native picker), the token's name as CSS spells it (`--color-accent`), and its value. Edits appear on the canvas immediately.
 - **Fonts**: each font renders a preview sentence in its own face below the row.
 - **Sizes & Spacing**: widths, gaps, and radii.
 - **Other**: anything that doesn't fit the groups above. It appears only once something lands in it.
 
 To add a token, type a friendly name and a value in the group's empty row and click **Add**. Studio derives the stored variable name from the group and your name, so "Primary Blue" in Colors becomes `--color-primary-blue`. The trash button removes a token; anything still referencing it falls back to nothing, so remove with care.
 
-A token can be built from another one: give it the value `var(--color-brand)` and the row grows a chip naming **Brand**, with the color that reference ends up at. Studio follows the chain to its end, so an alias of an alias still shows a color rather than more syntax.
+A token can be built from another one: give it the value `var(--color-brand)` and the row grows a chip naming `--color-brand`, with the color that reference ends up at. Studio follows the chain to its end, so an alias of an alias still shows a color rather than more syntax.
 
 :::doc-tip
 A value that could not be written to `project.json` is raised on **[Problems](/docs/studio/interface/problems-and-progress)** rather than quietly dropped. While `project.json` is open in the Styles workspace, each token change is a step in its history, so :kbd[⌘Z] there takes it back.
@@ -47,7 +52,7 @@ A token can hold a different value in any rendering context the project declares
 - Any token can be given a value in any other declared context from the **Add override…** picker under its row: a breakpoint, a scheme, or a feature query. The picker offers only the contexts that token has no row for yet.
 - Clearing an override's field removes it, and the token goes back to inheriting its base value.
 
-Contexts are declared in one place, **Project settings › Advanced › Contexts**, described in **[Breakpoints](/docs/studio/design/breakpoints)**. A project with no color scheme yet gets a **Manage contexts…** button under the Colors group that opens Project settings on that section.
+Contexts are declared in one place, **Project settings › Advanced › Contexts**, described in **[Breakpoints](/docs/studio/design/breakpoints)**. The **Manage contexts…** button at the top of the Variables view opens Project settings on that section, and a project with no color scheme yet gets the same button under the Colors group.
 
 ## Use tokens while styling
 
@@ -57,7 +62,7 @@ Tokens surface right inside the [Style inspector](/docs/studio/design/style-insp
 - The **font family** box lists your font tokens first, each previewed in its own face. Picking one of the ready-made presets creates a matching font token automatically, so even your first font choice becomes reusable.
 - Any field accepts a token typed directly as `var(--color-primary-blue)`, useful for the occasional property without a picker.
 
-A field holding a token reference is _following_ the token: edit the token in Settings and every element using it updates. The edit lands in place on every live canvas, the page you had open and the **[Project Styles](/docs/studio/design/stylebook)** catalog alike, so tuning a token shows the design changing rather than describing it.
+A field holding a token reference is _following_ the token: edit the token in the Variables view and every element using it updates. The edit lands in place on every live canvas, the page you had open and the **[Project Styles](/docs/studio/design/stylebook)** catalog alike, so tuning a token shows the design changing rather than describing it.
 
 In **[Project Styles](/docs/studio/design/stylebook)**, a value that arrives from your project's site-wide style rather than from the open file wears an inherited chip reading **from site tokens**, so an element default that comes with the project is never mistaken for one written in this file.
 

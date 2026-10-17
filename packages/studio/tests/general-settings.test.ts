@@ -378,19 +378,19 @@ describe("platform adapter", () => {
 
 describe("global styles shortcut", () => {
   /*
-   * The button RENDERS FROM `styles.open` and runs it. It used to write `session.ui.canvasMode`
-   * itself — a second implementation of a capability that also existed as no command at all, so
-   * the only way to reach Project Styles from a closed configuration tab was this button
-   * (studio-ui-guidelines.md §12.5).
+   * The button RENDERS FROM `workspace.focus.styles` and runs the workspace switch. It used to
+   * write `session.ui.canvasMode` itself — a second implementation of a capability that also
+   * existed as no command at all (studio-ui-guidelines.md §12.5). Global styles are the Styles
+   * workspace's now, and the switch is the one door to it.
    */
   function installStylesRegistry() {
     const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
     registry.register({
-      id: "styles.open",
-      title: "Open Project Styles",
-      category: "Project",
-      level: "project",
-      menus: ["settings/menu", "palette"],
+      id: "workspace.focus.styles",
+      title: "Go to Styles",
+      category: "View",
+      level: "application",
+      menus: ["palette"],
       requires: "an open project",
       when: (ctx: CommandContext) => ctx.project.open,
       run: () => {},
@@ -399,26 +399,26 @@ describe("global styles shortcut", () => {
     return registry;
   }
 
-  test("Edit Global Styles runs the command, rather than writing the mode itself", async () => {
+  test("Go to Styles switches to the Styles workspace, rather than writing the mode itself", async () => {
     const registry = installStylesRegistry();
-    const ran: string[] = [];
-    registry.run = (id) => {
-      ran.push(id);
+    const ran: { id: string; args: unknown }[] = [];
+    registry.run = (id, args) => {
+      ran.push({ args, id });
       return Promise.resolve();
     };
     resetWorkspaceWithTab();
     const { container } = await setup({});
     pointer(part(container, "styles-open"), "click");
-    expect(ran).toEqual(["styles.open"]);
+    expect(ran).toEqual([{ args: { workspace: "styles" }, id: "view.setWorkspace" }]);
   });
 
   test("its tooltip is the record's own title, so the two cannot drift", async () => {
-    // The button's LABEL is in-context copy — "Edit Global Styles" is what this field is about —
-    // But what it invokes is named by the record, the half studio-ui-guidelines.md §12.3 governs.
+    // The button's LABEL is in-context copy, but what it invokes is named by the record, the half
+    // Studio-ui-guidelines.md §12.3 governs.
     installStylesRegistry();
     const { container } = await setup({});
-    expect(part(container, "styles-open").getAttribute("title")).toBe("Open Project Styles");
-    expect(part(container, "styles-open").textContent.trim()).toBe("Edit Global Styles");
+    expect(part(container, "styles-open").getAttribute("title")).toBe("Go to Styles");
+    expect(part(container, "styles-open").textContent.trim()).toBe("Go to Styles");
   });
 
   /*

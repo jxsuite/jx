@@ -43,6 +43,8 @@ import { closeAllTabs, activeTab, workspace } from "../src/workspace/workspace";
 import { initLayers } from "../src/ui/layers";
 import "../src/ui/form-controls";
 import { emptyContext } from "../src/commands/context";
+import { createCommandRegistry } from "../src/commands/registry";
+import { setActiveRegistry } from "../src/commands/active-registry";
 import { isString } from "@jxsuite/schema/guards";
 import type { AnyCommand } from "../src/commands/registry";
 import type { NotifyOptions } from "../src/services/notify";
@@ -609,8 +611,9 @@ describe("the configuration tab", () => {
     expect(tab?.documentPath).toBe("project.json");
     expect(tab?.id).toBe("project.json");
     expect(tab?.session.ui.canvasMode).toBe("stylebook");
-    // Two editors: Project Settings is a dialog, not a third mode of this tab.
-    expect(tab?.capabilities.modes).toEqual(["stylebook", "source"]);
+    // The Styles workspace's three views (Elements, Variables, Code). Project Settings is a
+    // Dialog, not a mode of this tab.
+    expect(tab?.capabilities.modes).toEqual(["stylebook", "tokens", "source"]);
   });
 
   test("the tab's document IS the live project config, so the chokepoint binds it", () => {
@@ -633,14 +636,23 @@ describe("the configuration tab", () => {
     const tab = showSettingsDocument("source")!;
     expect(tab.session.ui.canvasMode).toBe("source");
     expect(tab.session.ui.preview).toBe(false);
-    expect(tab.capabilities.modes).toEqual(["stylebook", "source"]);
+    expect(tab.capabilities.modes).toEqual(["stylebook", "tokens", "source"]);
   });
 
   test("an already-open project.json tab gains a missing editor in declared order", () => {
     const tab = showSettingsDocument()!;
     tab.capabilities.modes = ["preview"];
     showSettingsDocument();
-    expect(tab.capabilities.modes).toEqual(["stylebook", "source", "preview"]);
+    expect(tab.capabilities.modes).toEqual(["stylebook", "tokens", "source", "preview"]);
+  });
+
+  test("the Variables view is the tokens editor of the same tab", () => {
+    const first = showSettingsDocument()!;
+    first.doc.dirty = true;
+    const tab = showSettingsDocument("tokens")!;
+    expect(tab.id).toBe(first.id);
+    expect(tab.session.ui.canvasMode).toBe("tokens");
+    expect(tab.doc.dirty).toBe(true);
   });
 
   /*
@@ -825,14 +837,18 @@ describe("styles.open", () => {
     return commandById("styles.open");
   }
 
-  test("is a project-level record in the palette, and not in the gear", () => {
+  test("is a project-level scripted door, in neither the palette nor the gear", () => {
     const command = stylesCommand();
     expect(command.level).toBe("project");
-    // The gear holds Preferences and Project Settings; Styles is a workspace the top bar names.
-    expect(command.menus).toEqual(["palette"]);
+    /* The gear holds Preferences and Project Settings; Styles is a workspace the top bar names,
+       and the palette reaches it as `workspace.focus.styles` ("Go to Styles"). A palette row here
+       would be the same switch under a second name. */
+    expect(command.menus).toEqual(["never"]);
     expect(command.group).toBe("7_settings_styles");
     expect(command.keybinding).toBeUndefined();
-    expect(command.args).toBeUndefined();
+    // One optional argument, the view, named by what it edits rather than by its wire mode.
+    expect(command.args?.required).toEqual([]);
+    expect(command.args?.properties?.["view"]?.enum).toEqual(["elements", "variables", "code"]);
   });
 
   test("it is NAMED, never spelled from the wire value", () => {
@@ -854,11 +870,68 @@ describe("styles.open", () => {
     }
   });
 
-  test("it opens the configuration document in the Project Styles editor", () => {
-    void runRecord(stylesCommand());
+  /** A registry whose `view.setWorkspace` records its arguments and opens the Styles home. */
+  function installWorkspaceRegistry(): CommandArgValues[] {
+    const ran: CommandArgValues[] = [];
+    const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
+    registry.register({
+      category: "View",
+      id: "view.setWorkspace",
+      level: "application",
+      menus: ["never"],
+      run: (_ctx: CommandContext, args: CommandArgValues) => {
+        ran.push(args);
+        showSettingsDocument();
+      },
+      title: "Switch Workspace",
+    });
+    setActiveRegistry(registry);
+    return ran;
+  }
+
+  afterEach(() => {
+    setActiveRegistry(null);
+  });
+
+  test("it is an alias: it switches to the Styles workspace, whose home is Elements", async () => {
+    const ran = installWorkspaceRegistry();
+    await runRecord(stylesCommand());
+    expect(ran).toEqual([{ workspace: "styles" }]);
     const tab = workspace.tabs.get("project.json");
     expect(tab?.session.ui.canvasMode).toBe("stylebook");
     expect(activeTab.value?.id).toBe("project.json");
+  });
+
+  test("a view picks one of the tab's three editors after the switch", async () => {
+    installWorkspaceRegistry();
+    await runRecord(stylesCommand(), { view: "variables" });
+    expect(workspace.tabs.get("project.json")?.session.ui.canvasMode).toBe("tokens");
+    await runRecord(stylesCommand(), { view: "code" });
+    expect(workspace.tabs.get("project.json")?.session.ui.canvasMode).toBe("source");
+    await runRecord(stylesCommand(), { view: "elements" });
+    expect(workspace.tabs.get("project.json")?.session.ui.canvasMode).toBe("stylebook");
+  });
+
+  test("a view nobody declared is refused by name", async () => {
+    installWorkspaceRegistry();
+    let message = "";
+    try {
+      await runRecord(stylesCommand(), { view: "tokens" });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("declared: elements, variables, code");
+  });
+
+  test("without a registry it says what it is missing", async () => {
+    setActiveRegistry(null);
+    let message = "";
+    try {
+      await runRecord(stylesCommand());
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("command registry");
   });
 });
 

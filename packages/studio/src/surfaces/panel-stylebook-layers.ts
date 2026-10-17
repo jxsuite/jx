@@ -63,11 +63,16 @@ export interface StylebookVariableView {
   name: string;
   /** Whatever it is declared as, as text. */
   value: string;
+  /** Whether this is the property the Variables view is pointed at. Drawn as `aria-current`. */
+  selected: boolean;
 }
 
 /** What the panel says the surface should be showing right now. */
 export interface StylebookLayersValues {
-  /** `elements` or `variables` — `shell.stylebook.tab`, which names the `$switch` case. */
+  /**
+   * `elements` or `variables`, the list that goes with the pane's view (Elements or Variables),
+   * which names the `$switch` case.
+   */
   tab: string;
   rows: StylebookRowView[];
   variables: StylebookVariableView[];
@@ -78,6 +83,8 @@ export interface StylebookLayersValues {
 /** What a control can ask the panel to do. The one thing a row does is select itself. */
 export interface StylebookLayersActions {
   selectRow: (path: string) => void;
+  /** A variable row: point the Variables view at this custom property. */
+  selectVariable: (name: string) => void;
 }
 
 export interface StylebookLayersSurfaceHandle {
@@ -118,6 +125,7 @@ export function mountStylebookLayersSurface(
     hasVariables: false,
     rows: [],
     selectRow: actions.selectRow,
+    selectVariable: actions.selectVariable,
     tab: "elements",
     variables: [],
   });

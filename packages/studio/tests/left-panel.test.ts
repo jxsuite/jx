@@ -229,6 +229,17 @@ describe("left panel — document tabs", () => {
     expect(ctx.registerLayersDnD).not.toHaveBeenCalled();
   });
 
+  test("the Variables view's mode mounts the same body on its variables list", async () => {
+    // The list follows the pane's view: Elements draws the catalogue, Variables the properties.
+    activeTab.value!.doc.document.style = { "--accent": "#2448c9" };
+    await mountWith({ getCanvasMode: () => "tokens" });
+    await flush(4);
+    const rows = [...navigatorHost().querySelectorAll<HTMLElement>('[part="row"]')];
+    expect(rows.map((row) => row.dataset["kind"])).toEqual(["variable"]);
+    expect(rows[0]?.dataset["path"]).toBe("--accent");
+    expect(navigatorHost().querySelector('[part="outline"]')).toBeNull();
+  });
+
   test("the packages tab routes to the Packages panel, which mounts its own document", async () => {
     /* This file is the ORCHESTRATOR's test: which panel a tab routes to. The panel used to be drawn
        through an injected `renderImportsTemplate`, so the injection was also where its context

@@ -152,6 +152,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   postApplyFormat: () => {},
   postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => 0,
+  postSiteStyleToLiveHosts: () => 0,
   requestCanvasEval: () => Promise.resolve(null),
   /* The non-lazy way out of `liveHosts`: `panels/pane-grid.ts` calls it as a cell is
      disposed, so it is on the import graph of anything that mounts the shell. */

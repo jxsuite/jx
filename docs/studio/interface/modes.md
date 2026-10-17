@@ -16,7 +16,7 @@ code:
 
 # Editors and views
 
-Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Diff**, **Entry**, **Home** or **Project Styles**. It lists only the editors this file supports, so there is nothing in it to be disabled. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
+Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Diff**, **Entry**, **Home**, or one of the Styles workspace's **Elements** and **Variables**. It lists only the editors this file supports, so there is nothing in it to be disabled. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
 
 Those seven names come from one list in Studio, which is why the pane's context bar and the status bar can never print different words for the same editor.
 
@@ -66,32 +66,32 @@ The full guide is **[Source control](/docs/studio/publish/source-control#read-a-
 
 ## Project Styles
 
-Project Styles is the catalog of your project's element defaults: every heading, button, and link rendered with its base style, so you set the look of each element type once for the whole site. Selecting it switches the Inspector to the **Style** tab automatically. See **[Design mode](/docs/studio/design)** for how it fits into styling.
+Project Styles is the Styles workspace's two style editors over your project file. **Elements** is the catalog of your project's element defaults: every heading, button, and link rendered with its base style, so you set the look of each element type once for the whole site. Selecting an element switches the Inspector to the **Style** tab automatically. **Variables** lists your site's CSS custom properties by group, each editable in place. See **[Project Styles](/docs/studio/design/stylebook)** and **[Design tokens](/docs/studio/design/tokens)**.
 
 ![Jx Studio Project Styles showing element defaults across breakpoints](../../images/stylebook.png)
 
 ## Project Settings
 
-Your project's configuration, `project.json`, opens as a document in the Styles workspace, with two editors: **Project Styles** and **Code**. Switching between them keeps one undo history and one unsaved dot, and :kbd[⌘Z], the unsaved dot and :kbd[⌘S] mean here exactly what they mean in a page.
+Your project's configuration, `project.json`, opens as a document in the Styles workspace, with three editors: **Elements**, **Variables** and **Code**. Switching between them keeps one undo history and one unsaved dot, and :kbd[⌘Z], the unsaved dot and :kbd[⌘S] mean here exactly what they mean in a page. The one difference is **Variables**, which saves each change as you make it.
 
-**Open Project Settings** is not one of its editors: it opens a dialog over whatever you are doing, with its sections in three groups (General, Integrations, Advanced), and every change in it is written to `project.json` as you make it. **Edit Global Styles**, in its Overview section, closes the dialog and opens Project Styles; **Edit as code**, in Raw JSON, opens the Code editor. Full guide: **[Project settings](/docs/studio/projects/settings)**.
+**Open Project Settings** is not one of its editors: it opens a dialog over whatever you are doing, with its sections in three groups (General, Integrations, Advanced), and every change in it is written to `project.json` as you make it. **Go to Styles**, in its Overview section, closes the dialog and opens the Styles workspace; **Edit as code**, in Raw JSON, opens the Code editor. Full guide: **[Project settings](/docs/studio/projects/settings)**.
 
 ## Which files offer what
 
 Every file opens in its natural editor and view, and the two controls offer only what that file supports:
 
-| File                               | Opens in           | Editor also offers           | View also offers        |
-| ---------------------------------- | ------------------ | ---------------------------- | ----------------------- |
-| Markdown pages and content (`.md`) | **Canvas** · Edit  | **Code**                     | **Design**, **Preview** |
-| Components and pages (`.json`)     | **Canvas** · Edit  | **Code**, **Project Styles** | **Design**, **Preview** |
-| Spreadsheets (`.csv`)              | **Grid**           | **Code**                     | —                       |
-| Images, video, audio, fonts, PDFs  | **Media**          | —                            | —                       |
-| Vector images (`.svg`)             | **Media**          | **Code**                     | —                       |
-| The project file (`project.json`)  | **Project Styles** | **Code**                     | —                       |
+| File                               | Opens in          | Editor also offers      | View also offers        |
+| ---------------------------------- | ----------------- | ----------------------- | ----------------------- |
+| Markdown pages and content (`.md`) | **Canvas** · Edit | **Code**                | **Design**, **Preview** |
+| Components and pages (`.json`)     | **Canvas** · Edit | **Code**, **Elements**  | **Design**, **Preview** |
+| Spreadsheets (`.csv`)              | **Grid**          | **Code**                | —                       |
+| Images, video, audio, fonts, PDFs  | **Media**         | —                       | —                       |
+| Vector images (`.svg`)             | **Media**         | **Code**                | —                       |
+| The project file (`project.json`)  | **Elements**      | **Variables**, **Code** | —                       |
 
 Any file with uncommitted changes also offers **Diff**, including files that have no other editor at all. Opening one of those from the Files tree still says Studio has no editor for it; Source Control asks the narrower question of what changed, and answers it.
 
-Opening `project.json` from the Files tree lands on **Project Styles**, and **Open Project Styles** on :kbd[⌘K] opens it there from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
+Opening `project.json` from the Files tree lands on **Elements**, and **Go to Styles** (:kbd[⌘4], or from :kbd[⌘K]) switches to the Styles workspace from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
 
 A JSON entry of a content collection also has an **Entry** editor. **Open Entry** is how you reach it, and it joins that file's **Editor** control from then on, so you can move between the form and the source without losing your place in either. A Markdown entry is written on the canvas, with its fields in the Inspector's **Entry** tab.
 

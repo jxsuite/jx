@@ -83,10 +83,10 @@ A document keeps its own view state while it's open. Switch from a Markdown page
 - its canvas position, and the zoom, but only once you have set one yourself; until then Design keeps fitting the canvas to the pane,
 - its selected element and active Inspector tab.
 
-New documents open in their natural editor: Markdown in **Edit**, spreadsheets in **Grid**, the project file in **Project Styles**.
+New documents open in their natural editor: Markdown in **Edit**, spreadsheets in **Grid**, the project file in **Elements**, the first of the Styles workspace's views.
 
 :::doc-note
-**Your project's configuration is one of these documents.** `project.json` opens in the strip like any file, in the Styles workspace, with Project Styles and Code as its editors: an unsaved dot, :kbd[⌘Z] to take a change back, :kbd[⌘S] to write it. **Open Project Settings** is a dialog that writes the same file as you change it, through the same document, so while the tab is open a settings change is a step in its history too.
+**Your project's configuration is one of these documents.** `project.json` opens in the strip like any file, in the Styles workspace, with **Elements**, **Variables** and **Code** as its editors: an unsaved dot, :kbd[⌘Z] to take a change back, :kbd[⌘S] to write it. **Open Project Settings** is a dialog that writes the same file as you change it, through the same document, so while the tab is open a settings change is a step in its history too.
 :::
 
 ## Reopening a project
@@ -142,7 +142,7 @@ In the middle of the status bar, along the foot of the window, a breadcrumb trai
 
 Under the strip, a labelled row states three things about the document in that pane, and only those three:
 
-- **Editor** is which editor is open on it: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Home** or **Project Styles**. It offers only the editors this file actually supports, so it never holds an entry that cannot be picked, and a document with one editor prints its name as text, with no dropdown to open. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
+- **Editor** is which editor is open on it: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Home**, **Elements** or **Variables**. It offers only the editors this file actually supports, so it never holds an entry that cannot be picked, and a document with one editor prints its name as text, with no dropdown to open. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
 - **View**, for the Canvas editor, offers **Edit │ Design** with a **Preview** toggle beside them. See [Modes and views](/docs/studio/interface/modes).
 - **Context** is what the page is being rendered _with_: the breakpoint, the color scheme, any feature queries, the rendering [language](/docs/studio/interface/languages) on a multilingual project, and whether the layout's own elements are shown. The summary reads at a glance (`Base · Auto`); open it for the full set, and for **Manage contexts…**, which takes you to where breakpoints and schemes are defined. Beside it, a second popover headed **resolving with** carries the document's own data, stacked one per line: a picker per URL parameter on a dynamic page, a small field per option on a component. Its summary counts the values you have set (`2 set`, or `Defaults` when you have set none).
 

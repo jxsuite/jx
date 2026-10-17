@@ -882,7 +882,7 @@ describe("canvas render effects", () => {
     openShellTab();
     await flush();
     scheduleCanvasRenderMock.mockClear();
-    shell.stylebook.tab = shell.stylebook.tab === "elements" ? "variables" : "elements";
+    shell.stylebook.customizedOnly = !shell.stylebook.customizedOnly;
     expect(scheduleCanvasRenderMock).toHaveBeenCalledWith(PRIMARY_PANE);
   });
 

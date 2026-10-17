@@ -106,6 +106,9 @@ export function mount(deps: NavigatorPanelDeps) {
         // Track properties the Navigator's panels read
         void tab.doc.document;
         void tab.doc.mode;
+        // The editor too: the Outline draws a different body per view of `project.json` (the
+        // Element catalogue beside Elements, the custom properties beside Variables).
+        void tab.session.ui.canvasMode;
         // The whole SET, joined — a bare property read would not re-trigger when the selection
         // Changes WITHIN the array, and §6.7's helpers always replace it but nothing enforces that.
         void tab.session.selection.map((path) => path.join("/")).join("|");

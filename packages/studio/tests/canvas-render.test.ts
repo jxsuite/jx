@@ -324,6 +324,8 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   revealCanvasPath: () => Promise.resolve(null),
   postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: (style: JxStyle) => styleUpdateImpl(style),
+  // The Variables view's editor pushes a token edit to the page canvases (`style/live-preview`).
+  postSiteStyleToLiveHosts: () => 0,
   getEditBarAnchorRect: () => null,
   getEditSnapshot: () => ({ editing: false, snapshot: null }),
   mountIframeCanvas: (
@@ -1627,6 +1629,35 @@ describe("media mode", () => {
     expect(stageEl().querySelector('[part="viewer"]')).toBe(viewer!);
 
     detachMediaPane("primary");
+  });
+});
+
+describe("tokens mode", () => {
+  test("mounts the Variables view, a repaint leaves it alone, and leaving the mode takes it down", async () => {
+    /* The Styles workspace's Variables view is a form over `project.json`'s custom properties,
+       not a canvas render: no artboard, and the view follows the document through its own effect,
+       so the fast path is what keeps a half-typed value from being rebuilt under the reader. */
+    const tab = openSyncedTab(
+      { style: { "--accent": "#2448c9" }, tagName: "div" },
+      { documentPath: "project.json" },
+    );
+    tab.capabilities.modes = ["stylebook", "tokens", "source"];
+    setMode("tokens");
+    renderCanvas();
+    await flush(6);
+
+    const mounted = stageEl().querySelector('[part="variables-view"]');
+    expect(mounted).not.toBeNull();
+    expect(canvasPanels.length).toBe(0);
+
+    renderCanvas();
+    await flush(4);
+    expect(stageEl().querySelector('[part="variables-view"]')).toBe(mounted!);
+
+    setMode("source");
+    renderCanvas();
+    await flush(4);
+    expect(stageEl().querySelector('[part="variables-view"]')).toBeNull();
   });
 });
 

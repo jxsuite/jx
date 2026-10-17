@@ -52,6 +52,12 @@ import { detachGridPanel, gridPanelMounted, renderGridMode } from "../grid/grid-
 import { detachEntryPane, entryPaneMounted, renderEntryMode } from "../content/entry-editor";
 import { detachMediaPane, mediaPaneMounted, renderMediaMode } from "../media/media-pane";
 import {
+  detachVariablesView,
+  renderVariablesMode,
+  variablesViewMounted,
+} from "../style/variables-view";
+import { PROJECT_VARIABLES_VIEW } from "../style/project-styles";
+import {
   detachWorkspaceHome,
   isWorkspaceHomeMode,
   renderWorkspaceHome,
@@ -627,6 +633,7 @@ function resetCanvasView(surface: CanvasSurface) {
   detachEntryPane(paneId);
   detachWritingBanner(paneId);
   detachMediaPane(paneId);
+  detachVariablesView(paneId);
   detachWorkspaceHome(paneId);
   disposeSourceCollab(surface);
   disposeSourceEditor(surface);
@@ -1200,6 +1207,15 @@ function renderCanvasImpl(surface: CanvasSurface) {
     return;
   }
 
+  // Variables fast-path, same shape: the view follows the document through its own effect.
+  if (
+    canvasMode === PROJECT_VARIABLES_VIEW &&
+    variablesViewMounted(surface.paneId, tab) &&
+    !modeChanged
+  ) {
+    return;
+  }
+
   // Workspace-home fast-path, same shape: a home is a standing document with nothing to re-render.
   if (
     isWorkspaceHomeMode(canvasMode) &&
@@ -1274,6 +1290,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
 
     // And for the media viewer, whose effect scope subscribes to the tab's path
     detachMediaPane(surface.paneId);
+
+    // And for the Variables view, whose effect scope subscribes to the document's style
+    detachVariablesView(surface.paneId);
 
     // And for a workspace home, whose surface holds a mounted document (the Content home's
     // IntersectionObserver and preview LRU among them)
@@ -1405,6 +1424,14 @@ function renderCanvasImpl(surface: CanvasSurface) {
     canvasWrap.style.padding = "0";
     canvasWrap.style.display = "block";
     renderMediaMode(surface, tab);
+    return;
+  }
+
+  /* The Styles workspace's Variables view: `project.json`'s CSS custom properties, edited in a
+     form (`style/variables-view.ts`). Like a home, it writes nothing onto the stage: its own style
+     block fills it (`surfaces/styles-variables.json`). */
+  if (canvasMode === PROJECT_VARIABLES_VIEW) {
+    renderVariablesMode(surface, tab);
     return;
   }
 
@@ -2005,6 +2032,7 @@ setSurfaceTeardown((surface) => {
   detachGridPanel(surface.paneId);
   detachEntryPane(surface.paneId);
   detachMediaPane(surface.paneId);
+  detachVariablesView(surface.paneId);
   detachWorkspaceHome(surface.paneId);
   attachDocumentHeaderHost(surface.paneId, null);
   detachWritingBanner(surface.paneId);

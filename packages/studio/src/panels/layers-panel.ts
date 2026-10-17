@@ -85,8 +85,10 @@ import {
   INDENT_STEP,
   detachStylebookLayers,
   mountStylebookLayersPanel,
+  stylebookListOf,
 } from "./stylebook-layers-panel";
 import { selectStylebookTag, stylebookMeta } from "./stylebook-panel";
+import { PROJECT_STYLES_VIEW, PROJECT_VARIABLES_VIEW } from "../style/project-styles";
 import { isInlineElement } from "../editor/inline-edit";
 import { showContextMenu } from "../editor/context-menu";
 import { revealPathInCanvas } from "../canvas/popover-state";
@@ -1399,9 +1401,16 @@ export function registerLayersPanel(): void {
      * same node, so a body nobody took down would sit under the one that replaced it.
      */
     afterRender: (ctx, host) => {
-      if (ctx.deps.getCanvasMode() === "stylebook") {
+      /* Both of the Styles workspace's style views draw the stylebook body: the element catalogue
+         beside Elements, the custom properties beside Variables. Code draws the tree, like any
+         other document in its source editor. */
+      const mode = ctx.deps.getCanvasMode();
+      if (mode === PROJECT_STYLES_VIEW || mode === PROJECT_VARIABLES_VIEW) {
         detachOutline();
-        mountStylebookLayersPanel({ selectStylebookTag, stylebookMeta }, host);
+        mountStylebookLayersPanel(
+          { list: stylebookListOf(mode), selectStylebookTag, stylebookMeta },
+          host,
+        );
         return;
       }
       detachStylebookLayers();

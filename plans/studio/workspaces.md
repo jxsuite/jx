@@ -3,14 +3,12 @@ status: ready
 disposition: implement
 claims:
   - studio.md#5.5
-  - studio.md#7.1
   - studio.md#17.1
   - studio.md#22
   - studio.md#22.1
   - studio.md#22.2
   - studio.md#22.5
   - studio.md#22.6
-  - studio.md#22.7
   - studio.md#22.8
 requires: []
 workspaces:
@@ -41,7 +39,8 @@ Code anchors for each area were surveyed before the spec text was written (shell
 - studio.md §9.3 → Implemented (landed with `WKS1.5`).
 - Follow-ups that stay Pending, claimed here until each lands or is split into its own plan: the entry body spliced into its template page's bound body (§22.5's second marker), the Missing alt text and tag filters (§22.6's second marker), deploy Rollback, and Send for review on a host with no `createPullRequest` (§22.8's second marker). When only these remain, split them into plans of their own (one per store or API they need) and delete this plan.
 - Left open by the Design slice and closed by the Content slice (`WKS1.4`): §6's Entry tab carries the entry's fields, and §3.1 and §22.3 draw Content's Collections panel, so all three are Implemented. §5.7's media section, which listed `public/` alone, closed with `WKS1.5`'s wider scan, and §5.7 is Implemented.
-- Left open by the Settings dialog slice (`WKS1.7`, landed), closed by later slices: §17.1 stays Partial, and claimed here, until the two sections it moved out arrive. The CSS Variables editor (`renderCssVarsEditor`) is hosted by the Variables view (`WKS1.6`) and Deploy (`renderDeploySection`) by Publish › Hosting (`WKS1.8`); both are kept with their tests, listed in `tests/reachability.test.ts` as `AWAITING_STYLES` and `AWAITING_PUBLISH`, and those slices delete the ledger lines. `css-variables-shot` runs `styles.open` until `WKS1.6` re-points it at the Variables view.
+- Left open by the Settings dialog slice (`WKS1.7`, landed), closed by later slices: §17.1 stays Partial, and claimed here, until the two sections it moved out arrive. The CSS Variables editor arrived with `WKS1.6`: the Variables view hosts `renderCssVarsEditor`, its `AWAITING_STYLES` ledger lines in `tests/reachability.test.ts` are deleted, and `css-variables-shot` runs `styles.open { view: "variables" }`. Deploy (`renderDeploySection`) is still kept with its tests for Publish › Hosting (`WKS1.8`), listed as `AWAITING_PUBLISH`, and that slice deletes its ledger lines and flips §17.1.
+- Closed by the Styles slice (`WKS1.6`): §7.1 and §22.7 are Implemented. The `project.json` tab's editors are Elements (`stylebook`), Variables (`tokens`) and Code (`source`); `styles.open` is an alias of `view.setWorkspace { workspace: "styles" }` with an optional `view`; the Outline's stylebook body follows the view and its variable rows point the Variables view at a property; the Variables view states in its heading that its edits are saved as they are made, together with any Elements edit waiting for Save. §7.3 and §7.4 stay claimed by `plan:studio/stylebook-layers-tag-keys` and `plan:studio/stylebook-editing-text`, reconciled to name the Variables view.
 - Left open by the Add new slice and closed by later slices: §9.1.1's new entry opens where it is written since `WKS1.4`, and its upload half closed with `WKS1.5` (an upload lands in Media with the first file selected), so §9.1.1 is Implemented.
 - Not a graduation: studio.md keeps other open items.
 
@@ -114,7 +113,7 @@ Each slice lands its code, tests, docs, screenshot re-authoring and marker flips
 | WKS1.3  | Add new dialog, `deriveCreation`, `file.new`, collection creation, one custom-element-name validator                                    | studio.md#9.1.1                                                                     | done  |
 | WKS1.4  | Content: Collections panel, Content home, collection header, entries in their layout, Entry tab; Library deleted                        | studio.md#9.1.2, studio.md#22.5                                                     | done  |
 | WKS1.5  | Media: media library surface, pick mode, `public/media/` default, Replace, scan scope                                                   | studio.md#9.3, studio.md#22.6                                                       | done  |
-| WKS1.6  | Styles: Styles workspace frame, `tokens` editor, View picker, `styles.open` alias, CSS Variables moved                                  | studio.md#7.1, studio.md#22.7                                                       | open  |
+| WKS1.6  | Styles: Styles workspace frame, `tokens` editor, View picker, `styles.open` alias, CSS Variables moved                                  | studio.md#7.1, studio.md#22.7                                                       | done  |
 | WKS1.7  | Project Settings dialog in three groups, `group` on sections and contributions, settings editor kind deleted                            | studio.md#17.1                                                                      | done  |
 | WKS1.8  | Publish: Review changes, Deploys, Branches, Hosting, quick publish; `git` navigator panel removed                                       | studio.md#5.5, studio.md#22.8                                                       | open  |
 | WKS1.9  | Docs, screenshots, stale wording in neighbouring sections, remaining marker flips                                                       | —                                                                                   | open  |

@@ -5,10 +5,11 @@
  *
  * **Settings is a dialog; the configuration DOCUMENT is still a tab.** `project.json` is a real Tab
  * under the transaction log with one write chokepoint (`tabs/project-config.ts`, §17.1), and it has
- * two editors: Project Styles (`stylebook`) and the raw source. Both are the Styles workspace's.
- * Project Settings is neither of them: it is a dialog in the dialog layer (`./settings-dialog.ts`)
- * hosting the section list, reachable from every workspace, and every section in it writes through
- * the same chokepoint the tab's editors do, so the file has one history whichever door changed it.
+ * three editors, the Styles workspace's three views: Elements (`stylebook`), Variables (`tokens`,
+ * `style/variables-view.ts`) and Code (`source`). Project Settings is neither of them: it is a
+ * dialog in the dialog layer (`./settings-dialog.ts`) hosting the section list, reachable from
+ * every workspace, and every section in it writes through the same chokepoint the tab's editors do,
+ * so the file has one history whichever door changed it.
  *
  * **`settings.open` did not change what it means.** It still means "reach project settings,
  * optionally at a named section and entry", its args schema still declares `section` and `entry`,
@@ -19,7 +20,13 @@
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
-import { optionalStringArg, stringProperty } from "../commands/command-args";
+import {
+  argsSchema,
+  enumArg,
+  enumProperty,
+  optionalStringArg,
+  stringProperty,
+} from "../commands/command-args";
 import { notify } from "../services/notify";
 import { projectState } from "../state";
 import { PROJECT_CONFIG_PATH } from "../tabs/tab";
@@ -42,15 +49,26 @@ import { renderLocalesSection } from "./locales-section";
 import { selectContributedEntry } from "./contributed-section";
 import { closeSettingsDialog, openSettingsDialog } from "./settings-dialog";
 // The NAME and the wire value, kept apart by that module on purpose — see its docstring.
-import { PROJECT_STYLES_TITLE, PROJECT_STYLES_VIEW } from "../style/project-styles";
+import {
+  PROJECT_STYLES_TITLE,
+  PROJECT_STYLES_VIEW,
+  STYLES_TAB_MODES,
+  STYLES_VIEWS,
+  STYLES_VIEW_MODES,
+} from "../style/project-styles";
+import { activeRegistry } from "../commands/active-registry";
 import type { Tab } from "../tabs/tab";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
+import type { CommandArgValues } from "../commands/command-args";
 
 /** The Code editor's mode, `source`, which `commands/context.ts` maps to the `code` kind. */
-const SOURCE_MODE = "source";
+const SOURCE_MODE = STYLES_VIEW_MODES.code;
 
-/** The `project.json` tab's editors, in the order its Editor control offers them. */
-const PROJECT_TAB_MODES = [PROJECT_STYLES_VIEW, SOURCE_MODE];
+/**
+ * The `project.json` tab's editors, in the order its Editor control offers them: Elements,
+ * Variables and Code, the Styles workspace's three views.
+ */
+const PROJECT_TAB_MODES = STYLES_TAB_MODES;
 
 // ─── Built-in sections ────────────────────────────────────────────────────────
 /* Orders leave gaps so a contribution can land between two built-ins. Content Types is NOT here:
@@ -168,7 +186,8 @@ registerSettingsSection({
  * flag. When it is already open this only switches the editor, so an author who was reading the raw
  * JSON keeps their undo stack.
  *
- * @param {string} [mode] The editor: Project Styles (the default) or `source`
+ * @param {string} [mode] The editor: Elements (`stylebook`, the default), Variables (`tokens`) or
+ *   Code (`source`)
  * @returns {Tab | null} The tab, or null when no project is open
  */
 export function showSettingsDocument(mode: string = PROJECT_STYLES_VIEW): Tab | null {
@@ -356,9 +375,13 @@ export function settingsCommands(): AnyCommand[] {
       title: "Open Project Settings",
     },
     /*
-     * The door to the configuration document's Project Styles editor. `canvas.setMode` cannot stand
-     * in for this: it is level `document` and requires an open one, so from a cold workspace there
-     * is nothing to re-mode.
+     * Project Styles by name: an ALIAS of `view.setWorkspace { workspace: "styles" }`, which shows
+     * the Styles workspace's last tab or opens its home (`project.json` in its Elements view). The
+     * id is kept because it is how deep links, the docs and older scripts name the place; the
+     * switch itself has one implementation, the workspace's, so the two doors cannot disagree about
+     * what "open Project Styles" means. `view` then picks one of the tab's three views, which is
+     * how a deep link (Project Settings' Moved footnote, a screenshot) reaches the Variables view
+     * from anywhere: `canvas.setMode` cannot stand in for it, being level `document`.
      *
      * It is a peer of `settings.open` and declares the same gate, byte for byte
      * (`studio-ui-guidelines.md` §12.4: two verbs over one document declare ONE availability rule).
@@ -366,10 +389,26 @@ export function settingsCommands(): AnyCommand[] {
      * workspace the top bar already names.
      */
     {
+      args: argsSchema(
+        {
+          view: enumProperty(
+            STYLES_VIEWS,
+            "Which view of the project's styles to show: elements (element defaults by tag " +
+              "name), variables (the CSS custom properties) or code (project.json as text). " +
+              "Defaults to the view the Styles workspace was left in.",
+          ),
+        },
+        [],
+      ),
       category: "Project",
       id: "styles.open",
       level: "project",
-      menus: ["palette"],
+      /* `never`, not `palette`, for the reason `view.setWorkspace` gives: the palette's way into
+         Styles is `workspace.focus.styles` ("Go to Styles", ⌘4), and a second row running the same
+         switch would be the same action under a second name. This record is the scripted door:
+         the Moved footnote, the Overview's Styles row and the screenshot manifest name it, and
+         `view` is what they can say that the chord cannot. */
+      menus: ["never"],
       group: "7_settings_styles",
       requires: "an open project",
       /* `studio-ui-guidelines.md` §12.4: two verbs over ONE document declare ONE availability rule,
@@ -377,8 +416,17 @@ export function settingsCommands(): AnyCommand[] {
       enablement: (ctx) => ctx.project.open,
       /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: this opens a surface for a
          person. */
-      run: () => {
-        showSettingsDocument(PROJECT_STYLES_VIEW);
+      run: async (_commandCtx, args: CommandArgValues) => {
+        const view =
+          args["view"] === undefined ? null : enumArg("styles.open", args, "view", STYLES_VIEWS);
+        const registry = activeRegistry();
+        if (!registry) {
+          throw new Error('command "styles.open" needs the window\'s command registry');
+        }
+        await registry.run("view.setWorkspace", { workspace: "styles" });
+        if (view !== null) {
+          showSettingsDocument(STYLES_VIEW_MODES[view]);
+        }
       },
       // Named, never spelled from the wire value: `stylebook` is shared with `dist/iframe-entry.js`
       // And may never be renamed, so nothing a reader sees is derived from it (`style/project-styles`).

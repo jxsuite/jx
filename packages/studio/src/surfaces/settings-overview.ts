@@ -44,7 +44,7 @@ export interface OverviewValues {
   url: string;
   /** The configured favicon path, or `""` for none. */
   favicon: string;
-  /** The `styles.open` record's own title, which is the button's tooltip. */
+  /** The `workspace.focus.styles` record's own title (Go to Styles), the button's tooltip. */
   stylesTitle: string;
   stylesDisabled: boolean;
   /** The last failure, or `null` when the last write succeeded. */

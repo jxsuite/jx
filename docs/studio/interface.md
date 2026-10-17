@@ -83,7 +83,7 @@ Studio has five workspaces, one for each kind of work. Every open tab belongs to
 - **Design** (:kbd[⌘1]): pages, layouts, components and every other file, on the canvas. It is the only workspace with the rail.
 - **Content** (:kbd[⌘2]): the [Content workspace](/docs/studio/projects/browse), with the Collections panel, a home tab for one collection at a time, the content grids, and every entry of a content collection, written on the canvas inside its template.
 - **Media** (:kbd[⌘3]): your images, video, audio, documents and fonts in one library you can filter, search, upload to, replace and delete from, and the viewer for each one. See [Media](/docs/studio/projects/media#the-media-workspace).
-- **Styles** (:kbd[⌘4]): [Project Styles](/docs/studio/design/stylebook), the design tokens and element defaults over `project.json`.
+- **Styles** (:kbd[⌘4]): [Project Styles](/docs/studio/design/stylebook) over `project.json`, in three views: **Elements** (the default look of each element type), **Variables** (your [CSS custom properties](/docs/studio/design/tokens)) and **Code**.
 - **Publish** (:kbd[⌘5]): your unpublished changes and the comparison of each one.
 
 Switching to a workspace takes you back to the tab you were last in there. When it has no tab open it opens its home instead: the Content home on a collection for Content, Project Styles for Styles, the media library for Media, and a home page of its own for Publish. Design with nothing open shows an empty canvas. Closed a workspace's home? Click its tab in the Command Bar again and the home comes back.
@@ -104,7 +104,7 @@ The vertical strip on the far left, drawn in the **Design** workspace. Every but
 
 **Document**
 
-- **Outline**: the element structure of the open page or component, as a tree you can select and reorder. In **Project Styles** it lists the style targets instead.
+- **Outline**: the element structure of the open page or component, as a tree you can select and reorder. In the Styles workspace it lists the element catalog instead, or your CSS variables beside the **Variables** view.
 - **Data**: the values, data sources and functions the document knows about, with what each one currently resolves to. See [Logic](/docs/studio/logic).
 
 Clicking the button of the panel that's already open collapses the Navigator; clicking any button brings it back. A document-level panel with no document open says what it needs. Every panel is also in the palette as **Show** and its name, for example **Show Files**.
@@ -209,7 +209,7 @@ A project with no `.gitignore` is unaffected: nothing is hidden, and the toggle 
 
 ## Panes and the canvas
 
-The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a real control rather than a drag handle: Tab reaches it, :kbd[←] and :kbd[→] move it a step at a time (hold :kbd[Shift] for a bigger one), :kbd[Home] and :kbd[End] take it as far as each pane's minimum width allows, and :kbd[Enter] or a double click snaps it back to an even split and then returns it to where you had it. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Media** or **Project Styles**, or a workspace's **Home** (the Content home, the media library, the Publish home). It carries its own strip of open documents and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline, the keyboard and the [jump bar](#the-jump-bar) at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
+The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a real control rather than a drag handle: Tab reaches it, :kbd[←] and :kbd[→] move it a step at a time (hold :kbd[Shift] for a bigger one), :kbd[Home] and :kbd[End] take it as far as each pane's minimum width allows, and :kbd[Enter] or a double click snaps it back to an even split and then returns it to where you had it. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Media**, **Elements** or **Variables**, or a workspace's **Home** (the Content home, the media library, the Publish home). It carries its own strip of open documents and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline, the keyboard and the [jump bar](#the-jump-bar) at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
 
 A Diff pane compares one file against your last commit and carries its own change stepper, so two panes can be reviewing two different files at once. See **[Source control](/docs/studio/publish/source-control#read-a-change)**.
 

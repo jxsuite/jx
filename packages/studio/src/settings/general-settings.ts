@@ -102,27 +102,30 @@ function headWithDescription(head: JxHeadEntry[], text: string): JxHeadEntry[] {
  */
 const CLEAR_URL: ProjectConfigPatch = { url: undefined };
 
+/** The record the Global Styles button is drawn from: **Go to Styles**, the workspace's ⌘4. */
+const STYLES_COMMAND = "workspace.focus.styles";
+
 // ─── Projection ──────────────────────────────────────────────────────────────
 
 /**
  * What the surface should be showing, from the configuration and the registry as they stand now.
  *
- * The Project Styles button is rendered FROM the `styles.open` record, so it is disabled rather
- * than absent when it cannot act (`studio-ui-guidelines.md` §12.3) and it cannot drift from the
- * palette row or the gear menu. The record's TITLE, and nothing else off the registry:
+ * The Global Styles button is rendered FROM the `workspace.focus.styles` record (**Go to Styles**,
+ * ⌘4), whose run is `view.setWorkspace { workspace: "styles" }`, so it is disabled rather than
+ * absent when it cannot act (`studio-ui-guidelines.md` §12.3) and it cannot drift from the palette
+ * row or the switcher's tab. The record's TITLE, and nothing else off the registry:
  * `disabledReason` would be the `studio-ui-guidelines.md` §12.3 shape for a control that can be
- * inapplicable, but this one cannot be — `styles.open` is gated on `ctx.project.open` and Overview
- * is a section of the project's own configuration document, so by the time this renders the answer
- * is always yes. Asking anyway would also be a FOCUS read inside a function that was handed a
- * container, which is what `scripts/check-pane-singletons.ts` rule 4 forbids: a pane-scoped surface
- * must not report the focused pane's state. A project-level verb happens to read the same in every
- * pane, but the way to be right about that is not to ask. The one thing that can genuinely be
- * missing is the registry itself (bootstrap order, a test), and that is an existence check, not a
- * state read.
+ * inapplicable, but this one cannot be — the switch is gated on `ctx.project.open` and Overview is
+ * a section of the project's own configuration, so by the time this renders the answer is always
+ * yes. Asking anyway would also be a FOCUS read inside a function that was handed a container,
+ * which is what `scripts/check-pane-singletons.ts` rule 4 forbids: a pane-scoped surface must not
+ * report the focused pane's state. A project-level verb happens to read the same in every pane, but
+ * the way to be right about that is not to ask. The one thing that can genuinely be missing is the
+ * registry itself (bootstrap order, a test), and that is an existence check, not a state read.
  */
 function values(container: HTMLElement): OverviewValues {
   const cfg = config();
-  const command = activeRegistry()?.get("styles.open");
+  const command = activeRegistry()?.get(STYLES_COMMAND);
   return {
     description: readDescription(cfg),
     error: errors.get(container) ?? null,
@@ -193,18 +196,16 @@ function actions(container: HTMLElement): OverviewActions {
 
   return {
     /*
-     * Project Styles is the SAME document in a different editor, and `styles.open` is the one place
-     * that says so. This used to write `session.ui.canvasMode` here directly — a second
+     * Global styles are the Styles workspace's, and the workspace switch is the one place that
+     * says how to get there. This used to write `session.ui.canvasMode` here directly — a second
      * implementation of a capability, `studio-ui-guidelines.md` §12.5's defect in miniature: the
      * button and the command could disagree about what "open Project Styles" means, and only one of
-     * them was reachable by name. The mode is still a fact about the TAB, and there is exactly one
-     * `project.json` tab, so `revealTab`'s `focusPane` puts the keyboard on whichever pane holds
-     * it. Overview is drawn in the settings dialog, and the tab is the Styles workspace's, so the
-     * dialog closes first: left up, it would cover the editor the reader just asked for.
+     * them was reachable by name. Overview is drawn in the settings dialog, so the dialog closes
+     * first: left up, it would cover the workspace the reader just asked for.
      */
     openStyles: () => {
       closeSettingsDialog();
-      void runActiveReported("styles.open", undefined, "Settings");
+      void runActiveReported("view.setWorkspace", { workspace: "styles" }, "Settings");
     },
     setDescription: (value: string) => {
       echo({ description: value });

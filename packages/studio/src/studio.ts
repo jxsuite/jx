@@ -796,7 +796,6 @@ function installPaneRenderEffects(paneId: string): void {
     }
     // Project-level render inputs: the stylebook catalogue's filters are shell state, so a change
     // Repaints the canvas with or without a document focused.
-    void shell.stylebook.tab;
     void shell.stylebook.filter;
     void shell.stylebook.customizedOnly;
     scheduleCanvasRender(paneId);

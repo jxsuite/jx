@@ -81,6 +81,23 @@ beforeEach(() => {
     {
       args: {
         additionalProperties: false,
+        properties: { view: { type: "string" } },
+        required: [],
+        type: "object",
+      },
+      category: "Project",
+      id: "styles.open",
+      level: "project",
+      menus: ["palette"],
+      run: (_ctx, args?: CommandArgValues) => {
+        const view = args?.view;
+        switched.push(`styles:${isString(view) ? view : ""}`);
+      },
+      title: "Open Project Styles",
+    },
+    {
+      args: {
+        additionalProperties: false,
         properties: { open: { type: "boolean" } },
         required: ["open"],
         type: "object",
@@ -201,16 +218,19 @@ describe("closing", () => {
 });
 
 describe("the Moved footnote", () => {
-  test("a button closes the dialog and switches to its workspace through the command", async () => {
+  test("the Colors and fonts row closes the dialog and opens the Styles workspace's Variables view", async () => {
     await openSettingsDialog();
     await flush(2);
     const link = dialog()!.querySelector<HTMLElement>(
       '[part="moved-row"][data-moved="styles"] [part="moved-link"]',
     )!;
+    expect(link.textContent).toContain("Styles › Variables");
     pointer(link, "click");
     await flush(2);
     expect(dialog()).toBeNull();
-    expect(switched).toEqual(["styles"]);
+    // `styles.open { view }` is the workspace switch followed by the view, in one record.
+    expect(switched).toEqual(["styles:variables"]);
+    expect(followed).toEqual([]);
   });
 
   test("the Page tab row switches to Design, then shows the Inspector on its Page tab", async () => {

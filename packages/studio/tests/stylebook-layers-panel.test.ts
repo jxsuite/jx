@@ -20,7 +20,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   detachStylebookLayers,
   mountStylebookLayersPanel,
+  selectStylebookVariable,
   stylebookLayersValues,
+  stylebookListOf,
+  variableRequests,
 } from "../src/panels/stylebook-layers-panel";
 import { mountStylebookLayersSurface } from "../src/surfaces/panel-stylebook-layers";
 import { componentRegistry } from "../src/files/components";
@@ -168,9 +171,30 @@ describe("stylebookLayersValues", () => {
     const values = stylebookLayersValues(ctx);
     expect(values.hasVariables).toBe(true);
     expect(values.variables).toEqual([
-      { key: "--accent", name: "--accent", value: "#f00" },
-      { key: "--gap", name: "--gap", value: "8px" },
+      { key: "--accent", name: "--accent", selected: false, value: "#f00" },
+      { key: "--gap", name: "--gap", selected: false, value: "8px" },
     ]);
+  });
+
+  test("the list follows the view: Variables beside the tokens editor, Elements otherwise", () => {
+    expect(stylebookListOf("tokens")).toBe("variables");
+    expect(stylebookListOf("stylebook")).toBe("elements");
+    expect(stylebookListOf("source")).toBe("elements");
+    makeTab({ "--accent": "#f00" });
+    expect(stylebookLayersValues(ctx).tab).toBe("elements");
+    expect(stylebookLayersValues({ ...ctx, list: "variables" }).tab).toBe("variables");
+  });
+
+  test("the variable the Variables view is pointed at is the selected row", () => {
+    makeTab({ "--accent": "#f00", "--gap": "8px" });
+    const before = variableRequests.value;
+    selectStylebookVariable("--gap");
+    expect(shell.stylebook.variable).toBe("--gap");
+    expect(variableRequests.value).toBe(before + 1);
+    expect(stylebookLayersValues(ctx).variables.map((v) => v.selected)).toEqual([false, true]);
+    // Choosing it again is a fresh request, so the view can reveal it again.
+    selectStylebookVariable("--gap");
+    expect(variableRequests.value).toBe(before + 2);
   });
 
   test("a document with no style block has no variables", () => {
@@ -232,10 +256,9 @@ describe("the catalogue surface", () => {
     expect(selectStylebookTag).toHaveBeenCalledWith("x-card", undefined, { panCanvas: true });
   });
 
-  test("the variables tab lists each property beside its value", async () => {
+  test("the variables list draws each property beside its value", async () => {
     makeTab({ "--accent": "#f00", "--gap": "8px", h1: { color: "red" } });
-    shell.stylebook.tab = "variables";
-    await renderCatalogue();
+    await renderCatalogue({ ...ctx, list: "variables" });
     const listed = rows();
     expect(listed).toHaveLength(2);
     expect(listed.map((el) => textOf(el, "label"))).toEqual(["--accent", "--gap"]);
@@ -243,10 +266,55 @@ describe("the catalogue surface", () => {
     expect(host.textContent).not.toContain("h1");
   });
 
+  test("a variable row is a button that points the Variables view at its property", async () => {
+    makeTab({ "--accent": "#f00", "--gap": "8px" });
+    await renderCatalogue({ ...ctx, list: "variables" });
+    const gap = row("--gap");
+    expect(gap.tagName).toBe("BUTTON");
+    /* Still a list to assistive technology: a named <ul> of <li>s, each holding its button. */
+    const list = host.querySelector('[part="list"]');
+    expect(list?.tagName).toBe("UL");
+    expect(list?.getAttribute("aria-label")).toBe("CSS variables");
+    expect(gap.parentElement?.tagName).toBe("LI");
+    expect(gap.getAttribute("title")).toBe("Show --gap in the Variables view");
+    gap.click();
+    await flush();
+    expect(shell.stylebook.variable).toBe("--gap");
+    const current = rows().filter((el) => el.getAttribute("aria-current") === "true");
+    expect(current.map((el) => el.dataset.path)).toEqual(["--gap"]);
+  });
+
+  test("a click after the pane moved from Elements to Variables keeps the Variables list", async () => {
+    /* The same surface is updated in place when the view changes, so its handlers must read the
+       latest ctx rather than the one the first (Elements) mount closed over. */
+    makeTab({ "--accent": "#f00", "--gap": "8px" });
+    await renderCatalogue({ ...ctx, list: "elements" });
+    mountStylebookLayersPanel({ ...ctx, list: "variables" }, host);
+    await flush();
+    const list = () => host.querySelector<HTMLElement>('[part="list"]')?.dataset.tab;
+    expect(list()).toBe("variables");
+    row("--gap").click();
+    await flush();
+    expect(list()).toBe("variables");
+    expect(shell.stylebook.variable).toBe("--gap");
+  });
+
+  test("a row click after a re-mount selects through the latest ctx", async () => {
+    makeTab();
+    await renderCatalogue();
+    const later = mock(
+      (_tag: string, _media?: string | null, _opts?: { panCanvas?: boolean }) => {},
+    );
+    mountStylebookLayersPanel({ ...ctx, selectStylebookTag: later }, host);
+    await flush();
+    row("h1").click();
+    expect(later).toHaveBeenCalledWith("h1", undefined, { panCanvas: true });
+    expect(selectStylebookTag).not.toHaveBeenCalled();
+  });
+
   test("no variables teaches what the tab is for", async () => {
     makeTab({ h1: { color: "red" } });
-    shell.stylebook.tab = "variables";
-    await renderCatalogue();
+    await renderCatalogue({ ...ctx, list: "variables" });
     expect(rows()).toHaveLength(0);
     expect(host.querySelector('[part="empty-message"]')?.textContent).toContain(
       "No variables defined",
@@ -292,6 +360,7 @@ describe("the catalogue surface", () => {
     document.body.append(container);
     const handle = mountStylebookLayersSurface(container, stylebookLayersValues(ctx), {
       selectRow: () => {},
+      selectVariable: () => {},
     });
     handle.dispose();
     await flush();

@@ -125,6 +125,7 @@ import type { CssFontPreset, CssLonghand, CssMetaEntry } from "./style-utils";
 import { UNIT_RE } from "../ui/unit-selector";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
 import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
+import { PROJECT_VARIABLES_VIEW } from "../style/project-styles";
 import { mountStylePanelSurface } from "../surfaces/style-panel";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
@@ -1382,6 +1383,11 @@ function shorthandPlaceholder(
 
 // ─── The whole view ──────────────────────────────────────────────────────────
 
+/** What the Style tab says beside the Variables view, where there is no element to style. */
+export const VARIABLES_INSPECTOR_MESSAGE =
+  "Variables are edited in the view itself. Switch the view to Elements and pick a tag to style " +
+  "its default here.";
+
 /** The three teaching states, and the one that offers a button. */
 function emptyView(message: string, withOpen: boolean): StylePanelView {
   return {
@@ -1400,6 +1406,12 @@ function buildView(canvasMode: () => string): StylePanelView {
   const tab = activeTab.value;
   if (!tab) {
     return emptyView("Open a page to style what you click.", true);
+  }
+  /* The Styles workspace's Variables view has no canvas to click and edits its custom properties in
+     the pane itself, so the canvas teaching line would ask for something impossible. Say where the
+     Inspector's half of the workspace is instead. */
+  if (canvasMode() === PROJECT_VARIABLES_VIEW) {
+    return emptyView(VARIABLES_INSPECTOR_MESSAGE, false);
   }
   if (canvasMode() === "stylebook" && shell.stylebook.selection) {
     const node = tab.doc.document;

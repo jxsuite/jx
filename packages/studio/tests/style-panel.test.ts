@@ -50,7 +50,8 @@ void mock.module("../src/commands/active-registry", () => ({
   activeRegistry: () => ({ run: runMock }),
 }));
 
-const { bindStyleHost, resetSelectorMenu } = await import("../src/panels/style-panel");
+const { VARIABLES_INSPECTOR_MESSAGE, bindStyleHost, resetSelectorMenu } =
+  await import("../src/panels/style-panel");
 const { mountStylePanelSurface } = await import("../src/surfaces/style-panel");
 const { openSelectorMenu } = await import("../src/surfaces/target-line");
 const { initCssData } = await import("../src/panels/style-utils");
@@ -300,6 +301,16 @@ describe("the tab's teaching states", () => {
     expect(c.querySelector('[part="empty-message"]')?.textContent).toBe(
       "Open a page to style what you click.",
     );
+  });
+
+  test("beside the Variables view → says where the work is, never 'click the canvas'", async () => {
+    setupTab({});
+    // Even with a tag chosen in Elements a moment ago: the Variables view has no element to style.
+    shell.stylebook.selection = "h1";
+    const c = await renderPanel("tokens");
+    const message = c.querySelector('[part="empty-message"]')?.textContent ?? "";
+    expect(message).toBe(VARIABLES_INSPECTOR_MESSAGE);
+    expect(message).not.toContain("canvas");
   });
 });
 

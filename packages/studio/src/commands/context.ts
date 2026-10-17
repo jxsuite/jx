@@ -58,6 +58,7 @@ export type EditorKind =
   | "code"
   | "diff"
   | "config"
+  | "tokens"
   | "entry"
   | "media"
   | "home"
@@ -105,6 +106,9 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
   ["preview", "canvas"],
   ["source", "code"],
   ["stylebook", "config"],
+  /* The Variables view (`style/variables-view.ts`): a form over `project.json`'s custom
+     properties, nothing to paste into, so the global key scope rather than the Canvas one. */
+  ["tokens", "tokens"],
 ]);
 
 /**
@@ -123,13 +127,16 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
 export const EDITOR_KIND_LABELS: Readonly<Record<EditorKind, string>> = {
   canvas: "Canvas",
   code: "Code",
-  config: "Project Styles",
+  /* The Styles workspace's three views of `project.json` are named for what each one edits:
+     Elements (element defaults by tag, the `stylebook` editor), Variables and Code. */
+  config: "Elements",
   diff: "Diff",
   entry: "Entry",
   grid: "Grid",
   home: "Home",
   media: "Media",
   none: "None",
+  tokens: "Variables",
 };
 
 export function editorKindForMode(mode: string): EditorKind {

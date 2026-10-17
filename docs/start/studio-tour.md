@@ -21,7 +21,7 @@ Everything in Jx Studio happens in one window. This page is your map: what each 
 
 ## The Command Bar
 
-The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **workspace tabs** (**Design · Content · Media · Styles · Publish**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), the **Settings** gear, and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Read more in **[The workspace](/docs/studio/interface)**.
+The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **workspace tabs** (**Design · Content · Media · Styles · Publish**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), the **Settings** gear, and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Each workspace tab sets the window up for one job: **Styles**, for example, is where the default look of every element and your site's CSS variables live, in its **Elements** and **Variables** views (see **[Project Styles](/docs/studio/design/stylebook)**). Read more in **[The workspace](/docs/studio/interface)**.
 
 ## The Command Center
 

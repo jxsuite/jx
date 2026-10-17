@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioSettingsCssVars",
-  "$description": "Project Settings › CSS Variables: the project's design tokens, grouped by what they name, each editable in place and each able to carry a different value in any rendering context the project declares. The adapter (`surfaces/settings-css-vars.ts`) hands in the groups already grouped, each token already resolved — its swatch colour, the chip it wears when its value follows another token, the override rows it has and the contexts it could still be given one in — and the document draws them. Nothing here reads `project.json` and nothing here decides what a token IS: `style/project-styles.ts` owns the vocabulary and `settings/css-vars-editor.ts` owns the writes. A context is DEFINED in Contexts and only overridden here, which is why the one thing the colour group says when no scheme exists is where to go and say it.",
+  "$description": "The Styles workspace's Variables view, its editor (studio.md §7.1): the project's design tokens, grouped by what they name, each editable in place and each able to carry a different value in any rendering context the project declares. The view's own frame (`surfaces/styles-variables.json`) draws the heading and mounts this document into its `editor` island. The adapter (`surfaces/settings-css-vars.ts`) hands in the groups already grouped, each token already resolved — its swatch colour, the chip it wears when its value follows another token, the override rows it has, the contexts it could still be given one in and whether it is the token the Outline pointed at — and the document draws them. Nothing here reads `project.json` and nothing here decides what a token IS: `style/project-styles.ts` owns the vocabulary and `settings/css-vars-editor.ts` owns the writes. A context is DEFINED in Project Settings › Contexts and only overridden here, which is why the one thing the colour group says when no scheme exists is where to go and say it.",
   "tagName": "section",
   "attributes": {
     "part": "cssvars"
@@ -9,12 +9,6 @@
   "style": {
     "$description": "This section's whole look, keyed on `part`. Six of the rules it used to borrow are gone rather than moved: `.settings-section` never had a rule anywhere (it was on the orphan ledger), and `.css-var-swatch input[type=\"color\"]` plus the two chip spans are drawn here now because the lit helper that emitted them is drawn here now. Every `--spectrum-font-size-*` reference is re-pointed at the kit's scale: a document is mounted in the pane rather than inside `<sp-theme>`, so each of those would have silently taken its hard-coded fallback.",
     "display": "block",
-    "& [part=\"title\"]": {
-      "margin": "0 0 16px",
-      "fontSize": "16px",
-      "fontWeight": "600",
-      "color": "var(--fg)"
-    },
     "& [part=\"section-error\"]": {
       "$description": "A write that failed, said under the section title rather than pinned to a control. This section saves on change and the predecessor dropped every rejection on the floor, so a read-only file made each edit look as though it had been taken and then quietly forgotten. It is `section-error` rather than `error` because every text field and select in the section draws a permanent `[part=\"error\"]` of its own in this same light-DOM tree, and a rule on that name would give their refusal sentences this margin and size too.",
       "margin": "0 0 12px",
@@ -23,6 +17,12 @@
     },
     "& [part=\"group\"]": {
       "marginBottom": "24px"
+    },
+    "& [part=\"token\"][aria-current=\"true\"]": {
+      "$description": "The token the Outline pointed the view at: a tinted band with the accent edge the Outline's own selected row wears, so the two say the same thing about one property.",
+      "borderRadius": "var(--radius)",
+      "background": "var(--accent-20)",
+      "boxShadow": "inset 2px 0 0 var(--accent)"
     },
     "& [part=\"group-title\"]": {
       "margin": "0 0 8px",
@@ -163,13 +163,6 @@
   },
   "children": [
     {
-      "tagName": "h3",
-      "attributes": {
-        "part": "title"
-      },
-      "textContent": "CSS Variables"
-    },
-    {
       "tagName": "div",
       "attributes": {
         "part": "section-error-slot",
@@ -205,7 +198,7 @@
         },
         "children": [
           {
-            "tagName": "h4",
+            "tagName": "h3",
             "attributes": {
               "part": "group-title"
             },
@@ -223,7 +216,8 @@
               "tagName": "div",
               "attributes": {
                 "part": "token",
-                "data-token": "${$map.item.name}"
+                "data-token": "${$map.item.name}",
+                "aria-current": "${$map.item.current ? 'true' : null}"
               },
               "children": [
                 {
@@ -788,7 +782,7 @@
                 "children": [
                   {
                     "tagName": "span",
-                    "textContent": "No colour scheme is defined yet, so these tokens have one value each."
+                    "textContent": "No color scheme is defined yet, so these tokens have one value each."
                   },
                   {
                     "tagName": "jx-action-button",
@@ -797,7 +791,7 @@
                     },
                     "$props": {
                       "size": "sm",
-                      "hint": "Define a colour scheme in Project Settings › Contexts"
+                      "hint": "Define a color scheme in Project Settings › Contexts"
                     },
                     "onclick": {
                       "$ref": "#/state/manageContexts"

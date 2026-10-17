@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPanelStylebookLayers",
-  "$description": "The Outline panel while the pane is showing Project Styles: the element catalogue as a list of selectable tags, and the document's own custom properties under the other tab. The adapter hands in one flat projection per row — its badge, its name, how deep it sits, whether the open file has already styled it and whether it is the selected one — so nothing here walks the catalogue tree, reads the component registry or knows what a `& tag` style key is. A row asks the host to select the compound path it was given, by that path.",
+  "$description": "The Outline panel while the pane is showing Project Styles: the element catalogue as a list of selectable tags, or the document's own custom properties while the pane shows the Variables view. The adapter hands in one flat projection per row — its badge, its name, how deep it sits, whether the open file has already styled it and whether it is the selected one — so nothing here walks the catalogue tree, reads the component registry or knows what a `& tag` style key is. An element row asks the host to select the compound path it was given, by that path; a variable row asks it to point the Variables view at that property.",
   "tagName": "div",
   "attributes": {
     "part": "stylebook-layers"
@@ -241,7 +241,8 @@
               "tagName": "ul",
               "attributes": {
                 "part": "list",
-                "data-tab": "variables"
+                "data-tab": "variables",
+                "aria-label": "CSS variables"
               },
               "children": [
                 {
@@ -255,32 +256,60 @@
                   "map": {
                     "tagName": "li",
                     "attributes": {
-                      "part": "row",
-                      "data-kind": "variable",
-                      "data-path": "${$map.item.name}"
+                      "part": "item"
                     },
                     "children": [
                       {
-                        "tagName": "span",
+                        "tagName": "button",
                         "attributes": {
-                          "part": "badge",
-                          "data-kind": "variable"
+                          "part": "row",
+                          "type": "button",
+                          "data-kind": "variable",
+                          "data-path": "${$map.item.name}",
+                          "aria-current": "${$map.item.selected ? 'true' : null}",
+                          "title": "Show ${$map.item.name} in the Variables view"
                         },
-                        "textContent": "var"
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "label"
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/selectVariable"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/name"
+                                }
+                              ]
+                            }
+                          ],
+                          "description": "Points the Variables view at this custom property, which scrolls its row into view and puts the keyboard on its value."
                         },
-                        "textContent": "${$map.item.name}"
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "value"
-                        },
-                        "textContent": "${$map.item.value}"
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "badge",
+                              "data-kind": "variable"
+                            },
+                            "textContent": "var"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "label"
+                            },
+                            "textContent": "${$map.item.name}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "value"
+                            },
+                            "textContent": "${$map.item.value}"
+                          }
+                        ]
                       }
                     ]
                   }
@@ -305,7 +334,7 @@
                   "attributes": {
                     "part": "empty-detail"
                   },
-                  "textContent": "A custom property declared on this file's own style block is listed here."
+                  "textContent": "A custom property declared in the root style block of project.json is listed here. Add one in the Variables view."
                 }
               ]
             }
