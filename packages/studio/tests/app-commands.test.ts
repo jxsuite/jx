@@ -134,7 +134,8 @@ describe("the set", () => {
     const inMenu = COMMANDS.filter((c) => (c.menus ?? []).includes("settings/menu"))
       .map((c) => c.id)
       .toSorted();
-    expect(inMenu).toEqual(["app.preferences", "settings.open", "styles.open"]);
+    // Preferences and Project Settings; Styles is a workspace the top bar already names (§17.1).
+    expect(inMenu).toEqual(["app.preferences", "settings.open"]);
     // The ⬢ menu is unchanged by this: `styles.open` never declared it.
     const overflow = COMMANDS.filter((c) => (c.menus ?? []).includes("commandbar/overflow"));
     expect(overflow.map((c) => c.id)).not.toContain("styles.open");

@@ -1,6 +1,6 @@
 ---
 title: "Design tokens"
-description: "Design tokens in Jx Studio: define colors, fonts, and sizes once under Settings > CSS Variables and reuse them from every picker."
+description: "Design tokens in Jx Studio: define colors, fonts, and sizes once for the whole site and reuse them from every picker."
 code:
   - packages/studio/src/settings/css-vars-editor.ts
   - packages/studio/src/style/project-styles.ts
@@ -14,12 +14,15 @@ code:
 
 A design token is a named value: **Primary Blue** instead of `#3b82f6`, **Body Serif** instead of a font list. Define it once for the site and reference it everywhere; change it once and everywhere updates. Tokens are what keep a growing site on one palette instead of thirty slightly different blues.
 
-![The CSS Variables settings section with grouped color, font, and size variables](../../images/css-variables.png)
+![Project Styles in the Styles workspace, where the site's design tokens live](../../images/css-variables.png)
 
 ## Define tokens
 
-1. Open **[Project settings](/docs/studio/projects/settings)** from the **Settings** menu in the Command Bar, by pressing :kbd[⌘K] and running **Open Project Settings**, or from the **⬢ menu** in the Command Bar.
-2. Open the **CSS Variables** section.
+Tokens are the `--` keys of the `style` block in `project.json`, and they belong to the **Styles** workspace (:kbd[⌘4]). The **Outline** there lists every token the project defines under **Variables**.
+
+:::doc-note
+The token editor described below is no longer a section of [Project settings](/docs/studio/projects/settings): the dialog's **Moved** footnote sends **Colors and fonts** to the Styles workspace, whose Variables view hosts the editor. Until that view is in your build, edit tokens as text: open **Project settings › Advanced › Raw JSON** and choose **Edit as code**, which opens `project.json` in the Styles workspace's Code editor.
+:::
 
 Tokens are grouped by what they name:
 
@@ -33,7 +36,7 @@ To add a token, type a friendly name and a value in the group's empty row and cl
 A token can be built from another one: give it the value `var(--color-brand)` and the row grows a chip naming **Brand**, with the color that reference ends up at. Studio follows the chain to its end, so an alias of an alias still shows a color rather than more syntax.
 
 :::doc-tip
-Settings is a document, so tokens get the document verbs: :kbd[⌘Z] takes back the last change, and a value that could not be written to `project.json` is raised on **[Problems](/docs/studio/interface/problems-and-progress)** rather than quietly dropped. See **[Project settings](/docs/studio/projects/settings)**.
+A value that could not be written to `project.json` is raised on **[Problems](/docs/studio/interface/problems-and-progress)** rather than quietly dropped. While `project.json` is open in the Styles workspace, each token change is a step in its history, so :kbd[⌘Z] there takes it back.
 :::
 
 ## One token, several values
@@ -44,7 +47,7 @@ A token can hold a different value in any rendering context the project declares
 - Any token can be given a value in any other declared context from the **Add override…** picker under its row: a breakpoint, a scheme, or a feature query. The picker offers only the contexts that token has no row for yet.
 - Clearing an override's field removes it, and the token goes back to inheriting its base value.
 
-Contexts are declared in one place, **Settings › Contexts**, described in **[Breakpoints](/docs/studio/design/breakpoints)**. A project with no color scheme yet gets a **Manage contexts…** button under the Colors group that takes you straight there.
+Contexts are declared in one place, **Project settings › Advanced › Contexts**, described in **[Breakpoints](/docs/studio/design/breakpoints)**. A project with no color scheme yet gets a **Manage contexts…** button under the Colors group that opens Project settings on that section.
 
 ## Use tokens while styling
 

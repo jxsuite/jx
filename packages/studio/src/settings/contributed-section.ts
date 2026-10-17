@@ -49,8 +49,7 @@ import { resolveContextPointer } from "../services/context-resolver";
 import { deriveSecretEnvName } from "../services/data-service";
 import { validateProjectConfig } from "../services/jx-validate";
 import { notify } from "../services/notify";
-import { paneRegion } from "../ui/regions";
-import { paneOfContainer } from "../canvas/canvas-surface";
+import { SETTINGS_DIALOG_REGION } from "../surfaces/settings-dialog";
 import { mountContributedSurface } from "../surfaces/settings-contributed";
 
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
@@ -365,10 +364,17 @@ function sectionValue(key: string): JsonObject | null {
 
 // ─── Per-container mount ──────────────────────────────────────────────────────
 
-/* There is no `paneOfContainer` here. It moved to `canvas/canvas-surface.ts`, beside the other
-   "which pane is this about" answers, because it is not a settings idea: any stage content handed
-   only a host needs it, and `settings/general-settings.ts` and `settings/project-sections.ts` are
-   two more that do — both write a canvas mode, and both used to write the FOCUSED pane's. */
+/**
+ * A region under the settings dialog, which is where a contributed section is drawn (§17.1): its
+ * entry rows and its entry editor are named under `overlay.dialog:settings`, so a shot can crop one
+ * without a selector.
+ *
+ * @param {string} part
+ * @returns {string}
+ */
+function sectionRegion(part: string): string {
+  return `${SETTINGS_DIALOG_REGION}/${part}`;
+}
 
 /** One mounted section: its document, its two island hosts, and what it was last asked to draw. */
 interface SectionMount {
@@ -414,12 +420,11 @@ function say(record: SectionMount, value: string): void {
 
 /** What the document draws right now, read from the store and this module's own state. */
 function project(record: SectionMount): ContributedView {
-  const { container, contribution, opts } = record;
+  const { contribution, opts } = record;
   const sectionKey = contribution.key;
   const title = contribution.title ?? sectionKey;
   const actionsState = opts.actions ? "slot" : "none";
-  const paneId = paneOfContainer(container);
-  const editorRegion = paneRegion(paneId, "editor");
+  const editorRegion = sectionRegion("editor");
 
   if ((contribution.settings.layout ?? "form") !== "map") {
     return {
@@ -445,7 +450,7 @@ function project(record: SectionMount): ContributedView {
     editorState: editing ? "editing" : "empty",
     entries: Object.keys(entries).map((name) => ({
       key: name,
-      region: paneRegion(paneId, `entry:${name}`),
+      region: sectionRegion(`entry:${name}`),
       selected: name === selected,
     })),
     entryName: record.echo ?? (editing ? selected : ""),

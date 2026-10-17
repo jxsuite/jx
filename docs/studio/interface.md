@@ -92,9 +92,7 @@ Opening a document switches to its workspace for you, so opening a page from the
 
 Each workspace sets up the window for its kind of work every time you enter it: Design opens the Navigator and the Inspector, Styles opens the Outline beside the Style tab, and Media and Publish give the whole width to their own page. Content does the same for the Library, and opens the Inspector while you write an entry on the canvas. The dock toggles work in every workspace until you leave it, and Design comes back on the Navigator panel you left it on. The workspace you were in is remembered per project, so a project reopens where you left it.
 
-:::doc-note
-**Project settings** opens in the Design workspace for now, whichever workspace you open it from, because it shares its tab with Project Styles.
-:::
+**Project settings** is a dialog rather than a workspace: it opens over whichever workspace you are in, and closing it leaves you there. See [Project settings](/docs/studio/projects/settings).
 
 ## Navigator rail
 
@@ -138,10 +136,9 @@ The row of the document you have open is highlighted, and the panel keeps up as 
 The **Settings** gear at the right of the Command Bar opens a menu rather than a panel:
 
 - **Preferences…** (:kbd[⌘,]) holds the settings that belong to Studio itself and follow you between projects: the theme, the AI provider, your accounts, the keyboard sheet. Its submenu jumps straight to one of those four. See **[Preferences](/docs/studio/interface/preferences)**.
-- **Open Project Settings** (:kbd[⌘⇧,]) holds this project's configuration, from the site name through contexts, data shapes and packages to the deploy target. Its submenu lists every section, so you can land on the one you want instead of arriving at Overview and hunting. See **[Project settings](/docs/studio/projects/settings)**.
-- **Open Project Styles** holds the design tokens and element defaults, over that same project file. See **[Project Styles](/docs/studio/design/stylebook)**.
+- **Open Project Settings** (:kbd[⌘⇧,]) holds this project's configuration, from the site name and languages through extensions to contexts, data shapes and packages. Its submenu lists every section in the order the dialog lists them, General first, then Integrations, then Advanced, with a divider where each group starts, so you can land on the one you want instead of arriving at Overview and hunting. See **[Project settings](/docs/studio/projects/settings)**.
 
-Clicking a heading opens that surface where you last left it; following its submenu opens it on the section you picked. A divider separates what belongs to the app from what belongs to the project. With no project open the two project entries are still listed, greyed, saying what they need, so the menu tells you what Studio can do before you have opened anything.
+Clicking an entry opens that dialog where you last left it; following its submenu opens it on the section you picked. A divider separates what belongs to the app from what belongs to the project. With no project open the project entry is still listed, greyed, saying what it needs, so the menu tells you what Studio can do before you have opened anything. Project Styles is not in the menu: it is the **Styles** workspace, one tab along in the Command Bar.
 
 ## Navigator dock
 

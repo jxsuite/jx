@@ -21,6 +21,8 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { projectState } from "../store";
 import { updateSiteConfig } from "../site-context";
 import { activeRegistry } from "../commands/active-registry";
+import { runActiveReported } from "../commands/run-reported";
+import { closeSettingsDialog } from "./settings-dialog";
 import { getPlatform } from "../platform";
 import { mountOverviewSurface } from "../surfaces/settings-overview";
 
@@ -197,10 +199,12 @@ function actions(container: HTMLElement): OverviewActions {
      * button and the command could disagree about what "open Project Styles" means, and only one of
      * them was reachable by name. The mode is still a fact about the TAB, and there is exactly one
      * `project.json` tab, so `revealTab`'s `focusPane` puts the keyboard on whichever pane holds
-     * it.
+     * it. Overview is drawn in the settings dialog, and the tab is the Styles workspace's, so the
+     * dialog closes first: left up, it would cover the editor the reader just asked for.
      */
     openStyles: () => {
-      void activeRegistry()?.run("styles.open");
+      closeSettingsDialog();
+      void runActiveReported("styles.open", undefined, "Settings");
     },
     setDescription: (value: string) => {
       echo({ description: value });

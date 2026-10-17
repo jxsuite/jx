@@ -28,7 +28,7 @@
 
 import { isNumber, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { notify } from "../services/notify";
+import { runActiveReported } from "../commands/run-reported";
 import { projectState } from "../store";
 import { getEffectiveMedia, updateSiteConfig } from "../site-context";
 import {
@@ -360,16 +360,16 @@ function addOverride(container: HTMLElement, token: string, ctx: string): void {
   commit(container);
 }
 
-/** Switch Settings to the Contexts section, saying so when the section registry will not load. */
-async function openContextsSection(): Promise<void> {
-  try {
-    const { setSettingsSection } = await import("./section-registry");
-    setSettingsSection("contexts");
-  } catch (error) {
-    notify.error(`Could not open Settings › Contexts — ${errorMessage(error)}`, {
-      source: "Settings",
-    });
-  }
+/**
+ * Open Project Settings on Contexts, where the color schemes and breakpoints this editor overrides
+ * per token are defined.
+ *
+ * Through the command rather than by writing the registry's section: the editor is hosted outside
+ * Settings (the Styles workspace's Variables view), so selecting a section of a dialog that is not
+ * open would change nothing the reader can see. A refusal is filed under this surface's name.
+ */
+function openContextsSection(): void {
+  void runActiveReported("settings.open", { section: "contexts" }, "Settings");
 }
 
 /**
@@ -395,11 +395,11 @@ function actions(container: HTMLElement): CssVarsActions {
        * point at the place a scheme is DEFINED. It used to define one itself — a button here
        * appended `'--dark': '(prefers-color-scheme: dark)'` to `$media` without ever using the word
        * breakpoint, which made this form the fourth and least discoverable definition site for a
-       * map whose other three lived in the wizard, Overview and Properties › Media. The lazy import
-       * breaks the css-vars-editor ↔ section-registry cycle.
+       * map whose other three lived in the wizard, Overview and Properties › Media. It goes there
+       * through `settings.open`, so the dialog opens on Contexts however this editor is hosted.
        */
       manageContexts: () => {
-        void openContextsSection();
+        openContextsSection();
       },
       removeToken: (name: string) => {
         delete style()[name];

@@ -411,6 +411,39 @@ describe("the submenu", () => {
     expect(submenuOf(rowFor("settings.open"))!.getAttribute("role")).toBe("menu");
   });
 
+  test("the Project Settings submenu is grouped as the dialog's nav is, a divider per boundary", async () => {
+    for (const key of ["overview", "contexts", "cssVars"]) {
+      unregisterSettingsSection(key);
+    }
+    const noop = () => {};
+    registerSettingsSection({
+      group: "general",
+      key: "overview",
+      label: "Overview",
+      order: 10,
+      render: noop,
+    });
+    // No group: an Integration, which is where every contribution lands by default.
+    registerSettingsSection({ key: "content", label: "Content Types", order: 50, render: noop });
+    registerSettingsSection({
+      group: "advanced",
+      key: "contexts",
+      label: "Contexts",
+      order: 15,
+      render: noop,
+    });
+    installRegistry();
+    await open();
+    hover(rowFor("settings.open"));
+    await flush();
+    // General, Integrations, Advanced: the order a reader sees in the dialog, not the flat `order`.
+    expect(subKeys()).toEqual(["overview", "content", "contexts"]);
+    const sub = submenuOf(rowFor("settings.open"))!;
+    const dividers = [...sub.querySelectorAll("hr")].filter((hr) => hr.closest("jx-menu") === sub);
+    expect(dividers).toHaveLength(2);
+    unregisterSettingsSection("content");
+  });
+
   test("the Preferences submenu is that command's own four sections", async () => {
     installRegistry();
     await open();

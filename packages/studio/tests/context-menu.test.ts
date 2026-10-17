@@ -1244,8 +1244,8 @@ describe("the menu's mutating rows need a canvas, as Delete already did", () => 
     }
   });
 
-  test("over a settings document every one of them is gone", () => {
-    const records = menuOver("settings");
+  test("over the configuration document every one of them is gone", () => {
+    const records = menuOver("stylebook");
     for (const id of MUTATING) {
       expect([id, live(records, id)]).toEqual([id, false]);
     }
@@ -1256,7 +1256,7 @@ describe("the menu's mutating rows need a canvas, as Delete already did", () => 
     // Opens, and taking it away would be a second wrong answer rather than a fix. (`edit.copy`
     // Made this point until it became `editor/shortcuts.ts`'s record, where `keyScope: "canvas"`
     // States the same rule one level up.)
-    const record = menuOver("settings").find((c) => c.id === "edit.copyStyles")!;
+    const record = menuOver("stylebook").find((c) => c.id === "edit.copyStyles")!;
     // `when` alone: the rule under test is the CANVAS gate, and this verb's `enablement` asks a
     // Second, unrelated question — whether the node has any styles to copy.
     expect(record.when!(emptyContext())).toBe(true);

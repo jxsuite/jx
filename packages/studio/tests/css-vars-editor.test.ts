@@ -523,26 +523,40 @@ describe("color scheme overrides", () => {
     expect(hintOf(link)).toContain("Project Settings");
   });
 
-  test("pressing it moves the settings document to Contexts — it never defines one", async () => {
-    const { registerSettingsSection, setSettingsSection, settingsDocumentSection } =
-      await import("../src/settings/section-registry");
-    // Stand in for the two built-ins settings-document registers; this file never loads it.
-    registerSettingsSection({
-      key: "cssVars",
-      label: "CSS Variables",
-      order: 30,
-      render: () => {},
-    });
-    registerSettingsSection({ key: "contexts", label: "Contexts", order: 15, render: () => {} });
-    setSettingsSection("cssVars");
-    const { container } = await setup(baseStyle(), { "--sm": "(max-width: 600px)" });
-    pointer(
-      groupByTitle(container, "Colors").querySelector('[part="manage"] [part="control"]')!,
-      "click",
-    );
-    await flush(4);
-    expect(settingsDocumentSection()).toBe("contexts");
-    expect(projectState?.projectConfig?.$media).toEqual({ "--sm": "(max-width: 600px)" });
+  test("pressing it opens Project Settings on Contexts — it never defines one", async () => {
+    /* The editor is hosted outside Settings (the Styles workspace's Variables view), so the link is
+       the command, not a write to the section registry: a section chosen in a dialog that is not
+       open would change nothing the reader can see. */
+    const { createCommandRegistry } = await import("../src/commands/registry");
+    const { emptyContext } = await import("../src/commands/context");
+    const { setActiveRegistry } = await import("../src/commands/active-registry");
+    const asked: unknown[] = [];
+    const commands = createCommandRegistry({ getContext: emptyContext });
+    commands.registerAll([
+      {
+        category: "Project",
+        id: "settings.open",
+        level: "application",
+        menus: ["palette"],
+        run: (_ctx, args) => {
+          asked.push(args);
+        },
+        title: "Open Project Settings",
+      },
+    ]);
+    setActiveRegistry(commands);
+    try {
+      const { container } = await setup(baseStyle(), { "--sm": "(max-width: 600px)" });
+      pointer(
+        groupByTitle(container, "Colors").querySelector('[part="manage"] [part="control"]')!,
+        "click",
+      );
+      await flush(4);
+      expect(asked).toEqual([{ section: "contexts" }]);
+      expect(projectState?.projectConfig?.$media).toEqual({ "--sm": "(max-width: 600px)" });
+    } finally {
+      setActiveRegistry(null);
+    }
   });
 });
 

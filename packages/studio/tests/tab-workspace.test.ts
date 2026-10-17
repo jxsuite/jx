@@ -93,13 +93,12 @@ describe("workspaceOfTab", () => {
     expect(workspaceOfVirtual(workspaceHomeTabId("publish"), "publish-home")).toBe("publish");
   });
 
-  test("project.json is Styles' in every editor but its settings form", () => {
+  test("project.json is Styles' in both its editors", () => {
+    // Project Settings is a dialog over every workspace (§17.1), so no editor of this tab is Design's.
     const config = tab("project.json", { mode: "stylebook" });
     expect(workspaceOfTab(config)).toBe("styles");
     config.session.ui.canvasMode = "source";
     expect(workspaceOfTab(config)).toBe("styles");
-    config.session.ui.canvasMode = "settings";
-    expect(workspaceOfTab(config)).toBe("design");
   });
 });
 

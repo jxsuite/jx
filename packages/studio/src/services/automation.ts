@@ -144,7 +144,7 @@ export const AUTOMATION_COMMANDS = {
   },
   "settings.setSection": {
     disposition: "refused",
-    note: 'mirrored the section registry\'s LABELS; say settings.open { section: "cssVars" }',
+    note: 'mirrored the section registry\'s LABELS; say settings.open { section: "contexts" }',
   },
   "view.setStatus": {
     disposition: "refused",

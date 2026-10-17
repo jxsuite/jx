@@ -553,13 +553,13 @@ describe("keyScopeStack", () => {
   });
 
   /*
-   * The `settings` mode is the entry both copies of the map were missing, and the live projection is
-   * where that mattered: the tab reported `editor.kind === "canvas"`, the stack came back as the
-   * canvas one, and ⌘V pasted an element node into `project.json`. `tests/settings-key-scope.test.ts`
-   * runs the whole reproduction; this asserts the projection itself, which is this file's subject.
+   * The configuration document's editor is the entry both copies of the map were once missing, and
+   * the live projection is where that mattered: the tab reported `editor.kind === "canvas"`, the
+   * stack came back as the canvas one, and ⌘V pasted an element node into `project.json`.
+   * `tests/settings-key-scope.test.ts` runs the whole reproduction; this asserts the projection.
    */
-  test("a settings document projects as a config editor on the global stack", () => {
-    canvasMode = "settings";
+  test("the configuration document projects as a config editor on the global stack", () => {
+    canvasMode = "stylebook";
     const ctx = context();
     expect(ctx.editor.kind).toBe("config");
     expect(keyScopeStack(ctx)).toEqual(["global"]);
@@ -576,7 +576,6 @@ describe("editorKindForMode / canvasViewForMode", () => {
     ["source", "code", "design"],
     ["grid", "grid", "design"],
     ["stylebook", "config", "design"],
-    ["settings", "config", "design"],
     ["git-diff", "diff", "design"],
     ["manage", "library", "design"],
   ])("%s → kind %s / view %s", (mode, kind, view) => {

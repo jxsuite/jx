@@ -305,7 +305,6 @@ describe("resetProjectShell", () => {
     shell.git.lastUpdated = 1;
     shell.stylebook.selection = "h1";
     shell.stylebook.filter = "head";
-    shell.settingsTab = "fonts";
 
     resetProjectShell();
 
@@ -321,7 +320,6 @@ describe("resetProjectShell", () => {
     expect(shell.git.lastUpdated).toBeNull();
     expect(shell.stylebook.selection).toBeNull();
     expect(shell.stylebook.filter).toBe("");
-    expect(shell.settingsTab).toBe("stylebook");
   });
 
   test("keeps the window's arrangement — docks and rail panel", () => {

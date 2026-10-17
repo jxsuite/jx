@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
  * Canvas render — extracted from studio.js (Phase 4o). Multi-mode canvas rendering orchestrator:
- * dispatches to manage/settings/source/edit/design/preview rendering paths.
+ * dispatches to manage/source/edit/design/preview rendering paths.
  */
 
 import { render, nothing } from "lit-html";
@@ -58,11 +58,6 @@ import {
   renderWorkspaceHome,
   workspaceHomeMounted,
 } from "../workspace/workspace-home";
-import {
-  detachSettingsPane,
-  renderSettingsPane,
-  settingsPaneMounted,
-} from "../panels/settings-pane";
 import { formatByName, formatForPath } from "../format/format-host";
 import {
   BUFFER_COMMIT,
@@ -328,7 +323,7 @@ function drawStage(
   /* There is no card-host release here, and there must not be one: `renderCanvasImpl` already
      releases it for EVERY mode that draws no header, one branch above this one. A second answer to
      the same question is how the two drift — and this one would answer only for the frames that
-     reach a stage, leaving grid, library, entry, media and settings to the first. */
+     reach a stage, leaving grid, library, entry and media to the first. */
   const standing = surface.stage;
   const stage = standing ?? mountCanvasStage(surface.wrap, view, stageActions(surface));
   surface.stage = stage;
@@ -626,7 +621,6 @@ function resetCanvasView(surface: CanvasSurface) {
   detachEntryPane(paneId);
   detachMediaPane(paneId);
   detachWorkspaceHome(paneId);
-  detachSettingsPane(paneId);
   disposeSourceCollab(surface);
   disposeSourceEditor(surface);
   disposeDiffEditor(surface);
@@ -1199,12 +1193,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
     return;
   }
 
-  // Settings fast-path, same shape: the Project Settings editor subscribes to the section registry
-  // And to its own chosen section, so a mounted editor needs nothing from the canvas pipeline.
-  if (canvasMode === "settings" && settingsPaneMounted(surface) && !modeChanged) {
-    return;
-  }
-
   // Stylebook fast-path: a style edit re-applies IN PLACE via the bridge (the iframe re-runs the
   // Runtime's style applier on the specimen root — real @media, no re-render, no iframe reload).
   // Filter/Customized changes fall through to the full rebuild (they change which specimens exist),
@@ -1277,9 +1265,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
 
     // And for a workspace home, whose surface holds a mounted document
     detachWorkspaceHome(surface.paneId);
-
-    // Same for the Project Settings editor, which holds a registry subscription
-    detachSettingsPane(surface.paneId);
 
     // Dispose Monaco editor if switching away from source mode
     disposeSourceCollab(surface);
@@ -1387,17 +1372,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
       }
       renderCanvasIntoPanel(surface, entry.panel, previewToggles);
     });
-    return;
-  }
-
-  /* Settings mode: the Project Settings document (§17.1). Same non-iframe-editor pattern as
-     grid and stylebook — the panel owns its own reactivity from here — and the reason the seven
-     settings screenshots now crop `pane.primary` instead of `overlay.dialog:settings` without one
-     manifest step changing. */
-  if (canvasMode === "settings") {
-    canvasWrap.style.padding = "0";
-    canvasWrap.style.display = "block";
-    renderSettingsPane(surface);
     return;
   }
 
@@ -2026,7 +2000,6 @@ setSurfaceTeardown((surface) => {
   detachEntryPane(surface.paneId);
   detachMediaPane(surface.paneId);
   detachWorkspaceHome(surface.paneId);
-  detachSettingsPane(surface.paneId);
   attachDocumentHeaderHost(surface.paneId, null);
   disposeSourceCollab(surface);
   disposeSourceEditor(surface);

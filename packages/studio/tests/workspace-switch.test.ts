@@ -104,10 +104,11 @@ describe("the follow: activating a tab enters its workspace", () => {
   });
 
   test("a tab's editor moving it to another workspace moves the workspace with it", () => {
-    const config = tab("project.json", { mode: "settings" });
+    const about = tab("pages/about.json", { mode: "edit" });
     expect(shell.workspace).toBe("design");
-    config.session.ui.canvasMode = "stylebook";
-    expect(shell.workspace).toBe("styles");
+    // An entry form is Content's whatever document it is over (`workspace/tab-workspace.ts`).
+    about.session.ui.canvasMode = "entry";
+    expect(shell.workspace).toBe("content");
   });
 
   test("the preset's Inspector tab lands on the tab being entered, not the one being left", () => {

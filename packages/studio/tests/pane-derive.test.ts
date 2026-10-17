@@ -1363,13 +1363,13 @@ describe("per-preset refusals are run-time, one sentence each", () => {
 
   /* FINDING 10. `presetRefusal` never consulted `tab.capabilities.modes` — the format's own answer
      to what a document can be shown as — so every preset was offered over every document. Over the
-     Project Settings document (`["settings", "stylebook", "source"]`) the menu offered "Same page
-     at Base", whose stage can only draw an empty artboard, and "Component definition", whose rule
-     can never resolve because nothing in a settings form is a component instance. Both left the
+     configuration document (`["stylebook", "source"]`) the menu offered "Same page at Base", whose
+     stage can only draw an empty artboard, and "Component definition", whose rule can never
+     resolve because nothing in a configuration object is a component instance. Both left the
      author a pane to close. */
   test("a preset is refused when the document declares no view it could draw in", () => {
     const page = twoPanes();
-    page.capabilities.modes = ["settings", "stylebook", "source"];
+    page.capabilities.modes = ["stylebook", "source"];
 
     expect(presetRefusal("breakpoint", PRIMARY_PANE, null)).toBe(
       "a document with a Design view — this one declares none",
@@ -1381,7 +1381,7 @@ describe("per-preset refusals are run-time, one sentence each", () => {
     expect(presetRefusal("code", PRIMARY_PANE, null)).toBeNull();
 
     // …and a document with no source view is refused Code, by the same rule.
-    page.capabilities.modes = ["settings"];
+    page.capabilities.modes = ["stylebook"];
     expect(presetRefusal("code", PRIMARY_PANE, null)).toBe(
       "a document with a Code view — this one declares none",
     );

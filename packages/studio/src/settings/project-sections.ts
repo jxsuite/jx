@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The two Project Settings sections the document adds directly — Deploy and Raw JSON.
+ * Two direct views of `project.json`: Deploy (the build adapter) and Raw JSON (the file itself).
  *
  * They live together because each is a small, direct view of ONE `project.json` key and neither
  * owns a dialog, a picker or a schema form: `build.adapter` (one enum), and the file itself.
@@ -12,8 +12,11 @@
  * error plumbing both still share.
  *
  * **Raw JSON does not open a second editor.** It shows what is on disk and hands the author to the
- * Code editor over the SAME tab — one document, three editors (§17.1), so switching to the text and
- * back keeps one undo stack instead of forking two.
+ * Code editor over the `project.json` tab (§17.1): the host says how, through `editAsCode`, because
+ * the section sits in the settings dialog and the tab it opens is the Styles workspace's.
+ *
+ * **Deploy is no longer a Project Settings section.** Hosting moved to the Publish workspace
+ * (§17.1's Moved footnote), which hosts `renderDeploySection`; the renderer is unchanged.
  *
  * **The markup left.** Each section is a Jx document over the kit — `surfaces/settings-deploy.json`
  * and `surfaces/settings-rawjson.json`, mounted by the adapters beside them — and what is here is
@@ -29,9 +32,8 @@
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
-import { projectState, updateUi } from "../store";
+import { projectState } from "../store";
 import { serializeProjectConfig } from "../tabs/project-config";
-import { tabOfContainer } from "../canvas/canvas-surface";
 import { updateSiteConfig } from "../site-context";
 import { mountDeploySurface } from "../surfaces/settings-deploy";
 import { mountRawJsonSurface } from "../surfaces/settings-rawjson";
@@ -39,9 +41,6 @@ import { mountRawJsonSurface } from "../surfaces/settings-rawjson";
 import type { DeployActions, DeploySurfaceHandle, DeployValues } from "../surfaces/settings-deploy";
 import type { RawJsonSurfaceHandle, RawJsonValues } from "../surfaces/settings-rawjson";
 import type { ProjectConfig } from "@jxsuite/schema/types";
-
-/** The mode the Code editor draws under — `tabs/tab.ts`'s `EDITOR_KIND_BY_MODE` maps it to `code`. */
-const CODE_MODE = "source";
 
 /**
  * The last failed write per rendered section container.
@@ -166,12 +165,19 @@ function rawJsonValues(): RawJsonValues {
   return { json: serializeProjectConfig(config()) };
 }
 
+/** What the Raw JSON section asks its host to do. */
+export interface RawJsonSectionActions {
+  /** Open `project.json` in the Code editor, leaving wherever the section is drawn. */
+  editAsCode: () => void;
+}
+
 /**
  * `project.json` as it is written, and the way into editing it as text.
  *
  * @param {HTMLElement} container
+ * @param {RawJsonSectionActions} actions
  */
-export function renderRawJsonSection(container: HTMLElement): void {
+export function renderRawJsonSection(container: HTMLElement, actions: RawJsonSectionActions): void {
   const standing = rawJsonMounts.get(container);
   if (standing?.connected()) {
     standing.update(rawJsonValues());
@@ -181,7 +187,7 @@ export function renderRawJsonSection(container: HTMLElement): void {
   rawJsonMounts.set(
     container,
     mountRawJsonSurface(container, rawJsonValues(), {
-      editAsCode: () => updateUi(tabOfContainer(container), "canvasMode", CODE_MODE),
+      editAsCode: actions.editAsCode,
     }),
   );
 }

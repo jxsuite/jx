@@ -86,7 +86,7 @@ A document keeps its own view state while it's open. Switch from a Markdown page
 New documents open in their natural editor: Markdown in **Edit**, spreadsheets in **Grid**, the project file in **Project Styles**.
 
 :::doc-note
-**Your project's configuration is one of these documents.** `project.json` opens in the strip like any file, and **Open Project Settings** shows it in its settings editor. That means the settings you change there are edits: an unsaved dot, :kbd[⌘Z] to take one back, :kbd[⌘S] to write it. Reaching it from the Files tree and reaching it from **Open Project Settings** land on the same document, so there is only ever one history and one unsaved state for it.
+**Your project's configuration is one of these documents.** `project.json` opens in the strip like any file, in the Styles workspace, with Project Styles and Code as its editors: an unsaved dot, :kbd[⌘Z] to take a change back, :kbd[⌘S] to write it. **Open Project Settings** is a dialog that writes the same file as you change it, through the same document, so while the tab is open a settings change is a step in its history too.
 :::
 
 ## Reopening a project
@@ -151,8 +151,6 @@ Opening a formula or a function body in the Bottom dock's **[Logic](/docs/studio
 **Zoom floats over the canvas**, bottom-right, rather than sitting in the bar: the zoom buttons, the percentage (click it for 100%), and a **fit** picker (**Fit page**, **Fit width**, **Actual size**, **No fit**), remembered per document, so coming back to a file frames it the way you left it. There is no zoom in **Preview**, which shows the page at its real size in a frame that scrolls itself, or on the **Code** half of a **Diff** editor, which is a code editor with nothing on it to zoom.
 
 Editor-specific actions sit at the right of the bar: **Export**, in the **Code** editor.
-
-The bar is there when it has something to say. The settings editor takes the whole pane instead: a form has no canvas view to pick and no rendering context to resolve against, and contexts are _defined_ in a section of the very document it is showing.
 
 ## Next
 

@@ -17,7 +17,7 @@ In Studio, choose **New Project**. The wizard opens on the [starter gallery](/te
 
 Click **Next**, give the project a name, and choose the **Location** to create it in. **Browse…** opens your system's folder picker. Studio derives the folder name from the name as you type and shows you the exact path before you commit to it. That's the whole form: it writes the files, starts a git repository for them, and opens the project on the canvas.
 
-Everything else about the site lives in [project settings](/docs/studio/projects/settings), where you can change it as often as you like: its description, its production URL, and the **deployment adapter** that packages it for your host. **Static** suits a site that's purely pages and content. If it will have a database, sign-ins, or server functions, pick one of the others, because those hosts can run the small worker Jx builds for them.
+Everything else about the site lives in its configuration, which you can change as often as you like: its description and production URL in [project settings](/docs/studio/projects/settings), and the **deployment adapter** that packages it for your host, `build.adapter` in `project.json` (set it from **Project settings › Advanced › Raw JSON › Edit as code**). **Static** suits a site that's purely pages and content. If it will have a database, sign-ins, or server functions, pick one of the others, because those hosts can run the small worker Jx builds for them.
 
 ![The New Project dialog with the starter gallery and the Start from scratch card](../images/new-project-modal.png)
 
@@ -51,7 +51,7 @@ When you're happy, open **Source Control** (run **Show Source Control** from :kb
 
 ![Jx Studio commit box: write a message and commit-and-sync straight from the Source Control panel](../images/git-commit.png)
 
-There is one boundary to know about: **Studio publishes code; it doesn't build or deploy the site.** It commits and pushes, and it records the deploy adapter set in project settings. Your host takes it from there, building the site (`bunx jx build`) on every push and serving the `dist/` output from a CDN. With one of the server-capable adapters, the build emits a small worker beside those files as well, and that worker is the piece that runs a database, sign-ins, or server functions. See **[Publish](/docs/studio/publish)** for the full flow.
+There is one boundary to know about: **Studio publishes code; it doesn't build or deploy the site.** It commits and pushes, and it records the deploy adapter set in `project.json`. Your host takes it from there, building the site (`bunx jx build`) on every push and serving the `dist/` output from a CDN. With one of the server-capable adapters, the build emits a small worker beside those files as well, and that worker is the piece that runs a database, sign-ins, or server functions. See **[Publish](/docs/studio/publish)** for the full flow.
 
 ## What's next
 

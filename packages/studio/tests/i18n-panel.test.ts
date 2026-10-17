@@ -442,7 +442,8 @@ describe("the empty states", () => {
     expect(action?.disabled).toBe(false);
     action?.click();
     await flush();
-    expect(ran).toEqual([{ args: {}, id: "settings.open" }]);
+    // On Locales: the dialog remembers its section for the session, and this action means one.
+    expect(ran).toEqual([{ args: { section: "locales" }, id: "settings.open" }]);
   });
 
   test("a bilingual project with nothing in it says so rather than drawing an empty table", async () => {

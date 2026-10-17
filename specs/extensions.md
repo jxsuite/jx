@@ -453,7 +453,7 @@ Behavior attaches through capabilities on the same class: `projectData` loads th
 
 ### 9.1 `$studio.settings`
 
-> **Status: Partial.** `label`, `order`, both layouts, `entry.ui`, `entry.newEntry`, the `schema-builder` and `secret` controls and `#/$context/` enum pointers ship (`packages/studio/src/settings/extension-sections.ts`, `packages/studio/src/settings/contributed-section.ts`, `packages/studio/src/ui/form-controls.ts`). `icon` is carried but not drawn (`section-registry.ts` reserves it), no `renderer` escape hatch exists, and the built-in controls differ from the list: `"binding"` was replaced by the value-source ladder and a `"reference"` control ships unlisted.
+> **Status: Partial.** `label`, `order`, `group`, both layouts, `entry.ui`, `entry.newEntry`, the `schema-builder` and `secret` controls and `#/$context/` enum pointers ship (`packages/studio/src/settings/extension-sections.ts`, `packages/studio/src/settings/contributed-section.ts`, `packages/studio/src/ui/form-controls.ts`). `icon` is carried but not drawn (`section-registry.ts` reserves it), no `renderer` escape hatch exists, and the built-in controls differ from the list: `"binding"` was replaced by the value-source ladder and a `"reference"` control ships unlisted.
 
 The `project` class's `$studio` block may declare a settings section, rendered generically by the studio:
 
@@ -462,6 +462,7 @@ The `project` class's `$studio` block may declare a settings section, rendered g
   "settings": {
     "icon": "grid-four",
     "label": "Content Types",
+    "group": "integrations",
     "order": 50,
     "layout": "map",
     "entry": {
@@ -476,7 +477,8 @@ The `project` class's `$studio` block may declare a settings section, rendered g
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `icon`           | Section icon in the settings nav — a glyph NAME from the Jx UI kit's icon set (`@jxsuite/ui/icons`), never an element tag. A name the kit does not ship draws nothing.                                    |
 | `label`          | Section label (defaults to `project.title`).                                                                                                                                                              |
-| `order`          | Sort position among contributed sections.                                                                                                                                                                 |
+| `group`          | The settings nav group the section is listed under: `general`, `integrations` (default) or `advanced` (the studio's Advanced group, marked for developers). An unrecognised value is read as the default. |
+| `order`          | Sort position within its group.                                                                                                                                                                           |
 | `layout`         | `"map"` — master-detail for `type: object` + `additionalProperties` sections: key list left (add/rename/delete, slugified), entry form right. `"form"` (default) — one form over the whole section value. |
 | `entry.ui`       | Per-field control overrides for the entry form: `{ "<field>": { "control": "<name>" } }`.                                                                                                                 |
 | `entry.newEntry` | Template for freshly created entries, with `${key}` substitution.                                                                                                                                         |

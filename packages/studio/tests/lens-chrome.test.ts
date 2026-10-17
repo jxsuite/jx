@@ -441,14 +441,14 @@ describe("the preset menu's rows", () => {
      with a derivation, no tabs and nothing drawn anywhere. */
   /* THE BREAKPOINT ROWS HAVE THEIR OWN REFUSAL, and they are built in a second loop that could
      drop it while every projection row above kept theirs. {@link MODE_FOR_PRESET} exists for
-     exactly this row — over the Project Settings document the menu offered "Same page at Base",
+     exactly this row — over the configuration document the menu offered "Same page at Base",
      whose stage can only draw an empty artboard — and `presetRefusal`'s half of that is covered by
      `pane-derive.test.ts`. What was not covered is the WIRING: `deriveReason ?? presetRefusal(…)`
      in the breakpoint loop, whose left side is `null` for an ordinary pane, so dropping the right
      side puts a live row over a document that cannot draw it. */
   test("a breakpoint row carries the refusal for the size it names", () => {
     const page = twoPaneGrid();
-    page.capabilities.modes = ["settings", "stylebook", "source"];
+    page.capabilities.modes = ["stylebook", "source"];
     const breakpoints = paneContext
       .presetRows(PRIMARY_PANE)
       .filter((row) => row.args["preset"] === "breakpoint");

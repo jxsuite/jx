@@ -522,11 +522,10 @@ describe("wheel handler", () => {
      viewport that owns its own virtual scroller. Only the mode string "manage" was exempt, and it
      is reachable from nowhere else in the codebase (the scope is `grid`, §13.3).
 
-     `settings` and `entry` are the same defect over the two PANE FORMS: Project Settings scrolls
-     its section column (and the Raw JSON `<pre>` inside it) and the Entry editor scrolls its
-     fields, so a wheel over either was preventDefaulted for a panzoom wrap neither mode mounts —
-     the scrollbar could be dragged, and the wheel did nothing. */
-  test.each(["grid", "manage", "settings", "entry", "preview"])(
+     `entry` is the same defect over the PANE FORM: the Entry editor scrolls its fields, so a wheel
+     over it was preventDefaulted for a panzoom wrap the mode never mounts — the scrollbar could be
+     dragged, and the wheel did nothing. */
+  test.each(["grid", "manage", "entry", "preview"])(
     "%s mode lets the surface scroll itself",
     (mode) => {
       canvasMode = mode;
@@ -540,7 +539,7 @@ describe("wheel handler", () => {
      pinch arrives as exactly this event — so a stage with no zoom of its own must block it like the
      rest of the app's chrome, or a pinch over a form scales the whole of Studio. Blocked is not
      panned: neither the stage offsets nor the tab's zoom may move. */
-  test.each(["grid", "manage", "settings", "entry", "preview"])(
+  test.each(["grid", "manage", "entry", "preview"])(
     "%s mode blocks ctrl+wheel browser zoom without panning or zooming",
     (mode) => {
       canvasMode = mode;
@@ -553,24 +552,18 @@ describe("wheel handler", () => {
     },
   );
 
-  /* The wheel reaches the stage from a DESCENDANT — the Raw JSON `<pre>` is nested two levels
-     inside the settings document — so the exemption has to survive the bubble, not just a
-     dispatch on the wrap itself. */
-  test("a wheel over a scroller inside the settings pane is left alone", () => {
-    canvasMode = "settings";
-    const doc = document.createElement("div");
-    // The settings pane's scrolling column, as `surfaces/settings-pane.json` draws it. The
-    // Exemption is decided by the canvas MODE rather than by anything on this element; it is
-    // Spelled the way the pane spells it so a reader is not sent looking for a class that is gone.
-    doc.setAttribute("part", "content");
-    const pre = document.createElement("pre");
-    pre.className = "settings-raw-json";
-    doc.append(pre);
-    wrapEl().append(doc);
-    const e = wheel(pre, { deltaY: 20 });
+  /* The wheel reaches the stage from a DESCENDANT — a field nested inside the entry form — so the
+     exemption has to survive the bubble, not just a dispatch on the wrap itself. */
+  test("a wheel over a scroller inside a self-scrolling pane is left alone", () => {
+    canvasMode = "entry";
+    const form = document.createElement("div");
+    const field = document.createElement("textarea");
+    form.append(field);
+    wrapEl().append(form);
+    const e = wheel(field, { deltaY: 20 });
     expect(e.defaultPrevented).toBe(false);
     expect(setPan).not.toHaveBeenCalled();
-    doc.remove();
+    form.remove();
   });
 
   test("ctrl+wheel outside canvas is blocked (browser zoom prevention)", () => {

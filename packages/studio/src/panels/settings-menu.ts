@@ -3,26 +3,27 @@
  * The top bar's ⚙ Settings menu — a RENDERING of the `settings/menu` placement.
  *
  * The gear used to run one command. That was the right shape for a pinned slot and the wrong shape
- * for the question people bring to it: Studio has two settings families at two containment levels —
- * `app.preferences` (the application, ⌘,) and `settings.open` (this project, ⌘⇧,) — plus a third
- * editor over the same project document, `styles.open`. A slot can hold one of those and must lie
- * about the rest by omission. A menu can hold all three and say what each one is, because it prints
- * every row's own name, chord and gate beside it (`studio-ui-guidelines.md` §12.3). That is the
- * whole argument for the matrix row `settings/menu` admitting two levels, and for the divider this
- * file draws where the level changes.
+ * for the question people bring to it: Studio has two settings families at two containment levels,
+ * `app.preferences` (the application, ⌘,) and `settings.open` (this project, ⌘⇧,). A slot can hold
+ * one of those and must lie about the other by omission. A menu can hold both and say what each one
+ * is, because it prints every row's own name, chord and gate beside it (`studio-ui-guidelines.md`
+ * §12.3). That is the whole argument for the matrix row `settings/menu` admitting two levels, and
+ * for the divider this file draws where the level changes. Project Styles is not here: Styles is a
+ * workspace, and the top bar already names it.
  *
  * **Nothing here is a list of actions.** The rows are `registry.forPlacement("settings/menu")`, so
  * a record joins the menu by declaring the placement and leaves by not declaring it. The submenus
  * are the enumeration of each parent command's own `section` ARGUMENT, read from that argument's
  * own definition site — which is state the command already validates, not a second vocabulary
- * (`studio-ui-guidelines.md` §12.5).
+ * (`studio-ui-guidelines.md` §12.5). Project Settings' submenu is GROUPED as its dialog's nav is
+ * (General, Integrations, Advanced), with a divider where the group changes.
  *
  * **A parent row runs its own command AND owns a submenu.** The APG menu pattern does not describe
  * that and Spectrum's stock submenu forbade it outright; the kit's `jx-menu-item` makes it the rule
  * (`ui.md` §5.1), so the deviation `specs/studio-ui-guidelines.md` §8.4 records is now what the
  * element does rather than what this file hand-rolls around it. Nothing is unreachable by keyboard:
  * Enter runs the row, ArrowRight reaches every child, and every child is also in the settings
- * document's own inner nav.
+ * dialog's own nav.
  *
  * The menu is the `menu` surface (`surfaces/menu.json`, through `surfaces/menu.ts`). What is left
  * here is the projection — which records, which sections, what each row runs — and where the panel
@@ -40,7 +41,7 @@
 import { activeRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
 import { LEVELS } from "../commands/levels";
-import { onSettingsDocumentChanged, sortedSettingsSections } from "../settings/section-registry";
+import { groupedSettingsSections, onSettingsDocumentChanged } from "../settings/section-registry";
 import { PREFERENCES_SECTIONS } from "../settings/preferences-sections";
 import { openMenu } from "../surfaces/menu";
 import { rectOf } from "../utils/geometry";
@@ -50,6 +51,11 @@ import type { CommandRegistry } from "../commands/registry";
 import type { Level } from "../commands/levels";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { KeyedLabel } from "../ui/surface";
+
+/** One submenu row's source: the argument value, its label, and whether a new group starts here. */
+interface SectionRow extends KeyedLabel {
+  dividerAbove: boolean;
+}
 
 /** The placement the top bar's gear renders. One definition site for the string. */
 export const SETTINGS_MENU_PLACEMENT = "settings/menu" as const;
@@ -69,19 +75,31 @@ let _rerender: (() => void) | null = null;
  * `settings.open` refuses anything absent from `settingsSectionKeys()` — so a submenu row can never
  * name a value its own command would refuse.
  */
-const SECTION_SOURCES: ReadonlyMap<string, () => readonly KeyedLabel[]> = new Map([
+const SECTION_SOURCES: ReadonlyMap<string, () => readonly SectionRow[]> = new Map([
   [
     "app.preferences",
-    () => PREFERENCES_SECTIONS.map((section) => ({ key: section.id, label: section.title })),
+    () =>
+      PREFERENCES_SECTIONS.map((section) => ({
+        dividerAbove: false,
+        key: section.id,
+        label: section.title,
+      })),
   ],
   [
     "settings.open",
-    () => sortedSettingsSections().map((section) => ({ key: section.key, label: section.label })),
+    () =>
+      groupedSettingsSections().flatMap((group, groupIndex) =>
+        group.sections.map((section, index) => ({
+          dividerAbove: groupIndex > 0 && index === 0,
+          key: section.key,
+          label: section.label,
+        })),
+      ),
   ],
 ]);
 
 /** The sections a row offers, or none. */
-function menuSectionsFor(id: string): readonly KeyedLabel[] {
+function menuSectionsFor(id: string): readonly SectionRow[] {
   return SECTION_SOURCES.get(id)?.() ?? [];
 }
 
@@ -134,7 +152,7 @@ function buildSettingsMenuRows(registry: CommandRegistry): MenuRowProjection[] {
         ? menuSectionsFor(id).map((section) => ({
             destructive: false,
             disabled: false,
-            dividerAbove: false,
+            dividerAbove: section.dividerAbove,
             id: `${id}:${section.key}`,
             // Named by the argument value it passes, never by a reworded command title.
             run: () => runRow(id, { section: section.key }),

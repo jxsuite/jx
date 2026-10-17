@@ -1,46 +1,109 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioSettingsPane",
-  "$description": "The Project Settings editor's two columns, drawn inside the pane: the section list and the section body. It draws no section — `panels/settings-pane.ts` keeps the registry, decides which section is current, and renders whichever one that is into the one empty `[part=\"body\"]` island this document leaves for it (studio-ui-guidelines.md §9.4), because a section renderer may be a lit template or a mounted document and neither can share a container with this one. The list is a real vertical `tablist` rather than the column of `<button aria-current=\"page\">` it replaces: a settings section is not a page and choosing one moves no location, so what the reader was owed was one tab stop, arrow keys down the column, and a body named by the entry that selected it.",
+  "$description": "The Project Settings dialog's two columns: the grouped section list and the section body (§17.1). It draws no section: `panels/settings-pane.ts` keeps the registry, decides which section is current, and renders whichever one that is into the one empty `[part=\"section-host\"]` island this document leaves for it (studio-ui-guidelines.md §9.4), because a section renderer may be a lit template or a mounted document and neither can share a container with this one. The list is three vertical `tablist`s, one per group (General, Integrations, Advanced), each named by its group heading: a tablist may own only tabs, so a heading between two runs of rows has to END one list rather than sit inside it. Each group is one tab stop and the arrow keys move within it. Under the groups, a Moved footnote names what left Project Settings for a workspace, each with a button that goes there.",
   "tagName": "div",
   "attributes": {
     "part": "doc"
   },
   "style": {
-    "$description": "`.settings-doc`, `.settings-doc-nav`, `.settings-doc-content` (styles/panels.css) and `.settings-nav-item`, `.settings-nav-item:hover`, `.settings-nav-item.active`, `.settings-empty-state` (styles/overlays.css) — all seven go dead with this conversion and none is shared with a surface that is still lit. Four of them are DELETED rather than moved: the nav's own right rule and each row's hover fill, selected fill and weight are `jx-tabs[aria-orientation=\"vertical\"]` and `jx-tab` respectively, and the two Spectrum greys they reached for (`--spectrum-gray-200`, `--spectrum-gray-300`) resolved only inside an `<sp-theme>` this pane never had — so both rows had been taking their hard-coded fallback since the editor moved out of the modal.",
+    "$description": "No part below is named `body`, `field`, `label`, `error`, `text` or `actions`: this document is mounted inside a `jx-dialog`, the kit is light DOM, and the dialog draws its own `[part=\"body\"]` around this one, so a rule keyed on that name here would also be a rule the dialog's own styles reach.",
     "display": "flex",
-    "height": "100%",
+    "height": "min(68vh, 640px)",
     "minHeight": "0",
     "background": "var(--bg)",
     "color": "var(--fg)",
     "fontFamily": "var(--jx-font-sans)",
     "textAlign": "initial",
     "& [part=\"nav\"]": {
-      "width": "180px",
-      "minWidth": "180px",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-4)",
+      "width": "200px",
+      "minWidth": "200px",
       "flexShrink": "0",
-      "padding": "var(--jx-space-2) 0",
+      "padding": "var(--jx-space-2) var(--jx-space-3) var(--jx-space-2) 0",
+      "borderRight": "1px solid var(--border)",
       "overflowY": "auto",
       "fontSize": "13px"
     },
+    "& [part=\"group\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"group-title\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "margin": "0",
+      "padding": "0 var(--jx-space-3)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "600",
+      "letterSpacing": "0.04em",
+      "textTransform": "uppercase"
+    },
+    "& [part=\"group-note\"]": {
+      "$description": "The Advanced group's \"For developers\": a qualifier on the heading, not a second heading, so it reads at the heading's size without its weight.",
+      "fontWeight": "400",
+      "letterSpacing": "0",
+      "textTransform": "none"
+    },
+    "& [part=\"group-note\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"group-tabs\"]": {
+      "$description": "The rule a vertical strip draws on its trailing edge is the column's own here: the nav draws one border for all three groups, so each strip drawing its own would stack three short rules beside it.",
+      "borderInlineEnd": "0"
+    },
     "& [part=\"nav-item\"]": {
-      "$description": "Full-bleed rows, which a tab is not by default: `jx-tab` centres its label and caps itself at 220px because a horizontal strip is a row of chips. In a 180px column the row IS the target, so the label goes to the leading edge and the cap comes off.",
+      "$description": "Full-bleed rows, which a tab is not by default: `jx-tab` centres its label and caps itself at 220px because a horizontal strip is a row of chips. In the nav column the row IS the target, so the label goes to the leading edge and the cap comes off.",
       "maxWidth": "none",
       "justifyContent": "flex-start",
-      "padding": "var(--jx-space-2) var(--jx-space-4)"
+      "padding": "var(--jx-space-2) var(--jx-space-3)"
+    },
+    "& [part=\"moved\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "marginTop": "auto",
+      "padding": "var(--jx-space-3)",
+      "borderTop": "1px solid var(--border)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"moved-title\"]": {
+      "margin": "0",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"moved-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-1)"
     },
     "& [part=\"content\"]": {
       "flex": "1",
       "minWidth": "0",
       "overflowY": "auto",
-      "padding": "24px"
+      "padding": "var(--jx-space-2) var(--jx-space-5)"
     },
-    "& [part=\"body\"]": {
+    "& [part=\"group-intro\"]": {
+      "margin": "0 0 var(--jx-space-3)",
+      "color": "var(--fg-dim)",
+      "fontSize": "13px"
+    },
+    "& [part=\"group-intro\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"section-host\"]": {
       "display": "block",
       "minWidth": "0"
     },
     "& [part=\"empty\"]": {
-      "$description": "What the body says when the active section is registered by nobody — every section unregistering at once, which is a project closing while the editor is open. A blank column beside a list reads as a broken pane, so it says which it is.",
+      "$description": "What the body says when the active section is registered by nobody: every section unregistering at once, which is a project closing while the dialog is open. A blank column beside a list reads as a broken dialog, so it says which it is.",
       "display": "flex",
       "alignItems": "center",
       "justifyContent": "center",
@@ -48,57 +111,189 @@
       "margin": "0",
       "color": "var(--fg-dim)",
       "fontSize": "13px"
+    },
+    "& [part=\"failure\"]": {
+      "$description": "A section whose renderer threw or rejected. It is said where the section would have been, in the reader's line of sight, because a section that silently draws nothing is indistinguishable from one with nothing to say.",
+      "margin": "0",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--danger)",
+      "borderRadius": "var(--radius)",
+      "color": "var(--fg)",
+      "fontSize": "13px"
     }
   },
   "children": [
     {
-      "tagName": "jx-tabs",
+      "tagName": "div",
       "attributes": {
         "part": "nav",
-        "selected": "${state.active}",
-        "orientation": "vertical"
-      },
-      "$props": {
-        "label": {
-          "$ref": "#/state/navLabel"
-        }
-      },
-      "onchange": {
-        "$prototype": "Function",
-        "body": [
-          {
-            "operator": "call",
-            "target": {
-              "$ref": "#/state/selectSection"
-            },
-            "value": [
-              {
-                "$ref": "event#/detail"
-              }
-            ]
-          }
-        ]
+        "role": "none"
       },
       "children": [
         {
           "$prototype": "Array",
           "items": {
-            "$ref": "#/state/sections"
+            "$ref": "#/state/groups"
           },
           "key": {
-            "$ref": "$map/item/key"
+            "$ref": "$map/item/id"
           },
           "map": {
-            "tagName": "jx-tab",
+            "tagName": "div",
             "attributes": {
-              "part": "nav-item",
-              "id": "${$map.item.tabId}",
-              "data-section": "${$map.item.key}",
-              "value": "${$map.item.key}",
-              "label": "${$map.item.label}",
-              "panel": "settings-pane-panel"
-            }
+              "part": "group",
+              "role": "none",
+              "data-group": "${$map.item.id}"
+            },
+            "children": [
+              {
+                "tagName": "h3",
+                "attributes": {
+                  "part": "group-title",
+                  "id": "${$map.item.titleId}"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.label}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "group-note"
+                    },
+                    "textContent": "${$map.item.note}"
+                  }
+                ]
+              },
+              {
+                "tagName": "jx-tabs",
+                "attributes": {
+                  "part": "group-tabs",
+                  "selected": "${state.active}",
+                  "orientation": "vertical"
+                },
+                "$props": {
+                  "label": {
+                    "$ref": "$map/item/tabsLabel"
+                  }
+                },
+                "onchange": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/selectSection"
+                      },
+                      "value": [
+                        {
+                          "$ref": "event#/detail"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/sections"
+                    },
+                    "key": {
+                      "$ref": "$map/item/key"
+                    },
+                    "map": {
+                      "tagName": "jx-tab",
+                      "attributes": {
+                        "part": "nav-item",
+                        "id": "${$map.item.tabId}",
+                        "data-section": "${$map.item.key}",
+                        "value": "${$map.item.key}",
+                        "label": "${$map.item.label}",
+                        "panel": "settings-pane-panel"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
           }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "moved",
+            "role": "group",
+            "aria-labelledby": "settings-pane-moved"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "moved-title",
+                "id": "settings-pane-moved"
+              },
+              "textContent": "Moved"
+            },
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/moved"
+              },
+              "key": {
+                "$ref": "$map/item/workspace"
+              },
+              "map": {
+                "tagName": "div",
+                "attributes": {
+                  "part": "moved-row",
+                  "data-moved": "${$map.item.workspace}"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.what} →"
+                  },
+                  {
+                    "tagName": "jx-button",
+                    "attributes": {
+                      "part": "moved-link"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "quiet": true,
+                      "label": {
+                        "$ref": "$map/item/linkLabel"
+                      }
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/openMoved"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/workspace"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "textContent": "${$map.item.place}"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -116,10 +311,18 @@
       },
       "children": [
         {
+          "$description": "The current group's intro (\"Changes here affect every page. Most sites never need them.\"), above whichever of its sections is showing. General has none, and an empty sentence draws nothing.",
+          "tagName": "p",
+          "attributes": {
+            "part": "group-intro"
+          },
+          "textContent": "${state.intro}"
+        },
+        {
           "$description": "The island, and it stays empty: a settings section renders itself, into a host this document never writes into and never reads back (studio-ui-guidelines.md §9.4).",
           "tagName": "div",
           "attributes": {
-            "part": "body"
+            "part": "section-host"
           }
         },
         {
@@ -138,6 +341,26 @@
                 "part": "empty"
               },
               "textContent": "${state.empty}"
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "failure-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/failureState"
+          },
+          "cases": {
+            "failed": {
+              "tagName": "p",
+              "attributes": {
+                "part": "failure",
+                "role": "alert"
+              },
+              "textContent": "${state.failure}"
             }
           }
         }

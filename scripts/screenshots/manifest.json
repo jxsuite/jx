@@ -390,7 +390,7 @@
       ],
       "expect": [
         {
-          "region": "pane.primary"
+          "region": "overlay.dialog:settings"
         }
       ],
       "capture": [
@@ -409,10 +409,7 @@
       },
       "steps": [
         {
-          "args": {
-            "section": "cssVars"
-          },
-          "cmd": "settings.open"
+          "cmd": "styles.open"
         }
       ],
       "expect": [
@@ -1508,13 +1505,13 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:posts"
+          "region": "overlay.dialog:settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "blog-content-type",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         }
       ]
     },
@@ -1547,13 +1544,13 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:posts"
+          "region": "overlay.dialog:settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "blog-schema-fields",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         }
       ]
     },
@@ -1835,13 +1832,13 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:posts"
+          "region": "overlay.dialog:settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "content-type-builder",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         }
       ]
     },
@@ -2063,17 +2060,17 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:comments"
+          "region": "overlay.dialog:settings/entry:comments"
         }
       ],
       "capture": [
         {
           "image": "data-tables-section",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         },
         {
           "image": "data-table-editor",
-          "of": "pane.primary/editor"
+          "of": "overlay.dialog:settings/editor"
         }
       ]
     },
@@ -2106,13 +2103,13 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:main"
+          "region": "overlay.dialog:settings/entry:main"
         }
       ],
       "capture": [
         {
           "image": "connections-section",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         }
       ]
     },

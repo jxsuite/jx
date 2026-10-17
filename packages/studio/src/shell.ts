@@ -409,8 +409,6 @@ export interface ShellState {
    * the element inspector. See {@link setLayoutSelection}.
    */
   layoutSelection: LayoutHit | null;
-  /** Which section Project Settings opens on. */
-  settingsTab: string;
   stylebook: ShellStylebook;
   git: ShellGit;
 }
@@ -617,7 +615,6 @@ function createShellState(): ShellState {
     git: freshGit(),
     layoutSelection: null,
     leftTab: migratePanelId(saved.leftTab) ?? DEFAULT_PANEL_ID,
-    settingsTab: "stylebook",
     stylebook: freshStylebook(),
     theme: readPersistedTheme(),
     workspace: DEFAULT_WORKSPACE,
@@ -1169,7 +1166,6 @@ export function setLayoutSelection(selection: LayoutHit | null): void {
 export function resetProjectShell(): void {
   Object.assign(shell.git, freshGit());
   Object.assign(shell.stylebook, freshStylebook());
-  shell.settingsTab = "stylebook";
   shell.layoutSelection = null;
   // …and which project's session may be written, so the one being opened cannot be overwritten
   // Before it has been read.

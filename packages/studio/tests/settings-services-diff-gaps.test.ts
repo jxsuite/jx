@@ -5,20 +5,16 @@
  * not there, a lazy import that refuses, a control that parked its own failure, the pane host's two
  * draw guards, and the one thing `write_file` cannot pre-validate — the disk saying no.
  *
- * `section-registry` is mocked for two of them, and only two of its exports are replaced:
- *
- * - `setSettingsSection` throws, which is what a failed chunk load looks like to the CSS-variables
- *   editor's "Manage contexts…" — the module imports the registry LAZILY to break a cycle, so the
- *   only thing that can go wrong is asynchronous and its `.catch` is the only place that says so.
- * - `onSettingsDocumentChanged` hands the listener to the test and returns an unsubscribe that does
- *   nothing, so a change notification can be delivered to a pane that has already been detached.
- *   The real unsubscribe makes that state unreachable; the guard in `draw` is what would catch it
- *   if it ever became reachable again, and this is the only way to prove it still holds.
+ * `section-registry` is mocked for one of them, and only one of its exports is replaced:
+ * `onSettingsDocumentChanged` hands the listener to the test and returns an unsubscribe that does
+ * nothing, so a change notification can be delivered to an editor that has already been disposed.
+ * The real unsubscribe makes that state unreachable; the guard in `draw` is what would catch it if
+ * it ever became reachable again, and this is the only way to prove it still holds.
  *
  * Everything else is the real module, spread through — the registry's `sections` map is shared, so
  * a section registered here is the section the pane host renders.
  */
-import { flush, installMockPlatform, pointer, resetStudioState, surfaceOf } from "./harness";
+import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { nothing, render } from "lit-html";
 import { createToolRegistry } from "@jxsuite/ai";
@@ -27,6 +23,9 @@ import { fileTurn, resetAiWrites, writesForTurn } from "../src/services/ai-write
 import { recordingContext } from "./harness/recording-context";
 import { clearStudioStorage } from "../src/services/profile";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
+import { createCommandRegistry } from "../src/commands/registry";
+import { emptyContext } from "../src/commands/context";
+import { setActiveRegistry } from "../src/commands/active-registry";
 
 import type { ProjectToolsCtx } from "../src/services/ai-project-tools";
 
@@ -41,14 +40,11 @@ void mock.module("../src/settings/section-registry", () => ({
     paneListeners.push(listener);
     return () => {};
   },
-  setSettingsSection: () => {
-    throw new Error("chunk load failed");
-  },
 }));
 
 const { renderCssVarsEditor } = await import("../src/settings/css-vars-editor");
 const { contextsError, renderContextsSection } = await import("../src/settings/contexts-section");
-const { detachSettingsPane, renderSettingsPane } = await import("../src/panels/settings-pane");
+const { mountSettingsPane } = await import("../src/panels/settings-pane");
 const { registerProjectTools } = await import("../src/services/ai-project-tools");
 
 // ─── services/profile.ts — a profile with no store to clear ──────────────────
@@ -131,9 +127,28 @@ describe("contextsError", () => {
 
 // ─── settings/css-vars-editor.ts — "Manage contexts…" that cannot navigate ───
 
-describe("css vars — Manage contexts when the section cannot be opened", () => {
+describe("css vars — Manage contexts when Settings refuses to open", () => {
   test("files a Problem naming the failure instead of dropping it", async () => {
     installMockPlatform();
+    /* The link runs `settings.open { section: "contexts" }` through the registry, because the
+       editor is hosted outside Settings; a record that throws is what a broken command looks like
+       to it, and the refusal is filed under the editor's surface name. */
+    const commands = createCommandRegistry({ getContext: emptyContext });
+    const asked: unknown[] = [];
+    commands.registerAll([
+      {
+        category: "Project",
+        id: "settings.open",
+        level: "application",
+        menus: ["palette"],
+        run: (_ctx, args) => {
+          asked.push(args);
+          throw new RangeError("chunk load failed");
+        },
+        title: "Open Project Settings",
+      },
+    ]);
+    setActiveRegistry(commands);
     resetStudioState({
       projectConfig: {
         $media: { "--sm": "(max-width: 600px)" },
@@ -152,19 +167,22 @@ describe("css vars — Manage contexts when the section cannot be opened", () =>
     pointer(link!, "click");
     await flush(4);
 
+    expect(asked).toEqual([{ section: "contexts" }]);
     expect(problems).toHaveLength(1);
-    expect(problems[0]!.message).toBe("Could not open Settings › Contexts — chunk load failed");
+    expect(problems[0]!.message).toBe("chunk load failed");
     expect(problems[0]!.source).toBe("Settings");
     expect(problems[0]!.severity).toBe("error");
     resetNotifications();
+    setActiveRegistry(null);
   });
 });
 
-// ─── panels/settings-pane.ts — the two guards in draw() ──────────────────────
+// ─── panels/settings-pane.ts — the guards in draw() ──────────────────────────
 
-describe("the settings pane's draw guards", () => {
+describe("the settings editor's draw guards", () => {
   let host: HTMLElement;
   let renders = 0;
+  let pane: { dispose: () => void } | null = null;
 
   beforeEach(() => {
     installMockPlatform();
@@ -185,33 +203,34 @@ describe("the settings pane's draw guards", () => {
   });
 
   afterEach(() => {
-    detachSettingsPane("primary");
+    pane?.dispose();
+    pane = null;
     registry.unregisterSettingsSection("gapsOnly");
     registry.resetSettingsDocumentState();
   });
 
   /**
-   * Mount the pane and let its chrome land.
+   * Mount the editor and let its chrome land.
    *
-   * The chrome is a document now (`surfaces/settings-pane.json`), so the island a section renders
-   * into does not exist until the mount settles — the first synchronous `draw` returns at it, and
-   * the pass that reaches a section renderer is the one the mount's own `ready` schedules.
+   * The chrome is a document (`surfaces/settings-pane.json`), so the island a section renders into
+   * does not exist until the mount settles: the pass that reaches a section renderer is the one the
+   * mount's own `ready` schedules.
    */
   async function mount(): Promise<void> {
-    renderSettingsPane(surfaceOf(host));
+    pane = mountSettingsPane(host, { openMoved: () => {} });
     await flush(3);
   }
 
   /** The island a section is drawn into, addressed by `part` rather than by a class. */
   function body(): HTMLElement | null {
-    return host.querySelector('[part="body"]');
+    return host.querySelector('[part="section-host"]');
   }
 
-  test("a change notification for a detached pane is a no-op, not a null dereference", async () => {
+  test("a change notification for a disposed editor is a no-op, not a null dereference", async () => {
     await mount();
     expect(renders).toBe(1);
 
-    detachSettingsPane("primary");
+    pane!.dispose();
     /* The unsubscribe is stubbed in this file, so the listener outlives its panel — the state the
        guard exists for. It must draw nothing rather than reach through the missing record. */
     paneListeners[0]!();
@@ -220,52 +239,28 @@ describe("the settings pane's draw guards", () => {
     expect(renders).toBe(1);
   });
 
-  test("an idle remount leaves the section body standing, half-typed form and all", async () => {
+  test("a change redraws the section into the SAME host, so a half-typed field keeps its caret", async () => {
     await mount();
     expect(renders).toBe(1);
+    const sectionHost = body()!.firstElementChild;
 
-    /* Stands in for the open inline form the idempotence exists to protect: a node the SECTION
-       owns, holding state no redraw could restore because the user typed it and it has not been
-       written back to the document yet. The section renderer replaces `textContent`, so this node
-       survives exactly as long as the renderer is not re-run. */
-    const halfTyped = document.createElement("input");
-    halfTyped.value = "half-typed";
-    body()!.append(halfTyped);
-
-    renderSettingsPane(surfaceOf(host));
-    renderSettingsPane(surfaceOf(host));
-    await flush(3);
-
-    expect(renders).toBe(1);
-    const survivor = host.querySelector('[part="body"] input');
-    expect(survivor).toBe(halfTyped);
-    expect(halfTyped.value).toBe("half-typed");
-  });
-
-  test("…and a real change still redraws — the guard is idempotence, not inertia", async () => {
-    await mount();
-    expect(renders).toBe(1);
-
-    /* The document announcing a change draws with `force`, which is the half of the guard that
-       must NOT be suppressed. Without this the test above would be satisfied by a pane that never
-       redraws at all. */
+    /* The registry announcing a change draws with `force`; the section is the same one, so its
+       renderer runs again into the element it drew into last time rather than a fresh one. */
     paneListeners[0]!();
     await flush();
 
     expect(renders).toBe(2);
     expect(body()?.textContent).toBe("render 2");
+    expect(body()!.firstElementChild).toBe(sectionHost);
   });
 
-  test("detaching takes the chrome down, and the pane re-mounts cleanly afterwards", async () => {
+  test("disposing takes the chrome down, and the editor re-mounts cleanly afterwards", async () => {
     await mount();
     expect(renders).toBe(1);
 
-    /* What the canvas's mode change does: `detachSettingsPane` and then blank the container that
-       held the stage (`canvas/canvas-render.ts`). Detaching is a TEARDOWN now rather than an
-       unsubscribe — the chrome is a mounted document holding a registry subscription and its own
-       effects, so the record disposes it — which is what makes the second half of this test the
-       assertion it always meant to be: nothing of the old pane survives to be re-used. */
-    detachSettingsPane("primary");
+    /* What closing the dialog does: dispose the editor, then the dialog removes the slot that held
+       it. Nothing of the old editor survives to be re-used. */
+    pane!.dispose();
     render(nothing, host);
     await flush();
 

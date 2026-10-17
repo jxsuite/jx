@@ -96,7 +96,6 @@ export function mount(deps: NavigatorPanelDeps) {
       // Shell state is tracked with no tab open — which panel is showing, and the project-level
       // State the project-level panels draw from. A document-less rail tab still repaints.
       void shell.leftTab;
-      void shell.settingsTab;
       void shell.git.status;
       void shell.git.loading;
       void shell.git.error;

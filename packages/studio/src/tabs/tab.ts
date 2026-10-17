@@ -20,17 +20,6 @@ import type { JsonLayout } from "@jxsuite/schema/json-layout";
  */
 export const PROJECT_CONFIG_PATH = "project.json";
 
-/**
- * The canvas mode the Project Settings editor (`settings/settings-document.ts`) draws under.
- *
- * `project.json` already declared `["stylebook", "source"]` (`inferModes`); this is the third
- * editor over the same document and it leads, because reaching configuration through a form is what
- * "Settings" means to everyone who is not reading the file. Defined in this leaf rather than in the
- * settings editor so that a reader of the bare mode (`workspace/tab-workspace.ts`, which the tab
- * strip imports) does not pull the whole Settings editor graph in with it.
- */
-export const SETTINGS_MODE = "settings";
-
 export interface TabUi {
   /** The Inspector leaf showing (`shell.ts`'s `INSPECTOR_TAB_IDS`); Page on a fresh tab (§6). */
   rightTab: string;

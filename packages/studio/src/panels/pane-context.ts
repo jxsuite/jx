@@ -333,21 +333,6 @@ function topBandHeight(surface: PaneContextSurfaceHandle): number {
   return Math.max(surface.band()?.offsetHeight ?? 0, PANE_CONTEXT_HEIGHT);
 }
 
-/**
- * Whether this tab's editor has any of the bar's three axes to offer.
- *
- * Project Settings has none: it declares one editor kind, no canvas view, and no rendering context
- * — and the one control the bar WOULD contribute, "Manage contexts…", routes to a section of the
- * very document on screen. A bar of three inert controls above the definition site they point at is
- * chrome that says nothing, so the stage takes the whole pane.
- *
- * @param {Tab} tab
- * @returns {boolean}
- */
-function wantsContextBar(tab: Tab): boolean {
-  return tab.session.ui.canvasMode !== "settings";
-}
-
 /** Project every attached pane's chrome. */
 export function render() {
   for (const [paneId, host] of _hosts) {
@@ -362,8 +347,7 @@ function renderPane(paneId: string, host: HTMLElement) {
   }
   try {
     const tab = tabOfPane(paneId);
-    const show = tab !== null && wantsContextBar(tab);
-    if (!show) {
+    if (tab === null) {
       disposePane(paneId);
       applyPaneContextOffset(0, host);
       return;

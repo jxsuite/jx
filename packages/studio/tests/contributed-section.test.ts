@@ -322,11 +322,12 @@ describe("map layout", () => {
   });
 
   test("an entry row and the editor carry the region a shot names them by", async () => {
+    // Under the settings dialog's own region, which is where a contributed section is drawn (§17.1).
     renderContributedSection(container, mapContribution);
     await settle();
-    expect(entryRow(container, "main").dataset.jxRegion).toBe("pane.primary/entry:main");
+    expect(entryRow(container, "main").dataset.jxRegion).toBe("overlay.dialog:settings/entry:main");
     await selectEntry(container, "main");
-    expect(part(container, "editor").dataset.jxRegion).toBe("pane.primary/editor");
+    expect(part(container, "editor").dataset.jxRegion).toBe("overlay.dialog:settings/editor");
   });
 
   test("selecting an entry renders its form; edits persist to the entry", async () => {

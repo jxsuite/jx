@@ -1,8 +1,8 @@
 /**
- * Canvas render — the three NON-IFRAME editor dispatches and the guards around them.
+ * Canvas render — the NON-IFRAME editor dispatches and the guards around them.
  *
- * Settings, Library and Entry are the modes whose panel owns its own reactivity: the render hands
- * the stage over once and every later repaint of the same tab must stop at the fast path instead of
+ * Library and Entry are the modes whose panel owns its own reactivity: the render hands the stage
+ * over once and every later repaint of the same tab must stop at the fast path instead of
  * rebuilding the pane. Both halves are asserted here — the hand-over (stage styling, the surface
  * and tab the panel was drawn for, and the `return` that keeps the design artboards off the stage)
  * and the fast path (a second repaint that draws nothing).
@@ -10,10 +10,12 @@
  * Plus the one interactive affordance a stale COMPANION offers — Pin, which ends the follow — and
  * the two early returns in `canvas/surface-registry.ts`.
  *
- * The three panel modules are mocked exactly as `canvas-render-gaps.test.ts` mocks the grid panel:
- * a spy that records the surface and tab it was handed, and a mounted-set the render path can then
- * observe. The real panels are unit-tested in `settings-document.test.ts`, `library-pane.test.ts`
- * and `entry-editor.test.ts`; what is under test here is the dispatch.
+ * The panel modules are mocked exactly as `canvas-render-gaps.test.ts` mocks the grid panel: a spy
+ * that records the surface and tab it was handed, and a mounted-set the render path can then
+ * observe. The real panels are unit-tested in `library-pane.test.ts` and `entry-editor.test.ts`;
+ * what is under test here is the dispatch. Project Settings is not a canvas mode any more: it is a
+ * dialog (§17.1), and a tab that names the retired `settings` mode is drawn as any unknown mode
+ * is.
  */
 import {
   flush,
@@ -172,13 +174,6 @@ void mock.module("../src/content/entry-editor.js", () => ({
   setEntryDraft: () => {},
 }));
 
-const settings = panelDouble("settings-marker");
-void mock.module("../src/panels/settings-pane.js", () => ({
-  detachSettingsPane: settings.detach,
-  renderSettingsPane: settings.render,
-  settingsPaneMounted: (surface: CanvasSurface) => settings.mounted.has(surface.paneId),
-}));
-
 const { initCanvasRender, renderCanvas } = await import("../src/canvas/canvas-render");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
@@ -218,7 +213,7 @@ beforeEach(() => {
   resetStudioState({ isSiteProject: true });
   closeAllTabs();
   setFormats([]);
-  for (const double of [library, entry, settings]) {
+  for (const double of [library, entry]) {
     double.render.mockClear();
     double.detach.mockClear();
     double.mounted.clear();
@@ -246,20 +241,15 @@ afterEach(() => {
 // ─── The non-iframe editor modes ──────────────────────────────────────────────
 
 describe("the modes whose panel owns its own reactivity", () => {
-  test("settings hands the stage to the Project Settings editor and draws nothing else", async () => {
+  test("the retired settings mode hands the stage to no editor of its own", async () => {
     setMode("settings");
     renderCanvas();
     await flush();
 
-    expect(settings.render).toHaveBeenCalledTimes(1);
-    expect(settings.render.mock.calls[0]![0]).toBe(surfaceForPane(PRIMARY_PANE));
-    // The stage is the editor's: full-bleed and a block, not the flex row the artboards want.
-    expect(stage().style.padding).toBe("0px");
-    expect(stage().style.display).toBe("block");
-    // …and the dispatch STOPS here. Falling through would build the design surface over the
-    // Editor — a panzoom wrap and an artboard on a stage the settings editor already owns.
-    expect(stage().querySelector('[part="panzoom"]')).toBeNull();
-    expect(canvasPanels).toHaveLength(0);
+    // Nothing claims it: no panel double ran, and the stage was not styled for a full-bleed editor.
+    expect(library.render).not.toHaveBeenCalled();
+    expect(entry.render).not.toHaveBeenCalled();
+    expect(stage().style.display).not.toBe("block");
   });
 
   test("manage hands the stage to the Library, for THIS pane's tab, and draws nothing else", async () => {

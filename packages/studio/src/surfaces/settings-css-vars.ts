@@ -23,7 +23,7 @@
  * two containers may be showing this section at once; a single module-level mount would take the
  * first one's surface away from it the moment the second drew.
  *
- * @docs studio/projects/settings
+ * @docs studio/design/tokens
  */
 
 import { reactive } from "../reactivity";

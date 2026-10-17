@@ -104,10 +104,6 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
      class imported for …", advice that means nothing about a PNG. */
   ["media", "media"],
   ["preview", "canvas"],
-  /* Project Settings — `settings/settings-document.ts`'s SETTINGS_MODE. A form over `project.json`,
-     which is a configuration object and not a document tree; `stylebook` (Project Styles) is the
-     second editor over that same document and answers `config` for the same reason. */
-  ["settings", "config"],
   ["source", "code"],
   ["stylebook", "config"],
 ]);
@@ -117,8 +113,7 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
  *
  * An unknown mode reads as Canvas, and that default is only for modes STUDIO DOES NOT OWN: a format
  * declares its own list (`format.studio.modes`) and every mode declared that way is a view of the
- * artboard. A mode Studio itself introduces is not covered by it and belongs in the map above —
- * which is what `settings` was not.
+ * artboard. A mode Studio itself introduces is not covered by it and belongs in the map above.
  */
 /**
  * Human names for the editor kinds, so no surface prints an enum at a reader — and so two surfaces

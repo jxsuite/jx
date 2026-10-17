@@ -10,12 +10,14 @@
  *   a content collection owns (collection-match.ts is the one matcher), because an entry is written
  *   in Content even when it is opened from somewhere else.
  * - **Media**: the media home and every media file's viewer.
- * - **Styles**: `project.json` in any editor but its settings form.
+ * - **Styles**: `project.json`, in either of its editors (Project Styles or the source). Project
+ *   Settings is a dialog over every workspace (§17.1), not a tab, so it belongs to none.
  * - **Publish**: the publish home and every comparison (`git-diff`).
  * - **Design**: everything else: pages, templates, components and every other file.
  *
- * The rules read the tab's CURRENT editor, so switching `project.json` from its settings form to
- * its stylebook moves the tab to Styles, and `workspace/workspace-switch.ts` follows it there.
+ * The rules read the tab's CURRENT editor, so switching an entry from its form to the canvas keeps
+ * it in Content while a grid's kind decides between Content and Design, and
+ * `workspace/workspace-switch.ts` follows the tab wherever that puts it.
  *
  * @docs studio/interface
  */
@@ -25,7 +27,7 @@ import { workspace } from "./workspace";
 import { homeWorkspaceOfTabId } from "./workspace-ids";
 import { parseGridTabId } from "../grid/grid-source";
 import { collectionForFile } from "../content/collection-match";
-import { PROJECT_CONFIG_PATH, SETTINGS_MODE } from "../tabs/tab";
+import { PROJECT_CONFIG_PATH } from "../tabs/tab";
 import type { Pane } from "./workspace";
 import type { WorkspaceId } from "./workspace-ids";
 import type { Tab } from "../tabs/tab";
@@ -55,7 +57,7 @@ export function workspaceOfTab(tab: Tab): WorkspaceId {
     return grid.kind === "data" ? "design" : "content";
   }
   if (tab.documentPath === PROJECT_CONFIG_PATH) {
-    return mode === SETTINGS_MODE ? "design" : "styles";
+    return "styles";
   }
   const collection = collectionForFile(tab.documentPath);
   if (collection && !collection.fileBacked) {

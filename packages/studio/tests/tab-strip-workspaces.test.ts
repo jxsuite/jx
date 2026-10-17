@@ -97,12 +97,13 @@ describe("the strip follows the workspace", () => {
   });
 
   test("a tab whose editor moves it to another workspace leaves this strip", async () => {
-    const config = open("project.json", "project.json", "settings");
+    // An entry form is Content's whatever document it is over (`workspace/tab-workspace.ts`).
+    const about = open("pages/about.json", "pages/about.json", "edit");
     open("pages/index.json");
     shell.workspace = "design";
     await flush();
-    expect(labels()).toEqual(["project.json", "/"]);
-    config.session.ui.canvasMode = "stylebook";
+    expect(labels()).toEqual(["/about", "/"]);
+    about.session.ui.canvasMode = "entry";
     await flush();
     expect(labels()).toEqual(["/"]);
   });

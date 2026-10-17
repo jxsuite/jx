@@ -198,19 +198,19 @@ describe("data.openGrid", () => {
 });
 
 describe("settings.open", () => {
-  test("opens on Overview with no argument", async () => {
+  test("opens on Overview with no argument, as a dialog rather than a tab", async () => {
     await registry.run("settings.open");
     expect(settingsDocumentSection()).toBe("overview");
-    expect(workspace.tabs.get("project.json")).toBeDefined();
+    expect(workspace.tabs.get("project.json")).toBeUndefined();
   });
 
   test("opens on a built-in section", async () => {
-    await registry.run("settings.open", { section: "cssVars" });
-    expect(settingsDocumentSection()).toBe("cssVars");
+    await registry.run("settings.open", { section: "contexts" });
+    expect(settingsDocumentSection()).toBe("contexts");
   });
 
-  test("RETARGETS an already-open document — the predecessor was open-once-then-inert", async () => {
-    await registry.run("settings.open", { section: "cssVars" });
+  test("RETARGETS an already-open dialog — the predecessor was open-once-then-inert", async () => {
+    await registry.run("settings.open", { section: "contexts" });
     await registry.run("settings.open", { section: "head" });
     expect(settingsDocumentSection()).toBe("head");
   });

@@ -167,16 +167,15 @@ const INSTANCE_SCAN = [
   "src/content/entry-editor.ts",
   "src/browse/library-pane.ts",
   "src/panels/frontmatter-panel.ts",
-  "src/panels/settings-pane.ts",
   "src/canvas/canvas-render.ts",
 ];
 
 /**
  * A module-scope mutable holding ONE of something a stage owns.
  *
- * Deliberately shallow: it matches the names these six modules actually used, at column zero, which
- * is what a re-introduction would look like. A guard that tried to understand the code would be a
- * type checker, and the point of this file is that the type checker cannot see the problem.
+ * Deliberately shallow: it matches the names these modules actually used, at column zero, which is
+ * what a re-introduction would look like. A guard that tried to understand the code would be a type
+ * checker, and the point of this file is that the type checker cannot see the problem.
  */
 const INSTANCE_RE = /^let (active|_active|_host|_scheduler|sourceCollabCleanup)\b/gm;
 

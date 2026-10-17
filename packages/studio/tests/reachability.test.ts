@@ -89,6 +89,24 @@ const TEST_SEAM = "test/host seam — the app takes the async path beside it";
 const TEST_OBS = "observability accessor — only its own tests read the private state through it";
 
 /**
+ * The CSS Variables editor, and everything only it calls, between two hosts.
+ *
+ * Project Settings became a dialog of General, Integrations and Advanced (`studio.md` §17.1), and
+ * the project's design tokens left it for the Styles workspace's Variables view (§22), which its
+ * Moved footnote names. That view does not exist yet, so the editor is built, tested and reached by
+ * nothing for exactly as long as it takes to land. Deleting it now would delete the editor the
+ * Variables view is written to host. Every line below goes in the change that mounts it.
+ */
+const AWAITING_STYLES =
+  "the CSS Variables editor, between hosts: it left Project Settings (§17.1) for the Styles " +
+  "workspace's Variables view (§22), which mounts it and deletes this line";
+
+/** The Deploy section, the same way: it left Project Settings for the Publish workspace's Hosting. */
+const AWAITING_PUBLISH =
+  "the Deploy section, between hosts: it left Project Settings (§17.1) for the Publish " +
+  "workspace's Hosting view (§22), which mounts it and deletes this line";
+
+/**
  * Functions the app cannot reach, by file — and WHY each one is still here.
  *
  * The list only ratchets down: a new entry is a new defect, and the gate below says so by name. The
@@ -134,6 +152,7 @@ const KNOWN_UNREACHABLE = {
       "ordering with. It exists so tests need no live iframe, which is why the app never calls it",
   },
   "canvas/iframe-host.ts": {
+    postSiteStyleToLiveHosts: AWAITING_STYLES,
     adoptDragSession:
       "the parent half of DnD flow 3 (grab-anywhere), and the only half there is. " +
       "`iframe-protocol.ts` carries the flow-3 comment but declares no message variant to START " +
@@ -376,12 +395,42 @@ const KNOWN_UNREACHABLE = {
       "nothing asks for it",
   },
   "settings/section-registry.ts": { resetSettingsDocumentState: TEST_RESET },
+  "settings/css-vars-editor.ts": {
+    actions: AWAITING_STYLES,
+    addOverride: AWAITING_STYLES,
+    addToken: AWAITING_STYLES,
+    commit: AWAITING_STYLES,
+    config: AWAITING_STYLES,
+    contexts: AWAITING_STYLES,
+    form: AWAITING_STYLES,
+    groupOf: AWAITING_STYLES,
+    openContextsSection: AWAITING_STYLES,
+    overrideRow: AWAITING_STYLES,
+    pending: AWAITING_STYLES,
+    persist: AWAITING_STYLES,
+    refresh: AWAITING_STYLES,
+    renderCssVarsEditor: AWAITING_STYLES,
+    style: AWAITING_STYLES,
+    tokenRow: AWAITING_STYLES,
+    view: AWAITING_STYLES,
+    well: AWAITING_STYLES,
+  },
+  "settings/project-sections.ts": {
+    deployActions: AWAITING_PUBLISH,
+    deployValues: AWAITING_PUBLISH,
+    persist: AWAITING_PUBLISH,
+    renderDeploySection: AWAITING_PUBLISH,
+  },
+  "surfaces/settings-css-vars.ts": {
+    derive: AWAITING_STYLES,
+    renderCssVarsSurface: AWAITING_STYLES,
+  },
+  "surfaces/settings-deploy.ts": {
+    mountDeploySurface: AWAITING_PUBLISH,
+    project: AWAITING_PUBLISH,
+  },
+  "style/live-preview.ts": { pushProjectStylesToCanvas: AWAITING_STYLES },
   "settings/settings-document.ts": {
-    activeSettingsSection:
-      "which section the settings editor shows, or null when it is not the active editor. " +
-      "Composed from two live functions and read by nobody",
-    settingsDocumentOpen:
-      "internal-only now: `activeSettingsSection` is its one caller and is itself unreachable",
     settingsSectionsReady:
       '"the readiness `probe.idle()` and the command both need" — and `services/idle.ts` does ' +
       "not list it. Contributed settings sections can still be syncing when a capture is taken " +
@@ -397,6 +446,15 @@ const KNOWN_UNREACHABLE = {
       "down and ten lines leave the ledger together",
   },
   "style/project-styles.ts": {
+    addableContexts: AWAITING_STYLES,
+    groupIdOfToken: AWAITING_STYLES,
+    groupTokens: AWAITING_STYLES,
+    listTokenContexts: AWAITING_STYLES,
+    listTokens: AWAITING_STYLES,
+    overrideBlock: AWAITING_STYLES,
+    readTokenOverride: AWAITING_STYLES,
+    tokenLabel: AWAITING_STYLES,
+    writeTokenOverride: AWAITING_STYLES,
     tokenOverrides:
       "every context in which a token already carries an override. The Stylebook's token rows " +
       "show the ACTIVE context's value; this cross-context summary is drawn nowhere",
@@ -457,13 +515,19 @@ const KNOWN_UNREACHABLE = {
 /**
  * Modules under `src/` that nothing imports at all — dead in the same way, one level up.
  *
- * Empty, and it must stay that way: a module nothing imports is not debt to schedule, it is a file
- * to delete. `canvas/canvas-diff.ts` (a document-tree visual diff — the shipped Diff is the
- * `git-diff` editor kind, a text diff) and `canvas/nested-site-style.ts` (a nested-style-object CSS
- * builder with no producer of nested style objects) were the two, and both are gone.
+ * A module nothing imports is not debt to schedule, it is a file to delete, with one exception: a
+ * finished surface between two hosts. `canvas/canvas-diff.ts` (a document-tree visual diff — the
+ * shipped Diff is the `git-diff` editor kind, a text diff) and `canvas/nested-site-style.ts` (a
+ * nested-style-object CSS builder with no producer of nested style objects) were deleted under that
+ * rule. The three below are the exception and one decision: the CSS Variables editor, which left
+ * Project Settings for a Styles workspace view that has not landed ({@link AWAITING_STYLES}). That
+ * view imports them and empties this set again.
  */
-/** Modules nothing imports yet, each with its reason in {@link KNOWN_UNREACHABLE}. */
-const KNOWN_UNREACHABLE_MODULES = new Set<string>();
+const KNOWN_UNREACHABLE_MODULES = new Set<string>([
+  "settings/css-vars-editor.ts",
+  "style/live-preview.ts",
+  "surfaces/settings-css-vars.ts",
+]);
 
 const LEDGER = new Map<string, string>(
   Object.entries(KNOWN_UNREACHABLE).flatMap(([file, entries]) =>

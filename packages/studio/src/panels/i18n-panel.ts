@@ -542,8 +542,10 @@ let rerender: () => void = () => {};
 
 /** What the document's three controls do. Every one of them is a decision this module owns. */
 const ACTIONS: I18nActions = {
+  /* On Locales, not wherever Project Settings was last left: the empty state's one sentence is
+     "declare your languages", and the dialog remembers its section for the session (§17.1). */
   openSettings: () => {
-    runByName(SETTINGS_COMMAND);
+    runByName(SETTINGS_COMMAND, { section: "locales" });
   },
   rescan: () => {
     refreshParityScan();

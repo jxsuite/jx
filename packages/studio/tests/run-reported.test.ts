@@ -233,7 +233,6 @@ const NOT_YET_CONVERTED = new Set([
   "panels/style-panel.ts",
   "publish/deploy-checklist.ts",
   "publish/publish-panel.ts",
-  "settings/general-settings.ts",
 ]);
 
 /** `registry.run(`, `registry?.run(`, `activeRegistry()?.run(`, `contextMenuRegistry().run(`. */

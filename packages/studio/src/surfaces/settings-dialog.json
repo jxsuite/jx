@@ -1,0 +1,51 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsDialog",
+  "$description": "Project Settings (§17.1): a `jx-dialog` whose body is the settings editor's two columns, the grouped section list and the section body. The dialog owns modality, Escape and focus restoration, and its one footer answer is Close: every section writes as it is edited, so there is nothing to confirm or cancel. The body is an ISLAND: this document draws the slot and nothing in it, and `settings/settings-dialog.ts` mounts `settings-pane.json` there through `onNodeCreated` (studio-ui-guidelines.md §9.4).",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Project settings",
+    "confirmLabel": "",
+    "cancelLabel": "Close",
+    "size": "xl"
+  },
+  "attributes": {
+    "part": "settings"
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "pane-slot"
+      },
+      "style": {
+        "$description": "The editor's box is its own (`settings-pane.json`); the slot only gives it the dialog body's width.",
+        "minWidth": "0"
+      }
+    }
+  ]
+}

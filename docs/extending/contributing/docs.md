@@ -51,7 +51,7 @@ Your page is also published for machines. After `jx build`, the site build runs 
 - Sentence-case headings; one H1 matching the frontmatter title.
 - Studio and Start pages assume no code knowledge. Code belongs in Framework/Extending pages, or inside a `:::doc-note` aside.
 - Bold for clickable UI labels (**Commit & Sync**); `:kbd[Ctrl+K]` for keys (give macOS and Windows/Linux pairs on first mention); backticks only for literal code, filenames, and JSON keys.
-- Chevron click paths for navigation chains: _Settings > CSS Variables_.
+- Chevron click paths for navigation chains: _Settings > Advanced > Contexts_.
 - American English, short paragraphs, no marketing superlatives.
 
 ### Write it the way you would say it

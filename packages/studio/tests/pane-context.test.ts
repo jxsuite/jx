@@ -335,16 +335,6 @@ describe("the bar", () => {
     expect(part("bar")).toBeNull();
   });
 
-  test("Project Settings gets no bar at all — three inert controls above their own definition site", async () => {
-    const tab = openTestTab();
-    await mountBar();
-    expect(part("bar")).not.toBeNull();
-    tab.session.ui.canvasMode = "settings";
-    await flush(6);
-    expect(part("bar")).toBeNull();
-    expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("0px");
-  });
-
   test("no read-only banner while the document has no collaboration to report", async () => {
     openTestTab();
     await mountBar();

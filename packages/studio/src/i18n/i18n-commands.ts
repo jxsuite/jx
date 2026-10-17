@@ -127,6 +127,7 @@ function siblingPath(documentPath: string, locale: string): string | null {
   if (i18n === null || !i18n.locales.includes(locale)) {
     notify.error(`This project does not declare ${localeLabel(locale)}.`, {
       action: "settings.open",
+      actionArgs: { section: "locales" },
       detail: "Add it in Settings › Locales, or with the Add Language command.",
       source: "Languages",
     });

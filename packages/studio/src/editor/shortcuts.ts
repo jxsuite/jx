@@ -1010,7 +1010,6 @@ const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
   "media-home",
   "preview",
   "publish-home",
-  "settings",
 ]);
 
 /**
