@@ -74,7 +74,7 @@ beforeAll(async () => {
     "ext/withdata.js",
     `export class WithData {
   static projectData(sectionValue, ctx) {
-    return { root: ctx.root, section: sectionValue, sawRegistry: Boolean(ctx.registry), sawIo: Boolean(ctx.io) };
+    return { root: ctx.root, section: sectionValue, sawRegistry: Boolean(ctx.registry), sawIo: Boolean(ctx.io), ...("lazy" in ctx && { lazy: ctx.lazy }) };
   }
 }
 `,
@@ -97,6 +97,15 @@ describe("loadProjectSections", () => {
       sawRegistry: true,
       section: { a: 1 },
     });
+  });
+
+  /* A host that serves one page at a time asks for sections on demand (extensions.md §8); a build
+     does not, and its owners must not see the key at all. */
+  it("tells owners the host wants their sections on demand only when it does", async () => {
+    const lazy = await loadProjectSections(TMP, projectConfig, registry, { lazy: true });
+    expect(lazy.stuff).toMatchObject({ lazy: true });
+    const built = await loadProjectSections(TMP, projectConfig, registry, { lazy: false });
+    expect(built.stuff).not.toHaveProperty("lazy");
   });
 
   it("returns nothing without a project config, even with contributions registered", async () => {

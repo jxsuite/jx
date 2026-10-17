@@ -2,11 +2,13 @@
 title: "Project sections and settings"
 description: "Owning a project.json section: the project block, projectData and resolvePaths capabilities, and contributing a settings section to Studio."
 spec:
+  - extensions.md#8
   - extensions.md#9
   - extensions.md#9.1
   - extensions.md#8.5
 code:
   - extensions/parser/src/Content.class.json
+  - extensions/parser/src/content-data.ts
   - extensions/auth/src/Auth.class.json
 ---
 
@@ -41,10 +43,38 @@ The section's **value schema is not duplicated here**. It lives in the package's
 Behavior attaches through [capability methods](/docs/extending/extensions/capabilities) on the same class. The `projectData` capability turns the raw section value into loaded data:
 
 ```text
-projectData(sectionValue, { projectConfig, root, registry, io }) → unknown
+projectData(sectionValue, { projectConfig, root, registry, io, lazy? }) → unknown
 ```
 
-The compiler's site build and the dev server's resolve path both call it, storing the result as `_project[<key>]` in resolved scope, so the parser's `projectData` loads every content type through the format registry and pages see the entries as `config._project.content`. The auth extension's `projectData` is nearly a passthrough: it exposes the section's identifiers under `_project.auth` (never secrets).
+The compiler's site build and the dev server's resolve path both call it, storing the result as `_project[<key>]` in resolved scope, so the parser's `projectData` loads content types through the format registry and pages see the entries as `config._project.content`. The auth extension's `projectData` is nearly a passthrough: it exposes the section's identifiers under `_project.auth` (never secrets).
+
+### Loading on demand
+
+A build reads every part of every section, so it calls `projectData` without `lazy` and gets everything at once. The dev server and Studio serve one page at a time, so they pass `lazy: true`. An owner may then return data that loads each part the first time a class asks for it, with the same shape a whole load has, plus a `complete()` method that loads the rest. An owner that ignores `lazy` returns whole data, and every host reads it unchanged.
+
+The parser's `content` section uses this. With `lazy`, `_project.content` starts empty: a collection loads the first time it is asked for, with only its frontmatter, and an entry's Markdown body is parsed only when that entry is returned. A page that shows four case studies parses four bodies instead of every collection in the project.
+
+A class written against a whole section still gets one. Unless its implementation declares `static projectOnDemand = true`, the server calls each section's `complete()` before constructing it, so a synchronous `_project.content.get("posts")` sees every entry with its body, as in a build. To get the on-demand speed in your own class, read the section the way `ContentCollection` does and declare the flag:
+
+```js
+export class LatestPosts {
+  static projectOnDemand = true;
+
+  constructor(config) {
+    this.config = config;
+  }
+
+  async resolve() {
+    const content = this.config._project?.content;
+    const posts = (await content?.load?.("posts")) ?? content?.get("posts") ?? [];
+    const latest = posts.slice(0, 3);
+    await content?.materialize?.(latest);
+    return latest;
+  }
+}
+```
+
+`load` and `materialize` are optional, so the same code reads a whole section (a build, or a plain `Map` in a test) unchanged.
 
 ## Expanding routes: `resolvePaths` and discriminators
 

@@ -208,15 +208,46 @@ async function loadProjectContext(projectRoot: string): Promise<ProjectContext |
   if (!entry) {
     return null;
   }
-  entry.context ??= loadProjectSections(projectRoot, entry.config, entry.registry).then(
-    (sections) => ({ config: entry.config, root: projectRoot, ...sections }),
-  );
+  entry.context ??= loadProjectSections(projectRoot, entry.config, entry.registry, {
+    lazy: true,
+  }).then((sections) => ({ config: entry.config, root: projectRoot, ...sections }));
   try {
     return await entry.context;
   } catch {
     // A failed load is not remembered: the next class to ask tries again.
     entry.context = undefined;
     return null;
+  }
+}
+
+/**
+ * Whether a class reads `_project` through its sections' on-demand methods, by declaring `static
+ * projectOnDemand = true` (specs/extensions.md §8). The sections here are loaded lazily, so a class
+ * that reads one synchronously (a `content.get(type)`) would find nothing it had not loaded; such a
+ * class is handed every section whole instead, exactly what it was always given.
+ */
+function readsProjectOnDemand(ExportedClass: ExportedFunction | ExportedConstructor): boolean {
+  return "projectOnDemand" in ExportedClass && ExportedClass.projectOnDemand === true;
+}
+
+/** A section an owner loaded on demand: `complete()` makes it whole (extensions.md §8). */
+interface OnDemandSection {
+  complete: () => Promise<void>;
+}
+
+/** Whether a project-context value is a section loaded on demand, by its `complete` method. */
+function isOnDemandSection(
+  value: ProjectContext[string],
+): value is ProjectContext[string] & OnDemandSection {
+  return isNonNullObject(value) && "complete" in value && isFunction(value.complete);
+}
+
+/** Make every section of a project context whole, for a class that reads them synchronously. */
+async function completeSections(context: ProjectContext): Promise<void> {
+  for (const value of Object.values(context)) {
+    if (isOnDemandSection(value)) {
+      await value.complete();
+    }
   }
 }
 
@@ -387,6 +418,9 @@ export async function handleResolve(
             status: 500,
           });
         }
+        if (config._project && !readsProjectOnDemand(ExportedClass)) {
+          await completeSections(config._project);
+        }
         /* SAFETY: trust boundary. A class file's `$implementation` names the module exporting the
            class it describes, whose constructor takes one config object (spec.md §12.3, §12.4).
            It is a function, checked above; one that is not constructible throws here, inside the
@@ -395,7 +429,10 @@ export async function handleResolve(
         return Response.json(await instanceResult(new ClassCtor(config)));
       }
 
-      // Self-contained: construct class from schema
+      // Self-contained: construct class from schema. Its JSON bodies cannot await a section.
+      if (config._project) {
+        await completeSections(config._project);
+      }
       const DynClass = classFromSchema(classDef);
       return Response.json(await instanceResult(new DynClass(config)));
     } catch (error) {
