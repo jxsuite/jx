@@ -1,5 +1,26 @@
 # Changelog
 
+## [3.0.0](https://github.com/jxsuite/jx/compare/parser-v2.0.1...parser-v3.0.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* a single-expression Shape 3 entry is no longer always a string; "${state.count}" is now the number, not its text.
+
+### Bug Fixes
+
+* cold-open component timeouts, shell-preview 403s, and typed single-expression state templates ([#460](https://github.com/jxsuite/jx/issues/460)) ([882a537](https://github.com/jxsuite/jx/commit/882a53770e0acd6b007319d3dcc258cc5255345b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 0.4.13
+    * @jxsuite/schema bumped to 4.0.0
+  * devDependencies
+    * @jxsuite/runtime bumped to 5.0.0
+
 ## [2.0.1](https://github.com/jxsuite/jx/compare/parser-v2.0.0...parser-v2.0.1) (2026-10-11)
 
 

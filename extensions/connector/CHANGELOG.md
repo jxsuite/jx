@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.3](https://github.com/jxsuite/jx/compare/connector-v0.6.2...connector-v0.6.3) (2026-10-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 4.0.0
+
 ## [0.6.2](https://github.com/jxsuite/jx/compare/connector-v0.6.1...connector-v0.6.2) (2026-10-06)
 
 

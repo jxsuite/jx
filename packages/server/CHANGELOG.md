@@ -1,5 +1,37 @@
 # Changelog
 
+## [5.0.0](https://github.com/jxsuite/jx/compare/server-v4.5.1...server-v5.0.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* a single-expression Shape 3 entry is no longer always a string; "${state.count}" is now the number, not its text.
+
+### Bug Fixes
+
+* cold-open component timeouts, shell-preview 403s, and typed single-expression state templates ([#460](https://github.com/jxsuite/jx/issues/460)) ([882a537](https://github.com/jxsuite/jx/commit/882a53770e0acd6b007319d3dcc258cc5255345b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.39.4
+    * @jxsuite/catalog bumped to 0.1.1
+    * @jxsuite/collab bumped to 0.11.2
+    * @jxsuite/compiler bumped to 6.0.0
+    * @jxsuite/create bumped to 1.3.15
+    * @jxsuite/import bumped to 0.40.11
+    * @jxsuite/protocol bumped to 3.0.0
+    * @jxsuite/runtime bumped to 5.0.0
+    * @jxsuite/schema bumped to 4.0.0
+    * @jxsuite/site bumped to 2.0.5
+    * @jxsuite/starters bumped to 2.0.2
+  * devDependencies
+    * @jxsuite/auth bumped to 0.6.3
+    * @jxsuite/connector bumped to 0.6.3
+    * @jxsuite/parser bumped to 3.0.0
+
 ## [4.5.1](https://github.com/jxsuite/jx/compare/server-v4.5.0...server-v4.5.1) (2026-10-16)
 
 
