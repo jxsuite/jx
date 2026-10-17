@@ -868,6 +868,20 @@ function readsRuntimeOnlyState(str: string, scope: JxScope | null) {
 }
 
 /**
+ * The JavaScript expression a Shape 3 template string compiles to (spec.md §5.3): the expression
+ * itself, parenthesized, when the template is ONE expression, so it keeps its own type, and a
+ * template literal otherwise, which is a string by construction. The same line
+ * {@link evaluateStaticTemplate} and the runtime draw, so a prerendered page, a hydrated component
+ * and Studio's canvas read `"${state.a === state.b}"` as the same boolean.
+ *
+ * @param {string} template - Template source, already rewritten to the target's state prefix
+ * @returns {string} A JavaScript expression
+ */
+export function templateValueSource(template: string): string {
+  return isSingleExpression(template) ? `(${template.slice(2, -1)})` : `\`${template}\``;
+}
+
+/**
  * @param {string} str
  * @param {JxScope | null} scope
  * @returns {unknown}

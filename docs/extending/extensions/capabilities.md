@@ -59,7 +59,7 @@ To find and invoke a capability, a host scans `$defs.methods` for the `role`, ta
 | `serialize`      | `format`    | `(doc, options?) → string`                                                                            | Studio (save), site build (export sidecars)                 |
 | `discover`       | `format`    | `(source, { baseDir }) → string[]`                                                                    | content loading (list entry files)                          |
 | `load`           | `format`    | `(path, { schema, directiveOptions }) → ContentLoaderEntry[]`                                         | content loading (parse one source)                          |
-| `projectData`    | `project`   | `(sectionValue, { projectConfig, root, registry, io }) → unknown`                                     | site build, dev server (result stored as `_project[<key>]`) |
+| `projectData`    | `project`   | `(sectionValue, { projectConfig, root, registry, io, lazy? }) → unknown`                              | site build, dev server (result stored as `_project[<key>]`) |
 | `resolvePaths`   | `project`   | `(pathsDef, { data, projectConfig, root, urlPattern, params, patterns }) → Record<string, unknown>[]` | pages discovery (`$paths` expansion), Studio preview        |
 | `lower`          | any         | `(def, context) → JxStateDefinition`                                                                  | compiler (rewrites a state def into a core shape)           |
 | `emit`           | `project`   | `(sectionValue, { projectConfig, root, sections, routes }) → EmitFile[]`                              | site build (writes derived assets into the build output)    |

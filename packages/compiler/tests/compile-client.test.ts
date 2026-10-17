@@ -703,6 +703,19 @@ describe("compileClient — template string state entries", () => {
     expect(js).toContain("computed(");
     expect(js).toContain("$label");
   });
+
+  /* Per spec.md §5.3, a single expression keeps its own type; a template with text around it is a
+     string. The same line the runtime and the build-time scope draw. */
+  test("a single expression keeps its type; a mixed template is a string", () => {
+    const doc = {
+      children: [{ tagName: "span", textContent: "${state.label}" }],
+      state: { empty: "${state.count === 0}", count: 0, label: "Items: ${state.count}" },
+      tagName: "div",
+    };
+    const js = compileClient(doc, { title: "Test" }).files[0]!.content;
+    expect(js).toContain("() => (state.count === 0)");
+    expect(js).toContain("() => `Items: ${state.count}`");
+  });
 });
 
 describe("compileClient — innerHTML and textContent edge cases", () => {
