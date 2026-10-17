@@ -300,6 +300,8 @@ void mock.module("node:child_process", () => ({ spawn: spawnMock }));
 process.argv[2] = FIXTURES;
 process.env.JX_STUDIO_ASSETS = STUDIO_ASSETS;
 process.env.CHROMIUM_BIN = "sh";
+// The Chromium shell is what this file drives; a developer's own ELECTRON_BIN must not switch it.
+delete process.env.ELECTRON_BIN;
 process.env.WAYLAND_DISPLAY ||= "wayland-test";
 /* The window registry is a real directory of real files shared by every launcher on the machine.
    Point it at the fixtures so a test run neither reads the developer's open windows (which would
@@ -344,6 +346,9 @@ console.log = (...args: unknown[]) => {
 };
 
 const chromiumIndex = await import("../src/chromium/index");
+// The shell is spawned once its command is composed, which is asynchronous (the Electron shell is
+// Bundled first); `launched` is that sequence.
+await chromiumIndex.launched;
 
 /* Snapshot the registry row the launcher published at boot. Read HERE, before any test re-roots
    the window, because the row is live state — `setWindowProject` rewrites it by design. */

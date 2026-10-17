@@ -3,6 +3,7 @@ import { basename, isAbsolute, resolve } from "node:path";
 import type { KeyValuePatch } from "@jxsuite/protocol";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import {
   codeService,
   createProject,
@@ -78,7 +79,6 @@ import {
 } from "../packages";
 import { openDirectoryDialog, openFileDialog } from "./utils";
 import { appInfo } from "./app-info";
-import { STUDIO_SHELL_PATH } from "./app-id";
 import {
   findWindowByRoot,
   listWindows,
@@ -91,6 +91,9 @@ import {
   watchFocusRequests,
 } from "./window-registry";
 import { createProjectServer } from "@jxsuite/server/project-server";
+import type { ImportApiOptions } from "@jxsuite/server/import-api";
+import { bundleElectronShell } from "../electron-shell/bundle";
+import { composeShellCommand, findElectron, shellIcon } from "./shell-command";
 import type { RpcHandler, RpcResult } from "@jxsuite/server/project-server";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonObject } from "@jxsuite/schema/types";
@@ -401,23 +404,31 @@ function findChromium(): string | null {
   return null;
 }
 
+/* The window's shell (shell-command.ts). Chromium is still looked for when Electron draws the
+   window, because it is the site import's headless browser: puppeteer cannot open a page in
+   Electron, which answers `Target.createTarget` with "Not supported". */
+const electronBin = findElectron(process.env);
 const chromiumBin = findChromium();
-if (!chromiumBin) {
+if (!chromiumBin && !electronBin) {
   console.error("[chromium] No chromium/chrome found. Install chromium or set CHROMIUM_BIN.");
   process.exit(1);
 }
 
-const projectServer = createProjectServer({
-  importApi: {
-    chromePath: chromiumBin,
-    resolveDest: (dir) => {
-      // The webview resolves the destination under a natively-picked parent before posting.
-      if (!isAbsolute(dir)) {
-        throw new Error("directory must be an absolute path");
-      }
-      return dir;
-    },
+const importApi: ImportApiOptions = {
+  resolveDest: (dir) => {
+    // The webview resolves the destination under a natively-picked parent before posting.
+    if (!isAbsolute(dir)) {
+      throw new Error("directory must be an absolute path");
+    }
+    return dir;
   },
+};
+if (chromiumBin) {
+  importApi.chromePath = chromiumBin;
+}
+
+const projectServer = createProjectServer({
+  importApi,
   resolveSession: () => defaultSession,
   studioDir,
 });
@@ -532,39 +543,35 @@ export function chromiumPlatformArgs(env: NodeJS.ProcessEnv = process.env): stri
   return args;
 }
 
-console.log(`[chromium] Launching: ${chromiumBin}`);
+let shellProcess: ChildProcess | undefined;
 
-const userDataDir = profileDir;
-seedChromiumPreferences(userDataDir);
+/** Start the window's shell (shell-command.ts), and end the launcher with it. */
+async function launch(): Promise<void> {
+  const command = await composeShellCommand(
+    { chromium: chromiumBin, electron: electronBin },
+    { platformArgs: chromiumPlatformArgs(), serverUrl, token: rpcToken, userDataDir: profileDir },
+    { bundle: bundleElectronShell, icon: shellIcon(), seedChromium: seedChromiumPreferences },
+  );
+  console.log(`[chromium] Launching ${command.shell}: ${command.bin}`);
+  const child = spawn(command.bin, command.args, { detached: false, stdio: "inherit" });
+  shellProcess = child;
+  child.on("close", (code) => {
+    console.log(`[chromium] Browser closed (code ${code})`);
+    process.exit(0);
+  });
+}
 
-const chromiumArgs = [
-  /* The shell path is a constant because Chromium bakes it into the window's app_id, which is the
-     only string a taskbar can match this window to `jx-studio.desktop` by (see app-id.ts). */
-  `--app=${serverUrl}${STUDIO_SHELL_PATH}?token=${rpcToken}`,
-  "--class=jx-studio",
-  "--no-first-run",
-  "--no-default-browser-check",
-  "--window-size=1400,900",
-  `--user-data-dir=${userDataDir}`,
-  ...chromiumPlatformArgs(),
-];
-
-const chrome = spawn(chromiumBin, chromiumArgs, {
-  detached: false,
-  stdio: "inherit",
-});
-
-chrome.on("close", (code) => {
-  console.log(`[chromium] Browser closed (code ${code})`);
-  process.exit(0);
-});
+/* Not a top-level await: Bun's test runtime drops the continuation of one in a module loaded by
+   dynamic import (see ../index.ts). `launched` lets tests await the same sequence. */
+// oxlint-disable-next-line unicorn/prefer-top-level-await
+export const launched = launch();
 
 process.on("SIGINT", () => {
-  chrome.kill();
+  shellProcess?.kill();
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
-  chrome.kill();
+  shellProcess?.kill();
   process.exit(0);
 });

@@ -45,7 +45,7 @@ sudo snap connect jx-studio:removable-media
 
 ## NixOS
 
-On NixOS the same desktop app is packaged as a Nix derivation rather than an installer, because its bundler cannot run in a Nix sandbox. It runs Studio in a Chromium app window and presents the identical editor.
+On NixOS the same desktop app is packaged as a Nix derivation rather than an installer, because its bundler cannot run in a Nix sandbox. It runs Studio in an Electron window from nixpkgs with the same title bar and window buttons as the other platforms, and presents the identical editor.
 
 ```bash
 nix run github:jxsuite/jx/release
@@ -63,7 +63,7 @@ Either form takes an optional project directory, as in `nix run github:jxsuite/j
 
 ### Fetch it instead of building it
 
-Released builds are published to a public [Cachix](https://cachix.org) cache, so the commands above can download Studio without compiling the monorepo on your machine. The rest of the closure, Chromium and Bun, already comes from `cache.nixos.org`.
+Released builds are published to a public [Cachix](https://cachix.org) cache, so the commands above can download Studio without compiling the monorepo on your machine. The rest of the closure (Electron, Chromium for site import, and Bun) already comes from `cache.nixos.org`.
 
 The flake names the cache itself, so Nix offers to use it the first time you run one of the commands above. Answer `y`, or pass `--accept-flake-config` to skip the prompt:
 

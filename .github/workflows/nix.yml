@@ -211,13 +211,13 @@ jobs:
         # NOT `jx-studio --help`: there is no --help. The first argument is the PROJECT ROOT, so
         # That command launches Chromium against a directory named "--help" and hangs a runner with
         # No display. What is worth asserting is what the derivation is FOR — that the wrapper
-        # Resolves, and that the two paths it exports exist, which is the failure mode
+        # Resolves, and that the paths it exports exist, which is the failure mode
         # `find -xtype l -delete` caused once already by pruning extensions/parser out of the bundle.
         run: |
           set -euo pipefail
           wrapper="$(readlink -f ./result)/bin/jx-studio"
           test -x "$wrapper"
-          for var in CHROMIUM_BIN JX_STUDIO_ASSETS; do
+          for var in CHROMIUM_BIN ELECTRON_BIN JX_STUDIO_ASSETS; do
             path="$(sed -n "s/^export $var='\(.*\)'$/\1/p" "$wrapper")"
             if [ -z "$path" ]; then
               echo "::error::$var is not exported by the jx-studio wrapper"

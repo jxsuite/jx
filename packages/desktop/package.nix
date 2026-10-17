@@ -3,6 +3,7 @@
   bun,
   makeWrapper,
   chromium,
+  electron,
   lib,
   runCommand,
   fetchurl,
@@ -289,9 +290,13 @@ stdenv.mkDerivation {
     ${lib.concatMapStringsSep "\n    " (p: "rm -rf $out/lib/jx-studio/node_modules/${p}") bundledIntoStudio}
     rm -rf $out/lib/jx-studio/packages/*/tests $out/lib/jx-studio/extensions/*/tests
 
+    # Electron draws the window: it is frameless, so Studio draws its own titlebar and window
+    # buttons (specs/desktop.md §9.5). Chromium stays for the site import's headless browser, which
+    # puppeteer cannot drive in Electron.
     makeWrapper ${bun}/bin/bun $out/bin/jx-studio \
       --add-flags "run $out/lib/jx-studio/packages/desktop/src/chromium/index.ts" \
       --set CHROMIUM_BIN "${chromium}/bin/chromium" \
+      --set ELECTRON_BIN "${electron}/bin/electron" \
       --set JX_STUDIO_ASSETS "$out/lib/jx-studio/packages/desktop/assets/studio"
 
     # Installed by hand rather than through `desktopItems`, because that hook takes the STORE PATH's
@@ -319,6 +324,11 @@ stdenv.mkDerivation {
       --target=bun \
       ${lib.concatMapStringsSep " " (e: "--external ${e}") resolveExternals} \
       --outfile "$TMPDIR/resolve-check.js"
+    # The Electron shell is bundled at launch (electron-shell/bundle.ts); prove it bundles here.
+    bun build $out/lib/jx-studio/packages/desktop/src/electron-shell/main.ts \
+      $out/lib/jx-studio/packages/desktop/src/electron-shell/preload.ts \
+      --target=node --format=cjs --external electron \
+      --outdir "$TMPDIR/electron-shell-check"
     runHook postInstallCheck
   '';
 

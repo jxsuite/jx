@@ -5,6 +5,7 @@ spec:
   - desktop.md#1
   - desktop.md#3.4
   - desktop.md#4
+  - desktop.md#9.5
 code:
   - packages/desktop/src/boot.ts
   - packages/desktop/src/init.ts
@@ -16,6 +17,12 @@ code:
   - packages/desktop/src/updater.ts
   - packages/desktop/src/platform.ts
   - packages/desktop/src/window-manager.ts
+  - packages/desktop/src/chromium/shell-command.ts
+  - packages/desktop/src/electron-shell/bridge.ts
+  - packages/desktop/src/electron-shell/bundle.ts
+  - packages/desktop/src/electron-shell/main.ts
+  - packages/desktop/src/electron-shell/preload.ts
+  - packages/desktop/src/electron-shell/shell.ts
 ---
 
 # The desktop app
@@ -77,12 +84,15 @@ The AI assistant, publishing, and everything on the canvas behave the same in bo
 
 ## Platform notes
 
-Installers are provided for macOS (Apple Silicon), Windows (x64), and Linux (x64 and ARM64). See the **[install page](/docs/start/install)** for downloads. Intel Macs are no longer among the builds. On NixOS the app is packaged differently: `nix build` produces it, and it runs Studio in a Chromium app window rather than a native one.
+Installers are provided for macOS (Apple Silicon), Windows (x64), and Linux (x64 and ARM64). See the **[install page](/docs/start/install)** for downloads. Intel Macs are no longer among the builds. On NixOS the app is packaged differently: `nix build` produces it, and it runs Studio in an Electron window from nixpkgs rather than the native app's own.
 
-Everything on this page applies to it. Projects open the same way, through the same native dialogs; each project gets a window of its own, and opening one that is already open brings that window forward. Two things differ, and both follow from who packaged it:
+Everything on this page applies to it. Projects open the same way, through the same native dialogs; each project gets a window of its own, and opening one that is already open brings that window forward. One thing differs, because of who packaged it:
 
 - **Your package manager updates it**, so there is no in-app updater and _About_ shows no update status.
-- **Your desktop draws the window frame**, so the minimize/maximize/close buttons are your system's rather than Studio's.
+
+The window itself is Studio's, as on every other platform: the command bar is the title bar, so drag it to move the window, and the minimize, maximize and close buttons sit at its right end. Resize the window from its edges as usual. If a project has unsaved changes, closing the window asks first.
+
+The Ubuntu snap is the exception. It runs Studio in a Chromium app window, so your desktop draws that window's frame and its buttons are your system's rather than Studio's.
 
 Windows there come from the _File_ menu's **New Window**, from the **This Window / New Window** question above, or from running `jx-studio <project>` again, and running it for a project that is already open raises that window instead of opening a second one.
 
