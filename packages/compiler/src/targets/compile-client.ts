@@ -32,6 +32,7 @@ import {
   isRefObject,
   isSchemaOnly,
   isTemplateString,
+  LIT_PART_GUARD,
   PREFORMATTED_TAGS,
   pureSchemeOf,
   resolveStaticValue,
@@ -777,15 +778,19 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
     attrs += ` contenteditable="${def.contentEditable}"`;
   }
 
+  /* A row can hold a component instance, whose children its slots redistribute; a child part
+     there ends at a guard rather than at a sibling that may move (`LIT_PART_GUARD`). */
+  const guard = tag.includes("-") ? LIT_PART_GUARD : "";
+
   // Inner content
   let inner = "";
   if (def.textContent !== undefined) {
     const tc = String(def.textContent);
     if (isTemplateString(tc)) {
-      inner = mapRefsToLit(tc);
+      inner = `${mapRefsToLit(tc)}${guard}`;
     } else if (isRefObject(def.textContent)) {
       const path = refToBindingKey(def.textContent.$ref);
-      inner = `\${state.${path}}`;
+      inner = `\${state.${path}}${guard}`;
     } else {
       inner = escapeHtml(tc);
     }
@@ -793,9 +798,13 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
     inner = mapRefsToLit(String(def.innerHTML));
   } else if (isMappedArray(def.children)) {
     // Legacy whole-children repeater nested inside a map template.
-    inner = `\n      ${emitArrayHole(def.children)}\n    `;
+    inner = `\n      ${emitArrayHole(def.children)}${guard}\n    `;
   } else if (Array.isArray(def.children)) {
-    const rendered = def.children.map((c) => emitChildLit(c, inPre));
+    const rendered = def.children.map((c) => {
+      const text = emitChildLit(c, inPre);
+      const isPart = isMappedArray(c) || (isString(c) && isTemplateString(c));
+      return isPart ? `${text}${guard}` : text;
+    });
     inner = inPre ? rendered.join("") : `\n      ${rendered.join("\n      ")}\n    `;
   }
 

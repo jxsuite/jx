@@ -132,6 +132,8 @@ Options that used to be page-wide settings are read per mount:
 
 A resolver answer is private to its mount. It never enters the shared cache, so two mounts can answer the same URL differently.
 
+A template binding that throws, such as `${state.posts.length}` before the posts load, renders nothing and fills in once its data arrives. To check whether a document renders at all, install `setTemplateErrorHandler((error, source) => …)` around the render to receive every such error, and pass `null` afterwards. Without a handler, each failing template logs one console warning.
+
 ## Redefine an element
 
 A host that lets people edit a component while it is in use can replace its definition without reloading the page:

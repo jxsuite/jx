@@ -128,11 +128,11 @@ describe("jx-spinner", () => {
 
   test("determinate fills a ring and stops the rotation; indeterminate spins an empty one", async () => {
     const el = await spinner({ label: "Importing" });
-    /* A bound child `style` is hoisted to a per-instance custom property plus a rule, so the
+    /* A bound child `style` is hoisted to a custom property it sets on itself plus a rule, so the
        inline style is the PROPERTY and the rule is where `background` is spelled — reading
        `style.background` back would be `""` in both states and could never fail. */
-    expect(rulesOf(glyph(el)).get("&")).toMatch(/^background: var\(--jx-r\d+-\d+\)$/);
-    expect(glyph(el).getAttribute("style")).toMatch(/^--jx-r\d+-\d+: none;$/);
+    expect(rulesOf(glyph(el)).get("&")).toMatch(/^background: var\(--jx-s\d+\)$/);
+    expect(glyph(el).getAttribute("style")).toMatch(/^--jx-s\d+: none;$/);
     expect(el.querySelector('[part="glyph-icon"]')!.hasAttribute("hidden")).toBe(false);
 
     el.value = "40";

@@ -31,6 +31,12 @@
             "command": "if [ -f package.json ] && grep -q '\"jxsuite\"' package.json; then bun .claude/hooks/doc-sync.js; fi",
             "timeout": 30,
             "statusMessage": "Checking docs/spec sync…"
+          },
+          {
+            "type": "command",
+            "command": "if [ -f package.json ] && grep -q '\"jxsuite\"' package.json; then bun .claude/hooks/typecheck.js; fi",
+            "timeout": 120,
+            "statusMessage": "Type-aware lint of changed files…"
           }
         ]
       }

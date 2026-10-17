@@ -1069,16 +1069,100 @@ export { hasSchemaKeywords };
  */
 function evaluateTemplate(str: string, state: JxScope): string {
   const $map = rowContext(state);
-  /* SAFETY: `new Function` compiles exactly these four named parameters, and its body returns a
-     template literal, so every call answers a string (or throws, which the caller sees). */
-  const fn = new Function(
-    "state",
-    "$map",
-    "item",
-    "index",
-    `return \`${str}\``,
-  ) as TemplateFn<string>;
+  let fn = textTemplates.get(str);
+  if (!fn) {
+    /* SAFETY: `new Function` compiles exactly these four named parameters, and its body returns a
+       template literal, so every call answers a string (or throws, which the caller sees). */
+    fn = new Function("state", "$map", "item", "index", `return \`${str}\``) as TemplateFn<string>;
+    remember(textTemplates, str, fn);
+  }
   return fn(state, $map, $map?.item, $map?.index);
+}
+
+/**
+ * Compiled templates, by source. A compiled template closes over nothing — everything it reads
+ * arrives as one of its four parameters — so one function per distinct source serves every binding
+ * that spells it. Compiling is the expensive half: a `$map` row re-bound to a fresh item re-runs
+ * each of its template effects, and a 40-row window re-binding on every scroll step spent seconds
+ * in `new Function` alone. A source that fails to compile throws before it is stored, so it throws
+ * again on the next evaluation exactly as it did before the cache existed.
+ */
+const textTemplates = new Map<string, TemplateFn<string>>();
+
+/** {@link textTemplates}, for single-expression templates compiled to keep their own type. */
+const valueTemplates = new Map<string, TemplateFn<JxScopeValue>>();
+
+/**
+ * How many sources a template cache holds before it starts over. Editing mints a new source per
+ * keystroke, so the cache is bounded; clearing it wholesale costs one recompile per live binding,
+ * which is what every evaluation cost before there was a cache.
+ */
+const TEMPLATE_CACHE_MAX = 4096;
+
+/**
+ * Store a compiled template, emptying the cache first when it is full.
+ *
+ * @param {Map<string, F>} cache
+ * @param {string} source
+ * @param {F} fn
+ */
+function remember<F>(cache: Map<string, F>, source: string, fn: F): void {
+  if (cache.size >= TEMPLATE_CACHE_MAX) {
+    cache.clear();
+  }
+  cache.set(source, fn);
+}
+
+/** Template sources already reported as throwing, so a binding re-run per keystroke warns once. */
+const reportedTemplates = new Set<string>();
+
+/** Who hears a throwing template binding, when a host asked to; otherwise the console does. */
+let _templateErrorHandler: ((error: Error, source: string) => void) | null = null;
+
+/**
+ * Route throwing template bindings to `handler` instead of a console warning, or back with `null`.
+ *
+ * A binding survives its expression throwing (§6.1), which is right for a page and wrong for a host
+ * whose question IS whether the document renders: Studio's render critic must still refuse a page
+ * whose `${nonExistent}` can never evaluate. Every throw is delivered, not only the first.
+ *
+ * @param {((error: Error, source: string) => void) | null} handler
+ */
+export function setTemplateErrorHandler(
+  handler: ((error: Error, source: string) => void) | null,
+): void {
+  _templateErrorHandler = handler;
+}
+
+/**
+ * Run a template binding as an effect that survives its expression throwing.
+ *
+ * A binding is live: `${state.posts.length}` over a collection that resolves asynchronously reads
+ * `null` first and an array a moment later. Unguarded, the first run's TypeError escaped `effect()`
+ * — which stops the effect before rethrowing — so the binding never re-ran when the data arrived,
+ * and the throw unwound the whole `renderNode` above it: one early read blanked the page. Caught
+ * INSIDE the effect, every dependency read before the throw stays tracked, so the binding re-runs
+ * on the change that makes it valid. Until then it shows `fallback`'s answer (nothing written, by
+ * default), and the error is reported once per source.
+ *
+ * @param {string} source - The template, for the report
+ * @param {() => void} run - Evaluates the template and writes it
+ * @param {() => void} [fallback] - What a throwing evaluation writes instead
+ */
+function bindTemplate(source: string, run: () => void, fallback?: () => void): void {
+  effect(() => {
+    try {
+      run();
+    } catch (error) {
+      if (_templateErrorHandler) {
+        _templateErrorHandler(error instanceof Error ? error : new Error(String(error)), source);
+      } else if (!reportedTemplates.has(source)) {
+        reportedTemplates.add(source);
+        console.warn(`jx: template ${JSON.stringify(source)} threw:`, error);
+      }
+      fallback?.();
+    }
+  });
 }
 
 /** A compiled template: the scope, the row context, and that context's item and index. */
@@ -1162,16 +1246,20 @@ function evaluateValueTemplate(str: string, state: JxScope): JxScopeValue {
     return evaluateTemplate(str, state);
   }
   const $map = rowContext(state);
-  /* SAFETY: `new Function` compiles exactly these four named parameters; the body returns one
-     expression's value, which is whatever the scope it reads holds, so it is typed as a scope
-     member and narrowed by the attribute writer. */
-  const fn = new Function(
-    "state",
-    "$map",
-    "item",
-    "index",
-    `return (${str.slice(2, -1)})`,
-  ) as TemplateFn<JxScopeValue>;
+  let fn = valueTemplates.get(str);
+  if (!fn) {
+    /* SAFETY: `new Function` compiles exactly these four named parameters; the body returns one
+       expression's value, which is whatever the scope it reads holds, so it is typed as a scope
+       member and narrowed by the attribute writer. */
+    fn = new Function(
+      "state",
+      "$map",
+      "item",
+      "index",
+      `return (${str.slice(2, -1)})`,
+    ) as TemplateFn<JxScopeValue>;
+    remember(valueTemplates, str, fn);
+  }
   return fn(state, $map, $map?.item, $map?.index);
 }
 
@@ -1563,9 +1651,15 @@ export function renderNode(
   if (isString(def) || isNumber(def) || isBoolean(def)) {
     const textNode = document.createTextNode(String(def));
     if (isTemplateString(def)) {
-      effect(() => {
-        textNode.textContent = evaluateTemplate(def, state);
-      });
+      bindTemplate(
+        def,
+        () => {
+          textNode.textContent = evaluateTemplate(def, state);
+        },
+        () => {
+          textNode.textContent = "";
+        },
+      );
     }
     return textNode;
   }
@@ -1846,7 +1940,7 @@ function bindProperty(
   // Universal ${} reactivity — template strings in element properties
   if (isTemplateString(val)) {
     const template = val;
-    effect(() => {
+    bindTemplate(template, () => {
       write(asAsset(evaluateTemplate(template, state)));
     });
     return;
@@ -2461,8 +2555,9 @@ function applyStyleInto(
      variable inherits, which is correct, and the declaration stays in the rule where `:hover` can
      override it. The serial keeps two elements' variables apart: a descendant rule reads `var()`
      from the nearest ancestor that set it, and without it a styled child would shadow its parent's
-     `--jx-r0` with its own. It also makes the rule text — and so the scope handle hashed from it —
-     unique per element, which is exactly the sharing a reactive rule set must not have. */
+     `--jx-r0` with its own. Only a DESCENDANT rule needs that: a self-target declaration reads the
+     variable the element itself sets, so it is named by position alone (`--jx-s<n>`) and elements
+     that style alike keep sharing one rule set. */
   let serial = -1;
   let indirect = 0;
   const sources: { name: string; value: string | JxRef }[] = [];
@@ -2484,15 +2579,26 @@ function applyStyleInto(
         sources.push({ name: property, value });
         return null;
       }
-      if (serial < 0) {
-        ({ serial } = sheetState);
-        sheetState.serial += 1;
-      }
       /* Counted separately from `sources`, so an inline custom property before it cannot shift the
          name of an indirected one. The name is IN the rule text, and the interning handle is a
          hash of that text — a number that moved with unrelated declarations would give two
          otherwise identical styles two rules. */
-      const name = `--jx-r${serial}-${indirect}`;
+      let name: string;
+      if (target === "self") {
+        /* A SELF-target rule reads its variable from the element that sets it inline, which is
+           this element — no ancestor's value can reach it — so the name needs no serial, only its
+           position. Without this, every instance of a definition with one reactive declaration
+           (the kit's tree row binds its indent) interned a rule set of its own: an Outline
+           scrolling through a long page minted fifteen rules per row and grew the shared sheet
+           past fourteen thousand, slowing every insert and every style recalculation after. */
+        name = `--jx-s${indirect}`;
+      } else {
+        if (serial < 0) {
+          ({ serial } = sheetState);
+          sheetState.serial += 1;
+        }
+        name = `--jx-r${serial}-${indirect}`;
+      }
       indirect += 1;
       sources.push({ name, value });
       return `var(${name})`;
@@ -2663,7 +2769,7 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
     if (isRefValue(v)) {
       effect(() => write(resolveRef(v.$ref, state)));
     } else if (isTemplateString(v)) {
-      effect(() => write(evaluateValueTemplate(v, state)));
+      bindTemplate(v, () => write(evaluateValueTemplate(v, state)));
     } else {
       write(v);
     }
@@ -4035,6 +4141,27 @@ function instanceSupplies(el: HTMLElement, key: string): boolean {
   return kebab !== key && el.hasAttribute(kebab);
 }
 
+/**
+ * The platform's setter for `key` on an element, when the name is one the platform already owns.
+ *
+ * @param {HTMLElement} el
+ * @param {string} key
+ * @returns {((value: JxScopeValue) => void) | undefined}
+ */
+function nativeSetter(el: HTMLElement, key: string): ((value: JxScopeValue) => void) | undefined {
+  for (
+    let proto: object | null = Reflect.getPrototypeOf(el);
+    proto;
+    proto = Reflect.getPrototypeOf(proto)
+  ) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, key);
+    if (descriptor) {
+      return descriptor.set;
+    }
+  }
+  return undefined;
+}
+
 function refusePrivateProp(key: string, where?: string): boolean {
   if (!isPrivateStateKey(key)) {
     return false;
@@ -4700,21 +4827,26 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         if (isPrivateStateKey(key)) {
           continue;
         }
-        if (!(key in HTMLElement.prototype)) {
-          Object.defineProperty(this, key, {
-            configurable: true,
-            get: () => state[key],
-            set: (v: JxScopeValue) => {
-              state[key] = v;
-            },
-          });
-        }
+        /* A name the platform already owns (`title`, `lang`, `hidden`) keeps its native setter, so
+           the attribute still reflects — and ALSO reaches state. Skipping it entirely meant a prop
+           delivered after connection (a template over data that resolves asynchronously) wrote
+           only the attribute: the instance kept the empty value it connected with, and a card's
+           `title` never rendered. */
+        const native = nativeSetter(this, key);
+        Object.defineProperty(this, key, {
+          configurable: true,
+          get: () => state[key],
+          set: (v: JxScopeValue) => {
+            native?.call(this, v);
+            state[key] = v;
+          },
+        });
       }
 
       this._state = state;
 
       // Capture light DOM children (for slot distribution) before rendering
-      const slottedChildren = [...this.childNodes];
+      const slottedChildren = captureSlotted(this);
       this.replaceChildren();
 
       /* Custom elements default to `display: inline`; a Jx container behaves like a `<div>`, so
@@ -4852,7 +4984,7 @@ function renderCustomElementWithProps(
         write(resolveRef(refVal.$ref, state));
       });
     } else if (isTemplateString(val)) {
-      effect(() => {
+      bindTemplate(val, () => {
         write(evaluateTemplate(val, state));
       });
     } else {
@@ -4904,49 +5036,173 @@ function isElementNode(node: Node): node is Element {
 }
 
 /**
- * Light DOM slot distribution.
+ * Whether a node is a text node, by its `nodeType`.
  *
- * @param {HTMLElement} host
- * @param {ChildNode[]} slottedChildren
+ * @param {Node} node
+ * @returns {node is Text}
  */
-function distributeSlots(host: HTMLElement, slottedChildren: ChildNode[]) {
-  /* No early return when nothing was slotted. A slot leaves no node WHETHER OR NOT it received
-     anything — an unmatched one unwraps to its own fallback children, and a host given nothing at
-     all is just every slot unmatched. Returning early here left the slot standing in exactly the
-     case an element most wants to detect: `[part="label"]:empty` answered false for a control with
-     no label, because the surviving slot was still a child. */
-  const slots = host.querySelectorAll("slot");
+function isTextNode(node: Node): node is Text {
+  return node.nodeType === Node.TEXT_NODE;
+}
+
+/**
+ * Whether a node is a comment, by its `nodeType`.
+ *
+ * @param {Node} node
+ * @returns {node is Comment}
+ */
+function isCommentNode(node: Node): node is Comment {
+  return node.nodeType === Node.COMMENT_NODE;
+}
+
+// ─── Slot distribution (spec.md §8.5) ─────────────────────────────────────────
+
+/**
+ * Text that is only HTML whitespace (space, tab, line feed, form feed, carriage return): never slot
+ * content. A non-breaking space is not in the set, and `+` keeps an empty text node out of it, so
+ * the text node a binding is about to write stays with its group.
+ */
+export const SLOT_WHITESPACE = /^[\t\n\f\r ]+$/u;
+
+/** The word that opens a prerendered slot group's comment bracket: `<!--jx-slot n name-->`. */
+export const SLOT_MARK = "jx-slot";
+
+/** The attribute a prerendered instance carries when its slot groups are bracketed by `n`. */
+export const SLOT_ATTR = "data-jx-slots";
+
+/**
+ * The `Symbol.for` key of the shared group record: node → the slot group it belongs to.
+ *
+ * Shared through `globalThis` because each compiled component module carries its own copy of the
+ * distribution helper, and a record one of them (or this runtime) writes has to be read by
+ * whichever element captures the node next.
+ */
+export const SLOT_RECORD_KEY = "jx.slot.group";
+
+/** The record itself; read before a node's own `slot` attribute, and deleted once read. */
+const slotRecord: WeakMap<Node, string> = (() => {
+  const key = Symbol.for(SLOT_RECORD_KEY);
+  /* SAFETY: the one value ever stored under this registered symbol is this WeakMap, written by
+     this runtime or by a compiled module's inlined helper (`slotHelperSource` in the compiler). */
+  const holder = globalThis as typeof globalThis & Record<symbol, WeakMap<Node, string>>;
+  holder[key] ??= new WeakMap<Node, string>();
+  return holder[key];
+})();
+
+/**
+ * The children an element distributes into its slots, taken before its template renders.
+ *
+ * A prerendered instance is the exception, and the reason this is a function. Its children are the
+ * prerendered markup, and re-rendering would capture the component's own template as slot content.
+ * The prerender therefore stamps it `data-jx-slots="n"` and brackets every group it placed with
+ * `<!--jx-slot n name-->` … `<!--/jx-slot n-->`; this returns exactly the nodes inside this host's
+ * brackets, recording each one's group name, and removes the attribute. The id is needed because a
+ * forwarded group sits inside a nested instance's own brackets, and the name because a nested
+ * instance that upgrades first must not regroup the enclosing instance's nodes.
+ *
+ * @param {Element} host
+ * @returns {ChildNode[]}
+ */
+export function captureSlotted(host: Element): ChildNode[] {
+  const id = host.getAttribute(SLOT_ATTR);
+  if (id === null) {
+    return [...host.childNodes];
+  }
+  host.removeAttribute(SLOT_ATTR);
+  const opener = `${SLOT_MARK} ${id} `;
+  const closer = `/${SLOT_MARK} ${id}`;
+  const openers: Comment[] = [];
+  const walker = host.ownerDocument.createTreeWalker(host, NodeFilter.SHOW_COMMENT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (isCommentNode(n) && n.data.startsWith(opener)) {
+      openers.push(n);
+    }
+  }
+  const captured: ChildNode[] = [];
+  for (const open of openers) {
+    const name = decodeURIComponent(open.data.slice(opener.length));
+    for (let n = open.nextSibling; n; n = n.nextSibling) {
+      if (isCommentNode(n) && n.data === closer) {
+        break;
+      }
+      slotRecord.set(n, name);
+      captured.push(n);
+    }
+  }
+  return captured;
+}
+
+/**
+ * Whether a group holds content: an element, or a text node that is not empty. A comment (a lit
+ * part marker, a repeater's anchor) travels with its group but does not stop the fallback showing.
+ *
+ * @param {readonly ChildNode[]} group
+ * @returns {boolean}
+ */
+function slotGroupHasContent(group: readonly ChildNode[]): boolean {
+  return group.some((n) => isElementNode(n) || (isTextNode(n) && n.data !== ""));
+}
+
+/**
+ * Light-DOM slot distribution: replace each `<slot>` under `host` with the captured children of its
+ * group, or with its own fallback children when that group has no content (spec.md §8.5).
+ *
+ * - **Group.** A node's group is its record when it has one, else an element's `slot` attribute, else
+ *   the unnamed group (`""`). Whitespace-only text is discarded: compiled hosts are parsed HTML
+ *   full of formatting whitespace, and whitespace placed in a part makes its `:empty` false.
+ * - **Place.** Slots are taken in tree order and the FIRST of a name takes its group; a later one of
+ *   the same name shows its fallback. That is the DOM's "find a slot", so the answer does not
+ *   change when a component moves to a shadow root. A slot inside a fallback that was not shown
+ *   still takes its name, which keeps the static prerender's answer the same as this one.
+ * - **Forward.** A slot written directly inside ANOTHER custom element's children is that element's
+ *   child. What it places there is recorded with the slot's own group (its record, else its `slot`
+ *   attribute), so the nested element distributes it by that name whether it captures before or
+ *   after this runs.
+ *
+ * No early return when nothing was slotted: a slot leaves no node either way, and a surviving slot
+ * made `[part="label"]:empty` false for a control with no label. A slot is replaced, not filled:
+ * the selector tree is what a definition's `& > x` rules match, and a slot left as a wrapper turned
+ * every slotted child into a grandchild (§16.6).
+ *
+ * @param {ParentNode} host
+ * @param {readonly ChildNode[]} captured
+ */
+export function distributeSlots(host: ParentNode, captured: readonly ChildNode[]): void {
+  const slots = [...host.querySelectorAll("slot")];
   if (slots.length === 0) {
     return;
   }
-
-  const named = new Map<string | null, ChildNode[]>();
-  const unnamed: ChildNode[] = [];
-
-  for (const child of slottedChildren) {
-    if (isElementNode(child) && child.getAttribute("slot")) {
-      const name = child.getAttribute("slot");
-      let group = named.get(name);
-      if (!group) {
-        group = [];
-        named.set(name, group);
-      }
-      group.push(child);
-    } else {
-      unnamed.push(child);
+  const groups = new Map<string, ChildNode[]>();
+  for (const n of captured) {
+    if (isTextNode(n) && SLOT_WHITESPACE.test(n.data)) {
+      continue;
     }
+    const recorded = slotRecord.get(n);
+    slotRecord.delete(n);
+    const name = recorded ?? (isElementNode(n) ? (n.getAttribute("slot") ?? "") : "");
+    let group = groups.get(name);
+    if (!group) {
+      group = [];
+      groups.set(name, group);
+    }
+    group.push(n);
   }
-
-  /* A `<slot>` UNWRAPS: its matches stand in its place and the slot itself leaves no node.
-     It used to survive, holding its matches as children. The box tree looked right, because a
-     slot is `display: contents` — but the SELECTOR tree did not, so every `& > x` rule in a
-     definition silently stopped matching a slotted child, which is now a grandchild. Measured on
-     the field row: 68.40px where the class form gives 88.40px, and its help text 80px wide
-     instead of 260px, with `[data-span]` dead. An unmatched slot unwraps to its own fallback
-     children, which is what the platform's slot does when nothing is assigned to it. */
+  const taken = new Set<string>();
   for (const slot of slots) {
-    const name = slot.getAttribute("name");
-    const matches = name ? (named.get(name) ?? []) : unnamed;
-    slot.replaceWith(...(matches.length > 0 ? matches : [...slot.childNodes]));
+    const name = slot.getAttribute("name") ?? "";
+    let group: ChildNode[] = [];
+    if (!taken.has(name)) {
+      taken.add(name);
+      group = groups.get(name) ?? [];
+    }
+    const placed = slotGroupHasContent(group) ? group : [...group, ...slot.childNodes];
+    const parent = slot.parentElement;
+    if (parent && parent !== host && parent.localName.includes("-")) {
+      const forwarded = slotRecord.get(slot) ?? slot.getAttribute("slot") ?? "";
+      for (const n of placed) {
+        slotRecord.set(n, forwarded);
+      }
+    }
+    slot.replaceWith(...placed);
   }
 }

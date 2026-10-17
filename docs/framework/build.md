@@ -167,6 +167,7 @@ A component instance is expanded wherever it is written: on a page, slotted into
 
 - **Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state, and the child's host `style` templates (a mask image chosen from a prop, say) resolve against the child's own props (the definition's defaults when the instance passes none) and land on the element as an inline `style`.
 - **Each component decides its own JavaScript.** A live component nested inside a static one is prerendered as a shell that loads its own module and upgrades in place; the static parent still ships none.
+- **Children land in the slot they name, at every level.** A live component finds the children it was given when it upgrades, so its first paint and its live render place them alike.
 
 :::doc-warning
 A component that renders itself with the same props can never finish expanding, so the build fails that route with a message naming the chain (`a-loop → b-loop → a-loop`) instead of overflowing. A component that renders itself with props that change at each level (a tree node) is allowed up to 32 levels deep, which is where a recursion that never bottoms out is reported the same way.

@@ -336,4 +336,65 @@ describe("distributeSlots", () => {
     expect(el.textContent).toBe("only-template");
     el.remove();
   });
+
+  /** A card with a named header slot and a default body slot, and a wrapper that forwards into it. */
+  async function defineCardAndWrapper(card: string, wrapper: string, forward: string) {
+    await defineElement({
+      children: [
+        { children: [{ attributes: { name: "head" }, tagName: "slot" }], tagName: "header" },
+        { children: [{ tagName: "slot" }], tagName: "main" },
+      ],
+      state: {},
+      tagName: card,
+    });
+    await defineElement({
+      children: [{ children: [JSON.parse(forward)], tagName: card }],
+      state: {},
+      tagName: wrapper,
+    });
+  }
+
+  test("a named group forwarded through an unnamed slot lands in the nested element's default slot", async () => {
+    await defineCardAndWrapper(
+      "gaps-fw-card",
+      "gaps-fw-wrap",
+      '{"tagName":"slot","attributes":{"name":"title"}}',
+    );
+    const el = document.createElement("gaps-fw-wrap");
+    el.innerHTML = '<h1 slot="title">T</h1>';
+    document.body.append(el);
+    await wait(10);
+    expect(el.querySelector("main")?.innerHTML).toBe('<h1 slot="title">T</h1>');
+    expect(el.querySelector("header")?.innerHTML).toBe("");
+    el.remove();
+  });
+
+  test("a forwarding slot's own slot attribute chooses the nested element's slot", async () => {
+    await defineCardAndWrapper(
+      "gaps-fw2-card",
+      "gaps-fw2-wrap",
+      '{"tagName":"slot","attributes":{"slot":"head"}}',
+    );
+    const el = document.createElement("gaps-fw2-wrap");
+    el.innerHTML = "<em>body text</em>";
+    document.body.append(el);
+    await wait(10);
+    expect(el.querySelector("header")?.innerHTML).toBe("<em>body text</em>");
+    expect(el.querySelector("main")?.innerHTML).toBe("");
+    el.remove();
+  });
+
+  test("a bracketed prerender upgrades to the children it holds, each in the slot its bracket names, not its own markup", async () => {
+    await defineCardAndWrapper("gaps-pr-card", "gaps-pr-wrap", '{"tagName":"slot"}');
+    const el = document.createElement("gaps-pr-card");
+    el.dataset.jxSlots = "4";
+    el.innerHTML =
+      "<header><!--jx-slot 4 head--><h1>T</h1><!--/jx-slot 4--></header>" +
+      "<main><!--jx-slot 4 --><p>Body</p><!--/jx-slot 4--></main>";
+    document.body.append(el);
+    await wait(10);
+    expect(el.innerHTML).toBe("<header><h1>T</h1></header><main><p>Body</p></main>");
+    expect(Object.hasOwn(el.dataset, "jxSlots")).toBe(false);
+    el.remove();
+  });
 });

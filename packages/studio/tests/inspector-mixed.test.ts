@@ -19,6 +19,7 @@ import {
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as storeActual from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
+import { reactive } from "../src/reactivity";
 import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 import { A, B } from "./shared-fixtures";
 
@@ -202,6 +203,26 @@ afterEach(() => {
 // ─── Style ───────────────────────────────────────────────────────────────────
 
 describe("Style tab", () => {
+  test("a hidden tab does not project, and catches up the moment it is shown", async () => {
+    /* Behind the Content tab, the editor re-keyed and rebuilt every row on every selection: about
+       six thousand nodes per click on a real page, which was most of what selecting cost. */
+    const showing = reactive({ style: false });
+    setup(twoCards(), [A]);
+    styleHost = document.createElement("div");
+    document.body.append(styleHost);
+    bindStyleHost(styleHost, { getCanvasMode: () => "edit", isShowing: () => showing.style });
+    await flush(4);
+    const host = styleHost;
+    const ratio = () => chipState(styleRow(host, "aspectRatio"));
+    expect(ratio()).toBe("set");
+    activeTab.value!.session.selection = [A, B];
+    await flush(4);
+    expect(ratio()).toBe("set"); // Still the single-selection projection: nothing re-ran.
+    showing.style = true;
+    await flush(4);
+    expect(ratio()).toBe("mixed");
+  });
+
   test("one selected element renders the ordinary set chip, never Mixed", async () => {
     setup(twoCards(), [A]);
     const c = await renderStyle();

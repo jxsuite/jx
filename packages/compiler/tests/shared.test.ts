@@ -11,6 +11,9 @@ import {
   colorSchemePrePaintScript,
   compileStyles,
   createCompileContext,
+  createSlotFill,
+  definitionHasSlot,
+  nextSlotId,
   escapeHtml,
   evaluateStaticTemplate,
   getPathValue,
@@ -1225,14 +1228,77 @@ describe("renderStaticNode", () => {
     expect(result).toContain("</div>");
   });
 
-  test("replaces slot with slotContent", () => {
-    const node = { tagName: "slot" };
-    expect(renderStaticNode(node, null, "<p>Slotted</p>")).toBe("<p>Slotted</p>");
+  /** A fill from definitions, rendered with no scope. */
+  const fillOf = (children: JxMutableNode["children"], id: number | null = null) =>
+    createSlotFill(children, null, (c) => renderStaticNode(c, null), id);
+
+  test("a fill replaces a slot with its group", () => {
+    const fill = fillOf([{ tagName: "p", textContent: "Slotted" }]);
+    expect(renderStaticNode({ tagName: "slot" }, null, fill)).toBe("<p>Slotted</p>");
   });
 
-  test("renders slot normally when no slotContent", () => {
-    const node = { tagName: "slot" };
-    expect(renderStaticNode(node, null, null)).toBe("<slot></slot>");
+  test("a null fill leaves a slot literal", () => {
+    expect(renderStaticNode({ tagName: "slot" }, null, null)).toBe("<slot></slot>");
+  });
+
+  test("an empty fill unwraps every slot to its fallback", () => {
+    const node = {
+      children: [
+        { attributes: { name: "a" }, children: ["A fallback"], tagName: "slot" },
+        { children: [{ tagName: "i", textContent: "B" }], tagName: "slot" },
+      ],
+      tagName: "div",
+    };
+    expect(renderStaticNode(node, null, fillOf([]))).toBe("<div>A fallback\n<i>B</i></div>");
+  });
+
+  test("an id brackets each placed group, named, and not a fallback", () => {
+    const node = {
+      children: [
+        { attributes: { name: "head line" }, tagName: "slot" },
+        { children: ["fallback"], tagName: "slot" },
+      ],
+      tagName: "div",
+    };
+    const fill = fillOf(
+      [{ attributes: { slot: "head line" }, tagName: "h1", textContent: "T" }],
+      7,
+    );
+    expect(renderStaticNode(node, null, fill)).toBe(
+      '<div><!--jx-slot 7 head%20line--><h1 slot="head line">T</h1><!--/jx-slot 7-->\nfallback</div>',
+    );
+  });
+
+  test("a template child that resolves to whitespace is dropped", () => {
+    const scope = buildInitialScope({ gap: "  " });
+    const fill = createSlotFill(["${state.gap}", "\n  "], scope, (c) => renderStaticNode(c, scope));
+    expect(fill.groups.size).toBe(0);
+  });
+
+  test("a repeater among an instance's children is content that renders nothing statically", () => {
+    const fill = fillOf([{ $prototype: "Array", items: [], map: { tagName: "li" } }]);
+    expect(fill.groups.get("")).toEqual({ content: true, html: "" });
+  });
+
+  test("definitionHasSlot finds a slot in a repeater's template, a $switch case, or nowhere", () => {
+    expect(definitionHasSlot([{ $prototype: "Array", map: { tagName: "slot" } }])).toBe(true);
+    expect(definitionHasSlot({ $prototype: "Array", items: [], map: { tagName: "slot" } })).toBe(
+      true,
+    );
+    expect(definitionHasSlot([{ cases: { a: { tagName: "slot" } }, tagName: "div" }])).toBe(true);
+    expect(definitionHasSlot([{ $prototype: "Array", items: [] }, "text"])).toBe(false);
+  });
+
+  test("nextSlotId counts per page, and answers null with no counter", () => {
+    const context = { componentDefs: new Map(), slotIds: { n: 0 } };
+    expect([nextSlotId(context), nextSlotId(context)]).toEqual([1, 2]);
+    expect(nextSlotId({ componentDefs: new Map() })).toBeNull();
+    expect(nextSlotId(null)).toBeNull();
+  });
+
+  test("a node-level slot is written as an attribute on the placed child", () => {
+    const fill = fillOf([{ slot: "head", tagName: "h1", textContent: "T" }]);
+    expect(fill.groups.get("head")?.html).toBe('<h1 slot="head">T</h1>');
   });
 
   test("skips $prototype Array nodes", () => {
@@ -1323,12 +1389,14 @@ describe("preRenderComponentHtml", () => {
     expect(result).toBe("<p>world</p>");
   });
 
-  test("replaces slot with slotContent", () => {
+  test("a fill reaches a slot inside the definition", () => {
     const doc = {
       children: [{ children: [{ tagName: "slot" }], tagName: "div" }],
     };
-    const result = preRenderComponentHtml(doc, null, "<p>Inserted</p>");
-    expect(result).toContain("<p>Inserted</p>");
+    const fill = createSlotFill([{ tagName: "p", textContent: "Inserted" }], null, (c) =>
+      renderStaticNode(c, null),
+    );
+    expect(preRenderComponentHtml(doc, null, fill)).toBe("<div><p>Inserted</p></div>");
   });
 
   test("renders multiple children joined by newline", () => {

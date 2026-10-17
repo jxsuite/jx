@@ -542,7 +542,7 @@ The Components sidebar adapts its contents based on context: what is currently o
 
 ### 6.1 Single File Mode (No Project)
 
-> **Status: Pending.** There is no project-less Components list: with no project, the dev server's `discoverComponents` answers `[]` (`packages/studio/src/platforms/devserver.ts`) and the desktop session's throws, and nothing derives a Components list from the open document. The canvas does match the document's `tagName`s against the registry (`collectTags` in `packages/studio/src/canvas/canvas-live-render.ts`), but only to register elements for rendering. It waits on §4.3, which has no entry point either.
+> **Status: Pending.** There is no project-less Components list: with no project, the dev server's `discoverComponents` answers `[]` (`packages/studio/src/platforms/devserver.ts`) and the desktop session's throws, and nothing derives a Components list from the open document. The canvas does match the document's `tagName`s against the registry (`resolveCanvasDocument` in `packages/studio/src/canvas/canvas-live-render.ts`), but only to register elements for rendering. It waits on §4.3, which has no entry point either.
 
 When editing a standalone component with no project loaded:
 

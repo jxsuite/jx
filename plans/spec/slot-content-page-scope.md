@@ -4,7 +4,6 @@ disposition: implement
 claims:
   - spec.md#15.2
 requires:
-  - spec/compiled-slot-distribution
   - spec/one-way-prop-forwarding-page-bindings
 workspaces:
   - packages/compiler
@@ -29,7 +28,7 @@ The rule it qualifies: "All `state` entries are available to all descendant elem
 - **Built output.** `compilePage` runs `resolveDocTemplates(layoutDoc, scope)` (bakes build-time reads), then `expandComponents(layoutDoc, componentDefs, slotCss, defaults)`, then `compile(layoutDoc, …)`. `expandComponents` (line 2035) builds a page-level instance's slot content as `node.children.map((c) => renderStaticNode(c, {}, null)).join("\n")` (line 2084), writes the definition's prerender with that string substituted for its slots into `node.innerHTML` (light mode) or after the declarative `<template>` (shadow mode), and deletes `node.children`. The page compile then meets an element with `innerHTML` and no children: `buildClientNode` (`packages/compiler/src/targets/compile-client.ts`) writes `innerHTML` through `resolveStaticValue` and binds nothing inside it, and `isDynamic` never sees a template among the deleted children.
 - **Evidence** (the page-bindings plan's scratch build, 2026-09-27): `<my-box><span id="s">${state.n}</span></my-box>` on a page with a handler emitted `<span id="s"></span>` with no `data-bind`: the initial value is lost as well as the updates.
 - **Instances inside a definition are right.** `renderComponentInstance` (`packages/compiler/src/shared.ts`) renders an instance's children with the definition's `scope`, and the definition's own module (compile-element's lit template) binds them. Only a page-level instance is affected.
-- **What the prerequisites give.** `plan:spec/compiled-slot-distribution#CSD1.2` builds the prerender from a `SlotFill` whose groups are rendered by one callback, which `expandComponents` passes as `renderStaticNode(c, {}, null)`, and brackets each placed group so an upgrading element captures the same nodes it was given (`captureSlotted`). `plan:spec/one-way-prop-forwarding-page-bindings` leaves a page-level instance's live `$props` on the node and binds them in `buildClientNode` (`:prop.` directives, `liveInstanceTags`).
+- **What has landed, and what the prerequisite gives.** The prerender is built from a `SlotFill` whose groups are rendered by one callback, which `expandComponents` passes as `renderStaticNode(c, {}, null)` (its `renderSlotted`), and each placed group of a live instance is bracketed so an upgrading element captures the same nodes it was given (`captureSlotted`; spec.md §8.5). `plan:spec/one-way-prop-forwarding-page-bindings` leaves a page-level instance's live `$props` on the node and binds them in `buildClientNode` (`:prop.` directives, `liveInstanceTags`).
 
 ## Outcome
 
@@ -45,7 +44,7 @@ The rule it qualifies: "All `state` entries are available to all descendant elem
 
 ## Implementation
 
-1. **`packages/compiler/src/site/site-build.ts`**, `expandComponents` (as `plan:spec/compiled-slot-distribution#CSD1.2` leaves it):
+1. **`packages/compiler/src/site/site-build.ts`**, `expandComponents` (as the slot-distribution change left it, spec.md §8.5):
    - The light fill's render callback becomes `(c) => { collectStyles(…); return slotPlaceholder(slotted, c); }`, where `slotted` is a fresh array per instance and `slotPlaceholder` pushes the child and returns `` `<!--jx-slotted ${index}-->` ``. `createSlotFill` still groups, names and drops whitespace exactly as CSD1.2 specifies, so the placeholders land in the right slots inside the brackets.
    - The shadow branch's trailing string is built the same way.
    - When `slotted` is non-empty, set `node.$slotted = slotted`; `delete node.children` stays.

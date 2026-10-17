@@ -199,19 +199,19 @@ describe("a $ref style value", () => {
     const state = reactive({ tint: "red" });
     const el = div();
     applyStyle(el, { color: { $ref: "#/state/tint" } }, {}, state);
-    expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"] { color: var(--jx-r0-0) }`);
+    expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"] { color: var(--jx-s0) }`);
     expect(getComputedStyle(el).color).toBe("red");
     state.tint = "blue";
     await Promise.resolve();
-    expect(el.style.getPropertyValue("--jx-r0-0")).toBe("blue");
+    expect(el.style.getPropertyValue("--jx-s0")).toBe("blue");
   });
 
   test("works inside a nested block, where a template used to reach the sheet literally", () => {
     const state = reactive({ tint: "red" });
     const el = div();
     applyStyle(el, { ":hover": { color: { $ref: "#/state/tint" } } }, {}, state);
-    expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"]:hover { color: var(--jx-r0-0) }`);
-    expect(el.style.getPropertyValue("--jx-r0-0")).toBe("red");
+    expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"]:hover { color: var(--jx-s0) }`);
+    expect(el.style.getPropertyValue("--jx-s0")).toBe("red");
   });
 });
 

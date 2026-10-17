@@ -564,6 +564,8 @@ Template literal syntax `${}` is valid **anywhere a string value appears in the 
 
 **A binding writes when its SOURCE moves, not when its target differs.** The effect behind `"value": "${state.query}"` re-runs only when something it read changed, and it then skips a write equal to what the element already holds — the second half is deliberate, because re-setting `value` on a focused control moves the caret and collapses the selection. Together they mean a document cannot RE-ASSERT a value it has already written. After the reader has typed over a bound control, writing the scope value the scope already held is not a change, so the effect never re-runs and the field keeps what the reader typed; the write that would have emptied it is exactly the one that is skipped. There is no write-only spelling that fires on every pass, and reaching for the element and assigning `value` is not the alternative — that is the host writing into a tree the document owns. The host makes the correction visible instead: it announces the raw value the control now holds, and the value it settled on is then a real move rather than an equal write. `packages/studio/src/ui/form-controls.ts` carries that bounce so a refused rename snaps back, and `packages/studio/src/panels/git-panel.ts` so that dismissing a "New branch…" pick can put the picker back on the branch that is checked out.
 
+**A binding whose expression throws renders nothing and keeps listening.** State that resolves asynchronously reads `null` before it reads its value, so `${state.posts.length}` throws on its first evaluation in any live render. The throw is caught inside the binding's own effect: a text binding renders empty and an attribute or property binding writes nothing, every dependency the expression read before it threw stays tracked, and the binding re-runs, and renders, when the change that makes it valid arrives. The error is reported once per template source as a console warning, or, to a host that asked, delivered every time (`setTemplateErrorHandler`, embedding.md §5.2). Uncaught, it stopped the effect for good and unwound the whole render above it, so one early read left the page blank.
+
 ### 6.2 Reactive style properties
 
 ```json
@@ -783,8 +785,6 @@ The compiler's template pass replaces `children` with the resolved array and rec
 
 ### 8.5 Slot Support
 
-> **Status: Partial.** The interpreter distributes by `name` as described (`distributeSlots` in `packages/runtime/src/runtime.ts`). Built output does not. The component module's light-DOM emulation (`compile-element.ts`) finds the first `<slot>` and moves every slotted child there whatever its `slot` name, and the static prerender (`renderStaticNode` in `packages/compiler/src/shared.ts`, reached through `expandComponents` in `packages/compiler/src/site/site-build.ts`) substitutes all of the instance's children for every `<slot>`, so the example below prerenders the header and the body into both `<header>` and `<main>`.
-
 Custom elements support the standard HTML `slot` mechanism for content composition:
 
 ```json
@@ -803,9 +803,19 @@ Custom elements support the standard HTML `slot` mechanism for content compositi
 }
 ```
 
-The runtime performs manual light DOM slot distribution: capturing host children before rendering the template, then distributing them to matching `<slot>` elements by `name` attribute. Fallback content is preserved when no matching content is provided.
+Distribution is one rule, applied in four steps.
 
-> **Status: Implemented.** Runtime `distributeSlots()` handles light DOM slot distribution.
+**Capture.** The host's children are taken before the template renders. Text that is only HTML whitespace (space, tab, line feed, form feed, carriage return) is discarded; a non-breaking space is content, and an empty text node, where a binding will write, is kept.
+
+**Group.** An element whose `slot` attribute is non-empty joins that name's group, and every other child joins the unnamed group.
+
+**Place.** After the render, each `<slot>` in tree order is replaced by its group. The first `<slot>` of a name takes it, and the first without a `name` (or with an empty one) takes the unnamed group; a later `<slot>` of the same name gets nothing, which is the DOM's own "find a slot". The slot's own children follow when its group holds no element and no non-empty text, a group no `<slot>` takes is not rendered, and no `<slot>` element survives (§16.6). A `<slot>` inside a fallback that is not shown still takes its name.
+
+**Forward.** A `<slot>` written directly among a nested instance's children is that instance's child, grouped by its own `slot` attribute, and the enclosing group stands where it lands, whichever element renders first.
+
+Distribution runs once, when the element connects: a `<slot>` that a `$switch` case or a list row draws later stays literal and receives nothing. A prerendered instance that upgrades recovers the children the prerender placed, in the slots it placed them in, rather than capturing its own markup (compiler.md §8.1).
+
+> **Status: Implemented.** One rule in three places. The interpreter's `captureSlotted` and `distributeSlots` (`packages/runtime/src/runtime.ts`) are exported; the component module calls inlined copies (`slotHelperSource()` in `packages/compiler/src/shared.ts`); and the prerender groups the instance's children as definitions (`createSlotFill`) before `renderStaticNode` places them. One fixture table holds all three to the same output (`packages/compiler/tests/slot-distribution-agreement.test.ts`).
 
 ### 8.6 Annotations
 
@@ -1075,7 +1085,7 @@ The runtime delivers an element's styles as **CSS rules in a constructable style
 
 **A custom element with no `display` in its BASE block gets `display: block` in its own rule.** Not inline: an inline declaration is beaten only by `!important`, and a default is meant to be the weakest thing in the cascade rather than the strongest. At (0,1,0) a consumer's rule, a cascade layer or a parent's descendant rule all override it normally. Only the base block is consulted — a `display` appearing solely inside `&:hover` or a breakpoint is not the author supplying one, and reading it as such left the element `inline` at rest and a block on hover, which is wrong whenever it is still. An author who wants the platform's own value writes `display: revert-layer` in the base block, which this sees and which rolls the cascade back one layer rather than beating anything — the spelling that lets an element whose visibility the UA owns, such as a `popover`, keep it. Plain `revert` is weaker and is a trap: it rolls back to the user-agent ORIGIN, so it works on a shipped page and fails wherever a host has re-supplied the UA rule in a cascade layer of its own, which is exactly what an editing canvas does when it de-links an overlay (studio.md §4.2.2). `revert-layer` holds in both.
 
-**Reactive declarations are indirected through a custom property.** A value carrying a `${…}` template or a `{ "$ref": … }` is emitted as `property: var(--jx-r<n>-<m>)`, and the element sets that variable inline as its source changes. The declaration therefore stays in the rule, where a `:hover` or `@media` block can override it, while only the variable moves. A reactive element never shares a rule set with another: a `var()` resolves from the nearest ancestor that set it, so a shared descendant rule would read the wrong element's value.
+**Reactive declarations are indirected through a custom property.** A value carrying a `${…}` template or a `{ "$ref": … }` is emitted as `property: var(--jx-…)`, and the element sets that variable inline as its source changes. The declaration therefore stays in the rule, where a `:hover` or `@media` block can override it, while only the variable moves. In a rule that targets the element itself (its base declarations, its own states, its `@media` blocks) the variable is named by position alone, `--jx-s<m>`: the element reads the value it sets, which no ancestor can shadow, so elements styled alike keep sharing one rule set however their values differ. A rule that targets a descendant uses `--jx-r<n>-<m>`, with a per-element serial, and is never shared: a `var()` resolves from the nearest ancestor that set it, so a shared descendant rule would read the wrong element's value.
 
 **Unscoped at-rules are hoisted.** The four declaration-body at-rules of §9.2, and `@keyframes` alongside them, declare a document-global NAME, so they are written once for the document and released when the last element that declares one lets go, rather than emitted per element.
 
@@ -1657,7 +1667,7 @@ A Jx component whose root `tagName` contains a hyphen is a custom element defini
 
 ### 16.2 Property-First Interface
 
-> **Status: Partial.** The interpreter defines a property accessor forwarding into state for every non-private state key that is not already an `HTMLElement` property (`packages/runtime/src/runtime.ts`). The compiled element module (`compile-element.ts`) defines none: it reads a property only in `connectedCallback`, so `el.key = v` after connection, including the `.key=` binding a compiled parent re-commits when its own state changes, writes an inert own property and the element never re-renders.
+> **Status: Partial.** The interpreter defines a property accessor forwarding into state for every non-private state key (`packages/runtime/src/runtime.ts`); for a key the platform already owns (`title`, `lang`, `hidden`) the accessor calls the native setter first, so the attribute still reflects and a value delivered after connection still reaches the render. The compiled element module (`compile-element.ts`) defines none: it reads a property only in `connectedCallback`, so `el.key = v` after connection, including the `.key=` binding a compiled parent re-commits when its own state changes, writes an inert own property and the element never re-renders.
 
 Custom elements use JavaScript properties as their primary data interface. `$props` can include signal references, functions, objects, and scalars. HTML observed attributes are a secondary mechanism.
 
@@ -1709,13 +1719,13 @@ REMOVING an observed attribute restores the state entry's declared default. The 
 
 ### 16.6 Light DOM Rendering
 
-> **Status: Partial.** The compiler ships the light default, `$shadow` and `defaults.shadow`, the declarative-root prerender and its adoption, and `:host` translation (`packages/compiler/src/shadow.ts`). Three parts do not: the interpreter has no shadow support (no `$shadow`, `attachShadow` or `:host` handling in `runtime.ts`); `site-build.ts` calls `compileElement` without `defaults`, so a project-level `defaults.shadow` reaches the prerender but not the component module; and built output does not distribute slots by `name` (§8.5): the component module's light-DOM emulation replaces only the first `<slot>` and leaves the `<slot>` element in place when nothing is slotted, and the static prerender (`renderStaticNode` in `packages/compiler/src/shared.ts`) writes all slotted content into every `<slot>`.
+> **Status: Partial.** The compiler ships the light default, `$shadow` and `defaults.shadow`, the declarative-root prerender and its adoption, and `:host` translation (`packages/compiler/src/shadow.ts`). Two parts do not: the interpreter has no shadow support (no `$shadow`, `attachShadow` or `:host` handling in `runtime.ts`); and `site-build.ts` calls `compileElement` without `defaults`, so a project-level `defaults.shadow` reaches the prerender but not the component module.
 
 Custom elements render to the light DOM by default. No shadow root is attached there, and none of the shadow-scoped styling primitives apply: no `attachShadow`, no `shadowrootmode`, no `::part`.
 
 **A `<slot>` leaves no node.** Distribution replaces the literal `<slot>` with its matched children, or, when nothing matches it, with its own fallback children. The slot element itself is gone from the rendered tree. It used to survive and hold its matches, which looked right — a slot is `display: contents`, so the box tree was unaffected — and was wrong in the SELECTOR tree: a definition's `& > x` rule addressed a grandchild and silently stopped matching, so a component could not style what a consumer gave it. A consequence worth stating on its own: **a `part` written on a `<slot>` names nothing**, and a rule asking whether a slot received anything asks it of the containing part, whose `:empty` is now true exactly when nothing was slotted.
 
-Scoping is therefore selector-based, in two parts: a component's own rules are prefixed with its **tag name** (`sty-card { … }`, `sty-card .inner { … }`), and a nested element carrying its own `style` gets a **generated class**, `.<tagName>-<n>`. `data-jx-static` and `data-jx-prerendered` appear on emitted elements but mark hydration state and are never used as selectors.
+Scoping is therefore selector-based, in two parts: a component's own rules are prefixed with its **tag name** (`sty-card { … }`, `sty-card .inner { … }`), and a nested element carrying its own `style` gets a **generated class**, `.<tagName>-<n>`. `data-jx-static`, `data-jx-prerendered` and `data-jx-slots` appear on emitted elements but mark hydration state and are never used as selectors.
 
 `adoptedStyleSheets` IS used, on the DOCUMENT rather than on a shadow root: it is where the runtime delivers an element's rules (§9.6). That is a delivery mechanism, not a scoping one — an adopted sheet is document-wide, so the selector handle above is still what confines a rule to its element.
 

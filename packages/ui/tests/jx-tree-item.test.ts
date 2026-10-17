@@ -182,7 +182,7 @@ describe("jx-tree-item", () => {
        every row — which is the whole reason the indent is a declaration rather than a `padding-left`
        a host composes per row. */
     const base = rules(item).get("&")!;
-    expect(base).toMatch(/padding-inline: var\(--jx-r\d+-\d+\)/);
+    expect(base).toMatch(/padding-inline: var\(--jx-s\d+\)/);
     // Level 4 is three indents in.
     expect(item.getAttribute("style")).toContain("var(--jx-tree-indent, 16px) * 3");
     // And the row's HEIGHT is untouched by its depth, which is what keeps a windowed scrollbar

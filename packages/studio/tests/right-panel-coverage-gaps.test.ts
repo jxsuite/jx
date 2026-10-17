@@ -15,12 +15,17 @@ import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 let styleThrows = false;
+/** What the dock last handed the Style tab, so a test can ask it whether the tab is showing. */
+let styleDeps: { isShowing?: () => boolean } | undefined;
 void mock.module("../src/panels/style-panel", () => ({
   /* Only the BIND throws; the unbind (`null`) is what `unmount()` calls, and a teardown that threw
      would fail the afterEach rather than the behaviour under test. */
-  bindStyleHost: (el: HTMLElement | null) => {
+  bindStyleHost: (el: HTMLElement | null, deps?: { isShowing?: () => boolean }) => {
     if (el && styleThrows) {
       throw new Error("style tab exploded");
+    }
+    if (el) {
+      styleDeps = deps;
     }
   },
 }));
@@ -67,6 +72,20 @@ afterEach(() => {
 });
 
 describe("right panel gaps", () => {
+  test("the Style tab is told it is showing only while it is the selected tab", async () => {
+    // A hidden Style tab skips its projection, which rebuilt thousands of nodes per selection.
+    resetWorkspaceWithTab();
+    activeTab.value!.session.ui.rightTab = "style";
+    mount(makeCtx());
+    await flush(4);
+    const isShowing = styleDeps?.isShowing;
+    expect(isShowing).toBeDefined();
+    activeTab.value!.session.ui.rightTab = "properties";
+    expect(isShowing?.()).toBe(false);
+    activeTab.value!.session.ui.rightTab = "style";
+    expect(isShowing?.()).toBe(true);
+  });
+
   test("a render issued around unmount neither throws nor puts the dock back", async () => {
     resetWorkspaceWithTab();
     mount(makeCtx());

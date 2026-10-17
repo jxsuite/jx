@@ -23,6 +23,7 @@ import { disposeSubtree, renderSubtreeIframe } from "./iframe-subtree";
 import {
   computeEmptyPlaceholderClass,
   EMPTY_PLACEHOLDER_CLASSES,
+  isRowBound,
   templateToEditDisplay,
 } from "../utils/edit-display";
 import type { IframeRenderCtx } from "./iframe-render";
@@ -342,7 +343,7 @@ function patchStyle(
   /* SAFETY: buildScope writes `$media` only from the document's own `$media` map or the runtime's
    * root media map, both Record<string, string>, and the host scope may not supply the key. */
   const mediaQueries = (ctx?.defs["$media"] as Record<string, string> | undefined) ?? {};
-  reapplyStyle(el, editModeStyle(node?.style), mediaQueries);
+  reapplyStyle(el, editModeStyle(node?.style), mediaQueries, ctx?.defs ?? {});
 }
 
 /** Write the node's display text, syncing the empty-placeholder class like the full render. */
@@ -371,8 +372,9 @@ function findElement(container: HTMLElement, path: (string | number)[]): HTMLEle
 }
 
 /**
- * Edit-mode style transform — mirrors prepareForEditMode (and the legacy patcher's editModeStyle):
- * top-level template-string values are blanked so no reactive bindings are created for them.
+ * Edit-mode style transform — mirrors prepareForEditMode: bindings are live and resolve against the
+ * render's scope, except a declaration that reads the repeater row, which the perimeter cannot
+ * supply and so is omitted.
  */
 function editModeStyle(style: JxStyle | undefined): JxStyle | undefined {
   if (!style || !isNonNullObject(style)) {
@@ -380,10 +382,9 @@ function editModeStyle(style: JxStyle | undefined): JxStyle | undefined {
   }
   const out: JxStyle = {};
   for (const [k, v] of Object.entries(style)) {
-    /* OMITTED, not blanked. It used to be written as `""`, which was a silent no-op while a
-       declaration went to `el.style` and is a malformed declaration now that it goes into a rule.
-       Dropping the key is what blanking always meant: the property falls back to the cascade. */
-    if (isString(v) && v.includes("${")) {
+    /* OMITTED, not blanked: `color: ` is a malformed declaration in a rule, and an absent one lets
+       the cascade answer, which is what blanking always meant. */
+    if (isRowBound(v)) {
       continue;
     }
     out[k] = v;

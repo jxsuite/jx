@@ -134,26 +134,33 @@ describe("outlineLabel", () => {
     expect(label({ children: [], tagName: "aside" })).toBe("Sidebar");
   });
 
-  test("a container borrows the first text under it, quoted", () => {
+  test("a container never borrows a descendant row's text", () => {
+    // The heading is its own row. Borrowing it made every wrapper above read it too, once per row.
     expect(
       label({
         children: [{ children: [{ tagName: "h2", textContent: "Opening hours" }], tagName: "div" }],
         tagName: "section",
       }),
-    ).toBe("“Opening hours”");
+    ).toBe("1 item");
   });
 
-  test("a bare string child counts as text", () => {
+  test("a bare string child is the node's own text", () => {
     expect(label({ children: ["Just words"], tagName: "div" })).toBe("“Just words”");
   });
 
-  test("the walk is bounded, so a deep wrapper falls back to its child count", () => {
-    // Five levels of wrapper: past the depth bound, so the text is not borrowed.
-    let node: JxMutableNode = { tagName: "span", textContent: "deep" };
-    for (let i = 0; i < 5; i++) {
-      node = { children: [node], tagName: "div" };
-    }
-    expect(label(node)).toBe("1 item");
+  test("an inline child's words are the row's own, since it has no row of its own", () => {
+    expect(
+      label({
+        children: ["Hello ", { tagName: "strong", textContent: "world" }, "!"],
+        tagName: "p",
+      }),
+    ).toBe("“Hello world!”");
+  });
+
+  test("a block child's words are not, however shallow", () => {
+    expect(label({ children: [{ tagName: "p", textContent: "Every day" }], tagName: "li" })).toBe(
+      "1 item",
+    );
   });
 
   test("a container with nothing to say counts its children instead of repeating the tag", () => {
@@ -185,9 +192,11 @@ describe("outlineLabel", () => {
     await draw();
     const labels = treeItems(host).map((r) => textOf(r, "label"));
     // The old tree printed "div" four times over; nothing here repeats its own badge.
+    /* And no row repeats another's text: the root and the section wrapping the heading count
+       their children rather than each reading "Opening hours" again. */
     expect(labels).toEqual([
-      "“Opening hours”", // The document root borrows the first words on the page…
-      "“Opening hours”", // …as does the section wrapping them.
+      "3 items",
+      "2 items",
       "Opening hours",
       "Every day",
       "1 item",
@@ -564,7 +573,7 @@ describe("role=tree and the keyboard model", () => {
     activeTab.value!.session.selection = [[]];
     await draw();
     /* The paragraph is labelled by its own text, "Every day" — so one keystroke from the root
-       reaches it, past two rows whose names begin with an O. Typeahead is entirely the element's
+       reaches it, past the heading's row, whose name begins with an O. Typeahead is entirely the element's
        and this tree never had it: a 5 000-row outline was ↓ five thousand times. */
     press(at([]), "e");
     await flush();
