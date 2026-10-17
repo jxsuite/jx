@@ -64,8 +64,8 @@ export interface SitePanelActions {
   open: (path: string) => void;
   /** Open a component's definition by its tag. */
   openComponent: (tagName: string) => void;
-  /** The `+` was pressed; the menu it opens hangs from `anchor`. */
-  add: (anchor: EventTarget | null) => void;
+  /** The `+` was pressed: open Add new. */
+  add: () => void;
   /** Switch to the Media workspace. */
   openMedia: () => void;
 }

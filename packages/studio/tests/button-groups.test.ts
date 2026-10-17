@@ -257,8 +257,9 @@ describe("Studio's button groups", () => {
   test("a group that WRAPS is not compact, and its members frame themselves", () => {
     /* A compact group refuses to wrap (ui.md §5.4): its seam is written in tree order, no selector
        can find the ends of a flex line, and a wrapped one therefore overhung the group's own edge
-       by 1px, doubled the border between the two rows and squared both line ends. Studio's two
-       wrapping rows are the pane context's breakpoint and feature chips, and a chip frames itself,
+       by 1px, doubled the border between the two rows and squared both line ends. Studio's
+       wrapping rows are the pane context's breakpoint and feature chips and Add new's cards and field
+       presets, and a chip frames itself,
        so each member says `quiet: false` where a segment would have said nothing at all. */
     const wrapping: string[] = [];
     for (const { name, node } of groups) {
@@ -278,7 +279,14 @@ describe("Studio's button groups", () => {
         expect(propOf(member, "quiet"), `${where(name, node)} > ${partOf(member)}`).toBe(false);
       }
     }
-    expect(wrapping).toEqual(["pane-context.json sizes", "pane-context.json features"]);
+    expect(wrapping).toEqual([
+      "pane-context.json sizes",
+      "pane-context.json features",
+      "add-new.json start-from",
+      "add-new.json presets",
+      "add-new.json wrap-in",
+      "add-new.json component-start",
+    ]);
   });
 
   test("the zoom pod's Fit picker is a control beside the zoom group, not a fourth segment", () => {

@@ -2,6 +2,7 @@
 title: "Content types"
 description: "Define content types in Jx Studio (a source folder, a format, and a field schema), then create seeded entries and edit their fields as a form."
 code:
+  - packages/studio/src/create/add-new.ts
   - packages/studio/src/settings/contributed-section.ts
   - packages/studio/src/settings/schema-field-ui.ts
   - packages/studio/src/content/entry-model.ts
@@ -24,6 +25,15 @@ The builder is a section of your project's configuration document. Pick **Open P
 ![The Content Types section with a type selected and its field schema open in the builder](../../images/content-type-builder.png)
 
 ## Create a content type
+
+The quickest way is **Add new** (:kbd[⌘N], or :kbd[⌘⌥N] in a browser): choose **Collection** and type a name such as `Recipes`.
+
+- **Each recipe has** offers the fields most collections start with: **Title**, **Image**, **Rich text** (the entry's body, when your project writes Markdown), **Date**, **Tags**, **Number** and **Link**. Title, Image and Rich text start chosen; click a chip to add or drop it. You can change the fields here afterwards.
+- **Give each recipe its own page** (on by default) also creates the page every entry opens at, `/recipes/:slug`, using the template you pick. It is the same page a blog starter ships: the entry's title, image and body, bound to whichever entry the address names.
+
+**Create collection** adds the `recipes` type to `project.json`, a `content/recipes/` folder with a first entry, and the page `pages/recipes/[slug].json`. The dialog says all of that before you click.
+
+You can also start a type here, from scratch:
 
 1. Click **New Entry** at the bottom of the type list.
 2. Type a name ("Blog Posts" becomes `blog-posts`) and click **Create**.
@@ -56,13 +66,13 @@ With a type selected, edit its name in the editor's header to rename it, or clic
 
 ## Create an entry
 
-The [Library](/docs/studio/projects/browse)'s **New** menu lists a row for every content type you have defined, each naming the folder its entries live in. Pick the type, type a file name carrying the collection's extension (`spring-menu.md`), and Studio writes the file into that folder and opens it. Entries then appear in the Library under the **Content** category, labeled with the type they belong to.
+Open **Add new** (:kbd[⌘N], or **New** in the [Library](/docs/studio/projects/browse) with the **Content** category showing), choose **Entry**, pick the collection, and type a name such as `Spring menu`. Studio writes `content/menus/spring-menu.md` and opens it in the form below. Entries then appear in the Library under the **Content** category, labeled with the type they belong to.
 
-**New Entry** (`content.newEntry`) is the collection-scoped version of the same thing, and it does two things the generic route cannot: it names the file with the collection's **own extension**, so the entry is actually matched by the collection it was created in, and it **seeds the fields from the schema**, so the entry is valid the moment it exists rather than being a pile of absent required fields. It opens the new entry in the form below.
+Two things make an entry different from a blank file: it is named with the collection's **own extension**, so the entry is actually matched by the collection it was created in, and its fields are **seeded from the schema**, so it is valid the moment it exists rather than being a pile of absent required fields. When the schema has a `title`, it starts as the name you typed.
 
 **The Files tree knows about this too.** Right-click a content type's folder and choose **New File…**: because that folder belongs to a collection, you get the New Entry flow (the collection's extension, the seeded fields, and the entry form) rather than a blank document. In a **subfolder** of it the format picker is locked to the collection's extension instead, because a document there is still one of its entries but the images and notes beside them are not; the picker's **Other…** row still creates those. What it will not accept is a document of a different format, which the collection would discover as an entry it cannot read.
 
-A **localized** collection (a `{locale}` in its source) has no single folder to create into, so **New Entry** asks you to open the folder for the language you are writing in and create the entry there.
+A **localized** collection (a `{locale}` in its source) has no single folder to create into, so Add new refuses it and asks you to open the folder for the language you are writing in and create the entry there with **New File…**.
 
 An entry is also not something you can convert: **Convert Format…** is not offered inside a content type's folder, in either direction. Changing the format of one entry would remove it from the collection; the collection's format belongs to the type, and you change it here.
 

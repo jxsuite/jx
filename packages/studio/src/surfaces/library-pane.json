@@ -450,7 +450,7 @@
           "$props": {
             "size": "sm",
             "icon": "plus",
-            "haspopup": "menu"
+            "haspopup": "dialog"
           },
           "onclick": {
             "$prototype": "Function",
@@ -458,16 +458,12 @@
               {
                 "operator": "call",
                 "target": {
-                  "$ref": "#/state/openNewMenu"
+                  "$ref": "#/state/openNew"
                 },
-                "value": [
-                  {
-                    "$ref": "event#/currentTarget"
-                  }
-                ]
+                "value": []
               }
             ],
-            "description": "Creation is somebody else's flow: a page, layout or component is `files.ts`'s, a collection entry is `content/entry-commands.ts`'s. The menu only names which."
+            "description": "Creation is somebody else's flow: `file.new` opens Add new on the kind the active category names, and the dialog lists every kind."
           },
           "children": [
             {

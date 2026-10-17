@@ -148,6 +148,7 @@ A garbled line in the import's stream doesn't stop the run; the pages already cr
 
 ## Next
 
+- **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components#create-one)**: add to the project with **Add new** (:kbd[⌘N])
 - **[Projects](/docs/studio/projects)**: the other ways to get a project, by opening a folder or cloning a repository
 - **[The Library](/docs/studio/projects/browse)**: find your way around what was just created
 - **[Starter templates](/docs/studio/projects/starters)**: the full starter gallery

@@ -25,7 +25,7 @@ Already have a Jx project? Use **Open Project** to point Studio at a folder on d
 
 ## 3. Browse, edit, design
 
-Studio gives you a surface for each part of the job. The **Site** panel on the left lists your pages by address, with the templates, components and media they are made of: click a page to open it, or drag a component or an image straight onto the canvas. For a bigger view, **[The Library](/docs/studio/projects/browse)** shows pages, components, content, and media as cards with live previews.
+Studio gives you a surface for each part of the job. The **Site** panel on the left lists your pages by address, with the templates, components and media they are made of: click a page to open it, or drag a component or an image straight onto the canvas. Its **+** opens **Add new** (also :kbd[⌘N]), the one dialog that makes a page, a template, a component, a collection or an upload: type a name and Studio works out the file. For a bigger view, **[The Library](/docs/studio/projects/browse)** shows pages, components, content, and media as cards with live previews.
 
 ![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../images/mode-manage.png)
 

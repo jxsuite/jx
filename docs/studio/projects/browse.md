@@ -69,18 +69,9 @@ Rename and delete go through the same confirmations as the Files panel, and they
 
 ## Create something
 
-**New** creates a Page, a Layout or a Component, and lists one row per content type your project defines. Each row names the folder the file lands in.
+**New** opens **Add new** on the kind the category you are looking at names: a page from **Pages** or **All**, a template from **Layouts**, a component from **Components**, an entry from **Content**, an upload from **Media**. The dialog lists every kind, so you can switch. See **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components#create-one)**.
 
-Studio asks for a name, tells you which folder it is creating in, and refuses a name that folder already holds. The new file opens in a tab straight away.
-
-What it asks about the format depends on what the kind allows:
-
-- **Page** offers a **Format** picker, because a page really can be a `.md` as easily as a `.json`. Pick one and the extension follows.
-- **Layout** and **Component** are always `.json`. A layout is read as JSON by the build with no format dispatch at all, and a component needs a `tagName` a blank markdown file does not carry, so the choice would only ever produce a file nothing loads.
-
-:::doc-tip
-A content entry has a better route than a blank file: **New Entry** names the file with its collection's own extension and seeds every field from the collection's schema, so the entry is valid the moment it exists and opens in the entry form. See **[Content types](/docs/studio/projects/content-types)**.
-:::
+Studio asks for a name, says what it will save and where before you click, and refuses a name that folder already holds. The new file opens in a tab straight away.
 
 ## Upload media
 

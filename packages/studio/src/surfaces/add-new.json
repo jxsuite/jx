@@ -1,0 +1,1325 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioAddNew",
+  "$description": "Add new: the one dialog that creates a page, a collection, a template, a component, a collection entry or an upload (`specs/studio.md` §9.1.1). One `jx-dialog`, so the platform owns modality, Escape, the backdrop and focus restoration. The kinds run down the left as a radiogroup and the chosen kind's name and options fill the right; the line above the buttons is the derived result, the same `deriveCreation` the write performs, so what it says is what is written. Nothing here composes a path, judges a name or knows a format: `create/add-new-flow.ts` keeps every decision and hands this document rows that are already strings, flags that are already booleans and a refusal that is already a sentence.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Add new",
+    "confirmLabel": {
+      "$ref": "#/state/cta"
+    },
+    "confirmDisabled": {
+      "$ref": "#/state/blocked"
+    },
+    "cancelLabel": "Cancel",
+    "size": "lg"
+  },
+  "attributes": {
+    "part": "add-new",
+    "data-kind": "${state.kind}"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "ondragover": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "preventDefault": true
+      }
+    ]
+  },
+  "ondrop": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "preventDefault": true
+      },
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/drop"
+        },
+        "value": [
+          {
+            "$ref": "event#/dataTransfer/files"
+          }
+        ]
+      }
+    ]
+  },
+  "style": {
+    "$description": "The board's two columns in the kit's scale. The kinds take a fixed gutter so the right side does not move under the reader as they switch kinds, and the options column scrolls on its own so a long template list never pushes the result line and the buttons off the dialog. No part here is named `field`, `label`, `body`, `error`, `text` or `actions`: the kit is light DOM, and `jx-textfield`, `jx-select` and `jx-dialog` each draw internal nodes under those names inside this same tree.",
+    "& [part=\"sheet\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-5)",
+      "minHeight": "360px"
+    },
+    "& [part=\"kinds-column\"]": {
+      "flex": "0 0 208px",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "borderRight": "1px solid var(--border)",
+      "paddingRight": "var(--jx-space-3)"
+    },
+    "& [part=\"kinds\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "stretch",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"kind\"]": {
+      "display": "block"
+    },
+    "& [part=\"kind\"] > [part=\"control\"]": {
+      "$description": "A kind is a row with its own two lines, so the button's box stretches across the gutter and starts its content at the left edge rather than centring an icon.",
+      "width": "100%",
+      "height": "auto",
+      "justifyContent": "flex-start",
+      "alignItems": "flex-start",
+      "textAlign": "start",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"kind-text\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px"
+    },
+    "& [part=\"kind-name\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"kind-hint\"], & [part=\"choice-note\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "whiteSpace": "normal"
+    },
+    "& [part=\"chord-note\"], & [part=\"note\"], & [part=\"kind-intro\"], & [part=\"drop-summary\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"chord-note\"]": {
+      "marginTop": "auto"
+    },
+    "& [part=\"detail\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-4)",
+      "maxHeight": "60vh",
+      "overflowY": "auto"
+    },
+    "& [part=\"options\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"name-slot\"], & [part=\"options-slot\"], & [part=\"url-slot\"], & [part=\"own-page-slot\"], & [part=\"copy-slot\"]": {
+      "$description": "Branch hosts are structure rather than layout: `display: contents` puts what they carry straight into the column, so one gap rule spaces every row whether it is drawn or not.",
+      "display": "contents"
+    },
+    "& [part=\"group-label\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"url-row\"], & [part=\"pattern-row\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"url-label\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"route\"], & [part=\"pattern\"]": {
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"start-row\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"start-from\"], & [part=\"wrap-in\"], & [part=\"component-start\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"choice-card\"] > [part=\"control\"]": {
+      "$description": "A choice is a card with a name and a note, as the board draws it: its own two lines inside one radio, so the reader hears one name and sees both.",
+      "minWidth": "132px",
+      "height": "auto",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "textAlign": "start",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "gap": "2px"
+    },
+    "& [part=\"choice-name\"]": {
+      "display": "block",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"choice-note\"]": {
+      "display": "block"
+    },
+    "& [part=\"presets\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"drop\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-2)",
+      "minHeight": "200px",
+      "padding": "var(--jx-space-5)",
+      "border": "1px dashed var(--border)",
+      "borderRadius": "var(--radius)",
+      "textAlign": "center"
+    },
+    "& [part=\"drop\"][data-drop=\"true\"]": {
+      "borderColor": "var(--accent)",
+      "background": "var(--accent-10)"
+    },
+    "& [part=\"drop-title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"browse\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-1) var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "color": "var(--fg)",
+      "cursor": "pointer"
+    },
+    "& [part=\"browse\"]:focus-within": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "2px"
+    },
+    "& [part=\"browse-input\"]": {
+      "$description": "Visually hidden, never `display: none`: the input is the control, and a hidden-from-layout one cannot take focus from the keyboard. The label around it is what is drawn and what is clicked.",
+      "position": "absolute",
+      "width": "1px",
+      "height": "1px",
+      "opacity": "0",
+      "overflow": "hidden"
+    },
+    "& [part=\"saved\"]": {
+      "margin": "0",
+      "paddingTop": "var(--jx-space-3)",
+      "borderTop": "1px solid var(--border)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "overflowWrap": "anywhere"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "sheet"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "kinds-column"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-group",
+              "attributes": {
+                "part": "kinds"
+              },
+              "$props": {
+                "selects": "single",
+                "label": "What to create",
+                "orientation": "vertical",
+                "compact": false
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/kinds"
+                  },
+                  "key": {
+                    "$ref": "$map/item/id"
+                  },
+                  "map": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "kind",
+                      "data-kind": "${$map.item.id}"
+                    },
+                    "$props": {
+                      "label": {
+                        "$ref": "$map/item/label"
+                      },
+                      "icon": {
+                        "$ref": "$map/item/icon"
+                      },
+                      "checked": {
+                        "$ref": "$map/item/checked"
+                      }
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/pickKind"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/id"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "kind-text"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "kind-name"
+                            },
+                            "textContent": "${$map.item.label}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "kind-hint"
+                            },
+                            "textContent": "${$map.item.hint}"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "chord-note"
+              },
+              "textContent": "${state.chordNote}"
+            }
+          ]
+        },
+        {
+          "tagName": "section",
+          "attributes": {
+            "part": "detail",
+            "aria-label": "${state.kindLabel}"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "kind-intro"
+              },
+              "textContent": "${state.kindHint}"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "name-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/named"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-field",
+                  "attributes": {
+                    "part": "name-row"
+                  },
+                  "$props": {
+                    "span": true,
+                    "label": {
+                      "$ref": "#/state/nameLabel"
+                    },
+                    "invalid": {
+                      "$ref": "#/state/invalid"
+                    }
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-textfield",
+                      "attributes": {
+                        "part": "name"
+                      },
+                      "$props": {
+                        "value": {
+                          "$ref": "#/state/name"
+                        },
+                        "placeholder": {
+                          "$ref": "#/state/placeholder"
+                        },
+                        "invalid": {
+                          "$ref": "#/state/invalid"
+                        },
+                        "error": {
+                          "$ref": "#/state/error"
+                        },
+                        "required": true,
+                        "autocomplete": "off"
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setName"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "onkeydown": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "$switch": {
+                              "$ref": "event#/key"
+                            },
+                            "cases": {
+                              "Enter": [
+                                {
+                                  "preventDefault": true
+                                },
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/confirm"
+                                  },
+                                  "value": []
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "options-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/kind"
+              },
+              "cases": {
+                "page": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "options",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "url-row"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "url-label"
+                          },
+                          "textContent": "URL"
+                        },
+                        {
+                          "tagName": "code",
+                          "attributes": {
+                            "part": "route"
+                          },
+                          "textContent": "${state.route}"
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "edit-url"
+                          },
+                          "$props": {
+                            "label": "Edit URL",
+                            "toggles": true,
+                            "selected": {
+                              "$ref": "#/state/editingUrl"
+                            },
+                            "size": "sm"
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/toggleUrl"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Edit"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "url-slot",
+                        "role": "none"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/editingUrl"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-field",
+                          "attributes": {
+                            "part": "url-row-field"
+                          },
+                          "$props": {
+                            "span": true,
+                            "label": "URL"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-textfield",
+                              "attributes": {
+                                "part": "url"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "mono": true,
+                                "value": {
+                                  "$ref": "#/state/url"
+                                },
+                                "placeholder": "/pricing"
+                              },
+                              "oninput": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setUrl"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "onkeydown": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "$switch": {
+                                      "$ref": "event#/key"
+                                    },
+                                    "cases": {
+                                      "Enter": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/confirm"
+                                          },
+                                          "value": []
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "start-row"
+                      },
+                      "children": [
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "group-label"
+                          },
+                          "textContent": "Start from"
+                        },
+                        {
+                          "tagName": "jx-action-group",
+                          "attributes": {
+                            "part": "start-from"
+                          },
+                          "$props": {
+                            "selects": "single",
+                            "label": "Start from",
+                            "compact": false
+                          },
+                          "children": [
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/startChoices"
+                              },
+                              "key": {
+                                "$ref": "$map/item/value"
+                              },
+                              "map": {
+                                "tagName": "jx-action-button",
+                                "attributes": {
+                                  "part": "choice-card",
+                                  "data-value": "${$map.item.value}"
+                                },
+                                "$props": {
+                                  "label": {
+                                    "$ref": "$map/item/label"
+                                  },
+                                  "checked": {
+                                    "$ref": "$map/item/checked"
+                                  },
+                                  "disabled": {
+                                    "$ref": "$map/item/disabled"
+                                  },
+                                  "hint": {
+                                    "$ref": "$map/item/reason"
+                                  },
+                                  "quiet": false
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/pickStart"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/value"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "choice-name"
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "choice-note"
+                                    },
+                                    "textContent": "${$map.item.note}"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "collection": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "options",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "group-label"
+                      },
+                      "textContent": "Each ${state.itemNoun} has"
+                    },
+                    {
+                      "tagName": "jx-action-group",
+                      "attributes": {
+                        "part": "presets"
+                      },
+                      "$props": {
+                        "selects": "multiple",
+                        "label": "Fields",
+                        "compact": false
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/presets"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "preset",
+                              "data-preset": "${$map.item.id}"
+                            },
+                            "$props": {
+                              "label": {
+                                "$ref": "$map/item/label"
+                              },
+                              "toggles": true,
+                              "selected": {
+                                "$ref": "$map/item/selected"
+                              },
+                              "quiet": false,
+                              "size": "sm",
+                              "icon": {
+                                "$ref": "$map/item/icon"
+                              }
+                            },
+                            "onchange": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/togglePreset"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/id"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "${$map.item.label}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "You can add or change fields later."
+                    },
+                    {
+                      "tagName": "jx-checkbox",
+                      "attributes": {
+                        "part": "own-page"
+                      },
+                      "$props": {
+                        "checked": {
+                          "$ref": "#/state/ownPage"
+                        }
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setOwnPage"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/checked"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Give each ${state.itemNoun} its own page"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "own-page-slot",
+                        "role": "none"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/ownPage"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "pattern-row"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "url-label"
+                              },
+                              "textContent": "at"
+                            },
+                            {
+                              "tagName": "code",
+                              "attributes": {
+                                "part": "pattern"
+                              },
+                              "textContent": "${state.pattern}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "url-label"
+                              },
+                              "textContent": "using"
+                            },
+                            {
+                              "tagName": "jx-select",
+                              "attributes": {
+                                "part": "page-template"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "Template for each page",
+                                "options": {
+                                  "$ref": "#/state/templateOptions"
+                                },
+                                "value": {
+                                  "$ref": "#/state/pageTemplate"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/pickPageTemplate"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "template": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "options",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "group-label"
+                      },
+                      "textContent": "Wrap it in"
+                    },
+                    {
+                      "tagName": "jx-action-group",
+                      "attributes": {
+                        "part": "wrap-in"
+                      },
+                      "$props": {
+                        "selects": "single",
+                        "label": "Wrap it in",
+                        "compact": false
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/wrapChoices"
+                          },
+                          "key": {
+                            "$ref": "$map/item/value"
+                          },
+                          "map": {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "choice-card",
+                              "data-value": "${$map.item.value}"
+                            },
+                            "$props": {
+                              "label": {
+                                "$ref": "$map/item/label"
+                              },
+                              "checked": {
+                                "$ref": "$map/item/checked"
+                              },
+                              "disabled": {
+                                "$ref": "$map/item/disabled"
+                              },
+                              "hint": {
+                                "$ref": "$map/item/reason"
+                              },
+                              "quiet": false
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/pickWrap"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "choice-name"
+                                },
+                                "textContent": "${$map.item.label}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "choice-note"
+                                },
+                                "textContent": "${$map.item.note}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Pages placed in this template fill its Content area. You can add more named areas later."
+                    }
+                  ]
+                },
+                "component": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "options",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "group-label"
+                      },
+                      "textContent": "Start from"
+                    },
+                    {
+                      "tagName": "jx-action-group",
+                      "attributes": {
+                        "part": "component-start"
+                      },
+                      "$props": {
+                        "selects": "single",
+                        "label": "Start from",
+                        "compact": false
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/componentChoices"
+                          },
+                          "key": {
+                            "$ref": "$map/item/value"
+                          },
+                          "map": {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "choice-card",
+                              "data-value": "${$map.item.value}"
+                            },
+                            "$props": {
+                              "label": {
+                                "$ref": "$map/item/label"
+                              },
+                              "checked": {
+                                "$ref": "$map/item/checked"
+                              },
+                              "disabled": {
+                                "$ref": "$map/item/disabled"
+                              },
+                              "hint": {
+                                "$ref": "$map/item/reason"
+                              },
+                              "quiet": false
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/pickComponentStart"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "choice-name"
+                                },
+                                "textContent": "${$map.item.label}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "choice-note"
+                                },
+                                "textContent": "${$map.item.note}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "copy-slot",
+                        "role": "none"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/copying"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-field",
+                          "attributes": {
+                            "part": "copy-row"
+                          },
+                          "$props": {
+                            "span": true,
+                            "label": "Copy of"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-select",
+                              "attributes": {
+                                "part": "copy-of"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "Component to copy",
+                                "options": {
+                                  "$ref": "#/state/copyOptions"
+                                },
+                                "value": {
+                                  "$ref": "#/state/copyOf"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/pickCopy"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "It appears under Components in the Site panel, ready to drag onto any page."
+                    }
+                  ]
+                },
+                "entry": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "options",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "collection-row"
+                      },
+                      "$props": {
+                        "span": true,
+                        "label": "Collection"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-select",
+                          "attributes": {
+                            "part": "collection"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "Collection",
+                            "options": {
+                              "$ref": "#/state/collectionOptions"
+                            },
+                            "value": {
+                              "$ref": "#/state/collection"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/pickCollection"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "media": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "drop",
+                    "data-drop": "${state.dropActive}"
+                  },
+                  "ondragover": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "preventDefault": true
+                      },
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/dragOver"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "ondragleave": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/dragOut"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-icon",
+                      "attributes": {
+                        "part": "drop-glyph"
+                      },
+                      "$props": {
+                        "name": "upload-simple"
+                      }
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "drop-title"
+                      },
+                      "textContent": "Drop images, video or documents"
+                    },
+                    {
+                      "tagName": "label",
+                      "attributes": {
+                        "part": "browse"
+                      },
+                      "children": [
+                        {
+                          "tagName": "input",
+                          "attributes": {
+                            "part": "browse-input",
+                            "type": "file",
+                            "multiple": true,
+                            "accept": "${state.uploadAccept}"
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/choose"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "span",
+                          "textContent": "Browse files"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "drop-summary"
+                      },
+                      "textContent": "${state.fileSummary}"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "saved",
+        "aria-live": "polite"
+      },
+      "textContent": "${state.saved}"
+    }
+  ]
+}

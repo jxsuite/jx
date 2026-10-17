@@ -7,19 +7,13 @@
  * toolbar button has — the Manage view's category filter and view switch were buttons and nothing
  * else, and the screenshot pipeline had to press them through an XPath on their labels.
  */
-import { flush, installMockPlatform, resetStudioState } from "./harness";
+import { installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { CommandContext } from "../src/commands/context";
 import type { CommandRegistry } from "../src/commands/registry";
 import type { DirEntry } from "../src/types";
 
-const created: string[] = [];
-
 void mock.module("../src/files/files.js", () => ({
-  createFileIn: (request: { dir: string }) => {
-    created.push(request.dir);
-    return Promise.resolve(`${request.dir}/created.md`);
-  },
   loadDirectory: () => Promise.resolve(),
   openFileInTab: () => Promise.resolve(),
 }));
@@ -37,7 +31,6 @@ let registry: CommandRegistry;
 let listed: string[];
 
 beforeEach(() => {
-  created.length = 0;
   listed = [];
   installMockPlatform({
     listDirectory: (path: string) => {
@@ -122,18 +115,6 @@ describe("running the verbs", () => {
     await registry.run("library.refresh");
     expect(listed).toEqual(["pages", "pages"]);
     expect(librarySource().files().length).toBe(1);
-  });
-
-  test("library.newEntry creates in the folder its kind belongs to", async () => {
-    await registry.run("library.newEntry", { type: "page" });
-    await flush();
-    expect(created).toEqual(["pages"]);
-  });
-
-  test("library.newEntry accepts a collection this project declares", async () => {
-    await registry.run("library.newEntry", { type: "collection:posts" });
-    await flush();
-    expect(created).toEqual(["content/posts"]);
   });
 });
 

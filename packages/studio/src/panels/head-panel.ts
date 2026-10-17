@@ -72,7 +72,14 @@ interface MetaField {
 /** @type {{ name: string; path: string }[] | null} */
 let layoutEntries: { name: string; path: string }[] | null = null;
 
-async function loadLayoutEntries() {
+/**
+ * List `layouts/` now and keep the answer as the picker's cache.
+ *
+ * The one reading of which files are layouts and what each is called: the Page panel's picker and
+ * Add new (`create/add-new-flow.ts`) both read it, so they cannot name different templates. JSON
+ * only, because a layout is resolved as JSON.
+ */
+export async function listLayoutEntries(): Promise<{ name: string; path: string }[]> {
   try {
     const platform = getPlatform();
     const listing = await platform.listDirectory("layouts");
@@ -88,6 +95,11 @@ async function loadLayoutEntries() {
   } catch {
     layoutEntries = [];
   }
+  return layoutEntries;
+}
+
+async function loadLayoutEntries() {
+  await listLayoutEntries();
   renderOnly("rightPanel", "frontmatterPanel", "seoModal");
 }
 

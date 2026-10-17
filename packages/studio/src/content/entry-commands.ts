@@ -1,6 +1,10 @@
 /**
- * The content-entry verbs: create one, open one as a form, mark one a draft, and choose whether
- * drafts are listed at all.
+ * The content-entry verbs: open one as a form, mark one a draft, and choose whether drafts are
+ * listed at all — and {@link createEntry}, the New File tree's route into a collection folder.
+ *
+ * Creating an entry from anywhere else is Add new's (`file.new { kind: "entry", collection }`,
+ * `create/add-new-flow.ts`), which seeds through {@link entryFormatName} and `entryBody` exactly as
+ * {@link createEntry} does, so both routes write the same bytes.
  *
  * Each is a record in its owning module, so the palette row, the assistant's tool, the automation
  * step and (for the two that declare one) the context-menu item are renderings of the same
@@ -14,8 +18,6 @@ import {
   argsSchema,
   booleanArg,
   booleanProperty,
-  derivedEnumProperty,
-  enumArg,
   stringArg,
   stringProperty,
 } from "../commands/command-args";
@@ -32,7 +34,8 @@ import { serializeJson } from "@jxsuite/schema/json-layout";
 import { invalidateReferenceEntries } from "../ui/form-controls";
 import { reloadDraftAwareGrids } from "../grid/sources/content-source";
 import { setIncludeDrafts } from "./draft-state";
-import { collectionOfPath, entryCollection, entryCollections, seedEntry } from "./entry-model";
+import { collectionOfPath, entryCollection } from "./entry-model";
+import { entryBody } from "../create/add-new";
 import { collectionForDirectory } from "./collection-match";
 import { LOCALE_PLACEHOLDER } from "../canvas/asset-resolve";
 import { openEntryEditor, setEntryDraft } from "./entry-editor";
@@ -40,40 +43,51 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import type { EntryCollection } from "./entry-model";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { Tab } from "../tabs/tab";
-
-/** Collection names a New Entry can be created in — the `enum` behind `content.newEntry`. */
-function creatableCollections(): string[] {
-  return entryCollections().map((collection) => collection.name);
-}
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /**
- * The source text a new entry starts as.
- *
- * A `json` collection is serialized here rather than through the format registry, because JSON is
- * the one native collection shape (site-architecture.md §6.2) and has no format class to ask.
+ * The format class that writes a collection's entries, or `null` for native JSON.
  *
  * `collectionInfo` derives `.json` exactly when no format class claimed the collection — the
  * extension and the serializer name come off the same three lookups in the same order — so "the
- * extension is .json" and "no format can write this" are one condition, and the second is not a
- * separate failure to report. Writing JSON into a `.md` file is therefore not a state this can
- * reach.
+ * extension is .json" and "no format can write this" are one condition. Writing JSON into a `.md`
+ * file is therefore not a state a seed can reach.
  */
-async function seedText(collection: EntryCollection): Promise<string> {
-  const seed = seedEntry(collection.schema);
-  const formatName =
+export function entryFormatName(collection: Pick<EntryCollection, "def" | "ext">): string | null {
+  if (collection.ext === ".json") {
+    return null;
+  }
+  return (
     (collection.def.format ? formatByName(collection.def.format)?.name : undefined) ??
     formatForPath(`untitled${collection.ext}`)?.name ??
-    defaultContentFormat()?.name;
-  if (collection.ext === ".json" || formatName === undefined) {
+    defaultContentFormat()?.name ??
+    null
+  );
+}
+
+/**
+ * The source text a new entry starts as: `create/add-new.ts`'s `entryBody`, serialized.
+ *
+ * A `json` collection is serialized here rather than through the format registry, because JSON is
+ * the one native collection shape (site-architecture.md §6.2) and has no format class to ask.
+ */
+async function seedText(collection: EntryCollection): Promise<string> {
+  const body = entryBody({
+    ext: collection.ext,
+    formatName: entryFormatName(collection),
+    schema: collection.schema,
+  });
+  if (body.format === null) {
     // The save serializer with no layout (`@jxsuite/schema/json-layout`): a seed has no source text, and
     // This is what the formatter makes of one, newline included.
-    return serializeJson(seed, null);
+    return serializeJson(body.doc, null);
   }
-  return formatSerialize(
-    formatName,
-    { ...seed, children: [] },
-    { frontmatter: Object.keys(seed).length > 0, mode: "roundtrip" },
-  );
+  /* SAFETY: an entry body is `{ ...seed, children: [] }`, an element-shaped object, which is the
+     document a format's serializer reads. */
+  return formatSerialize(body.format, body.doc as JxMutableNode, {
+    frontmatter: body.frontmatter ?? false,
+    mode: "roundtrip",
+  });
 }
 
 /**
@@ -127,8 +141,8 @@ export async function createEntry(
    * Where the entry lands.
    *
    * A localized collection's `dir` is `content/exhibitions/{locale}` — a path nobody has. Creating
-   * there makes a directory literally named `{locale}`, which is what `content.newEntry` from the
-   * palette and the `new_content_entry` tool have been doing. There is no default locale to pick on
+   * there makes a directory literally named `{locale}`, which is what the palette's New Entry and
+   * the `new_content_entry` tool used to do. There is no default locale to pick on
    * the author's behalf (choosing one silently files the entry under a language), so this refuses
    * and names the gesture that works.
    */
@@ -175,32 +189,6 @@ function activeEntryTab(): Tab | null {
 /** The content-entry command records. */
 export function contentCommands(): AnyCommand[] {
   return [
-    {
-      args: argsSchema({
-        collection: derivedEnumProperty(
-          creatableCollections,
-          "The content collection the entry is created in.",
-        ),
-      }),
-      category: "File",
-      id: "content.newEntry",
-      level: "project",
-      menus: ["palette"],
-      group: "1_file",
-      requires: "a project with a directory-backed content collection",
-      when: (ctx) => ctx.project.open,
-      enablement: () => creatableCollections().length > 0,
-      undo: "project",
-      /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: `createEntry` awaits
-         `createFileIn`, which awaits the New File prompt for the name; a cancel resolves with
-         nothing thrown. An optional `name` argument that skips the prompt is the way back in, and
-         is a UX call (issue 273). */
-      run: async (_ctx, args) => {
-        const names = creatableCollections();
-        await createEntry(enumArg("content.newEntry", args, "collection", names));
-      },
-      title: "New Entry",
-    },
     {
       args: argsSchema({
         path: stringProperty("Project-relative path of the entry file to open."),

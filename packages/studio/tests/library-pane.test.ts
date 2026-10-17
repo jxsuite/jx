@@ -28,33 +28,23 @@ import {
   testFile,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setFormats } from "../src/format/format-host";
-import { MARKDOWN_FORMAT, mockFormatAction } from "./format-fixture";
 import { initLayers } from "../src/ui/layers";
 import { problems, resetNotifications } from "../src/services/notify";
 import libraryDoc from "../src/surfaces/library-pane.json";
 import { LIBRARY_LAYOUTS } from "../src/browse/library-model";
 import { activities, resetActivities } from "../src/panels/activity-panel";
 import type { DirEntry } from "../src/types";
-import type { NewFileRequest } from "../src/files/files";
-import { isFunction, isJsonObject } from "@jxsuite/schema/guards";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
 import type { LibraryViewKind } from "../src/surfaces/library-pane";
 
 // ─── Seams ───────────────────────────────────────────────────────────────────
 
-const created: NewFileRequest[] = [];
 const opened: string[] = [];
 const uploads: { dir: string | undefined; count: number }[] = [];
 let deleteAnswer = true;
 
-let createAnswer: string | null = "new-thing.json";
-
 void mock.module("../src/files/files.js", () => ({
-  createFileIn: (request: NewFileRequest) => {
-    created.push(request);
-    return Promise.resolve(createAnswer === null ? null : `${request.dir}/${createAnswer}`);
-  },
   loadDirectory: () => Promise.resolve(),
   openFileInTab: (path: string) => {
     opened.push(path);
@@ -84,10 +74,9 @@ void mock.module("../src/services/references.js", () => ({
 }));
 
 const {
-  createLibraryEntry,
   detachLibraryPane,
   invalidateLibrary,
-  libraryNewEntries,
+  libraryNewRequest,
   libraryPaneMounted,
   librarySource,
   libraryView,
@@ -99,9 +88,31 @@ const {
   setLibraryLayout,
   setLibraryLocale,
   setLibrarySearch,
-  showLibraryNewMenu,
 } = await import("../src/browse/library-pane");
 const { openTab, closeAllTabs } = await import("../src/workspace/workspace");
+const { createCommandRegistry } = await import("../src/commands/registry");
+const { emptyContext } = await import("../src/commands/context");
+const { setActiveRegistry } = await import("../src/commands/active-registry");
+const { argsSchema, stringProperty } = await import("../src/commands/command-args");
+
+/**
+ * What `file.new` was asked for. The Library's **New** runs the command rather than a flow of its
+ * own, so the witness is a stand-in record in the active registry: the real one opens Add new,
+ * which `add-new.test.ts` covers.
+ */
+const fileNewRuns: unknown[] = [];
+const registry = createCommandRegistry({ getContext: emptyContext });
+registry.register({
+  args: argsSchema({ collection: stringProperty("collection"), kind: stringProperty("kind") }, []),
+  category: "File",
+  id: "file.new",
+  level: "project",
+  run: (_ctx, args) => {
+    fileNewRuns.push(args);
+  },
+  title: "Add New…",
+});
+setActiveRegistry(registry);
 
 // ─── Environment ─────────────────────────────────────────────────────────────
 
@@ -190,18 +201,6 @@ function listingIn(tree: Record<string, DirEntry[]>, path: string): DirEntry[] |
 function dirsMappedBy(map: () => Promise<never>[]): string[] {
   const dirs: string[] = [];
   return Object.assign(dirs, { map });
-}
-
-/**
- * The body seed a creation request carried. The Library always passes a function, because the tag
- * it seeds depends on the extension and name the reader settles on in the dialog.
- */
-function seedOf(request: NewFileRequest | undefined) {
-  const content = request?.content;
-  if (!isFunction(content)) {
-    throw new Error("the creation request carried no seed function");
-  }
-  return content;
 }
 
 function setup(tree: Record<string, DirEntry[]> = TREE, dirs = Object.keys(TREE)) {
@@ -293,11 +292,10 @@ function control<T extends HTMLElement>(name: string, tag: string): T {
 }
 
 beforeEach(() => {
-  created.length = 0;
+  fileNewRuns.length = 0;
   opened.length = 0;
   uploads.length = 0;
   deleteAnswer = true;
-  createAnswer = "new-thing.json";
   resetNotifications();
   resetActivities();
   detachLibraryPane("primary");
@@ -857,36 +855,20 @@ describe("layouts", () => {
     expect(part("board")).not.toBeNull();
   });
 
-  test("the New menu creates through the same flow the command uses", async () => {
+  test("New opens Add new through file.new, on the kind the active category names", async () => {
     await mount();
     part("new")!.click();
     await flush();
-    expect(menuIds()).toEqual(["page", "layout", "component", "collection:posts"]);
-    menuRow("layout").click();
+    setLibraryCategory("layouts");
     await flush();
-    /* A layout takes a FIXED `.json`, and that is not a policy: both readers of a layout parse it
-       as JSON and neither dispatches through the format registry (`site/layout-resolver.ts` throws,
-       `site-context.ts` returns null), so a `.md` layout is a file the build cannot load. There is
-       no `"layout"` document kind for a format to declare, so it is stated rather than derived. */
-    expect(created).toEqual([
-      {
-        dir: "layouts",
-        format: { ext: ".json", kind: "fixed" },
-        source: "Library",
-        suggestedName: "untitled",
-        title: "New Layout",
-      },
-    ]);
-  });
-
-  test("the New button is a toggle — a second press closes the menu it opened", async () => {
-    await mount();
     part("new")!.click();
     await flush();
-    expect(menuIds().length).toBeGreaterThan(0);
-    part("new")!.click();
-    await flush();
+    // A dialog opener, not a menu: nothing lands in the popover layer.
     expect(menuIds()).toEqual([]);
+    expect(fileNewRuns).toEqual([{ kind: "page" }, { kind: "template" }]);
+    expect(part("new")!.querySelector('[part="control"]')!.getAttribute("aria-haspopup")).toBe(
+      "dialog",
+    );
   });
 
   test("scrolling the body repaints — the window is recomputed, not the scan", async () => {
@@ -999,138 +981,22 @@ describe("the Upload control", () => {
 // ─── Creation ────────────────────────────────────────────────────────────────
 
 describe("creation", () => {
-  test("offers the three document kinds plus every creatable collection, each with its folder", async () => {
-    await mount();
-    expect(libraryNewEntries()).toEqual([
-      { dir: "pages", key: "page", label: "Page" },
-      { dir: "layouts", key: "layout", label: "Layout" },
-      { dir: "components", key: "component", label: "Component" },
-      { collection: "posts", dir: "content", key: "collection:posts", label: "Posts" },
-    ]);
+  test("each category asks Add new for the kind it shows", () => {
+    expect(libraryNewRequest("all")).toEqual({ kind: "page" });
+    expect(libraryNewRequest("pages")).toEqual({ kind: "page" });
+    expect(libraryNewRequest("layouts")).toEqual({ kind: "template" });
+    expect(libraryNewRequest("components")).toEqual({ kind: "component" });
+    expect(libraryNewRequest("media")).toEqual({ kind: "media" });
+    expect(libraryNewRequest("content")).toEqual({ collection: "posts", kind: "entry" });
   });
 
-  test("offers no row for a collection an entry cannot be created in", async () => {
-    // A collection with no `source` has no entry directory, and one whose source names a FILE has
-    // Rows rather than entry files. The predecessor offered both — deriving `drafts/` from the type
-    // Name, and composing `content/catalog.csv/untitled` for the catalogue — and each created a
-    // File the collection would never load.
+  test("Content with no collection an entry can go in asks for a collection instead", () => {
+    // A collection whose source names a FILE has rows, not entry files, so it is no place for one.
     resetStudioState({
-      projectConfig: {
-        content: {
-          catalogue: { source: "./content/catalog.csv" },
-          drafts: {},
-          posts: { source: "./content/" },
-        },
-      },
+      projectConfig: { content: { catalogue: { source: "./content/catalog.csv" } } },
       projectDirs: ["pages"],
     });
-    expect(libraryNewEntries().filter((row) => row.collection !== undefined)).toEqual([
-      { collection: "posts", dir: "content", key: "collection:posts", label: "Posts" },
-    ]);
-  });
-
-  test("the menu speaks the vocabulary of the panel it opens from", async () => {
-    await mount();
-    const opener = part("new")!;
-    // The Site panel's `+`: its section says Templates, so a layout row says Template.
-    showLibraryNewMenu(opener, { layout: "Template" });
-    await flush();
-    expect(menuRow("layout").textContent).toContain("Template — layouts/");
-    menuRow("layout").click();
-    await flush();
-    expect(created.map((request) => request.title)).toEqual(["New Template"]);
-  });
-
-  test("a document kind goes through the SHARED flow and opens the result", async () => {
-    await mount();
-    const path = await createLibraryEntry("page");
-    /* A picker, not a fixed extension: a page may be a `.md` as easily as a `.json` and that is the
-       author's choice to make — now offered rather than typed from memory. `docKind` narrows it to
-       the formats that declare they can BE a page. Contrast the collection row below, whose
-       extension is not a choice at all. */
-    expect(created).toEqual([
-      {
-        dir: "pages",
-        format: { defaultExt: ".json", docKind: "page", kind: "choose" },
-        source: "Library",
-        suggestedName: "untitled",
-        title: "New Page",
-      },
-    ]);
-    expect(path).toBe("pages/new-thing.json");
-    expect(opened).toEqual(["pages/new-thing.json"]);
-  });
-
-  /**
-   * The Library's own seed, and the reason it is not a hand-written `---\ntagName: …\n---`.
-   *
-   * Markdown's `newFileTemplate` carries no `tagName`, so a `.md` component created from it
-   * satisfies neither `$studio.documentMode.componentWhen` nor the build's tag registration — a
-   * file nothing loads, which is the defect `libraryNewEntries` exists to prevent. The seed goes
-   * through the FORMAT's own serializer, because this module knows no format's syntax.
-   */
-  test("a markdown component is seeded with its tag, through the format's own serializer", async () => {
-    await mount();
-    setFormats([MARKDOWN_FORMAT]);
-    installMockPlatform({ formatAction: mockFormatAction });
-    await createLibraryEntry("component");
-    const seed = seedOf(created[0]);
-    expect(await seed(".md", "my-card.md")).toContain("tagName");
-    // `.json` takes the shared blank document; there is no format to ask.
-    expect(await seed(".json", "my-card.json")).toBeUndefined();
-    // A stem that cannot BE a custom-element name carries no tag, and the author names it by hand.
-    expect(await seed(".md", "card.md")).toBeUndefined();
-  });
-
-  test("a serializer that throws is not a reason to refuse the creation", async () => {
-    // The serializer belongs to the PROJECT. Its failure costs the tag, not the file: the format's
-    // Own template still produces something the author can finish by hand.
-    await mount();
-    setFormats([MARKDOWN_FORMAT]);
-    installMockPlatform({ formatAction: () => Promise.reject(new Error("boom")) });
-    await createLibraryEntry("component");
-    const seed = seedOf(created[0]);
-    expect(await seed(".md", "my-card.md")).toBeUndefined();
-  });
-
-  test("a collection row is content/'s createEntry — the collection's extension and a SEEDED body", async () => {
-    await mount();
-    const path = await createLibraryEntry("collection:posts");
-    expect(created).toHaveLength(1);
-    const request = created[0]!;
-    expect(request.dir).toBe("content");
-    expect(request.format).toEqual({ ext: ".json", kind: "fixed" });
-    // "Content", not "Library": the creation really is the content module's, and a Problem from it
-    // Has to name the surface that can explain it.
-    expect(request.source).toBe("Content");
-    // The whole point. `default`s land, a required field with no default gets its type's empty
-    // Value, and an optional one with neither is omitted — so the entry is valid the moment it
-    // Exists instead of arriving as an empty file.
-    expect(JSON.parse(String(request.content))).toEqual({ draft: false, title: "" });
-    expect(path).toBe("content/new-thing.json");
-    // Opened exactly once, by the entry editor. Opening it again here would swap the form for the
-    // Generic editor on the same tab.
-    expect(opened).toEqual(["content/new-thing.json"]);
-  });
-
-  test("an unknown kind creates nothing", async () => {
-    await mount();
-    expect(await createLibraryEntry("widget")).toBeNull();
-    expect(created).toEqual([]);
-  });
-
-  test("a cancelled creation opens nothing", async () => {
-    createAnswer = null;
-    await mount();
-    expect(await createLibraryEntry("page")).toBeNull();
-    expect(opened).toEqual([]);
-  });
-
-  test("a cancelled collection entry opens nothing either", async () => {
-    createAnswer = null;
-    await mount();
-    expect(await createLibraryEntry("collection:posts")).toBeNull();
-    expect(opened).toEqual([]);
+    expect(libraryNewRequest("content")).toEqual({ kind: "collection" });
   });
 });
 

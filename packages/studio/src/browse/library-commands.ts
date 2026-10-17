@@ -30,8 +30,6 @@ import {
   projectLocales,
 } from "./library-model";
 import {
-  createLibraryEntry,
-  libraryNewEntries,
   refreshLibrary,
   setLibraryCategory,
   setLibraryLayout,
@@ -174,35 +172,6 @@ export function libraryCommands(): AnyCommand[] {
       /* No `aiTool`: chrome (studio-ui-guidelines.md §12.4, rule 1). */
       run: () => refreshLibrary(),
       title: "Library: Rescan Files",
-    },
-    {
-      args: {
-        additionalProperties: false,
-        properties: {
-          type: stringProperty(
-            'What to create: "page", "layout", "component", or "collection:<name>" for a ' +
-              "content collection this project declares.",
-          ),
-        },
-        required: ["type"],
-        type: "object",
-      },
-      category: "Project",
-      id: "library.newEntry",
-      level: "project",
-      menus: ["palette"],
-      group: "1_file",
-      requires: "an open project",
-      when: (ctx) => ctx.project.open,
-      undo: "project",
-      /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: it waits on the New
-         File prompt; `create_page` / `create_component` cover the job. */
-      run: async (_ctx, args) => {
-        const declared = libraryNewEntries().map((entry) => entry.key);
-        const key = enumArg("library.newEntry", args, "type", declared);
-        await createLibraryEntry(key);
-      },
-      title: "Library: New Entry",
     },
   ];
 }

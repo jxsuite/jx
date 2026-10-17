@@ -27,6 +27,7 @@ code:
   - packages/studio/src/settings/developer-panels.ts
   - packages/studio/src/surfaces/inspector-dock.ts
   - packages/studio/src/files/files.ts
+  - packages/studio/src/files/new-file-name.ts
   - packages/studio/src/surfaces/files-panel.json
   - packages/studio/src/surfaces/files-panel.ts
   - packages/studio/src/files/gitignore.ts
@@ -158,7 +159,7 @@ Some drops are refused, and refusing them looks like refusing them. A file dropp
 
 ## Creating a file
 
-There is one creation flow, and every surface that makes a file uses it: **New File…** in the Files tree, **New** in the [Library](/docs/studio/projects/browse), and **New Entry** for a content collection. Wherever you start from, the dialog behaves the same way:
+Pages, templates, components, collections and uploads are made with **Add new** (:kbd[⌘N]; see [Pages, layouts, and components](/docs/studio/projects/pages-layouts-components#create-one)), which derives the file from a name. **New File…** in the Files tree is the developer's version, which asks for the file itself, and both refuse a name with the same rules. The New File dialog behaves like this:
 
 - **It says where the file is going**, above the field: `Creating in content/blog/`, or _Creating in the project root_. The destination is part of the gesture you made, never guessed from a filter or a fallback.
 - **A name that folder already has is refused at the field.** The dialog stays open and tells you `about.md already exists in content/blog/.`, so nothing is overwritten and there is nothing to undo. A blank name, or one with no letters or digits left in it, is refused the same way.
@@ -177,7 +178,7 @@ A [content type](/docs/studio/projects/content-types) already fixes the format o
 - In the collection's **own folder**, **New File…** _is_ **New Entry**: the extension is the collection's, the fields are seeded from its schema, and the file opens in the entry form.
 - In a **subfolder** of it, the picker is locked to the collection's format, because a document there is still one of its entries. **Other…** stays available for the images and notes you keep beside them. What **Other…** will not accept there is a document of a _different_ format, which would be discovered as an entry the collection cannot read.
 
-The new file is written with the starting content its type calls for: a content entry is seeded from its content type's fields, so it is valid the moment it exists. Creating from the Library or from a collection opens the new file for you as well.
+The new file is written with the starting content its type calls for: a content entry is seeded from its content type's fields, so it is valid the moment it exists. Creating in a collection's folder opens the new entry for you as well.
 
 ## Converting a file to another format
 

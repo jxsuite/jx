@@ -26,6 +26,10 @@ A content type is your CMS schema: where a collection's entries live, and what f
 
 You should see the new type selected, named `posts`, with a matching source folder (`content/posts/`) and an empty field schema ready to fill.
 
+:::doc-tip
+**Add new › Collection** (:kbd[⌘N]) does steps 1 and 2 in one go, from a set of common fields, and can create the page each post opens at as well. This tutorial builds the type by hand so you see every part of it. See **[Content types](/docs/studio/projects/content-types#create-a-content-type)**.
+:::
+
 ## 2. Give it fields
 
 Add three fields. For each one, click **Add Field**, type the name, pick its type, and click **Add**:
@@ -40,19 +44,19 @@ You should now see three field rows in the schema. These become the form every p
 
 ## 3. Create your first post
 
-1. Press :kbd[⌘⇧E] to open **The Library**.
-2. Click **New**. The menu now lists an item for the type you just defined, so pick **Posts**.
-3. Name the entry `hello-world`.
+1. Press :kbd[⌘N] to open **Add new** (in a browser, :kbd[⌘⌥N]).
+2. Choose **Entry** in the list on the left. It appears now that your project has a content type, and **Posts** is already picked as its collection.
+3. Type `Hello World` and click **Create entry**.
 
 ![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../images/mode-manage.png)
 
-Studio creates the file in `content/posts/` with every schema field pre-filled with a sensible blank, and opens it. Back in The Library, the entry appears under the **Content** filter, labeled with its type.
+Studio creates `content/posts/hello-world.md` with every schema field pre-filled (the title with the name you typed, the rest with a sensible blank) and opens it. In [The Library](/docs/studio/projects/browse), the entry appears under the **Content** filter, labeled with its type.
 
 ## 4. Fill it in
 
-The post opens in **Edit** view with a **Document Header** card docked at the top of the canvas, holding the same fields your schema defined:
+The post opens with the same fields your schema defined:
 
-1. Type `Hello World` into **title**.
+1. Check that **title** says `Hello World`.
 2. Pick today in the **date** field.
 3. Give **description** a sentence: `The first post on my brand-new blog.`
 
@@ -64,9 +68,9 @@ You should see the frontmatter form filled in and your words on the page. The sa
 
 ## 5. Add two more posts
 
-Repeat step 3 twice, choosing **New** > **Posts** and naming them `grid-mode-rocks` and `hello-again` (or anything you like). This time skip the fields on purpose; you'll fill them in bulk next.
+Repeat step 3 twice, naming them `Grid mode rocks` and `Hello again` (or anything you like). This time skip the other fields on purpose; you'll fill them in bulk next.
 
-You should now have three entries under The Library's **Content** filter, two of them with empty frontmatter.
+You should now have three entries under The Library's **Content** filter, two of them with nothing but a title.
 
 ## 6. Open the collection as a grid
 
@@ -93,7 +97,7 @@ Saving a collection row rewrites that file's frontmatter block, which is exactly
 
 ## 8. Create the Blog page
 
-1. Open **The Library** again, then **New** > **Page**, and name it `Blog`. Studio writes the page and opens it at your site's `/blog` address.
+1. Press :kbd[⌘N] to open **Add new** again (in a browser, :kbd[⌘⌥N]), keep **Page**, type `Blog` and click **Create page**. Studio writes the page and opens it at your site's `/blog` address.
 2. In the **View** control on the pane's context bar, click **Design**.
 
 You should see the empty page on the design canvas, once per breakpoint.

@@ -216,12 +216,7 @@ describe("openEntryEditor", () => {
 describe("the records", () => {
   test("every one is level-filed and reachable from the palette", () => {
     const ids = contentCommands().map((c) => c.id);
-    expect(ids).toEqual([
-      "content.newEntry",
-      "content.openEntry",
-      "content.setDraft",
-      "content.setIncludeDrafts",
-    ]);
+    expect(ids).toEqual(["content.openEntry", "content.setDraft", "content.setIncludeDrafts"]);
     for (const record of contentCommands()) {
       expect(record.menus).toContain("palette");
       expect(record.requires ?? "").not.toBe("");
@@ -233,18 +228,6 @@ describe("the records", () => {
       expect(record.id).not.toContain("toggle");
     }
     expect(command("content.setDraft").args?.required).toEqual(["draft"]);
-  });
-
-  test("New Entry's enum is the project's directory-backed collections only", () => {
-    const { args } = command("content.newEntry");
-    expect(args?.properties?.["collection"]?.enum).toEqual(["blog"]);
-  });
-
-  test("New Entry is disabled — with a reason — in a project that declares no collection", () => {
-    resetStudioState({ projectConfig: { content: {} } });
-    const record = command("content.newEntry");
-    expect(record.enablement?.(makeContext())).toBe(false);
-    expect(record.requires).toContain("content collection");
   });
 
   test("setIncludeDrafts reaches the shared perspective, idempotently", async () => {
@@ -295,25 +278,6 @@ describe("the records", () => {
        record `content.setDraft` reads `draft` from with `booleanArg`. */
     const setDraft = command("content.setDraft") as Command<CommandArgValues>;
     expect(() => setDraft.run(makeContext(), { draft: true })).toThrow("not a content entry");
-  });
-
-  test("newEntry runs the ONE creation flow for a declared collection, through the registry", async () => {
-    // The whole path: the registry coerces `collection` against the derived enum, `run` re-reads
-    // The list (it is a getter over the project, not a snapshot) and `createEntry` reaches the
-    // Doubled `createFileIn`. The refusal case below never enters `run` any more, so without this
-    // The body would be a function no test reaches.
-    await liveRegistry().run("content.newEntry", { collection: "blog" });
-    expect(created).toHaveLength(1);
-    expect(created[0]).toMatchObject({ dir: "content/blog", title: "New blog entry" });
-    expect(opened).toEqual(["content/blog/first-post.json"]);
-  });
-
-  test("newEntry refuses an argument naming no collection", () => {
-    // Synchronously, and with the derived enum's own sentence: `registry.run` coerces `collection`
-    // Against the live collection list before `run` is entered, so the refusal names what IS there.
-    expect(() => liveRegistry().run("content.newEntry", { collection: "nope" })).toThrow(
-      /command "content\.newEntry" argument "collection": "nope" is not declared — declared: blog/,
-    );
   });
 
   test("openEntry takes a project path and opens the form", async () => {

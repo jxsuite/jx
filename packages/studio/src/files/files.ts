@@ -94,6 +94,13 @@ import {
   refreshFormats,
 } from "../format/format-host";
 import { convertTargets, creationFormats, knownDocumentExtensions } from "../format/format-choices";
+import {
+  composeNewFileName,
+  extensionOfName,
+  OTHER_FORMAT,
+  validateNewFileName,
+} from "./new-file-name";
+import type { FormatChoice, NewFileNameCheck } from "./new-file-name";
 import { collectionForDirectory } from "../content/collection-match";
 import {
   markSessionRestored,
@@ -107,7 +114,7 @@ import { cleanupGitPanel } from "../panels/git-panel";
 import { addRecentProject, trackRecentFile } from "../recent-projects";
 import { listWindow, revealListRow, watchListWindow } from "../ui/virtual-window";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
-import { isFunction, isString } from "@jxsuite/schema/guards";
+import { isString } from "@jxsuite/schema/guards";
 import type { CommandArgValues } from "../commands/command-args";
 import type { FormatFrontmatter } from "../format/format-host";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
@@ -1739,29 +1746,6 @@ const BLANK_DOCUMENT = JSON.stringify(
 );
 
 /**
- * The picker row meaning "I will type the whole name myself".
- *
- * It is what keeps the format picker from being a cage. `New File…` is the only generic
- * file-creation affordance in Studio and both backends create intermediate directories on write, so
- * without this row `styles/main.css`, `public/robots.txt`, `.gitignore` and a `credits.txt` beside
- * a collection's images all become uncreatable — and the picker would have taken away more than it
- * gave. The picker stays the authority on the extension; this is one of its answers.
- */
-export const OTHER_FORMAT = "__other__";
-
-/** How the extension of a new file is settled. */
-export type FormatChoice =
-  /** Picker over every creatable format, plus Other…. The field is a NAME, taken verbatim. */
-  | { kind: "choose"; defaultExt?: string; docKind?: "page" | "component" | "content" }
-  /**
-   * Picker holding ONE format, plus Other… — the collection's own extension. The field is a NAME.
-   * `because` is the sentence a refusal quotes when Other… would smuggle a foreign document in.
-   */
-  | { kind: "locked"; ext: string; because: string }
-  /** No picker. The field is a DISPLAY NAME, slugified, and `ext` is appended. */
-  | { kind: "fixed"; ext: string };
-
-/**
  * One creation, named.
  *
  * `dir` is required and has no default. That is the whole point of the type: the Library used to
@@ -1782,32 +1766,10 @@ export interface NewFileRequest {
    * (`i18n.createTranslation` composes `about.json` from the file it is translating).
    */
   format?: FormatChoice;
-  /**
-   * Body to write. A function is called with the extension the reader settled on and the composed
-   * file name, which is the only way a caller can seed a body whose FORMAT — or whose own tag name
-   * — it does not know until the dialog resolves. Defaults to the resolved format's
-   * `newFileTemplate`.
-   */
-  content?:
-    | string
-    | ((ext: string, fileName: string) => string | undefined | Promise<string | undefined>);
+  /** Body to write. Defaults to the resolved format's `newFileTemplate`. */
+  content?: string;
   /** Who is creating, for the Problem's `source` line. Defaults to "Files". */
   source?: string;
-}
-
-/** A display name, reduced to a file stem. Lowercase by design: this is a slug. */
-function slugify(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replaceAll(/\s+/g, "-")
-    .replaceAll(/[^a-z\d-]/g, "");
-}
-
-/** The extension of a file name, including the dot, or `""`. */
-function extensionOfName(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot) : "";
 }
 
 /** The two picker modes — the ones where the field asks for a NAME and the picker owns the suffix. */
@@ -1871,14 +1833,7 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
   await loadFormats();
 
   // One listing, before the field opens: the names it must refuse are known while typing.
-  let taken = new Set<string>();
-  try {
-    const listing = await getPlatform().listDirectory(dir);
-    taken = new Set(listing.map((entry) => entry.name.toLowerCase()));
-  } catch {
-    // A directory that cannot be listed is usually one that does not exist yet — the write below
-    // Is the authority on whether that is a problem, and it reports with the real reason.
-  }
+  const taken = await listTakenNames(dir);
 
   const picker = choice !== undefined && choice.kind !== "fixed" ? choice : null;
   const rows = picker === null ? null : formatRowsFor(picker);
@@ -1887,73 +1842,8 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
       ? ""
       : initialPickFor(picker, rows, request.suggestedName ?? "");
 
-  /**
-   * The file name a field value and a pick compose to — three modes, not two.
-   *
-   * The verbatim STEM mode is not a convenience. The slugifier lowercases and strips everything
-   * outside `[a-z0-9-]`, which turns `[slug]` into `slug` — and eight shipped starters carry
-   * `pages/[slug].json`, `[sku].json`, `[...slug].json`. A picker that slugified would make a
-   * dynamic route uncreatable and would say nothing about it.
-   */
-  const fileNameFor = (input: string, picked: string) => {
-    const trimmed = input.trim();
-    if (choice === undefined || picked === OTHER_FORMAT) {
-      return trimmed;
-    }
-    if (choice.kind === "fixed") {
-      const slug = slugify(trimmed);
-      return slug === "" ? "" : `${slug}${choice.ext}`;
-    }
-    return trimmed.toLowerCase().endsWith(picked.toLowerCase()) ? trimmed : `${trimmed}${picked}`;
-  };
-
-  const known = knownDocumentExtensions();
-
-  const validate = (value: string, picked: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return choice?.kind === "fixed" ? "Enter a name." : "Enter a file name.";
-    }
-    if (choice?.kind === "fixed" && slugify(trimmed) === "") {
-      return "Enter at least one letter or number.";
-    }
-    const normalized = trimmed.replaceAll("\\", "/");
-    if (normalized.startsWith("/") || normalized.endsWith("/")) {
-      return "Enter a name, not a path that starts or ends with a slash.";
-    }
-    if (normalized.split("/").includes("..")) {
-      return "A name cannot step outside the destination folder.";
-    }
-    // A slash is the tree's ONLY way to make a directory — both backends create them on write — so
-    // It is allowed exactly where the field is a whole file name, and refused where it is a name.
-    if (normalized.includes("/") && choice !== undefined && picked !== OTHER_FORMAT) {
-      return `Pick Other… to create a file in a subfolder of ${dir === "." ? "the project root" : dir}.`;
-    }
-    /* A name whose extension MATCHES the pick is fine and is composed once, never doubled;
-       refusing every trailing extension would reject this dialog's own `untitled.json` default.
-       A name ending in an extension no format claims is a stem that happens to have a dot. */
-    const typedExt = extensionOfName(normalized);
-    if (
-      picked !== "" &&
-      picked !== OTHER_FORMAT &&
-      typedExt !== "" &&
-      typedExt.toLowerCase() !== picked.toLowerCase() &&
-      known.has(typedExt.toLowerCase())
-    ) {
-      const label = rows?.find((row) => row.value === picked)?.label ?? picked;
-      return `You picked ${label}; this name ends in ${typedExt}.`;
-    }
-    if (choice?.kind === "locked" && picked === OTHER_FORMAT) {
-      const foreign = typedExt !== "" && typedExt.toLowerCase() !== choice.ext.toLowerCase();
-      if (foreign && known.has(typedExt.toLowerCase())) {
-        return choice.because;
-      }
-    }
-    /* No emptiness check here: every way `fileNameFor` can answer "" is already refused above — a
-       blank field by the first rule, a display name that slugifies to nothing by the second. */
-    const candidate = fileNameFor(value, picked);
-    return taken.has(candidate.toLowerCase()) ? `${candidate} already exists in ${dir}/.` : "";
-  };
+  const check: NewFileNameCheck = { choice, dir, known: knownDocumentExtensions(), rows, taken };
+  const validate = (value: string, picked: string) => validateNewFileName(value, picked, check);
 
   let picked = initialPick;
   const promptOptions: PromptDialogOptions = {
@@ -1982,13 +1872,10 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
     return null;
   }
 
-  const fileName = fileNameFor(entered, picked);
+  const fileName = composeNewFileName(entered, picked, choice);
   const path = dir === "." ? fileName : `${dir}/${fileName}`;
-  markLocalMutation(path);
   const format = formatForPath(fileName);
-  const suppliedBody = isFunction(request.content)
-    ? await request.content(extensionOfName(fileName), fileName)
-    : request.content;
+  const suppliedBody = request.content;
   /*
    * What a new file starts as, in precedence order.
    *
@@ -2008,16 +1895,59 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
           ? BLANK_DOCUMENT
           : "{}\n"
         : "");
+  return writeNewFile(path, content, { dir, source });
+}
+
+/**
+ * The names already in `dir`, lower-cased — what a new name there must not collide with.
+ *
+ * A directory that cannot be listed answers empty: it is usually one that does not exist yet, and
+ * the write that follows is the authority on whether that is a problem, reporting with the real
+ * reason.
+ */
+export async function listTakenNames(dir: string): Promise<Set<string>> {
+  try {
+    const listing = await getPlatform().listDirectory(dir);
+    return new Set(listing.map((entry) => entry.name.toLowerCase()));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Write one new file: the second half of every creation flow, after its name has been judged.
+ *
+ * The local mutation is marked first, so the watcher's echo of this write is not mistaken for an
+ * edit made outside Studio. The destination is re-listed so the tree shows the file, the success is
+ * a toast, and a failure is a Problem carrying the path, since the thing the author must do next is
+ * about that path. It does NOT open the file: what a new file opens in is the caller's to say.
+ *
+ * @param path Project-relative path of the file to create.
+ * @param content Its first bytes.
+ * @param opts `dir` is re-listed afterwards (defaults to the path's parent); `source` names the
+ *   flow in the Problem; `quiet` skips the success toast for a write that is one step of a larger
+ *   creation that reports once for all of them.
+ * @returns The path, or `null` when the write failed.
+ */
+export async function writeNewFile(
+  path: string,
+  content: string,
+  opts: { dir?: string; source?: string; quiet?: boolean } = {},
+): Promise<string | null> {
+  const dir = opts.dir ?? (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ".");
+  markLocalMutation(path);
   try {
     await getPlatform().writeFile(path, content);
     await loadDirectory(dir);
-    notify.success(`Created ${path}`);
+    if (opts.quiet !== true) {
+      notify.success(`Created ${path}`);
+    }
     return path;
   } catch (error) {
     notify.error(`Could not create ${path}.`, {
       detail: errorMessage(error),
       path,
-      source,
+      source: opts.source ?? "Files",
     });
     return null;
   }

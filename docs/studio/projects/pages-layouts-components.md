@@ -1,9 +1,13 @@
 ---
 title: "Pages, layouts, and components"
-description: "When to use a page, a layout, or a component in Jx Studio, how to create each one from the Library, and where each lives in your project folder."
+description: "When to use a page, a layout, or a component in Jx Studio, how to create each one with Add new, and where each lives in your project folder."
 spec:
   - site-architecture.md#2
 code:
+  - packages/studio/src/create/add-new.ts
+  - packages/studio/src/create/add-new-flow.ts
+  - packages/studio/src/create/add-new-commands.ts
+  - packages/studio/src/surfaces/add-new.ts
   - packages/studio/src/browse/library-model.ts
   - packages/studio/src/browse/library-pane.ts
   - packages/studio/src/services/references.ts
@@ -37,11 +41,22 @@ Reach for a component when the same element shows up more than once, or when a p
 
 ## Create one
 
-All three are created the same way, from the [Library](/docs/studio/projects/browse):
+All three, and collections and uploads too, come from one dialog: **Add new**. Open it with :kbd[⌘N], the **+** at the top of the [Site panel](/docs/studio/interface#the-site-panel), **New** in the [Library](/docs/studio/projects/browse), or **Add New…** in the command palette. In a browser, which keeps :kbd[⌘N] for a new window, press :kbd[⌘⌥N] instead.
 
-1. Press :kbd[⌘K] and run **Open Library**.
-2. Click **New** and choose **Page**, **Layout**, or **Component**. Each row names the folder the file will land in. (The menu also lists your project's content types. For a content entry, see [Content types](/docs/studio/projects/content-types).)
-3. Type a file name in the dialog (with the extension you want, such as `about.md` or `hero.json`) and click **Create**. The dialog names the folder it is creating in and refuses a name that folder already holds. Studio writes the file and opens it in a tab, ready to edit.
+1. Pick what to make from the list on the left: **Page**, **Collection**, **Template** (what this page calls a layout), **Component** or **Media**. Once your project has a content collection, **Entry** is there too.
+2. Type a name. It is the only thing the dialog requires, and the cursor is already in the field.
+3. Adjust the options for that kind, if you want to (below), and click the button, which says what it makes: **Create page**, **Create template**, and so on. :kbd[Enter] does the same, and :kbd[Escape] closes the dialog.
+
+The line above the buttons says what will be written before you write it: _Saved as pages/pricing.json · opens at /pricing_. You never type a file name or an extension; Studio derives them from the name. A name the folder already holds is refused under the field, so nothing is ever overwritten.
+
+| Kind      | Options                                                                                                                     | What it writes                                                                                              |
+| --------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Page      | **Start from** one of your templates, **Article** for a page that is mostly writing, or **Blank**; **Edit** changes the URL | `pages/<name>.json`, or a Markdown `.md` for an Article, using the template you chose                       |
+| Template  | **Wrap it in** another template, or **Nothing** for a fresh frame                                                           | `layouts/<name>.json` with one slot, where the pages that use it go                                         |
+| Component | **Start from** **Blank**, the **Current selection** on the canvas, or a **Copy of…** an existing component                  | `components/<tag>.json`, where the tag is the name in lower case with a hyphen (`Hero` becomes `site-hero`) |
+| Media     | Drop files on the dialog, or **Browse files**                                                                               | The files, in `public/media/`                                                                               |
+
+A new page, template or component opens in a tab, ready to edit, and a new component is in the Site panel's **Components** and the [Insert palette](/docs/studio/design/elements) straight away. Collections and entries are covered in **[Content types](/docs/studio/projects/content-types)**.
 
 ![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../../images/mode-manage.png)
 

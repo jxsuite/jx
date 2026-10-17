@@ -12,10 +12,10 @@ import { expect, test } from "bun:test";
 import { fromOpenAITools, toOpenAITools } from "@jxsuite/ai/messages";
 import { withEveryTool } from "./harness/every-tool";
 
-test("all 29 tools round-trip through ToolSpec byte for byte", async () => {
+test("all 30 tools round-trip through ToolSpec byte for byte", async () => {
   await withEveryTool(({ composite }) => {
     const listed = composite.listForLLM();
-    expect(listed).toHaveLength(29);
+    expect(listed).toHaveLength(30);
 
     const specs = fromOpenAITools(listed);
     expect(specs.map((spec) => spec.name)).toEqual(composite.list().map((t) => t.name));

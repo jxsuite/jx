@@ -22,10 +22,11 @@
  *    "All".
  * 3. **An upload has a named destination**, shown before the drop, asked for when the active category
  *    does not name one.
- * 4. **Creation is somebody else's flow.** A page, layout or component is `files.ts`'s creation, so a
- *    new page from the Library and a new file from the tree refuse a name that is already taken in
- *    exactly the same way; a collection entry is `content/entry-commands.ts`'s `createEntry`, so it
- *    arrives with the collection's extension and a body seeded from that collection's schema.
+ * 4. **Creation is somebody else's flow.** **New** runs `file.new`, which opens Add new
+ *    (`create/add-new-flow.ts`, `specs/studio.md` §9.1.1) on the kind the active category names: a
+ *    page from Pages, a template from Layouts, an entry from Content. The dialog refuses a name
+ *    that is already taken exactly as the tree's New File does, because both judge it with the same
+ *    function.
  *
  * @docs studio/projects/browse
  */
@@ -37,14 +38,12 @@ import { beginActivity } from "../panels/activity-panel";
 import { showPromptDialog } from "../ui/layers";
 import type { PromptDialogOptions } from "../ui/layers";
 import { openMenu } from "../surfaces/menu";
-import { rectOf } from "../utils/geometry";
 import { getPlatform } from "../platform";
 import { invalidateUsages } from "../services/references";
 import { confirmFileDelete, renamePromptMessage } from "../files/file-ops";
-import { createFileIn, openFileInTab } from "../files/files";
-import { createEntry } from "../content/entry-commands";
-import { formatByExtension, formatSerialize } from "../format/format-host";
+import { openFileInTab } from "../files/files";
 import { entryCollections } from "../content/entry-model";
+import { runActiveReported } from "../commands/run-reported";
 import { uploadAccept, uploadAssets } from "../files/media-upload";
 import { localeLabel } from "@jxsuite/schema/locale";
 import {
@@ -64,7 +63,7 @@ import { paneRegion } from "../ui/regions";
 import { LAYOUT_METRICS, boardView, calendarView, columnsAt, libraryRow } from "./library-layouts";
 import { mountLibrarySurface } from "../surfaces/library-pane";
 import type { ActivityHandle } from "../panels/activity-panel";
-import type { FormatChoice, NewFileRequest } from "../files/files";
+import type { AddNewRequest } from "../create/add-new-flow";
 import type { EffectScope } from "@vue/reactivity";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { LibraryFile, LibraryLayout } from "./library-model";
@@ -461,11 +460,11 @@ function scheduleSettle(panel: ActiveLibraryPane): void {
 // ─── Context menu ────────────────────────────────────────────────────────────
 
 /**
- * The menu the Library has up, whichever it is.
+ * The per-file menu the Library has up, if any.
  *
- * One handle for both the per-file menu and the New menu, because only one of them can be open: the
- * kit's menu is a popover on the platform's own top layer, and opening a second while the first is
- * up is how two of them end up light-dismissing each other.
+ * One handle, because only one can be open: the kit's menu is a popover on the platform's own top
+ * layer, and opening a second while the first is up is how two of them end up light-dismissing each
+ * other.
  */
 let _menu: MenuHandle | null = null;
 
@@ -543,52 +542,6 @@ function showLibraryContextMenu(path: string, x: number, y: number): void {
         { destructive: true, dividerAbove: true },
       ),
     ],
-  });
-}
-
-/**
- * The New menu, opened under its own button. A second press closes it: the button is a toggle.
- *
- * Exported for the Site panel's `+` (`panels/site-panel.ts`, `specs/studio.md` §5.7), which opens
- * this same menu until the Add new dialog replaces both (§9.1.1). `labels` renames a row by its key
- * for the panel it opens from, so the Site panel's menu offers a **Template** where its own section
- * says Templates, while the Library keeps the Layouts vocabulary of its category.
- */
-export function showLibraryNewMenu(
-  opener: HTMLElement,
-  labels: Readonly<Record<string, string>> = {},
-): void {
-  if (_menu) {
-    closeLibraryMenu();
-    return;
-  }
-  const entries = libraryNewEntries();
-  _menu = openMenu({
-    label: "New",
-    onClosed: (handle) => {
-      if (_menu === handle) {
-        _menu = null;
-      }
-    },
-    opener,
-    place: () => {
-      const box = rectOf(opener);
-      return { x: box.left, y: box.bottom + 4 };
-    },
-    region: "library-new",
-    rows: entries.map((entry, index) => ({
-      destructive: false,
-      disabled: false,
-      /* The document kinds and the collections are two different creation flows, so the boundary
-         between them is drawn rather than left to be inferred from the folder names. */
-      dividerAbove:
-        entry.collection !== undefined && entries[index - 1]?.collection === undefined && index > 0,
-      id: entry.key,
-      title: `${labels[entry.key] ?? entry.label} — ${entry.dir}/`,
-    })),
-    run: (id) => {
-      void createLibraryEntry(id, labels);
-    },
   });
 }
 
@@ -675,147 +628,33 @@ async function deleteLibraryFile(file: LibraryFile) {
 
 // ─── Creation ────────────────────────────────────────────────────────────────
 
-/** What the New menu offers: the three document kinds, plus one row per creatable collection. */
-export interface LibraryNewEntry {
-  key: string;
-  label: string;
-  dir: string;
-  /**
-   * The content collection this row creates an entry IN, or undefined for a document kind.
-   *
-   * Present is the whole difference between the two creation paths below — a collection row is
-   * `content/`'s job, because only that module knows the collection's extension and its schema.
-   */
-  collection?: string;
-}
-
 /**
- * The new-entity rows.
+ * The Add new request the Library's **New** makes: the kind its active category names.
  *
- * Collections come from `content/entry-model.ts` rather than from `project.json` directly, so the
- * menu offers exactly the collections an entry can be created in. The predecessor read the raw
- * `content` map and derived a directory from the type NAME when `source` was absent, which produced
- * a row for a collection that has no entry directory at all and a row for a single-file (CSV)
- * catalogue, whose entries are rows and not files. Both created a file nothing would ever load.
+ * A category is a question about what the reader is looking at, so it is also the best guess at
+ * what they mean to add — Pages adds a page, Layouts a template, Components a component, Content an
+ * entry in the first collection, Media an upload. "All" names nothing and opens on Page. The dialog
+ * still lists every kind, so the guess is a starting point and never a cage.
  */
-export function libraryNewEntries(): LibraryNewEntry[] {
-  const rows: LibraryNewEntry[] = [
-    { dir: "pages", key: "page", label: "Page" },
-    { dir: "layouts", key: "layout", label: "Layout" },
-    { dir: "components", key: "component", label: "Component" },
-  ];
-  for (const collection of entryCollections()) {
-    rows.push({
-      collection: collection.name,
-      dir: collection.dir,
-      key: `collection:${collection.name}`,
-      label: collection.name.charAt(0).toUpperCase() + collection.name.slice(1),
-    });
-  }
-  return rows;
-}
-
-/**
- * Create one entity and open it.
- *
- * Two paths, because a collection entry is not a blank document. A **collection** row goes through
- * `content/entry-commands.ts`'s `createEntry`, which supplies the collection's extension (so the
- * field asks for a display name and the file is actually matched by the collection it was created
- * in) and a body seeded from the collection's **schema defaults** — the entry is valid the moment
- * it exists, rather than a pile of absent required fields — and then opens it in the entry FORM,
- * which is the editor that collection's fields belong to. Both of those are the reason
- * `createEntry` is called rather than reimplemented; a second seeder here would drift from the one
- * the palette's `content.newEntry` uses within a release.
- *
- * A **document kind** gets the format PICKER, which is the same argument the verbatim name field
- * used to make: a page may be a `.md` as easily as a `.json`, so the extension is a real choice —
- * now offered rather than left to be typed from memory. A collection's extension is not a choice;
- * it is the collection's, and `createEntry` supplies it.
- *
- * **A layout is not a choice either, and that is not a policy.** Both readers of a layout parse it
- * as JSON and neither dispatches through the format registry — `site/layout-resolver.ts` throws and
- * `site-context.ts` returns null — so a `.md` layout is a file the build cannot load. There is no
- * `"layout"` document kind for a format to declare, so this is stated here rather than derived.
- *
- * A **component** keeps the picker: a format whose `$studio.documentMode.componentWhen` promotes a
- * frontmatter `tagName` (Markdown's does) can express one perfectly well. What it cannot do is
- * express one from a `newFileTemplate` that carries no `tagName`, so the seed below supplies it —
- * through the format's own serializer, because this module knows no format's syntax.
- */
-/** How each document kind's extension is settled. Anything else falls back to the full picker. */
-const FORMAT_CHOICE_BY_KIND = new Map<string, FormatChoice>([
-  ["component", { defaultExt: ".json", docKind: "component", kind: "choose" }],
-  ["layout", { ext: ".json", kind: "fixed" }],
-  ["page", { defaultExt: ".json", docKind: "page", kind: "choose" }],
-]);
-
-/**
- * The body a new component starts as, when the reader picked a format rather than `.json`.
- *
- * `.json` answers `undefined` and takes the shared blank document. A format answers with its OWN
- * serialization of `{ tagName }` — never a hand-written `---\ntagName: …\n---`, which would put one
- * format's syntax in the Library. Without the `tagName` the file satisfies neither
- * `$studio.documentMode.componentWhen` nor the build's tag registration, and is a component nothing
- * loads. A stem that is not a valid custom-element name (no hyphen) cannot carry one, so it falls
- * back to the format's own template and the author names the tag themselves.
- */
-async function componentSeed(ext: string, fileName: string): Promise<string | undefined> {
-  const format = formatByExtension(ext);
-  if (!format?.capabilities.serialize) {
-    return undefined;
-  }
-  const tagName = fileName.slice(0, fileName.length - ext.length);
-  if (!/^[a-z][\d.a-z]*-[\d.a-z-]*$/.test(tagName)) {
-    return undefined;
-  }
-  try {
-    return await formatSerialize(
-      format.name,
-      { children: [], tagName },
-      { frontmatter: true, mode: "roundtrip" },
-    );
-  } catch {
-    // The serializer is the project's, so its failure is not a reason to refuse the creation —
-    // The format's own template still produces a file the author can finish by hand.
-    return undefined;
-  }
-}
-
-export async function createLibraryEntry(
-  key: string,
-  labels: Readonly<Record<string, string>> = {},
-): Promise<string | null> {
-  const entry = libraryNewEntries().find((row) => row.key === key);
-  if (!entry) {
-    return null;
-  }
-  let created: string | null;
-  if (entry.collection === undefined) {
-    const request: NewFileRequest = {
-      dir: entry.dir,
-      format: FORMAT_CHOICE_BY_KIND.get(entry.key) ?? { defaultExt: ".json", kind: "choose" },
-      source: "Library",
-      suggestedName: "untitled",
-      title: `New ${labels[entry.key] ?? entry.label}`,
-    };
-    if (entry.key === "component") {
-      request.content = componentSeed;
+export function libraryNewRequest(category: string): AddNewRequest {
+  switch (category) {
+    case "layouts": {
+      return { kind: "template" };
     }
-    created = await createFileIn(request);
-  } else {
-    created = await createEntry(entry.collection);
+    case "components": {
+      return { kind: "component" };
+    }
+    case "media": {
+      return { kind: "media" };
+    }
+    case "content": {
+      const [first] = entryCollections();
+      return first ? { collection: first.name, kind: "entry" } : { kind: "collection" };
+    }
+    default: {
+      return { kind: "page" };
+    }
   }
-  if (created === null) {
-    return null;
-  }
-  invalidateLibrary();
-  await loadLibrary();
-  // `createEntry` has already opened the entry form; opening the file again here would replace that
-  // Editor with the generic one for the same tab.
-  if (entry.collection === undefined) {
-    void openFileInTab(created);
-  }
-  return created;
 }
 
 // ─── Upload ──────────────────────────────────────────────────────────────────
@@ -1022,7 +861,14 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     openFile: (path) => {
       void openFileInTab(path);
     },
-    openNewMenu: (opener) => showLibraryNewMenu(opener),
+    openNew: () => {
+      const { collection, kind } = libraryNewRequest(libraryView.category);
+      void runActiveReported(
+        "file.new",
+        collection === undefined ? { kind } : { collection, kind },
+        "Library",
+      );
+    },
     previewSlot: (element, path) => {
       if (panel) {
         previewSlot(panel, element, path);

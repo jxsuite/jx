@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioSitePanel",
-  "$description": "The Site panel (specs/studio.md §5.7): the project as an author thinks of it, pages by address and then the parts pages are made of. Four sections under a header holding one filter and a + that opens the New menu. `panels/site-panel.ts` keeps every decision: which files are pages, the route order and nesting (`panels/site-model.ts`, over `@jxsuite/site/routes`), how many entries a collection has and how many pages use a template, which media the project holds, what a click opens and what a drag inserts. This document draws rows whose every field is already a string, and a section state that is one of loading, empty, nomatch or listed, so a section a filter empties keeps its heading and says why. Component previews are an island the flow fills, and the drag sources are registered by the adapter through `onNodeCreated`.",
+  "$description": "The Site panel (specs/studio.md §5.7): the project as an author thinks of it, pages by address and then the parts pages are made of. Four sections under a header holding one filter and a + that opens Add new (`file.new`, §9.1.1). `panels/site-panel.ts` keeps every decision: which files are pages, the route order and nesting (`panels/site-model.ts`, over `@jxsuite/site/routes`), how many entries a collection has and how many pages use a template, which media the project holds, what a click opens and what a drag inserts. This document draws rows whose every field is already a string, and a section state that is one of loading, empty, nomatch or listed, so a section a filter empties keeps its heading and says why. Component previews are an island the flow fills, and the drag sources are registered by the adapter through `onNodeCreated`.",
   "tagName": "div",
   "attributes": {
     "part": "site"
@@ -254,7 +254,7 @@
             "icon": "plus",
             "label": "Add new",
             "hint": "Add new",
-            "haspopup": "menu"
+            "haspopup": "dialog"
           },
           "onclick": {
             "$prototype": "Function",
@@ -264,11 +264,7 @@
                 "target": {
                   "$ref": "#/state/add"
                 },
-                "value": [
-                  {
-                    "$ref": "event#/currentTarget"
-                  }
-                ]
+                "value": []
               }
             ]
           }

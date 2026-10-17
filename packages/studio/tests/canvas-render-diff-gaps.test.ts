@@ -151,10 +151,8 @@ function panelDouble(marker: string) {
 
 const library = panelDouble("library-marker");
 void mock.module("../src/browse/library-pane.js", () => ({
-  createLibraryEntry: () => Promise.resolve(null),
   detachLibraryPane: library.detach,
   invalidateLibrary: () => {},
-  libraryNewEntries: () => [],
   libraryPaneMounted: (paneId: string, tab: Tab) => library.mounted.get(paneId) === tab,
   refreshLibrary: () => Promise.resolve(),
   renderLibraryMode: library.render,

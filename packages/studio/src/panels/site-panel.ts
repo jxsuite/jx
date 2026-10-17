@@ -400,21 +400,10 @@ function openPath(path: string): void {
   void import("../files/files").then(({ openFileInTab }) => openFileInTab(path));
 }
 
-/** The New menu's rows in this panel's vocabulary: a layout is a Template here (§5.7). */
-export const SITE_NEW_LABELS = { layout: "Template" } as const satisfies Readonly<
-  Record<string, string>
->;
-
 const ACTIONS = {
-  add: (anchor: EventTarget | null) => {
-    if (!(anchor instanceof HTMLElement)) {
-      return;
-    }
-    /* The existing New menu, until Add new replaces it (§9.1.1). Lazily, because the Library's
-       module is a pane surface with a graph of its own. */
-    void import("../browse/library-pane").then(({ showLibraryNewMenu }) => {
-      showLibraryNewMenu(anchor, SITE_NEW_LABELS);
-    });
+  /* Add new (§9.1.1), through its command, so the `+`, the palette and ⌘N are one door. */
+  add: () => {
+    void runActiveReported("file.new", {}, "Site panel");
   },
   open: openPath,
   openComponent: (tagName: string) => {

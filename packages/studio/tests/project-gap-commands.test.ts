@@ -131,7 +131,6 @@ describe("the records themselves", () => {
       "library.setSearch",
       "library.setLocale",
       "library.refresh",
-      "library.newEntry",
       "project.new",
     ]);
   });
@@ -299,10 +298,6 @@ describe("the Library's state setters", () => {
     expect(await refusal("library.setLayout", { layout: "gallery" })).toContain(
       "declared: table, cards, media, calendar, board",
     );
-  });
-
-  test("refuse a new-entry kind the project does not declare, listing what it does", async () => {
-    expect(await refusal("library.newEntry", { type: "widget" })).toContain("collection:comments");
   });
 
   test("none of them is a toggle — every one names the state it reaches", () => {

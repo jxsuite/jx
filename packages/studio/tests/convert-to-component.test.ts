@@ -168,10 +168,10 @@ describe("default name", () => {
     await done;
   });
 
-  test("plain tag gets a jx- prefix", async () => {
+  test("plain tag gets the shared site- prefix", async () => {
     tab.session.selection = [["children", 1]];
     const { done } = await startDialog();
-    expect(nameInput()?.value).toBe("jx-p");
+    expect(nameInput()?.value).toBe("site-p");
     dialog()!.dispatchEvent(new Event("close"));
     await done;
   });
@@ -302,13 +302,13 @@ describe("name validation", () => {
     await done;
   });
 
-  test("invalid characters show the naming-rule error", async () => {
+  test("a character HTML refuses in a tag name shows the naming-rule error", async () => {
     const { done } = await start();
-    setName("my--comp");
+    setName("my@comp-x");
     confirmDialog();
     await flush();
     expect(dialog()).not.toBeNull();
-    expect(errorText()).toContain("Lowercase");
+    expect(errorText()).toContain("cannot appear in a tag name");
     // `invalid` is what says aria-invalid on the control and draws it in the danger colour.
     expect(nameInput()?.getAttribute("aria-invalid")).toBe("true");
     dialog()!.dispatchEvent(new Event("cancel"));

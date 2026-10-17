@@ -21,11 +21,6 @@ import type { CommandArgValues } from "../src/commands/command-args";
 const openFileInTab = mock(async (_path: string) => {});
 void mock.module("../src/files/files", () => ({ openFileInTab }));
 
-const showLibraryNewMenu = mock(
-  (_anchor: HTMLElement, _labels?: Readonly<Record<string, string>>) => {},
-);
-void mock.module("../src/browse/library-pane", () => ({ showLibraryNewMenu }));
-
 const previewFor = mock(async (path: string) => {
   const element = document.createElement("span");
   element.dataset.preview = path;
@@ -167,7 +162,6 @@ beforeEach(async () => {
   invalidateMediaCache();
   invalidateUsages();
   openFileInTab.mockClear();
-  showLibraryNewMenu.mockClear();
   sources.length = 0;
   released.mockClear();
   previewFor.mockClear();
@@ -389,17 +383,26 @@ describe("the header", () => {
     expect(sitePanelValues().filter).toBe("hero");
   });
 
-  test("+ opens the New menu under itself, in this panel's vocabulary", async () => {
+  test("+ opens Add new through file.new, the same door as the palette and the chord", async () => {
+    const run = mock((_args: CommandArgValues | undefined) => {});
+    const registry = createCommandRegistry({ getContext: emptyContext, mac: true });
+    registry.register({
+      category: "File",
+      id: "file.new",
+      level: "project",
+      run: (_ctx, args: CommandArgValues | undefined) => {
+        run(args);
+      },
+      title: "Add New…",
+    });
+    setActiveRegistry(registry);
     await paint();
     const add = host.querySelector<HTMLElement>('[part="add"]')!;
-    // A menu opener says so, as the Library's own New button does.
-    expect(add.querySelector("button")?.getAttribute("aria-haspopup")).toBe("menu");
+    // A dialog opener says so.
+    expect(add.querySelector("button")?.getAttribute("aria-haspopup")).toBe("dialog");
     add.querySelector<HTMLElement>("button")!.click();
     await flush(4);
-    expect(showLibraryNewMenu).toHaveBeenCalledTimes(1);
-    expect(showLibraryNewMenu.mock.calls[0]?.[0]).toBe(add);
-    // A layout is offered as a Template, the word the section above it uses.
-    expect(showLibraryNewMenu.mock.calls[0]?.[1]).toEqual({ layout: "Template" });
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });
 

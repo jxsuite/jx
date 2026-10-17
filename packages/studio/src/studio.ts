@@ -272,6 +272,7 @@ import { registerPublishCommands } from "./publish/publish-commands";
 import { registerGridViewCommands } from "./grid/grid-panel";
 import { registerRedirectsCommands } from "./grid/redirects-grid";
 import { registerContentCommands } from "./content/entry-commands";
+import { registerAddNewCommands } from "./create/add-new-commands";
 import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
@@ -1614,6 +1615,7 @@ registerPreferencesCommands(commandRegistry);
 registerLibraryCommands(commandRegistry);
 registerFileFormatCommands(commandRegistry);
 registerContentCommands(commandRegistry);
+registerAddNewCommands(commandRegistry);
 /* The four translation verbs: open a sibling translation, create the missing one, show the
    Languages panel, declare a language. `i18n.switchLocale` is deliberately not among them — it sets
    a rendering context, so it lives with the other axis-3 verbs in `canvasViewCommands`. */

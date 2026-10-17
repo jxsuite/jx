@@ -171,8 +171,8 @@ export interface LibraryActions {
   openFile: (path: string) => void;
   /** Right-click on a row, at the pointer. */
   contextMenu: (path: string, x: number, y: number) => void;
-  /** The New menu opens under its own button. */
-  openNewMenu: (opener: HTMLElement) => void;
+  /** **New** opens Add new on the kind the active category names. */
+  openNew: () => void;
   /**
    * A file picker settled.
    *
@@ -287,7 +287,7 @@ export function mountLibrarySurface(
     localeState: "hidden",
     localeValue: "",
     openFile: actions.openFile,
-    openNewMenu: actions.openNewMenu,
+    openNew: actions.openNew,
     pad: "",
     padBottom: "",
     padTop: "",
