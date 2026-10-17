@@ -26,6 +26,30 @@ export function canvasBaseOrigin(): string {
 }
 
 /**
+ * The dev-proxy token for a render in the SHELL's own realm, or null when it has none to use.
+ *
+ * A desktop server gates `/__jx_resolve__` and `/__jx_server__` on its rpcToken, and the canvas
+ * iframe authenticates by reading it off its own URL (`?rpcToken=`). The shell renders documents
+ * too (the Library's previews, the assistant's render check) through its own copy of the runtime,
+ * and that copy was never told: every `$src` class on a previewed page posted without the token and
+ * drew a 403. The token is read off the same canvas URL rather than a second channel, so there is
+ * one place it is handed out.
+ *
+ * Same-origin only. A cross-origin canvas (electrobun loopback) is not where the shell's relative
+ * dev-proxy fetches go, so its token would authenticate nothing and is better not spread around.
+ *
+ * @returns {string | null} The token, or null on a host with no token or a cross-origin canvas.
+ */
+export function hostResolveToken(): string | null {
+  const canvasUrl = hasPlatform() ? getPlatform().canvasUrl : undefined;
+  if (!canvasUrl) {
+    return null;
+  }
+  const url = new URL(canvasUrl, location.href);
+  return url.origin === location.origin ? url.searchParams.get("rpcToken") : null;
+}
+
+/**
  * The base the canvas fetches PROJECT FILES against — component `$ref`s, `$src` modules, images.
  *
  * Two shapes, and the platform chooses. Most hosts serve the project tree from their web root, so
