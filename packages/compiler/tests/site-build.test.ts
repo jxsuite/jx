@@ -2596,12 +2596,48 @@ describe("buildSite — component slot content expansion", () => {
             children: [{ children: ["Slotted Content"], tagName: "p" }],
             tagName: "my-wrapper",
           },
+          {
+            children: [
+              { attributes: { slot: "head" }, tagName: "h1", textContent: "Static head" },
+              { tagName: "p", textContent: "Static body" },
+            ],
+            tagName: "static-card",
+          },
+          {
+            children: [
+              { attributes: { slot: "head" }, tagName: "h1", textContent: "Live head" },
+              { tagName: "p", textContent: "Live body" },
+            ],
+            tagName: "live-card",
+          },
+          { tagName: "live-card" },
         ],
         title: "Home",
       }),
       "utf8",
     );
     mkdirSync(resolve(SLOT_TMP, "components"), { recursive: true });
+    const cardChildren = [
+      { children: [{ attributes: { name: "head" }, tagName: "slot" }], tagName: "header" },
+      { children: [{ children: ["No body"], tagName: "slot" }], tagName: "main" },
+    ];
+    writeFileSync(
+      resolve(SLOT_TMP, "components/static-card.json"),
+      JSON.stringify({ children: cardChildren, tagName: "static-card" }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(SLOT_TMP, "components/live-card.json"),
+      JSON.stringify({
+        children: [
+          ...cardChildren,
+          { onclick: { $ref: "#/state/bump" }, tagName: "button", textContent: "+" },
+        ],
+        state: { bump: { $prototype: "Function", body: "state.n++" }, n: 0 },
+        tagName: "live-card",
+      }),
+      "utf8",
+    );
     writeFileSync(
       resolve(SLOT_TMP, "components/my-wrapper.json"),
       JSON.stringify({
@@ -2628,6 +2664,40 @@ describe("buildSite — component slot content expansion", () => {
     expect(result.errors).toHaveLength(0);
     const html = readFileSync(resolve(SLOT_TMP, "dist/index.html"), "utf8");
     expect(html).toContain("Slotted Content");
+  });
+
+  /** The built markup of the `n`th instance of `tag` on the page. */
+  function instance(tag: string, n = 0): string {
+    const html = readFileSync(resolve(SLOT_TMP, "dist/index.html"), "utf8");
+    const all = html.match(new RegExp(`<${tag}\\b[\\s\\S]*?</${tag}>`, "g")) ?? [];
+    return all[n] ?? "";
+  }
+
+  it("places a static card's children by slot name, with no slot left and no stamp", () => {
+    const card = instance("static-card");
+    expect(card).toMatch(/<header>\s*<h1 slot="head">Static head<\/h1>\s*<\/header>/);
+    expect(card).toMatch(/<main>\s*<p>Static body<\/p>\s*<\/main>/);
+    expect(card).not.toContain("<slot");
+    expect(card).not.toContain("data-jx-slots");
+    expect(card).not.toContain("<!--jx-slot");
+  });
+
+  it("stamps a live card and brackets each group it placed, with ids unique on the page", () => {
+    const given = instance("live-card", 0);
+    const empty = instance("live-card", 1);
+    const id = given.match(/data-jx-slots="(\d+)"/)?.[1];
+    expect(id).toBeDefined();
+    expect(given).toContain(
+      `<!--jx-slot ${id} head--><h1 slot="head">Live head</h1><!--/jx-slot ${id}-->`,
+    );
+    expect(given).toContain(`<!--jx-slot ${id} --><p>Live body</p><!--/jx-slot ${id}-->`);
+    expect(given).not.toContain("<slot");
+    // Given no children it still carries an id, so it does not capture its own markup, but no brackets.
+    const emptyId = empty.match(/data-jx-slots="(\d+)"/)?.[1];
+    expect(emptyId).toBeDefined();
+    expect(emptyId).not.toBe(id);
+    expect(empty).not.toContain("<!--jx-slot");
+    expect(empty).toContain("No body");
   });
 });
 

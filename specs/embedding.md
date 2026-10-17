@@ -139,7 +139,7 @@ Every mount builds a context from its options and threads it through scope const
 
 ### 5.2 What stays module-global
 
-Three things are per realm by nature and are not in a context: the custom-element registry (`customElements` is one per window, so `defineElement` is too), the `$src` module cache (an ES module namespace is one per specifier), and the canvas transposition switches (`setCanvasViewportTranspose`, `setCanvasDelinkAnchors`, `setCanvasDelinkPopovers`, `setCanvasAssetResolver`, `setStampPropBindings`), which exist for the Studio canvas iframe — a realm whose runtime instance serves exactly one document at a time.
+Three things are per realm by nature and are not in a context: the custom-element registry (`customElements` is one per window, so `defineElement` is too), the `$src` module cache (an ES module namespace is one per specifier), and the canvas transposition switches (`setCanvasViewportTranspose`, `setCanvasDelinkAnchors`, `setCanvasDelinkPopovers`, `setCanvasAssetResolver`, `setStampPropBindings`), which exist for the Studio canvas iframe — a realm whose runtime instance serves exactly one document at a time. So does `setTemplateErrorHandler(handler | null)`: a template binding that throws renders empty and keeps listening (spec.md §6.1), and a host whose question is whether a document renders at all — Studio's render critic — installs a handler around one render to receive every such error, which otherwise reaches only a once-per-source console warning.
 
 ## 6. Preloading Bundled Documents and Modules
 

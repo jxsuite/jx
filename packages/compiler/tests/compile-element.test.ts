@@ -809,7 +809,7 @@ describe("compileElement — dynamic host styles", () => {
 // ─── Slot handling ──────────────────────────────────────────────────────────
 
 describe("compileElement — slot handling", () => {
-  test("element with slot child saves and restores slotted content", async () => {
+  test("element with slot child captures and distributes by the shared rule", async () => {
     const result = await compileElement({
       children: [{ children: [{ tagName: "slot" }], tagName: "div" }],
       state: {},
@@ -817,10 +817,55 @@ describe("compileElement — slot handling", () => {
     });
 
     const { content } = result.files[0]!;
-    expect(content).toContain("const _slotted = Array.from(this.childNodes)");
-    expect(content).toContain("const _slot = this.querySelector('slot')");
-    expect(content).toContain("_slot.before(n)");
-    expect(content).toContain("_slot.remove()");
+    expect(content).toContain("const _slotted = __jxCaptureSlotted(this);");
+    expect(content).toContain("__jxDistributeSlots(this, _slotted);");
+    expect(content.split("function __jxDistributeSlots(").length).toBe(2);
+    expect(content).not.toContain("querySelector('slot')");
+    // A guard before the slot and before its closing tag, so no lit part ends at either.
+    expect(content).toContain("<!----><slot");
+    expect(content).toContain("<!----></slot>");
+  });
+
+  test("a slot only inside a $switch case still distributes", async () => {
+    const result = await compileElement({
+      children: [
+        {
+          $switch: { $ref: "#/state/mode" },
+          cases: { a: { children: [{ tagName: "slot" }], tagName: "div" } },
+          tagName: "div",
+        },
+      ],
+      state: { mode: "a" },
+      tagName: "test-slot-case",
+    });
+    expect(result.files[0]!.content).toContain("__jxDistributeSlots(this, _slotted);");
+  });
+
+  test("a module with no slot carries no helper", async () => {
+    const result = await compileElement({
+      children: [{ tagName: "p", textContent: "x" }],
+      tagName: "test-no-slot",
+    });
+    expect(result.files[0]!.content).not.toContain("__jxCaptureSlotted");
+  });
+
+  test("a binding among an instance's children is followed by a guard", async () => {
+    const result = await compileElement({
+      children: [
+        {
+          children: ["${state.title}", { tagName: "p", textContent: "static" }],
+          tagName: "x-card",
+        },
+        { tagName: "x-card", textContent: "${state.title}" },
+        { children: ["${state.title}"], tagName: "div" },
+      ],
+      state: { title: "T" },
+      tagName: "test-guard-host",
+    });
+    const { content } = result.files[0]!;
+    expect(content.match(/\$\{s\.title\}<!---->/g)?.length).toBe(2);
+    // An ordinary element's children are never redistributed, so they carry no guard.
+    expect(content).toMatch(/<div\s*>\s*\$\{s\.title\}\s*<\/div>/);
   });
 });
 

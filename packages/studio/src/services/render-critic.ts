@@ -13,7 +13,13 @@
  * @license MIT
  */
 
-import { buildScope, renderNode, runScoped, setSkipServerFunctions } from "@jxsuite/runtime";
+import {
+  buildScope,
+  renderNode,
+  runScoped,
+  setSkipServerFunctions,
+  setTemplateErrorHandler,
+} from "@jxsuite/runtime";
 import type { JxDocument } from "@jxsuite/schema/types";
 
 /**
@@ -52,6 +58,13 @@ export async function renderCheck(
   doc: JxDocument,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   let stopRender: (() => void) | null = null;
+  /* A binding that throws no longer unwinds the render (spec.md §6.1) — it renders empty and waits
+     for its data — so the throw is collected here instead. The first one is the verdict: a page
+     whose template can never evaluate is exactly what this check exists to refuse. */
+  const bindingErrors: Error[] = [];
+  setTemplateErrorHandler((error) => {
+    bindingErrors.push(error);
+  });
   try {
     setSkipServerFunctions(true);
 
@@ -63,10 +76,12 @@ export async function renderCheck(
     });
     stopRender = stop;
 
-    return { ok: true };
+    const [first] = bindingErrors;
+    return first ? { ok: false, error: translateRenderError(first) } : { ok: true };
   } catch (error) {
     return { ok: false, error: translateRenderError(error) };
   } finally {
+    setTemplateErrorHandler(null);
     // Dispose all effects created synchronously by renderNode via the RUNTIME's runScoped — scope
     // Collection is per @vue/reactivity module instance, so a studio effectScope here would collect
     // Nothing. Effects from the async buildScope (prototype/computed setup) still escape the scope;

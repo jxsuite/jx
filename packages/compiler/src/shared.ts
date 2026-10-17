@@ -11,6 +11,10 @@ import {
   COLOR_SCHEME_STORAGE_KEY,
   MAX_COMPONENT_NESTING,
   RESERVED_KEYS,
+  SLOT_ATTR,
+  SLOT_MARK,
+  SLOT_RECORD_KEY,
+  SLOT_WHITESPACE,
   booleanAttrValue,
   buildStyleRules,
   enumeratedAttrNames,
@@ -32,6 +36,7 @@ import {
   isFunctionDef,
   isMappedArray,
   isNamedFormulaDef,
+  isNodeObject,
   isNonNullObject,
   isNumber,
   isPrototypeDef,
@@ -54,6 +59,7 @@ import type {
   JsonValue,
   JxDocumentValue,
   JxElement,
+  JxMappedArray,
   JxMutableNode,
   JxPrototypeDef,
   JxRef,
@@ -1262,6 +1268,154 @@ export function attrHelperSource(): string {
   );
 }
 
+/** The capture helper a light-DOM component module calls before its first render. */
+export const SLOT_CAPTURE_HELPER = "__jxCaptureSlotted";
+
+/** The distribution helper a light-DOM component module calls after its first render. */
+export const SLOT_DISTRIBUTE_HELPER = "__jxDistributeSlots";
+
+/**
+ * The slot rule (spec.md §8.5) as source for a generated module: `captureSlotted` and
+ * `distributeSlots` from `@jxsuite/runtime`, inlined for the reason `attrHelperSource` gives, with
+ * the whitespace pattern, the bracket word, the attribute and the record key SERIALIZED from the
+ * runtime's exports rather than retyped. The record lives on `globalThis` under the same registered
+ * symbol, so a group one module (or the interpreter) records is read by the element that captures
+ * next. `slot-distribution-agreement.test.ts` runs this source and the runtime's functions over one
+ * fixture table, which is what keeps the two from drifting.
+ *
+ * @returns {string} Two `function` declarations and their two constants, for a module's preamble.
+ */
+export function slotHelperSource(): string {
+  const ws = `new RegExp(${JSON.stringify(SLOT_WHITESPACE.source)}, ${JSON.stringify(SLOT_WHITESPACE.flags)})`;
+  const key = `Symbol.for(${JSON.stringify(SLOT_RECORD_KEY)})`;
+  const attr = JSON.stringify(SLOT_ATTR);
+  const mark = JSON.stringify(SLOT_MARK);
+  return [
+    `const __jxSlotWs = ${ws};`,
+    `const __jxSlotRec = globalThis[${key}] || (globalThis[${key}] = new WeakMap());`,
+    `function ${SLOT_CAPTURE_HELPER}(host) {`,
+    `  const id = host.getAttribute(${attr});`,
+    `  if (id === null) return Array.from(host.childNodes);`,
+    `  host.removeAttribute(${attr});`,
+    `  const open = ${mark} + ' ' + id + ' ';`,
+    `  const close = '/' + ${mark} + ' ' + id;`,
+    `  const openers = [];`,
+    `  const w = host.ownerDocument.createTreeWalker(host, 128);`,
+    `  for (let n = w.nextNode(); n; n = w.nextNode()) if (n.data.startsWith(open)) openers.push(n);`,
+    `  const out = [];`,
+    `  for (const o of openers) {`,
+    `    const name = decodeURIComponent(o.data.slice(open.length));`,
+    `    for (let n = o.nextSibling; n; n = n.nextSibling) {`,
+    `      if (n.nodeType === 8 && n.data === close) break;`,
+    `      __jxSlotRec.set(n, name);`,
+    `      out.push(n);`,
+    `    }`,
+    `  }`,
+    `  return out;`,
+    `}`,
+    `function ${SLOT_DISTRIBUTE_HELPER}(host, captured) {`,
+    `  const slots = Array.from(host.querySelectorAll('slot'));`,
+    `  if (slots.length === 0) return;`,
+    `  const groups = new Map();`,
+    `  for (const n of captured) {`,
+    `    if (n.nodeType === 3 && __jxSlotWs.test(n.data)) continue;`,
+    `    const r = __jxSlotRec.get(n);`,
+    `    __jxSlotRec.delete(n);`,
+    `    const name = r !== undefined ? r : n.nodeType === 1 ? n.getAttribute('slot') || '' : '';`,
+    `    let g = groups.get(name);`,
+    `    if (!g) { g = []; groups.set(name, g); }`,
+    `    g.push(n);`,
+    `  }`,
+    `  const taken = new Set();`,
+    `  for (const slot of slots) {`,
+    `    const name = slot.getAttribute('name') || '';`,
+    `    let g = [];`,
+    `    if (!taken.has(name)) { taken.add(name); g = groups.get(name) || []; }`,
+    `    const content = g.some((n) => n.nodeType === 1 || (n.nodeType === 3 && n.data !== ''));`,
+    `    const placed = content ? g : g.concat(Array.from(slot.childNodes));`,
+    `    const p = slot.parentElement;`,
+    `    if (p && p !== host && p.localName.includes('-')) {`,
+    `      const r = __jxSlotRec.get(slot);`,
+    `      const f = r !== undefined ? r : slot.getAttribute('slot') || '';`,
+    `      for (const n of placed) __jxSlotRec.set(n, f);`,
+    `    }`,
+    `    slot.replaceWith(...placed);`,
+    `  }`,
+    `}`,
+  ].join("\n");
+}
+
+/**
+ * An empty comment written where a lit child part would otherwise end at a node distribution moves.
+ *
+ * Lit ends a child part at the node that followed its marker when the template was cloned. A `$map`
+ * or `$switch` written directly before a `<slot>` ends at that slot, and once the slot is replaced
+ * the part's next update clears every later sibling of its new parent and throws; a binding among
+ * an instance's children ends at a named sibling, which moves to another group, in the same way. A
+ * comment ends the part instead: it travels with its group, and it affects neither `:empty` nor a
+ * child combinator, so a slot still "leaves no node" in the selector tree §16.6 is about.
+ */
+export const LIT_PART_GUARD = "<!---->";
+
+/**
+ * Whether a definition's tree draws a `<slot>` anywhere a render can reach: `children`, a
+ * `$switch`'s `cases`, or a repeater's `map` (a whole-children repeater included).
+ *
+ * @param {JxMutableNode["children"]} children
+ * @returns {boolean}
+ */
+export function definitionHasSlot(children: SlotChildren): boolean {
+  for (const child of slotChildList(children)) {
+    if (isMappedArray(child)) {
+      if (child.map && definitionHasSlot([child.map])) {
+        return true;
+      }
+      continue;
+    }
+    if (!isNodeObject(child)) {
+      continue;
+    }
+    if (child.tagName === "slot") {
+      return true;
+    }
+    const cases = Object.values(child.cases ?? {}).filter(
+      (c) => isNodeObject(c) && !isRefObject(c),
+    );
+    if (definitionHasSlot(cases) || definitionHasSlot(child.children)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** A node's `children` as either document shape writes it. */
+export type SlotChildren =
+  | JxElement["children"]
+  | JxMutableNode["children"]
+  | readonly StaticChild[]
+  | null
+  | undefined;
+
+/**
+ * `children` as a list: an array as it is, a whole-children repeater as its one member, nothing as
+ * nothing.
+ *
+ * @param {SlotChildren} children
+ * @returns {readonly (StaticChild | JxMappedArray)[]}
+ */
+function slotChildList(children: SlotChildren): readonly (StaticChild | JxMappedArray)[] {
+  if (isMappedArray(children)) {
+    return [children];
+  }
+  // Document JSON can hold anything here; what is neither a list nor a repeater holds no child.
+  if (!Array.isArray(children)) {
+    return [];
+  }
+  /* SAFETY: every array member of `SlotChildren` is a list of children; `Array.isArray` narrows the
+     union to `any[]`, so the cast only restores the element type it already had. */
+  return children as readonly StaticChild[];
+}
+
 /**
  * Walk the entire document tree and collect all static nested CSS rules.
  *
@@ -1561,6 +1715,120 @@ export interface ComponentPrerenderContext {
   defaults?: ProjectConfig["defaults"] | undefined;
   /** The instances being expanded, outermost first; empty at a page-level instance. */
   path?: readonly PrerenderFrame[] | undefined;
+  /**
+   * The page's counter for `data-jx-slots` ids. Nested contexts are spread copies, so they share
+   * it; without one (a unit test, a definition preview) no instance is stamped or bracketed.
+   */
+  slotIds?: { n: number } | undefined;
+}
+
+/**
+ * An instance's children, grouped by the slot they name, as the static renderer places them
+ * (spec.md §8.5). One render consumes a fill: `taken` records which names a slot already took.
+ */
+export interface SlotFill {
+  /** Group name (`""` is the unnamed group) → its rendered HTML and whether it holds content. */
+  groups: Map<string, { html: string; content: boolean }>;
+  taken: Set<string>;
+  /** The instance's `data-jx-slots` id, whose brackets wrap each placed group; null for none. */
+  id: number | null;
+}
+
+/**
+ * The next `data-jx-slots` id of the page being rendered, or null without a counter.
+ *
+ * @param {ComponentPrerenderContext | null} context
+ * @returns {number | null}
+ */
+export function nextSlotId(context: ComponentPrerenderContext | null): number | null {
+  if (!context?.slotIds) {
+    return null;
+  }
+  context.slotIds.n += 1;
+  return context.slotIds.n;
+}
+
+/**
+ * Group an instance's children by slot name, as definitions, applying the rule the interpreter's
+ * `distributeSlots` applies to nodes: a string or number whose rendered text is only HTML
+ * whitespace is dropped; an element names its group by its resolved `attributes.slot`, else its
+ * resolved node-level `slot` (which is then rendered as the attribute, so a recovered child still
+ * names its group); everything else joins the unnamed group. An element, `$switch` or repeater
+ * child is content; a string or number is when its text is not empty.
+ *
+ * @param {StaticChild} children
+ * @param {JxScope | null} scope - The scope the children resolve in (the parent's)
+ * @param {(child: StaticChild) => string} render - Renders one child
+ * @param {number | null} [id]
+ * @returns {SlotFill}
+ */
+export function createSlotFill(
+  children: SlotChildren,
+  scope: JxScope | null,
+  render: (child: StaticChild) => string,
+  id: number | null = null,
+): SlotFill {
+  const groups: SlotFill["groups"] = new Map();
+  for (const child of slotChildList(children)) {
+    let name = "";
+    let content = true;
+    let html: string;
+    if (isString(child) || isNumber(child) || isBoolean(child)) {
+      html = render(child);
+      if (SLOT_WHITESPACE.test(html)) {
+        continue;
+      }
+      content = html !== "";
+    } else if (isMappedArray(child)) {
+      // A repeater renders nothing statically; it is content all the same, as its rows will be.
+      html = "";
+    } else if (!isNodeObject(child)) {
+      html = render(child);
+      content = html !== "";
+    } else {
+      const fromAttr = resolveStaticValue(child.attributes?.slot, scope);
+      const fromNode = isString(child.slot) ? resolveStaticValue(child.slot, scope) : null;
+      if (isString(fromAttr) && fromAttr !== "") {
+        name = fromAttr;
+        html = render(child);
+      } else if (isString(fromNode) && fromNode !== "") {
+        name = fromNode;
+        const { slot: _slot, ...rest } = child;
+        html = render({ ...rest, attributes: { ...rest.attributes, slot: fromNode } });
+      } else {
+        html = render(child);
+      }
+    }
+    const group = groups.get(name);
+    if (group) {
+      group.html = group.html === "" ? html : `${group.html}\n${html}`;
+      group.content ||= content;
+    } else {
+      groups.set(name, { content, html });
+    }
+  }
+  return { groups, id, taken: new Set() };
+}
+
+/**
+ * Mark every slot name inside a fallback that is not rendered as taken, in tree order, so the
+ * prerender's answer matches the DOM tiers', where such a slot is still met by `querySelectorAll`.
+ *
+ * @param {StaticChild} node
+ * @param {JxScope | null} scope
+ * @param {SlotFill} slots
+ */
+function takeSlotNames(children: SlotChildren, scope: JxScope | null, slots: SlotFill): void {
+  for (const node of slotChildList(children)) {
+    if (isMappedArray(node) || !isNodeObject(node)) {
+      continue;
+    }
+    if (node.tagName === "slot") {
+      const name = resolveStaticValue(node.attributes?.name, scope);
+      slots.taken.add(isString(name) ? name : "");
+    }
+    takeSlotNames(node.children, scope, slots);
+  }
 }
 
 /** One instance on the expansion path: its tag, and its resolved props as an identity. */
@@ -1682,14 +1950,14 @@ export function resolveHostStyle(
  *
  * @param {JxElement | JxMutableNode} node
  * @param {JxScope | null} scope
- * @param {string | null} slotContent
+ * @param {SlotFill | null} slots
  * @param {ComponentPrerenderContext | null} context
  * @returns {string}
  */
 function renderInner(
   node: JxElement | JxMutableNode,
   scope: JxScope | null,
-  slotContent: string | null,
+  slots: SlotFill | null,
   context: ComponentPrerenderContext | null,
 ): string {
   if (node.textContent !== undefined) {
@@ -1702,9 +1970,7 @@ function renderInner(
   }
   if (Array.isArray(node.children)) {
     return node.children
-      .map((c: JxElement | JxMutableNode | string) =>
-        renderStaticNode(c, scope, slotContent, context),
-      )
+      .map((c: JxElement | JxMutableNode | string) => renderStaticNode(c, scope, slots, context))
       .join("\n");
   }
   return "";
@@ -1729,7 +1995,8 @@ export type StaticChild =
  *
  * @param {StaticChild} node
  * @param {JxScope | null} scope
- * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
+ * @param {SlotFill | null} [slots] - The instance's children by slot name; `null` leaves a `<slot>`
+ *   literal (a shadow root, or a definition rendered with no instance)
  * @param {ComponentPrerenderContext | null} [context] - The component registry, when a custom
  *   element tag met here should be expanded rather than emitted bare
  * @returns {string}
@@ -1737,7 +2004,7 @@ export type StaticChild =
 export function renderStaticNode(
   node: StaticChild,
   scope: JxScope | null,
-  slotContent: string | null = null,
+  slots: SlotFill | null = null,
   context: ComponentPrerenderContext | null = null,
 ): string {
   if (isString(node)) {
@@ -1751,7 +2018,7 @@ export function renderStaticNode(
     return escapeHtml(String(node));
   }
   if (Array.isArray(node)) {
-    return node.map((c): string => renderStaticNode(c, scope, slotContent, context)).join("\n");
+    return node.map((c): string => renderStaticNode(c, scope, slots, context)).join("\n");
   }
   if (!isNonNullObject(node)) {
     return "";
@@ -1772,7 +2039,7 @@ export function renderStaticNode(
     const caseDef = key == null ? undefined : node.cases?.[String(key)];
     const inner =
       caseDef !== undefined && !isRefObject(caseDef)
-        ? renderStaticNode(caseDef, scope, slotContent, context)
+        ? renderStaticNode(caseDef, scope, slots, context)
         : "";
     return `<${switchTag}${attrs}>${inner}</${switchTag}>`;
   }
@@ -1783,15 +2050,33 @@ export function renderStaticNode(
      state does not exist, so SSR silently emitted the fallback branch's tag. */
   const tag = resolveStaticTagName(node.tagName, scope);
 
-  // Replace <slot> with provided slot content
-  if (tag === "slot" && slotContent != null) {
-    return slotContent;
+  /* A slot is REPLACED by its group (spec.md §8.5), and leaves no node: the first slot of a name
+     takes the group, and the fallback follows only when the group holds no content. A slot inside
+     a fallback that is not rendered still takes its name, as it does in the DOM tiers. */
+  if (tag === "slot" && slots) {
+    const resolved = resolveStaticValue(node.attributes?.name, scope);
+    const name = isString(resolved) ? resolved : "";
+    let group: { html: string; content: boolean } | undefined;
+    if (!slots.taken.has(name)) {
+      slots.taken.add(name);
+      group = slots.groups.get(name);
+    }
+    let out = group?.html ?? "";
+    if (out !== "" && slots.id !== null) {
+      out = `<!--${SLOT_MARK} ${slots.id} ${encodeURIComponent(name)}-->${out}<!--/${SLOT_MARK} ${slots.id}-->`;
+    }
+    if (group?.content) {
+      takeSlotNames(node.children, scope, slots);
+      return out;
+    }
+    const fallback = renderInner(node, scope, slots, context);
+    return out === "" ? fallback : fallback === "" ? out : `${out}\n${fallback}`;
   }
 
   // A registered component: expanded exactly as the page walk expands one, not emitted bare.
   const def = context?.componentDefs.get(tag);
   if (def && context) {
-    return renderComponentInstance(node, def, scope, slotContent, context);
+    return renderComponentInstance(node, def, scope, slots, context);
   }
 
   const attrs = buildAttrs(node, scope);
@@ -1800,7 +2085,7 @@ export function renderStaticNode(
     return `<${tag}${attrs}>`;
   }
 
-  return `<${tag}${attrs}>${renderInner(node, scope, slotContent, context)}</${tag}>`;
+  return `<${tag}${attrs}>${renderInner(node, scope, slots, context)}</${tag}>`;
 }
 
 /**
@@ -1811,7 +2096,10 @@ export function renderStaticNode(
  *   scope, which is what `resolveDocTemplates` does for a page-level instance before the page walk
  *   reaches it.
  * - Slot content: the instance's own children, rendered in the parent's scope and with the parent's
- *   slot content, so a `<slot>` written among them passes the grandparent's through.
+ *   fill, so a `<slot>` written among them passes the grandparent's group of that name through, and
+ *   placed in the definition's slots by name (`createSlotFill`, spec.md §8.5). A live instance
+ *   whose definition has a slot carries `data-jx-slots` and brackets each group, so its element
+ *   recovers what it was given when it upgrades (`captureSlotted` in the runtime).
  * - Shadow mode: a declarative shadow root with the stylesheet link inside it (spec.md §16.6).
  * - Host style: the definition's template-string entries resolved against the INSTANCE, written on
  *   the element — the page walk's `resolvedStyle` in inline form, since there is no page stylesheet
@@ -1826,7 +2114,7 @@ export function renderStaticNode(
  * @param {JxElement | JxMutableNode} node - The instance as written in the parent's tree
  * @param {JxElement} def - The registered definition for its tag
  * @param {JxScope | null} scope - The parent's scope
- * @param {string | null} slotContent - The parent's slot content
+ * @param {SlotFill | null} parentSlots - The parent's fill
  * @param {ComponentPrerenderContext} context
  * @returns {string}
  * @docs framework/build
@@ -1835,7 +2123,7 @@ function renderComponentInstance(
   node: JxElement | JxMutableNode,
   def: JxElement,
   scope: JxScope | null,
-  slotContent: string | null,
+  parentSlots: SlotFill | null,
   context: ComponentPrerenderContext,
 ): string {
   /* SAFETY: the caller looked `def` up in `componentDefs` by the node's resolved string tag, and
@@ -1869,25 +2157,29 @@ function renderComponentInstance(
   }
   const nested: ComponentPrerenderContext = { ...context, path: [...path, frame] };
 
-  // The instance's children are the parent's nodes: parent scope, parent slot, parent path.
-  const slot =
-    Array.isArray(node.children) && node.children.length > 0
-      ? node.children
-          .map((c: JxElement | JxMutableNode | string) =>
-            renderStaticNode(c, scope, slotContent, context),
-          )
-          .join("\n")
-      : null;
+  // The instance's children are the parent's nodes: parent scope, parent fill, parent path.
+  const { children } = node;
+  const renderChild = (c: StaticChild) => renderStaticNode(c, scope, parentSlots, context);
 
   const shadow = resolveShadowMode(def, context.defaults);
   const isStatic = isComponentFullyStatic(def);
   const instanceScope = buildInstanceScope(def, hasProps ? props : null);
-  const inner = renderInner(def, instanceScope, shadow ? null : slot, nested);
-  const innerHTML = shadow
-    ? `<template shadowrootmode="${shadow}">` +
+  let innerHTML: string;
+  let slotId: number | null = null;
+  if (shadow) {
+    // The light children stay siblings of the template, where a real `<slot>` distributes them.
+    const light = Array.isArray(children)
+      ? children.map((c: StaticChild) => renderChild(c)).join("\n")
+      : "";
+    innerHTML =
+      `<template shadowrootmode="${shadow}">` +
       `<link rel="stylesheet" href="/components/${tag}.css">` +
-      `${inner}</template>${slot ?? ""}`
-    : inner;
+      `${renderInner(def, instanceScope, null, nested)}</template>${light}`;
+  } else {
+    slotId = !isStatic && definitionHasSlot(def.children) ? nextSlotId(context) : null;
+    const fill = createSlotFill(children, scope, renderChild, slotId);
+    innerHTML = renderInner(def, instanceScope, fill, nested);
+  }
 
   const hostStyle = Object.entries(resolveHostStyle(def.style, instanceScope))
     .map(([prop, value]) => `${camelToKebab(prop)}: ${value}`)
@@ -1900,6 +2192,9 @@ function renderComponentInstance(
   delete instance.children;
   instance.attributes =
     !isStatic && hasProps ? { ...attributes, "data-jx-props": JSON.stringify(props) } : attributes;
+  if (slotId !== null) {
+    instance.attributes = { ...instance.attributes, [SLOT_ATTR]: String(slotId) };
+  }
   if (isStatic) {
     instance.$static = true;
   } else {
@@ -1914,7 +2209,8 @@ function renderComponentInstance(
  * @param {JxElement} doc - Component JSON definition
  * @param {Record<string, JsonValue> | null} [propsOverride] - Instance-specific prop values to
  *   merge into state
- * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
+ * @param {SlotFill | null} [slots] - The instance's children by slot name (`createSlotFill`);
+ *   `null` leaves every `<slot>` literal
  * @param {ComponentPrerenderContext | null} [context] - The component registry; with one, an
  *   instance of a registered component inside `doc` is expanded rather than emitted bare
  * @returns {string} The pre-rendered innerHTML
@@ -1922,10 +2218,10 @@ function renderComponentInstance(
 export function preRenderComponentHtml(
   doc: JxElement,
   propsOverride: Record<string, JsonValue> | null = null,
-  slotContent: string | null = null,
+  slots: SlotFill | null = null,
   context: ComponentPrerenderContext | null = null,
 ) {
-  return renderInner(doc, buildInstanceScope(doc, propsOverride), slotContent, context);
+  return renderInner(doc, buildInstanceScope(doc, propsOverride), slots, context);
 }
 
 /**

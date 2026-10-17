@@ -10,7 +10,12 @@ import {
   ATTR_HELPER,
   attrHelperSource,
   booleanAttrValue,
+  definitionHasSlot,
+  LIT_PART_GUARD,
   PREFORMATTED_TAGS,
+  SLOT_CAPTURE_HELPER,
+  SLOT_DISTRIBUTE_HELPER,
+  slotHelperSource,
   collectStyles,
   compileExpression,
   compileOperandSource,
@@ -436,6 +441,13 @@ export function emitElementModule(
     `import { render, html, nothing } from 'lit-html';`,
     attrHelperSource(),
   );
+  /* Light-DOM slot distribution, by the rule the interpreter applies (spec.md §8.5): only a module
+     whose template draws a slot carries it, and a shadow component never does — its light children
+     ARE the slotted content, and a real `<slot>` distributes them. */
+  const hasSlot = shadow === null && definitionHasSlot(doc.children);
+  if (hasSlot) {
+    lines.push(slotHelperSource());
+  }
 
   /*
    * `$lazy` swaps the static import for a memoized dynamic one. A static import is a download, a
@@ -795,19 +807,17 @@ export function emitElementModule(
       lines.push("    }));");
     }
   }
-  const hasSlot = treeHasSlot(doc.children);
   /*
-   * The slot emulation is a light-DOM construction: save the host's children, render over them,
-   * then splice them back where the literal `<slot>` element landed. Inside a shadow root that
+   * The slot emulation is a light-DOM construction: capture the host's children, render over them,
+   * then replace each literal `<slot>` with its group (spec.md §8.5). Inside a shadow root that
    * would be actively wrong — the light children ARE the slotted content and must stay in the
    * light tree, where a real `<slot>` distributes them. This is the single largest behavioural
-   * difference between the two modes, and the reason shadow cannot be the default.
+   * difference between the two modes, and the reason shadow cannot be the default. Captured before
+   * `data-jx-prerendered` goes and before the clear: a prerendered instance's children are its
+   * markup, and capture recovers what the prerender placed from its brackets instead.
    */
-  if (hasSlot && shadow === null) {
-    // Save light DOM children (slotted content) before clearing
-    lines.push(
-      "    const _slotted = Array.from(this.childNodes).filter(n => n.nodeType === 1 || (n.nodeType === 3 && n.textContent.trim()));",
-    );
+  if (hasSlot) {
+    lines.push(`    const _slotted = ${SLOT_CAPTURE_HELPER}(this);`);
   }
   lines.push(
     "    if (this.hasAttribute('data-jx-prerendered')) {",
@@ -848,15 +858,9 @@ export function emitElementModule(
       "    this.#effects.push(effect(() => render(this.template(), _root)));",
     );
   }
-  if (hasSlot && shadow === null) {
-    // Replace <slot> placeholder with saved slotted content
-    lines.push(
-      "    const _slot = this.querySelector('slot');",
-      "    if (_slot && _slotted.length > 0) {",
-      "      for (const n of _slotted) _slot.before(n);",
-      "      _slot.remove();",
-      "    }",
-    );
+  if (hasSlot) {
+    // Once, after the first render: a slot a later render draws stays literal (spec.md §8.5).
+    lines.push(`    ${SLOT_DISTRIBUTE_HELPER}(this, _slotted);`);
   }
   lines.push(
     // Lifecycle: onMount (spec §16.4) — same microtask contract as the runtime
@@ -936,27 +940,39 @@ function emitLitChildren(
   preformatted = false,
   inMap = false,
   scope: HoistScope | null = null,
+  /** The children are an instance's, so each child part ends at a guard rather than a sibling. */
+  guardParts = false,
 ) {
   if (!children) {
     return "";
   }
 
+  const guard = guardParts ? LIT_PART_GUARD : "";
+
   // Legacy whole-children repeater: the array IS the children slot.
   if (isMappedArray(children)) {
-    return emitMappedArray(children, indent);
+    return `${emitMappedArray(children, indent)}${guard}`;
   }
 
   if (!Array.isArray(children)) {
     return "";
   }
 
-  // Mixed children: elements/text plus array pseudo-elements expanded inline among siblings.
+  /* Mixed children: elements/text plus array pseudo-elements expanded inline among siblings. Among
+     an instance's children, a child that emits a lit child part — a binding, a repeater, a chosen
+     tag — is followed by a guard: distribution moves its neighbours, and a part that ended at one
+     would clear its new parent on the next update (`LIT_PART_GUARD`). */
   return children
-    .map((child) =>
-      isMappedArray(child)
-        ? emitMappedArray(child, indent)
-        : emitLitNode(child, preformatted ? "" : indent, preformatted, inMap, scope),
-    )
+    .map((child) => {
+      if (isMappedArray(child)) {
+        return `${emitMappedArray(child, indent)}${guard}`;
+      }
+      const text = emitLitNode(child, preformatted ? "" : indent, preformatted, inMap, scope);
+      const isPart =
+        (isString(child) && child.includes("${")) ||
+        (isNonNullObject(child) && isTagExpression(child.tagName));
+      return isPart ? `${text}${guard}` : text;
+    })
     .join(preformatted ? "" : "\n");
 }
 
@@ -1020,7 +1036,14 @@ function emitLitNode(
     const sharedPre = candidateTags.map((t) => preformatted || PREFORMATTED_TAGS.has(t));
     let innerRef: string | null = null;
     if (scope && sharedPre.every((p) => p === sharedPre[0])) {
-      const sharedInner = emitNodeInner(def, `${indent}  `, sharedPre[0] === true, inMap, scope);
+      const sharedInner = emitNodeInner(
+        def,
+        `${indent}  `,
+        sharedPre[0] === true,
+        inMap,
+        scope,
+        candidateTags.some((t) => t.includes("-")),
+      );
       if (sharedInner.trim() !== "") {
         innerRef = hoistSubtree(scope, sharedInner);
       }
@@ -1180,12 +1203,18 @@ ${no}
     return `${indent}<${tag}${attrsStr}\n${indent}>`;
   }
 
-  const inner = innerOverride ?? emitNodeInner(def, indent, inPre, inMap, scope);
+  // A custom element's children are distributed into its slots, so their parts need guards.
+  const inner = innerOverride ?? emitNodeInner(def, indent, inPre, inMap, scope, tag.includes("-"));
+
+  /* A `<slot>` is replaced after the first render, so no part may end at it or at its last child:
+     one guard before the slot (where an adjacent part ends) and one before `</slot>` (where a last
+     fallback binding ends, and which travels with the fallback when it is shown). */
+  const guard = tag === "slot" ? LIT_PART_GUARD : "";
 
   // Inside a <pre>, the newline before `>` would land in the element's own text.
   return inPre
-    ? `<${tag}${attrsStr}>${inner}</${tag}>`
-    : `${indent}<${tag}${attrsStr}\n${indent}>${inner}</${tag}>`;
+    ? `${guard}<${tag}${attrsStr}>${inner}${guard}</${tag}>`
+    : `${indent}${guard}<${tag}${attrsStr}\n${indent}>${inner}${guard}</${tag}>`;
 }
 
 /**
@@ -1207,6 +1236,8 @@ function emitNodeInner(
   inPre: boolean,
   inMap: boolean,
   scope: HoistScope | null,
+  /** `def` is a custom element, whose children are distributed: see `emitLitChildren`. */
+  guardParts = false,
 ): string {
   if (def.$switch) {
     const switchRef = isRef(def.$switch) ? def.$switch.$ref : def.$switch;
@@ -1232,15 +1263,18 @@ function emitNodeInner(
     return `\${{\n${caseEntries.join(",\n")}\n}[${switchExpr}]}`;
   }
   if (def.textContent !== undefined) {
-    return toLitTextContent(def.textContent);
+    const text = toLitTextContent(def.textContent);
+    const bound =
+      isRef(def.textContent) || (isString(def.textContent) && def.textContent.includes("${"));
+    return guardParts && bound ? `${text}${LIT_PART_GUARD}` : text;
   }
   if (def.innerHTML !== undefined) {
     return def.innerHTML;
   }
   if (def.children) {
     return inPre
-      ? emitLitChildren(def.children, def.style, "", true, inMap, scope)
-      : `\n${emitLitChildren(def.children, def.style, `${indent}  `, false, inMap, scope)}\n${indent}`;
+      ? emitLitChildren(def.children, def.style, "", true, inMap, scope, guardParts)
+      : `\n${emitLitChildren(def.children, def.style, `${indent}  `, false, inMap, scope, guardParts)}\n${indent}`;
   }
   return "";
 }
@@ -1537,28 +1571,4 @@ function emitStyleString(styleDef: JxStyle | null | undefined) {
   }
 
   return parts.join("; ");
-}
-
-/**
- * Check if a children tree contains a `<slot>` element.
- *
- * @param {JxMutableNode["children"]} children
- * @returns {boolean}
- */
-function treeHasSlot(children: JxMutableNode["children"]): boolean {
-  if (!Array.isArray(children)) {
-    return false;
-  }
-  for (const child of children) {
-    if (!isNonNullObject(child)) {
-      continue;
-    }
-    if (child.tagName === "slot") {
-      return true;
-    }
-    if (treeHasSlot(child.children)) {
-      return true;
-    }
-  }
-  return false;
 }

@@ -1030,6 +1030,27 @@ describe("compileClient — $props in a map template", () => {
     expect(js).toContain('.label="${item.name}"');
   });
 
+  test("a binding among an instance's children in a repeater row is followed by a guard", () => {
+    const result = compileClient(
+      {
+        children: {
+          $prototype: "Array",
+          items: { $ref: "#/state/rows" },
+          map: {
+            children: ["${$map.item.name}", { tagName: "p", textContent: "static" }],
+            tagName: "ls-row",
+          },
+        },
+        state: { rows: { default: [{ name: "A" }] } },
+        tagName: "div",
+        title: "T",
+      },
+      {},
+    );
+    // The row's children are distributed into its slots, so the text part must not end at a sibling.
+    expect(result.files[0]!.content).toContain("${item.name}<!---->");
+  });
+
   test("lowers every $ref form to a real expression", () => {
     /** @param {string} ref */
     const propFor = (ref: string) => {

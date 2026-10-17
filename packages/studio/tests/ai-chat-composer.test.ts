@@ -313,9 +313,7 @@ describe("context attach", () => {
     if (!(panel instanceof HTMLElement)) {
       throw new Error("the attach menu never reached the popover layer");
     }
-    expect(panel.style.getPropertyValue("--jx-r0-0") || panel.getAttribute("style")).toContain(
-      "px",
-    );
+    expect(panel.style.getPropertyValue("--jx-s0") || panel.getAttribute("style")).toContain("px");
     expect(attachRows()).toHaveLength(2);
   });
 

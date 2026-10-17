@@ -42,6 +42,12 @@ export interface ComponentMetaOut {
   props: ComponentPropDef[];
   slots?: ComponentSlotDef[];
   hasElements: boolean;
+  /**
+   * The custom-element tags its own tree renders, sorted; absent when there are none. A component
+   * written against the project's other components by bare `tagName` declares no `$elements`, so
+   * this is how a live renderer learns what one instance pulls in without fetching the definition.
+   */
+  uses?: string[];
 }
 
 /**
@@ -75,6 +81,39 @@ export function collectSlotDefs(
     for (const c of children) {
       collectSlotDefs(c, out);
     }
+  }
+  return out;
+}
+
+/**
+ * Every custom-element tag (a `tagName` with a hyphen) in a document tree, its root excluded.
+ *
+ * Walks every place a node can sit — `children`, a repeater's `map`, a `$switch`'s `cases` — since
+ * an instance rendered through any of them still needs its definition registered.
+ *
+ * @param {JsonValue | undefined} node - The document, or a node of it.
+ * @param {Set<string>} [out] - Accumulator, for the recursive walk.
+ * @returns {Set<string>}
+ */
+export function collectUsedTags(node: JsonValue | undefined, out = new Set<string>()): Set<string> {
+  if (!isJsonObject(node)) {
+    return out;
+  }
+  const visit = (child: JsonValue | undefined) => {
+    if (isJsonObject(child)) {
+      if (isString(child.tagName) && child.tagName.includes("-")) {
+        out.add(child.tagName);
+      }
+      collectUsedTags(child, out);
+    }
+  };
+  const { cases, children, map } = node;
+  const nodes = [...(Array.isArray(children) ? children : [children]), map];
+  if (isJsonObject(cases)) {
+    nodes.push(...Object.values(cases));
+  }
+  for (const child of nodes) {
+    visit(child);
   }
   return out;
 }
@@ -163,6 +202,10 @@ export function componentMetaFrom(
   };
   if (slots.length > 0) {
     meta.slots = slots;
+  }
+  const uses = [...collectUsedTags(doc)].filter((tag) => tag !== tagName).toSorted();
+  if (uses.length > 0) {
+    meta.uses = uses;
   }
   return { ...meta, tagName };
 }
