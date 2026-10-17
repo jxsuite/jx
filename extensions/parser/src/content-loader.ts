@@ -61,8 +61,11 @@ import { coerceEntryDates, isCoercedDate, isDateFormat } from "./dates.ts";
 import type { ContentNodes } from "./inert.ts";
 import type { ContentLoaderEntry, ContentTypeDef } from "./types.ts";
 import { walkFiles } from "./walk.ts";
+import { entriesOf } from "./content-data.ts";
+import type { ContentSectionData } from "./content-data.ts";
 
 export type { ContentEntry, ContentLoaderEntry, TocEntry } from "./types.ts";
+export type { ContentSectionData } from "./content-data.ts";
 
 // ─── Context and section shapes ──────────────────────────────────────────────
 
@@ -77,7 +80,7 @@ export type { ProjectDataContext } from "@jxsuite/schema/format-registry";
 /** Host context passed to `Content.resolvePaths` (specs/extensions.md §8). */
 export interface ResolvePathsContext {
   /** The loaded section data, as returned by `Content.projectData`. */
-  data: Map<string, ContentLoaderEntry[]>;
+  data: ContentSectionData;
   projectConfig?: ProjectConfig;
   /** Absolute project root directory. */
   root: string;
@@ -454,18 +457,8 @@ export function rewriteEntryAssets(
   );
 
   for (const entry of entries) {
-    const onProblem = (value: string, problem: RefProblem) =>
-      console.warn(
-        problem === "missing"
-          ? `Content type "${typeName}": entry "${entry.id}" references missing asset "${value}"`
-          : `Content type "${typeName}": entry "${entry.id}" references "${value}", which the ` +
-              `collection does not publish (it is excluded, hidden or a document), so the ` +
-              `reference is left as written`,
-      );
-
-    for (const child of entry.$children ?? []) {
-      rewriteNodeAssets(child, entryDir, mount, onProblem);
-    }
+    const onProblem = assetProblemReporter(typeName, entry);
+    rewriteBodyAssets(entry, filePath, mount, typeName);
 
     for (const field of uriFields) {
       const value = entry.data[field];
@@ -477,6 +470,36 @@ export function rewriteEntryAssets(
         );
       }
     }
+  }
+}
+
+/** The warning for one asset reference an entry makes that its collection will not publish. */
+function assetProblemReporter(typeName: string, entry: ContentLoaderEntry) {
+  return (value: string, problem: RefProblem) =>
+    console.warn(
+      problem === "missing"
+        ? `Content type "${typeName}": entry "${entry.id}" references missing asset "${value}"`
+        : `Content type "${typeName}": entry "${entry.id}" references "${value}", which the ` +
+            `collection does not publish (it is excluded, hidden or a document), so the ` +
+            `reference is left as written`,
+    );
+}
+
+/**
+ * The body half of {@link rewriteEntryAssets}: remap the media references in an entry's `$children`
+ * onto the mount. Separate because a body loaded later (a lazily loaded collection's deferred
+ * entry) gets this pass on its own, after its frontmatter had the other half at load.
+ */
+function rewriteBodyAssets(
+  entry: ContentLoaderEntry,
+  filePath: string,
+  mount: AssetMount,
+  typeName: string,
+) {
+  const entryDir = dirname(filePath);
+  const onProblem = assetProblemReporter(typeName, entry);
+  for (const child of entry.$children ?? []) {
+    rewriteNodeAssets(child, entryDir, mount, onProblem);
   }
 }
 
@@ -518,7 +541,23 @@ export async function loadContentSection(
   projectConfig?: ProjectConfig,
 ): Promise<Map<string, ContentLoaderEntry[]>> {
   const contentTypes = new Map<string, ContentLoaderEntry[]>();
-  const mounts = new Map(
+  const mounts = sectionMounts(section, root, projectConfig);
+  for (const name of Object.keys(section)) {
+    contentTypes.set(
+      name,
+      await loadSectionType(name, { formats, mounts, projectConfig, root, section }),
+    );
+  }
+  return contentTypes;
+}
+
+/** A section's asset mounts, keyed by the path below `/content/` a lookup builds. */
+export function sectionMounts(
+  section: ContentSection,
+  root: string,
+  projectConfig: ProjectConfig | undefined,
+): Map<string, AssetMount> {
+  return new Map(
     contentAssetMounts(section, root, projectConfig).map((mount) => [
       /*
        * The path below `/content/` — `<type>` for a plain source, `<type>/<locale>` for a
@@ -531,46 +570,73 @@ export async function loadContentSection(
       mount,
     ]),
   );
-  const locales = localesForExpansion(projectConfig);
-  for (const [name, contentTypeDef] of Object.entries(section)) {
-    const { source } = contentTypeDef;
-    if (!isString(source) || !source.includes(LOCALE_PLACEHOLDER)) {
-      const entries = await loadContentType(name, contentTypeDef, root, formats, {
-        mount: mounts.get(name),
-        projectConfig,
-      });
-      contentTypes.set(name, entries);
-      continue;
-    }
-    /*
-     * One content type, N directories. Each pass loads a real path and stamps the locale it came
-     * from onto every entry, which is the only thing distinguishing two translations that share an
-     * id — `resolvePaths` reads it back to expand the right ones under a locale-prefixed route.
-     */
-    if (locales.length === 0) {
-      console.warn(
-        `Content type "${name}": source "${source}" uses ${LOCALE_PLACEHOLDER}, but the project ` +
-          `declares no i18n locales — nothing to expand it over, so no entries were loaded.`,
-      );
-      contentTypes.set(name, []);
-      continue;
-    }
-    const all: ContentLoaderEntry[] = [];
-    for (const locale of locales) {
-      const localized = { ...contentTypeDef, source: localeSource(root, source, locale) };
-      const entries = await loadContentType(name, localized, root, formats, {
-        locale,
-        mount: mounts.get(`${name}/${locale}`),
-        projectConfig,
-      });
-      for (const entry of entries) {
-        entry._meta = { ...entry._meta, locale };
-      }
-      all.push(...entries);
-    }
-    contentTypes.set(name, all);
+}
+
+/** What {@link loadSectionType} loads one content type of a section with. */
+export interface SectionTypeSource {
+  section: ContentSection;
+  root: string;
+  formats: FormatRegistry;
+  projectConfig: ProjectConfig | undefined;
+  /** The section's mounts, from {@link sectionMounts}. */
+  mounts: Map<string, AssetMount>;
+  /** Leave entry bodies for later, reporting each deferred entry here. */
+  onDeferred?: DeferredBodyHandler | undefined;
+}
+
+/**
+ * Load one content type of a section, expanding a `{locale}` source over the project's locales.
+ *
+ * @param {string} name - The content type's name in the section
+ * @param {SectionTypeSource} source - The section and what it is loaded with
+ * @returns {Promise<ContentLoaderEntry[]>} The type's entries
+ */
+export async function loadSectionType(
+  name: string,
+  source: SectionTypeSource,
+): Promise<ContentLoaderEntry[]> {
+  const { section, root, formats, projectConfig, mounts, onDeferred } = source;
+  const contentTypeDef = section[name];
+  if (!contentTypeDef) {
+    return [];
   }
-  return contentTypes;
+  const deferral = onDeferred ? { deferBody: true, onDeferred } : {};
+  const typeSource = contentTypeDef.source;
+  if (!isString(typeSource) || !typeSource.includes(LOCALE_PLACEHOLDER)) {
+    return await loadContentType(name, contentTypeDef, root, formats, {
+      mount: mounts.get(name),
+      projectConfig,
+      ...deferral,
+    });
+  }
+  /*
+   * One content type, N directories. Each pass loads a real path and stamps the locale it came
+   * from onto every entry, which is the only thing distinguishing two translations that share an
+   * id — `resolvePaths` reads it back to expand the right ones under a locale-prefixed route.
+   */
+  const locales = localesForExpansion(projectConfig);
+  if (locales.length === 0) {
+    console.warn(
+      `Content type "${name}": source "${typeSource}" uses ${LOCALE_PLACEHOLDER}, but the project ` +
+        `declares no i18n locales — nothing to expand it over, so no entries were loaded.`,
+    );
+    return [];
+  }
+  const all: ContentLoaderEntry[] = [];
+  for (const locale of locales) {
+    const localized = { ...contentTypeDef, source: localeSource(root, typeSource, locale) };
+    const entries = await loadContentType(name, localized, root, formats, {
+      locale,
+      mount: mounts.get(`${name}/${locale}`),
+      projectConfig,
+      ...deferral,
+    });
+    for (const entry of entries) {
+      entry._meta = { ...entry._meta, locale };
+    }
+    all.push(...entries);
+  }
+  return all;
 }
 
 /**
@@ -742,7 +808,20 @@ interface FinishContext {
   entryExtensions: Set<string>;
   /** The source directory, when there is one. */
   sourceRoot: string | undefined;
+  /** Set when the files were loaded without their bodies: loads one file again, body and all. */
+  reload?: ((filePath: string) => Promise<ContentLoaderEntry[]>) | undefined;
+  /** Told of each entry whose body was deferred, with what completes it. */
+  onDeferred?: DeferredBodyHandler | undefined;
 }
+
+/**
+ * Told of one entry loaded without its body, and handed what completes it: load the body, then give
+ * it the asset and link passes the rest of the collection's bodies got at load.
+ */
+export type DeferredBodyHandler = (
+  entry: ContentLoaderEntry,
+  completeBody: () => Promise<void>,
+) => void;
 
 /**
  * The collection-wide pass every source kind goes through once its files are loaded.
@@ -853,9 +932,8 @@ function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEn
   // 5. Routes, and links over the finished routes.
   if (rules.route) {
     assignRoutes(entries, unpublished, ctx, rules.route);
-    if (ctx.sourceRoot) {
-      resolveEntryLinks(kept, unpublished, ctx);
-    }
+    const links = ctx.sourceRoot ? resolveEntryLinks(kept, unpublished, ctx) : undefined;
+    deferBodies(kept, ctx, links);
     /* An entry the template could not route, or whose route another entry holds, has no page, and
        a collection is what every consumer (a listing, the search index, a feed) publishes from. Left
        in, each of them would invent a URL for it from its own idea of one and point readers at a
@@ -863,7 +941,57 @@ function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEn
        link index above already knows why it has no page; the collection does not carry it. */
     return entries.filter((entry) => entry._meta?.route !== undefined);
   }
+  deferBodies(kept, ctx);
   return entries;
+}
+
+/**
+ * Hand each entry that was loaded without its body to `onDeferred`, with what completes it.
+ *
+ * Completing one does for that entry exactly what {@link finishEntries} did for every body it was
+ * given: the full load supplies `$children` and the `_meta` fields read from the body, then the
+ * body's assets move onto the mount and its links resolve against the collection's own index. The
+ * frontmatter half is untouched; it was finished with the rest of the collection. Only a file that
+ * yielded one entry is deferred, since a reload answers per file.
+ */
+function deferBodies(kept: LoadedFile[], ctx: FinishContext, links?: LinkIndex): void {
+  const { reload, onDeferred } = ctx;
+  if (!reload || !onDeferred) {
+    return;
+  }
+  for (const file of kept) {
+    const [entry] = file.entries;
+    if (file.entries.length !== 1 || !entry || entry.$children !== undefined) {
+      continue;
+    }
+    onDeferred(entry, async () => {
+      const [full] = await reload(file.filePath);
+      if (!full) {
+        return;
+      }
+      /* Rebuilt in place, in the full load's key order: the entry is already referenced (by the
+         collection, and by any entry relating to it), and an entry whose body arrived late should
+         serialize exactly as one loaded whole. Everything the collection pass decided about it
+         (its id, data, route) is kept; the full load contributes only what came from the body. */
+      const completed: ContentLoaderEntry = {
+        ...full,
+        ...entry,
+        _meta: { ...full._meta, ...entry._meta },
+      };
+      for (const key of Object.keys(entry)) {
+        Reflect.deleteProperty(entry, key);
+      }
+      Object.assign(entry, completed);
+      if (ctx.mount) {
+        rewriteBodyAssets(entry, file.filePath, ctx.mount, ctx.name);
+      }
+      if (links && file.rel !== null) {
+        const broken: BrokenLink[] = [];
+        collectBrokenLinks(entry, file.rel, links, broken, new Set());
+        reportBrokenLinks(broken, ctx.name, ctx.rules.links);
+      }
+    });
+  }
 }
 
 /**
@@ -991,13 +1119,38 @@ interface BrokenLink {
  * which of them are published, which directory each README or index stands for), then reports each
  * link that has no page at the severity `links` asks for. In `error` mode all of them are gathered
  * and thrown together, so one build names every broken link instead of one per run.
+ *
+ * An entry whose body has not been loaded yet (a lazily loaded collection) has no links to rewrite
+ * here; the index is returned so its body is resolved against the same one when it loads.
+ *
+ * @returns {LinkIndex} The collection's link index
  */
 function resolveEntryLinks(
   kept: LoadedFile[],
   unpublished: Map<string, string>,
   ctx: FinishContext,
-): void {
-  const { name, rules, sourceRoot } = ctx;
+): LinkIndex {
+  const index = buildLinkIndex(kept, unpublished, ctx);
+  const broken: BrokenLink[] = [];
+  const seen = new Set<string>();
+  for (const file of kept) {
+    for (const entry of file.entries) {
+      if (entry.$children && file.rel !== null) {
+        collectBrokenLinks(entry, file.rel, index, broken, seen);
+      }
+    }
+  }
+  reportBrokenLinks(broken, ctx.name, ctx.rules.links);
+  return index;
+}
+
+/** The {@link LinkIndex} for one collection: every file it loaded and what became of each. */
+function buildLinkIndex(
+  kept: LoadedFile[],
+  unpublished: Map<string, string>,
+  ctx: FinishContext,
+): LinkIndex {
+  const { rules, sourceRoot } = ctx;
   const files = new Map<string, FileOutcome>();
   const indexes = new Map<string, string>();
   const isReadme = (rel: string) => /^readme\./i.test(rel.slice(rel.lastIndexOf("/") + 1));
@@ -1035,7 +1188,7 @@ function resolveEntryLinks(
   }
 
   const onDisk = (path: string) => resolve(sourceRoot!, path);
-  const index: LinkIndex = {
+  return {
     asset: (path) => {
       const absolute = onDisk(path);
       if (!ctx.mount || !existsSync(absolute) || statSync(absolute).isDirectory()) {
@@ -1064,30 +1217,34 @@ function resolveEntryLinks(
     localePrefix: localePrefixOf(ctx),
     trailingSlash: trailingSlashOf(ctx.projectConfig),
   };
+}
 
-  const broken: BrokenLink[] = [];
-  const seen = new Set<string>();
-  for (const file of kept) {
-    for (const entry of file.entries) {
-      if (!entry.$children || file.rel === null) {
-        continue;
-      }
-      rewriteLinks(entry.$children, file.rel, index, (problem) => {
-        const key = `${file.rel}\0${problem.href}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          broken.push({ from: file.rel!, href: problem.href, reason: problem.reason });
-        }
-      });
+/** Rewrite one entry's links against the index, adding each link with no page to `broken`. */
+function collectBrokenLinks(
+  entry: ContentLoaderEntry,
+  rel: string,
+  index: LinkIndex,
+  broken: BrokenLink[],
+  seen: Set<string>,
+): void {
+  rewriteLinks(entry.$children ?? [], rel, index, (problem) => {
+    const key = `${rel}\0${problem.href}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      broken.push({ from: rel, href: problem.href, reason: problem.reason });
     }
-  }
-  if (rules.links === "ignore" || broken.length === 0) {
+  });
+}
+
+/** Report broken links at the severity the collection's `links` option asks for. */
+function reportBrokenLinks(broken: BrokenLink[], name: string, mode: LinkMode): void {
+  if (mode === "ignore" || broken.length === 0) {
     return;
   }
   const lines = broken.map(
     ({ from, href, reason }) => `"${from}" links to "${href}", which ${reason}`,
   );
-  if (rules.links === "error") {
+  if (mode === "error") {
     const plural = broken.length === 1 ? "" : "s";
     const list = lines.map((line) => `  - ${line}`).join("\n");
     throw new Error(`Content links: "${name}" has ${broken.length} broken link${plural}:\n${list}`);
@@ -1119,6 +1276,13 @@ interface LoadOptions {
   projectConfig?: ProjectConfig | undefined;
   /** The locale this load is for, when the source carried `{locale}`. */
   locale?: string | undefined;
+  /**
+   * Ask the format to leave entry bodies unparsed (`deferBody`), and report each deferred entry to
+   * `onDeferred`. A format that does not honor the option returns whole entries, and nothing is
+   * deferred.
+   */
+  deferBody?: boolean | undefined;
+  onDeferred?: DeferredBodyHandler | undefined;
 }
 
 /**
@@ -1142,7 +1306,7 @@ async function loadContentType(
   if (!source) {
     return [];
   }
-  const { mount, projectConfig, locale } = options;
+  const { mount, projectConfig, locale, deferBody, onDeferred } = options;
   const { schema } = contentTypeDef;
   const rules = compileTypeRules(name, contentTypeDef);
   const finishContext = (extra: Partial<FinishContext>): FinishContext => ({
@@ -1259,24 +1423,31 @@ async function loadContentType(
   const files = discovered.filter((file) => !isExcluded(file));
 
   const fileExtensions = files.map((file) => extname(file).toLowerCase());
+  const format = entry;
+  /** One file's load, with or without its body. */
+  const loadFile = (filePath: string, withoutBody: boolean) => {
+    const rel = relOf(filePath);
+    return format.call("load", filePath, {
+      directiveOptions,
+      schema,
+      ...(sourceRoot !== undefined && { sourceRoot }),
+      ...(rules.alerts !== undefined && { alerts: rules.alerts }),
+      ...(rules.idField !== undefined && { idField: rules.idField }),
+      ...(withoutBody && { deferBody: true }),
+      onUnknownAlert: (type: string) =>
+        console.warn(
+          `Content callouts: "${name}": "${rel ?? filePath}" has a [!${type}] callout, but ` +
+            `"${type.toLowerCase()}" is not an enabled type, so it stays a blockquote with the ` +
+            `marker showing. Add "alerts": { "${type.toUpperCase()}": true } to render it.`,
+        ),
+    });
+  };
   const loaded: LoadedFile[] = [];
   for (const filePath of files) {
     const rel = relOf(filePath);
     let fileEntries: ContentLoaderEntry[];
     try {
-      fileEntries = await entry.call("load", filePath, {
-        directiveOptions,
-        schema,
-        ...(sourceRoot !== undefined && { sourceRoot }),
-        ...(rules.alerts !== undefined && { alerts: rules.alerts }),
-        ...(rules.idField !== undefined && { idField: rules.idField }),
-        onUnknownAlert: (type: string) =>
-          console.warn(
-            `Content callouts: "${name}": "${rel ?? filePath}" has a [!${type}] callout, but ` +
-              `"${type.toLowerCase()}" is not an enabled type, so it stays a blockquote with the ` +
-              `marker showing. Add "alerts": { "${type.toUpperCase()}": true } to render it.`,
-          ),
-      });
+      fileEntries = await loadFile(filePath, deferBody === true);
     } catch (error) {
       throw unreadableFile(name, rel ?? filePath, error);
     }
@@ -1300,6 +1471,10 @@ async function loadContentType(
       coerceDates: true,
       entryExtensions: new Set([...entry.extensions, ...fileExtensions]),
       sourceRoot,
+      ...(deferBody === true && {
+        onDeferred,
+        reload: async (filePath: string) => await loadFile(filePath, false),
+      }),
     }),
   );
 }
@@ -1416,6 +1591,25 @@ function refTargetName(ref: string | undefined): string | undefined {
     return undefined;
   }
   return ref.slice(CONTENT_REF_PREFIX.length);
+}
+
+/**
+ * The content types a content type's schema points into: each field whose `$ref` (to-one) or
+ * `items.$ref` (to-many) is a `#/content/<name>` pointer. What {@link resolveContentTypeRefs} will
+ * look up for this type, so a type can be loaded together with exactly what it relates to.
+ *
+ * @param {ContentTypeDef | undefined} def - The content type's definition
+ * @returns {string[]} The referenced type names, each once
+ */
+export function referencedContentTypes(def: ContentTypeDef | undefined): string[] {
+  const targets = new Set<string>();
+  for (const field of Object.values(def?.schema?.properties ?? {})) {
+    const target = refTargetName(field.$ref) ?? refTargetName(field.items?.$ref);
+    if (target !== undefined) {
+      targets.add(target);
+    }
+  }
+  return [...targets];
 }
 
 /**
@@ -1588,6 +1782,225 @@ function routedPaths(
   return paths;
 }
 
+// ─── The section's loaded data ───────────────────────────────────────────────
+
+/*
+ * What `Content.projectData` answers, and what classes read as `_project.content`: a map of content
+ * type name → entries. A build reads every entry of every type, so it gets them all at once, as it
+ * always has. A host that serves one page at a time (the dev server, Studio) asks for the section
+ * lazily (`ProjectDataContext.lazy`, specs/extensions.md §8), and then a type loads the first
+ * time a class asks for it, with only its frontmatter, and an entry's body is parsed only once that
+ * entry is actually returned.
+ *
+ * Both are the same class, so a consumer reads either through `load` and `materialize`, which are
+ * no-ops on a store that is already whole; a consumer that reads the map directly (`get`) is a
+ * build-time one and sees exactly what it always did.
+ */
+
+/** What a store loads its section with. */
+export interface ContentStoreSource {
+  section: ContentSection;
+  root: string;
+  formats: FormatRegistry;
+  projectConfig: ProjectConfig | undefined;
+}
+
+export class ContentStore extends Map<string, ContentLoaderEntry[]> implements ContentSectionData {
+  readonly #source: ContentStoreSource;
+  readonly #mounts: Map<string, AssetMount>;
+  /** Each type's load in flight or done, so concurrent asks share one. */
+  readonly #loads = new Map<string, Promise<void>>();
+  /** Types whose relationship fields have been resolved (it mutates entries, so exactly once). */
+  readonly #linked = new Set<string>();
+  /** Every entry this store loaded, to tell a related entry inside `data` from ordinary data. */
+  readonly #entries = new WeakSet<object>();
+  /** Entries loaded without their body, and what completes each. */
+  readonly #deferred = new WeakMap<ContentLoaderEntry, () => Promise<void>>();
+  /** Bodies being completed, so two requests for one entry share the work. */
+  readonly #completing = new WeakMap<ContentLoaderEntry, Promise<void>>();
+
+  private constructor(source: ContentStoreSource) {
+    super();
+    this.#source = source;
+    this.#mounts = sectionMounts(source.section, source.root, source.projectConfig);
+  }
+
+  /** A store holding every type, bodies and relationships included: what a build reads. */
+  static async whole(source: ContentStoreSource): Promise<ContentStore> {
+    const store = new ContentStore(source);
+    const loaded = await loadContentSection(
+      source.section,
+      source.root,
+      source.formats,
+      source.projectConfig,
+    );
+    for (const [name, entries] of loaded) {
+      store.#adopt(name, entries);
+      store.#loads.set(name, Promise.resolve());
+    }
+    resolveContentTypeRefs(store, source.section);
+    for (const name of loaded.keys()) {
+      store.#linked.add(name);
+    }
+    return store;
+  }
+
+  /** An empty store that loads each type when it is first asked for. */
+  static lazy(source: ContentStoreSource): ContentStore {
+    return new ContentStore(source);
+  }
+
+  /**
+   * One type's entries, loading it (and every type its schema relates it to) on first use.
+   *
+   * @param {string} name - Content type name
+   * @returns {Promise<ContentLoaderEntry[] | undefined>} The entries, or undefined when the section
+   *   declares no such type
+   */
+  async load(name: string): Promise<ContentLoaderEntry[] | undefined> {
+    if (!Object.hasOwn(this.#source.section, name)) {
+      return undefined;
+    }
+    const related = this.#relatedTypes(name);
+    await Promise.all(related.map(async (type) => await this.#loadType(type)));
+    /* Resolved only once everything a type points into is loaded, and synchronously, so two loads
+       finishing together cannot both resolve one type: its fields would be looked up twice, the
+       second time with entries where the ids were. */
+    const unlinked = related.filter((type) => !this.#linked.has(type));
+    for (const type of unlinked) {
+      this.#linked.add(type);
+    }
+    if (unlinked.length > 0) {
+      const { section } = this.#source;
+      resolveContentTypeRefs(
+        this,
+        Object.fromEntries(
+          unlinked.flatMap((type) => (section[type] ? [[type, section[type]]] : [])),
+        ),
+      );
+    }
+    return this.get(name);
+  }
+
+  /**
+   * Give every entry in `entries` its body, and every entry they relate to through a relationship
+   * field, before they are handed out. An entry that already has one is left as it is.
+   *
+   * @param {readonly (ContentLoaderEntry | null | undefined)[]} entries - Entries about to be
+   *   returned
+   */
+  async materialize(entries: readonly (ContentLoaderEntry | null | undefined)[]): Promise<void> {
+    const seen = new Set<ContentLoaderEntry>();
+    const pending: Promise<void>[] = [];
+    const visit = (entry: ContentLoaderEntry) => {
+      if (seen.has(entry)) {
+        return;
+      }
+      seen.add(entry);
+      pending.push(this.#complete(entry));
+      for (const value of Object.values(entry.data)) {
+        for (const item of Array.isArray(value) ? value : [value]) {
+          if (this.#isEntry(item)) {
+            visit(item);
+          }
+        }
+      }
+    };
+    for (const entry of entries) {
+      if (entry) {
+        visit(entry);
+      }
+    }
+    await Promise.all(pending);
+  }
+
+  /**
+   * Load every type and give every entry its body: the store becomes exactly what
+   * {@link ContentStore.whole} builds. A host does this before handing `_project` to a class that
+   * reads it synchronously (one that does not declare `projectOnDemand`, specs/extensions.md §8).
+   */
+  async complete(): Promise<void> {
+    const lists = await Promise.all(
+      Object.keys(this.#source.section).map(async (name) => (await this.load(name)) ?? []),
+    );
+    await this.materialize(lists.flat());
+  }
+
+  /** The type and every type reachable through its schema's relationship fields. */
+  #relatedTypes(name: string): string[] {
+    const { section } = this.#source;
+    const found = new Set<string>([name]);
+    const queue = [name];
+    for (let type = queue.shift(); type !== undefined; type = queue.shift()) {
+      for (const target of referencedContentTypes(section[type])) {
+        if (Object.hasOwn(section, target) && !found.has(target)) {
+          found.add(target);
+          queue.push(target);
+        }
+      }
+    }
+    return [...found];
+  }
+
+  #loadType(name: string): Promise<void> {
+    let load = this.#loads.get(name);
+    if (!load) {
+      const { section, root, formats, projectConfig } = this.#source;
+      load = loadSectionType(name, {
+        formats,
+        mounts: this.#mounts,
+        onDeferred: (entry, completeBody) => {
+          this.#deferred.set(entry, completeBody);
+        },
+        projectConfig,
+        root,
+        section,
+      }).then((entries) => {
+        this.#adopt(name, entries);
+      });
+      /* A failed load is not kept: the error reaches this ask, and the next one tries again (the
+         file may have been fixed in between). */
+      load.catch(() => {
+        this.#loads.delete(name);
+      });
+      this.#loads.set(name, load);
+    }
+    return load;
+  }
+
+  #adopt(name: string, entries: ContentLoaderEntry[]): void {
+    for (const entry of entries) {
+      this.#entries.add(entry);
+    }
+    this.set(name, entries);
+  }
+
+  /* A related entry is placed into `data` by `resolveContentTypeRefs`, so membership in the set of
+     entries this store loaded is exactly the test, and it never mistakes an object field for one. */
+  #isEntry(value: ContentLoaderEntry["data"][string]): value is ContentLoaderEntry {
+    return isNonNullObject(value) && this.#entries.has(value);
+  }
+
+  #complete(entry: ContentLoaderEntry): Promise<void> {
+    let completing = this.#completing.get(entry);
+    if (!completing) {
+      const completeBody = this.#deferred.get(entry);
+      if (!completeBody) {
+        return Promise.resolve();
+      }
+      completing = completeBody().then(() => {
+        this.#deferred.delete(entry);
+      });
+      // A failed body is retried by the next ask, as a failed type load is.
+      completing.catch(() => {
+        this.#completing.delete(entry);
+      });
+      this.#completing.set(entry, completing);
+    }
+    return completing;
+  }
+}
+
 // ─── The Content project-section class ───────────────────────────────────────
 
 /**
@@ -1599,25 +2012,25 @@ function routedPaths(
 export class Content {
   /**
    * Load the `content` section: every content type's entries, with relationship references already
-   * resolved.
+   * resolved. A host that asks for it `lazy` gets a {@link ContentStore} that loads each type the
+   * first time a class asks for it and each entry's body only once that entry is returned
+   * (specs/extensions.md §8); either way the answer is a map of type name to entries.
    *
    * @param {ContentSection | undefined} sectionValue - The project.json `content` section value
-   * @param {ProjectDataContext} ctx - Host context ({ projectConfig, root, registry, io })
-   * @returns {Promise<Map<string, ContentLoaderEntry[]>>} Content type name → entries
+   * @param {ProjectDataContext} ctx - Host context ({ projectConfig, root, registry, io, lazy })
+   * @returns {Promise<ContentStore>} Content type name → entries
    */
   static async projectData(
     sectionValue: ContentSection | undefined,
     ctx: ProjectDataContext,
-  ): Promise<Map<string, ContentLoaderEntry[]>> {
-    const section = sectionValue ?? {};
-    const data = await loadContentSection(
-      section,
-      ctx.root,
-      ctx.registry.formats,
-      ctx.projectConfig,
-    );
-    resolveContentTypeRefs(data, section);
-    return data;
+  ): Promise<ContentStore> {
+    const source = {
+      formats: ctx.registry.formats,
+      projectConfig: ctx.projectConfig,
+      root: ctx.root,
+      section: sectionValue ?? {},
+    };
+    return ctx.lazy === true ? ContentStore.lazy(source) : await ContentStore.whole(source);
   }
 
   /**
@@ -1664,7 +2077,7 @@ export class Content {
     pathsDef: ContentPathsSource,
     ctx: ResolvePathsContext,
   ): Promise<ContentPathParams[]> {
-    const entries = ctx.data.get(pathsDef.contentType);
+    const entries = await entriesOf(ctx.data, pathsDef.contentType);
     if (!entries || entries.length === 0) {
       console.warn(
         `Warning: $paths references content type "${pathsDef.contentType}" but it has no entries`,

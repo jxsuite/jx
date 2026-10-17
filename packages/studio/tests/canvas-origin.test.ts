@@ -1,6 +1,11 @@
 import { installMockPlatform } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
-import { canvasBaseOrigin, documentBase, loopbackAssetSrc } from "../src/canvas/canvas-origin";
+import {
+  canvasBaseOrigin,
+  documentBase,
+  hostResolveToken,
+  loopbackAssetSrc,
+} from "../src/canvas/canvas-origin";
 
 /* SAFETY: harness imports with-dom first, whose GlobalRegistrator.register() copies happy-dom's
    window members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
@@ -32,6 +37,30 @@ describe("canvasBaseOrigin", () => {
   test("returns the loopback origin for an absolute cross-origin canvasUrl", () => {
     installMockPlatform({ canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html?win=2" });
     expect(canvasBaseOrigin()).toBe("http://127.0.0.1:54321");
+  });
+});
+
+describe("hostResolveToken", () => {
+  test("is null with no platform, and with no canvasUrl", () => {
+    globalThis.__jxPlatform = undefined;
+    expect(hostResolveToken()).toBeNull();
+    installMockPlatform();
+    expect(hostResolveToken()).toBeNull();
+  });
+
+  test("reads the rpcToken off a same-origin canvas URL", () => {
+    installMockPlatform({ canvasUrl: "/__studio__/canvas.html?rpcToken=t%201" });
+    expect(hostResolveToken()).toBe("t 1");
+  });
+
+  test("is null for a same-origin canvas URL that carries none", () => {
+    installMockPlatform({ canvasUrl: "/__studio__/canvas.html" });
+    expect(hostResolveToken()).toBeNull();
+  });
+
+  test("is null for a cross-origin canvas, whose proxy the shell's fetches never reach", () => {
+    installMockPlatform({ canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html?rpcToken=t" });
+    expect(hostResolveToken()).toBeNull();
   });
 });
 

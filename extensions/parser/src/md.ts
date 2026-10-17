@@ -185,6 +185,64 @@ function deriveSlug(filePath: string, sourceRoot?: string): string {
   return basename(filePath, extname(filePath));
 }
 
+/** A frontmatter fence line: `---`, optionally followed by spaces or tabs (micromark's rule). */
+const FENCE_LINE = /^---[ \t]*\r?$/;
+
+/**
+ * Where a leading frontmatter block ends: the index just past its closing fence line, or 0 when the
+ * source does not open with one. Only the cut is decided here; whether the block IS frontmatter is
+ * still decided by the same remark plugins {@link processMarkdown} runs.
+ */
+function frontmatterEnd(source: string): number {
+  const firstBreak = source.indexOf("\n");
+  if (firstBreak === -1 || !FENCE_LINE.test(source.slice(0, firstBreak))) {
+    return 0;
+  }
+  let start = firstBreak + 1;
+  while (start < source.length) {
+    const lineEnd = source.indexOf("\n", start);
+    const end = lineEnd === -1 ? source.length : lineEnd;
+    if (FENCE_LINE.test(source.slice(start, end))) {
+      return end;
+    }
+    start = end + 1;
+  }
+  return 0;
+}
+
+/**
+ * The parsed frontmatter and slug of a markdown file, without parsing its body.
+ *
+ * A collection's queries, routes, ids and `where` rules read frontmatter alone, and the body is
+ * where the cost is: one knowledge base spent three of its four load seconds highlighting code
+ * blocks in articles no request had asked for. The block is parsed by the same plugins
+ * {@link processMarkdown} uses, cut off after its closing fence, so the two always agree on what the
+ * frontmatter is (specs/parser.md).
+ *
+ * @param {string} source - Raw markdown string
+ * @param {string} filePath - File path (for slug derivation)
+ * @param {string} [sourceRoot] - Content-source root; files below it get path-based slugs
+ * @returns {{ frontmatter: JsonObject; slug: string }}
+ */
+export function readFrontmatter(source: string, filePath: string, sourceRoot?: string) {
+  const slug = deriveSlug(filePath, sourceRoot);
+  const end = frontmatterEnd(source);
+  if (end === 0) {
+    return { frontmatter: {}, slug };
+  }
+  /* SAFETY: as in processMarkdown below — the three remark packages are shorthand `declare module`
+     entries whose default exports are unified attachers taking optional JSON settings. */
+  const processor = createProcessor()
+    .use(remarkParse as UnifiedPlugin)
+    .use(remarkFrontmatter as UnifiedPlugin, ["yaml"])
+    .use(remarkParseFrontmatter as UnifiedPlugin);
+  const vfile: UnifiedFile = { data: {} };
+  processor.runSync(processor.parse(source.slice(0, end)), vfile);
+  /* SAFETY: the same claim processMarkdown makes of the same plugin's output: a mapping parses to
+     a JsonObject, and no block gives `{}`. */
+  return { frontmatter: (vfile.data.frontmatter ?? {}) as JsonObject, slug };
+}
+
 /**
  * Process a single markdown source string into a MarkdownFileResult.
  *

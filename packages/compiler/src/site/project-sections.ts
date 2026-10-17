@@ -29,12 +29,15 @@ export type ProjectSections = Record<string, ProjectSectionData>;
  * @param {string} projectRoot - Absolute path to the project root
  * @param {ProjectConfig | undefined} projectConfig - Already-loaded project config
  * @param {ExtensionRegistry} registry - The project's extension registry
+ * @param {{ lazy?: boolean }} [options] - `lazy`: the host serves one page at a time, so an owner
+ *   may load its section on demand (specs/extensions.md §8). A build leaves it off.
  * @returns {Promise<ProjectSections>} Section key → projectData result
  */
 export async function loadProjectSections(
   projectRoot: string,
   projectConfig: ProjectConfig | undefined,
   registry: ExtensionRegistry,
+  options: { lazy?: boolean } = {},
 ): Promise<ProjectSections> {
   const sections: ProjectSections = {};
   const io = createNodeFormatIO(projectRoot);
@@ -51,6 +54,7 @@ export async function loadProjectSections(
       projectConfig,
       registry,
       root: projectRoot,
+      ...(options.lazy === true && { lazy: true }),
     });
   }
   return sections;

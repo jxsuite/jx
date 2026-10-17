@@ -88,6 +88,8 @@ A string containing `${}` is a **computed** value, recalculated automatically wh
 
 The text inside `${}` is a pure expression over `state`: no statements, no assignments, no `return`. For computed values built without expression syntax at all, see [Expressions](/docs/framework/concepts/expressions).
 
+When the whole string is one `${}`, the entry holds the expression's own value: `isEmpty` above is a real boolean, so `${state.isEmpty ? 'Nothing yet' : ''}` works as written, and `"${state.count * 2}"` is a number. Put any text around it, or use two `${}`, and the entry is a string, the way `scoreLabel` is `"90%"`. The editor, the built page and a component that comes alive in the browser all read an entry the same way.
+
 ## Shape 4: prototypes
 
 An object with `$prototype` declares a function or a data source. Functions use `$prototype: "Function"` with an inline `body` or an external `$src` (see [Functions](/docs/framework/concepts/functions)); any other constructor name declares a data source (see [Data prototypes](/docs/framework/concepts/data-prototypes)):

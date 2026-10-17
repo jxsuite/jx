@@ -23,10 +23,13 @@ import {
   buildScope,
   renderNode,
   setCanvasAssetResolver,
+  setResolveToken,
   setSkipServerFunctions,
 } from "@jxsuite/runtime";
 import { isFunction } from "@jxsuite/schema/guards";
 import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canvas/asset-refs";
+import { documentBase, hostResolveToken } from "../canvas/canvas-origin";
+import { projectState } from "../store";
 import { assetVersionsSnapshot } from "../files/asset-versions";
 import { componentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
@@ -114,6 +117,16 @@ export function createPreviewCache(limit: number = PREVIEW_CACHE_LIMIT): Preview
 // ─── Rendering one preview ───────────────────────────────────────────────────
 
 /**
+ * The URL a previewed document's relative refs resolve against: the file's own URL under the
+ * project, as the canvas spells it. A shell with an opaque origin (electrobun's `views://` before
+ * its canvas URL is known) has no such URL to build, and keeps the shell's own address.
+ */
+function previewBase(filePath: string): string {
+  const base = documentBase(projectState?.projectRoot);
+  return URL.canParse(base) ? new URL(filePath, base).href : location.href;
+}
+
+/**
  * Render a page/layout/content document to a detached element, or null when it cannot be rendered.
  *
  * Returning null rather than throwing is deliberate: a document that fails to parse is a real state
@@ -138,7 +151,11 @@ export async function renderDocPreview(filePath: string): Promise<HTMLElement | 
          JSON or a shape renderNode cannot draw throws into the catch below, which is "no preview". */
       document_ = JSON.parse(content) as JxDocument;
     }
-    const scope = await buildScope(document_, {}, location.href);
+    /* The document's own URL, as the canvas spells it, and the canvas's dev-proxy token. With the
+       shell's `location.href` as base, a page's `"$src": "../../scripts/x.class.json"` resolved
+       against `/__studio__/`, and without the token the proxy refused it before reading it. */
+    setResolveToken(hostResolveToken());
+    const scope = await buildScope(document_, {}, previewBase(filePath));
     /* This render lands in the PARENT document, so an `<img src="/hero.jpg">` inside it resolves
        against `index.html` — which is the shell, not the site. Same hook the canvas installs, same
        context, restored afterwards because the next preview is a different document and a stale

@@ -155,10 +155,30 @@ describe("compileElement", () => {
       });
       const { content } = result.files[0]!;
       expect(content).toContain(
-        "this.state.linkKey = computed(() => `${this.state.href ? 'link' : 'plain'}`)",
+        "this.state.linkKey = computed(() => (this.state.href ? 'link' : 'plain'))",
       );
       // …and NOT sitting in the initial reactive() block as its own source text.
       expect(content).not.toContain('linkKey: "${state.href');
+    });
+
+    /* Per spec.md §5.3, a single expression keeps its own type, as the runtime and the build-time
+       scope read it. As a template literal, `isBrand` here was the string "false", which is
+       truthy, so a hydrated component took the branch its prerendered HTML had not. */
+    test("a single expression keeps its type; a mixed template is a string", async () => {
+      const result = await compileElement({
+        children: [],
+        state: {
+          isBrand: "${state.name === 'github'}",
+          label: "Icon: ${state.name}",
+          name: "check",
+        },
+        tagName: "test-typed-template",
+      });
+      const { content } = result.files[0]!;
+      expect(content).toContain(
+        "this.state.isBrand = computed(() => (this.state.name === 'github'))",
+      );
+      expect(content).toContain("this.state.label = computed(() => `Icon: ${this.state.name}`)");
     });
 
     test("a plain string with no interpolation stays an initial value", async () => {

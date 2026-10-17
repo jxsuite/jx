@@ -434,6 +434,34 @@ describe("buildScope", () => {
     expect(state.label).toBe("10 items");
   });
 
+  /* A single expression keeps its own type (spec.md §5.3), as the build-time scope and an attribute
+     binding read it. As a string, `isBrand` was "false" — truthy — so `state.isBrand ? … : …` took
+     the wrong branch in Studio while the prerendered page took the right one. */
+  test("Shape 3: a single expression keeps its own type", async () => {
+    const state = await buildScope(
+      {
+        state: {
+          count: 5,
+          double: "${state.count * 2}",
+          icons: { check: "M20 6" },
+          isBrand: "${state.name === 'github'}",
+          missing: "${state.icons[state.name + '-none']}",
+          name: "check",
+          pick: "${state.isBrand ? 'fill' : 'stroke'}",
+        },
+      },
+      {},
+      BASE,
+    );
+    expect(state.isBrand).toBe(false);
+    expect(state.pick).toBe("stroke");
+    expect(state.double).toBe(10);
+    expect(state.missing).toBeUndefined();
+    state.name = "github";
+    expect(state.isBrand).toBe(true);
+    expect(state.pick).toBe("fill");
+  });
+
   // Shape 4: $prototype: "Function" with body
   test("Shape 4: Function with body → callable function", async () => {
     const state = await buildScope(

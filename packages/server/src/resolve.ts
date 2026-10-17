@@ -4,7 +4,7 @@ import { siteBasePath } from "@jxsuite/schema/asset-paths";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { errorMessage, parseClassDef } from "@jxsuite/schema/parse";
 import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { projectDevEnv } from "./dev-vars.ts";
 import { containedPath } from "./net-guard.ts";
@@ -14,6 +14,7 @@ import { loadAssetMounts } from "@jxsuite/compiler/asset-mounts";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { DynamicMethod } from "@jxsuite/runtime/types";
 import type { ProjectSections } from "@jxsuite/compiler/project-sections";
+import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type {
   JsonObject,
   JsonPrimitive,
@@ -64,11 +65,18 @@ interface ModuleNamespace extends ExportedObject {
  */
 type ProjectContext = ProjectSections & { config: ProjectConfig; root: string };
 
-/** A cached project context, its extension asset mounts, and the `project.json` mtime it is for. */
+/**
+ * One `project.json` generation: its config, extension registry and asset mounts, loaded together
+ * because they are cheap, and the extension-loaded sections, loaded only when a class asks for
+ * them.
+ */
 interface ProjectEntry {
   mtime: number;
-  context: ProjectContext;
+  config: ProjectConfig;
+  registry: ExtensionRegistry;
   mounts: AssetMount[];
+  /** The full `_project` context, started by the first {@link loadProjectContext} and shared. */
+  context?: Promise<ProjectContext> | undefined;
 }
 
 /** A value the resolve proxy hands a class constructor under one config key. */
@@ -173,8 +181,19 @@ function baseDirectory($base: string, root: string, projectRoot: string): string
   return resolve(root, `.${urlDir}`);
 }
 
-/** Per-project context cache, invalidated when project.json changes on disk. */
-const projectContextCache = new Map<string, ProjectEntry>();
+/**
+ * Per-project cache, invalidated when project.json changes on disk. It holds the PROMISE, keyed by
+ * the mtime it was started for, so concurrent requests on a cold cache share one load.
+ *
+ * Both halves of that are load-bearing. Every project file the canvas fetches asks for the asset
+ * mounts, and the canvas fetches a document's `$elements` in parallel: before the promise was
+ * cached, each of them started its own load, so a page with 25 components ran 25 at once. And the
+ * sections are not part of it: a content section loads every entry of every collection, which for a
+ * 910-entry knowledge base is ten seconds of parsing, so serving a JSON file next to it waited ten
+ * seconds for data it never reads. Both together put a component fetch past the canvas's register
+ * timeout on every cold open.
+ */
+const projectEntryCache = new Map<string, { mtime: number; entry: Promise<ProjectEntry | null> }>();
 
 /**
  * Lazy-load project context (project.json + extension-loaded sections) for class instantiation.
@@ -186,32 +205,82 @@ const projectContextCache = new Map<string, ProjectEntry>();
  */
 async function loadProjectContext(projectRoot: string): Promise<ProjectContext | null> {
   const entry = await loadProjectEntry(projectRoot);
-  return entry?.context ?? null;
-}
-
-/** Load (or reuse) the cached project context plus its extension asset mounts. */
-async function loadProjectEntry(projectRoot: string): Promise<ProjectEntry | null> {
-  const projectJsonPath = resolve(projectRoot, "project.json");
-  if (!existsSync(projectJsonPath)) {
+  if (!entry) {
     return null;
   }
+  entry.context ??= loadProjectSections(projectRoot, entry.config, entry.registry, {
+    lazy: true,
+  }).then((sections) => ({ config: entry.config, root: projectRoot, ...sections }));
   try {
-    const { mtimeMs } = statSync(projectJsonPath);
-    const cached = projectContextCache.get(projectRoot);
-    if (cached && cached.mtime === mtimeMs) {
-      return cached;
+    return await entry.context;
+  } catch {
+    // A failed load is not remembered: the next class to ask tries again.
+    entry.context = undefined;
+    return null;
+  }
+}
+
+/**
+ * Whether a class reads `_project` through its sections' on-demand methods, by declaring `static
+ * projectOnDemand = true` (specs/extensions.md §8). The sections here are loaded lazily, so a class
+ * that reads one synchronously (a `content.get(type)`) would find nothing it had not loaded; such a
+ * class is handed every section whole instead, exactly what it was always given.
+ */
+function readsProjectOnDemand(ExportedClass: ExportedFunction | ExportedConstructor): boolean {
+  return "projectOnDemand" in ExportedClass && ExportedClass.projectOnDemand === true;
+}
+
+/** A section an owner loaded on demand: `complete()` makes it whole (extensions.md §8). */
+interface OnDemandSection {
+  complete: () => Promise<void>;
+}
+
+/** Whether a project-context value is a section loaded on demand, by its `complete` method. */
+function isOnDemandSection(
+  value: ProjectContext[string],
+): value is ProjectContext[string] & OnDemandSection {
+  return isNonNullObject(value) && "complete" in value && isFunction(value.complete);
+}
+
+/** Make every section of a project context whole, for a class that reads them synchronously. */
+async function completeSections(context: ProjectContext): Promise<void> {
+  for (const value of Object.values(context)) {
+    if (isOnDemandSection(value)) {
+      await value.complete();
     }
+  }
+}
+
+/** Load (or reuse) the cached project config, extension registry and asset mounts. */
+async function loadProjectEntry(projectRoot: string): Promise<ProjectEntry | null> {
+  const projectJsonPath = resolve(projectRoot, "project.json");
+  const mtime = statSync(projectJsonPath, { throwIfNoEntry: false })?.mtimeMs;
+  if (mtime === undefined) {
+    return null;
+  }
+  const cached = projectEntryCache.get(projectRoot);
+  if (cached && cached.mtime === mtime) {
+    return cached.entry;
+  }
+  const entry = readProjectEntry(projectRoot, projectJsonPath, mtime);
+  projectEntryCache.set(projectRoot, { entry, mtime });
+  return entry;
+}
+
+/** Read one `project.json` generation. Never rejects: any failure answers "no project context". */
+async function readProjectEntry(
+  projectRoot: string,
+  projectJsonPath: string,
+  mtime: number,
+): Promise<ProjectEntry | null> {
+  try {
     /* SAFETY: trust boundary. project.json is the project's own config file, which the editor
        and `jx validate` hold to its per-project schema. Any failure reading it below is caught
        here and answers "no project context". */
     const config = JSON.parse(readFileSync(projectJsonPath, "utf8")) as ProjectConfig;
     const registry = await buildProjectExtensionRegistry(projectRoot, config);
-    const sections = await loadProjectSections(projectRoot, config, registry);
     const { mounts } = await loadAssetMounts(registry, config, projectRoot);
-    const context: ProjectContext = { config, root: projectRoot, ...sections };
-    const entry: ProjectEntry = { context, mounts, mtime: mtimeMs };
-    projectContextCache.set(projectRoot, entry);
-    return entry;
+    return { config, mounts, mtime, registry };
   } catch {
     return null;
   }
@@ -229,7 +298,7 @@ async function loadProjectEntry(projectRoot: string): Promise<ProjectEntry | nul
  */
 export async function projectSiteBase(projectRoot: string): Promise<string> {
   const entry = await loadProjectEntry(projectRoot);
-  return siteBasePath(entry?.context.config.url);
+  return siteBasePath(entry?.config.url);
 }
 
 /**
@@ -349,6 +418,9 @@ export async function handleResolve(
             status: 500,
           });
         }
+        if (config._project && !readsProjectOnDemand(ExportedClass)) {
+          await completeSections(config._project);
+        }
         /* SAFETY: trust boundary. A class file's `$implementation` names the module exporting the
            class it describes, whose constructor takes one config object (spec.md §12.3, §12.4).
            It is a function, checked above; one that is not constructible throws here, inside the
@@ -357,7 +429,10 @@ export async function handleResolve(
         return Response.json(await instanceResult(new ClassCtor(config)));
       }
 
-      // Self-contained: construct class from schema
+      // Self-contained: construct class from schema. Its JSON bodies cannot await a section.
+      if (config._project) {
+        await completeSections(config._project);
+      }
       const DynClass = classFromSchema(classDef);
       return Response.json(await instanceResult(new DynClass(config)));
     } catch (error) {

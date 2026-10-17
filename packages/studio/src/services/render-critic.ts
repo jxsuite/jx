@@ -13,8 +13,15 @@
  * @license MIT
  */
 
-import { buildScope, renderNode, runScoped, setSkipServerFunctions } from "@jxsuite/runtime";
+import {
+  buildScope,
+  renderNode,
+  runScoped,
+  setResolveToken,
+  setSkipServerFunctions,
+} from "@jxsuite/runtime";
 import type { JxDocument } from "@jxsuite/schema/types";
+import { hostResolveToken } from "../canvas/canvas-origin";
 
 /**
  * Translate a render-time error into an actionable message the model can fix.
@@ -54,6 +61,8 @@ export async function renderCheck(
   let stopRender: (() => void) | null = null;
   try {
     setSkipServerFunctions(true);
+    // The desktop dev proxy refuses a class resolve without the token the canvas carries.
+    setResolveToken(hostResolveToken());
 
     const state = await buildScope(doc, {});
 
