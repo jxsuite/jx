@@ -236,7 +236,9 @@ interface OnDemandSection {
 }
 
 /** Whether a project-context value is a section loaded on demand, by its `complete` method. */
-function isOnDemandSection(value: ProjectContext[string]): value is OnDemandSection {
+function isOnDemandSection(
+  value: ProjectContext[string],
+): value is ProjectContext[string] & OnDemandSection {
   return isNonNullObject(value) && "complete" in value && isFunction(value.complete);
 }
 
