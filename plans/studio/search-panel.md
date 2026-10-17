@@ -19,6 +19,7 @@ size: M
 - **The Icon column is gone.** The rewrite removed it from the table rather than correcting it, so this plan's second part is closed.
 - **There is no rail slot and no ⌘2.** `⌘1`–`⌘5` select workspaces and `panel.focus.<id>` carries no chord (§5.1, §22.1), and Search is one of the panels registered `rail: false` whatever the developer-panels preference says. The Open decision on where Search sits is resolved below.
 - **§5.7 is the Site Panel.** Search's contract becomes §5.8.
+- **The rail-slot contradiction is closed.** The Design slice of `plan:studio/workspaces` (`WKS1.2`) registered the record `rail: false`, so `railPanelSet()` and `railDeclarations()` no longer list it and `tests/panel-registry.test.ts` asserts a synthetic hidden panel rather than Search for the "`when` does not reshuffle the roster" rule. What is left of this plan is the panel itself.
 
 The implementation and test steps that assume a rail button, `railIds()` containing `search`, or ⌘2 are re-detailed against the shipped rail once the workspace slices that change the rail have landed, which is why this plan requires that one. The original context follows.
 

@@ -93,12 +93,12 @@ export type DockId = "left" | "right" | "bottom";
  * `tests/panel-registry.test.ts` asserts the two agree, so the duplicate cannot drift.
  */
 export const NAVIGATOR_PANEL_IDS = [
+  "site",
   "files",
   "search",
   "git",
   "i18n",
   "layers",
-  "page",
   "data",
   "packages",
   "insert",
@@ -116,7 +116,11 @@ export type NavigatorPanelId = (typeof NAVIGATOR_PANEL_IDS)[number];
  */
 const RENAMED_PANEL_IDS = new Map<string, NavigatorPanelId>([
   ["blocks", "insert"],
-  ["head", "page"],
+  /* Not a rename either — a MOVE. The Page panel is the Inspector's first tab now (§6), so the
+     Navigator has no panel of that name; a stored `page` (or the `head` it was before that) reopens
+     the Navigator on the Site panel, the Design workspace's own default, rather than on nothing. */
+  ["head", "site"],
+  ["page", "site"],
   ["imports", "packages"],
   /* Not a rename — a MERGE. The State editor is part of the Data panel now (§5.6), so a
      stored `leftTab: "state"` names a real place and lands on it, rather than returning `null` and
@@ -125,8 +129,11 @@ const RENAMED_PANEL_IDS = new Map<string, NavigatorPanelId>([
   ["state", "data"],
 ]);
 
-/** The panel the Navigator wakes up on when nothing usable is stored. */
-export const DEFAULT_PANEL_ID: NavigatorPanelId = "layers";
+/**
+ * The panel the Navigator wakes up on when nothing usable is stored: the Site panel, the project by
+ * route (§5.7), because a fresh project is opened to find a page rather than to edit one.
+ */
+export const DEFAULT_PANEL_ID: NavigatorPanelId = "site";
 
 /**
  * Narrow an id arriving from a `string`-typed roster, or throw naming where it came from.
@@ -174,24 +181,40 @@ export function migratePanelId(stored: JsonValue | undefined): NavigatorPanelId 
 }
 
 /**
- * The Inspector's tab ids, in strip order — the `value`s `panels/right-panel.ts` renders.
+ * The Inspector's LEAF ids, in strip order — every view the dock can show, and the values
+ * `view.setRightTab` accepts (§6).
  *
- * Four now, and `"assistant"` is one of them: the chat is a tab of this dock, so the id space that
- * addresses Content, Style and Logic addresses it too. The old arrangement needed a fourth verb
- * (`view.setAssistant`) precisely because the assistant was somewhere else; it survives as the
- * dock-toggle spelling of "show me the assistant", but it now writes the same field as the others.
- *
- * The ORDER is §6's — Content · Style · Logic · Assistant — which is the order ⌘⇧1–4 follow. The
- * human titles live in `commands/defaults.ts`'s `INSPECTOR_TABS` (a module with no state and no
- * DOM, so the CI checks can load it); `tests/right-panel.test.ts` asserts the two agree, the same
- * way `tests/panel-registry.test.ts` does for the rail.
+ * The strip draws three tabs, **Page · Element · Assistant**, and five leaves sit under them:
+ * `page`, then Element's three views (`properties` = Content, `style` = Style, `events` = Logic)
+ * behind a sub-switch, then `assistant`. The leaves stay addressable one by one because they are
+ * what scripts, chords and shots name — `view.setRightTab { tab: "style" }` shows Element with
+ * Style chosen — and a strip of three that addressed only itself would make Style unreachable by
+ * name. `commands/defaults.ts`'s `INSPECTOR_TABS` carries the titles and the strip grouping (a
+ * module with no state and no DOM, so the CI checks can load it); `tests/right-panel.test.ts`
+ * asserts the two agree, the same way `tests/panel-registry.test.ts` does for the rail.
  */
-export const INSPECTOR_TAB_IDS = ["properties", "style", "events", "assistant"] as const;
+export const INSPECTOR_TAB_IDS = ["page", "properties", "style", "events", "assistant"] as const;
 
 export type InspectorTabId = (typeof INSPECTOR_TAB_IDS)[number];
 
-/** The tab the Inspector falls back to — the leftmost, Content. */
-export const DEFAULT_INSPECTOR_TAB: InspectorTabId = "properties";
+/**
+ * The leaf the Inspector falls back to — Page, the strip's first tab, which is what the dock shows
+ * when nothing is selected (§6: an undeclared stored id coerces to Page).
+ */
+export const DEFAULT_INSPECTOR_TAB: InspectorTabId = "page";
+
+/** The Element tab's three leaves, in sub-switch order. */
+export const ELEMENT_TAB_IDS = ["properties", "style", "events"] as const;
+
+export type ElementTabId = (typeof ELEMENT_TAB_IDS)[number];
+
+/** The Element leaf the strip lands on when the selection first arrives and none was used yet. */
+export const DEFAULT_ELEMENT_TAB: ElementTabId = "properties";
+
+/** Whether a leaf is one of the Element tab's three views. */
+export function isElementTabId(value: unknown): value is ElementTabId {
+  return typeof value === "string" && ELEMENT_TAB_IDS.some((id) => id === value);
+}
 
 /** Whether a string is a declared Inspector tab id. */
 export function isInspectorTabId(value: unknown): value is InspectorTabId {
@@ -301,8 +324,12 @@ export interface WorkspacePreset {
   id: WorkspaceId;
   /** Whether the rail column is drawn at all. It has no toggle of its own, so this is a class. */
   rail: boolean;
-  /** The Navigator on first entry: open on a panel (or on the one showing), or collapsed. */
-  navigator: { open: boolean; panel?: NavigatorPanelId };
+  /**
+   * The Navigator on entry: open or collapsed, and on which panel. `panel` is applied on EVERY
+   * entry; `initial` is the panel a workspace that remembers its own opens on when it has nothing
+   * to remember yet — Design's Site panel (§22.3: "the Site panel, or the last Design panel").
+   */
+  navigator: { open: boolean; panel?: NavigatorPanelId; initial?: NavigatorPanelId };
   /**
    * The Inspector: open or collapsed on entry, and the tab it selects when one is named. The tab is
    * per-document state, so naming it costs no other document anything.
@@ -334,7 +361,7 @@ export const WORKSPACE_PRESETS: Readonly<Record<WorkspaceId, WorkspacePreset>> =
   design: {
     id: "design",
     inspector: { open: true },
-    navigator: { open: true },
+    navigator: { initial: "site", open: true },
     rail: true,
   },
   media: { id: "media", inspector: { open: false }, navigator: { open: false }, rail: false },
@@ -823,7 +850,9 @@ export function presetInspectorOpen(id: WorkspaceId, writing: boolean): boolean 
 /** Lay a workspace's preset out: the Navigator's panel, both side docks and the Inspector's tab. */
 function applyFrame(id: WorkspaceId, deps?: WorkspaceDeps): void {
   const preset = WORKSPACE_PRESETS[id];
-  const panel = migratePanelId(preset.navigator.panel ?? _panels[id] ?? shell.leftTab);
+  const panel = migratePanelId(
+    preset.navigator.panel ?? _panels[id] ?? preset.navigator.initial ?? shell.leftTab,
+  );
   if (panel) {
     shell.leftTab = panel;
   }
@@ -1170,6 +1199,14 @@ export interface ShellCommandDeps {
    */
   inspectorTab: () => InspectorTabId;
   /**
+   * The tab the strip rests on when nothing chose one: Page with nothing selected, otherwise the
+   * Element leaf last used (`specs/studio.md` §6). `view.setAssistant { open: false }` steps onto
+   * it, so closing the Assistant with a node selected shows that node rather than the document.
+   * Injected because the selection and the remembered leaf are per-document session state; absent
+   * (the CI projection), it is {@link DEFAULT_INSPECTOR_TAB}.
+   */
+  restingInspectorTab?: () => InspectorTabId;
+  /**
    * Whether a dock tab's panel record is currently available — its own `when` holding.
    *
    * INJECTED rather than imported for the reason the rest of this object exists: `shell` is
@@ -1387,7 +1424,7 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
           return;
         }
         if (deps.inspectorTab() === "assistant") {
-          deps.setInspectorTab(DEFAULT_INSPECTOR_TAB);
+          deps.setInspectorTab(deps.restingInspectorTab?.() ?? DEFAULT_INSPECTOR_TAB);
         }
       },
       title: "Show Assistant",

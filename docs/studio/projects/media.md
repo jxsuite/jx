@@ -25,7 +25,7 @@ code:
 
 # Media
 
-Your site's media (images, video, audio, PDFs, and fonts) lives in your project alongside everything else, and Studio can add it from wherever you already are. Drag a file onto the page you are designing, onto a folder in the Files panel, or onto the Library; or click **Upload** on any image field.
+Your site's media (images, video, audio, PDFs, and fonts) lives in your project alongside everything else, and Studio can add it from wherever you already are. Drag a file onto the page you are designing, onto a folder in the Files panel, or onto the Library; or click **Upload** on any image field. (Files is a developer panel: run **Show Files** from :kbd[⌘K] to open it, or turn on **Show developer panels** in Preferences › Appearance to keep it on the rail.) Media that is already in your `public/` folder is in the **Media** section of the [Site panel](/docs/studio/interface#the-site-panel): drag a thumbnail onto the canvas and it lands as an image (or, for a document, a link) pointing at the file.
 
 ![The Library open in a pane, drawing a preview for every file in the project](../../images/mode-manage.png)
 
@@ -91,7 +91,7 @@ Uploads never overwrite. If a file of the same name is already there, the new on
 
 ## Open a media file
 
-Click an image in the Files panel, or a tile in the Library, and it opens in a tab of its own, the same as a page or a component and keyed by the same path. What that tab shows depends on the file: an image at full size, a video or audio file with playback controls, a font set as a specimen at five sizes, a PDF embedded. A format Studio has no viewer for says so plainly and notes that the file is still in the project and still builds.
+Click a thumbnail in the Site panel's **Media** section, an image in the Files panel, or a tile in the Library, and it opens in a tab of its own in the **Media** workspace, the same as a page or a component and keyed by the same path. What that tab shows depends on the file: an image at full size, a video or audio file with playback controls, a font set as a specimen at five sizes, a PDF embedded. A format Studio has no viewer for says so plainly and notes that the file is still in the project and still builds.
 
 Beside the file, three things:
 
@@ -102,7 +102,7 @@ Beside the file, three things:
 The viewer is read-only. Renaming, deleting and revealing a file belong to the Files panel, where you already do them for everything else.
 
 :::doc-tip
-This is the fastest way to check what an [imported site](/docs/studio/projects/create) actually brought in. Open `public/assets/images/` in the Files panel and click through: you'll see the real dimensions of every asset the crawl downloaded, and which of your new pages uses each one.
+This is the fastest way to check what an [imported site](/docs/studio/projects/create) actually brought in. Click through the thumbnails in the Site panel's **Media** section (or open `public/assets/images/` in the Files panel): you'll see the real dimensions of every asset the crawl downloaded, and which of your new pages uses each one.
 :::
 
 ## What Studio knows about a file

@@ -32,7 +32,7 @@ Type in the **Filter elements…** box to narrow the palette by name; categories
 ## Insert by click
 
 1. On the canvas or in [Outline](/docs/studio/design/layers), select the element you want to insert into.
-2. Click a card. The new element lands inside the selection, after its existing children.
+2. Click a card. The new element lands inside the selection, after its existing children. A component card also adds the component to the page's imports, exactly as dragging it does, so the page can render it.
 
 With nothing selected, the element is added at the end of the document. With [several elements selected](/docs/studio/design/layers#select-several-at-once), it lands inside the last one you added to the selection, because inserting is a one-place verb and that is the place you pointed at most recently.
 
@@ -44,7 +44,7 @@ For an exact placement, drag the card instead:
 2. As you move over the page, an indicator line shows where the element will land: before, after, or inside the element under the cursor.
 3. Drop to insert, or press :kbd[Esc] to cancel.
 
-The new element arrives selected, ready for the Inspector's [Content](/docs/studio/design/properties) and [Style](/docs/studio/design/style-inspector) tabs. Dragging works the same in Edit and Design view. **[The canvas](/docs/studio/interface/canvas)** covers the other ways to insert: the **+** affordance between elements and the slash menu.
+The new element arrives selected, and the Inspector switches to its **Element** tab, ready for the [Content](/docs/studio/design/properties) and [Style](/docs/studio/design/style-inspector) views. Dragging works the same in Edit and Design view. **[The canvas](/docs/studio/interface/canvas)** covers the other ways to insert: the **+** affordance between elements and the slash menu, both of which list your components under a **Components** heading after the HTML elements. The **[Site panel](/docs/studio/interface#the-site-panel)**'s component cards drag onto the canvas the same way.
 
 :::doc-note
 Inserting adds one element node to the open file. A component card adds an instance tag like `<site-card>`. The format is described in **[Components](/docs/framework/concepts/components)**.

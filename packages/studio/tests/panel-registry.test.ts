@@ -25,6 +25,7 @@ import {
   resetNavigatorPanels,
 } from "../src/panels/navigator-panels";
 import { emptyContext } from "../src/commands/context";
+import { setDeveloperPanelsShown } from "../src/settings/developer-panels";
 import {
   checkPanelPlacement,
   checkPanelPlacements,
@@ -182,6 +183,8 @@ describe("panel placement matrix", () => {
 describe("the Navigator's panel set", () => {
   test("registers nine records, in registration order — and Problems is not one of them", () => {
     expect(navigatorPanelSet().map((p) => p.id)).toEqual([
+      // The Site panel leads: the Project group's one button and the Navigator's default (§5.7).
+      "site",
       "files",
       "search",
       "git",
@@ -190,7 +193,7 @@ describe("the Navigator's panel set", () => {
       // Is what `view.setActivity` and the shot manifest address the panel by.
       "i18n",
       "layers",
-      "page",
+      // No `page`: the Page panel is the Inspector's first tab now (§6).
       "data",
       "packages",
       "insert",
@@ -259,12 +262,23 @@ describe("the Navigator's panel set", () => {
     }
   });
 
-  test("Source Control keeps its title and declares Source as its rail label", () => {
+  test("Source Control keeps its title and leaves the rail (§5.1)", () => {
     registerNavigatorPanels();
     const git = getPanel("git");
-    // The header, the `Show …` command, the budget row and the button's name all read the title.
+    // The header and the `Show …` command read the title; with no button there is no rail label.
     expect(git?.title).toBe("Source Control");
-    expect(git?.railLabel).toBe("Source");
+    expect(git?.rail).toBe(false);
+    expect(git?.railLabel).toBeUndefined();
+  });
+
+  test("Files and Packages are developer panels; Search, Languages and Insert have no button", () => {
+    registerNavigatorPanels();
+    expect(getPanel("files")?.rail).toBe("developer");
+    expect(getPanel("packages")?.rail).toBe("developer");
+    for (const id of ["search", "git", "i18n", "insert"]) {
+      expect(getPanel(id)?.rail).toBe(false);
+    }
+    expect(getPanel("site")?.rail).toBeUndefined();
   });
 
   test("every rail label fits under its glyph", () => {
@@ -364,7 +378,7 @@ describe("every project-level panel renders with no document open", () => {
     // The corollary is about a panel's LEVEL and not about which dock hosts it. Named rather than
     // Counted: a panel that quietly stopped being project-level would otherwise shrink this loop
     // To nothing and still pass.
-    expect(panels.map((p) => p.id)).toEqual(["files", "git", "problems", "activity"]);
+    expect(panels.map((p) => p.id)).toEqual(["site", "files", "git", "problems", "activity"]);
 
     const deps = projectPanelDeps();
     const paint = async (): Promise<Map<string, HTMLElement>> => {
@@ -441,9 +455,23 @@ describe("railGroups", () => {
     registerNavigatorPanels();
     const groups = railGroups(emptyContext());
     expect(groups.map((g) => g.label)).toEqual(["Project", "Document"]);
-    // Search declares `when: () => false` — registered, budgeted, not drawn.
-    expect(groups[0]?.panels.map((p) => p.id)).toEqual(["files", "git"]);
-    expect(groups[1]?.panels.map((p) => p.id)).toEqual(["layers", "page", "data", "packages"]);
+    // The Design rail (§5.1): Site above the divider, Outline and Data below it. Files and Packages
+    // Are developer panels, off until the preference is on.
+    expect(groups[0]?.panels.map((p) => p.id)).toEqual(["site"]);
+    expect(groups[1]?.panels.map((p) => p.id)).toEqual(["layers", "data"]);
+  });
+
+  test("Show developer panels puts Files and Packages back, and is read reactively", () => {
+    registerNavigatorPanels();
+    setDeveloperPanelsShown(true);
+    try {
+      const groups = railGroups(emptyContext());
+      expect(groups[0]?.panels.map((p) => p.id)).toEqual(["site", "files"]);
+      expect(groups[1]?.panels.map((p) => p.id)).toEqual(["layers", "data", "packages"]);
+    } finally {
+      setDeveloperPanelsShown(false);
+    }
+    expect(railGroups(emptyContext())[0]?.panels.map((p) => p.id)).toEqual(["site"]);
   });
 
   test("Insert is off the rail but still a reachable record", () => {
@@ -489,24 +517,24 @@ describe("railGroups", () => {
 });
 
 describe("railPanelSet", () => {
-  test("is the rail flattened in group order — PROJECT then DOCUMENT, ⌘1–8's order", () => {
+  test("is the rail flattened in group order — PROJECT then DOCUMENT, the palette's order", () => {
     registerNavigatorPanels();
+    // The developer panels hold their places whether or not the switch is on, so the roster does
+    // Not reorder under the reader when it flips.
     expect(railPanelSet().map((p) => p.id)).toEqual([
+      "site",
       "files",
-      "search",
-      "git",
       "layers",
-      "page",
       "data",
       "packages",
     ]);
   });
 
-  test("ignores `when`, so a hidden panel does not shuffle the chords after it", () => {
-    registerNavigatorPanels();
-    expect(railPanelSet().map((p) => p.id)).toContain("search");
+  test("ignores `when` and the developer switch, so a hidden panel does not shuffle the roster", () => {
+    registerPanel(record({ id: "hidden-panel", level: "project", when: () => false }));
+    expect(railPanelSet().map((p) => p.id)).toContain("hidden-panel");
     expect(railGroups(emptyContext()).flatMap((g) => g.panels.map((p) => p.id))).not.toContain(
-      "search",
+      "hidden-panel",
     );
   });
 
@@ -544,17 +572,17 @@ describe("railDeclarations", () => {
     // Is left to assert is the shape the budget check consumes.
     registerNavigatorPanels();
     expect(railDeclarations()).toEqual([
-      { dock: "rail/project", tabs: ["Files", "Search", "Source Control"] },
-      { dock: "rail/document", tabs: ["Outline", "Page", "Data", "Packages"] },
+      { dock: "rail/project", tabs: ["Site", "Files"] },
+      { dock: "rail/document", tabs: ["Outline", "Data", "Packages"] },
     ]);
   });
 
-  test("counts hidden panels — a slot spent is a slot spent", () => {
+  test("counts the developer panels — a slot the switch can fill is a slot spent", () => {
     registerNavigatorPanels();
     const project = railDeclarations().find((d) => d.dock === "rail/project");
-    // Search declares `when: () => false` and still spends a slot; Problems no longer spends one
-    // At all, because it has no rail button to spend it on.
-    expect(project?.tabs).toEqual(["Files", "Search", "Source Control"]);
+    // Files is off the rail by default and still spends its slot, because the preference can put
+    // It back; Search, Source Control and Languages have no button to spend one on.
+    expect(project?.tabs).toEqual(["Site", "Files"]);
   });
 
   test("stays inside the four-per-group cap", () => {
@@ -615,7 +643,9 @@ describe("panelContext", () => {
 describe("migratePanelId", () => {
   test("translates the three renamed ids", () => {
     expect(migratePanelId("blocks")).toBe("insert");
-    expect(migratePanelId("head")).toBe("page");
+    // Page moved to the Inspector (§6), so both of its stored names reopen on the Site panel.
+    expect(migratePanelId("head")).toBe("site");
+    expect(migratePanelId("page")).toBe("site");
     expect(migratePanelId("imports")).toBe("packages");
   });
 

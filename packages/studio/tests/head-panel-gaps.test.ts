@@ -32,7 +32,7 @@ async function drawAgainst(mutationDoc: JxMutableNode) {
       fn(mutationDoc);
     },
     document: drawnDoc,
-    renderLeftPanel: () => {
+    rerender: () => {
       counts.leftPanelRenders += 1;
     },
   });
@@ -108,7 +108,7 @@ describe("head-panel custom tag removal (defensive branches)", () => {
         fn(mutationDoc);
       },
       document: { tagName: "html" },
-      renderLeftPanel: () => {
+      rerender: () => {
         r.counts.leftPanelRenders += 1;
       },
     });

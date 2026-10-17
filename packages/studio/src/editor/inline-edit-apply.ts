@@ -20,6 +20,7 @@ import {
   transactDoc,
 } from "../tabs/transact";
 import { defaultDef } from "../panels/shared";
+import { componentInstance, importComponentInto } from "./insert-component";
 
 import { contentLength, contentOf, spliceAcross, toStored } from "./content-slice";
 import type { JxContentResult, SlashCommand } from "./inline-edit";
@@ -277,6 +278,45 @@ export function applyInlineSplit(
 }
 
 /**
+ * A slash pick from the Components group (§5.7): the empty block the "/" was typed in is REPLACED
+ * by an instance of the component, and a block with content keeps it and gets the instance after
+ * it. Either way the component is imported, as a drop of the same component would import it. An
+ * instance is a whole element with its own `$props` and slot content, so swapping a tag in place —
+ * what an HTML pick does — would leave a paragraph's leftovers inside a component.
+ */
+function insertComponentBlock(
+  tab: Tab | null,
+  path: JxPath,
+  instance: JxMutableNode,
+  commitData: JxContentResult | undefined,
+): JxPath {
+  const { parentPath, index: idx } = blockSlot(path);
+  const replace = isEmptyContent(commitData);
+  const at = replace ? idx : idx + 1;
+  const newPath = [...parentPath, "children", at];
+  if (!tab) {
+    return newPath;
+  }
+  transactDoc(tab, (t) => {
+    if (replace) {
+      mutateRemoveNode(t, path);
+    } else if (commitData?.children) {
+      mutateUpdateProperty(t, path, "textContent");
+      mutateUpdateProperty(t, path, "children", commitData.children);
+    } else if (commitData?.textContent != null) {
+      mutateUpdateProperty(t, path, "children");
+      mutateUpdateProperty(t, path, "textContent", commitData.textContent);
+    }
+    mutateInsertNode(t, parentPath, at, instance);
+    if (isTabActive(tab)) {
+      t.session.selection = [newPath];
+    }
+  });
+  importComponentInto(tab, instance.tagName);
+  return newPath;
+}
+
+/**
  * Apply a slash-insert at `path` of `tab`'s document: swap the (empty) node's tag in place, or
  * commit pending content and insert a new element after it. Returns the path to edit next (the
  * swapped node or the new one); nothing is mutated when `tab` is gone.
@@ -287,6 +327,10 @@ export function applyInlineInsert(
   cmd: SlashCommand,
   commitData: JxContentResult | undefined,
 ): JxPath {
+  const instance = cmd.component === true ? componentInstance(cmd.tag) : null;
+  if (instance) {
+    return insertComponentBlock(tab, path, instance, commitData);
+  }
   if (isEmptyContent(commitData)) {
     if (!tab) {
       return path;

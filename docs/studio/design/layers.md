@@ -13,7 +13,7 @@ code:
 
 # Outline panel
 
-Outline is the page's structure as a tree: every element in the open file, nested the way it nests on the page. Open it by clicking **Outline** in the **Document** group of the Navigator rail, or by running **Show Outline** from :kbd[⌘K]. Use it whenever the thing you want to grab is hard to click on the canvas: a wrapper with no visible edges, an element hidden behind another, or the exact parent in a deep stack.
+Outline is the page's structure as a tree: every element in the open file, nested the way it nests on the page. Open it by clicking **Outline** in the **Document** group of the Navigator rail (beside **Data**, under the **Site** panel), or by running **Show Outline** from :kbd[⌘K]. Use it whenever the thing you want to grab is hard to click on the canvas: a wrapper with no visible edges, an element hidden behind another, or the exact parent in a deep stack.
 
 ![The Outline panel showing a nested element tree with a selected row](../../images/layers-panel.png)
 

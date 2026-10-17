@@ -19,7 +19,7 @@ The formula workspace gives one formula a tab of its own in the **[Bottom dock](
 Click **Open in formula workspace** beside any formula:
 
 - On an **Expression** entry in the **[Data panel](/docs/studio/logic/data)**.
-- On an **Expression** event binding in the Inspector's **[Logic tab](/docs/studio/logic/events)** (:kbd[⌘⇧3]).
+- On an **Expression** event binding in the Inspector's **[Logic tab](/docs/studio/logic/events)** (:kbd[⌘⇧4]).
 
 The dock opens on its **Logic** tab with that formula in it. **Close**, in the workspace header, is what clears it. The tab leaves the strip, and your edits are already in the document. Everything short of closing keeps your place: collapse the dock with :kbd[⌘J], read your Problems and come back, switch to another document and return.
 

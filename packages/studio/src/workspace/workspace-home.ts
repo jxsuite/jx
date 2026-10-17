@@ -102,8 +102,10 @@ export function detachWorkspaceHome(paneId: string): void {
  * action the page does not offer, so it points at the place that does.
  */
 const HOME_DETAIL: Readonly<Record<HomeWorkspaceId, string>> = {
-  media: "For now, your media files are in the Files panel and in the Library's Media category.",
-  publish: "For now, commit and sync your changes from Source Control in the Design workspace.",
+  media:
+    "For now, your media is in the Design workspace, under Media in the Site panel, and in the Library's Media category.",
+  publish:
+    "For now, commit and sync your changes from Source Control: run Show Source Control from the command palette.",
 };
 
 /** What a home tab's surface draws. */

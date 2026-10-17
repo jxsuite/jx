@@ -81,7 +81,7 @@ describe("drawing a home", () => {
     const title = home.querySelector('[part="title"]')!;
     expect(home.getAttribute("aria-labelledby")).toBe(title.id);
     // The second sentence points at where media is managed until the workspace has its own surface.
-    expect(home.querySelector('[part="detail"]')?.textContent).toMatch(/Files panel/);
+    expect(home.querySelector('[part="detail"]')?.textContent).toMatch(/Site panel/);
   });
 
   test("a home already standing is not rebuilt; another tab's is", async () => {
@@ -128,7 +128,8 @@ describe("drawing a home", () => {
   test("the view is the workspace's own record", () => {
     const tab = openWorkspaceHome("publish");
     expect(workspaceHomeView("secondary", tab)).toEqual({
-      detail: "For now, commit and sync your changes from Source Control in the Design workspace.",
+      detail:
+        "For now, commit and sync your changes from Source Control: run Show Source Control from the command palette.",
       icon: "paper-plane-tilt",
       purpose: "Review your changes and put them on the live site.",
       region: "pane.secondary/home",

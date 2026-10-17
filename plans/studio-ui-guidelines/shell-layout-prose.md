@@ -20,7 +20,9 @@ This plan began as a `reconcile`: §3.1 drew a five-column, six-row shell (a ful
 
 What remains open is what the redesign adds, and the new markers say so:
 
-> §3.1 **Status: Partial.** … The per-workspace frame does not: no workspace hides the rail, the Navigator or the Inspector, so every dock is drawn in every state the author has not collapsed (`studio.md` §22.3), and the Inspector's strip is still Content · Style · Logic · Assistant rather than the three tabs drawn here (`studio.md` §6).
+> §3.1 **Status: Partial.** … Two parts do not ship as drawn: the Navigator and the Inspector are hidden by collapsing their docks on entry, which writes the dock record's `collapsed` rather than setting a class that leaves the record alone (their widths are kept); and Content draws no Navigator, because its Collections panel does not exist yet (`studio.md` §22.5).
+
+The rail's `rail-hidden` class and the three-tab Inspector have shipped; what is left of §3.1 is the side docks' class and Content's Navigator.
 
 > §3.2 **Status: Partial.** … Two parts do not: the Inspector's strip is four tabs with no Element tab and no sub-switch (`studio.md` §6), and the Navigator's panel is chosen from the rail in every workspace rather than by the workspace's frame outside Design (`studio.md` §22.3).
 

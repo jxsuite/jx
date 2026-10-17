@@ -552,18 +552,18 @@
           "args": {
             "tab": "page"
           },
-          "cmd": "view.setActivity"
+          "cmd": "view.setRightTab"
         }
       ],
       "expect": [
         {
-          "region": "navigator/panel:page"
+          "region": "inspector/tab:page"
         }
       ],
       "capture": [
         {
           "image": "document-panel",
-          "of": "navigator"
+          "of": "inspector"
         }
       ]
     },

@@ -130,6 +130,16 @@ describe("enterWorkspace", () => {
     expect(shell.leftTab).toBe("data");
   });
 
+  test("Design opens on the Site panel when it has no panel of its own to remember (§22.3)", () => {
+    // A window that booted into another workspace has never left Design, so nothing is
+    // Remembered for it: the frame's `initial` panel is the answer, not whatever was showing.
+    shell.workspace = "publish";
+    shell.leftTab = "layers";
+    enterWorkspace("design", deps);
+    expect(shell.leftTab).toBe("site");
+    expect(WORKSPACE_PRESETS.design.navigator).toEqual({ initial: "site", open: true });
+  });
+
   test("a workspace that names its panel is not where Design's panel is remembered from", () => {
     shell.leftTab = "files";
     enterWorkspace("styles", deps);

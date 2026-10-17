@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The Navigator's Page panel, as a mounted document.
+ * The Page panel — the Inspector's Page tab (§6) — as a mounted document.
  *
  * `panels/head-panel.ts` is the flow — what a `$head` entry means, which of them a structured
  * control already owns, what the layout cascade resolves to, which realm a title lives in and what
@@ -231,6 +231,28 @@ export function renderPagePanelSurface(
      the next `afterRender` sees a disconnected handle and remakes the surface through the branch
      above. */
   void mountSurface("panel-page", scope, host).then((handle) => {
+    /* Unmounted while in flight (the Inspector's Page tab lost its document in the same turn): the
+       record is no longer the host's, so the surface that just landed is taken straight back out. */
+    if (mounts.get(host) !== record) {
+      handle.dispose();
+      return;
+    }
     record.handle = handle;
   });
+}
+
+/**
+ * Take the panel out of `host`, if it is there — the Inspector's Page tab with no document open.
+ * Idempotent: a host with no mount is left as it is.
+ *
+ * @param {HTMLElement} host The panel's content area.
+ */
+export function unmountPagePanelSurface(host: HTMLElement): void {
+  const existing = mounts.get(host);
+  if (!existing) {
+    return;
+  }
+  mounts.delete(host);
+  existing.handle?.dispose();
+  host.textContent = "";
 }

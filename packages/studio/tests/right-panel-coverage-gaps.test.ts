@@ -50,6 +50,13 @@ function showingPanel(): HTMLElement | null {
   return inspectorHost().querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
 }
 
+/** The leaf body showing inside the showing panel — Element hosts three. */
+function showingBody(): HTMLElement | null {
+  return (
+    showingPanel()?.querySelector<HTMLElement>('[part="panel-body"][data-active="true"]') ?? null
+  );
+}
+
 beforeEach(() => {
   document.body.innerHTML = `<div id="app">
     <div id="toolbar"></div><div id="activity-bar"></div><div id="left-panel"></div>
@@ -88,10 +95,11 @@ describe("right panel gaps", () => {
     updateUi(activeTab.value, "rightTab", "events");
     render();
     await flush(4);
-    const panel = showingPanel();
-    expect(panel?.dataset.tab).toBe("events");
+    expect(showingPanel()?.dataset.tab).toBe("element");
+    const body = showingBody();
+    expect(body?.dataset.tab).toBe("events");
     // The events body rendered content for the selected node (not the empty state).
-    expect(panel!.textContent).not.toContain("Select an element");
+    expect(body!.textContent).not.toContain("Select an element");
   });
 
   test("a tab that throws while taking its body cannot stop the dock from drawing", async () => {
@@ -102,10 +110,10 @@ describe("right panel gaps", () => {
     render();
     await flush(4);
     /* The dock is still navigable, so the reader can leave the tab that failed — and the OTHER
-       three tabs still got their hosts, which is the part the old boundary could not promise:
+       four leaves still got their hosts, which is the part the old boundary could not promise:
        `_ensureContainers` built them in a loop and the throw ended it. */
     expect(inspectorHost().querySelector('[role="tablist"]')).not.toBeNull();
-    expect(inspectorHost().querySelectorAll('[role="tab"]')).toHaveLength(4);
-    expect(inspectorHost().querySelectorAll('[part="panel-body"]')).toHaveLength(4);
+    expect(inspectorHost().querySelectorAll('[role="tab"]')).toHaveLength(3);
+    expect(inspectorHost().querySelectorAll('[part="panel-body"]')).toHaveLength(5);
   });
 });

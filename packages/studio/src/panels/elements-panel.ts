@@ -23,6 +23,7 @@
 import { isString } from "@jxsuite/schema/guards";
 import { nothing } from "lit-html";
 import { buildComponentInstance, componentRegistry } from "../files/components";
+import { importComponentInto } from "../editor/insert-component";
 import { childList, getNodeAtPath } from "../store";
 import { getEffectiveElements } from "../site-context";
 import { mountElementsSurface } from "../surfaces/panel-elements";
@@ -164,7 +165,10 @@ function panelValues(source: NavigatorPanelDeps): ElementsValues {
   };
 }
 
-/** Insert a node as the last child of the selected element — what both kinds of card do. */
+/**
+ * Insert a node as the last child of the selected element — what both kinds of card do — and import
+ * it when it is a component, as a drag of the same card does (§5.7: insertion has one meaning).
+ */
 function insertAtSelection(def: JxMutableNode): void {
   const tab = activeTab.value;
   if (!tab) {
@@ -174,6 +178,7 @@ function insertAtSelection(def: JxMutableNode): void {
   const parent = getNodeAtPath(tab.doc.document, parentPath);
   const index = childList(parent).length;
   transactDoc(tab, (tr) => mutateInsertNode(tr, parentPath, index, structuredClone(def)));
+  importComponentInto(tab, def.tagName);
 }
 
 /**

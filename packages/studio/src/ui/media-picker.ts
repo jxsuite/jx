@@ -106,16 +106,62 @@ async function collectMedia(
   return results;
 }
 
-async function loadMediaCache() {
+/** The walk in flight, so every caller that asks while it runs shares it instead of starting one. */
+let _mediaLoading: Promise<void> | null = null;
+/** Bumped by {@link invalidateMediaCache}, so a walk that started before it cannot land after it. */
+let _mediaEpoch = 0;
+
+function loadMediaCache(): Promise<void> {
   if (mediaCacheLoaded) {
-    return;
+    return Promise.resolve();
   }
-  const platform = getPlatform();
-  mediaCache = await collectMedia("public", platform);
-  mediaCacheLoaded = true;
-  // Re-render the host panels so the browse panel has entries to show once the async listing
-  // Resolves. Mirrors loadLayoutEntries()'s renderOnly() in head-panel.
-  renderOnly("leftPanel", "rightPanel", "frontmatterPanel");
+  if (_mediaLoading) {
+    return _mediaLoading;
+  }
+  const epoch = _mediaEpoch;
+  const walk = (async () => {
+    const listed = await collectMedia("public", getPlatform());
+    if (epoch !== _mediaEpoch) {
+      // Superseded: this listing is older than the invalidation, and a newer walk owns the cache.
+      return;
+    }
+    mediaCache = listed;
+    mediaCacheLoaded = true;
+    _mediaLoading = null;
+    // Re-render the host panels so the browse panel has entries to show once the async listing
+    // Resolves. Mirrors loadLayoutEntries()'s renderOnly() in head-panel.
+    renderOnly("leftPanel", "rightPanel", "frontmatterPanel");
+  })();
+  _mediaLoading = walk;
+  return walk;
+}
+
+/** One media file of the project, as a browsing surface lists it. */
+export interface ProjectMediaFile {
+  /** The project-relative path on disk. */
+  file: string;
+  name: string;
+  /** The site URL a document authors for it. */
+  ref: string;
+  isImage: boolean;
+}
+
+/**
+ * The project's media, or `null` while the listing is still being read — the same cache the picker
+ * browses, so the Site panel's Media section and the image field cannot disagree about what exists.
+ * Asking starts the read; it repaints the panels that read it when it lands.
+ */
+export function projectMediaFiles(): readonly ProjectMediaFile[] | null {
+  if (!mediaCacheLoaded) {
+    void loadMediaCache();
+    return null;
+  }
+  return mediaCache.map((entry) => ({
+    file: entry.file,
+    isImage: entry.isImage,
+    name: entry.name,
+    ref: entry.path,
+  }));
 }
 
 /**
@@ -127,6 +173,8 @@ async function loadMediaCache() {
 export function invalidateMediaCache() {
   mediaCache = [];
   mediaCacheLoaded = false;
+  _mediaEpoch += 1;
+  _mediaLoading = null;
   invalidateMediaMeta();
 }
 

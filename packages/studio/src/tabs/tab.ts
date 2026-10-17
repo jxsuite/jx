@@ -32,7 +32,13 @@ export const PROJECT_CONFIG_PATH = "project.json";
 export const SETTINGS_MODE = "settings";
 
 export interface TabUi {
+  /** The Inspector leaf showing (`shell.ts`'s `INSPECTOR_TAB_IDS`); Page on a fresh tab (§6). */
   rightTab: string;
+  /**
+   * The Element leaf last shown — Content, Style or Logic — so the selection-driven switch from
+   * Page returns to the view the author was using rather than always to Content (§6).
+   */
+  elementTab: string;
   canvasMode: string;
   /** Preview toggle — composes with an edit/design canvasMode; the effective mode becomes "preview". */
   preview: boolean;
@@ -278,7 +284,8 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     previewLocale: null,
     previewParams: {},
     previewProps: null,
-    rightTab: "properties",
+    rightTab: "page",
+    elementTab: "properties",
     showLayout: true,
     styleFilter: "",
     styleSections: {},

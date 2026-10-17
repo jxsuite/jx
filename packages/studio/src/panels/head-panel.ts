@@ -1,8 +1,9 @@
 /// <reference lib="dom" />
 /**
- * The Navigator's Page panel — everything the open document says about itself before anybody reads
- * its body: its frontmatter, the layout it is poured into, its title, description, viewport and
- * icon, its OpenGraph card, and the raw `$head` tags no structured control owns.
+ * The Page panel — the Inspector's first tab (§6) — everything the open document says about itself
+ * before anybody reads its body: its frontmatter, the layout it is poured into, its title,
+ * description, viewport and icon, its OpenGraph card, and the raw `$head` tags no structured
+ * control owns.
  *
  * This is the FLOW. The markup is `surfaces/panel-page.json` and the scope that feeds it is
  * `surfaces/panel-page.ts`; what stays here is every decision — what a `$head` entry means, which
@@ -13,9 +14,8 @@
  * read at submit time, which is a spelling a document does not have: a binding writes only when the
  * SCOPE moves, so every field's setter states what the control now holds before anything is decided
  * about it, and clearing one after a successful add is then a real change the runtime carries back.
- * `sync()` — not `renderLeftPanel()` — is what an echo calls: it assigns into the standing scope in
- * the same turn, where a Navigator repaint is a frame away and would rebuild far more than one
- * field.
+ * `sync()` — not a dock repaint — is what an echo calls: it assigns into the standing scope in the
+ * same turn, where a dock repaint is a frame away and would rebuild far more than one field.
  *
  * **What a frontmatter row looks like is `panels/frontmatter-fields.ts`'s answer.** The Document
  * Header card draws the same field set from the same schemas; the two surfaces deciding
@@ -28,14 +28,12 @@
  */
 
 import { isString } from "@jxsuite/schema/guards";
-import { nothing } from "lit-html";
 import { projectState, renderOnly } from "../store";
 import type { DirEntry, JsonValue } from "../types";
 import { activeTab } from "../workspace/workspace";
 import { activeRegistry } from "../commands/active-registry";
 import { clearProblems, notify } from "../services/notify";
 import type { NotifyOptions } from "../services/notify";
-import { registerPanel } from "./panel-registry";
 import { mutateUpdateFrontmatter, transact, transactDoc } from "../tabs/transact";
 import { collectFmFields, projectFmField } from "./frontmatter-fields";
 import { isGoogleFontEntry, isGoogleFontPreconnect } from "../utils/google-fonts";
@@ -45,7 +43,8 @@ import { pageRoute } from "./tab-strip";
 import { LIVE_PREVIEW } from "../ui/timing";
 import { previewAssetSrc } from "../canvas/asset-refs";
 import { IMAGE_EXTENSIONS, extensionOf } from "../files/media-upload";
-import { renderPagePanelSurface } from "../surfaces/panel-page";
+import { renderPagePanelSurface, unmountPagePanelSurface } from "../surfaces/panel-page";
+import { collectionForFile } from "../content/collection-match";
 
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
@@ -89,8 +88,7 @@ async function loadLayoutEntries() {
   } catch {
     layoutEntries = [];
   }
-  renderOnly("leftPanel");
-  renderOnly("frontmatterPanel", "seoModal");
+  renderOnly("rightPanel", "frontmatterPanel", "seoModal");
 }
 
 /**
@@ -854,7 +852,7 @@ export function seoPreviewFor(tab: Tab | null, doc: JxMutableNode): SeoPreview {
  * component GAINED a header card because the focused tab was a page — and the Layout picker
  * appeared or vanished in the pane you were editing according to the document in the other one.
  *
- * A caller whose subject genuinely IS the focused document (the Navigator's Page panel) passes
+ * A caller whose subject genuinely IS the focused document (the Inspector's Page tab) passes
  * `activeTab.value`, where a reviewer can see it. The same bargain `setCanvasMode` made.
  *
  * @param {Tab | null} tab
@@ -949,13 +947,14 @@ interface RowCommit {
   commit: (raw: string | boolean) => void;
 }
 
-/** What the panel is drawn against. `left-panel.ts`'s context, reduced to what this reads. */
+/** What the panel is drawn against: the focused document, reduced to what this reads. */
 export interface PagePanelContext {
   /** The head-bearing view of the open document — `buildHeadDoc` for a content page. */
   document: JxMutableNode;
   /** How a change to that view is written back into whichever realm it belongs to. */
   applyMutation: (fn: (doc: JxMutableNode) => void) => void;
-  renderLeftPanel: () => void;
+  /** Repaint the host the panel is drawn in — the Inspector's Page tab. */
+  rerender: () => void;
 }
 
 /** Where the surface is mounted, and the context it was last drawn against. */
@@ -1207,7 +1206,7 @@ function customEntries(head: JxHeadEntry[]): PageTagRow[] {
 /**
  * Everything the panel says about one document, and the commit table behind it.
  *
- * `activeTab.value` is read HERE and nowhere below it: the Navigator's Page panel is an app-level
+ * `activeTab.value` is read HERE and nowhere below it: the Inspector's Page tab is an app-level
  * surface that shows the focused document by definition, and spelling that out once at the top is
  * what lets every helper under it take a tab instead of asking for one.
  */
@@ -1324,7 +1323,7 @@ function addEntry(): void {
     }
     d.$head.push(entry);
   });
-  ctx.renderLeftPanel();
+  ctx.rerender();
 }
 
 /** Take one custom `$head` entry away, by the entry the key was drawn for. */
@@ -1343,7 +1342,7 @@ function removeEntry(key: string): void {
       d.$head.splice(idx, 1);
     }
   });
-  ctx.renderLeftPanel();
+  ctx.rerender();
 }
 
 /**
@@ -1458,50 +1457,89 @@ export function renderPagePanel(host: HTMLElement, ctx: PagePanelContext): void 
   sync();
 }
 
+// ─── The Inspector's Page tab ────────────────────────────────────────────
+
 /**
- * The Navigator's content area inside a panel body.
+ * What the Page tab is called for a document (§6): Page under `pages/`, Template under `layouts/`,
+ * Component under `components/`, Entry for a file a collection owns, Document for anything else.
  *
- * `afterRender` is handed the `.panel-body`, and the panel's own content goes one level in — which
- * is where the document must be mounted rather than beside it, because that child is lit's part and
- * clearing it is how switching to another panel takes this surface down. A body drawn by the
- * fallback path has no content area; mounting into the body itself is then still correct.
+ * Path-based, like the rest of the site model: a file's role in a project is where it lives, and
+ * `collectionForFile` is the one matcher that answers "is this an entry" (§22.1 uses it too).
  */
-function contentArea(body: HTMLElement): HTMLElement {
-  return body.querySelector<HTMLElement>(".panel-content") ?? body;
+export function pageTabTitle(path: string | null | undefined): string {
+  if (!path) {
+    return "Document";
+  }
+  if (path.startsWith("pages/")) {
+    return "Page";
+  }
+  if (path.startsWith("layouts/")) {
+    return "Template";
+  }
+  if (path.startsWith("components/")) {
+    return "Component";
+  }
+  const collection = collectionForFile(path);
+  return collection && !collection.fileBacked ? "Entry" : "Document";
+}
+
+/** The sentence the Page tab shows with no document open. */
+export const PAGE_TAB_EMPTY = "Open a page to edit its title, description and social preview.";
+
+/** The Inspector's Page body host, handed over once by the dock. */
+let _tabHost: HTMLElement | null = null;
+
+/**
+ * Take the Inspector's Page body host, or let it go (`null`, when the dock is taken down).
+ *
+ * The Page panel moved here from the Navigator (§6): the same surface, re-hosted unchanged, drawn
+ * against the focused document. `panels/right-panel.ts` hands the host over and calls
+ * {@link renderPageTab} whenever the dock repaints.
+ */
+export function bindPageHost(host: HTMLElement | null): void {
+  if (_tabHost && _tabHost !== host) {
+    unmountPagePanelSurface(_tabHost);
+    if (_host === _tabHost) {
+      _host = null;
+      _ctx = null;
+    }
+  }
+  _tabHost = host;
+  renderPageTab();
 }
 
 /**
- * Contribute the Page panel.
+ * Draw the Page tab against the focused document, or empty it when nothing is open.
  *
- * `level: "document"` — title, description, social card and custom `$head` entries are the open
- * document's. The id is `page` now: "head" named an HTML element, and §5.1's Document group calls
- * the surface Page. The record is what keeps the surface addressable under one name.
+ * Idempotent and cheap: a standing surface is only assigned to (`renderPagePanelSurface`), so the
+ * dock can call this on every repaint without taking the caret out of a field.
  */
-export function registerPagePanel(): void {
-  registerPanel({
-    id: "page",
-    title: "Page",
-    level: "document",
-    dock: "navigator",
-    icon: "file",
-    requiresDocument: "Open a page to edit its title, description and social preview.",
-    render: () => nothing,
-    afterRender: (ctx, host) => {
-      const doc = ctx.doc!;
-      const isContent = doc.mode === "content";
-      const fm = doc.content?.frontmatter ?? {};
-      renderPagePanel(contentArea(host), {
-        /* The Navigator's Page panel IS an app-level surface: it shows the focused document by
-           definition, so it spells that out at the call site instead of leaving it to a helper two
-           other surfaces share. */
-        applyMutation: isContent
-          ? (fn) => applyContentMutation(activeTab.value, ctx.rerender, fn)
-          : (fn) => {
-              transact(activeTab.value, fn);
-            },
-        document: isContent ? buildHeadDoc(doc.document, fm) : doc.document,
-        renderLeftPanel: ctx.rerender,
-      });
-    },
+export function renderPageTab(): void {
+  const host = _tabHost;
+  if (!host) {
+    return;
+  }
+  const tab = activeTab.value;
+  if (!tab) {
+    unmountPagePanelSurface(host);
+    if (_host === host) {
+      _host = null;
+      _ctx = null;
+    }
+    return;
+  }
+  const isContent = tab.doc.mode === "content";
+  renderPagePanel(host, {
+    /* The Page tab IS an app-level surface: it shows the focused document by definition, so it
+       spells that out at the call site instead of leaving it to a helper two other surfaces share. */
+    applyMutation: isContent
+      ? (fn) => applyContentMutation(activeTab.value, renderPageTab, fn)
+      : (fn) => {
+          transact(activeTab.value, fn);
+        },
+    document: isContent
+      ? buildHeadDoc(tab.doc.document, tab.doc.content.frontmatter)
+      : tab.doc.document,
+    rerender: renderPageTab,
   });
 }

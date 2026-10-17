@@ -64,27 +64,52 @@ export interface RailPanel {
   /** The panel's human name, which is also the command's title after "Show ". */
   title: string;
   /** `false` for a panel with no rail button — reachable by name, not by number. */
-  rail?: boolean;
+  rail?: boolean | "developer";
   /** The panel's own visibility predicate, composed into the command's. */
   when?: (ctx: CommandContext) => boolean;
 }
 
+/** The Inspector strip's three tabs (§6): Page · Element · Assistant. */
+export type InspectorStripId = "page" | "element" | "assistant";
+
 /**
- * The Inspector's four tabs, in the order §6 names them — which is the order ⌘⇧1–4 follow.
+ * One Inspector LEAF — a view the dock can show — in the order §6 names them, which is the order
+ * ⌘⇧1–5 follow: Page, Element's Content · Style · Logic, then Assistant.
  *
- * `"assistant"` is the fourth tab, not a dock of its own (there is no assistant column, §3.1), so
- * it is one of `shell.ts`'s `INSPECTOR_TAB_IDS` like the other three.
+ * `"assistant"` is a leaf, not a dock of its own (there is no assistant column, §3.1), so it is one
+ * of `shell.ts`'s `INSPECTOR_TAB_IDS` like the others. `strip` says which of the three strip tabs
+ * hosts the leaf: the three node views share Element, behind a sub-switch, because they share one
+ * target.
  */
 export interface InspectorTab {
-  /** The stored `session.ui.rightTab` value, or `"assistant"` for the assistant dock. */
+  /** The stored `session.ui.rightTab` value. */
   id: string;
   title: string;
+  strip: InspectorStripId;
 }
 
 export const INSPECTOR_TABS: readonly InspectorTab[] = [
-  { id: "properties", title: "Content" },
-  { id: "style", title: "Style" },
-  { id: "events", title: "Logic" },
+  { id: "page", strip: "page", title: "Page" },
+  { id: "properties", strip: "element", title: "Content" },
+  { id: "style", strip: "element", title: "Style" },
+  { id: "events", strip: "element", title: "Logic" },
+  { id: "assistant", strip: "assistant", title: "Assistant" },
+];
+
+/** One tab of the strip, and the leaves it hosts. */
+export interface InspectorStripTab {
+  id: InspectorStripId;
+  title: string;
+}
+
+/**
+ * The strip, in order. Three tabs, under the four-per-dock cap (`studio-ui-guidelines.md` §12.2):
+ * Element's sub-switch is inside a tab's body and is not a dock tab. The Page tab's title is
+ * contextual on screen (Page, Template, Component, Entry or Document, §6); this is its name.
+ */
+export const INSPECTOR_STRIP: readonly InspectorStripTab[] = [
+  { id: "page", title: "Page" },
+  { id: "element", title: "Element" },
   { id: "assistant", title: "Assistant" },
 ];
 
@@ -628,7 +653,10 @@ export function panelFocusCommands(deps: CommandDeps): AnyCommand[] {
   }));
 }
 
-/** ⌘⇧1–4 — one record per Inspector tab, generated from {@link INSPECTOR_TABS}. */
+/**
+ * ⌘⇧1–5 — one record per Inspector leaf, generated from {@link INSPECTOR_TABS}, so the chords
+ * follow the strip left to right: Page, Element › Content, Style, Logic, then Assistant.
+ */
 export function inspectorFocusCommands(deps: CommandDeps): AnyCommand[] {
   return INSPECTOR_TABS.map((tab, index) => {
     const command: AnyCommand = {

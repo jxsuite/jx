@@ -20,6 +20,12 @@ code:
   - packages/studio/src/surfaces/workspace-home.ts
   - packages/studio/src/surfaces/workspace-home.json
   - packages/studio/src/panels/left-panel.ts
+  - packages/studio/src/panels/site-panel.ts
+  - packages/studio/src/panels/site-model.ts
+  - packages/studio/src/surfaces/site-panel.ts
+  - packages/studio/src/surfaces/site-panel.json
+  - packages/studio/src/settings/developer-panels.ts
+  - packages/studio/src/surfaces/inspector-dock.ts
   - packages/studio/src/files/files.ts
   - packages/studio/src/surfaces/files-panel.json
   - packages/studio/src/surfaces/files-panel.ts
@@ -91,23 +97,40 @@ Each workspace sets up the window for its kind of work every time you enter it: 
 
 ## Navigator rail
 
-The vertical strip on the far left. Every button carries a **text label under its icon**, and the buttons are split into two labelled groups, because a panel is either about your whole project or about the one document in front of you:
+The vertical strip on the far left, drawn in the **Design** workspace. Every button carries a **text label under its icon**, and the buttons are split into two labelled groups, because a panel is either about your whole project or about the one document in front of you:
 
 **Project**
 
-- **Files**: the project file tree. Open, rename, convert and organize the files in your project folder. **New File…** (from the panel's toolbar, or from a folder's right-click menu) opens the [creation dialog](#creating-a-file), which asks for a name and offers a **Format** picker beside it. Studio picks the starting content from the format you choose. The tree leaves out whatever your project ignores; see [Files the tree hides](#files-the-tree-hides). Drag files in from your desktop and they upload into whichever folder you drop them on; see [Media](/docs/studio/projects/media). Drag a file onto the other pane's strip, or right-click it and choose **Open to the Side**, to open it in a [second pane](/docs/studio/interface/tabs#two-panes) instead of the one you are in. On a [multilingual project](/docs/studio/interface/languages), a file under a language's directory carries that language's name beside it: _français_, not _French_.
-- **Source Control**, labelled **Source** on the rail: the built-in git client. A badge counts changed files. See [Publish](/docs/studio/publish).
+- **Site**: your project the way a visitor meets it. See [The Site panel](#the-site-panel). This is the panel the Navigator opens on.
 
 **Document**
 
 - **Outline**: the element structure of the open page or component, as a tree you can select and reorder. In **Project Styles** it lists the style targets instead.
-- **Page**: the page's title, description and social preview.
 - **Data**: the values, data sources and functions the document knows about, with what each one currently resolves to. See [Logic](/docs/studio/logic).
-- **Packages**: the components and packages the open document pulls in.
 
 Clicking the button of the panel that's already open collapses the Navigator; clicking any button brings it back. A document-level panel with no document open says what it needs. Every panel is also in the palette as **Show** and its name, for example **Show Files**.
 
-**Insert**, the palette of elements and components you can add to a page, is not on the rail, because you reach for it at the moment you're placing something, and it is not a view you sit in. Run **Show Insert** from the palette (:kbd[⌘K]) to open it in the Navigator.
+### Developer panels
+
+Two panels are for working with the project as files and packages, and they stay off the rail until you ask for them: turn on **Show developer panels** in **[Preferences › Appearance](/docs/studio/interface/preferences)** and they join it.
+
+- **Files** (in the Project group): the project file tree. Open, rename, convert and organize the files in your project folder. **New File…** (from the panel's toolbar, or from a folder's right-click menu) opens the [creation dialog](#creating-a-file), which asks for a name and offers a **Format** picker beside it. Studio picks the starting content from the format you choose. The tree leaves out whatever your project ignores; see [Files the tree hides](#files-the-tree-hides). Drag files in from your desktop and they upload into whichever folder you drop them on; see [Media](/docs/studio/projects/media). Drag a file onto the other pane's strip, or right-click it and choose **Open to the Side**, to open it in a [second pane](/docs/studio/interface/tabs#two-panes) instead of the one you are in. On a [multilingual project](/docs/studio/interface/languages), a file under a language's directory carries that language's name beside it: _français_, not _French_.
+- **Packages** (in the Document group): the components and packages the open document pulls in. See [Dependencies](/docs/studio/projects/dependencies).
+
+With the switch off, both are still one palette row away: **Show Files** and **Show Packages**.
+
+**Insert**, the palette of elements and components you can add to a page, is not on the rail either, because you reach for it at the moment you're placing something, and it is not a view you sit in. Run **Show Insert** from the palette (:kbd[⌘K]) to open it in the Navigator. **Source Control** is off the rail as well: run **Show Source Control** from the palette, and the **Publish** tab in the Command Bar counts your changes. See [Publish](/docs/studio/publish).
+
+### The Site panel
+
+The Site panel lists your project the way you think about it: pages by address, then the parts pages are made of. A filter at the top narrows all four sections at once, and a section with nothing left in it keeps its heading and says so, so you can always tell the filter is what emptied it. The **+** beside the filter opens the **New** menu for a page, template, component or collection entry.
+
+- **Pages** are listed by the address a visitor types, in the order the site resolves them: the home page first, then the other fixed addresses, then the ones with a value in them (`/blog/:slug`). A page that gives every entry of a collection its own address sits under a row naming that collection and how many entries it has, labelled for what it is, such as **Post page**. Click a page to open it.
+- **Templates** are your layouts, with how many pages use each one when Studio can count them. Click one to open it.
+- **Components** are cards that show each of your components rendered live, followed by the components your installed packages provide, listed by tag. Click one of your cards to open the component, or drag any card onto the canvas to place one; it is imported into the page as it lands, along with its package. Clicking a package's card opens the **Packages** panel.
+- **Media** shows thumbnails of the images and files in your `public/` folder. Drag one onto the canvas to place an image (or a link, for a file) that points at it. Clicking one opens it in the **Media** workspace, as its tooltip says; :kbd[⌘1] brings you back to Design. **Open Media** switches to the Media workspace.
+
+The row of the document you have open is highlighted, and the panel keeps up as files are added, renamed and removed, whether by Studio or by another program.
 
 ### The Settings menu
 
@@ -211,14 +234,18 @@ The trail follows the **focused pane**. With two panes open, it names the one yo
 
 ## Inspector
 
-The dock on the right inspects whatever is selected, in four tabs:
+The dock on the right inspects what you are working on, in three tabs:
 
-- **Content** (:kbd[⌘⇧1]): the selected element's settings, including its text, links, images and component options.
-- **Style** (:kbd[⌘⇧2]): the visual inspector for spacing, typography, color, layout and more. See [Design mode](/docs/studio/design).
-- **Logic** (:kbd[⌘⇧3]): what the element does on click, input, submit and other interactions. See [Logic](/docs/studio/logic).
-- **Assistant** (:kbd[⌘⇧4]): the [AI assistant](/docs/studio/ai), which lives in this dock as a tab, so showing it never narrows the canvas.
+- **Page** (:kbd[⌘⇧1]): the open document's own settings: its title, address, template, search and sharing details, and the advanced head tags. The tab is named for what the document is: **Page** for a page, **Template** for a layout, **Component** for a component, **Entry** for an entry of a content collection, and **Document** for anything else. See [Frontmatter and page settings](/docs/studio/editing/frontmatter).
+- **Element**: the selected element, in three views you switch between at the top of the tab:
+  - **Content** (:kbd[⌘⇧2]): its settings, including its text, links, images and component options.
+  - **Style** (:kbd[⌘⇧3]): the visual inspector for spacing, typography, color, layout and more. See [Design mode](/docs/studio/design).
+  - **Logic** (:kbd[⌘⇧4]): what it does on click, input, submit and other interactions. See [Logic](/docs/studio/logic).
+- **Assistant** (:kbd[⌘⇧5]): the [AI assistant](/docs/studio/ai), which lives in this dock as a tab, so showing it never narrows the canvas.
 
-Every tab renders under a header naming the tab and what it is pointed at: the selected element, or the open document when nothing is selected. Resize the dock by dragging its inner edge, or collapse it with :kbd[⌘⌥B].
+**The Inspector follows your selection.** Select an element while the Page tab is showing and it switches to Element, on whichever view you used last; select nothing and it switches back to Page. It only switches when the selection appears or goes away, so a tab you click stays put while you click from one element to another. The Assistant is never switched away from.
+
+Every tab renders under a header naming the tab and what it is pointed at: the selected element, or the open document when nothing is selected. The Page tab always names the document, because that is what it edits. Closing the Assistant brings back Element if something is selected, and Page if not. Resize the dock by dragging its inner edge, or collapse it with :kbd[⌘⌥B].
 
 :::doc-note
 Studio remembers your layout: dock widths and which docks are collapsed carry over to your next session, per project.

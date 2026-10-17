@@ -115,7 +115,7 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 3.1 Application Grid
 
-> **Status: Partial.** The grid is `#app` in `packages/studio/styles/shell-frame.json` (generated into `shell-frame.css`), its cells are `src/surfaces/shell.json`, and the dock record, its first-run sizes and its projection onto the grid are `src/shell.ts` (`DOCK_DEFAULTS`, `applyDockLayout()`, `persistDocks()`); all of that ships as drawn. The per-workspace frame does not: no workspace hides the rail, the Navigator or the Inspector, so every dock is drawn in every state the author has not collapsed (`studio.md` §22.3), and the Inspector's strip is still Content · Style · Logic · Assistant rather than the three tabs drawn here (`studio.md` §6).
+> **Status: Partial.** The grid is `#app` in `packages/studio/styles/shell-frame.json` (generated into `shell-frame.css`), its cells are `src/surfaces/shell.json`, and the dock record, its first-run sizes and its projection onto the grid are `src/shell.ts` (`DOCK_DEFAULTS`, `applyDockLayout()`, `persistDocks()`); all of that ships as drawn. The per-workspace frame ships as `WORKSPACE_PRESETS` in `src/shell.ts`, applied on every workspace entry (`studio.md` §22.3): the rail is taken out of the grid by the `rail-hidden` class on `#app` (`RAIL_HIDDEN_CLASS`, `applyDockLayout()`), and the Inspector's strip is the three tabs drawn here (`studio.md` §6). Two parts do not ship as drawn: the Navigator and the Inspector are hidden by collapsing their docks on entry, which writes the dock record's `collapsed` rather than setting a class that leaves the record alone (their widths are kept); and Content draws no Navigator, because its Collections panel does not exist yet (`studio.md` §22.5).
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -152,7 +152,7 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 3.2 Panel Structure
 
-> **Status: Partial.** The three anatomies ship as `packages/studio/src/surfaces/inspector-dock.json`, `bottom-dock.json` and `navigator-dock.json`, with their adapters `src/panels/right-panel.ts`, `bottom-dock.ts` and `left-panel.ts`. Two parts do not: the Inspector's strip is four tabs with no Element tab and no sub-switch (`studio.md` §6), and the Navigator's panel is chosen from the rail in every workspace rather than by the workspace's frame outside Design (`studio.md` §22.3).
+> **Status: Partial.** The three anatomies ship as `packages/studio/src/surfaces/inspector-dock.json`, `bottom-dock.json` and `navigator-dock.json`, with their adapters `src/panels/right-panel.ts`, `bottom-dock.ts` and `left-panel.ts`. The Inspector's strip is Page · Element · Assistant, with Element's sub-switch a single-select `jx-action-group` inside its panel (`studio.md` §6). One part does not ship: the Navigator's panel is chosen from the rail in every workspace rather than by the workspace's frame outside Design (`studio.md` §22.3).
 
 The three docks have three anatomies, because each switches its contents a different way. Each document draws the dock's chrome and leaves the body an empty island its adapter fills (§9.4).
 
@@ -803,7 +803,7 @@ Every capability Studio has is a **command record** (`specs/studio.md` §13). Th
 
 `settings/menu` is the second row admitting more than one level, and the reason is the same one `commandbar/overflow` has: a **menu** prints each row's own name, chord and gate beside it, so nothing about a row's level has to be inferred from where the control sits. A **pinned slot** cannot do that — it has room for one thing and must lie about the rest by omission, which is why the rail's foot held only application-level Preferences for a release while project configuration lived elsewhere. The levels are still separated, in two places: the row admits exactly application and project, and the menu draws a divider where the level changes. The rail's **pinned** groups stay single-level, in `PANEL_PLACEMENT_MATRIX` — a panel is filed by what it writes, and there is no menu to say so for it.
 
-Panel placements — the two Navigator rail groups (project above, document below), the Navigator dock body, the Bottom dock (project and document, with the panel header stating which) and the Inspector dock (selection) — belong to the same matrix. They admit **Panel** records rather than commands, and they are `PANEL_PLACEMENT_MATRIX` in `levels.ts`, checked by `registerPanel()` at registration.
+Panel placements — the two Navigator rail groups (project above, document below), the Navigator dock body, the Bottom dock (project and document, with the panel header stating which) and the Inspector dock (document and selection: its Page tab is the open document's, its Element tab the selection's, `studio.md` §6) — belong to the same matrix. They admit **Panel** records rather than commands, and they are `PANEL_PLACEMENT_MATRIX` in `levels.ts`, checked by `registerPanel()` at registration.
 
 Three rules follow from the table and are not negotiable in review:
 

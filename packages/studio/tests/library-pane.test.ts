@@ -99,6 +99,7 @@ const {
   setLibraryLayout,
   setLibraryLocale,
   setLibrarySearch,
+  showLibraryNewMenu,
 } = await import("../src/browse/library-pane");
 const { openTab, closeAllTabs } = await import("../src/workspace/workspace");
 
@@ -1026,6 +1027,18 @@ describe("creation", () => {
     expect(libraryNewEntries().filter((row) => row.collection !== undefined)).toEqual([
       { collection: "posts", dir: "content", key: "collection:posts", label: "Posts" },
     ]);
+  });
+
+  test("the menu speaks the vocabulary of the panel it opens from", async () => {
+    await mount();
+    const opener = part("new")!;
+    // The Site panel's `+`: its section says Templates, so a layout row says Template.
+    showLibraryNewMenu(opener, { layout: "Template" });
+    await flush();
+    expect(menuRow("layout").textContent).toContain("Template — layouts/");
+    menuRow("layout").click();
+    await flush();
+    expect(created.map((request) => request.title)).toEqual(["New Template"]);
   });
 
   test("a document kind goes through the SHARED flow and opens the result", async () => {

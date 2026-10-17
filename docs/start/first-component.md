@@ -79,7 +79,7 @@ The chip takes on the accent color: this value is produced from something else n
 
 ## 7. Make the button count
 
-1. Select the button and open the Inspector's **Logic** tab, either by clicking it or by pressing :kbd[⌘⇧3]. Logic is where an element's behavior lives: its events, and the condition or repeating-list settings when it has them.
+1. Select the button and open the Inspector's **Logic** tab, either by clicking it or by pressing :kbd[⌘⇧4]. Logic is where an element's behavior lives: its events, and the condition or repeating-list settings when it has them.
 2. In the **Events** section, click **Add Event**. A binding appears on `onclick`, and since the file has no functions yet it starts as an inline handler.
 3. The picker beside the event name chooses how the binding responds. Set it to **Expression**, the mode for one-step reactions. (**Inline code** and **Existing function** are the other two.)
 4. In the formula editor, set the **Operator** to `+=`. The **Target** row becomes a signal picker, so choose `count`. In the **Value** row, leave the source on **Fixed value**, change its type from `null` to `num`, and enter `1`.

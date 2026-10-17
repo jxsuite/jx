@@ -16,7 +16,7 @@ Shipping a Jx site is part of the Studio flow, with no terminal and no separate 
 
 ## How it goes live
 
-1. In the **Source Control** panel, you write a message and **Commit and sync**. Studio records the change and pushes it to your repository.
+1. In the **Source Control** panel (**Show Source Control** in :kbd[⌘K]), you write a message and **Commit and sync**. Studio records the change and pushes it to your repository.
 2. The push wakes your host (or CI), which builds the project into plain HTML, CSS, and a little JavaScript.
 3. The host serves that output from a CDN. Your site is live.
 

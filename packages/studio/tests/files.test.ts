@@ -483,6 +483,7 @@ describe("openProject", () => {
     return {
       calls,
       renderLeftPanel: () => calls.push("left"),
+      resetProjectCaches: () => calls.push("reset caches"),
     };
   }
 
@@ -498,6 +499,8 @@ describe("openProject", () => {
 
   test("loads the project, expands conventional dirs, and opens the home page", async () => {
     const ctx = ctxSpies();
+    // The panel the workspace frame put on the Navigator as the project opened.
+    shell.leftTab = "site";
     installFsPlatform(
       {
         "components/card.json": "{}",
@@ -526,9 +529,10 @@ describe("openProject", () => {
     expect(st.dirs.has("pages")).toBe(true);
     expect(st.dirs.has("components")).toBe(true);
 
-    // The rail is no longer repainted by hand: it tracks `shell.leftTab`, which openProject sets.
-    expect(ctx.calls).toEqual(["left"]);
-    expect(shell.leftTab).toBe("files");
+    // The previous project's Site index and media listing are dropped before the Navigator paints.
+    expect(ctx.calls).toEqual(["reset caches", "left"]);
+    // The frame's panel stands: opening a project no longer forces the (developer) Files panel.
+    expect(shell.leftTab).toBe("site");
     expect(activeTab.value?.documentPath).toBe("pages/index.json");
 
     const recent = JSON.parse(localStorage.getItem("jx-studio-recent-projects") ?? "[]");

@@ -73,7 +73,7 @@ Filtering, sorting, and paging all happen in the database rather than in the bro
 :::doc-note
 Compiled pages carry no extension code. Each source is lowered at build time into a plain request to your site's own `/_jx/data` routes: `GET /_jx/data/comments?filter=…&sort=…&limit=…&offset=…&include=…` for a query, `GET /_jx/data/comments/<id>` for an entry, and `POST`/`PATCH`/`DELETE` for the actions. Each write action becomes an inline handler that reads the submitted form. Permission rules are evaluated on the server for every one of those requests.
 
-In the JSON, a route parameter binds as `{ "$ref": "#/$params/id" }` (the same way a **[dynamic route](/docs/framework/site/routing)** binds a content entry), and a form points at a write action with `"onsubmit": { "$ref": "#/state/addComment" }`. That last one is written in the **[Code editor](/docs/studio/logic/code)** today, because the **[Events](/docs/studio/logic/events)** section of the Inspector's **Logic** tab (:kbd[⌘⇧3]) lists plain functions in its handler picker, and a write action is not one.
+In the JSON, a route parameter binds as `{ "$ref": "#/$params/id" }` (the same way a **[dynamic route](/docs/framework/site/routing)** binds a content entry), and a form points at a write action with `"onsubmit": { "$ref": "#/state/addComment" }`. That last one is written in the **[Code editor](/docs/studio/logic/code)** today, because the **[Events](/docs/studio/logic/events)** section of the Inspector's **Logic** tab (:kbd[⌘⇧4]) lists plain functions in its handler picker, and a write action is not one.
 :::
 
 To see and fix the rows by hand, open the **[Data grid](/docs/studio/data/grid)**.

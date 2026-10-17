@@ -8,10 +8,10 @@
  * writing. A previewed SERP result is not a field; it is a picture you study, and studying it in a
  * strip above the canvas meant the card grew taller than the thing it describes.
  *
- * So it opens as a modal, from two places — the Document Header card and the Navigator's Page
- * panel. Two doors because the two are different moments: one while writing the page, one while
- * working on its head material. Both run `document.openSeo`, so there is a third door in the
- * palette and no surface owns the capability (one definition site per action, §13).
+ * So it opens as a modal, from two places — the Document Header card and the Inspector's Page tab.
+ * Two doors because the two are different moments: one while writing the page, one while working on
+ * its head material. Both run `document.openSeo`, so there is a third door in the palette and no
+ * surface owns the capability (one definition site per action, §13).
  *
  * **The card keeps the fields; the modal keeps the picture.** Title still lives on the card,
  * because it is the one head value you type while writing. Everything the modal holds is either a

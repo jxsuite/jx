@@ -293,8 +293,12 @@ export interface FsSyncContext {
    * and this module is imported BY the file layer those panels sit on top of — reaching up would be
    * a cycle. The bootstrap owns the list because the bootstrap is where the panels are already in
    * scope.
+   *
+   * Handed the project-relative paths the batch touched, so a cache that only one directory can
+   * change (the media listing, the component registry) can ignore the rest. `undefined` means the
+   * stream had a gap and any path may have changed.
    */
-  invalidateDerivedCaches?: () => void;
+  invalidateDerivedCaches?: (paths?: readonly string[]) => void;
   /**
    * After a reconnect, the clean, non-collab open tabs whose files may have changed while the
    * stream was down. The handler re-reads them; it should leave a tab whose content did not change
@@ -413,7 +417,7 @@ export function startFsSync(ctx: FsSyncContext): () => void {
       // Removed layout's `$head` to the open page, a `$paths` enumeration listing entries that are
       // Gone.
       invalidateUsages();
-      ctx.invalidateDerivedCaches?.();
+      ctx.invalidateDerivedCaches?.(events.map((event) => event.path));
       // Content versions are derived state of the same kind, and Studio's own writes change bytes:
       // A version kept past its echo would let an immutable cache answer with the old file.
       forgetEventVersions(events);

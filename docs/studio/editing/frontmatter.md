@@ -1,11 +1,12 @@
 ---
 title: "Frontmatter and page metadata"
-description: "Fill in titles, descriptions, social cards, and content-type fields with Jx Studio's Page panel and Document Header card, then preview the merged head."
+description: "Fill in titles, descriptions, social cards, and content-type fields with the Inspector's Page tab and the Document Header card, then preview the head."
 spec:
   - site-architecture.md#8.6
 code:
   - packages/studio/src/panels/head-panel.ts
   - packages/studio/src/surfaces/panel-page.ts
+  - packages/studio/src/panels/right-panel.ts
   - packages/studio/src/panels/frontmatter-panel.ts
   - packages/studio/src/panels/seo-modal.ts
   - packages/studio/src/panels/frontmatter-fields.ts
@@ -16,11 +17,11 @@ code:
 
 Every page carries information that isn't part of its visible text: a title, a description for search engines, an image for social shares. Content like a blog post adds fields such as a date, an author, or tags. This is the page's _frontmatter_, and Studio edits all of it as plain forms.
 
-Two surfaces show these fields: the **Page** panel in the Navigator, and the **Document Header** card docked at the top of the canvas in Edit view.
+Two surfaces show these fields: the **Page** tab of the Inspector, and the **Document Header** card docked at the top of the canvas in Edit view.
 
 ## The Page panel
 
-Click **Page** in the **Document** group of the Navigator rail, or run **Show Page** from the palette. Its header reads **PAGE · document**, and its sections, top to bottom, depend on the file you have open:
+The Page panel is the Inspector's first tab. Click it, press :kbd[⌘⇧1] (:kbd[Ctrl+Shift+1] on Windows/Linux), or select nothing on the canvas: the Inspector switches to Page on its own when the selection goes away, and back to the element you select next. The tab is named for what the open file is (**Page**, **Template**, **Component**, **Entry**, or **Document**), and its sections, top to bottom, depend on the file you have open:
 
 ![The Page panel showing Frontmatter, Page, and OpenGraph sections for a blog post](../../images/document-panel.png)
 
@@ -60,7 +61,7 @@ The escape hatch for everything else that can live in a page's head: analytics, 
 
 ## The Document Header card
 
-Every page with frontmatter or head tags carries a **Document Header** card in Edit view. It's docked across the top of the canvas pane, as wide as the pane rather than the page, and it stays in place while you scroll the page beneath it; a long form scrolls inside the card, under the wheel as well as by its scrollbar, instead of pushing the page down. The card never takes more than half the pane, so there's always a page to work on under it. Design view leaves it out so the artboards get the whole pane, and the same fields stay on the **Page** panel in the Navigator.
+Every page with frontmatter or head tags carries a **Document Header** card in Edit view. It's docked across the top of the canvas pane, as wide as the pane rather than the page, and it stays in place while you scroll the page beneath it; a long form scrolls inside the card, under the wheel as well as by its scrollbar, instead of pushing the page down. The card never takes more than half the pane, so there's always a page to work on under it. Design view leaves it out so the artboards get the whole pane, and the same fields stay on the Inspector's **Page** tab.
 
 Its bar names what the document is: the collection it belongs to, or **Document** when it belongs to none. For a page it also prints the route it will be published at. Underneath sit the **Title** field, the layout picker for site pages, and the collection's own fields: the same set as the Page panel's Frontmatter section. Click the bar to fold the card down to that one line, and click it again to open it. Studio remembers your last choice: every document you open afterwards starts with its card open or folded to match, even after a restart, while documents that are already open keep the state you left them in. A document that has a header always shows its bar in Edit view.
 

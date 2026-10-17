@@ -8,6 +8,8 @@ code:
   - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/panels/properties-panel.ts
   - packages/studio/src/panels/provenance.ts
+  - packages/studio/src/editor/insert-component.ts
+  - packages/studio/src/panels/site-panel.ts
 ---
 
 # Working with components
@@ -24,7 +26,7 @@ The natural way to make a component is to design it in place first, then promote
 
 ![The Convert to Component dialog with a tag name filled in](../../images/convert-to-component.png)
 
-Studio saves the component as its own file in the project's `components/` folder, swaps your selection for an instance of it, and adds it to the [Insert palette](/docs/studio/design/elements). Drop more instances anywhere from there. If the component's slots need attention, Studio files it on **[Problems](/docs/studio/interface/problems-and-progress)** naming the component file, so it stays listed until you fix it.
+Studio saves the component as its own file in the project's `components/` folder, swaps your selection for an instance of it, and adds it to the [Insert palette](/docs/studio/design/elements) and the **Components** section of the [Site panel](/docs/studio/interface#the-site-panel). Drop more instances anywhere from there. If the component's slots need attention, Studio files it on **[Problems](/docs/studio/interface/problems-and-progress)** naming the component file, so it stays listed until you fix it.
 
 To open a component from an instance, right-click the instance and choose **Edit Component**, or click **→ Edit definition** under **Component Settings** on the Content tab.
 
@@ -62,4 +64,4 @@ A component is a plain file (`components/pricing-card.json`), and converting als
 ## Next
 
 - Repeat a component once per item of a list with **[Repeaters](/docs/studio/design/repeaters)**.
-- Insert instances from the **[Insert palette](/docs/studio/design/elements)**.
+- Insert instances from the **[Insert palette](/docs/studio/design/elements)**, the Site panel's **Components** cards, or the **Components** heading of the slash menu and the canvas **+**. However you insert one, Studio adds the component to the page's imports in the same step, so the page always resolves the element it shows.

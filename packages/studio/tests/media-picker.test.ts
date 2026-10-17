@@ -51,8 +51,13 @@ void mock.module("../src/store", () => ({
       fn(...args),
 }));
 
-const { invalidateMediaCache, mountMediaPicker, unmountMediaPicker, uploadAndAssign } =
-  await import("../src/ui/media-picker");
+const {
+  invalidateMediaCache,
+  mountMediaPicker,
+  projectMediaFiles,
+  unmountMediaPicker,
+  uploadAndAssign,
+} = await import("../src/ui/media-picker");
 const { openMediaBrowserSurface } = await import("../src/surfaces/media-browser");
 const { initLayers, layerHost } = await import("../src/ui/layers");
 
@@ -91,6 +96,11 @@ const defaultTree = {
   ],
   "public/img": [{ name: "photo.JPG", path: "public/img/photo.JPG", type: "file" }],
 } satisfies Record<string, DirEntry[]>;
+
+/** The default tree's listing of one directory, empty for a directory it does not hold. */
+function defaultListing(dir: string): DirEntry[] {
+  return new Map<string, DirEntry[]>(Object.entries(defaultTree)).get(dir) ?? [];
+}
 
 function installTree(tree: Record<string, DirEntry[]>, canvasUrl?: string) {
   installMockPlatform({
@@ -258,6 +268,56 @@ describe("media cache collection", () => {
     expect(rows()[0]?.querySelector("img")?.getAttribute("src")).toBe(
       "http://127.0.0.1:54321/logo.png",
     );
+  });
+
+  test("callers asking while the walk runs share it rather than starting another", async () => {
+    let walks = 0;
+    installMockPlatform({
+      listDirectory: async (dir: string) => {
+        if (dir === "public") {
+          walks += 1;
+        }
+        return defaultListing(dir);
+      },
+    });
+    // The Site panel asks on every Navigator paint; several paints land before the walk does.
+    const answers = [projectMediaFiles(), projectMediaFiles(), projectMediaFiles()];
+    expect(answers).toEqual([null, null, null]);
+    await flush();
+    expect(walks).toBe(1);
+    expect(projectMediaFiles()?.map((file) => file.file)).toEqual([
+      "public/logo.png",
+      "public/clip.mp4",
+      "public/img/photo.JPG",
+    ]);
+  });
+
+  test("a walk that started before an invalidation cannot land after it", async () => {
+    let release: (entries: DirEntry[]) => void = () => {};
+    let held = true;
+    installMockPlatform({
+      listDirectory: (dir: string) => {
+        if (dir === "public" && held) {
+          held = false;
+          return new Promise<DirEntry[]>((resolve) => {
+            release = resolve;
+          });
+        }
+        return Promise.resolve(defaultListing(dir));
+      },
+    });
+    const first = projectMediaFiles();
+    // An upload lands mid-walk: the listing in flight no longer describes the project.
+    invalidateMediaCache();
+    expect([first, projectMediaFiles()]).toEqual([null, null]);
+    await flush();
+    release([{ name: "stale.png", path: "public/stale.png", type: "file" }]);
+    await flush();
+    expect(projectMediaFiles()?.map((file) => file.file)).toEqual([
+      "public/logo.png",
+      "public/clip.mp4",
+      "public/img/photo.JPG",
+    ]);
   });
 
   test("invalidateMediaCache forces reload; an unreadable root yields an empty browser", async () => {

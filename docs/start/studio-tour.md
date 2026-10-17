@@ -29,7 +29,7 @@ The pill in the middle of the Command Bar reads `◈ project › document › se
 
 ## The Navigator
 
-The labelled rail on the far left, and the panel it opens beside it. The rail belongs to the **Design** workspace and is in two groups. **Project**: **Files** and **Source** (the Source Control panel). **Document**: **Outline**, **Page**, **Data** and **Packages**. One panel shows at a time, under a header naming it and the level it works at, so you always know what you're looking at. The **Settings** gear in the Command Bar opens a menu holding three entries, each with a submenu that jumps straight to a section: **Preferences…** for the app, **Open Project Settings** and **Open Project Styles** for this project. Each panel is described in **[The workspace](/docs/studio/interface)**.
+The labelled rail on the far left, and the panel it opens beside it. The rail belongs to the **Design** workspace and is in two groups. **Project**: **Site**, your pages by address with the templates, components and media they are made of; it is where the Navigator opens. **Document**: **Outline** and **Data**. **Files** and **Packages** join them when you turn on **Show developer panels** in Preferences. One panel shows at a time, under a header naming it and the level it works at, so you always know what you're looking at. The **Settings** gear in the Command Bar opens a menu holding three entries, each with a submenu that jumps straight to a section: **Preferences…** for the app, **Open Project Settings** and **Open Project Styles** for this project. Each panel is described in **[The workspace](/docs/studio/interface)**.
 
 ## The panes and the canvas
 
@@ -39,7 +39,7 @@ Above the pane sits its strip of open documents. Under that, a context bar state
 
 ## The Inspector
 
-The dock on the right, in four tabs: **Content** (the selected element's settings), **Style** (the visual inspector), **Logic** (what happens on click, input and so on), and **Assistant** (the AI chat). **[Design mode](/docs/studio/design)** covers the Style tab, and **[Logic](/docs/studio/logic)** covers the Logic tab.
+The dock on the right, in three tabs. **Page** is the open document's own settings: title, address, template, and search and sharing. **Element** is the selected element, in three views: **Content** (its settings), **Style** (the visual inspector) and **Logic** (what happens on click, input and so on). **Assistant** is the AI chat. Select an element and the Inspector switches to Element; select nothing and it goes back to Page. **[Design mode](/docs/studio/design)** covers Style, and **[Logic](/docs/studio/logic)** covers Logic.
 
 ## The Bottom dock
 

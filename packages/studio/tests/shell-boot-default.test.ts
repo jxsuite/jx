@@ -29,8 +29,9 @@ describe("shell boot defaults (no persisted record)", () => {
     expect(shell.docks.right.size).toBe(280);
   });
 
-  test("the Inspector wakes up on Content, not on the assistant", () => {
-    // The assistant costs zero width as a tab, but it is still not what an editor should open on.
-    expect(DEFAULT_INSPECTOR_TAB).toBe("properties");
+  test("the Inspector wakes up on Page, not on the assistant", () => {
+    // The assistant costs zero width as a tab, but it is still not what an editor should open on;
+    // With nothing selected, the document's own settings are what the Inspector is about (§6).
+    expect(DEFAULT_INSPECTOR_TAB).toBe("page");
   });
 });

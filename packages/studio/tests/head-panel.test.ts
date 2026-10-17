@@ -30,18 +30,15 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { nothing } from "lit-html";
-import { getPanel, resetPanels } from "../src/panels/panel-registry";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { setProjectState } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
 import { activeRegistry, setActiveRegistry } from "../src/commands/active-registry";
 
 import type { HeadLayers, SeoPreview } from "../src/panels/head-panel";
-import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
 import type { FormatFrontmatter } from "../src/format/format-host";
-import type { Tab } from "../src/tabs/tab";
 import type { DirEntry } from "../src/types";
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 
@@ -71,8 +68,10 @@ const {
   invalidateLayoutPickerCache,
   layoutDisplayName,
   layoutHeadEntries,
-  registerPagePanel,
+  bindPageHost,
+  pageTabTitle,
   renderPagePanel,
+  renderPageTab,
   resolveMetaField,
   resolveSeoUrl,
   resolveTitleField,
@@ -156,7 +155,7 @@ async function draw(doc: JxMutableNode): Promise<Drawn> {
       fn(result.doc);
     },
     document: result.doc,
-    renderLeftPanel: () => {
+    rerender: () => {
       result.leftPanelRenders += 1;
     },
   });
@@ -350,7 +349,7 @@ describe("page section", () => {
           fn(next);
         },
         document: next,
-        renderLeftPanel: () => {},
+        rerender: () => {},
       });
       runPending();
     });
@@ -924,57 +923,78 @@ describe("frontmatter section", () => {
 // ─── The panel record, and which document it is drawn for ────────────────────
 
 /*
- * These four moved here from `tests/left-panel.test.ts`, where they read the arguments the
- * Navigator handed a lit renderer. The renderer is gone, so what they assert is asserted through
- * the record itself: `afterRender` mounts the document, and the contract is which document it draws
- * and where a commit lands. `left-panel.test.ts` goes on covering the Navigator's own routing.
+ * The Page panel is the Inspector's Page tab now (§6): the dock hands `bindPageHost` the leaf's body
+ * host and `renderPageTab` draws the FOCUSED document into it. What these assert is which document
+ * it draws and where a commit lands; `right-panel.test.ts` covers the dock's own routing.
  */
-describe("the Page panel record", () => {
-  /* SAFETY: the Page panel record's render and afterRender read only ctx.doc and ctx.rerender
-     (registerPagePanel in head-panel.ts), so no NavigatorPanelDeps member is ever read off this
-     empty object. */
-  const NO_DEPS = {} as NavigatorPanelDeps;
-
-  /**
-   * Run the registered panel's `afterRender` against a body the Navigator would have drawn.
-   *
-   * The record is what is under test, so it is asked for by id rather than called directly: the
-   * mount seam a panel gets is `.panel-content` inside the body, and a record that returned markup
-   * instead would leave that node empty.
-   */
-  async function paint(tab: Tab): Promise<HTMLElement> {
-    resetPanels();
-    registerPagePanel();
-    const record = getPanel("page")!;
+describe("the Inspector's Page tab", () => {
+  /** Hand the tab a host the dock would have created, and let it draw the focused document. */
+  async function paint(): Promise<HTMLElement> {
     const body = document.createElement("div");
-    body.innerHTML = '<div class="panel-content"></div>';
     document.body.append(body);
-    // `render` draws nothing: the document is mounted in `afterRender` and lit owns the body.
-    expect(record.render({ deps: NO_DEPS, doc: null, rerender: () => {} })).toBe(nothing);
-    record.afterRender!(
-      {
-        deps: NO_DEPS,
-        doc: {
-          canvas: null,
-          content: tab.doc.content,
-          document: tab.doc.document,
-          documentPath: tab.documentPath,
-          mode: tab.doc.mode,
-          selection: [],
-          ui: tab.session.ui,
-        },
-        rerender: () => {},
-      },
-      body,
-    );
+    bindPageHost(body);
     await flush(4);
     return body;
   }
 
+  afterEach(() => {
+    bindPageHost(null);
+  });
+
+  test("its title says what the document is (§6)", () => {
+    expect(pageTabTitle("pages/about.json")).toBe("Page");
+    expect(pageTabTitle("pages/blog/[slug].json")).toBe("Page");
+    expect(pageTabTitle("layouts/base.json")).toBe("Template");
+    expect(pageTabTitle("components/site-card.json")).toBe("Component");
+    expect(pageTabTitle("notes/readme.md")).toBe("Document");
+    expect(pageTabTitle(null)).toBe("Document");
+  });
+
+  test("a file a collection owns is an Entry", () => {
+    resetStudioState();
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "Blog",
+      projectConfig: { content: { posts: { format: "markdown", source: "./content/posts" } } },
+      projectDirs: [],
+      projectRoot: ".",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    expect(pageTabTitle("content/posts/hello.md")).toBe("Entry");
+    setProjectState(null);
+  });
+
+  test("with no document open it draws nothing, and a document arriving draws it", async () => {
+    resetStudioState();
+    closeAllTabs();
+    const body = await paint();
+    expect(body.querySelector('[data-section="page"]')).toBeNull();
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
+    renderPageTab();
+    await flush(4);
+    expect(body.querySelector('[data-section="page"]')).not.toBeNull();
+    closeAllTabs();
+    renderPageTab();
+    await flush(4);
+    expect(body.querySelector('[data-section="page"]')).toBeNull();
+  });
+
+  test("letting the host go takes the surface out of it", async () => {
+    resetStudioState();
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
+    const body = await paint();
+    expect(body.querySelector('[data-section="page"]')).not.toBeNull();
+    bindPageHost(null);
+    expect(body.children).toHaveLength(0);
+  });
+
   test("a JSON document is drawn from its root node and transacts mutations directly", async () => {
     resetStudioState();
     const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
-    const body = await paint(tab);
+    const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "title", "Page title");
     expect(tab.doc.document.title).toBe("Page title");
@@ -989,7 +1009,7 @@ describe("the Page panel record", () => {
       $head: [{ attributes: { content: "d", name: "description" }, tagName: "meta" }],
       title: "FM Title",
     };
-    const body = await paint(tab);
+    const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     expect(control(page, "title").value).toBe("FM Title");
     expect(control(page, "description").value).toBe("d");
@@ -1000,7 +1020,7 @@ describe("the Page panel record", () => {
     const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/b.md" });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = { title: "Old" };
-    const body = await paint(tab);
+    const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "title", "New");
     expect(tab.doc.content.frontmatter.title).toBe("New");
@@ -1019,7 +1039,7 @@ describe("the Page panel record", () => {
       $head: [{ attributes: { content: "x", name: "description" }, tagName: "meta" }],
       title: "Same",
     };
-    const body = await paint(tab);
+    const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "description", "");
     expect(tab.doc.content.frontmatter.$head).toBeUndefined();

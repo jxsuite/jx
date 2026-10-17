@@ -100,7 +100,6 @@ import {
   persistedSession,
   persistedWorkspace,
   resetProjectShell,
-  setActivityTab,
 } from "../shell";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import { restoreSession } from "../workspace/session";
@@ -263,13 +262,19 @@ export async function loadProject() {
  * the window on the project it already had, and the caller announces the outcome — "Opening the
  * project…" over a dialog the user just dismissed is a report of something that did not happen.
  *
- * @param {{ renderLeftPanel: () => void }} ctx
+ * @param ctx.renderLeftPanel Repaint the Navigator.
+ * @param ctx.resetProjectCaches Drop the caches panels above this module keep for the project being
+ *   left (the Site panel's index, the media listing). Injected for the reason `fs-events.ts` takes
+ *   `invalidateDerivedCaches`: those panels import from the file layer, so reaching up is a cycle,
+ *   and `studio.ts`'s `openRecentProject` runs the same reset.
  * @returns {Promise<boolean>} Whether the window changed project.
  */
 export async function openProject({
   renderLeftPanel,
+  resetProjectCaches,
 }: {
   renderLeftPanel: () => void;
+  resetProjectCaches?: () => void;
 }): Promise<boolean> {
   try {
     const platform = getPlatform();
@@ -322,7 +327,10 @@ export async function openProject({
     // Left behind. The poll timer goes with them; the panel re-arms it on its next render.
     cleanupGitPanel();
     resetProjectShell();
-    setActivityTab("files");
+    resetProjectCaches?.();
+    /* The Navigator's panel is the workspace frame's, applied as the project opened (§22.3): Design
+       opens on the Site panel. Forcing Files here put a developer panel with no rail button on
+       screen and re-opened a Navigator the frame had hidden. */
     addRecentProject(requireProjectState().name, requireProjectState().projectRoot);
     renderLeftPanel();
     // The project's name is permanent state in the status bar's PROJECT field now.
@@ -2580,6 +2588,10 @@ export function registerFilesPanel(): void {
     level: "project",
     dock: "navigator",
     icon: "folder",
+    /* A developer panel (§5.1): the Site panel lists the project by what its files ARE, so the tree
+       of where they are stored is on the Design rail only with **Show developer panels** on. With it
+       off the panel is still `view.setActivity { tab: "files" }` and a palette row away. */
+    rail: "developer",
     // The body is a document, so lit draws nothing and the mount happens against the painted DOM.
     // `afterRender` runs on every repaint; {@link mountFilesPanel} is idempotent.
     render: () => nothing,

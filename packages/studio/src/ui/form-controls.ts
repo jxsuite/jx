@@ -805,7 +805,7 @@ function entryIdsFor(collection: string): Promise<string[]> {
  * second frame a document has to be GIVEN, since nothing repaints it on the read's behalf.
  *
  * Exported because two surfaces draw the choices and neither is this control: the Document Header
- * card and the Navigator's Page panel project a `$ref` field as a picker row of their own
+ * card and the Inspector's Page tab project a `$ref` field as a picker row of their own
  * (`panels/frontmatter-fields.ts`), and what they need is not the widget but the answer behind it.
  * Taking it from here rather than calling `listCollectionEntryIds` directly is what keeps ONE cache
  * and ONE invalidation: a collection listed for the Document Header card is not listed again for

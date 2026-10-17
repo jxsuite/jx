@@ -18,14 +18,39 @@ export interface ComponentEntry extends Omit<ComponentMeta, "path"> {
 export let componentRegistry: ComponentEntry[] = [];
 export let _componentRegistryLoaded = false;
 
-export async function loadComponentRegistry() {
-  try {
-    const platform = getPlatform();
-    componentRegistry = await platform.discoverComponents(projectState?.projectRoot || undefined);
+/** Bumped by every load, so only the newest scan may write the registry. */
+let _generation = 0;
+/** The newest scan, which a superseded one waits on so its caller still sees a loaded registry. */
+let _newest: Promise<void> = Promise.resolve();
+
+/**
+ * Scan the project's components into the registry.
+ *
+ * Scans can overlap (the project-open path and the Site panel each start one), and a scan bound to
+ * the project being closed may resolve after the next project's. So the newest scan wins: an older
+ * one discards what it read and resolves when the newest has written the registry.
+ */
+export function loadComponentRegistry(): Promise<void> {
+  _generation += 1;
+  const generation = _generation;
+  const scan = (async () => {
+    let found: ComponentEntry[] | null = null;
+    try {
+      found = await getPlatform().discoverComponents(projectState?.projectRoot || undefined);
+    } catch {
+      found = null;
+    }
+    if (generation !== _generation) {
+      await _newest;
+      return;
+    }
+    if (found) {
+      componentRegistry = found;
+    }
     _componentRegistryLoaded = true;
-  } catch {
-    _componentRegistryLoaded = true;
-  }
+  })();
+  _newest = scan;
+  return scan;
 }
 
 /**

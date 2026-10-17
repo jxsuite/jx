@@ -416,6 +416,28 @@ describe("Insert panel — components", () => {
     expect(children[0]).toEqual({ $props: { title: "" }, tagName: "my-card" });
   });
 
+  test("a click imports the component, exactly as a drop of the same card does (§5.7)", async () => {
+    await seedRegistry([projectComp]);
+    resetWorkspaceWithTab({ children: [], tagName: "div" }, { documentPath: "pages/index.json" });
+    await renderElements();
+    hostElement('[data-component-tag="my-card"]').click();
+    expect(activeTab.value?.doc.document.$elements).toEqual([
+      { $ref: "../components/my-card.json" },
+    ]);
+    // A second click inserts a second instance and imports nothing twice.
+    hostElement('[data-component-tag="my-card"]').click();
+    expect(childrenOf(activeTab.value?.doc.document)).toHaveLength(2);
+    expect(activeTab.value?.doc.document.$elements).toHaveLength(1);
+  });
+
+  test("an HTML element click imports nothing", async () => {
+    await seedRegistry([projectComp]);
+    resetWorkspaceWithTab({ children: [], tagName: "div" }, { documentPath: "pages/index.json" });
+    await renderElements();
+    hostElement('[data-block-tag="h1"]').click();
+    expect(activeTab.value?.doc.document.$elements).toBeUndefined();
+  });
+
   test("toggling the components section records the disclosure", async () => {
     await seedRegistry([projectComp]);
     await renderElements();

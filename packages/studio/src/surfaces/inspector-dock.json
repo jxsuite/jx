@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioInspectorDock",
-  "$description": "The Inspector dock's own chrome, as a Jx document over the kit: a header naming what the dock is pointed at, a real `tablist` of four tabs, and four `tabpanel`s. It draws no tab BODY — all four are mounted documents of their own (`surfaces/properties-panel.json`, `surfaces/style-panel.json`, `surfaces/logic-panel.json`, and the assistant's) — so each panel carries one empty `[part=\"panel-body\"]` island the adapter announces through `onNodeCreated` (studio-ui-guidelines.md §9.4). The four panels are keyed on the tab id and the id list never changes, so a body host is created ONCE and lives as long as the dock: that is what the old module's hand-built permanent containers were for, and it is now a property of a keyed `$map` rather than a rule someone has to keep. `panels/right-panel.ts` keeps every decision — which tab is selected, per document or detached; what the target's name is; and which of the four seams a host is handed to.",
+  "$description": "The Inspector dock's own chrome, as a Jx document over the kit: a header naming the tab and what the dock is pointed at, a real `tablist` of three tabs (Page · Element · Assistant, specs/studio.md §6), and a `tabpanel` per tab. It draws no tab BODY: each of the five leaves (the Page tab's body, Element's Content, Style and Logic, and the Assistant) is a mounted document of its own, so each leaf carries one empty `[part=\"panel-body\"]` island the adapter announces through `onNodeCreated` (studio-ui-guidelines.md §9.4). Element hosts three leaves behind a sub-switch, a single-select `jx-action-group` inside its panel; the other two tabs host one leaf each and draw no switch. Tabs and leaves are keyed on their ids and neither list ever changes, so a body host is created ONCE and lives as long as the dock: the hidden leaves stay mounted, which is what keeps a half-typed value and the Assistant's transcript alive across a switch. `panels/right-panel.ts` keeps every decision — which leaf is selected, per document or detached; what the Page tab is called for this document; what the target's name is; and which seam a host is handed to.",
   "tagName": "div",
   "attributes": {
     "part": "inspector-dock"
@@ -42,7 +42,7 @@
       }
     },
     "& [part=\"tabs\"]": {
-      "$description": "Four words in a 280px dock, allowed to compress rather than to become anonymous — which is why the tabs are not icons (§6). The kit tab's own 220px cap would let one tab push the last off the strip, so each takes an equal quarter.",
+      "$description": "Three words in a 280px dock, allowed to compress rather than to become anonymous, which is why the tabs are not icons (§6). The kit tab's own 220px cap would let one tab push the last off the strip, so each takes an equal third.",
       "flex": "0 0 auto",
       "gap": "0",
       "fontSize": "var(--jx-text-sm)"
@@ -55,16 +55,12 @@
       "padding": "var(--jx-space-1) var(--jx-space-2)"
     },
     "& [part=\"panel\"]": {
-      "$description": "`#right-panel > .panel-body { flex: 1; min-height: 0; overflow-y: auto }`. The kit's tab panel pads itself for a dialog; a dock's tab is the whole column and each body pads its own content.",
+      "$description": "`#right-panel > .panel-body { flex: 1; min-height: 0; overflow-y: auto }`, now a flex column: Element's sub-switch sits above its leaves and must not scroll away with them. The kit's tab panel pads itself for a dialog; a dock's tab is the whole column and each body pads its own content.",
+      "display": "flex",
+      "flexDirection": "column",
       "flex": "1",
       "minHeight": "0",
       "padding": "0",
-      "overflowY": "auto"
-    },
-    "& [part=\"panel\"][data-tab=\"assistant\"]": {
-      "$description": "The chat owns its own scrolling, so its panel is a nested flex column that does not scroll.",
-      "display": "flex",
-      "flexDirection": "column",
       "overflow": "hidden"
     },
     "& [part=\"panel\"][hidden]": {
@@ -74,7 +70,34 @@
       "display": "flex",
       "flex": "1",
       "flexDirection": "column",
-      "minHeight": "0"
+      "minHeight": "0",
+      "overflowY": "auto"
+    },
+    "& [part=\"subtabs\"]": {
+      "$description": "Element's Content · Style · Logic switch. It is not a second tab strip: three views of the one selected node, so it is a single-select group inside the tab's body, and it does not count against the dock's four-tab cap (studio-ui-guidelines.md §12.2).",
+      "flex": "0 0 auto",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"subtab\"]": {
+      "flex": "1 1 0",
+      "justifyContent": "center"
+    },
+    "& [part=\"leaf-empty\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-6) var(--jx-space-4)",
+      "textAlign": "center",
+      "lineHeight": "1.5",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"panel-body\"][data-tab=\"assistant\"]": {
+      "$description": "The chat owns its own scrolling, so its body is a flex column that does not scroll.",
+      "overflow": "hidden"
+    },
+    "& [part=\"panel-body\"][data-active=\"false\"]": {
+      "$description": "A leaf that is not the one showing stays MOUNTED and is only taken out of the layout: it is a document with its own state, and rebuilding it on every switch would drop whatever it was holding.",
+      "display": "none"
     }
   },
   "children": [
@@ -173,11 +196,130 @@
         },
         "children": [
           {
-            "$description": "The island. Every one of the four tabs is a mounted document of its own, so this stays EMPTY for the life of the dock — `panels/right-panel.ts` is handed it through `onNodeCreated` and passes it to that tab's binder exactly once. It is a slotted child rather than the panel element itself because `jx-tab-panel` distributes its own slot, and a second owner of that child list would fight it.",
             "tagName": "div",
             "attributes": {
-              "part": "panel-body",
-              "data-jx-region": "${$map.item.region}"
+              "part": "subtabs-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$switch": {
+              "$ref": "$map/item/hasLeaves"
+            },
+            "cases": {
+              "true": {
+                "tagName": "jx-action-group",
+                "attributes": {
+                  "part": "subtabs"
+                },
+                "$props": {
+                  "selects": "single",
+                  "compact": true,
+                  "label": "${$map.item.title} view"
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/leaves"
+                    },
+                    "key": {
+                      "$ref": "$map/item/key"
+                    },
+                    "map": {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "subtab",
+                        "data-tab": "${$map.item.key}"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "emphasized": true,
+                        "checked": {
+                          "$ref": "$map/item/shown"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/selectTab"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/key"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "${$map.item.title}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "$prototype": "Array",
+            "items": {
+              "$ref": "$map/item/leaves"
+            },
+            "key": {
+              "$ref": "$map/item/key"
+            },
+            "map": {
+              "tagName": "div",
+              "attributes": {
+                "part": "leaf",
+                "role": "none",
+                "data-tab": "${$map.item.key}"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "leaf-empty-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "$map/item/hasEmpty"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "leaf-empty"
+                      },
+                      "textContent": "${$map.item.empty}"
+                    }
+                  }
+                },
+                {
+                  "$description": "The island. Every leaf is a mounted document of its own, so this stays EMPTY for the life of the dock — `panels/right-panel.ts` is handed it through `onNodeCreated` and passes it to that leaf's binder exactly once.",
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "panel-body",
+                    "data-tab": "${$map.item.key}",
+                    "data-active": "${$map.item.shown}",
+                    "data-jx-region": "${$map.item.region}"
+                  }
+                }
+              ]
             }
           }
         ]

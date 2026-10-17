@@ -11,7 +11,8 @@
  * Four sections, and each one closes a hole the shell redesign named:
  *
  * - **Appearance** — the chrome theme. `shell.theme` and `view.setTheme` already existed; nothing
- *   rendered them, so the only way to change the theme was to run a command by hand.
+ *   rendered them, so the only way to change the theme was to run a command by hand. Beside it,
+ *   **Show developer panels**, which puts Files and Packages on the Design rail (§5.1).
  * - **Assistant** — the provider key. It used to live in `Assistant: Settings…`, a dialog reachable
  *   only from inside the assistant panel, which meant a key had to be configured from the surface
  *   that was broken for want of one. That dialog is deleted; this is where it went.
@@ -62,6 +63,7 @@ import {
 } from "./preferences-accounts";
 import { applyKeybindingOverrides, rebindCommand, resetKeybinding } from "./preferences-keymap";
 import { openPreferencesSurface } from "../surfaces/preferences";
+import { developerPanelsShown, setDeveloperPanelsShown } from "./developer-panels";
 
 import type { ShortcutRow } from "../commands/reference";
 import type { RebindResult } from "./preferences-keymap";
@@ -550,6 +552,7 @@ function view(): PreferencesView {
     sectionTitle: active?.title ?? "",
     sections: sectionsView(),
     themes: themesView(),
+    developerPanels: developerPanelsShown(),
     ...(_section === "keyboard" ? keyboardView() : KEYBOARD_IDLE),
   };
 }
@@ -612,6 +615,10 @@ export function openPreferences(section?: string): Promise<null> {
       onResetBinding: resetBinding,
       onSelectSection: selectSection,
       onSetTheme: setTheme,
+      onSetDeveloperPanels: (show: boolean) => {
+        setDeveloperPanelsShown(show);
+        repaint();
+      },
       onShowConflict: showConflict,
       onToggleKeystroke: toggleKeystroke,
       onToggleRebind: toggleRebind,

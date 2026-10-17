@@ -21,9 +21,9 @@
  *
  * **The canvas mode is the STAGE's question, and this module still takes none.** The stage draws a
  * host for the card in Edit only (`wantsDocHeader` in `canvas/canvas-render.ts`): Design gives its
- * artboards the whole pane, and the Navigator's Page panel carries the same fields in every mode,
- * so nothing is out of reach in either. The old mode gate lived HERE, as a `getCanvasMode()` check
- * the card ran to decide whether to exist; the decision now has one owner, the frame that draws the
+ * artboards the whole pane, and the Inspector's Page tab carries the same fields in every mode, so
+ * nothing is out of reach in either. The old mode gate lived HERE, as a `getCanvasMode()` check the
+ * card ran to decide whether to exist; the decision now has one owner, the frame that draws the
  * page, and this module draws into whatever host it is handed.
  *
  * **One reserved-key policy, one `collectFmFields` call.** The two field sets this card merges used
@@ -540,7 +540,7 @@ function layoutName(path: string): string {
  * One schema-driven frontmatter field, as the row that draws it and the write that commits it.
  *
  * **What the row LOOKS like is `panels/frontmatter-fields.ts`'s answer, not this module's.** The
- * Navigator's Page panel draws the same field set from the same schemas, and the two surfaces
+ * Inspector's Page tab draws the same field set from the same schemas, and the two surfaces
  * deciding independently that a `$ref` is a picker, that `"uri-reference"` is a media format or
  * that an array is a comma-separated line is exactly how they came to disagree about `title`. What
  * stays here is what the card COMMITS INTO — this tab's frontmatter, through its transaction log.

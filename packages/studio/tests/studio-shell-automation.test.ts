@@ -136,7 +136,14 @@ describe("run() reaches the implementations", () => {
     expect(shell.docks.right.collapsed).toBe(false);
     expect(activeTab.value?.session.ui.rightTab).toBe("assistant");
     await api().run("view.setAssistant", { open: false });
+    // The fixture has a node selected, so closing steps onto the tab the strip rests on with a
+    // Selection: Element, on its last leaf (Content by default), not the document's Page (§6).
     expect(activeTab.value?.session.ui.rightTab).toBe("properties");
+    activeTab.value!.session.selection = [];
+    await api().run("view.setAssistant", { open: true });
+    await api().run("view.setAssistant", { open: false });
+    // With nothing selected it rests on Page.
+    expect(activeTab.value?.session.ui.rightTab).toBe("page");
     expect(shell.docks.right.collapsed).toBe(false);
   });
 
@@ -160,7 +167,7 @@ describe("run() reaches the implementations", () => {
 
   test("an undeclared panel id refuses through the hook, naming the declared set", async () => {
     expect(await refusal("view.setActivity", { tab: "head" })).toContain(
-      "is not declared — declared: files, search, git, i18n, layers, page, data, packages, insert",
+      "is not declared — declared: site, files, search, git, i18n, layers, data, packages, insert",
     );
   });
 

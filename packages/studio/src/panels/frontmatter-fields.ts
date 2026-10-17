@@ -11,7 +11,7 @@
  * what that control currently holds, and how to read the control's answer back into a frontmatter
  * value. It is a projection rather than a renderer, and that is the whole of why it lives here:
  * both surfaces that edit frontmatter are Jx documents now (the Document Header card,
- * `src/surfaces/doc-header.json`, and the Navigator's Page panel, `src/surfaces/panel-page.json`),
+ * `src/surfaces/doc-header.json`, and the Inspector's Page tab, `src/surfaces/panel-page.json`),
  * and a document draws its own markup. What they must not each decide is that a `$ref` field is a
  * picker, that `"uri-reference"` is a media format, or that an array is a comma-separated line — so
  * they do not: they ask here and draw the answer.

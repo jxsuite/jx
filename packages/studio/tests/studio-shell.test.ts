@@ -1071,7 +1071,8 @@ describe("openRecentProject", () => {
   test("loads project.json, rebuilds project state, and opens the project", async () => {
     await toolbarCtx.openRecentProject("/recent/site");
     expect(platform.projectRoot).toBe("/recent/site");
-    expect(shell.leftTab).toBe("files");
+    // The Design frame's Navigator panel, not the developer Files panel the open used to force.
+    expect(shell.leftTab).toBe("site");
     expect(statusMessages).toHaveLength(0);
   });
 

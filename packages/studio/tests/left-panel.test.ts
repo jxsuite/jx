@@ -308,7 +308,8 @@ describe("left panel — document tabs", () => {
   test("every document tab has its own no-document sentence", async () => {
     closeAllTabs();
     const seen = new Set<string>();
-    for (const tabName of ["layers", "packages", "data", "page"]) {
+    // Page is the Inspector's tab now (§6), so the Navigator's document panels are these three.
+    for (const tabName of ["layers", "packages", "data"]) {
       shell.leftTab = tabName;
       await mountWith();
       const message = navigatorHost().querySelector('[part="empty-message"]')?.textContent ?? "";
@@ -316,7 +317,7 @@ describe("left panel — document tabs", () => {
       seen.add(message);
       unmount();
     }
-    expect(seen.size).toBe(4);
+    expect(seen.size).toBe(3);
   });
 });
 

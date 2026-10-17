@@ -181,9 +181,11 @@ describe("startFsSync", () => {
     });
     resetStudioState({ dirs: new Map(), expanded: new Set() });
     let drops = 0;
+    const seen: (readonly string[] | undefined)[] = [];
     const stop = startFsSync({
-      invalidateDerivedCaches: () => {
+      invalidateDerivedCaches: (paths) => {
         drops += 1;
+        seen.push(paths);
       },
       renderLeftPanel: () => {},
     });
@@ -197,6 +199,8 @@ describe("startFsSync", () => {
 
     handler([{ isDir: false, path: "layouts/base.json", type: "unlink" }]);
     expect(drops).toBe(2);
+    // Each drop names the batch's paths, so a cache one directory owns can ignore the rest.
+    expect(seen).toEqual([["pages/new.md"], ["layouts/base.json"]]);
     stop();
   });
 

@@ -142,6 +142,7 @@ import { invalidateLayoutPickerCache } from "./panels/head-panel";
 import { installAutomationHook } from "./services/automation";
 import { invalidateLibrary } from "./browse/library-pane";
 import { invalidateMediaCache } from "./ui/media-picker";
+import { invalidateSiteIndex, resetSitePanel } from "./panels/site-panel";
 import { setMediaChangedHandler } from "./files/media-upload";
 import { applyFileDrop } from "./editor/file-drop-action";
 import {
@@ -568,6 +569,7 @@ setFileDropHandler(applyFileDrop);
 setMediaChangedHandler(async (dir) => {
   invalidateMediaCache();
   invalidateLibrary();
+  invalidateSiteIndex();
   await loadDirectory(dir);
   renderLeftPanel();
 });
@@ -955,9 +957,15 @@ function ensureFsSync() {
        of them wrong, and it is the same event for all four. The bar's memo is separate from
        `page-params`' because it is keyed per DOCUMENT rather than globally; leaving it behind kept
        a stale candidate list in the picker after the collection changed. */
-    invalidateDerivedCaches: () => {
+    invalidateDerivedCaches: (paths) => {
       invalidatePageRouteCache();
       invalidateLayoutPickerCache();
+      invalidateSiteIndex(paths);
+      /* The media listing is a walk of `public/`, so only a batch under it (or one that cannot say
+         what changed) can make it wrong: a file added by git, the OS or a Files-panel delete. */
+      if (paths === undefined || paths.some((path) => path.startsWith("public/"))) {
+        invalidateMediaCache();
+      }
       invalidateParamValues();
       paneContext.resetParamValues();
     },
@@ -1266,10 +1274,21 @@ async function openProject(target: ProjectOpenTarget = "thisWindow"): Promise<Pr
   if (!(await tabStrip.confirmCloseAll("Opening another project"))) {
     return "cancelled";
   }
-  const opened = await _openProject({ renderLeftPanel });
+  const opened = await _openProject({ renderLeftPanel, resetProjectCaches });
   ensureFsSync();
   return opened ? "opened" : "cancelled";
 }
+/**
+ * The one project-switch reset of the caches panels keep for the project being left: the Site
+ * panel's index and filter, and the media listing it and every image field read. Both open paths
+ * run it (this file's `openRecentProject`, and `files.ts`'s `openProject` behind ⌘O, the toolbar
+ * and the welcome screen), so neither can show the previous project's pages or media.
+ */
+function resetProjectCaches(): void {
+  resetSitePanel();
+  invalidateMediaCache();
+}
+
 async function openRecentProject(root: string) {
   // One entry for the whole sequence, not three surfaces for its three phases. Opening a project
   // Used to chain a blocking spinner (dependencies), a transient status line (git sync) and a
@@ -1330,6 +1349,7 @@ async function openRecentProject(root: string) {
     // Under the new project's name. The poll timer is re-armed by the panel's next render.
     cleanupGitPanel();
     resetProjectShell();
+    resetProjectCaches();
     // The format registry is cached per project — the previous root's registry (often empty on a
     // Fresh desktop launch) must not answer for this project, or non-JSON documents fail with
     // "No format class imported" until a reload. Mirrors openProject in files.ts.
@@ -1368,7 +1388,7 @@ async function openRecentProject(root: string) {
     await loadComponentRegistry();
 
     addRecentProject(requireProjectState().name, root);
-    setActivityTab("files");
+    // The Navigator shows the panel the workspace frame chose as the project opened (§22.3).
     renderLeftPanel();
     // The project's name is now permanent state in the status bar's PROJECT field.
 
@@ -1524,6 +1544,7 @@ registerShellViewCommands(commandRegistry, {
     return panel ? (panel.when?.(commandRegistry.context()) ?? true) : true;
   },
   inspectorTab: () => rightPanelMod.inspectorTab(),
+  restingInspectorTab: () => rightPanelMod.restingInspectorTab(),
   setInspectorTab: (tab) => rightPanelMod.setInspectorTab(tab),
   showWorkspace: showWorkspaceWithHomes,
 });

@@ -594,13 +594,22 @@ describe("the direct keys (§5.1, §6)", () => {
     expect(registry.get("panel.focus.files")?.requires).toBe("an open project");
   });
 
-  test("⌘⇧1–4 are the four Inspector tabs, in the order §6 names them", () => {
+  test("⌘⇧1–5 are the five Inspector leaves, following the strip left to right (§6)", () => {
     const registry = registryWithRail();
     expect(INSPECTOR_TABS.map((tab) => tab.title)).toEqual([
+      "Page",
       "Content",
       "Style",
       "Logic",
       "Assistant",
+    ]);
+    // Page · Element (Content, Style, Logic) · Assistant — the leaves in strip order.
+    expect(INSPECTOR_TABS.map((tab) => tab.strip)).toEqual([
+      "page",
+      "element",
+      "element",
+      "element",
+      "assistant",
     ]);
     for (const [index, tab] of INSPECTOR_TABS.entries()) {
       expect(registry.keymap.resolveChord(`mod+shift+${index + 1}`, ["global"])?.commandId).toBe(

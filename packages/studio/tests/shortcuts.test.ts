@@ -1478,16 +1478,19 @@ describe("direct keys", () => {
     expect(shell.bottomTab).toBe("activity");
   });
 
-  test("⌘⇧2 opens the Inspector dock, ⌘⇧4 selects its Assistant tab", () => {
+  test("⌘⇧3 opens the Inspector dock on Element › Style, ⌘⇧5 selects its Assistant tab", () => {
     // `key` is the SHIFTED glyph on every layout, so the digit row resolves by `code`.
-    pressDoc("@", { code: "Digit2", ctrlKey: true, shiftKey: true });
+    pressDoc("#", { code: "Digit3", ctrlKey: true, shiftKey: true });
     expect(shell.docks.right.collapsed).toBe(false);
     expect(shell.focusRegion).toBe("inspector");
     expect(inspectorTab()).toBe("style");
 
-    pressDoc("$", { code: "Digit4", ctrlKey: true, shiftKey: true });
+    pressDoc("%", { code: "Digit5", ctrlKey: true, shiftKey: true });
     expect(shell.docks.right.collapsed).toBe(false);
     expect(inspectorTab()).toBe("assistant");
+
+    pressDoc("!", { code: "Digit1", ctrlKey: true, shiftKey: true });
+    expect(inspectorTab()).toBe("page");
   });
 
   test("F6 walks the ring and ⇧F6 walks it back, skipping regions with no host", () => {

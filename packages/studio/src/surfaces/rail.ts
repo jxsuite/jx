@@ -11,8 +11,8 @@
  * whose only name is a hover tooltip is the accessibility failure studio-ui-guidelines.md §12.3
  * names — and `aria-pressed` states the toggle-focus semantics honestly: re-picking the open panel
  * collapses its dock, which is a two-state control, not a one-way selection. The label is the
- * record's `railLabel` when it declares one (Source Control's is "Source", because the full title
- * ellipsed in the 48px label box), and the full `title` stays the accessible name and the tooltip.
+ * record's `railLabel` when it declares one (none does today: Source Control's "Source" left the
+ * rail with it), and the full `title` stays the accessible name and the tooltip.
  *
  * **The rail has no foot.** It is drawn only in the Design workspace (the frame hides its column
  * everywhere else, `shell.ts`'s `applyDockLayout`), so a control every workspace needs cannot live
@@ -151,9 +151,11 @@ export function mount(): void {
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
-      // Source control is PROJECT state, so the badge is fetched and drawn without reference to
-      // Any tab. The badge needs a status once. A refresh that already failed must not re-arm this:
-      // The effect re-runs on the very state the failure writes, so retrying here spins.
+      // Source control is PROJECT state, so its status is fetched without reference to any tab.
+      // No rail button draws it now; the Command Bar's Publish count does, and this is the fetch
+      // That count reads (`ctx.git.dirtyCount`). It needs a status once. A refresh that already
+      // Failed must not re-arm this: the effect re-runs on the very state the failure writes, so
+      // Retrying here spins.
       const { error, loading, status } = shell.git;
       if (!status && !loading && !error) {
         void refreshGitStatus();

@@ -72,7 +72,7 @@ You should now have three entries under The Library's **Content** filter, two of
 
 Editing entries one file at a time doesn't scale, so Studio can open the whole collection as a spreadsheet:
 
-1. Click **Files** in the **Project** group of the Navigator rail.
+1. Run **Show Files** from :kbd[⌘K] to open the Files panel. (To keep it on the Navigator rail, turn on **Show developer panels** in Preferences › Appearance.)
 2. Right-click the `content/posts` folder and choose **Edit Collection in Grid**.
 
 ![The posts collection open in Grid mode, one row per entry with title, date, and description columns](../images/blog-grid.png)

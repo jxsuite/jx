@@ -12,12 +12,11 @@ import { nothing } from "lit-html";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { GitStatusResult } from "../src/types";
 
-const { listPanels, registerPanel } = await import("../src/panels/panel-registry");
+const { listPanels, registerPanel, unregisterPanel } = await import("../src/panels/panel-registry");
 
 const refreshGitStatus = mock(async () => {});
-// The rail is a rendering of the panel registry, so a mocked git-panel still has to contribute its
-// Record — otherwise the Source Control button (and its badge) simply is not there to assert on.
-// It carries the real record's short rail label, or this suite would never draw one.
+// The rail is a rendering of the panel registry, so a mocked git-panel still contributes its
+// Record, as the real one does: off the rail (§5.1), because Source Control belongs to Publish.
 void mock.module("../src/panels/git-panel.js", () => ({
   refreshGitStatus,
   cleanupGitPanel: () => {},
@@ -26,15 +25,36 @@ void mock.module("../src/panels/git-panel.js", () => ({
     registerPanel({
       id: "git",
       title: "Source Control",
-      railLabel: "Source",
       level: "project",
       dock: "navigator",
       icon: "git-branch",
-      badge: (ctx) => ctx.git.dirtyCount || null,
+      rail: false,
       render: () => nothing,
     });
   },
 }));
+
+/**
+ * A project-level panel that badges the changed-file count, registered for one case. No shipped
+ * panel badges any more (the count is the Publish workspace tab's, §22.2), so the rail's badge
+ * machinery is asserted against a fixture rather than against a record that no longer has one.
+ */
+async function withBadgedPanel(run: () => Promise<void>): Promise<void> {
+  registerPanel({
+    id: "badged",
+    title: "Badged",
+    level: "project",
+    dock: "navigator",
+    icon: "git-branch",
+    badge: (ctx) => ctx.git.dirtyCount || null,
+    render: () => nothing,
+  });
+  try {
+    await run();
+  } finally {
+    unregisterPanel("badged");
+  }
+}
 
 const openSettingsModal = mock(() => {});
 void mock.module("../src/settings/settings-modal.js", () => ({
@@ -104,6 +124,7 @@ function installPreferencesRegistry() {
   return registry;
 }
 const { registerNavigatorPanels } = await import("../src/panels/navigator-panels");
+const { setDeveloperPanelsShown } = await import("../src/settings/developer-panels");
 const { mount, renderActivityBar, unmount } = await import("../src/surfaces/rail");
 
 /** Recompute the projection and let the surface follow: mount, reconcile, connect. */
@@ -175,10 +196,14 @@ describe("panel icons", () => {
 // ─── renderActivityBar ────────────────────────────────────────────────────────
 
 describe("renderActivityBar", () => {
-  test("renders every rail-able panel, grouped by level", async () => {
+  test("renders the Design rail: Site above the divider, Outline and Data below it (§5.1)", async () => {
     await render();
     const ids = railIds();
-    expect(ids).toEqual(["files", "git", "layers", "page", "data", "packages"]);
+    expect(ids).toEqual(["site", "layers", "data"]);
+    // Off the rail by default: the developer panels, Source Control and Languages.
+    for (const id of ["files", "packages", "git", "i18n"]) {
+      expect(ids).not.toContain(id);
+    }
     // The Bottom dock's FOUR rail-less tabs stay off it.
     for (const id of ["problems", "diff", "logic", "activity"]) {
       expect(ids).not.toContain(id);
@@ -217,35 +242,67 @@ describe("renderActivityBar", () => {
     expect(bar().querySelectorAll('[role="separator"]')).toHaveLength(1);
   });
 
+  test("Show developer panels puts Files and Packages back on the rail, live", async () => {
+    mount();
+    await flush();
+    await flush();
+    expect(railIds()).toEqual(["site", "layers", "data"]);
+    setDeveloperPanelsShown(true);
+    try {
+      await flush();
+      await flush();
+      expect(railIds()).toEqual(["site", "files", "layers", "data", "packages"]);
+    } finally {
+      setDeveloperPanelsShown(false);
+    }
+    await flush();
+    await flush();
+    expect(railIds()).toEqual(["site", "layers", "data"]);
+  });
+
   test("every rail button carries a visible label; a railLabel shortens it, and the title stays the name and tooltip", async () => {
     installPreferencesRegistry();
-    await render();
-    expect(labelsOf()).toEqual(["Files", "Source", "Outline", "Page", "Data", "Packages"]);
-    /* "Source Control" is 71px against a 48px label box, so the kit ellipsed it to "Source …". The
-       record declares the short label instead, and the full title is still what a screen reader
-       announces (the visible word leads it, WCAG 2.5.3) and what the tooltip restores: the tip an
-       Enabled kit button renders for its hint, never a `title` attribute (ui.md §5.1). */
-    const git = railButton("git");
-    expect(git?.querySelector('[part="label"]')?.textContent.trim()).toBe("Source");
-    expect(controlOf(git)?.getAttribute("aria-label")).toBe("Source Control");
-    expect(hintOf(git)).toBe("Source Control");
-    expect(controlOf(git)?.hasAttribute("title")).toBe(false);
-    // A record with no railLabel prints its title, which is also its name.
-    const files = railButton("files");
-    expect(files?.querySelector('[part="label"]')?.textContent.trim()).toBe("Files");
-    expect(controlOf(files)?.getAttribute("aria-label")).toBe("Files");
+    /* "Source Control" was 71px against a 48px label box, so the kit ellipsed it to "Source …"; a
+       record that is too long declares the short label instead, and the full title is still what a
+       screen reader announces (the visible word leads it, WCAG 2.5.3) and what the tooltip
+       restores: the tip an Enabled kit button renders for its hint, never a `title` attribute
+       (ui.md §5.1). No shipped rail panel needs one now, so a fixture asserts the rule. */
+    registerPanel({
+      id: "long",
+      title: "Long Panel Title",
+      railLabel: "Long",
+      level: "document",
+      dock: "navigator",
+      icon: "stack",
+      render: () => nothing,
+    });
+    try {
+      await render();
+      expect(labelsOf()).toEqual(["Site", "Outline", "Data", "Long"]);
+      const long = railButton("long");
+      expect(long?.querySelector('[part="label"]')?.textContent.trim()).toBe("Long");
+      expect(controlOf(long)?.getAttribute("aria-label")).toBe("Long Panel Title");
+      expect(hintOf(long)).toBe("Long Panel Title");
+      expect(controlOf(long)?.hasAttribute("title")).toBe(false);
+      // A record with no railLabel prints its title, which is also its name.
+      const site = railButton("site");
+      expect(site?.querySelector('[part="label"]')?.textContent.trim()).toBe("Site");
+      expect(controlOf(site)?.getAttribute("aria-label")).toBe("Site");
+    } finally {
+      unregisterPanel("long");
+    }
   });
 
   test("marks the current left tab pressed when the dock is open", async () => {
-    shell.leftTab = "files";
+    shell.leftTab = "site";
     await render();
-    expect(controlOf(railButton("files"))?.getAttribute("aria-pressed")).toBe("true");
+    expect(controlOf(railButton("site"))?.getAttribute("aria-pressed")).toBe("true");
     expect(controlOf(railButton("layers"))?.getAttribute("aria-pressed")).toBe("false");
-    expect(railButton("files")?.dataset.selected !== undefined).toBe(true);
+    expect(railButton("site")?.dataset.selected !== undefined).toBe(true);
   });
 
   test("marks nothing pressed when the Navigator dock is collapsed", async () => {
-    shell.leftTab = "files";
+    shell.leftTab = "site";
     shell.docks.left.collapsed = true;
     await render();
     expect(
@@ -253,35 +310,41 @@ describe("renderActivityBar", () => {
     ).toEqual([]);
   });
 
-  test("shows git badge with changed file count", async () => {
-    shell.git.status = gitStatusWith(3);
-    await render();
-    expect(badgeOf("git")?.textContent).toBe("3");
+  test("a panel's badge shows its count", async () => {
+    await withBadgedPanel(async () => {
+      shell.git.status = gitStatusWith(3);
+      await render();
+      expect(badgeOf("badged")?.textContent).toBe("3");
+    });
   });
 
-  test("omits git badge when there are no changed files", async () => {
-    shell.git.status = gitStatusWith(0);
-    await render();
-    expect(badgeOf("git")).toBeNull();
+  test("a badge of zero draws nothing", async () => {
+    await withBadgedPanel(async () => {
+      shell.git.status = gitStatusWith(0);
+      await render();
+      expect(badgeOf("badged")).toBeNull();
+    });
   });
 
-  test("the badge survives closing the last tab", async () => {
-    resetWorkspaceWithTab();
-    shell.git.status = gitStatusWith(2);
-    await render();
-    expect(badgeOf("git")?.textContent).toBe("2");
-    closeAllTabs();
-    await render();
-    expect(badgeOf("git")?.textContent).toBe("2");
+  test("a project-level badge survives closing the last tab", async () => {
+    await withBadgedPanel(async () => {
+      resetWorkspaceWithTab();
+      shell.git.status = gitStatusWith(2);
+      await render();
+      expect(badgeOf("badged")?.textContent).toBe("2");
+      closeAllTabs();
+      await render();
+      expect(badgeOf("badged")?.textContent).toBe("2");
+    });
   });
 
   test("clicking a different panel opens it", async () => {
     mountShell();
     shell.leftTab = "layers";
     await render();
-    controlOf(railButton("files"))!.click();
+    controlOf(railButton("site"))!.click();
     await flush();
-    expect(shell.leftTab).toBe("files");
+    expect(shell.leftTab).toBe("site");
     expect(shell.docks.left.collapsed).toBe(false);
     expect(document.querySelector("#app")?.classList.contains("left-collapsed")).toBe(false);
     unmountShell();
@@ -289,10 +352,10 @@ describe("renderActivityBar", () => {
 
   test("clicking the already-open panel collapses the dock", async () => {
     mountShell();
-    shell.leftTab = "files";
+    shell.leftTab = "site";
     shell.docks.left.collapsed = false;
     await render();
-    controlOf(railButton("files"))!.click();
+    controlOf(railButton("site"))!.click();
     await flush();
     expect(shell.docks.left.collapsed).toBe(true);
     expect(document.querySelector("#app")?.classList.contains("left-collapsed")).toBe(true);
@@ -300,13 +363,13 @@ describe("renderActivityBar", () => {
   });
 
   test("clicking the current panel while collapsed re-opens it", async () => {
-    shell.leftTab = "files";
+    shell.leftTab = "site";
     shell.docks.left.collapsed = true;
     await render();
-    controlOf(railButton("files"))!.click();
+    controlOf(railButton("site"))!.click();
     await flush();
     expect(shell.docks.left.collapsed).toBe(false);
-    expect(shell.leftTab).toBe("files");
+    expect(shell.leftTab).toBe("site");
   });
 
   test("the pressed state follows the shell, not the click", async () => {
@@ -320,10 +383,10 @@ describe("renderActivityBar", () => {
     await flush();
     await flush();
     expect(controlOf(railButton("layers"))?.getAttribute("aria-pressed")).toBe("true");
-    controlOf(railButton("files"))!.click();
+    controlOf(railButton("site"))!.click();
     await flush();
     await flush();
-    expect(controlOf(railButton("files"))?.getAttribute("aria-pressed")).toBe("true");
+    expect(controlOf(railButton("site"))?.getAttribute("aria-pressed")).toBe("true");
     expect(controlOf(railButton("layers"))?.getAttribute("aria-pressed")).toBe("false");
     unmountShell();
   });
@@ -392,21 +455,22 @@ describe("mount", () => {
     shell.git.loading = false;
     await flush();
     expect(refreshGitStatus).not.toHaveBeenCalled();
-    // Declining to fetch is not declining to draw: the rail is up, with no badge for a clean tree.
+    // Declining to fetch is not declining to draw: the rail is up.
     expect(bar().querySelector('[part="groups"]')).not.toBeNull();
-    expect(badgeOf("git")).toBeNull();
   });
 
-  test("re-renders the badge when git status changes", async () => {
-    shell.git.status = gitStatusWith(0);
-    mount();
-    await flush();
-    await flush();
-    expect(badgeOf("git")).toBeNull();
-    shell.git.status = gitStatusWith(1);
-    await flush();
-    await flush();
-    expect(badgeOf("git")?.textContent).toBe("1");
+  test("re-renders a badge when git status changes", async () => {
+    await withBadgedPanel(async () => {
+      shell.git.status = gitStatusWith(0);
+      mount();
+      await flush();
+      await flush();
+      expect(badgeOf("badged")).toBeNull();
+      shell.git.status = gitStatusWith(1);
+      await flush();
+      await flush();
+      expect(badgeOf("badged")?.textContent).toBe("1");
+    });
   });
 
   test("probes for status with no tab open — the panel level is project, not document", async () => {

@@ -136,7 +136,7 @@ Under those, a **Model** picker and a box asking what the assistant should do wi
 
 The dialog closes as soon as you click **Import Site**. The import doesn't run in the wizard. It runs in the [AI assistant](/docs/studio/ai), which opens in the Inspector on a fresh chat and reports as it goes. If the assistant was in the middle of a reply, that reply is stopped first and the import begins as soon as it has.
 
-**The project opens straight away**, a few seconds in, long before the crawl finishes. That's deliberate: an import takes minutes, and watching a log against an empty welcome screen tells you very little. Instead the destination is created and opened immediately, and the Files panel fills up as the pipeline works: `public/assets/` gains the images and fonts it downloads, then `pages/`, `layouts/` and `components/` appear as it writes them. You can click into any of it while the run continues.
+**The project opens straight away**, a few seconds in, long before the crawl finishes. That's deliberate: an import takes minutes, and watching a log against an empty welcome screen tells you very little. Instead the destination is created and opened immediately, and the Site panel fills up as the pipeline works: its **Media** section gains the images and fonts it downloads into `public/assets/`, then pages, templates and components appear as it writes them. You can click into any of it while the run continues.
 
 When it finishes, the assistant tells you how many pages it captured, what it had to skip, which pages didn't render faithfully, and, when the fidelity check ran, what those pages failed to load.
 

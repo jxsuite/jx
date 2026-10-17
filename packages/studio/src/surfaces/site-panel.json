@@ -1,0 +1,984 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSitePanel",
+  "$description": "The Site panel (specs/studio.md §5.7): the project as an author thinks of it, pages by address and then the parts pages are made of. Four sections under a header holding one filter and a + that opens the New menu. `panels/site-panel.ts` keeps every decision: which files are pages, the route order and nesting (`panels/site-model.ts`, over `@jxsuite/site/routes`), how many entries a collection has and how many pages use a template, which media the project holds, what a click opens and what a drag inserts. This document draws rows whose every field is already a string, and a section state that is one of loading, empty, nomatch or listed, so a section a filter empties keeps its heading and says why. Component previews are an island the flow fills, and the drag sources are registered by the adapter through `onNodeCreated`.",
+  "tagName": "div",
+  "attributes": {
+    "part": "site"
+  },
+  "style": {
+    "$description": "The Site panel's own look, keyed on `part`. Rows are native buttons, because a row opens one thing and a button is the element that says so to every reader; the selected row is the one whose `data-selected` is true, which the flow sets from the focused pane's document. A collection heading is not a button: it opens nothing in Design, and its pages are the buttons under it, indented one step. Component cards and media thumbnails are drag sources as well as buttons; the adapter registers the drags through `onNodeCreated`, so nothing here names a drag.",
+    "display": "flex",
+    "flexDirection": "column",
+    "height": "100%",
+    "minHeight": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"header\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2)",
+      "borderBottom": "1px solid var(--border)",
+      "flexShrink": "0"
+    },
+    "& [part=\"filter\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"sections\"]": {
+      "flex": "1",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "padding": "var(--jx-space-1) 0 var(--jx-space-4)"
+    },
+    "& [part=\"section\"]": {
+      "padding": "var(--jx-space-2) 0"
+    },
+    "& [part=\"section-head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "0 var(--jx-space-3) var(--jx-space-1)"
+    },
+    "& [part=\"section-title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "700",
+      "letterSpacing": "0.06em",
+      "textTransform": "uppercase",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"section-count\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"open-media\"]": {
+      "marginLeft": "auto"
+    },
+    "& [part=\"no-project\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-6) var(--jx-space-4)",
+      "textAlign": "center",
+      "lineHeight": "1.5",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"note\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-1) var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"rows\"]": {
+      "display": "flex",
+      "flexDirection": "column"
+    },
+    "& [part=\"page-row\"], & [part=\"template-row\"], & [part=\"collection-row\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "width": "100%",
+      "boxSizing": "border-box",
+      "minHeight": "26px",
+      "padding": "var(--jx-space-1) var(--jx-space-3)",
+      "border": "none",
+      "background": "transparent",
+      "color": "inherit",
+      "font": "inherit",
+      "textAlign": "start"
+    },
+    "& [part=\"page-row\"], & [part=\"template-row\"]": {
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"page-row\"][data-nested=\"true\"]": {
+      "paddingLeft": "calc(var(--jx-space-3) + var(--jx-space-4))"
+    },
+    "& [data-selected=\"true\"]": {
+      "background": "var(--accent-15)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"collection-row\"]": {
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"row-label\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"row-detail\"]": {
+      "flexShrink": "0",
+      "maxWidth": "55%",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"cards\"]": {
+      "display": "grid",
+      "gridTemplateColumns": "repeat(auto-fill, minmax(96px, 1fr))",
+      "gap": "var(--jx-space-2)",
+      "padding": "0 var(--jx-space-3)"
+    },
+    "& [part=\"component-card\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "width": "100%",
+      "padding": "0",
+      "overflow": "hidden",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--bg-panel)",
+      "color": "inherit",
+      "font": "inherit",
+      "cursor": "grab",
+      ":hover": {
+        "borderColor": "var(--fg-dim)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "1px"
+      }
+    },
+    "& [part=\"card-preview\"]": {
+      "$description": "A live render is drawn at its natural size and clipped, like the Insert panel's cards: the card says what the component looks like, not how it lays out at 96px.",
+      "height": "56px",
+      "overflow": "hidden",
+      "pointerEvents": "none",
+      "background": "var(--bg)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"card-label\"]": {
+      "padding": "var(--jx-space-1) var(--jx-space-2)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "textAlign": "start"
+    },
+    "& [part=\"thumbs\"]": {
+      "display": "grid",
+      "gridTemplateColumns": "repeat(auto-fill, minmax(56px, 1fr))",
+      "gap": "var(--jx-space-1)",
+      "padding": "0 var(--jx-space-3)"
+    },
+    "& [part=\"media-thumb\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "width": "100%",
+      "aspectRatio": "1",
+      "padding": "0",
+      "overflow": "hidden",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--bg-panel)",
+      "color": "var(--fg-dim)",
+      "font": "inherit",
+      "cursor": "grab",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "1px"
+      }
+    },
+    "& [part=\"thumb-image\"]": {
+      "width": "100%",
+      "height": "100%",
+      "objectFit": "cover"
+    },
+    "& [part=\"thumb-name\"]": {
+      "padding": "var(--jx-space-1)",
+      "overflow": "hidden",
+      "fontSize": "var(--jx-text-xs)",
+      "wordBreak": "break-all"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "header"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "filter"
+          },
+          "$props": {
+            "size": "sm",
+            "type": "search",
+            "clearable": true,
+            "label": "Filter the site",
+            "placeholder": "Filter the site…",
+            "value": {
+              "$ref": "#/state/filter"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setFilter"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "attributes": {
+            "part": "add"
+          },
+          "$props": {
+            "size": "sm",
+            "icon": "plus",
+            "label": "Add new",
+            "hint": "Add new",
+            "haspopup": "menu"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/add"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/currentTarget"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/body"
+      },
+      "cases": {
+        "none": {
+          "tagName": "p",
+          "attributes": {
+            "part": "no-project"
+          },
+          "textContent": "Open a project to see its pages, templates, components and media."
+        },
+        "project": {
+          "tagName": "div",
+          "attributes": {
+            "part": "sections"
+          },
+          "children": [
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "section",
+                "data-section": "pages",
+                "aria-labelledby": "site-section-pages"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-head"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-title",
+                        "id": "site-section-pages"
+                      },
+                      "textContent": "Pages"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "section-count"
+                      },
+                      "textContent": "${state.pagesCount}"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-body",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/pagesState"
+                  },
+                  "cases": {
+                    "loading": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Reading the project…"
+                    },
+                    "empty": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "No pages yet. Add one with +."
+                    },
+                    "nomatch": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Nothing here matches the filter."
+                    },
+                    "listed": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "rows",
+                        "role": "list"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/pages"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "page-item",
+                              "role": "listitem",
+                              "data-kind": "${$map.item.kind}"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/kind"
+                            },
+                            "cases": {
+                              "collection": {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "collection-row"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-label"
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-detail"
+                                    },
+                                    "textContent": "${$map.item.detail}"
+                                  }
+                                ]
+                              },
+                              "page": {
+                                "tagName": "button",
+                                "attributes": {
+                                  "part": "page-row",
+                                  "type": "button",
+                                  "data-path": "${$map.item.path}",
+                                  "data-selected": "${$map.item.selected}",
+                                  "aria-current": "${$map.item.selected === 'true' ? 'true' : null}",
+                                  "title": "${$map.item.path}"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/open"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/path"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-label"
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-detail"
+                                    },
+                                    "textContent": "${$map.item.detail}"
+                                  }
+                                ]
+                              },
+                              "entry-page": {
+                                "tagName": "button",
+                                "attributes": {
+                                  "part": "page-row",
+                                  "type": "button",
+                                  "data-path": "${$map.item.path}",
+                                  "data-selected": "${$map.item.selected}",
+                                  "aria-current": "${$map.item.selected === 'true' ? 'true' : null}",
+                                  "title": "${$map.item.path}",
+                                  "data-nested": "true"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/open"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/path"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-label"
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-detail"
+                                    },
+                                    "textContent": "${$map.item.detail}"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "section",
+                "data-section": "templates",
+                "aria-labelledby": "site-section-templates"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-head"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-title",
+                        "id": "site-section-templates"
+                      },
+                      "textContent": "Templates"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "section-count"
+                      },
+                      "textContent": "${state.templatesCount}"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-body",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/templatesState"
+                  },
+                  "cases": {
+                    "loading": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Reading the project…"
+                    },
+                    "empty": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "No templates in layouts/ yet."
+                    },
+                    "nomatch": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Nothing here matches the filter."
+                    },
+                    "listed": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "rows",
+                        "role": "list"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/templates"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "template-item",
+                              "role": "listitem"
+                            },
+                            "children": [
+                              {
+                                "tagName": "button",
+                                "attributes": {
+                                  "part": "template-row",
+                                  "type": "button",
+                                  "data-path": "${$map.item.path}",
+                                  "data-selected": "${$map.item.selected}",
+                                  "aria-current": "${$map.item.selected === 'true' ? 'true' : null}",
+                                  "title": "${$map.item.path}"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/open"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/path"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-label"
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-detail"
+                                    },
+                                    "textContent": "${$map.item.detail}"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "section",
+                "data-section": "components",
+                "aria-labelledby": "site-section-components"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-head"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-title",
+                        "id": "site-section-components"
+                      },
+                      "textContent": "Components"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "section-count"
+                      },
+                      "textContent": "${state.componentsCount}"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-body",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/componentsState"
+                  },
+                  "cases": {
+                    "loading": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Reading the project…"
+                    },
+                    "empty": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "No components yet."
+                    },
+                    "nomatch": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Nothing here matches the filter."
+                    },
+                    "listed": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "cards",
+                        "role": "list"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/components"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "card-item",
+                              "role": "listitem"
+                            },
+                            "children": [
+                              {
+                                "tagName": "button",
+                                "attributes": {
+                                  "part": "component-card",
+                                  "type": "button",
+                                  "data-tag": "${$map.item.tagName}",
+                                  "data-selected": "${$map.item.selected}",
+                                  "aria-current": "${$map.item.selected === 'true' ? 'true' : null}",
+                                  "title": "${$map.item.hint}"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/openComponent"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/tagName"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "children": [
+                                  {
+                                    "$description": "The preview ISLAND: empty here, filled by the flow with the component rendered live from the Library's preview cache as the card scrolls into view (specs/studio-ui-guidelines.md §9.4).",
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "card-preview",
+                                      "aria-hidden": "true"
+                                    }
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "card-label"
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "section",
+                "data-section": "media",
+                "aria-labelledby": "site-section-media"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-head"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-title",
+                        "id": "site-section-media"
+                      },
+                      "textContent": "Media"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "section-count"
+                      },
+                      "textContent": "${state.mediaCount}"
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "attributes": {
+                        "part": "open-media"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "variant": "secondary",
+                        "quiet": true
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/openMedia"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Open Media"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-body",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/mediaState"
+                  },
+                  "cases": {
+                    "loading": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Reading the project…"
+                    },
+                    "empty": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "No media in public/ yet."
+                    },
+                    "nomatch": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Nothing here matches the filter."
+                    },
+                    "listed": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "thumbs",
+                        "role": "list"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/media"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "thumb-item",
+                              "role": "listitem"
+                            },
+                            "children": [
+                              {
+                                "tagName": "button",
+                                "attributes": {
+                                  "part": "media-thumb",
+                                  "type": "button",
+                                  "data-path": "${$map.item.path}",
+                                  "data-selected": "${$map.item.selected}",
+                                  "aria-current": "${$map.item.selected === 'true' ? 'true' : null}",
+                                  "title": "Open ${$map.item.name} in Media, or drag it onto the canvas",
+                                  "aria-label": "${$map.item.name}"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/open"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/path"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "thumb-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/thumb"
+                                    },
+                                    "cases": {
+                                      "image": {
+                                        "tagName": "img",
+                                        "attributes": {
+                                          "part": "thumb-image",
+                                          "src": "${$map.item.src}",
+                                          "alt": "",
+                                          "loading": "lazy",
+                                          "draggable": "false"
+                                        }
+                                      },
+                                      "file": {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "thumb-name"
+                                        },
+                                        "textContent": "${$map.item.name}"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

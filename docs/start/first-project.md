@@ -25,11 +25,11 @@ Already have a Jx project? Use **Open Project** to point Studio at a folder on d
 
 ## 3. Browse, edit, design
 
-Studio gives you a surface for each part of the job. Start in **[The Library](/docs/studio/projects/browse)** to see your project: pages, components, content, and media, each with a live preview.
+Studio gives you a surface for each part of the job. The **Site** panel on the left lists your pages by address, with the templates, components and media they are made of: click a page to open it, or drag a component or an image straight onto the canvas. For a bigger view, **[The Library](/docs/studio/projects/browse)** shows pages, components, content, and media as cards with live previews.
 
 ![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../images/mode-manage.png)
 
-Open a content page and switch to **[Edit mode](/docs/studio/editing)** to write inline: click any text and type, use slash commands for blocks, fill in frontmatter on the side. Open a component and switch to **[Design](/docs/studio/design)** for the visual canvas: a live preview at every breakpoint, and a full CSS inspector for spacing, type, color, and hover states.
+Open a content page and switch to **[Edit mode](/docs/studio/editing)** to write inline: click any text and type, use slash commands for blocks, fill in frontmatter in the Inspector's **Page** tab. Open a component and switch to **[Design](/docs/studio/design)** for the visual canvas: a live preview at every breakpoint, and a full CSS inspector for spacing, type, color, and hover states.
 
 ![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../images/mode-design.png)
 
@@ -38,7 +38,7 @@ Open a content page and switch to **[Edit mode](/docs/studio/editing)** to write
 Websites do things. In Studio, interactivity comes from three surfaces working together, with no separate "code mode" required:
 
 - The **Data** panel declares a value or a computed one: a counter, a total, a fetched list.
-- The Inspector's **Logic** tab binds a handler to a click, input, or submit with the structured expression editor.
+- The Inspector's **Logic** view (on its **Element** tab) binds a handler to a click, input, or submit with the structured expression editor.
 - The **Code** editor is where you drop into Monaco when a handler needs JavaScript.
 
 ![Jx Studio editing a component state function in the Monaco code editor](../images/mode-script.png)
@@ -47,7 +47,7 @@ Add a `count` to state, a button, and an `onclick` that increments it, and you'v
 
 ## 5. Commit and publish
 
-When you're happy, open **Source Control**. Review your changes, write a message, and **commit and sync**. If the project has no remote yet, **Create GitHub repository** makes one and pushes to it for you.
+When you're happy, open **Source Control** (run **Show Source Control** from :kbd[⌘K]). Review your changes, write a message, and **commit and sync**. If the project has no remote yet, **Create GitHub repository** makes one and pushes to it for you.
 
 ![Jx Studio commit box: write a message and commit-and-sync straight from the Source Control panel](../images/git-commit.png)
 

@@ -546,8 +546,18 @@ function showLibraryContextMenu(path: string, x: number, y: number): void {
   });
 }
 
-/** The New menu, opened under its own button. A second press closes it: the button is a toggle. */
-function showLibraryNewMenu(opener: HTMLElement): void {
+/**
+ * The New menu, opened under its own button. A second press closes it: the button is a toggle.
+ *
+ * Exported for the Site panel's `+` (`panels/site-panel.ts`, `specs/studio.md` §5.7), which opens
+ * this same menu until the Add new dialog replaces both (§9.1.1). `labels` renames a row by its key
+ * for the panel it opens from, so the Site panel's menu offers a **Template** where its own section
+ * says Templates, while the Library keeps the Layouts vocabulary of its category.
+ */
+export function showLibraryNewMenu(
+  opener: HTMLElement,
+  labels: Readonly<Record<string, string>> = {},
+): void {
   if (_menu) {
     closeLibraryMenu();
     return;
@@ -574,10 +584,10 @@ function showLibraryNewMenu(opener: HTMLElement): void {
       dividerAbove:
         entry.collection !== undefined && entries[index - 1]?.collection === undefined && index > 0,
       id: entry.key,
-      title: `${entry.label} — ${entry.dir}/`,
+      title: `${labels[entry.key] ?? entry.label} — ${entry.dir}/`,
     })),
     run: (id) => {
-      void createLibraryEntry(id);
+      void createLibraryEntry(id, labels);
     },
   });
 }
@@ -771,7 +781,10 @@ async function componentSeed(ext: string, fileName: string): Promise<string | un
   }
 }
 
-export async function createLibraryEntry(key: string): Promise<string | null> {
+export async function createLibraryEntry(
+  key: string,
+  labels: Readonly<Record<string, string>> = {},
+): Promise<string | null> {
   const entry = libraryNewEntries().find((row) => row.key === key);
   if (!entry) {
     return null;
@@ -783,7 +796,7 @@ export async function createLibraryEntry(key: string): Promise<string | null> {
       format: FORMAT_CHOICE_BY_KIND.get(entry.key) ?? { defaultExt: ".json", kind: "choose" },
       source: "Library",
       suggestedName: "untitled",
-      title: `New ${entry.label}`,
+      title: `New ${labels[entry.key] ?? entry.label}`,
     };
     if (entry.key === "component") {
       request.content = componentSeed;

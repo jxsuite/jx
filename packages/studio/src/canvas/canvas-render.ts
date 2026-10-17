@@ -1048,7 +1048,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
      INSIDE Edit's column, where it was exactly as wide as whatever breakpoint or dragged width the
      column had and scrolled off with the first screen of the page, and it was pinned above Design's
      artboards as well. Design omits it now, so the artboards get the whole pane, and nothing is
-     lost by that: the Navigator's Page panel carries the same fields in every mode.
+     lost by that: the Inspector's Page tab carries the same fields in every mode.
      `hasDocumentHeader` is the other predicate, and it is a fact about the DOCUMENT. It used to
      carry two more clauses, suppressing the card while a function body or a formula was open on
      the grounds that those sub-editors took the whole stage. They open in the dock's Logic tab now

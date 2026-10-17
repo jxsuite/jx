@@ -1093,15 +1093,14 @@ export function registerGitPanel(): void {
   registerPanel({
     id: "git",
     title: "Source Control",
-    /* The full title is 71px against the rail's 48px label box. The header, the tooltip and the
-       accessible name keep it; only the words under the glyph shorten. */
-    railLabel: "Source",
     level: "project",
     dock: "navigator",
-    // A KEY into the kit's icon manifest, not a tag: this one resolves to
-    // `gitBranchIcon`, a hand-drawn inline SVG, because the workflow set has no Git family.
+    // Inert, like every other `rail: false` panel's: the glyph is only ever drawn by a rail button.
     icon: "git-branch",
-    badge: (ctx) => ctx.git.dirtyCount || null,
+    /* OFF THE RAIL (§5.1). Source Control belongs to Publish (§5.5, §22.8); until that workspace
+       hosts it, the panel is `view.setActivity { tab: "git" }` and a palette row away, and the
+       changed-file count it used to badge is the Publish workspace tab's (§22.2). */
+    rail: false,
     // The body is a document, so lit draws nothing and the mount happens against the painted DOM.
     // `afterRender` runs on every repaint; {@link mountGitPanel} is idempotent.
     render: (): PanelBody => nothing,
