@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.2](https://github.com/jxsuite/jx/compare/studio-v6.1.1...studio-v6.1.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* **studio:** record project directories on every door into a project ([#451](https://github.com/jxsuite/jx/issues/451)) ([fd8ada2](https://github.com/jxsuite/jx/commit/fd8ada26aaff6f845777776088c2dc5b5412d601))
+
 ## [6.1.1](https://github.com/jxsuite/jx/compare/studio-v6.1.0...studio-v6.1.1) (2026-10-11)
 
 
