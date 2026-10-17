@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.2](https://github.com/jxsuite/jx/compare/feed-v0.4.1...feed-v0.4.2) (2026-10-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 4.0.0
+
 ## [0.4.1](https://github.com/jxsuite/jx/compare/feed-v0.4.0...feed-v0.4.1) (2026-10-07)
 
 

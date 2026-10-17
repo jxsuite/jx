@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.0.0](https://github.com/jxsuite/jx/compare/protocol-v2.6.1...protocol-v3.0.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio,runtime,compiler:** Whitespace-only text is no longer slotted, the first slot of a duplicated name takes the group, and built output now distributes slotted children by name instead of writing every child into every slot. Self-target reactive style declarations now read var(--jx-s0) and similar instead of a per-element --jx-r variable. Studio's Edit and Design views render bound values live instead of showing binding text for component props, attributes and styles.
+
+### Bug Fixes
+
+* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([d0ba17e](https://github.com/jxsuite/jx/commit/d0ba17e841520645749df384d3bb3f8e2cffa338))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 4.0.0
+
 ## [2.6.1](https://github.com/jxsuite/jx/compare/protocol-v2.6.0...protocol-v2.6.1) (2026-10-06)
 
 

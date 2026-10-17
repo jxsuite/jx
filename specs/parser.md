@@ -2,9 +2,9 @@
 
 ## Content Formats and the Reference Format-Extension Classes
 
-**Version:** 0.3.0-draft\
+**Version:** 0.3.1-draft\
 **Status:** Partial\
-**Updated:** 2026-10-06\
+**Updated:** 2026-10-17\
 **License:** MIT
 
 ---
@@ -354,6 +354,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.3.1-draft** (2026-10-17) — §9: a lazily requested `content` section loads each collection on first use with frontmatter only, and parses an entry's body only when it is returned (`ContentStore`; `Markdown.load` `deferBody`, §3); §9.6: on-demand link reporting.
 - **0.3.0-draft** (2026-10-06) — §3.3 callouts: GitHub alerts render as built-in accessible markup or a mapped component, on by default (`alerts: false` leaves blockquotes), and an enabled-nowhere `[!type]` marker is reported; §3.5 template-looking text in content (a `${` in a code fence or prose) stays text instead of being evaluated; §3.4 the highlighted language set grows to sql, php, python, ruby, nix, nginx, caddyfile, toml, ini, diff, xml, dockerfile and jsonc; §9.4 exclude and where choose a content type's entries; §9.5 README ids (a subfolder README now has its folder's id), idField, route templates, route-driven $paths and ContentEntry, and an entry with no route is left out of the collection; §9.6 relative links between entries resolve to routes.
 - **0.2.11-draft** (2026-09-29) — Census against the code: the §3 marker narrowed to heading slugs that strip combining marks, §7 marked Partial because a collection's $elements only switch directive parsing on and restrict no names, §9.1 marked Partial for the silent skip of a localized content type with an unsafe name, and §9.3 corrected to Partial for uncoerced JSON and remote dates and the markdown-only mtime.
 - **0.2.10-draft** (2026-08-27) — roundtrip serialization is lossless where expressible, not total.
@@ -377,4 +378,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/parser` Specification v0.3.0-draft_
+_`@jxsuite/parser` Specification v0.3.1-draft_

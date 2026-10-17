@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.0.2](https://github.com/jxsuite/jx/compare/starters-v2.0.1...starters-v2.0.2) (2026-10-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 3.0.0
+  * devDependencies
+    * @jxsuite/parser bumped to 3.0.0
+    * @jxsuite/runtime bumped to 5.0.0
+    * @jxsuite/schema bumped to 4.0.0
+
 ## [2.0.1](https://github.com/jxsuite/jx/compare/starters-v2.0.0...starters-v2.0.1) (2026-10-11)
 
 
