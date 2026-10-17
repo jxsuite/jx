@@ -34,7 +34,7 @@ export const MSIX_PUBLISHER = "CN=118A192A-BE3D-4B35-A22B-EA889CD1D0B4";
 export const MSIX_IDENTITY_NAME = "AvunuLLC.JxStudio";
 
 /** Human-readable publisher, shown in the installer UI and Settings → Apps. */
-export const MSIX_PUBLISHER_DISPLAY_NAME = "Avunu LLC";
+export const MSIX_PUBLISHER_DISPLAY_NAME = "Avunu";
 
 /**
  * Dev signing certificate. `scripts/trust-cert.ps1` repeats both values as PowerShell literals — it
