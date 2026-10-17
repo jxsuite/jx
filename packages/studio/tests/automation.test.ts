@@ -177,11 +177,10 @@ describe("run is registry.run", () => {
     expect(ran).toEqual([]);
   });
 
-  test("an id with a registry gap says which phase lands it", async () => {
-    const { deps } = makeFixture();
-    const error = await rejection(createAutomationApi(deps).run("media.browse"));
-    expect(error.message).toContain(
-      "has no command record yet (media.browse, site-architecture.md §9.4)",
+  test("the countdown of command gaps is empty: media.browse, its last entry, is a record", () => {
+    expect(Object.keys(AUTOMATION_COMMANDS)).not.toContain("media.browse");
+    expect(Object.values(AUTOMATION_COMMANDS).every((gap) => gap.disposition === "refused")).toBe(
+      true,
     );
   });
 

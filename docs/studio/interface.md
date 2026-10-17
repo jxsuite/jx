@@ -82,11 +82,11 @@ Studio has five workspaces, one for each kind of work. Every open tab belongs to
 
 - **Design** (:kbd[⌘1]): pages, layouts, components and every other file, on the canvas. It is the only workspace with the rail.
 - **Content** (:kbd[⌘2]): the [Library](/docs/studio/projects/browse), the content grids and every entry of a content collection.
-- **Media** (:kbd[⌘3]): your images, video, audio and documents, and the viewer for each one.
+- **Media** (:kbd[⌘3]): your images, video, audio, documents and fonts in one library you can filter, search, upload to, replace and delete from, and the viewer for each one. See [Media](/docs/studio/projects/media#the-media-workspace).
 - **Styles** (:kbd[⌘4]): [Project Styles](/docs/studio/design/stylebook), the design tokens and element defaults over `project.json`.
 - **Publish** (:kbd[⌘5]): your unpublished changes and the comparison of each one.
 
-Switching to a workspace takes you back to the tab you were last in there. When it has no tab open it opens its home instead: the Library for Content, Project Styles for Styles, and a home page of its own for Media and Publish. Design with nothing open shows an empty canvas. Closed a workspace's home? Click its tab in the Command Bar again and the home comes back.
+Switching to a workspace takes you back to the tab you were last in there. When it has no tab open it opens its home instead: the Library for Content, Project Styles for Styles, the media library for Media, and a home page of its own for Publish. Design with nothing open shows an empty canvas. Closed a workspace's home? Click its tab in the Command Bar again and the home comes back.
 
 Opening a document switches to its workspace for you, so opening a page from the Library lands you in Design, and opening an entry lands you in Content. The same goes for a second pane: it only ever shows a tab of the workspace you are in, and **Compare With…** on a document from another workspace switches you to that workspace to show it.
 
@@ -129,7 +129,7 @@ The Site panel lists your project the way you think about it: pages by address, 
 - **Pages** are listed by the address a visitor types, in the order the site resolves them: the home page first, then the other fixed addresses, then the ones with a value in them (`/blog/:slug`). A page that gives every entry of a collection its own address sits under a row naming that collection and how many entries it has, labelled for what it is, such as **Post page**. Click a page to open it.
 - **Templates** are your layouts, with how many pages use each one when Studio can count them. Click one to open it.
 - **Components** are cards that show each of your components rendered live, followed by the components your installed packages provide, listed by tag. Click one of your cards to open the component, or drag any card onto the canvas to place one; it is imported into the page as it lands, along with its package. Clicking a package's card opens the **Packages** panel.
-- **Media** shows thumbnails of the images and files in your `public/` folder. Drag one onto the canvas to place an image (or a link, for a file) that points at it. Clicking one opens it in the **Media** workspace, as its tooltip says; :kbd[⌘1] brings you back to Design. **Open Media** switches to the Media workspace.
+- **Media** shows thumbnails of the images and files in your `public/` folder and in every collection's `images/` folder. Drag one onto the canvas to place an image (or a link, for a file) that points at it. Clicking one opens it in the **Media** workspace, as its tooltip says; :kbd[⌘1] brings you back to Design. **Open Media** switches to the Media workspace.
 
 The row of the document you have open is highlighted, and the panel keeps up as files are added, renamed and removed, whether by Studio or by another program.
 

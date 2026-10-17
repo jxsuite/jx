@@ -4,12 +4,10 @@ disposition: implement
 claims:
   - studio.md#3.1
   - studio.md#5.5
-  - studio.md#5.7
   - studio.md#6
   - studio.md#7.1
   - studio.md#9.1.1
   - studio.md#9.1.2
-  - studio.md#9.3
   - studio.md#17.1
   - studio.md#22
   - studio.md#22.1
@@ -37,7 +35,7 @@ The redesign was approved against sixteen mockup boards (Design page settings, D
 
 - studio.md §3.1 (the frame's columns), §5.1 (the Design-only rail, the Site panel, developer panels; claimed by `plan:studio/search-panel`, which this plan enables), §5.5 (Source Control hosted by Publish), new §5.7 (Site Panel), §6 (Inspector: Page · Element · Assistant), §7.1 (Project Styles as the Styles workspace, the Variables view), §9.1.1 (Add new), §9.1.2 (the Library becomes Content), §9.3 (`public/media/`, Replace, one picker), §17.1 (Project Settings as a three-group dialog) and new §22 (the workspace model, the switcher, frames, and one subsection per workspace).
 - studio-ui-guidelines.md §3.1 and §3.2 (the frame per workspace, the Inspector anatomy), claimed by `plan:studio-ui-guidelines/shell-layout-prose`, which lands with this plan's slices; §12.2 gains the rule that a tab's sub-switch and the Command Bar switcher are not dock tabs (no new open item).
-- site-architecture.md §9.4 (the upload default), claimed by `plan:site-architecture/media-upload-default`, which lands with this plan's Media slice.
+- site-architecture.md §9.4 (the upload default), landed with this plan's Media slice; its plan was deleted in that slice.
 
 Code anchors for each area were surveyed before the spec text was written (shell, library, create, media, styles and settings, publish, specs and tests); the anchors that bind a decision are repeated under Implementation.
 
@@ -45,10 +43,10 @@ Code anchors for each area were surveyed before the spec text was written (shell
 
 - studio.md §22 and §22.1–§22.8 → Implemented, except the two second markers that stay Pending as named follow-ups (below).
 - studio.md §3.1, §5.5, §5.7, §6, §7.1, §9.1.1, §9.1.2, §17.1 → Implemented.
-- studio.md §9.3 → Implemented.
+- studio.md §9.3 → Implemented (landed with `WKS1.5`).
 - Follow-ups that stay Pending, claimed here until each lands or is split into its own plan: the entry body spliced into its template page's bound body (§22.5's second marker), the Missing alt text and tag filters (§22.6's second marker), deploy Rollback, and Send for review on a host with no `createPullRequest` (§22.8's second marker). When only these remain, split them into plans of their own (one per store or API they need) and delete this plan.
-- Left open by the Design slice, closed by later slices: §5.7's media section lists `public/` alone until the scan widens (`WKS1.5`); §6's Entry tab has no entry fields until `WKS1.4`; §3.1 and §22.3 name Content's Collections panel (`WKS1.4`).
-- Left open by the Add new slice, closed by later slices: §9.1.1's new entry opens in the entry form until Content's writing mode lands (`WKS1.4`), and an upload stays where it was until Media can show it selected (`WKS1.5`). Both are named on §9.1.1's second marker, which stays claimed here.
+- Left open by the Design slice, closed by later slices: §6's Entry tab has no entry fields until `WKS1.4`; §3.1 and §22.3 name Content's Collections panel (`WKS1.4`). §5.7's media section, which listed `public/` alone, closed with `WKS1.5`'s wider scan, and §5.7 is Implemented.
+- Left open by the Add new slice, closed by later slices: §9.1.1's new entry opens in the entry form until Content's writing mode lands (`WKS1.4`), named on §9.1.1's marker, which stays claimed here. Its upload half closed with `WKS1.5`: an upload lands in Media with the first file selected.
 - Not a graduation: studio.md keeps other open items.
 
 ## Decisions
@@ -119,7 +117,7 @@ Each slice lands its code, tests, docs, screenshot re-authoring and marker flips
 | WKS1.2  | Design: Site panel, Design-only rail and developer panels, Inspector Page · Element · Assistant with auto-switch, insert fixes          | studio.md#5.7, studio.md#6, studio.md#3.1 (Inspector)                               | done  |
 | WKS1.3  | Add new dialog, `deriveCreation`, `file.new`, collection creation, one custom-element-name validator                                    | studio.md#9.1.1                                                                     | done  |
 | WKS1.4  | Content: Collections panel, Content home, collection header, entries in their layout, Entry tab; Library deleted                        | studio.md#9.1.2, studio.md#22.5                                                     | open  |
-| WKS1.5  | Media: media library surface, pick mode, `public/media/` default, Replace, scan scope                                                   | studio.md#9.3, studio.md#22.6                                                       | open  |
+| WKS1.5  | Media: media library surface, pick mode, `public/media/` default, Replace, scan scope                                                   | studio.md#9.3, studio.md#22.6                                                       | done  |
 | WKS1.6  | Styles: Styles workspace frame, `tokens` editor, View picker, `styles.open` alias, CSS Variables moved                                  | studio.md#7.1, studio.md#22.7                                                       | open  |
 | WKS1.7  | Project Settings dialog in three groups, `group` on sections and contributions, settings editor kind deleted                            | studio.md#17.1                                                                      | open  |
 | WKS1.8  | Publish: Review changes, Deploys, Branches, Hosting, quick publish; `git` navigator panel removed                                       | studio.md#5.5, studio.md#22.8                                                       | open  |

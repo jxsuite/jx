@@ -1,0 +1,1586 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioMediaLibrary",
+  "$description": "The Media workspace's library (`specs/studio.md` §22.6): the project's media as filters, a grid and the selected file's detail. ONE document in two modes. In `manage` it is the Media home tab, with Replace, Open in viewer and Delete under the detail; in `pick` it is the full-size picker inside a `jx-dialog` (`media-pick-dialog.json`), and the dialog's own footer answers Cancel or Use <file>. `media/media-library.ts` keeps every decision (which files a filter keeps, the sort, what a count may claim, where an arrow lands, what Replace writes) and hands this document strings and discriminants. **Unused is drawn with no number until the usage sweep has settled**, and Missing alt text and tags are not drawn at all: each needs a store that does not exist, and a filter that cannot be answered is not shipped as one that always answers nothing.",
+  "tagName": "div",
+  "attributes": {
+    "part": "media-library",
+    "data-jx-region": "${state.region}",
+    "data-mode": "${state.mode}",
+    "data-drop": "${state.dropActive}"
+  },
+  "style": {
+    "$description": "Three columns over the whole stage: the filters, the grid with its toolbar, and the selected file's detail. Fills the pane's stage by its own geometry, as the workspace home does: the stage is `position: relative` (`pane-grid.json`). In pick mode the same columns fill the dialog's body instead, so the root's box is the only thing that differs between the two modes.",
+    "position": "absolute",
+    "inset": "0",
+    "display": "grid",
+    "gridTemplateColumns": "200px minmax(0, 1fr) 300px",
+    "boxSizing": "border-box",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "background": "var(--bg)",
+    "&[data-mode=\"pick\"]": {
+      "$description": "Inside a dialog there is no stage to fill: the box is the dialog body's, at a height the dialog can scroll within.",
+      "position": "relative",
+      "inset": "auto",
+      "height": "min(70vh, 620px)",
+      "gridTemplateColumns": "150px minmax(0, 1fr) 210px"
+    },
+    "&[data-drop=\"true\"]": {
+      "$description": "The drop affordance is a STATE the flow holds, not a class a handler adds and forgets to take off.",
+      "outline": "2px dashed var(--accent)",
+      "outlineOffset": "-4px"
+    },
+    "& [part=\"filters\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px",
+      "padding": "var(--jx-space-3) var(--jx-space-2)",
+      "borderRight": "1px solid var(--border)",
+      "background": "var(--bg-panel)",
+      "overflowY": "auto"
+    },
+    "& [part=\"filters-heading\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-2) var(--jx-space-2) var(--jx-space-1)",
+      "fontSize": "var(--jx-text-xs)",
+      "fontWeight": "600",
+      "letterSpacing": "0.06em",
+      "textTransform": "uppercase",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"filter\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "height": "30px",
+      "padding": "0 var(--jx-space-2)",
+      "border": "none",
+      "borderRadius": "var(--radius)",
+      "background": "none",
+      "color": "var(--fg)",
+      "font": "inherit",
+      "textAlign": "left",
+      "cursor": "pointer"
+    },
+    "& [part=\"filter\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"filter\"][aria-pressed=\"true\"]": {
+      "background": "color-mix(in srgb, var(--accent) 16%, transparent)",
+      "color": "var(--fg)",
+      "fontWeight": "600"
+    },
+    "& [part=\"filter\"]:focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "& [part=\"filter-count\"]": {
+      "marginLeft": "auto",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)",
+      "fontWeight": "400"
+    },
+    "& [part=\"main\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "minWidth": "0",
+      "minHeight": "0"
+    },
+    "& [part=\"toolbar\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3) var(--jx-space-4)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"title\"]": {
+      "margin": "0 auto 0 0",
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600"
+    },
+    "& [part=\"search\"]": {
+      "width": "220px"
+    },
+    "& [part=\"sort\"]": {
+      "width": "130px"
+    },
+    "& [part=\"upload\"], & [part=\"empty-upload\"]": {
+      "$description": "A LABEL around the file picker, not a button that clicks a hidden one: the picker is the control, so it takes focus, Enter opens it and a screen reader announces a file upload. A plain element because a label forwards a click to the input it contains and a custom element between the two would break that.",
+      "position": "relative",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "6px",
+      "height": "28px",
+      "padding": "0 var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-panel)",
+      "color": "var(--fg)",
+      "font": "inherit",
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":has(:focus-visible)": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      }
+    },
+    "& [part=\"upload-input\"], & [part=\"replace-input\"]": {
+      "$description": "Out of the way but still FOCUSABLE: `display: none` would take the control out of the tab order, and the label around it draws the focus ring for it.",
+      "position": "absolute",
+      "width": "1px",
+      "height": "1px",
+      "opacity": "0",
+      "pointerEvents": "none"
+    },
+    "& [part=\"upload-glyph\"]": {
+      "--jx-icon-size": "16px"
+    },
+    "& [part=\"body\"]": {
+      "flex": "1",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "padding": "var(--jx-space-4)"
+    },
+    "& [part=\"grid\"]": {
+      "$description": "auto-fill over a minimum tile width; `media/media-library-model.ts` `gridColumns` does the same arithmetic, so ArrowDown lands on the tile drawn under the current one. Keep the two numbers in step.",
+      "display": "grid",
+      "gridTemplateColumns": "repeat(auto-fill, minmax(132px, 1fr))",
+      "gap": "12px",
+      "alignContent": "start"
+    },
+    "& [part=\"tile\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "4px",
+      "padding": "4px",
+      "borderRadius": "var(--jx-radius-md, 6px)",
+      "border": "2px solid transparent",
+      "cursor": "pointer",
+      "minWidth": "0",
+      "outline": "none"
+    },
+    "& [part=\"tile\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"tile\"][aria-selected=\"true\"]": {
+      "borderColor": "var(--accent)"
+    },
+    "& [part=\"tile\"]:focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "2px"
+    },
+    "& [part=\"thumb\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "aspectRatio": "4 / 3",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-input)",
+      "overflow": "hidden",
+      "color": "var(--fg-dim)",
+      "--jx-icon-size": "28px"
+    },
+    "& [part=\"thumb-img\"]": {
+      "width": "100%",
+      "height": "100%",
+      "objectFit": "cover"
+    },
+    "& [part=\"tile-name\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"tile-caption\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)",
+      "minHeight": "1em"
+    },
+    "& [part=\"empty\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "48px var(--jx-space-6)",
+      "textAlign": "center",
+      "color": "var(--fg-dim)",
+      "--jx-icon-size": "40px"
+    },
+    "& [part=\"empty-title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"empty-detail\"]": {
+      "margin": "0",
+      "maxWidth": "42ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"detail\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-4)",
+      "borderLeft": "1px solid var(--border)",
+      "background": "var(--bg-panel)",
+      "overflowY": "auto",
+      "minWidth": "0"
+    },
+    "& [part=\"detail-hint\"]": {
+      "margin": "auto 0",
+      "textAlign": "center",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"detail-preview\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "minHeight": "140px",
+      "maxHeight": "220px",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg-input)",
+      "overflow": "hidden",
+      "color": "var(--fg-dim)",
+      "--jx-icon-size": "40px"
+    },
+    "& [part=\"preview-img\"], & [part=\"preview-video\"]": {
+      "maxWidth": "100%",
+      "maxHeight": "220px",
+      "objectFit": "contain"
+    },
+    "& [part=\"preview-audio\"]": {
+      "width": "100%"
+    },
+    "& [part=\"preview-specimen\"]": {
+      "$description": "The viewer's specimen at a side pane's size. The face arrives as the `@font-face` the flow writes under a family name generated from the path (`media/media-pane.ts` `specimenOf`); the element carries only that name, as a custom property, and the fallback stack is a rule, here.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-4)",
+      "maxWidth": "100%",
+      "color": "var(--fg)",
+      "fontFamily": "var(--jx-specimen-family, system-ui), system-ui, sans-serif"
+    },
+    "& [part=\"specimen-line\"]": {
+      "margin": "0",
+      "lineHeight": "1.3",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"specimen-line\"][data-size=\"32\"]": {
+      "fontSize": "32px"
+    },
+    "& [part=\"specimen-line\"][data-size=\"14\"]": {
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"detail-name\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"facts\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"group-title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-xs)",
+      "fontWeight": "600",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"url\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"url-value\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--jx-font-mono)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"usage\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"usage-headline\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"usage-list\"]": {
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px"
+    },
+    "& [part=\"usage-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"usage-link\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "border": "none",
+      "background": "none",
+      "padding": "0",
+      "color": "var(--accent)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-sm)",
+      "textAlign": "left",
+      "cursor": "pointer",
+      ":hover": {
+        "textDecoration": "underline"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)"
+      }
+    },
+    "& [part=\"usage-count\"]": {
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"actions\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)",
+      "marginTop": "var(--jx-space-2)"
+    },
+    "& [part=\"replace\"]": {
+      "position": "relative",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "height": "28px",
+      "padding": "0 var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg)",
+      "color": "var(--fg)",
+      "font": "inherit",
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":has(:focus-visible)": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      }
+    }
+  },
+  "ondragover": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "preventDefault": true
+      },
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/dragOver"
+        },
+        "value": []
+      }
+    ],
+    "description": "A file dropped ANYWHERE on the library uploads, to the destination the Upload label names before the drop: public/media/."
+  },
+  "ondragleave": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/dragOut"
+        },
+        "value": []
+      }
+    ]
+  },
+  "ondrop": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "preventDefault": true
+      },
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/drop"
+        },
+        "value": [
+          {
+            "$ref": "event#/dataTransfer/files"
+          }
+        ]
+      }
+    ]
+  },
+  "children": [
+    {
+      "tagName": "nav",
+      "attributes": {
+        "part": "filters",
+        "aria-label": "Media filters"
+      },
+      "children": [
+        {
+          "tagName": "h2",
+          "attributes": {
+            "part": "filters-heading"
+          },
+          "textContent": "Library"
+        },
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/filters"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "button",
+            "attributes": {
+              "part": "filter",
+              "type": "button",
+              "aria-pressed": "${$map.item.pressed}",
+              "data-filter": "${$map.item.key}"
+            },
+            "onclick": {
+              "$prototype": "Function",
+              "body": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/setFilter"
+                  },
+                  "value": [
+                    {
+                      "$ref": "$map/item/key"
+                    }
+                  ]
+                }
+              ]
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "filter-label"
+                },
+                "textContent": "${$map.item.label}"
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "filter-count"
+                },
+                "textContent": "${$map.item.count}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "section",
+      "attributes": {
+        "part": "main",
+        "aria-labelledby": "${state.titleId}"
+      },
+      "children": [
+        {
+          "tagName": "header",
+          "attributes": {
+            "part": "toolbar"
+          },
+          "children": [
+            {
+              "tagName": "h2",
+              "attributes": {
+                "part": "title",
+                "id": "${state.titleId}"
+              },
+              "textContent": "${state.title}"
+            },
+            {
+              "tagName": "jx-textfield",
+              "attributes": {
+                "part": "search"
+              },
+              "$props": {
+                "type": "search",
+                "size": "sm",
+                "label": "Search media",
+                "placeholder": "Search by name…",
+                "autocomplete": "off",
+                "value": {
+                  "$ref": "#/state/query"
+                }
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setQuery"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-select",
+              "attributes": {
+                "part": "sort"
+              },
+              "$props": {
+                "label": "Sort",
+                "size": "sm",
+                "options": {
+                  "$ref": "#/state/sortOptions"
+                },
+                "value": {
+                  "$ref": "#/state/sort"
+                }
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setSort"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "label",
+              "attributes": {
+                "part": "upload",
+                "title": "${state.uploadHint}"
+              },
+              "children": [
+                {
+                  "tagName": "input",
+                  "attributes": {
+                    "part": "upload-input",
+                    "type": "file",
+                    "multiple": true,
+                    "accept": "${state.uploadAccept}"
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/upload"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target"
+                          }
+                        ]
+                      }
+                    ],
+                    "description": "The picker itself, so the destination in the label's tooltip is visible BEFORE the files are chosen. The flow takes the element rather than the file list because a file input that is not cleared refuses the same file twice."
+                  }
+                },
+                {
+                  "tagName": "jx-icon",
+                  "attributes": {
+                    "part": "upload-glyph",
+                    "aria-hidden": "true"
+                  },
+                  "$props": {
+                    "name": "upload-simple"
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "textContent": "Upload"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "body"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "grid-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/gridState"
+              },
+              "cases": {
+                "loading": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty",
+                    "role": "status"
+                  },
+                  "textContent": "Reading the project's media…"
+                },
+                "counting": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty",
+                    "role": "status"
+                  },
+                  "textContent": "${state.countingLabel}"
+                },
+                "empty": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-icon",
+                      "attributes": {
+                        "part": "empty-glyph",
+                        "aria-hidden": "true"
+                      },
+                      "$props": {
+                        "name": "image"
+                      }
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-title"
+                      },
+                      "textContent": "${state.emptyTitle}"
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-detail"
+                      },
+                      "textContent": "${state.emptyDetail}"
+                    },
+                    {
+                      "tagName": "label",
+                      "attributes": {
+                        "part": "empty-upload",
+                        "title": "${state.uploadHint}"
+                      },
+                      "children": [
+                        {
+                          "tagName": "input",
+                          "attributes": {
+                            "part": "upload-input",
+                            "type": "file",
+                            "multiple": true,
+                            "accept": "${state.uploadAccept}"
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/upload"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target"
+                                  }
+                                ]
+                              }
+                            ],
+                            "description": "The picker itself, so the destination in the label's tooltip is visible BEFORE the files are chosen. The flow takes the element rather than the file list because a file input that is not cleared refuses the same file twice."
+                          }
+                        },
+                        {
+                          "tagName": "jx-icon",
+                          "attributes": {
+                            "part": "upload-glyph",
+                            "aria-hidden": "true"
+                          },
+                          "$props": {
+                            "name": "upload-simple"
+                          }
+                        },
+                        {
+                          "tagName": "span",
+                          "textContent": "Upload"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "nomatch": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-icon",
+                      "attributes": {
+                        "part": "empty-glyph",
+                        "aria-hidden": "true"
+                      },
+                      "$props": {
+                        "name": "image"
+                      }
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-title"
+                      },
+                      "textContent": "${state.emptyTitle}"
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-detail"
+                      },
+                      "textContent": "${state.emptyDetail}"
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "attributes": {
+                        "part": "reset"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "variant": "secondary"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/reset"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Show all media"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "listed": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "grid",
+                    "role": "listbox",
+                    "aria-labelledby": "${state.titleId}"
+                  },
+                  "onkeydown": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "$switch": {
+                          "$ref": "event#/key"
+                        },
+                        "cases": {
+                          "ArrowRight": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/key"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/key"
+                                },
+                                {
+                                  "$ref": "event#/ctrlKey"
+                                }
+                              ]
+                            }
+                          ],
+                          "ArrowLeft": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/key"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/key"
+                                },
+                                {
+                                  "$ref": "event#/ctrlKey"
+                                }
+                              ]
+                            }
+                          ],
+                          "ArrowDown": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/key"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/key"
+                                },
+                                {
+                                  "$ref": "event#/ctrlKey"
+                                }
+                              ]
+                            }
+                          ],
+                          "ArrowUp": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/key"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/key"
+                                },
+                                {
+                                  "$ref": "event#/ctrlKey"
+                                }
+                              ]
+                            }
+                          ],
+                          "Home": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/key"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/key"
+                                },
+                                {
+                                  "$ref": "event#/ctrlKey"
+                                }
+                              ]
+                            }
+                          ],
+                          "End": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/key"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/key"
+                                },
+                                {
+                                  "$ref": "event#/ctrlKey"
+                                }
+                              ]
+                            }
+                          ],
+                          "Enter": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/activateSelected"
+                              },
+                              "value": []
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "description": "The grid pattern: arrows move one tile, Home and End to the ends of the row, Ctrl+Home and Ctrl+End to the ends of the grid, and Enter opens the selected file (in pick mode, uses it). The flow computes where the move lands; the tile that receives it takes focus, so the roving tabindex follows the selection."
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/tiles"
+                      },
+                      "key": {
+                        "$ref": "$map/item/key"
+                      },
+                      "map": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "tile",
+                          "role": "option",
+                          "aria-selected": "${$map.item.selected}",
+                          "tabindex": "${$map.item.tabindex}",
+                          "data-file": "${$map.item.file}",
+                          "title": "${$map.item.name}"
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/select"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/file"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "onfocus": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/focusTile"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/file"
+                                }
+                              ]
+                            }
+                          ],
+                          "description": "Selection follows focus, the listbox pattern: a Tab onto the grid lands on the roving stop and selects it, so the first Enter opens (in pick mode, uses) the tile the focus ring is on rather than nothing."
+                        },
+                        "ondblclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/activate"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/file"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "thumb"
+                            },
+                            "children": [
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "thumb-slot",
+                                  "role": "none"
+                                },
+                                "style": {
+                                  "display": "contents"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/thumbState"
+                                },
+                                "cases": {
+                                  "image": {
+                                    "tagName": "img",
+                                    "attributes": {
+                                      "part": "thumb-img",
+                                      "src": "${$map.item.thumbSrc}",
+                                      "alt": "",
+                                      "draggable": "false"
+                                    },
+                                    "onload": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/measure"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/file"
+                                            },
+                                            {
+                                              "$ref": "event#/target/naturalWidth"
+                                            },
+                                            {
+                                              "$ref": "event#/target/naturalHeight"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "pending": {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "thumb-pending",
+                                      "aria-hidden": "true"
+                                    }
+                                  },
+                                  "glyph": {
+                                    "tagName": "jx-icon",
+                                    "attributes": {
+                                      "part": "thumb-glyph",
+                                      "aria-hidden": "true"
+                                    },
+                                    "$props": {
+                                      "name": {
+                                        "$ref": "$map/item/glyph"
+                                      }
+                                    }
+                                  }
+                                },
+                                "$description": "The thumbnail is asked for when the tile scrolls into view, not when the grid is built: `pending` until the flow's observer reports the tile, then the picture. A file the browser draws no picture of shows its kind's glyph."
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "tile-name"
+                            },
+                            "textContent": "${$map.item.name}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "tile-caption"
+                            },
+                            "textContent": "${$map.item.caption}"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "aside",
+      "attributes": {
+        "part": "detail",
+        "aria-label": "Details"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "detail-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/detailState"
+          },
+          "cases": {
+            "none": {
+              "tagName": "p",
+              "attributes": {
+                "part": "detail-hint"
+              },
+              "textContent": "${state.detailHint}"
+            },
+            "shown": {
+              "tagName": "div",
+              "attributes": {
+                "part": "detail-body",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "detail-preview"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "preview-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/previewKind"
+                      },
+                      "cases": {
+                        "image": {
+                          "tagName": "img",
+                          "attributes": {
+                            "part": "preview-img",
+                            "src": "${state.previewSrc}",
+                            "alt": ""
+                          },
+                          "onload": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/measure"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "#/state/selectedFile"
+                                  },
+                                  {
+                                    "$ref": "event#/target/naturalWidth"
+                                  },
+                                  {
+                                    "$ref": "event#/target/naturalHeight"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        "video": {
+                          "tagName": "video",
+                          "attributes": {
+                            "part": "preview-video",
+                            "src": "${state.previewSrc}",
+                            "controls": true
+                          }
+                        },
+                        "audio": {
+                          "tagName": "audio",
+                          "attributes": {
+                            "part": "preview-audio",
+                            "src": "${state.previewSrc}",
+                            "controls": true
+                          }
+                        },
+                        "font": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "preview-specimen",
+                            "style": "${state.previewSpecimenFamily}"
+                          },
+                          "children": [
+                            {
+                              "tagName": "style",
+                              "textContent": "${state.previewFontFace}"
+                            },
+                            {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "specimen-line",
+                                "data-size": "32"
+                              },
+                              "textContent": "Aa"
+                            },
+                            {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "specimen-line",
+                                "data-size": "14"
+                              },
+                              "textContent": "${state.previewSpecimen}"
+                            }
+                          ]
+                        },
+                        "glyph": {
+                          "tagName": "jx-icon",
+                          "attributes": {
+                            "part": "preview-glyph",
+                            "aria-hidden": "true"
+                          },
+                          "$props": {
+                            "name": {
+                              "$ref": "#/state/previewGlyph"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "h3",
+                  "attributes": {
+                    "part": "detail-name"
+                  },
+                  "textContent": "${state.detailName}"
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "facts"
+                  },
+                  "textContent": "${state.detailFacts}"
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "url-group"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h4",
+                      "attributes": {
+                        "part": "group-title"
+                      },
+                      "textContent": "Site URL"
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "url"
+                      },
+                      "children": [
+                        {
+                          "tagName": "code",
+                          "attributes": {
+                            "part": "url-value"
+                          },
+                          "textContent": "${state.detailRef}"
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "copy"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": true,
+                            "hint": "Copy the site URL"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/copyRef"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Copy"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "usage-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/usageState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "usage"
+                      },
+                      "children": [
+                        {
+                          "tagName": "h4",
+                          "attributes": {
+                            "part": "group-title"
+                          },
+                          "textContent": "Used on"
+                        },
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "usage-headline"
+                          },
+                          "textContent": "${state.usageHeadline}"
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "usage-list-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasUsageFiles"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "ul",
+                              "attributes": {
+                                "part": "usage-list"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/usageFiles"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/path"
+                                  },
+                                  "map": {
+                                    "tagName": "li",
+                                    "attributes": {
+                                      "part": "usage-row",
+                                      "data-usage": "${$map.item.path}"
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "button",
+                                        "attributes": {
+                                          "part": "usage-link",
+                                          "type": "button",
+                                          "title": "Open ${$map.item.path}"
+                                        },
+                                        "textContent": "${$map.item.path}",
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/openDocument"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/path"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "usage-count"
+                                        },
+                                        "textContent": "${$map.item.count}"
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "$description": "Hidden on a host with no reference index, which is a different fact from \"nothing uses it\": a confident zero is the one answer this pane must never invent."
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "actions-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/mode"
+                  },
+                  "cases": {
+                    "manage": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "actions"
+                      },
+                      "children": [
+                        {
+                          "tagName": "label",
+                          "attributes": {
+                            "part": "replace",
+                            "title": "Replace ${state.detailName} everywhere it is used"
+                          },
+                          "children": [
+                            {
+                              "tagName": "input",
+                              "attributes": {
+                                "part": "replace-input",
+                                "type": "file",
+                                "accept": "${state.replaceAccept}"
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/replace"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "description": "Replace writes the chosen file over this one's path, so every reference keeps resolving and now shows the new bytes (studio.md §9.3). The element rather than the list, so the input can be cleared."
+                              }
+                            },
+                            {
+                              "tagName": "span",
+                              "textContent": "Replace"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "open-viewer"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "secondary"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/openViewer"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Open in viewer"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "delete"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "negative"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/remove"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Delete"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "$description": "Manage mode's actions. Pick mode has none here: its answer is the dialog's own footer, Cancel and Use <file>."
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

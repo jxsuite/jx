@@ -659,35 +659,9 @@ export function libraryNewRequest(category: string): AddNewRequest {
 
 // ─── Upload ──────────────────────────────────────────────────────────────────
 
-/**
- * Where an upload lands, and how the author was told.
- *
- * The active category's directory when it has one — printed on the drop zone, so the destination is
- * visible BEFORE the drop. "All" has none, and rather than falling back to a default nobody chose,
- * it asks. That fallback is exactly the surprise studio.md §16 exists to refuse: the file arrives,
- * the toast says it worked, and it is in a directory the author never picked.
- */
-export async function resolveUploadDir(): Promise<string | null> {
-  const named = uploadDirForCategory(libraryView.category);
-  if (named !== undefined) {
-    return named;
-  }
-  const chosen = await showPromptDialog("Upload files", {
-    confirmLabel: "Upload",
-    message: "The All view has no folder of its own. Choose where these files land.",
-    placeholder: "public",
-    validate: (value) => (value.trim() ? "" : "Enter a folder."),
-    value: "public",
-  });
-  return chosen === null ? null : chosen.trim().replace(/\/$/, "");
-}
-
+/** Upload into the active category's folder, which the drop zone has already named (§9.3). */
 async function uploadIntoLibrary(files: FileList | File[]) {
-  const dir = await resolveUploadDir();
-  if (dir === null) {
-    return;
-  }
-  await uploadAssets([...files], { dir });
+  await uploadAssets([...files], { dir: uploadDirForCategory(libraryView.category) });
   invalidateLibrary();
   await loadLibrary();
 }
@@ -822,8 +796,7 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       truncated: calendar.truncated,
       truncatedState: calendar.truncated === "" ? "hidden" : "shown",
       uploadAccept: uploadAccept(),
-      uploadHint:
-        destination === undefined ? "Upload — asks for a folder" : `Upload into ${destination}/`,
+      uploadHint: `Upload into ${destination}/`,
       view: kind,
     };
   };

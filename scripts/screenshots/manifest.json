@@ -1161,11 +1161,7 @@
         {
           "input": "type",
           "region": "inspector/field:image/browse",
-          "text": "",
-          "unstable": {
-            "reason": "\"media.browse\" has no command record; P7.5 lands it as a registry verb",
-            "until": "P7.5"
-          }
+          "text": ""
         }
       ],
       "expect": [
@@ -2300,24 +2296,24 @@
       "steps": [
         {
           "args": {
-            "workspace": "content"
+            "workspace": "media"
           },
           "cmd": "view.setWorkspace"
         },
         {
           "input": "dragOver",
-          "region": "pane.primary/library/dropZone"
+          "region": "pane.primary/media-library"
         }
       ],
       "expect": [
         {
-          "region": "pane.primary/library/dropZone"
+          "region": "pane.primary/media-library"
         }
       ],
       "capture": [
         {
           "image": "media-upload",
-          "of": "pane.primary/library/dropZone"
+          "of": "pane.primary/media-library"
         }
       ]
     },

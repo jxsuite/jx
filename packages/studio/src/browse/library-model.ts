@@ -11,14 +11,15 @@
  *    them as Problems with a Retry and refuses to call an incomplete listing empty.
  * 2. **A category has a directory.** The Manage view filtered by category and uploaded to whatever
  *    directory the active filter happened to name, which for "All" was nothing at all — the upload
- *    landed wherever `uploadAssets` defaulted. {@link uploadDirForCategory} still answers, but the
- *    pane never uploads to an unnamed destination: it asks.
+ *    landed wherever `uploadAssets` defaulted, and the label never said where. Now every category
+ *    names one ({@link uploadDirForCategory}): its own folder, or `public/media/` for a category
+ *    with none, printed on the drop zone before the drop (studio.md §9.3).
  *
  * Everything here is pure over its inputs (the scan takes the platform as an argument) so the
  * 300-page acceptance case can be measured without a DOM.
  */
 
-import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-upload";
+import { DEFAULT_MEDIA_DIR, MEDIA_EXTENSIONS, extensionOf } from "../files/media-upload";
 import { projectState } from "../store";
 import { notedListing } from "../files/asset-versions";
 import { errorMessage } from "@jxsuite/schema/parse";
@@ -72,7 +73,7 @@ export interface LibraryScan {
 export interface LibraryCategory {
   key: string;
   label: string;
-  /** Absent for "All" — which is why "All" has no upload destination and must ask for one. */
+  /** Absent for "All", whose uploads land in the no-context default, `public/media/`. */
   dir?: string;
 }
 
@@ -82,7 +83,7 @@ export const LIBRARY_CATEGORIES: readonly LibraryCategory[] = [
   { dir: "layouts", key: "layouts", label: "Layouts" },
   { dir: "components", key: "components", label: "Components" },
   { dir: "content", key: "content", label: "Content" },
-  { dir: "public", key: "media", label: "Media" },
+  { dir: DEFAULT_MEDIA_DIR, key: "media", label: "Media" },
 ];
 
 /** The category keys, for a command's `enum` — so `library.setCategory` refuses an unknown one. */
@@ -96,12 +97,13 @@ export function libraryCategory(key: string): LibraryCategory | undefined {
 /**
  * The directory a drop on the Library targets while `key` is the active category.
  *
- * `undefined` for "All" and for any category without one, and the caller MUST treat that as "ask",
- * never as "use the default": an upload that lands somewhere the author did not choose is the same
- * class of surprise as a rename that silently rewrites files.
+ * The category's own folder, or `public/media/` for "All" and any key without one: the no-context
+ * default every other upload door uses (studio.md §9.3). No folder is asked for, because the
+ * destination is printed on the drop zone before the drop, which is what made the prompt it
+ * replaces necessary in the first place.
  */
-export function uploadDirForCategory(key: string): string | undefined {
-  return libraryCategory(key)?.dir;
+export function uploadDirForCategory(key: string): string {
+  return libraryCategory(key)?.dir ?? DEFAULT_MEDIA_DIR;
 }
 
 /** Map a file path to a display category. Media files override by extension. */

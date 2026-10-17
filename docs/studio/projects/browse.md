@@ -77,7 +77,7 @@ Studio asks for a name, says what it will save and where before you click, and r
 
 Drag images, video, audio, PDFs or fonts onto the Library, or click **Upload**, and Studio writes them into your project.
 
-The destination is the active category's folder, and the Upload button says which one before you drop: with **Media** selected, files land in `public/`. **All** has no folder of its own, so it asks rather than picking one for you. An upload never overwrites: a file whose name is taken becomes `hero-1.jpg`. The site build optimizes images automatically (responsive `srcset`, WebP/AVIF).
+The destination is the active category's folder, and the Upload button says which one before you drop: with **Media** selected, files land in `public/media/`. **All** has no folder of its own, so its uploads land in `public/media/` too, the same default the [Media workspace](/docs/studio/projects/media#the-media-workspace) uses; there is no folder to choose. An upload never overwrites: a file whose name is taken becomes `hero-1.jpg`. The site build optimizes images automatically (responsive `srcset`, WebP/AVIF).
 
 The Library is one of four places you can add media from. See **[Media](/docs/studio/projects/media)** for the canvas, Files-panel and image-field routes.
 
@@ -102,4 +102,4 @@ An unreadable directory and an empty one mean very different things: one is a pr
 
 - **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components)**: which kind of file you want
 - **[Content types](/docs/studio/projects/content-types)**: collections, entries and the entry form
-- **[Media](/docs/studio/projects/media)**: everything in `public/`
+- **[Media](/docs/studio/projects/media)**: the Media workspace, where every image, video, document and font is filtered, uploaded, replaced and deleted

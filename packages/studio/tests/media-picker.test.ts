@@ -53,11 +53,16 @@ void mock.module("../src/store", () => ({
 
 const {
   invalidateMediaCache,
+  isMediaScanPath,
   mountMediaPicker,
+  onProjectMediaChange,
+  openFullMediaPicker,
   projectMediaFiles,
+  showMediaPickerPopover,
   unmountMediaPicker,
   uploadAndAssign,
 } = await import("../src/ui/media-picker");
+const { closeMediaPickDialog } = await import("../src/media/media-library");
 const { openMediaBrowserSurface } = await import("../src/surfaces/media-browser");
 const { initLayers, layerHost } = await import("../src/ui/layers");
 
@@ -332,7 +337,8 @@ describe("media cache collection", () => {
     pointer(browseButton(host), "click");
     await flush();
     expect(rows()).toHaveLength(0);
-    expect(emptyLine()).toBe("No matches");
+    // An empty project says so, rather than "No matches" over a search nobody typed.
+    expect(emptyLine()).toBe("No media in this project yet");
   });
 });
 
@@ -509,6 +515,7 @@ describe("the media browser", () => {
   test("a panel closed before it mounts focuses nothing and leaves no slot", async () => {
     const handle = openMediaBrowserSurface(
       {
+        browseAllLabel: "Browse all media…",
         emptyLabel: "No matches",
         filter: "",
         moreLabel: "",
@@ -518,7 +525,7 @@ describe("the media browser", () => {
         x: 0,
         y: 0,
       },
-      { measure: () => {}, pick: () => {}, setFilter: () => {} },
+      { browseAll: () => {}, measure: () => {}, pick: () => {}, setFilter: () => {} },
       null,
     );
     handle.close();
@@ -565,7 +572,7 @@ describe("media picker upload", () => {
     });
     created!.dispatchEvent(new Event("change"));
     await flush();
-    expect(commits).toEqual(["/hero.png"]);
+    expect(commits).toEqual(["/media/hero.png"]);
   });
 
   test("a picker dismissed without choosing anything commits nothing", async () => {
@@ -586,7 +593,7 @@ describe("media picker upload", () => {
 
     // Both files land, but only the first fills the single-valued field.
     expect(state.calls.filter((c) => c[0] === "uploadFile")).toHaveLength(2);
-    expect(commits).toEqual(["/hero.png"]);
+    expect(commits).toEqual(["/media/hero.png"]);
   });
 
   test("uploadAndAssign commits nothing when every upload failed", async () => {
@@ -714,5 +721,132 @@ describe("browse list metadata", () => {
     installTree({ public: [{ name: "logo.png", path: "public/logo.png", type: "file" }] });
     await openBrowser();
     expect(captions()).toEqual([undefined]);
+  });
+});
+
+// ─── The scan's reach, and who hears about it ────────────────────────────────
+
+describe("what counts as the project's media", () => {
+  test("public/** and every collection's images/ folder, each with its kind", async () => {
+    installTree({
+      content: [
+        { name: "blog", path: "content/blog", type: "directory" },
+        { name: "notes.md", path: "content/notes.md", type: "file" },
+        { name: "drafts", path: "content/drafts", type: "directory" },
+      ],
+      "content/blog/images": [
+        { name: "cover.png", path: "content/blog/images/cover.png", type: "file" },
+      ],
+      public: [{ name: "intro.mp4", path: "public/intro.mp4", type: "file" }],
+    });
+    projectMediaFiles();
+    await flush();
+    const files = projectMediaFiles() ?? [];
+    expect(files.map((file) => [file.file, file.kind])).toEqual([
+      ["public/intro.mp4", "video"],
+      ["content/blog/images/cover.png", "image"],
+    ]);
+  });
+
+  test("a project with no content/ folder lists public/ alone", async () => {
+    installTree({ public: [{ name: "a.png", path: "public/a.png", type: "file" }] });
+    projectMediaFiles();
+    await flush();
+    const listed = projectMediaFiles() ?? [];
+    expect(listed.map((file) => file.file)).toEqual(["public/a.png"]);
+  });
+
+  test("isMediaScanPath names exactly the two trees the scan walks", () => {
+    expect(isMediaScanPath("public/media/a.png")).toBe(true);
+    expect(isMediaScanPath("content/blog/images/a.png")).toBe(true);
+    expect(isMediaScanPath(String.raw`content\blog\images\a.png`)).toBe(true);
+    expect(isMediaScanPath("content/blog/post.md")).toBe(false);
+    expect(isMediaScanPath("pages/index.json")).toBe(false);
+  });
+
+  test("a listener hears the listing land and the invalidation that drops it, until it leaves", async () => {
+    let heard = 0;
+    const stop = onProjectMediaChange(() => {
+      heard += 1;
+    });
+    projectMediaFiles();
+    await flush();
+    expect(heard).toBe(1);
+    invalidateMediaCache();
+    expect(heard).toBe(2);
+    stop();
+    invalidateMediaCache();
+    expect(heard).toBe(2);
+  });
+
+  test("with no platform registered the listing stays unknown rather than empty", async () => {
+    globalThis.__jxPlatform = undefined;
+    expect(projectMediaFiles()).toBeNull();
+    await flush();
+    expect(projectMediaFiles()).toBeNull();
+  });
+});
+
+// ─── One picker, two sizes ───────────────────────────────────────────────────
+
+describe("images only, and Browse all media…", () => {
+  function anchor(): HTMLElement {
+    const el = document.createElement("button");
+    document.body.append(el);
+    hosts.push(el);
+    return el;
+  }
+
+  test("an image chooser lists images alone and says so on its last row", async () => {
+    showMediaPickerPopover(anchor(), () => {}, { images: true });
+    await flush();
+    expect(rowPaths()).toEqual(["/logo.png", "/img/photo.JPG"]);
+    expect(panel()?.querySelector('[part="browse-all"]')?.textContent.trim()).toBe(
+      "Browse all images…",
+    );
+  });
+
+  test("an image chooser over a project with no images says that, not 'No matches'", async () => {
+    installTree({ public: [{ name: "clip.mp4", path: "public/clip.mp4", type: "file" }] });
+    showMediaPickerPopover(anchor(), () => {}, { images: true });
+    await flush();
+    expect(emptyLine()).toBe("No images in this project yet");
+  });
+
+  test("Browse all media… closes the compact list and opens the full picker with the same commit", async () => {
+    const commits: string[] = [];
+    showMediaPickerPopover(anchor(), (value) => commits.push(value));
+    await flush();
+    expect(panel()?.querySelector('[part="browse-all"]')?.textContent.trim()).toBe(
+      "Browse all media…",
+    );
+    pointer(panel()!.querySelector<HTMLElement>('[part="browse-all"]')!, "click");
+    await flush(6);
+    expect(panel()).toBeNull();
+    const dialog = layerHost("dialog").querySelector('jx-dialog[part="media-pick"]');
+    expect(dialog).not.toBeNull();
+    closeMediaPickDialog();
+    await flush();
+    expect(layerHost("dialog").querySelector('jx-dialog[part="media-pick"]')).toBeNull();
+  });
+
+  test("openFullMediaPicker hands the image restriction to the dialog", async () => {
+    await openFullMediaPicker(() => {}, { images: true });
+    await flush(6);
+    const dialog = layerHost("dialog").querySelector<HTMLElement>('jx-dialog[part="media-pick"]');
+    expect(dialog?.querySelector('[part="headline"]')?.textContent.trim()).toBe("Choose an image");
+    closeMediaPickDialog();
+    await flush();
+  });
+
+  test("a field mounted for an image passes the restriction to its browser", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    hosts.push(host);
+    mountMediaPicker(host, "src", "", () => {}, { images: true });
+    await flush();
+    pointer(browseButton(host), "click");
+    await flush();
+    expect(rowPaths()).toEqual(["/logo.png", "/img/photo.JPG"]);
   });
 });

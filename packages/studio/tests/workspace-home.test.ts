@@ -67,21 +67,35 @@ describe("opening a home", () => {
 
 describe("drawing a home", () => {
   test("names the workspace and says what it is for", async () => {
-    const tab = openWorkspaceHome("media");
+    const tab = openWorkspaceHome("publish");
     const host = stage();
     renderWorkspaceHome(surfaceOf(host), tab);
     await flush(4);
     const home = host.querySelector<HTMLElement>('[part="home"]')!;
     expect(home).not.toBeNull();
-    expect(home.dataset.workspace).toBe("media");
+    expect(home.dataset.workspace).toBe("publish");
     expect(home.dataset.jxRegion).toBe("pane.primary/home");
-    expect(home.querySelector('[part="title"]')?.textContent).toBe("Media");
-    expect(home.querySelector('[part="purpose"]')?.textContent).toMatch(/images/);
+    expect(home.querySelector('[part="title"]')?.textContent).toBe("Publish");
+    expect(home.querySelector('[part="purpose"]')?.textContent).toMatch(/live site/);
     // The heading names the region.
     const title = home.querySelector('[part="title"]')!;
     expect(home.getAttribute("aria-labelledby")).toBe(title.id);
-    // The second sentence points at where media is managed until the workspace has its own surface.
-    expect(home.querySelector('[part="detail"]')?.textContent).toMatch(/Site panel/);
+    // The second sentence points at where the work is done until the workspace has its surface.
+    expect(home.querySelector('[part="detail"]')?.textContent).toMatch(/Source Control/);
+  });
+
+  test("the Media home is the media library, not the generic empty state", async () => {
+    const tab = openWorkspaceHome("media");
+    const host = stage();
+    renderWorkspaceHome(surfaceOf(host), tab);
+    await flush(4);
+    expect(host.querySelector('[part="home"]')).toBeNull();
+    const library = host.querySelector<HTMLElement>('[part="media-library"]');
+    expect(library?.dataset.jxRegion).toBe("pane.primary/media-library");
+    expect(library?.dataset.mode).toBe("manage");
+    expect(workspaceHomeMounted("primary", tab)).toBe(true);
+    detachWorkspaceHome("primary");
+    expect(workspaceHomeMounted("primary", tab)).toBe(false);
   });
 
   test("a home already standing is not rebuilt; another tab's is", async () => {
@@ -90,17 +104,18 @@ describe("drawing a home", () => {
     const surface = surfaceOf(host);
     renderWorkspaceHome(surface, media);
     await flush(4);
-    const root = host.querySelector('[part="home"]');
+    const root = host.querySelector('[part="media-library"]');
     expect(workspaceHomeMounted("primary", media)).toBe(true);
     renderWorkspaceHome(surface, media);
     await flush(4);
-    expect(host.querySelector('[part="home"]')).toBe(root);
+    expect(host.querySelector('[part="media-library"]')).toBe(root);
 
     const publish = openWorkspaceHome("publish");
     expect(workspaceHomeMounted("primary", publish)).toBe(false);
     renderWorkspaceHome(surface, publish);
     await flush(4);
     expect(host.querySelectorAll('[part="home"]')).toHaveLength(1);
+    expect(host.querySelector('[part="media-library"]')).toBeNull();
     expect(host.querySelector<HTMLElement>('[part="home"]')?.dataset.workspace).toBe("publish");
   });
 
@@ -117,7 +132,7 @@ describe("drawing a home", () => {
   });
 
   test("a stage that left the document is not a standing home", async () => {
-    const tab = openWorkspaceHome("media");
+    const tab = openWorkspaceHome("publish");
     const host = stage();
     renderWorkspaceHome(surfaceOf(host), tab);
     await flush(4);
@@ -142,7 +157,7 @@ describe("drawing a home", () => {
 describe("the surface adapter", () => {
   test("an empty second sentence is not drawn at all", async () => {
     const host = stage();
-    const view = workspaceHomeView("primary", openWorkspaceHome("media"));
+    const view = workspaceHomeView("primary", openWorkspaceHome("publish"));
     const handle = mountWorkspaceHomeSurface(host, { ...view, detail: "", title: "Library" });
     const root = await handle.ready;
     await flush(2);

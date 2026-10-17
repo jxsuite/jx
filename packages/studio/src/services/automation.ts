@@ -92,13 +92,14 @@ export function isScriptable(command: AnyCommand): boolean {
 // ─── The registry-gap declaration ─────────────────────────────────────────────
 
 /**
- * How a manifest id the registry does not declare is going to stop existing.
+ * Why a manifest id the registry does not declare will never be one.
  *
- * - `command` — a thing a user does, so it becomes a registry record. The value names who lands it.
- * - `seed` — a remote's state, addressed through {@link AutomationApi.seed}.
- * - `refused` — §13.5 says the app will never provide it; the manifest step is deleted.
+ * There were three fates. `command` (a thing a user does, so it becomes a registry record) emptied
+ * when `media.browse` landed in `media/media-commands.ts`, the last of them; `seed` (a remote's
+ * state) is answered from {@link seedIds}. What is left is `refused`: §13.5 says the app will never
+ * provide it, and the manifest step is deleted.
  */
-export type GapDisposition = "command" | "seed" | "refused";
+export type GapDisposition = "refused";
 
 export interface ManifestId {
   disposition: GapDisposition;
@@ -117,17 +118,16 @@ export interface ManifestId {
  * — only to explain, when the registry refuses an id, which of the three fates that id has.
  *
  * This is a countdown, in the idiom of the checker's own `TOGGLE_DEBT`: it may only shrink. It went
- * 39 → 8 when the manifest converted, and 8 → 7 when `element.insertData` became `insert.data`
- * (`canvas/canvas-render.ts`). What left: every `seed` entry, now read off {@link seedIds} and
+ * 39 → 8 when the manifest converted, 8 → 7 when `element.insertData` became `insert.data`
+ * (`canvas/canvas-render.ts`), and down to five when `media.browse` became a record of its own
+ * (`media/media-commands.ts`). What left: every `seed` entry, now read off {@link seedIds} and
  * answered from the live registry rather than from a hand-kept list; every `toggle*` entry, which
- * {@link TOGGLE_ID} refuses before this map is ever consulted; and every `command` entry whose
- * record has since landed.
+ * {@link TOGGLE_ID} refuses before this map is ever consulted; and every `command` entry, each of
+ * whose records has landed.
  *
- * What is left is two kinds. Two `command` entries are the manifest's real registry gaps — each
- * reached today by an `input` step clicking a hand-stamped region, and each of those steps carries
- * an `unstable` hatch naming the phase that lands the record, so this map and that hatch count are
- * the same debt. Five `refused` entries are NOT a countdown: they are §13.5's normative refusals,
- * and they stay so that a caller reaching for one gets the reason instead of "unknown command".
+ * What is left is one kind, and it is NOT a countdown: five `refused` entries, §13.5's normative
+ * refusals, which stay so that a caller reaching for one gets the reason instead of "unknown
+ * command".
  */
 export const AUTOMATION_COMMANDS = {
   "file.contextMenu": {
@@ -138,7 +138,6 @@ export const AUTOMATION_COMMANDS = {
     disposition: "refused",
     note: "matched RENDERED TEXT, which R1 of scripts/screenshots/README.md forbids; a row is addressed by its data-jx-path",
   },
-  "media.browse": { disposition: "command", note: "media.browse, site-architecture.md §9.4" },
   "project.showWelcome": {
     disposition: "refused",
     note: "cold start is a startup profile (?profile=fresh), not an action",
@@ -414,11 +413,8 @@ function unknownCommandMessage(
     return `"${id}" is a seed, not a command — call seed("${id}", …)`;
   }
   const gap = COMMAND_GAPS.get(id);
-  if (gap?.disposition === "refused") {
-    return `"${id}" is refused by spec §13.5: ${gap.note}`;
-  }
   if (gap) {
-    return `"${id}" has no command record yet (${gap.note}) — __jxAutomation.run projects the registry and nothing else`;
+    return `"${id}" is refused by spec §13.5: ${gap.note}`;
   }
   const known = registry
     .list()

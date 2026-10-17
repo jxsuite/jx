@@ -110,6 +110,11 @@ interface RowCommit {
   clear: () => void;
   /** Commit what the control settled on — a string from every kind but the checkbox. */
   commit: (raw: string | boolean) => void;
+  /**
+   * A media row whose schema says `format: "image"`: its pickers offer only pictures (studio.md
+   * §9.3).
+   */
+  images?: boolean;
 }
 
 /**
@@ -562,6 +567,8 @@ function fieldRow(
   commits.set(key, {
     clear: () => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, field)),
     commit: (raw) => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, field, parse(raw))),
+    // The properties panel's rule for the same kind of field: a picture field lists pictures.
+    images: row.kind === "media" && entry.format === "image",
   });
   return { ...blankRow(key, field, row.label), ...row, clearLabel: `Clear ${field}` };
 }
@@ -610,9 +617,13 @@ function makeActions(card: HeaderCardState, settleCard: () => void): DocHeaderAc
       flush(key);
       void mediaPicker().then((m) => {
         if (anchor instanceof HTMLElement) {
-          m.showMediaPickerPopover(anchor, (val: string) => {
-            card.commits.get(key)?.commit(val);
-          });
+          m.showMediaPickerPopover(
+            anchor,
+            (val: string) => {
+              card.commits.get(key)?.commit(val);
+            },
+            { images: card.commits.get(key)?.images === true },
+          );
         }
       });
     },

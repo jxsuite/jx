@@ -128,10 +128,11 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  * - `argSelectors` a puppeteer handler prefix (`xpath/`, `pierce/`) inside a step's `args`. Always
  *   zero, and landing it at zero is what keeps it zero.
  * - `inputSteps` raw input: keystrokes, typing, caret placement, synthetic drags. The contract's
- *   migration aimed for ≤6. It lands at **14**, and the gap is almost entirely the two ids that
- *   have no command record yet (`element.insertData`, `media.browse`) plus `tab-strip-shot`, which
- *   types into a real editor because the dirty flag is EARNED, not asserted. Each falls out as its
- *   record lands.
+ *   migration aimed for ≤6. It lands at **14**, and the gap was almost entirely the two ids that
+ *   had no command record (`element.insertData`, `media.browse`) plus `tab-strip-shot`, which types
+ *   into a real editor because the dirty flag is EARNED, not asserted. Both records have landed
+ *   (`insert.data`, `media.browse`); each of their shots still types, because its subject is the
+ *   control the step presses rather than the state the record names.
  *
  *   **14 → 13 when "resolving with" became a popover.** `counter-test-prop` typed into
  *   `pane.primary/prop:count`, which a popover puts behind a gesture — so the value got a record
@@ -177,9 +178,12 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *   scoped to the one Inspector, and the number falls the way this file says a number should: because
  *   a hand-stamp became unnecessary.
  * - `unstable` `{reason, until}` escape hatches. **2** after Project Settings became a document and
- *   retired the five `settings.selectEntry` steps. Of what is left, one is `blog-insert-data`'s,
- *   whose id has since LANDED (`insert.data`) and whose step survives because the shot's subject is
- *   the merge-tag LIST, a control — a docs decision, not a registry gap. See {@link REMEDY}.
+ *   retired the five `settings.selectEntry` steps. **2 → 1 when `media.browse` landed as a
+ *   record**: `media-picker-shot`'s hatch existed only because the id had none, and its step stays
+ *   an ordinary budgeted input because the shot's subject is the compact browser the field's own
+ *   Browse control opens. What is left is `blog-insert-data`'s, whose id has since LANDED
+ *   (`insert.data`) and whose step survives because the shot's subject is the merge-tag LIST, a
+ *   control — a docs decision, not a registry gap. See {@link REMEDY}.
  */
 export const CONTRACT_BUDGET = {
   selectorActions: 0,
@@ -189,7 +193,7 @@ export const CONTRACT_BUDGET = {
   argSelectors: 0,
   inputSteps: 14,
   nonDerivedRegions: 10,
-  unstable: 2,
+  unstable: 1,
 } as const;
 
 export type BudgetKey = keyof typeof CONTRACT_BUDGET;

@@ -15,7 +15,6 @@
  *   opens the popup, and nothing it installs exists until that read lands.
  */
 import {
-  answerPromptDialog,
   dragEvent,
   flush,
   installMockPlatform,
@@ -200,28 +199,14 @@ describe("the Library pane", () => {
     expect(host.querySelector('[part="empty"]')).toBeNull();
   });
 
-  test("a drop into All whose destination prompt is cancelled uploads nothing", async () => {
+  test("a drop into All uploads into public/media/ without asking for a folder", async () => {
     setLibraryCategory("all");
     await mount();
     const body = drawn('[part="body"]');
     dragEvent(body, "drop", [testFile("shot.png")]);
     await flush();
-    // The drop really did reach the upload flow — it is waiting on the destination.
-    expect(topDialog()).not.toBeNull();
-    await answerPromptDialog(null);
-    await flush();
-    expect(uploads).toEqual([]);
-  });
-
-  test("…and the same drop, answered, uploads into the folder the author named", async () => {
-    setLibraryCategory("all");
-    await mount();
-    const body = drawn('[part="body"]');
-    dragEvent(body, "drop", [testFile("shot.png")]);
-    await flush();
-    await answerPromptDialog("assets/media/");
-    await flush();
-    expect(uploads).toEqual([{ count: 1, dir: "assets/media" }]);
+    expect(topDialog()).toBeNull();
+    expect(uploads).toEqual([{ count: 1, dir: "public/media" }]);
   });
 
   test("an outside mousedown dismisses the context menu, and the next right-click reopens one", async () => {

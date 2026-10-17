@@ -24,6 +24,7 @@ import { isJsonObject } from "@jxsuite/schema/guards";
 import { seedEntry } from "../content/entry-model";
 import { slugify, validateNewFileName } from "../files/new-file-name";
 import { customElementNameProblem, deriveTagName } from "./element-name";
+import { DEFAULT_MEDIA_DIR } from "../files/media-upload";
 import type {
   ContentTypeSchema,
   ContentTypeSchemaField,
@@ -116,9 +117,6 @@ export const KIND_INFO: Readonly<Record<CreationKind, KindInfo>> = {
     placeholder: "Landing",
   },
 };
-
-/** Where uploads land when nothing else names a folder (`specs/studio.md` §9.3). */
-export const MEDIA_DIR = "public/media";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -647,16 +645,16 @@ export function deriveCreation(
       const files = options.files ?? 0;
       return {
         content: { doc: {}, format: null },
-        dir: MEDIA_DIR,
+        dir: DEFAULT_MEDIA_DIR,
         ext: "",
         extraWrites: [],
         fileName: "",
         kind,
-        path: MEDIA_DIR,
+        path: DEFAULT_MEDIA_DIR,
         saved:
           files === 0
-            ? `Saved under ${MEDIA_DIR}/. No folder to choose.`
-            : `${files === 1 ? "1 file" : `${files} files`} will be saved under ${MEDIA_DIR}/.`,
+            ? `Saved under ${DEFAULT_MEDIA_DIR}/. No folder to choose.`
+            : `${files === 1 ? "1 file" : `${files} files`} will be saved under ${DEFAULT_MEDIA_DIR}/.`,
       };
     }
   }

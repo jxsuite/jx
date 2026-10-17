@@ -36,7 +36,7 @@ import { creationFormats } from "../format/format-choices";
 import { collectionNames, entryCollections } from "../content/entry-model";
 import { componentRegistry, noteComponentSaved } from "../files/components";
 import { listTakenNames, openFileInTab, writeNewFile } from "../files/files";
-import { uploadAccept, uploadAssets } from "../files/media-upload";
+import { DEFAULT_MEDIA_DIR, uploadAccept, uploadAssets } from "../files/media-upload";
 import { commitProjectConfig } from "../tabs/project-config";
 import { convertibleSelection, convertSelectionToComponent } from "../editor/convert-to-component";
 import { invalidateLayoutPickerCache, listLayoutEntries } from "../panels/head-panel";
@@ -57,7 +57,6 @@ import {
   itemNoun,
   CREATION_KINDS,
   KIND_INFO,
-  MEDIA_DIR,
   normalizeLayoutPath,
   START_ARTICLE,
   START_BLANK,
@@ -345,13 +344,16 @@ async function perform(
   files: readonly File[],
 ): Promise<AddNewResult | null> {
   if (creation.kind === "media") {
-    const uploaded = await uploadAssets(files, { dir: MEDIA_DIR });
+    // Only what the Media workspace lists: the browse that follows selects the first file by path.
+    const uploaded = await uploadAssets(files, { dir: DEFAULT_MEDIA_DIR, only: "media" });
     if (uploaded.length === 0) {
       return null;
     }
     const wrote = uploaded.map((asset) => asset.path);
     announce(wrote);
-    return { kind: "media", path: MEDIA_DIR, wrote };
+    // Then: the Media workspace, with what arrived selected so its detail pane describes it (§9.1.1).
+    void runActiveReported("media.browse", { select: uploaded[0]!.path }, SOURCE);
+    return { kind: "media", path: DEFAULT_MEDIA_DIR, wrote };
   }
   if (creation.kind === "collection") {
     return performCollection(creation);

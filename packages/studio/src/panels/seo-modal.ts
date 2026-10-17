@@ -34,18 +34,13 @@
 import { activeRegistry } from "../commands/active-registry";
 import { HEAD_EDIT_DEBOUNCE } from "../ui/timing";
 import { previewAssetSrc } from "../canvas/asset-refs";
-import { getPlatform } from "../platform";
 import { layerHost } from "../ui/layers";
-import { mediaSiteUrl } from "../files/media-paths";
-import { openMenu } from "../surfaces/menu";
 import { openSeoSurface } from "../surfaces/seo";
 import { provenanceTitle } from "./provenance";
-import { PUBLIC_DIR } from "@jxsuite/schema/asset-paths";
-import { scanLibrary } from "../browse/library-model";
 import { tabLabel } from "./tab-strip";
 import { transact } from "../tabs/transact";
 import { activeTab } from "../workspace/workspace";
-import { MEDIA_EXTENSIONS, uploadAccept, uploadAssets } from "../files/media-upload";
+import { pickAndUpload, showMediaPickerPopover } from "../ui/media-picker";
 import {
   OG_FIELDS,
   PAGE_FIELDS,
@@ -252,35 +247,6 @@ function cancelPending(key?: string): void {
   }
 }
 
-// ─── The project's media ──────────────────────────────────────────────────────
-
-/** The listing, once. Invalidated by an upload, which is the only thing that changes it here. */
-let _media: string[] | null = null;
-
-/**
- * Every media file under `public/`, as the site URLs a pick would write.
- *
- * `browse/library-model.ts`'s walker rather than a second one: it is the scanner the Library pane
- * already runs over the same tree, it records what it could not read instead of swallowing it, and
- * it skips the directories nobody wants walked. The site URL is the authored form — what production
- * serves — and `files/media-paths.ts` holds the one definition of that mapping.
- */
-async function mediaChoices(): Promise<string[]> {
-  if (_media) {
-    return _media;
-  }
-  const { files } = await scanLibrary([PUBLIC_DIR], getPlatform());
-  _media = files
-    .filter((file) => MEDIA_EXTENSIONS.has(file.ext))
-    .map((file) => mediaSiteUrl(file.path));
-  return _media;
-}
-
-/** Forget the listing: it was derived from a tree an upload has just changed. */
-function invalidateMediaChoices(): void {
-  _media = null;
-}
-
 // ─── The modal ───────────────────────────────────────────────────────────────
 
 /** The open surface, or `null`. One at a time: it is about the focused document. */
@@ -409,69 +375,26 @@ function commitField(key: string, value: string): void {
   renderSeoModal();
 }
 
-/** Open the OS file picker for a media row, and assign the first file it returns. */
+/**
+ * Upload into a media row: the image field's own Upload (`ui/media-picker.ts`), which opens the
+ * picker, uploads through the one core, and hands the first file's ref back. A commit that lands
+ * after the modal closed writes nothing, because {@link commitField} is about the open modal.
+ */
 function uploadInto(key: string): void {
-  /* The input is created per click and discarded after: a hidden one kept in the document would be
-     a node the surface owns outside its own document, which is exactly what a surface may not
-     have. */
-  const input = document.createElement("input");
-  input.type = "file";
-  input.multiple = true;
-  input.accept = uploadAccept();
-  input.addEventListener("change", () => {
-    if (!input.files?.length) {
-      return;
-    }
-    void uploadAssets([...input.files]).then((uploaded) => {
-      invalidateMediaChoices();
-      const [first] = uploaded;
-      if (first) {
-        commitField(key, first.ref);
-      }
-    });
-  });
-  input.click();
+  pickAndUpload((ref: string) => commitField(key, ref));
 }
 
 /**
- * Offer the project's media for one row.
+ * Offer the project's images for one row: the media picker's own compact browser, with its **Browse
+ * all images…** row opening the Media workspace's surface in pick mode.
  *
- * A kit menu rather than the Spectrum popover `ui/media-picker.ts` draws, and it has to be: a modal
- * `<dialog>` is in the top layer, so an overlay painted into a layer div renders UNDERNEATH the
- * dialog that opened it and is inert besides (`specs/ui.md` §7). The menu is shown with the Browse
- * button as its `source`, which is what puts it in the dialog's own top-layer hierarchy.
+ * Not a list of this module's own. It kept one (a walk of `public/` alone, and a kit menu of site
+ * URLs) because the old picker painted into a layer div UNDER the modal; the browser is a top-layer
+ * `jx-popover` now, so it paints over the modal that opened it, and the field and this dialog
+ * answer "what media does this project have" from the same listing (studio.md §9.3).
  */
 function browseFor(key: string, anchor: HTMLElement): void {
-  void mediaChoices().then((choices) => {
-    openMenu({
-      label: "Project media",
-      opener: anchor,
-      region: "seo-media",
-      rows:
-        choices.length > 0
-          ? choices.map((path) => ({
-              destructive: false,
-              disabled: false,
-              dividerAbove: false,
-              id: path,
-              run: () => commitField(key, path),
-              /* The site URL rather than the file name, because it is the string the pick writes
-                 AND the only one of the two that is unique: two `hero.jpg`s in two directories are
-                 one row twice over in a list that shows names. */
-              title: path,
-            }))
-          : [
-              {
-                destructive: false,
-                disabled: true,
-                dividerAbove: false,
-                id: "seo.media.empty",
-                requires: "a file under public/",
-                title: "No media in this project",
-              },
-            ],
-    });
-  });
+  showMediaPickerPopover(anchor, (ref: string) => commitField(key, ref), { images: true });
 }
 
 /** Open it over `tab`. Idempotent — opening it again re-points it at the current document. */

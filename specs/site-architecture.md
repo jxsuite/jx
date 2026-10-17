@@ -1381,7 +1381,7 @@ Only statically referenced files are copied into the build. A `src` computed at 
 
 ### 9.4 Studio Media Browser
 
-> **Status: Partial.** Upload, browsing, metadata, the referenced-file warning and browsable usage (the Media view, `packages/studio/src/media/media-pane.ts`) all ship. The default destination does not: an upload with no context still lands in `public/` rather than `public/media/` (`uploadDirFor` in `packages/studio/src/files/media-upload.ts`), and the fourth surface is still the Library's drop zone, whose All category asks for a folder, rather than the Media workspace (`studio.md` §22.6). The full Studio-side contract is `studio.md` §9.3 — this section states only what it means for the media on disk.
+> **Status: Implemented.** Upload, browsing, metadata, the referenced-file warning, browsable usage and the `public/media/` default all ship (`packages/studio/src/files/media-upload.ts` `DEFAULT_MEDIA_DIR`, the Media workspace's library in `packages/studio/src/media/media-library.ts`, the viewer in `media/media-pane.ts`; `packages/studio/tests/media-upload.test.ts`, `tests/media-library.test.ts`). The full Studio-side contract is `studio.md` §9.3 — this section states only what it means for the media on disk.
 
 **A preview resolves in the same space the canvas does.** Panel chrome — a media-picker thumbnail, the social card in a search-appearance preview — renders in the editor's own document, not the canvas, so a reference resolved for one and not the other breaks in exactly the places nobody photographs. The two take different things and must not be confused: a preview of what the AUTHOR WROTE resolves as §9.3 describes, while a preview of a FILE the browser is listing starts from the path and asks where that file publishes. `public/hero.jpg` is written `/hero.jpg` — a string that shares not one segment with it — so a preview built by prefixing a file path with a slash names a URL the site does not publish.
 
@@ -1397,13 +1397,14 @@ Uploaded images are ordinary project files and go through the build's optimizati
 
 Shipped:
 
-- **Grid/list view** of all media in the project (thumbnail grid as default, table as alternative)
+- **Grid view** of all media in the project — every file under `public/` and every collection's `images/` — in the Media workspace (`studio.md` §22.6), filtered by kind and by **Unused**, searched, and sorted by newest, name or size
 - **Upload** — drag-and-drop or a file picker, on all four surfaces above
-- **Preview** — thumbnails for images, in both the picker and the Manage view
+- **Replace** — the one overwrite: the chosen file's bytes are written to the selected file's own path, so every reference keeps resolving (`studio.md` §9.3)
+- **Preview** — thumbnails for images, in the picker and in the Media workspace, requested as their tiles scroll into view
 - **Metadata** — dimensions and file size, as a row caption in the media picker (`files/media-meta.ts`: `1200 × 800 · 84 KB`). Both halves come from work already done — the size from the directory listing that built the list, the pixels from the thumbnail once the browser has decoded it — so a caption never costs a second download
 - **Delete** — the confirmation states the reference count, computed on the authored ref, and says **unknown** rather than zero when a lane cannot be counted (`files/file-ops.ts`)
-- **Viewing** — clicking a media file in the Files tree or the Library opens it in a tab of its own (`studio.md` §4.2's Media mode). It shows the asset at full size — an image, a video or audio with controls, a font as a specimen, a PDF embedded — with its kind and dimensions, the site URL a document would reference it by, and the list of documents that do. Before it, opening a media file was not merely unsupported: it produced an error telling the author to add a format class to `project.json`, which is not advice about a PNG.
-- **Usage tracking as a surface** — the Media view is that reader. The query already shipped and was already correct; what was missing was anywhere to see it outside the delete confirmation, so the answer to "which pages use this image?" arrived at the one moment the author had already decided. A failed count still reads **unknown**, never zero.
+- **Viewing** — clicking a media file in the Files tree, the Site panel or the Media workspace (**Open in viewer**) opens it in a tab of its own (`studio.md` §4.2's Media mode). It shows the asset at full size — an image, a video or audio with controls, a font as a specimen, a PDF embedded — with its kind and dimensions, the site URL a document would reference it by, and the list of documents that do. Before it, opening a media file was not merely unsupported: it produced an error telling the author to add a format class to `project.json`, which is not advice about a PNG.
+- **Usage tracking as a surface** — the Media view and the Media workspace's detail pane are that reader, and **Unused** asks the same question of every file when it is chosen. The query already shipped and was already correct; what was missing was anywhere to see it outside the delete confirmation, so the answer to "which pages use this image?" arrived at the one moment the author had already decided. A failed count still reads **unknown**, never zero.
 
 ---
 

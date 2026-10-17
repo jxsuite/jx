@@ -63,6 +63,7 @@ import type { FormatFrontmatter } from "../src/format/format-host";
 const mediaCalls: string[] = [];
 let browseAnchor: HTMLElement | null = null;
 let browseCommit: ((val: string) => void) | null = null;
+let browseOptions: { images?: boolean } | undefined;
 let uploadCommit: ((val: string) => void) | null = null;
 void mock.module("../src/ui/media-picker.js", () => ({
   invalidateMediaCache: () => {},
@@ -70,10 +71,15 @@ void mock.module("../src/ui/media-picker.js", () => ({
     mediaCalls.push("upload");
     uploadCommit = onCommit;
   },
-  showMediaPickerPopover: (anchor: HTMLElement, onCommit: (val: string) => void) => {
+  showMediaPickerPopover: (
+    anchor: HTMLElement,
+    onCommit: (val: string) => void,
+    options?: { images?: boolean },
+  ) => {
     mediaCalls.push("browse");
     browseAnchor = anchor;
     browseCommit = onCommit;
+    browseOptions = options;
   },
   uploadAndAssign: () => Promise.resolve(null),
 }));
@@ -244,6 +250,7 @@ beforeEach(() => {
   listError = "";
   browseAnchor = null;
   browseCommit = null;
+  browseOptions = undefined;
   uploadCommit = null;
   setShell();
   installMockPlatform();
@@ -1048,9 +1055,21 @@ describe("media fields", () => {
     expect(mediaCalls).toEqual(["browse"]);
     // Anchored on the button the reader pressed, so two panes each open under their own card.
     expect(browseAnchor).toBe(button);
+    // A field whose schema says `format: "image"` holds a picture, so its picker lists only images.
+    expect(browseOptions).toEqual({ images: true });
     browseCommit!("/picked.png");
     await flush(4);
     expect(tab.doc.content.frontmatter.hero).toBe("/picked.png");
+  });
+
+  test("a uri-reference field browses every kind of media, not only images", async () => {
+    mediaProject("uri-reference");
+    await mountAndFlush();
+    row("hero")
+      .querySelector<HTMLElement>('[part="browse"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(4);
+    expect(browseOptions).toEqual({ images: false });
   });
 
   test("Upload assigns the file it uploaded", async () => {

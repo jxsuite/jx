@@ -50,6 +50,7 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
 
 let platform: InstalledMockPlatform;
 const workspaceRuns: (CommandArgValues | undefined)[] = [];
+const mediaRuns: (CommandArgValues | undefined)[] = [];
 
 const BASE_LAYOUT = JSON.stringify({
   children: [{ children: [{ tagName: "slot" }], tagName: "main" }],
@@ -94,6 +95,7 @@ function setup(
   );
   components.componentRegistry.length = 0;
   workspaceRuns.length = 0;
+  mediaRuns.length = 0;
   const registry = createCommandRegistry({ getContext: emptyContext, mac: true });
   registry.register({
     category: "View",
@@ -103,6 +105,15 @@ function setup(
       workspaceRuns.push(args);
     },
     title: "Workspace",
+  });
+  registry.register({
+    category: "Project",
+    id: "media.browse",
+    level: "project",
+    run: (_ctx, args: CommandArgValues | undefined) => {
+      mediaRuns.push(args);
+    },
+    title: "Browse Media",
   });
   registry.register({
     category: "File",
@@ -567,6 +578,9 @@ describe("media", () => {
         ([name, path]) => name === "uploadFile" && path === "public/media/hero.png",
       ),
     ).toBe(true);
+    // Then: the Media workspace, with the upload selected (studio.md §9.1.1).
+    await settle(undefined, 4);
+    expect(mediaRuns).toEqual([{ select: "public/media/hero.png" }]);
   });
 
   test("the browse input adds its files and is cleared for the next pick", async () => {

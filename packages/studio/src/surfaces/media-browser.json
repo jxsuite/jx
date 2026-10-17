@@ -90,6 +90,13 @@
           "margin": "0",
           "color": "var(--fg-dim)",
           "fontSize": "var(--jx-text-xs)"
+        },
+        "& [part=\"browse-all\"]": {
+          "$description": "The last row, set apart by a rule: it does not pick a file, it opens the picker that shows all of them.",
+          "marginTop": "var(--jx-space-1)",
+          "paddingTop": "var(--jx-space-2)",
+          "borderTop": "1px solid var(--border)",
+          "justifyContent": "flex-start"
         }
       },
       "children": [
@@ -296,6 +303,35 @@
               "textContent": "${state.moreLabel}"
             }
           }
+        },
+        {
+          "tagName": "jx-button",
+          "attributes": {
+            "part": "browse-all"
+          },
+          "$props": {
+            "variant": "secondary",
+            "size": "sm",
+            "quiet": true
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/browseAll"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "${state.browseAllLabel}"
+            }
+          ]
         }
       ]
     }

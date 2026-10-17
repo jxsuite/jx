@@ -1387,9 +1387,14 @@ const ACTIONS: PagePanelActions = {
     flushPending(key);
     void mediaPicker().then((m) => {
       if (anchor instanceof HTMLElement) {
-        m.showMediaPickerPopover(anchor, (val: string) => {
-          _commits.get(key)?.commit(val);
-        });
+        // Both of the panel's media rows (the social image and the icon) hold a picture.
+        m.showMediaPickerPopover(
+          anchor,
+          (val: string) => {
+            _commits.get(key)?.commit(val);
+          },
+          { images: true },
+        );
       }
     });
   },

@@ -11,6 +11,7 @@ import { registerPlatform } from "../src/platform";
 import {
   invalidateUsages,
   loadUsages,
+  onUsagesInvalidated,
   peekUsages,
   retryUsages,
   splitUsages,
@@ -99,6 +100,20 @@ describe("loadUsages", () => {
     invalidateUsages();
     await loadUsages({ path: "components/card.json" });
     expect(findReferences).toHaveBeenCalledTimes(2);
+  });
+
+  test("tells every listener when the answers are dropped, until it unsubscribes", () => {
+    const heard: string[] = [];
+    const stopA = onUsagesInvalidated(() => heard.push("a"));
+    const stopB = onUsagesInvalidated(() => heard.push("b"));
+    invalidateUsages();
+    expect(heard).toEqual(["a", "b"]);
+    stopA();
+    invalidateUsages();
+    expect(heard).toEqual(["a", "b", "b"]);
+    stopB();
+    invalidateUsages();
+    expect(heard).toEqual(["a", "b", "b"]);
   });
 
   test("passes only the fields it was given", async () => {

@@ -100,12 +100,13 @@ describe("categories", () => {
     expect(contentTypeFor("drafts/x.md")).toBeNull();
   });
 
-  test("only All has no upload destination — and that is why it has to ask", () => {
+  test("only All has no folder of its own, and it uploads to public/media/ rather than asking", () => {
     const withoutDir = LIBRARY_CATEGORIES.filter((c) => c.dir === undefined).map((c) => c.key);
     expect(withoutDir).toEqual(["all"]);
-    expect(uploadDirForCategory("all")).toBeUndefined();
-    expect(uploadDirForCategory("media")).toBe("public");
-    expect(uploadDirForCategory("nonsense")).toBeUndefined();
+    expect(uploadDirForCategory("all")).toBe("public/media");
+    expect(uploadDirForCategory("media")).toBe("public/media");
+    expect(uploadDirForCategory("pages")).toBe("pages");
+    expect(uploadDirForCategory("nonsense")).toBe("public/media");
   });
 
   test("the declared key list is what a command's enum refuses against", () => {

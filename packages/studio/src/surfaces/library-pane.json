@@ -658,7 +658,7 @@
             }
           }
         ],
-        "description": "An upload has a NAMED destination, shown before the drop — the label's tooltip carries it — and asked for when the active category does not name one."
+        "description": "An upload has a NAMED destination, shown before the drop — the label's tooltip carries it: the active category's folder, or public/media/ for a category with none."
       },
       "ondragleave": {
         "$prototype": "Function",

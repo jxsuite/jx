@@ -8,10 +8,11 @@
  * the `workspace://` space `workspace/workspace-ids.ts` declares, so it can never collide with a
  * file.
  *
- * What a home DRAWS today is a small empty state naming the workspace and what it is for
- * (`surfaces/workspace-home.json`). That is deliberately the whole of it: the Media and Publish
- * workspaces each replace their home's body with a surface of their own, and the mechanism (the
- * tab, the mode, the routing and the per-pane mount) is what stays.
+ * What a home DRAWS is its workspace's own surface where it has one: the Media home is the media
+ * library (`media/media-library.ts`, studio.md §22.6). A home without one yet draws a small empty
+ * state naming the workspace and what it is for (`surfaces/workspace-home.json`), which is
+ * Publish's until its surface lands. The mechanism (the tab, the mode, the routing and the per-pane
+ * mount) is the same for both.
  *
  * @docs studio/interface
  */
@@ -24,6 +25,11 @@ import {
   workspaceInfo,
 } from "./workspace-ids";
 import { mountWorkspaceHomeSurface } from "../surfaces/workspace-home";
+import {
+  detachMediaLibrary,
+  mediaLibraryMounted,
+  renderMediaLibrary,
+} from "../media/media-library";
 import { paneRegion } from "../ui/regions";
 import type { HomeWorkspaceId } from "./workspace-ids";
 import type { Tab } from "../tabs/tab";
@@ -80,6 +86,9 @@ const _active = new Map<string, ActiveHome>();
 
 /** Whether this tab's home is already mounted in this pane and still in the document. */
 export function workspaceHomeMounted(paneId: string, tab: Tab): boolean {
+  if (homeWorkspaceOfTabId(tab.id) === "media") {
+    return mediaLibraryMounted(paneId, tab);
+  }
   const home = _active.get(paneId);
   return (
     home !== undefined && home.tabId === tab.id && home.wrap.isConnected && home.surface.attached()
@@ -88,6 +97,7 @@ export function workspaceHomeMounted(paneId: string, tab: Tab): boolean {
 
 /** Tear one pane's home down (mode change, tab switch, project close). Idempotent. */
 export function detachWorkspaceHome(paneId: string): void {
+  detachMediaLibrary(paneId);
   const home = _active.get(paneId);
   if (!home) {
     return;
@@ -97,13 +107,11 @@ export function detachWorkspaceHome(paneId: string): void {
 }
 
 /**
- * The second sentence each home draws: where the work is done TODAY. The purpose sentence says what
- * the workspace is for; until its own surface lands, a home that stopped there would promise an
- * action the page does not offer, so it points at the place that does.
+ * The second sentence each generic home draws: where the work is done TODAY. The purpose sentence
+ * says what the workspace is for; until its own surface lands, a home that stopped there would
+ * promise an action the page does not offer, so it points at the place that does.
  */
-const HOME_DETAIL: Readonly<Record<HomeWorkspaceId, string>> = {
-  media:
-    "For now, your media is in the Design workspace, under Media in the Site panel, and in the Library's Media category.",
+const HOME_DETAIL: Readonly<Partial<Record<HomeWorkspaceId, string>>> = {
   publish:
     "For now, commit and sync your changes from Source Control: run Show Source Control from the command palette.",
 };
@@ -113,7 +121,7 @@ export function workspaceHomeView(paneId: string, tab: Tab): WorkspaceHomeView {
   const id = homeWorkspaceOfTabId(tab.id) ?? "publish";
   const info = workspaceInfo(id);
   return {
-    detail: HOME_DETAIL[id],
+    detail: HOME_DETAIL[id] ?? "",
     icon: info.icon,
     purpose: info.purpose,
     region: paneRegion(paneId, "home"),
@@ -134,6 +142,10 @@ export function renderWorkspaceHome(surface: CanvasSurface, tab: Tab): void {
     return;
   }
   detachWorkspaceHome(paneId);
+  if (homeWorkspaceOfTabId(tab.id) === "media") {
+    renderMediaLibrary(surface, tab);
+    return;
+  }
   const mounted = mountWorkspaceHomeSurface(wrap, workspaceHomeView(paneId, tab));
   _active.set(paneId, { surface: mounted, tabId: tab.id, wrap });
 }

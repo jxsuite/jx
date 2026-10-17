@@ -14,6 +14,10 @@
  * which is the whole reason `panels/seo-modal.ts` had to fork its own Browse onto the kit menu, and
  * a top-layer popover has no such problem.
  *
+ * **The last row opens the big picker.** **Browse all media…** hands the same commit to the Media
+ * workspace's own surface in a dialog (`media/media-library.ts`), so the compact list and the full
+ * one are two sizes of one picker rather than two pickers.
+ *
  * **The filter takes the caret, and the adapter is what puts it there.** A `jx-popover` moves focus
  * into itself but has no opinion about which control; the panel is a search box over a list, so the
  * box is where typing should land. The node is reached through the mounted root rather than a
@@ -62,6 +66,8 @@ export interface MediaBrowserView {
   moreState: "hidden" | "shown";
   /** "…10 more" — the cap is fifty and a truncated list says so. */
   moreLabel: string;
+  /** The last row: "Browse all media…", or "Browse all images…" for a field that holds a picture. */
+  browseAllLabel: string;
 }
 
 /** What a control asks the flow to do. */
@@ -70,6 +76,8 @@ export interface MediaBrowserActions {
   pick: (path: string) => void;
   /** A thumbnail finished decoding at that size. The flow decides whether it is news. */
   measure: (file: string, width: number, height: number) => void;
+  /** Open the full-size picker: the Media workspace's surface, in a dialog (studio.md §9.3). */
+  browseAll: () => void;
   /** The platform closed the panel: clicked outside, Escape, or a second press on the invoker. */
   dismissed?: () => void;
 }
@@ -90,6 +98,7 @@ function project(scope: MediaBrowserScope, view: MediaBrowserView): void {
   scope.emptyLabel = view.emptyLabel;
   scope.moreState = view.moreState;
   scope.moreLabel = view.moreLabel;
+  scope.browseAllLabel = view.browseAllLabel;
 }
 
 /**
@@ -106,6 +115,8 @@ export function openMediaBrowserSurface(
   anchor: HTMLElement | null,
 ): MediaBrowserSurfaceHandle {
   const scope: MediaBrowserScope = reactive<MediaBrowserScope>({
+    browseAll: actions.browseAll,
+    browseAllLabel: view.browseAllLabel,
     emptyLabel: view.emptyLabel,
     filter: view.filter,
     measure: actions.measure,

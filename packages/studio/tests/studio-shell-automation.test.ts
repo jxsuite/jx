@@ -171,8 +171,8 @@ describe("run() reaches the implementations", () => {
     );
   });
 
-  test("an id nothing declares still refuses with the countdown's own note", async () => {
-    expect(await refusal("media.browse")).toContain("has no command record yet");
+  test("an id §13.5 refuses still refuses with the refusal's own note", async () => {
+    expect(await refusal("view.setStatus")).toContain("is refused by spec §13.5");
   });
 });
 

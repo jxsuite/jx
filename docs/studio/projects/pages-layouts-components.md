@@ -56,7 +56,7 @@ The line above the buttons says what will be written before you write it: _Saved
 | Component | **Start from** **Blank**, the **Current selection** on the canvas, or a **Copy of…** an existing component                  | `components/<tag>.json`, where the tag is the name in lower case with a hyphen (`Hero` becomes `site-hero`) |
 | Media     | Drop files on the dialog, or **Browse files**                                                                               | The files, in `public/media/`                                                                               |
 
-A new page, template or component opens in a tab, ready to edit, and a new component is in the Site panel's **Components** and the [Insert palette](/docs/studio/design/elements) straight away. Collections and entries are covered in **[Content types](/docs/studio/projects/content-types)**.
+A new page, template or component opens in a tab, ready to edit, and a new component is in the Site panel's **Components** and the [Insert palette](/docs/studio/design/elements) straight away. An upload opens the [Media workspace](/docs/studio/projects/media#the-media-workspace) with the first file selected. Collections and entries are covered in **[Content types](/docs/studio/projects/content-types)**.
 
 ![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../../images/mode-manage.png)
 

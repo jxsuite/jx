@@ -141,7 +141,7 @@ import {
 import { invalidateLayoutPickerCache } from "./panels/head-panel";
 import { installAutomationHook } from "./services/automation";
 import { invalidateLibrary } from "./browse/library-pane";
-import { invalidateMediaCache } from "./ui/media-picker";
+import { invalidateMediaCache, isMediaScanPath } from "./ui/media-picker";
 import { invalidateSiteIndex, resetSitePanel } from "./panels/site-panel";
 import { setMediaChangedHandler } from "./files/media-upload";
 import { applyFileDrop } from "./editor/file-drop-action";
@@ -273,6 +273,8 @@ import { registerGridViewCommands } from "./grid/grid-panel";
 import { registerRedirectsCommands } from "./grid/redirects-grid";
 import { registerContentCommands } from "./content/entry-commands";
 import { registerAddNewCommands } from "./create/add-new-commands";
+import { registerMediaCommands } from "./media/media-commands";
+import { resetMediaLibrary } from "./media/media-library";
 import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
@@ -962,9 +964,10 @@ function ensureFsSync() {
       invalidatePageRouteCache();
       invalidateLayoutPickerCache();
       invalidateSiteIndex(paths);
-      /* The media listing is a walk of `public/`, so only a batch under it (or one that cannot say
-         what changed) can make it wrong: a file added by git, the OS or a Files-panel delete. */
-      if (paths === undefined || paths.some((path) => path.startsWith("public/"))) {
+      /* The media listing is a walk of `public/` and every collection's `images/`, so only a batch
+         under one of them (or one that cannot say what changed) can make it wrong: a file added by
+         git, the OS or a Files-panel delete. */
+      if (paths === undefined || paths.some((path) => isMediaScanPath(path))) {
         invalidateMediaCache();
       }
       invalidateParamValues();
@@ -1281,13 +1284,15 @@ async function openProject(target: ProjectOpenTarget = "thisWindow"): Promise<Pr
 }
 /**
  * The one project-switch reset of the caches panels keep for the project being left: the Site
- * panel's index and filter, and the media listing it and every image field read. Both open paths
- * run it (this file's `openRecentProject`, and `files.ts`'s `openProject` behind ⌘O, the toolbar
- * and the welcome screen), so neither can show the previous project's pages or media.
+ * panel's index and filter, the media listing it and every image field read, and the Media
+ * workspace's own filter, search and selection. Both open paths run it (this file's
+ * `openRecentProject`, and `files.ts`'s `openProject` behind ⌘O, the toolbar and the welcome
+ * screen), so neither can show the previous project's pages or media.
  */
 function resetProjectCaches(): void {
   resetSitePanel();
   invalidateMediaCache();
+  resetMediaLibrary();
 }
 
 async function openRecentProject(root: string) {
@@ -1616,6 +1621,7 @@ registerLibraryCommands(commandRegistry);
 registerFileFormatCommands(commandRegistry);
 registerContentCommands(commandRegistry);
 registerAddNewCommands(commandRegistry);
+registerMediaCommands(commandRegistry);
 /* The four translation verbs: open a sibling translation, create the missing one, show the
    Languages panel, declare a language. `i18n.switchLocale` is deliberately not among them — it sets
    a rendering context, so it lives with the other axis-3 verbs in `canvasViewCommands`. */

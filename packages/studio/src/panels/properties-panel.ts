@@ -1583,7 +1583,9 @@ function componentPropRows(
     if (isMediaFormat(prop.format)) {
       row.kind = "control";
       plan.control = (host) =>
-        mountMediaPicker(host, prop.name, staticVal, (v: string) => onChange(v));
+        mountMediaPicker(host, prop.name, staticVal, (v: string) => onChange(v), {
+          images: prop.format === "image",
+        });
     } else if (prop.format === "color") {
       row.kind = "color";
       row.tokens = colorTokens();
@@ -1784,7 +1786,9 @@ function attributeRow(
     row.kind = "control";
     const staticVal = isRef(value) ? "" : String(value || "");
     plan.control = (host) =>
-      mountMediaPicker(host, attr, staticVal, (v: string) => commitAttr(v || undefined));
+      mountMediaPicker(host, attr, staticVal, (v: string) => commitAttr(v || undefined), {
+        images: entry.format === "image",
+      });
   } else if (type === "select") {
     row.kind = "select";
     row.value = isRef(value) ? "" : String(value || "");

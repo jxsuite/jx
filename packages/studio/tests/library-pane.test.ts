@@ -26,6 +26,7 @@ import {
   resetStudioState,
   surfaceOf,
   testFile,
+  topDialog,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
@@ -83,7 +84,6 @@ const {
   refreshLibrary,
   renderLibraryMode,
   SCAN_ACTIVITY_DELAY_MS,
-  resolveUploadDir,
   setLibraryCategory,
   setLibraryLayout,
   setLibraryLocale,
@@ -894,28 +894,17 @@ describe("the upload destination", () => {
   test("a category that names a folder uploads there, and says so before the drop", async () => {
     setLibraryCategory("media");
     await mount();
-    expect(part("upload")!.getAttribute("title")).toBe("Upload into public/");
-    expect(await resolveUploadDir()).toBe("public");
+    expect(part("upload")!.getAttribute("title")).toBe("Upload into public/media/");
   });
 
-  test("All has no folder of its own, so it ASKS rather than guessing", async () => {
+  test("All has no folder of its own, so it uploads to public/media/ and says so: no prompt", async () => {
     setLibraryCategory("all");
     await mount();
-    expect(part("upload")!.getAttribute("title")).toBe("Upload — asks for a folder");
-    const pending = resolveUploadDir();
+    expect(part("upload")!.getAttribute("title")).toBe("Upload into public/media/");
+    dragEvent(body(), "drop", [testFile("shot.png")]);
     await flush();
-    await answerPromptDialog("assets/media/");
-    expect(await pending).toBe("assets/media");
-  });
-
-  test("cancelling the destination prompt uploads nothing at all", async () => {
-    setLibraryCategory("all");
-    await mount();
-    const pending = resolveUploadDir();
-    await flush();
-    await answerPromptDialog(null);
-    expect(await pending).toBeNull();
-    expect(uploads).toEqual([]);
+    expect(topDialog()).toBeNull();
+    expect(uploads).toEqual([{ count: 1, dir: "public/media" }]);
   });
 
   test("a drop on the body uploads into the named destination and re-scans", async () => {
@@ -927,7 +916,7 @@ describe("the upload destination", () => {
     dragEvent(body(), "drop", [testFile("shot.png")]);
     await flush();
     expect(body().dataset.drop).toBe("false");
-    expect(uploads).toEqual([{ count: 1, dir: "public" }]);
+    expect(uploads).toEqual([{ count: 1, dir: "public/media" }]);
   });
 
   test("dragging away clears the drop affordance", async () => {
@@ -963,7 +952,7 @@ describe("the Upload control", () => {
     Object.defineProperty(input, "files", { configurable: true, value: [testFile("a.png")] });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
-    expect(uploads).toEqual([{ count: 1, dir: "public" }]);
+    expect(uploads).toEqual([{ count: 1, dir: "public/media" }]);
     // Cleared, or the same file cannot be chosen twice in a row.
     expect(input.value).toBe("");
   });
