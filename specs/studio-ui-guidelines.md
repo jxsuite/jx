@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.20-draft\
+**Version:** 0.8.21-draft\
 **Status:** Partial\
-**Updated:** 2026-10-06\
+**Updated:** 2026-10-16\
 **Applies to:** `packages/studio/`
 
 ---
@@ -964,6 +964,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.21-draft** (2026-10-16) — §4.4 status note: seo-modal and settings-head now share HEAD_EDIT_DEBOUNCE (300ms) from ui/timing.ts instead of each keeping a local EDIT_DEBOUNCE_MS; the delay is unchanged.
 - **0.8.20-draft** (2026-10-06) — §3.1 The status bar's centre field is the breadcrumb trail, silenced in the live region; the 10px breadcrumb exception is gone (crumbs inherit the status bar's 11px).
 - **0.8.19-draft** (2026-09-29) — §9.3 is Partial: the name-to-callback renderer registry in store.ts, and the callers that repaint it by name, have not yet retired in favour of effects over reactive state.
 - **0.8.18-draft** (2026-09-29) — §13.3 is marked Partial: a failed project.json write from Settings is announced twice, once by its Problem and again by the section's own live region.

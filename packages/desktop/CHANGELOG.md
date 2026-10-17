@@ -1,5 +1,23 @@
 # Changelog
 
+## [5.4.7](https://github.com/jxsuite/jx/compare/desktop-v5.4.6...desktop-v5.4.7) (2026-10-16)
+
+
+### Bug Fixes
+
+* **desktop:** externalize the Astro compiler the oxfmt bump made a static import ([#458](https://github.com/jxsuite/jx/issues/458)) ([3b13ce6](https://github.com/jxsuite/jx/commit/3b13ce6f6ad49d117c5a35ba52597c764d3e1f31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 5.1.3
+    * @jxsuite/server bumped to 4.5.1
+    * @jxsuite/studio bumped to 6.1.2
+  * devDependencies
+    * @jxsuite/server bumped to 4.5.1
+
 ## [5.4.6](https://github.com/jxsuite/jx/compare/desktop-v5.4.5...desktop-v5.4.6) (2026-10-11)
 
 

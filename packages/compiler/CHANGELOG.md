@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.3](https://github.com/jxsuite/jx/compare/compiler-v5.1.2...compiler-v5.1.3) (2026-10-16)
+
+
+### Bug Fixes
+
+* **compiler:** re-root the $src import URLs of component and page modules on the base path ([#454](https://github.com/jxsuite/jx/issues/454)) ([7248bcd](https://github.com/jxsuite/jx/commit/7248bcd7b5e787dfdc814cf66ae0e8cbf97837bb))
+
 ## [5.1.2](https://github.com/jxsuite/jx/compare/compiler-v5.1.1...compiler-v5.1.2) (2026-10-11)
 
 
