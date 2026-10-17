@@ -29,6 +29,9 @@ import {
 } from "../page-params";
 import { isComponentDoc, substitutePreviewProps } from "../component-props";
 import { assetContextFor, hostAssetDeclarations } from "./asset-refs";
+import { collectionForFile } from "../content/collection-match";
+import { writesEntryOnCanvas } from "../content/content-collections";
+import { collectionPage, entryLayoutPath } from "../content/collection-pages";
 
 import type { AssetContext } from "./asset-refs";
 import type { JxElement, JxMutableNode, JxPath, JxStyle } from "@jxsuite/schema/types";
@@ -113,6 +116,29 @@ export function markLayoutNodes(node: JxMutableNode, file: string, path: JxPath 
 }
 
 /**
+ * The layout a collection entry is drawn in (studio.md §22.5): the entry's own `$layout` (on its
+ * document, or in its frontmatter for a Markdown entry), else its collection's template page's
+ * `$layout`, else the project's `defaults.layout`. `null` when none applies.
+ *
+ * The template PAGE's own body is not spliced around the entry: a page that binds the entry into a
+ * wrapper of its own shows that wrapper only in Preview of the page itself, because the edit
+ * transforms cannot map the entry's paths through the page's bound node.
+ */
+export async function entryLayout(
+  doc: JxMutableNode,
+  tab: Tab | null,
+  path: string | null | undefined,
+): Promise<string | null> {
+  const fromFrontmatter = tab?.doc.content.frontmatter.$layout;
+  const own =
+    doc.$layout ??
+    (isString(fromFrontmatter) || fromFrontmatter === false ? fromFrontmatter : undefined);
+  const match = path ? collectionForFile(path) : null;
+  const page = match ? await collectionPage(match.name) : null;
+  return entryLayoutPath(own, page);
+}
+
+/**
  * Resolve a document into the form the iframe canvas renders: layout-distributed, edit-transformed,
  * with components/imports/$media/$head merged in, plus the path-mapper context and site style. This
  * is the "parent resolves, iframe renders" split — the realm-specific work (defineElement,
@@ -176,13 +202,19 @@ export async function resolveCanvasDocument(
     S.documentPath &&
     projectState?.isSiteProject &&
     (S.documentPath.startsWith("pages/") || S.documentPath.startsWith("./pages/"));
+  /* A collection entry written on the canvas is drawn the way a page is: inside a layout, with the
+     layout's nodes locked and the entry's own tree the editable region (studio.md §22.5). */
+  const isEntry =
+    !isPage && Boolean(projectState?.isSiteProject) && writesEntryOnCanvas(S.documentPath);
   let pageContentPrefix: (string | number)[] | null = null;
   let pageContentOffset = 0;
 
   // Layout wrapping obeys the tab-bar's "show layout elements" toggle (default on); with it off,
   // The page renders alone — the unwrapped path is identical to a non-layout page.
-  if (isPage && tab?.session.ui.showLayout !== false) {
-    const layoutPath = getEffectiveLayoutPath(doc.$layout);
+  if ((isPage || isEntry) && tab?.session.ui.showLayout !== false) {
+    const layoutPath = isEntry
+      ? await entryLayout(doc, tab, S.documentPath)
+      : getEffectiveLayoutPath(doc.$layout);
     if (layoutPath) {
       const layoutDoc = await resolveLayoutDoc(layoutPath);
       if (layoutDoc) {

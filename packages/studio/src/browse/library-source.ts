@@ -1,11 +1,11 @@
 /**
- * The Library as a {@link GridSource}.
+ * The Content home's scan, as a {@link GridSource}.
  *
- * The Library is one more source over the same contract the CSV, collection, pages and connector
- * grids already use, which is what makes Table a real grid rather than a fifth hand-written table:
- * columns come from {@link libraryColumns}, rows are the scan, and every layout — Cards, Media,
- * Calendar, Board — draws the SAME rows through a different arrangement. A layout switch never
- * re-reads the project.
+ * The scan is one more source over the same contract the CSV, collection, pages and connector grids
+ * already use: columns come from {@link libraryColumns}, rows are the scan, and every view (Table,
+ * Cards, Calendar, Board) draws the SAME rows through a different arrangement. A view switch never
+ * re-reads the project, and neither does showing another collection: the scan covers the project
+ * once, and each collection is a filter over it.
  *
  * It is a **read-only** source, and says so rather than pretending. Renaming, duplicating and
  * deleting a file are real operations with real consequences (a rename rewrites references; a
@@ -16,7 +16,9 @@
 
 import { getPlatform } from "../platform";
 import { projectState } from "../store";
-import { makeGridTabId } from "../grid/grid-source";
+import { workspaceHomeTabId } from "../workspace/workspace-ids";
+import { PAGES_COLLECTION } from "../content/content-collections";
+import { fileToRoute } from "@jxsuite/site/routes";
 import { scanLibrary } from "./library-model";
 import type { LibraryFile, LibraryScan, ScanFailure } from "./library-model";
 import type {
@@ -30,44 +32,91 @@ import type {
 
 /** Why a cell edit is refused — printed by the grid, so the author is told where to go instead. */
 export const LIBRARY_READ_ONLY =
-  "The Library lists files; it does not edit them. Rename, duplicate or delete from the file's " +
-  "context menu, or open the file to edit it.";
+  "The Content workspace lists files; it does not edit them in the list. Rename, duplicate or " +
+  "delete from the file's context menu, or open the file to edit it.";
 
-/** The Table layout's columns. `path` is the row key and is never editable. */
-export function libraryColumns(): GridColumn[] {
-  return [
-    { editable: false, field: "name", kind: "string", pk: true, title: "Name", widthHint: 260 },
-    { editable: false, field: "category", kind: "string", title: "Category", widthHint: 120 },
+/** Which of an entry's own facts a collection's entries carry, so the Table draws a column for each. */
+export interface EntryColumnFacts {
+  /** Some entry says Draft or Published: the collection has a draft workflow. */
+  status: boolean;
+  /** Some entry is dated by a field of its own. */
+  date: boolean;
+}
+
+/**
+ * The Table view's columns for a collection. `path` is the row key and is never editable.
+ *
+ * Pages carry their URL, the one fact a page list is read for that the file name does not state. A
+ * declared collection leads with what an entry is called and where it stands (its **Title**, then
+ * its **Status** and **Date** when its entries have them), with the file it is stored in after: a
+ * post is "Hello world, Draft", not `hello-world.md`.
+ */
+export function libraryColumns(
+  collection: string = PAGES_COLLECTION,
+  facts?: EntryColumnFacts,
+): GridColumn[] {
+  const name: GridColumn = {
+    editable: false,
+    field: "name",
+    kind: "string",
+    pk: true,
+    title: "Name",
+    widthHint: 260,
+  };
+  const url: GridColumn = {
+    editable: false,
+    field: "url",
+    kind: "string",
+    title: "URL",
+    widthHint: 200,
+  };
+  const fileFacts: GridColumn[] = [
     { editable: false, field: "locale", kind: "string", title: "Locale", widthHint: 90 },
-    { editable: false, field: "type", kind: "string", title: "Type", widthHint: 120 },
-    { editable: false, field: "size", kind: "number", title: "Size", widthHint: 90 },
     { editable: false, field: "modified", kind: "date", title: "Modified", widthHint: 160 },
     { editable: false, field: "path", kind: "readonly", title: "Path", widthHint: 320 },
   ];
+  if (collection === PAGES_COLLECTION) {
+    return [name, url, ...fileFacts];
+  }
+  const entry: GridColumn[] = [
+    { editable: false, field: "title", kind: "string", title: "Title", widthHint: 260 },
+  ];
+  if (facts?.status) {
+    entry.push({
+      editable: false,
+      field: "status",
+      kind: "string",
+      title: "Status",
+      widthHint: 100,
+    });
+  }
+  if (facts?.date) {
+    entry.push({ editable: false, field: "date", kind: "date", title: "Date", widthHint: 120 });
+  }
+  return [...entry, { ...name, title: "File", widthHint: 200 }, ...fileFacts];
 }
 
 /** One scanned file as a grid row. */
 export function libraryRow(file: LibraryFile): GridRow {
   return {
     cells: {
-      category: file.category,
       // Null, not "": the platform reported no locale directory for this file, and a grid cell
       // Distinguishes "no value" from "the empty string" everywhere else in this contract.
       locale: file.locale ?? null,
       modified: file.modified ?? null,
       name: file.name,
       path: file.path,
-      size: file.size ?? null,
-      type: file.type,
+      // A page's own URL; an entry's is its collection page's, which the scan does not read.
+      url: file.collection === PAGES_COLLECTION ? fileToRoute(file.path).urlPattern : null,
     },
     key: file.path,
   };
 }
 
 /**
- * A Library source, plus the two questions a grid source cannot ask but the Library must answer:
- * what the scan could not read, and the files behind the rows (the non-table layouts want the typed
- * record, not a cell bag).
+ * The scan's source, plus the two questions a grid source cannot ask but the Content home must
+ * answer: what the scan could not read, and the files behind the rows (the non-table layouts want
+ * the typed record, not a cell bag).
  */
 export interface LibrarySource extends GridSource {
   /** The scanned files, in path order. Empty before the first {@link GridSource.rows} call. */
@@ -78,13 +127,8 @@ export interface LibrarySource extends GridSource {
   scanned: () => boolean;
 }
 
-/** The Library's tab id. One Library per window; category and layout are view state, not identity. */
-export function libraryTabId(): string {
-  return makeGridTabId({ kind: "library" });
-}
-
 /**
- * Build the Library source. The scan is lazy: nothing is read until the first `rows()`.
+ * Build the scan's source. The scan is lazy: nothing is read until the first `rows()`.
  *
  * @param {() => readonly string[]} [dirs] Project directories to scan, injectable for tests and for
  *   the perf measurement; defaults to the open project's own list.
@@ -134,8 +178,8 @@ export function createLibrarySource(dirs?: () => readonly string[]): LibrarySour
     },
     failures: () => scan?.failures ?? [],
     files: () => scan?.files ?? [],
-    id: libraryTabId(),
-    label: "Library",
+    id: workspaceHomeTabId("content"),
+    label: "Content",
     async refresh() {
       scan = null;
       inFlight = null;

@@ -185,11 +185,15 @@
     },
     "& [part=\"preview-stage\"] [part=\"panel-canvas\"]": {
       "height": "100%"
+    },
+    "& [part=\"writing-banner\"]": {
+      "$description": "A band across the pane at 1:1 like the card below it, so the page scrolls under both. It never shrinks: it is one line.",
+      "flexShrink": "0"
     }
   },
   "children": [
     {
-      "$description": "What stands over the frame, and only ever one of the three: the Document Header card docked above Edit's scrolling column, the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
+      "$description": "What stands over the frame: the Document Header card docked above Edit's scrolling column, the writing-mode banner in its place for a collection entry (whose fields are the Inspector's), the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
       "tagName": "div",
       "attributes": {
         "part": "lead-slot"
@@ -206,6 +210,13 @@
           "tagName": "div",
           "attributes": {
             "part": "doc-header"
+          }
+        },
+        "banner": {
+          "$description": "The writing-mode banner over a collection entry written on the canvas (studio.md §22.5): an empty host the banner surface is mounted into by `content/writing-banner.ts`. It stands in the Document Header card's place: an entry's fields are edited in the Inspector's Entry tab, never twice.",
+          "tagName": "div",
+          "attributes": {
+            "part": "writing-banner"
           }
         },
         "toolbar": {
@@ -288,8 +299,12 @@
               "children": [
                 {
                   "$prototype": "Array",
-                  "items": { "$ref": "#/state/panels" },
-                  "key": { "$ref": "$map/item/key" },
+                  "items": {
+                    "$ref": "#/state/panels"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
                   "map": {
                     "$description": "One artboard: its breakpoint's name, the white page under it, and the empty box the iframe mounts into. Keyed on the breakpoint, because each board owns a live iframe and the declared set changes with the document's `$media` — position-based reuse would hand one breakpoint's frame to another's width, which is a live document rendered at the wrong viewport rather than a cosmetic diff.",
                     "tagName": "div",
@@ -323,8 +338,14 @@
                               "body": [
                                 {
                                   "operator": "call",
-                                  "target": { "$ref": "#/state/pickPanel" },
-                                  "value": [{ "$ref": "$map/item/key" }]
+                                  "target": {
+                                    "$ref": "#/state/pickPanel"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    }
+                                  ]
                                 }
                               ]
                             },

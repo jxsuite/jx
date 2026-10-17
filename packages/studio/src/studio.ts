@@ -140,7 +140,12 @@ import {
 } from "./collab/collab-session";
 import { invalidateLayoutPickerCache } from "./panels/head-panel";
 import { installAutomationHook } from "./services/automation";
-import { invalidateLibrary } from "./browse/library-pane";
+import { invalidateLibrary, resetContentView } from "./browse/library-pane";
+import { invalidateCollectionPages, resetCollectionPages } from "./content/collection-pages";
+import { invalidateEntrySummaries } from "./content/entry-summaries";
+import { contentCacheDrops } from "./content/content-collections";
+import { resetWritingBanners } from "./content/writing-banner";
+import { resetCollectionsPanel } from "./panels/collections-panel";
 import { invalidateMediaCache, isMediaScanPath } from "./ui/media-picker";
 import { invalidateSiteIndex, resetSitePanel } from "./panels/site-panel";
 import { setMediaChangedHandler } from "./files/media-upload";
@@ -252,7 +257,7 @@ import { setOpenDialog } from "./canvas/dialog-state";
 import { registerA11yCommands } from "./services/a11y-report";
 import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
-import { openLibraryTab, registerGridCommands } from "./grid/grid-open";
+import { registerGridCommands } from "./grid/grid-open";
 import { registerExtensionCommands } from "./settings/extension-commands";
 import { registerSettingsCommands, showSettingsDocument } from "./settings/settings-document";
 import { PROJECT_STYLES_VIEW } from "./style/project-styles";
@@ -261,12 +266,12 @@ import {
   revealInPane,
   switchWorkspace,
 } from "./workspace/workspace-switch";
-import type { WorkspaceId } from "./workspace/workspace-ids";
+import type { HomeWorkspaceId, WorkspaceId } from "./workspace/workspace-ids";
 import { openWorkspaceHome } from "./workspace/workspace-home";
 import { registerPreferencesCommands } from "./settings/preferences-dialog";
 import { registerAboutCommands } from "./about/about-modal";
 import { registerCollabCommands } from "./collab/collab-commands";
-import { registerLibraryCommands } from "./browse/library-commands";
+import { registerContentViewCommands } from "./browse/library-commands";
 import { registerFileFormatCommands } from "./format/convert-file";
 import { registerPublishCommands } from "./publish/publish-commands";
 import { registerGridViewCommands } from "./grid/grid-panel";
@@ -959,10 +964,24 @@ function ensureFsSync() {
        of them wrong, and it is the same event for all four. The bar's memo is separate from
        `page-params`' because it is keyed per DOCUMENT rather than globally; leaving it behind kept
        a stale candidate list in the picker after the collection changed. */
-    invalidateDerivedCaches: (paths) => {
+    invalidateDerivedCaches: (paths, structural = true) => {
       invalidatePageRouteCache();
       invalidateLayoutPickerCache();
       invalidateSiteIndex(paths);
+      /* The Content workspace's three: the scan its collections are filtered from, the pages that
+         say where each collection is published, and the entry list the Collections panel draws.
+         Each is dropped only by a batch that can make it wrong, so a save does not re-walk the
+         project or blank the Collections panel (`contentCacheDrops`). */
+      const drops = contentCacheDrops(paths, structural);
+      if (drops.scan) {
+        invalidateLibrary();
+      }
+      if (drops.pages) {
+        invalidateCollectionPages();
+      }
+      if (drops.entries) {
+        invalidateEntrySummaries();
+      }
       /* The media listing is a walk of `public/` and every collection's `images/`, so only a batch
          under one of them (or one that cannot say what changed) can make it wrong: a file added by
          git, the OS or a Files-panel delete. */
@@ -1290,6 +1309,11 @@ async function openProject(target: ProjectOpenTarget = "thisWindow"): Promise<Pr
  */
 function resetProjectCaches(): void {
   resetSitePanel();
+  resetContentView();
+  resetCollectionPages();
+  invalidateEntrySummaries();
+  resetCollectionsPanel();
+  resetWritingBanners();
   invalidateMediaCache();
   resetMediaLibrary();
 }
@@ -1521,14 +1545,11 @@ commandRegistry.registerAll(derivationCommands(derivationDeps));
  */
 /* The workspace's two halves (`workspace/workspace-switch.ts`): the follow, which enters a tab's
    workspace whenever a tab is activated, and the switch `view.setWorkspace` runs, which puts a
-   workspace's tabs (or its home) on screen. The homes that belong to other modules are handed in,
-   so the switch imports neither the Library nor the settings document. */
+   workspace's tabs (or its home) on screen. The homes are handed in, so the switch imports
+   neither the homes' surfaces nor the settings document. */
 const workspaceDeps = {
-  openHome: (id: "media" | "publish") => {
+  openHome: (id: HomeWorkspaceId) => {
     openWorkspaceHome(id);
-  },
-  openLibrary: () => {
-    openLibraryTab();
   },
   openStyles: () => {
     showSettingsDocument(PROJECT_STYLES_VIEW);
@@ -1616,7 +1637,7 @@ registerGridCommands(commandRegistry);
 registerSettingsCommands(commandRegistry);
 registerExtensionCommands(commandRegistry);
 registerPreferencesCommands(commandRegistry);
-registerLibraryCommands(commandRegistry);
+registerContentViewCommands(commandRegistry);
 registerFileFormatCommands(commandRegistry);
 registerContentCommands(commandRegistry);
 registerAddNewCommands(commandRegistry);

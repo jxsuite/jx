@@ -66,11 +66,12 @@ export interface CanvasStageView {
   /** Whether Edit's column hugs its content — a component definition rather than a page. */
   hug: boolean;
   /**
-   * What stands over the frame, and only ever one of the three: the Document Header card docked
-   * above Edit's scrolling column, the Compare bar over a comparison, or the Project Styles bar
-   * over the catalogue.
+   * What stands over the frame: the Document Header card docked above Edit's scrolling column
+   * (`header`), the writing-mode banner above that card (`writing`) or alone (`banner`) for a
+   * collection entry, the Compare bar over a comparison, or the Project Styles bar over the
+   * catalogue.
    */
-  lead: "none" | "header" | "toolbar" | "chrome";
+  lead: "none" | "header" | "banner" | "toolbar" | "chrome";
   /** Whether the column has its two width handles. */
   handles: "hidden" | "shown";
   panels: CanvasStagePanelItem[];

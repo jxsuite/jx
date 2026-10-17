@@ -25,39 +25,19 @@ import { notify } from "../services/notify";
 import { invalidateUsages } from "../services/references";
 import { activeTab } from "../workspace/workspace";
 import { forgetVersions, notedListing } from "./asset-versions";
+import {
+  AUDIO_EXTENSIONS,
+  IMAGE_EXTENSIONS,
+  MEDIA_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  extensionOf,
+} from "./media-types";
 
 // ─── File classification ─────────────────────────────────────────────────────
 
-/** Extensions rendered as a thumbnail (media picker, Manage cards, file-tree icons). */
-export const IMAGE_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".svg",
-  ".webp",
-  ".avif",
-  ".ico",
-]);
-
-const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".m4v"]);
-const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".flac"]);
-
-/**
- * Every extension Studio treats as project media: a superset of {@link IMAGE_EXTENSIONS} and of
- * every extension {@link mediaKind} calls video or audio, so a file it classifies is one the media
- * listing shows.
- */
-export const MEDIA_EXTENSIONS = new Set([
-  ...IMAGE_EXTENSIONS,
-  ...VIDEO_EXTENSIONS,
-  ...AUDIO_EXTENSIONS,
-  ".pdf",
-  ".woff",
-  ".woff2",
-  ".ttf",
-  ".otf",
-]);
+/* The classification lives in `media-types.ts`, which imports nothing; it is re-exported here so
+   every existing caller of the upload core keeps one import. */
+export { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, extensionOf, isImage } from "./media-types";
 
 /** A byte count as a person reads it, for a refusal that names the limit. */
 function formatBytes(bytes: number): string {
@@ -110,17 +90,6 @@ export interface UploadedAsset {
   /** The reference to write into a document `src`/prop, e.g. `/hero.jpg`. */
   ref: string;
   kind: AssetKind;
-}
-
-/** Lowercased extension including the dot, or `""` when the name carries none. */
-export function extensionOf(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot).toLowerCase() : "";
-}
-
-/** Whether a file extension (with or without the leading dot) is a previewable image. */
-export function isImage(ext: string): boolean {
-  return IMAGE_EXTENSIONS.has(ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`);
 }
 
 /** Whether a filename is project media. */

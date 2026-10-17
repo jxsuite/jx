@@ -519,13 +519,13 @@ describe("wheel handler", () => {
   });
 
   /* The grid could not be wheel-scrolled at all: the pan branch preventDefaulted over a Tabulator
-     viewport that owns its own virtual scroller. Only the mode string "manage" was exempt, and it
-     is reachable from nowhere else in the codebase (the scope is `grid`, §13.3).
+     viewport that owns its own virtual scroller. Only the Library's mode string was exempt (the
+     scope is `grid`, §13.3); the Content home is its successor, and a scrolling list like it.
 
      `entry` is the same defect over the PANE FORM: the Entry editor scrolls its fields, so a wheel
      over it was preventDefaulted for a panzoom wrap the mode never mounts — the scrollbar could be
      dragged, and the wheel did nothing. */
-  test.each(["grid", "manage", "entry", "preview"])(
+  test.each(["grid", "content-home", "entry", "preview"])(
     "%s mode lets the surface scroll itself",
     (mode) => {
       canvasMode = mode;
@@ -539,7 +539,7 @@ describe("wheel handler", () => {
      pinch arrives as exactly this event — so a stage with no zoom of its own must block it like the
      rest of the app's chrome, or a pinch over a form scales the whole of Studio. Blocked is not
      panned: neither the stage offsets nor the tab's zoom may move. */
-  test.each(["grid", "manage", "entry", "preview"])(
+  test.each(["grid", "content-home", "entry", "preview"])(
     "%s mode blocks ctrl+wheel browser zoom without panning or zooming",
     (mode) => {
       canvasMode = mode;
@@ -582,7 +582,7 @@ describe("wheel handler", () => {
      the self-scrolling one, over a DESCENDANT, since that is where the gesture actually lands.
      (It used to assert `defaultPrevented === false` here, which was the browser-zoom hole.) */
   test("ctrl+wheel over a descendant of a self-scrolling stage is blocked, not zoomed", () => {
-    canvasMode = "manage";
+    canvasMode = "content-home";
     const child = document.createElement("div");
     wrapEl().append(child);
     const e = wheel(child, { ctrlKey: true, deltaY: 10 });

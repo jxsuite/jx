@@ -9,10 +9,10 @@
  * (`tabs/project-config.ts`), and what each kind opens afterwards.
  *
  * Two entry points, one write path. {@link openAddNew} is the dialog (`file.new` with no name, the
- * Site panel's **+**, the Library's **New**); {@link createDirect} is the same derivation, refusal
- * and write with no dialog at all (`file.new` with a kind and a name — the assistant's way in, and
- * a script's). Both end in {@link perform}, so a page made by a person and a page made by the
- * assistant are the same bytes.
+ * Site panel's **+**, the Content home's **New**); {@link createDirect} is the same derivation,
+ * refusal and write with no dialog at all (`file.new` with a kind and a name — the assistant's way
+ * in, and a script's). Both end in {@link perform}, so a page made by a person and a page made by
+ * the assistant are the same bytes.
  *
  * @docs studio/projects/pages-layouts-components
  */
@@ -36,17 +36,20 @@ import { creationFormats } from "../format/format-choices";
 import { collectionNames, entryCollections } from "../content/entry-model";
 import { componentRegistry, noteComponentSaved } from "../files/components";
 import { listTakenNames, openFileInTab, writeNewFile } from "../files/files";
+import { slugify } from "../files/new-file-name";
 import { DEFAULT_MEDIA_DIR, uploadAccept, uploadAssets } from "../files/media-upload";
 import { commitProjectConfig } from "../tabs/project-config";
 import { convertibleSelection, convertSelectionToComponent } from "../editor/convert-to-component";
 import { invalidateLayoutPickerCache, listLayoutEntries } from "../panels/head-panel";
 import { invalidateReferenceEntries } from "../ui/form-controls";
-import { openEntryEditor } from "../content/entry-editor";
+import { openEntry } from "../content/entry-open";
+import { invalidateCollectionPages } from "../content/collection-pages";
 import { entryFormatName } from "../content/entry-commands";
 import { invalidateSiteIndex } from "../panels/site-panel";
 import { invalidateLibrary } from "../browse/library-pane";
 import { openAddNewSurface } from "../surfaces/add-new";
 import {
+  collectionPageBody,
   creationProblem,
   defaultTemplateChoice,
   deriveCreation,
@@ -57,7 +60,9 @@ import {
   itemNoun,
   CREATION_KINDS,
   KIND_INFO,
+  layoutValueFor,
   normalizeLayoutPath,
+  schemaPresets,
   START_ARTICLE,
   START_BLANK,
   START_COPY,
@@ -274,6 +279,9 @@ async function listFor(creation: Creation, taken: Map<string, Set<string>>, fres
 function announce(paths: readonly string[]): void {
   invalidateSiteIndex(paths);
   invalidateLibrary();
+  if (paths.some((path) => path.startsWith("pages/"))) {
+    invalidateCollectionPages();
+  }
 }
 
 /** One file of a creation, written; throws the reason it could not be. */
@@ -325,7 +333,8 @@ async function performCollection(creation: Creation): Promise<AddNewResult | nul
   }
   announce(wrote);
   invalidateReferenceEntries(config.name);
-  void runActiveReported("view.setWorkspace", { workspace: "content" }, SOURCE);
+  // Then: the Content workspace, showing the collection just made (§9.1.1).
+  void runActiveReported("content.showCollection", { collection: config.name }, SOURCE);
   const result: AddNewResult = { kind: "collection", path: `content/${config.name}`, wrote };
   if (creation.route !== undefined) {
     result.route = creation.route;
@@ -400,7 +409,7 @@ async function perform(
       if (options.collection !== undefined) {
         invalidateReferenceEntries(options.collection);
       }
-      await openEntryEditor(creation.path);
+      await openEntry(creation.path);
       break;
     }
     default: {
@@ -446,6 +455,50 @@ export async function createDirect(
     throw new Error(`file.new could not create ${creation.path}; the reason is in Problems.`);
   }
   return result;
+}
+
+// ─── A page for an existing collection ───────────────────────────────────────
+
+/**
+ * Give an existing collection a page of its own: `pages/<name>/[slug].json`, written exactly as Add
+ * new writes it for a new collection with **Give each item its own page** on (the blog starter's
+ * shape, bound to whichever of title, image and body the collection has, in the default template).
+ * The Content home's **Add one** (`specs/studio.md` §22.5).
+ *
+ * @returns The page's path, or `null` when it was refused or could not be written (said already).
+ */
+export async function addCollectionPage(name: string): Promise<string | null> {
+  const ctx = await readCreationContext();
+  const collection = ctx.collections.find((choice) => choice.name === name);
+  if (!collection) {
+    notify.error(`"${name}" is not a collection this project declares.`, { source: SOURCE });
+    return null;
+  }
+  const dir = `pages/${slugify(name) || name}`;
+  const path = `${dir}/[slug].json`;
+  const taken = await listTakenNames(dir);
+  if (taken.has("[slug].json")) {
+    notify.error(`${path} already exists.`, {
+      detail: "Open it in Design and point its $paths at this collection, or rename it first.",
+      path,
+      source: SOURCE,
+    });
+    return null;
+  }
+  const fields = schemaPresets(collection.schema, collection.formatName !== null);
+  const doc = collectionPageBody(
+    name,
+    fields,
+    layoutValueFor(defaultTemplateChoice(ctx), ctx),
+    ctx,
+  );
+  try {
+    await writeOne(path, { doc, format: null }, false);
+  } catch {
+    return null;
+  }
+  announce([path]);
+  return path;
 }
 
 // ─── The dialog ──────────────────────────────────────────────────────────────

@@ -96,11 +96,13 @@ const HOME_SCHEME = "workspace://";
  * The workspaces whose home is a virtual tab of the generic home mechanism, and the canvas mode
  * that tab draws under.
  *
- * Design has no home (an empty stage is its home), Content's interim home is the Library tab, and
- * Styles' is `project.json` in its stylebook editor; those three are opened by the modules that own
- * them. These two are the generic mechanism's.
+ * Design has no home (an empty stage is its home), and Styles' is `project.json` in its stylebook
+ * editor, opened by the module that owns that document. These three are the generic mechanism's:
+ * Content's home is the collection it shows (`browse/library-pane.ts`), Media's the media library,
+ * and Publish's its own surface.
  */
 export const WORKSPACE_HOME_MODES = {
+  content: "content-home",
   media: "media-home",
   publish: "publish-home",
 } as const satisfies Partial<Record<WorkspaceId, string>>;

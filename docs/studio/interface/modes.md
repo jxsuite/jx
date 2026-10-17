@@ -16,7 +16,7 @@ code:
 
 # Editors and views
 
-Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Diff**, **Entry**, **Library** or **Project Styles**. It lists only the editors this file supports, so there is nothing in it to be disabled. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
+Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Diff**, **Entry**, **Home** or **Project Styles**. It lists only the editors this file supports, so there is nothing in it to be disabled. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
 
 Those seven names come from one list in Studio, which is why the pane's context bar and the status bar can never print different words for the same editor.
 
@@ -38,15 +38,15 @@ Grid is for tabular data. Files like CSV spreadsheets open as an editable table:
 
 ## Entry
 
-A file that belongs to a content collection can open as a form built from that collection's schema: a date picker for a date, a toggle for a boolean, a tag input for a list, and a picker of real entries for a field that references another collection. **Open Entry Form** in the palette opens it, and the body of the same file stays one :kbd[⌘Z] history away in the Canvas editor. Full guide: **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
+An entry that is only fields (a JSON entry of a content collection) opens as a form built from that collection's schema: a date picker for a date, a toggle for a boolean, a tag input for a list, and a picker of real entries for a field that references another collection. **Open Entry** in the palette opens it. An entry with a body is written on the canvas instead, with the same form in the Inspector's **Entry** tab. Full guide: **[Content types](/docs/studio/projects/content-types#edit-an-entrys-fields)**.
 
-## Library
+## Home
 
-Library is the project's browser: every page, layout, component, content entry and media file, filtered by category and searchable, in whichever layout suits what you are looking at (**Table**, **Cards**, **Media**, **Calendar** or **Board**). **Open Library**, from the **⬢ menu** or the palette, opens it as a document in a pane. It sits in the strip alongside your files rather than over the top of them, and you can keep it beside a page in a [split](/docs/studio/interface/tabs#two-panes). Full guide: **[The Library](/docs/studio/projects/browse)**.
+Home is a workspace's own page, the tab a workspace opens on when none of its documents is open: the Content workspace's collection browser, the Media workspace's library, and Publish's page. It sits in the strip alongside your files rather than over the top of them, and you can keep it beside a page in a [split](/docs/studio/interface/tabs#two-panes). Full guides: **[The Content workspace](/docs/studio/projects/browse)** and **[Media](/docs/studio/projects/media)**.
 
 ## Media
 
-An image, video, audio file, font or PDF opens in a viewer rather than an editor. It shows the file itself (the picture at full size, media with playback controls, a font set as a specimen) plus what Studio knows about it, the URL a document references it by, and which documents use it. Clicking a file in the Files panel or a tile in the Library is all it takes. Full guide: **[Media](/docs/studio/projects/media#open-a-media-file)**.
+An image, video, audio file, font or PDF opens in a viewer rather than an editor. It shows the file itself (the picture at full size, media with playback controls, a font set as a specimen) plus what Studio knows about it, the URL a document references it by, and which documents use it. Clicking a file in the Files panel, or **Open in viewer** on a file in the Media workspace, is all it takes. Full guide: **[Media](/docs/studio/projects/media#open-a-media-file)**.
 
 ## Code
 
@@ -93,7 +93,7 @@ Any file with uncommitted changes also offers **Diff**, including files that hav
 
 Opening `project.json` from the Files tree lands on **Project Styles**, and **Open Project Styles** on :kbd[⌘K] opens it there from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
 
-A file that belongs to a content collection also has an **Entry** editor. **Open Entry Form** is how you reach it, and it joins that file's **Editor** control from then on, so you can move between the form and the body without losing your place in either.
+A JSON entry of a content collection also has an **Entry** editor. **Open Entry** is how you reach it, and it joins that file's **Editor** control from then on, so you can move between the form and the source without losing your place in either. A Markdown entry is written on the canvas, with its fields in the Inspector's **Entry** tab.
 
 Installed format extensions can add their own file types with their own lists, so this table can grow with your project.
 

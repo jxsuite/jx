@@ -5,13 +5,13 @@
  * Two invariants, both stated in `docs/studio/interface.md`, "Workspaces":
  *
  * 1. **Activating a tab enters its workspace.** Whatever activated it — a click in the Files tree,
- *    "Open" on a Library row, a search result, session restore — the workspace follows the tab, so
+ *    "Open" on a Content row, a search result, session restore — the workspace follows the tab, so
  *    opening a page from Content lands in Design without anybody asking for Design. This is an
  *    EFFECT over the active tab rather than a line in every opener, so no opener can forget it.
  * 2. **Showing a workspace shows its tabs.** `view.setWorkspace` activates the workspace's most
- *    recently used tab, or opens its home when it has none: the Library for Content, the media and
- *    publish homes, `project.json` in its stylebook editor for Styles. Design has no home; with no
- *    design tab open its stage is empty, which is the home a canvas has.
+ *    recently used tab, or opens its home when it has none: the Content, Media and Publish homes,
+ *    `project.json` in its stylebook editor for Styles. Design has no home; with no design tab open
+ *    its stage is empty, which is the home a canvas has.
  *
  * Every pane follows the switch, the side pane included: a pane shows its own most recent tab of
  * the workspace, or none, and its strip draws only that workspace's tabs (`panels/tab-strip.ts`).
@@ -54,20 +54,19 @@ import {
   writesOnCanvas,
 } from "./tab-workspace";
 import type { WorkspaceDeps } from "../shell";
-import type { WorkspaceId } from "./workspace-ids";
+import type { HomeWorkspaceId, WorkspaceId } from "./workspace-ids";
 import type { EffectScope } from "@vue/reactivity";
 
 /**
- * What a switch needs that this module may not import: the openers of the two homes that belong to
- * other modules (the Library and the configuration document), and the Inspector's tab writer.
+ * What a switch needs that this module may not import: the opener of the home that belongs to
+ * another module (the configuration document), the generic homes' opener, and the Inspector's tab
+ * writer.
  */
 export interface WorkspaceSwitchDeps extends WorkspaceDeps {
-  /** Open (or activate) the Library: Content's home until Content has one of its own. */
-  openLibrary: () => void;
   /** Open (or reveal) `project.json` in its stylebook editor: the Styles workspace's home. */
   openStyles: () => void;
   /** Open (or activate) a generic home tab (`workspace/workspace-home.ts`). */
-  openHome: (id: "media" | "publish") => void;
+  openHome: (id: HomeWorkspaceId) => void;
 }
 
 /**
@@ -150,10 +149,6 @@ function frameDeps(deps: WorkspaceDeps): WorkspaceDeps {
 
 /** Open a workspace's home. Design has none, and answers `false`. */
 function openHome(id: WorkspaceId, deps: WorkspaceSwitchDeps): boolean {
-  if (id === "content") {
-    deps.openLibrary();
-    return true;
-  }
   if (id === "styles") {
     deps.openStyles();
     return true;
@@ -208,8 +203,8 @@ export function installWorkspaceFollow(deps: WorkspaceDeps): () => void {
   _scope = scope;
   const withTab = frameDeps(deps);
   /* Whether the active tab was being written on the canvas at the last run, so a `whileWriting`
-     Inspector (Content's) opens and closes on the TRANSITION, from the Library into an entry and
-     back, and an author's own toggle on the same tab is left alone. */
+     Inspector (Content's) opens and closes on the TRANSITION, from the Content home into an
+     entry and back, and an author's own toggle on the same tab is left alone. */
   let writing: boolean | null = null;
   scope.run(() => {
     effect(() => {

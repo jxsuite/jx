@@ -190,7 +190,7 @@ async function takeScan(root: string, rerender: () => void): Promise<void> {
  */
 async function readDeclaredKeys(files: readonly LibraryFile[]): Promise<Map<string, string>> {
   const platform = getPlatform();
-  const pages = files.filter((file) => file.category !== "Media" && file.path.startsWith("pages/"));
+  const pages = files.filter((file) => !file.media && file.path.startsWith("pages/"));
   /* Issued together, not one after another. Each read is a round trip on a remote backend, and a
      sequential loop paid one per page; issued in one tick, the cloud adapter coalesces them into a
      single batch request (specs/desktop.md §10.1). `Promise.all` keeps the input order, so the map
@@ -236,8 +236,8 @@ function timeOf(modified: string | undefined): number | null {
  * it is the source the other columns are measured against, and hiding it would leave the grid with
  * a column of `missing` cells whose sources are on disk.
  *
- * Assets are skipped. `categoryFor` already decides what is media by extension, so an image beside
- * a page is not a row here for the same reason it is not a page anywhere else.
+ * Assets are skipped. The scan already marks what is media by its extension, so an image beside a
+ * page is not a row here for the same reason it is not a page anywhere else.
  */
 export function parityRows(
   files: readonly LibraryFile[],
@@ -255,7 +255,7 @@ export function parityRows(
   /* Every key the paths alone produce, so a declared one can be matched against a real file rather
      than against a spelling. */
   const derivedKeys = new Set(
-    files.flatMap((f) => (f.category === "Media" ? [] : [translationKeyOfPath(f.path, i18n)])),
+    files.flatMap((f) => (f.media ? [] : [translationKeyOfPath(f.path, i18n)])),
   );
   const keyOf = (file: LibraryFile): string => {
     const own = declared.get(file.path);
@@ -278,7 +278,7 @@ export function parityRows(
     return `pages/${own}${ext}`;
   };
   for (const file of files) {
-    if (file.category === "Media") {
+    if (file.media) {
       continue;
     }
     const key = keyOf(file);

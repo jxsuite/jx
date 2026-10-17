@@ -92,6 +92,7 @@ import { invalidateLayoutCache } from "../site-context";
 import { mountDocHeaderSurface } from "../surfaces/doc-header";
 
 import type { JsonValue, JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
+import { templateDisplayName } from "../content/content-collections";
 import type { Tab } from "../tabs/tab";
 import type { FmSchemaEntry } from "./frontmatter-fields";
 import type * as MediaPickerModule from "../ui/media-picker";
@@ -498,7 +499,7 @@ function layoutRow(
   }
   const current = headDoc.$layout;
   const defaultPath = projectState?.projectConfig?.defaults?.layout;
-  const defaultLabel = defaultPath ? layoutName(defaultPath) : "";
+  const defaultLabel = defaultPath ? templateDisplayName(defaultPath) : "";
   const options: SurfaceOption[] = [
     { label: defaultLabel ? `Default (${defaultLabel})` : "Default", value: "__default__" },
     { label: "None", value: "__none__" },
@@ -530,15 +531,6 @@ function layoutRow(
     options,
     value: current === false ? "__none__" : current || "__default__",
   };
-}
-
-/** `./layouts/blog-post.json` → `Blog Post`. */
-function layoutName(path: string): string {
-  return path
-    .replace(/^\.\/layouts\//, "")
-    .replace(/\.json$/, "")
-    .replaceAll(/[-_]+/g, " ")
-    .replaceAll(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 /**

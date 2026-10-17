@@ -8,6 +8,11 @@ code:
   - packages/studio/src/content/entry-model.ts
   - packages/studio/src/content/entry-editor.ts
   - packages/studio/src/surfaces/entry-editor.ts
+  - packages/studio/src/content/entry-open.ts
+  - packages/studio/src/content/entry-inspector.ts
+  - packages/studio/src/surfaces/entry-inspector.ts
+  - packages/studio/src/content/writing-banner.ts
+  - packages/studio/src/surfaces/writing-banner.ts
   - packages/studio/src/content/entry-fields.ts
   - packages/studio/src/content/entry-commands.ts
   - packages/studio/src/content/collection-match.ts
@@ -66,11 +71,11 @@ With a type selected, edit its name in the editor's header to rename it, or clic
 
 ## Create an entry
 
-Open **Add new** (:kbd[⌘N], or **New** in the [Library](/docs/studio/projects/browse) with the **Content** category showing), choose **Entry**, pick the collection, and type a name such as `Spring menu`. Studio writes `content/menus/spring-menu.md` and opens it in the form below. Entries then appear in the Library under the **Content** category, labeled with the type they belong to.
+Open **Add new** (:kbd[⌘N], or **New menu** in the [Content workspace](/docs/studio/projects/browse) with the collection showing), choose **Entry**, pick the collection, and type a name such as `Spring menu`. Studio writes `content/menus/spring-menu.md` and opens it where it is written: a Markdown entry on the canvas inside its template, with its fields in the Inspector's **Entry** tab ([below](#edit-an-entrys-fields)); a JSON entry in the entry form. Entries then appear in the Content workspace under their collection.
 
 Two things make an entry different from a blank file: it is named with the collection's **own extension**, so the entry is actually matched by the collection it was created in, and its fields are **seeded from the schema**, so it is valid the moment it exists rather than being a pile of absent required fields. When the schema has a `title`, it starts as the name you typed.
 
-**The Files tree knows about this too.** Right-click a content type's folder and choose **New File…**: because that folder belongs to a collection, you get the New Entry flow (the collection's extension, the seeded fields, and the entry form) rather than a blank document. In a **subfolder** of it the format picker is locked to the collection's extension instead, because a document there is still one of its entries but the images and notes beside them are not; the picker's **Other…** row still creates those. What it will not accept is a document of a different format, which the collection would discover as an entry it cannot read.
+**The Files tree knows about this too.** Right-click a content type's folder and choose **New File…**: because that folder belongs to a collection, you get the New Entry flow (the collection's extension and the seeded fields, opened where the entry is written) rather than a blank document. In a **subfolder** of it the format picker is locked to the collection's extension instead, because a document there is still one of its entries but the images and notes beside them are not; the picker's **Other…** row still creates those. What it will not accept is a document of a different format, which the collection would discover as an entry it cannot read.
 
 A **localized** collection (a `{locale}` in its source) has no single folder to create into, so Add new refuses it and asks you to open the folder for the language you are writing in and create the entry there with **New File…**.
 
@@ -84,9 +89,12 @@ Seeded means:
 
 ## Edit an entry's fields
 
-Right-click an entry in the Files tree and choose **Open Entry Form**. The row offers it only for a file that belongs to a collection, because an ordinary file has no schema to draw. The form opens on the same tab, so :kbd[⌘Z] and :kbd[⌘S] behave as they do anywhere else.
+Open an entry from the [Content workspace](/docs/studio/projects/browse), or right-click it in the Files tree and choose **Open Entry** (the row is offered only for a file that belongs to a collection). Where its fields appear depends on whether it has a body:
 
-The entry form is your schema, drawn as a form: one control per field, in the order the schema declares them, with the collection's name in the header.
+- **An entry with a body** (a Markdown post) is written on the canvas inside its template, and its fields are the Inspector's **Entry** tab, beside its status, the URL its page publishes it at, and the file it is stored in. See **[Write an entry](/docs/studio/projects/browse#write-an-entry)**.
+- **An entry that is only fields** (a JSON entry) opens in the **entry form**, on the same tab, so :kbd[⌘Z] and :kbd[⌘S] behave as they do anywhere else.
+
+Both are the same form: your schema, drawn as one control per field, in the order the schema declares them.
 
 - **Where the fields live depends on the format.** A Markdown entry keeps them in frontmatter above its body; a JSON entry _is_ its fields, with no body to separate. The form is identical either way, so you should not be able to tell from using it which shape the file has.
 - **The field's type and format choose the control.** Text, numbers, yes/no switches, dates, colors and the [media picker](/docs/studio/projects/media) for image fields.
@@ -96,13 +104,13 @@ The entry form is your schema, drawn as a form: one control per field, in the or
 
 Open a file that belongs to no collection and the form says exactly that, and offers a button through to the Content Types section rather than drawing an empty form.
 
-A Markdown entry's frontmatter is reachable while you write, too, from the Document Header card. See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
+A Markdown entry's frontmatter is reachable while you write it on the canvas, too, from the Inspector's **Entry** tab, the one place an entry's fields are edited (the canvas shows the writing banner in place of the Document Header card). See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
 
 ## Drafts
 
 Give a type a boolean field named `draft` and its entries get a draft workflow:
 
-- a **Draft** switch in the entry form's header;
+- a **Draft** switch in the Inspector's **Entry** tab, and in the entry form's header;
 - a **Draft** or **Published** pill on the document's tab, so the state is visible while you are looking at the tab strip and not only while you are looking at the form;
 - the **Set Draft** command (:kbd[⌘K], **Set Draft**, then **on** or **off**), which writes `draft: true` or `draft: false` on the open entry;
 - a **Draft** column in the collection's grid: right-click the collection's folder in the Files panel and choose **Edit Collection in Grid**, where every schema field is a column you can sort and group by. See **[The grid](/docs/studio/editing/grid)**.
@@ -121,5 +129,5 @@ Studio stores your types in the `content` section of `project.json`, one entry p
 
 ## Next
 
-- **[The Library](/docs/studio/projects/browse)**: where entries are listed and created
+- **[The Content workspace](/docs/studio/projects/browse)**: where entries are listed, created and written
 - **[Project settings](/docs/studio/projects/settings)**: the rest of the configuration document

@@ -1,0 +1,323 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioEntryInspector",
+  "$description": "The Inspector's Entry tab (specs/studio.md §6, §22.5): one collection entry's own settings while it is written on the canvas, the Content-Entry board's sidebar. Its status (draft or published), its fields as the collection's schema types them, the URL its collection page publishes it at, and the file it is stored in. `content/entry-inspector.ts` keeps every decision; the field form is an island it fills, `ui/schema-form.ts`'s, the same form the form-only entry editor draws.",
+  "tagName": "div",
+  "attributes": {
+    "part": "entry",
+    "data-jx-region": "${state.region}"
+  },
+  "style": {
+    "$description": "A column of sections, each a small uppercase heading over its rows, like the Page tab beside it.",
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-4)",
+    "padding": "var(--jx-space-3)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"section\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"section-title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "700",
+      "letterSpacing": "0.06em",
+      "textTransform": "uppercase",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"head\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"kind\"]": {
+      "fontWeight": "600"
+    },
+    "& [part=\"status\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"status\"][data-draft=\"true\"]": {
+      "color": "var(--warning)"
+    },
+    "& [part=\"note\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "1.5",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"url\"]": {
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "wordBreak": "break-all"
+    },
+    "& [part=\"path\"]": {
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg)",
+      "wordBreak": "break-all"
+    },
+    "& [part=\"fields-head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between"
+    }
+  },
+  "children": [
+    {
+      "tagName": "section",
+      "attributes": {
+        "part": "section",
+        "aria-labelledby": "entry-inspector-entry"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "head"
+          },
+          "children": [
+            {
+              "tagName": "h3",
+              "attributes": {
+                "part": "section-title",
+                "id": "entry-inspector-entry"
+              },
+              "textContent": "Entry"
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "status",
+                "data-draft": "${state.draft ? 'true' : 'false'}"
+              },
+              "textContent": "${state.status}"
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "kind"
+          },
+          "textContent": "${state.kind}"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "draft-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/draftAxis"
+          },
+          "cases": {
+            "shown": {
+              "$description": "The entry's draft state, the one field every collection with a draft workflow shares (site-architecture.md §7.6). A setter: the switch names the state it reaches.",
+              "tagName": "jx-switch",
+              "attributes": {
+                "part": "draft"
+              },
+              "$props": {
+                "checked": {
+                  "$ref": "#/state/draft"
+                },
+                "hint": "${state.draftHint}",
+                "size": "sm"
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setDraft"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/checked"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Draft"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "section",
+      "attributes": {
+        "part": "section",
+        "aria-labelledby": "entry-inspector-fields"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "fields-head"
+          },
+          "children": [
+            {
+              "tagName": "h3",
+              "attributes": {
+                "part": "section-title",
+                "id": "entry-inspector-fields"
+              },
+              "textContent": "Fields"
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "edit-fields"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "hint": "Edit this collection's fields in Project Settings",
+                "haspopup": "dialog"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/openFields"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Edit"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "fields-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/fieldsState"
+          },
+          "cases": {
+            "form": {
+              "tagName": "div",
+              "attributes": {
+                "part": "fields"
+              }
+            },
+            "none": {
+              "tagName": "p",
+              "attributes": {
+                "part": "note"
+              },
+              "textContent": "This collection declares no fields. Edit adds some in Project Settings."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "section",
+      "attributes": {
+        "part": "section",
+        "aria-labelledby": "entry-inspector-page"
+      },
+      "children": [
+        {
+          "tagName": "h3",
+          "attributes": {
+            "part": "section-title",
+            "id": "entry-inspector-page"
+          },
+          "textContent": "Page"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "url-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/urlState"
+          },
+          "cases": {
+            "shown": {
+              "tagName": "code",
+              "attributes": {
+                "part": "url"
+              },
+              "textContent": "${state.url}"
+            },
+            "none": {
+              "tagName": "p",
+              "attributes": {
+                "part": "note"
+              },
+              "textContent": "Entries of this collection have no page of their own."
+            },
+            "loading": {
+              "tagName": "p",
+              "attributes": {
+                "part": "note"
+              },
+              "textContent": "Finding the page this entry is published at…"
+            }
+          }
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "note"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Stored as "
+            },
+            {
+              "tagName": "code",
+              "attributes": {
+                "part": "path"
+              },
+              "textContent": "${state.path}"
+            },
+            {
+              "tagName": "span",
+              "textContent": "${state.storage}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 /**
  * Canvas render — the NON-IFRAME editor dispatches and the guards around them.
  *
- * Library and Entry are the modes whose panel owns its own reactivity: the render hands the stage
- * over once and every later repaint of the same tab must stop at the fast path instead of
+ * The Content home and Entry are the modes whose panel owns its own reactivity: the render hands
+ * the stage over once and every later repaint of the same tab must stop at the fast path instead of
  * rebuilding the pane. Both halves are asserted here — the hand-over (stage styling, the surface
  * and tab the panel was drawn for, and the `return` that keeps the design artboards off the stage)
  * and the fast path (a second repaint that draws nothing).
@@ -31,6 +31,7 @@ import {
   SECONDARY_PANE,
   activeTab,
   closeAllTabs,
+  openTab,
   paneById,
   workspace,
 } from "../src/workspace/workspace";
@@ -133,9 +134,9 @@ void mock.module("../src/grid/grid-panel.js", () => ({
 
 /**
  * A stand-in panel module: it marks itself mounted for the pane it drew into, stamps a marker into
- * that pane's stage, and forgets the pane when detached — the same three facts the real Library,
- * Entry and Settings panes expose to the render path. A test can therefore count markers to see
- * whether a repaint rebuilt the pane.
+ * that pane's stage, and forgets the pane when detached — the same three facts the real Content
+ * home and Entry panes expose to the render path. A test can therefore count markers to see whether
+ * a repaint rebuilt the pane.
  */
 function panelDouble(marker: string) {
   const mounted = new Map<string, Tab | null>();
@@ -151,6 +152,8 @@ function panelDouble(marker: string) {
   return { detach, mounted, render };
 }
 
+/* The Content home is drawn by `workspace/workspace-home.ts`, which routes the Content home TAB to
+   `browse/library-pane.ts`; this double stands in for that module. */
 const library = panelDouble("library-marker");
 void mock.module("../src/browse/library-pane.js", () => ({
   detachLibraryPane: library.detach,
@@ -158,7 +161,7 @@ void mock.module("../src/browse/library-pane.js", () => ({
   libraryPaneMounted: (paneId: string, tab: Tab) => library.mounted.get(paneId) === tab,
   refreshLibrary: () => Promise.resolve(),
   renderLibraryMode: library.render,
-  setLibraryCategory: () => {},
+  resetContentView: () => {},
   setLibraryLayout: () => {},
   setLibrarySearch: () => {},
 }));
@@ -166,7 +169,9 @@ void mock.module("../src/browse/library-pane.js", () => ({
 const entry = panelDouble("entry-marker");
 void mock.module("../src/content/entry-editor.js", () => ({
   ENTRY_MODE: "entry",
+  absentRequiredErrors: () => ({}),
   detachEntryPane: entry.detach,
+  formContext: () => ({}),
   entryDraftPill: () => null,
   entryPaneMounted: (paneId: string, tab: Tab) => entry.mounted.get(paneId) === tab,
   openEntryEditor: () => Promise.resolve(null),
@@ -191,6 +196,18 @@ function setMode(mode: string) {
   if (tab) {
     tab.session.ui.canvasMode = mode;
   }
+}
+
+/** Put the Content home's own tab in the pane, in its mode. */
+function showContentHome() {
+  closeAllTabs();
+  openTab({
+    capabilities: { modes: ["content-home"] },
+    document: { children: [], tagName: "div" },
+    documentPath: null,
+    id: "workspace://content",
+  });
+  setMode("content-home");
 }
 
 function stage(): HTMLElement {
@@ -252,8 +269,8 @@ describe("the modes whose panel owns its own reactivity", () => {
     expect(stage().style.display).not.toBe("block");
   });
 
-  test("manage hands the stage to the Library, for THIS pane's tab, and draws nothing else", async () => {
-    setMode("manage");
+  test("the Content home's tab hands the stage to the Content home, and draws nothing else", async () => {
+    showContentHome();
     renderCanvas();
     await flush();
 
@@ -261,10 +278,18 @@ describe("the modes whose panel owns its own reactivity", () => {
     const [drawnOn, tab] = library.render.mock.calls[0]!;
     expect(drawnOn).toBe(surfaceForPane(PRIMARY_PANE));
     expect(tab).toBe(activeTab.value!);
-    expect(stage().style.padding).toBe("0px");
-    expect(stage().style.display).toBe("block");
+    // A home fills the stage by its own style block, so nothing is written onto the stage.
+    expect(stage().style.padding).toBe("");
     expect(stage().querySelector('[part="panzoom"]')).toBeNull();
     expect(canvasPanels).toHaveLength(0);
+  });
+
+  test("the retired manage mode is no editor any more: it draws as an unknown mode does", async () => {
+    setMode("manage");
+    renderCanvas();
+    await flush();
+    expect(stage().querySelector(".library-marker")).toBeNull();
+    expect(library.render).not.toHaveBeenCalled();
   });
 
   test("entry hands the stage to the entry form, for THIS pane's tab, and draws nothing else", async () => {
@@ -301,18 +326,18 @@ describe("the modes whose panel owns its own reactivity", () => {
     expect(stage().querySelector('[part="home"]')).toBe(home);
 
     // Leaving the mode takes the home down with the rest of the stage.
-    setMode("manage");
+    setMode("entry");
     renderCanvas();
     await flush(4);
     expect(stage().querySelector('[part="home"]')).toBeNull();
-    expect(library.render).toHaveBeenCalledTimes(1);
+    expect(entry.render).toHaveBeenCalledTimes(1);
   });
 
   /* THE FAST PATHS. Each panel runs its own effect scope over the document, so a same-tab repaint
      while it is mounted must draw nothing at all — a second `render*Mode` would tear the live pane
      down and rebuild it under whatever the author was doing in it. */
-  test("a same-tab repaint while the Library is mounted rebuilds nothing", async () => {
-    setMode("manage");
+  test("a same-tab repaint while the Content home is mounted rebuilds nothing", async () => {
+    showContentHome();
     renderCanvas();
     await flush();
     expect(stage().querySelectorAll(".library-marker")).toHaveLength(1);
@@ -339,8 +364,8 @@ describe("the modes whose panel owns its own reactivity", () => {
 
   /* THE CONTROL for both fast paths: the mounted panel belongs to the TAB it was drawn for. Open
      another document in the pane and the fast path is not the answer — the pane is rebuilt. */
-  test("the fast path is per TAB — another document rebuilds the Library", async () => {
-    setMode("manage");
+  test("the fast path is per TAB — another document rebuilds the entry form", async () => {
+    setMode("entry");
     renderCanvas();
     await flush();
 
@@ -351,12 +376,12 @@ describe("the modes whose panel owns its own reactivity", () => {
         id: "other-tab",
       },
     );
-    setMode("manage");
+    setMode("entry");
     renderCanvas();
     await flush();
 
-    expect(library.render).toHaveBeenCalledTimes(2);
-    expect(library.render.mock.calls[1]![1]).toBe(activeTab.value!);
+    expect(entry.render).toHaveBeenCalledTimes(2);
+    expect(entry.render.mock.calls[1]![1]).toBe(activeTab.value!);
   });
 
   /* THE OTHER CONTROL, and the one the fast paths owe: `!modeChanged`.
@@ -367,8 +392,8 @@ describe("the modes whose panel owns its own reactivity", () => {
      exactly "the structure on this stage is not mine", so the fast path must NOT be the answer:
      without it the render returns on the module's word and the new host stays empty, with nothing
      but a reload to get the pane back. */
-  test("a re-registered stage rebuilds the Library, though the module still calls it mounted", async () => {
-    setMode("manage");
+  test("a re-registered stage rebuilds the Content home, though the module still calls it mounted", async () => {
+    showContentHome();
     renderCanvas();
     await flush();
     expect(library.render).toHaveBeenCalledTimes(1);

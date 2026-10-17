@@ -94,6 +94,7 @@ export type DockId = "left" | "right" | "bottom";
  */
 export const NAVIGATOR_PANEL_IDS = [
   "site",
+  "collections",
   "files",
   "search",
   "git",
@@ -345,9 +346,10 @@ export interface WorkspacePreset {
  * The five presets.
  *
  * - **Design** draws the rail and both side docks: the canvas, its outline and its inspector.
- * - **Content**, **Media** and **Publish** collapse both side docks: each one's home is a surface
- *   that lays itself out (the Library's categories, the media grid, the change list). Content draws
- *   the Inspector while an entry is being written on the canvas.
+ * - **Content** opens the Navigator on the Collections panel and collapses the Inspector, drawing it
+ *   while an entry is being written on the canvas.
+ * - **Media** and **Publish** collapse both side docks: each one's home is a surface that lays itself
+ *   out (the media grid, the change list).
  * - **Styles** opens the Outline, which draws the stylebook's element list while the project's styles
  *   are on the canvas, and the Inspector on its Style tab.
  */
@@ -355,7 +357,7 @@ export const WORKSPACE_PRESETS: Readonly<Record<WorkspaceId, WorkspacePreset>> =
   content: {
     id: "content",
     inspector: { open: false, whileWriting: true },
-    navigator: { open: false },
+    navigator: { open: true, panel: "collections" },
     rail: false,
   },
   design: {

@@ -2,8 +2,8 @@
  * `file.new`: Add new, as a command record (`specs/studio.md` §9.1.1).
  *
  * One record, four doors: the palette, the Command Bar's overflow, the chords, and the assistant.
- * The Site panel's **+** and the Library's **New** run it too, so there is one way in and every
- * surface is a rendering of it.
+ * The Site panel's **+** and the Content home's **New** run it too, so there is one way in and
+ * every surface is a rendering of it.
  *
  * **Two behaviours, chosen by the arguments.** With a `name`, it creates — kind, name and options
  * through `deriveCreation`, refused by throwing the sentence the dialog would print, written by the
@@ -36,7 +36,7 @@ import type { AddNewRequest, AddNewResult } from "./add-new-flow";
 import type { CommandArgValues } from "../commands/command-args";
 import type { AiToolReport, AnyCommand, CommandRegistry } from "../commands/registry";
 
-/** The id, which the Site panel and the Library run. */
+/** The id, which the Site panel and the Content home run. */
 export const FILE_NEW = "file.new";
 
 /** What one run did: a creation, or the dialog it opened instead. */

@@ -57,7 +57,7 @@ The bar across the top of the window. Everything in it is a command, so what you
 
 From left to right:
 
-- The **Studio menu** (the ≡ button at the left edge) holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Open Library**, **Preferences…**, **Zen Mode**, and the rest.
+- The **Studio menu** (the ≡ button at the left edge) holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Preferences…**, **Zen Mode**, and the rest.
 - The **workspace tabs** (**Design · Content · Media · Styles · Publish**, :kbd[⌘1] to :kbd[⌘5]) switch what you are working on. See [Workspaces](#workspaces). The **Publish** tab counts the changes you have not published yet.
 - The **Command Center pill** sits in the middle: `◈ project › document › selection`, with :kbd[⌘K] at its right end. It names the project you're in, the document you're editing and the element you have selected, and each segment is a button that opens the palette already scoped to that level. Click the pill's empty space to open the palette with nothing pre-picked. The pill is where you go to _search_ for a place; the [jump bar](#the-jump-bar) in the status bar is where you _step_ to one.
 - The **verb cluster** on the right holds the four actions worth a permanent button: **Save**, **Open in Browser**, **Undo** and **Redo**. A greyed-out one tells you in its tooltip what it is waiting for: **Save** stays greyed out until the document has unsaved changes, and lights up with the first keystroke.
@@ -81,16 +81,16 @@ It is always there. When the open file has no route it's disabled and its toolti
 Studio has five workspaces, one for each kind of work. Every open tab belongs to exactly one of them, and each pane's tab strip shows only the tabs of the workspace you are in. Nothing is closed when you switch: the other tabs keep their places and come back with their workspace.
 
 - **Design** (:kbd[⌘1]): pages, layouts, components and every other file, on the canvas. It is the only workspace with the rail.
-- **Content** (:kbd[⌘2]): the [Library](/docs/studio/projects/browse), the content grids and every entry of a content collection.
+- **Content** (:kbd[⌘2]): the [Content workspace](/docs/studio/projects/browse), with the Collections panel, a home tab for one collection at a time, the content grids, and every entry of a content collection, written on the canvas inside its template.
 - **Media** (:kbd[⌘3]): your images, video, audio, documents and fonts in one library you can filter, search, upload to, replace and delete from, and the viewer for each one. See [Media](/docs/studio/projects/media#the-media-workspace).
 - **Styles** (:kbd[⌘4]): [Project Styles](/docs/studio/design/stylebook), the design tokens and element defaults over `project.json`.
 - **Publish** (:kbd[⌘5]): your unpublished changes and the comparison of each one.
 
-Switching to a workspace takes you back to the tab you were last in there. When it has no tab open it opens its home instead: the Library for Content, Project Styles for Styles, the media library for Media, and a home page of its own for Publish. Design with nothing open shows an empty canvas. Closed a workspace's home? Click its tab in the Command Bar again and the home comes back.
+Switching to a workspace takes you back to the tab you were last in there. When it has no tab open it opens its home instead: the Content home on a collection for Content, Project Styles for Styles, the media library for Media, and a home page of its own for Publish. Design with nothing open shows an empty canvas. Closed a workspace's home? Click its tab in the Command Bar again and the home comes back.
 
-Opening a document switches to its workspace for you, so opening a page from the Library lands you in Design, and opening an entry lands you in Content. The same goes for a second pane: it only ever shows a tab of the workspace you are in, and **Compare With…** on a document from another workspace switches you to that workspace to show it.
+Opening a document switches to its workspace for you, so opening a page from the Content workspace lands you in Design, and opening an entry lands you in Content. The same goes for a second pane: it only ever shows a tab of the workspace you are in, and **Compare With…** on a document from another workspace switches you to that workspace to show it.
 
-Each workspace sets up the window for its kind of work every time you enter it: Design opens the Navigator and the Inspector, Styles opens the Outline beside the Style tab, and Media and Publish give the whole width to their own page. Content does the same for the Library, and opens the Inspector while you write an entry on the canvas. The dock toggles work in every workspace until you leave it, and Design comes back on the Navigator panel you left it on. The workspace you were in is remembered per project, so a project reopens where you left it.
+Each workspace sets up the window for its kind of work every time you enter it: Design opens the Navigator and the Inspector, Styles opens the Outline beside the Style tab, and Media and Publish give the whole width to their own page. Content opens the Navigator on its Collections panel and gives the rest of the width to the Content home, and opens the Inspector only while you write an entry on the canvas. The dock toggles work in every workspace until you leave it, and Design comes back on the Navigator panel you left it on. The workspace you were in is remembered per project, so a project reopens where you left it.
 
 **Project settings** is a dialog rather than a workspace: it opens over whichever workspace you are in, and closing it leaves you there. See [Project settings](/docs/studio/projects/settings).
 
@@ -172,7 +172,7 @@ The last row of the picker is **Other…**, and it hands the field back to you w
 
 A [content type](/docs/studio/projects/content-types) already fixes the format of its entries, so the dialog does not ask twice:
 
-- In the collection's **own folder**, **New File…** _is_ **New Entry**: the extension is the collection's, the fields are seeded from its schema, and the file opens in the entry form.
+- In the collection's **own folder**, **New File…** _is_ **New Entry**: the extension is the collection's, the fields are seeded from its schema, and the file opens where it is written (the canvas for a Markdown entry, the entry form for a JSON one).
 - In a **subfolder** of it, the picker is locked to the collection's format, because a document there is still one of its entries. **Other…** stays available for the images and notes you keep beside them. What **Other…** will not accept there is a document of a _different_ format, which would be discovered as an entry the collection cannot read.
 
 The new file is written with the starting content its type calls for: a content entry is seeded from its content type's fields, so it is valid the moment it exists. Creating in a collection's folder opens the new entry for you as well.
@@ -209,7 +209,7 @@ A project with no `.gitignore` is unaffected: nothing is hidden, and the toggle 
 
 ## Panes and the canvas
 
-The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a real control rather than a drag handle: Tab reaches it, :kbd[←] and :kbd[→] move it a step at a time (hold :kbd[Shift] for a bigger one), :kbd[Home] and :kbd[End] take it as far as each pane's minimum width allows, and :kbd[Enter] or a double click snaps it back to an even split and then returns it to where you had it. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Library** or **Project Styles**. It carries its own strip of open documents and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline, the keyboard and the [jump bar](#the-jump-bar) at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
+The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a real control rather than a drag handle: Tab reaches it, :kbd[←] and :kbd[→] move it a step at a time (hold :kbd[Shift] for a bigger one), :kbd[Home] and :kbd[End] take it as far as each pane's minimum width allows, and :kbd[Enter] or a double click snaps it back to an even split and then returns it to where you had it. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Media** or **Project Styles**, or a workspace's **Home** (the Content home, the media library, the Publish home). It carries its own strip of open documents and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline, the keyboard and the [jump bar](#the-jump-bar) at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
 
 A Diff pane compares one file against your last commit and carries its own change stepper, so two panes can be reviewing two different files at once. See **[Source control](/docs/studio/publish/source-control#read-a-change)**.
 

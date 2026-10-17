@@ -248,7 +248,7 @@ describe("document and editor", () => {
     ["grid", "grid", "design"],
     ["source", "code", "design"],
     ["git-diff", "diff", "design"],
-    ["manage", "library", "design"],
+    ["content-home", "home", "design"],
     ["stylebook", "config", "design"],
   ])("canvasMode %s → editor.kind %s / canvas.view %s", (mode, kind, canvasView) => {
     canvasMode = mode;
@@ -534,7 +534,7 @@ describe("keyScopeStack", () => {
     // Preview posts no hits, so no element-level chord has anything visible to aim at.
     ["canvas", "preview", ["global"]],
     ["diff", "design", ["global"]],
-    ["library", "design", ["global"]],
+    ["home", "design", ["global"]],
     ["none", "design", ["global"]],
   ])("editor %s / view %s → %p", (kind, view, expected) => {
     const ctx = makeContext({
@@ -577,7 +577,7 @@ describe("editorKindForMode / canvasViewForMode", () => {
     ["grid", "grid", "design"],
     ["stylebook", "config", "design"],
     ["git-diff", "diff", "design"],
-    ["manage", "library", "design"],
+    ["content-home", "home", "design"],
   ])("%s → kind %s / view %s", (mode, kind, view) => {
     expect(editorKindForMode(mode)).toBe(kind);
     expect(canvasViewForMode(mode)).toBe(view);

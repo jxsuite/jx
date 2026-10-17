@@ -29,7 +29,6 @@ import {
   switchWorkspace,
 } from "../src/workspace/workspace-switch";
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
-import { libraryTabId } from "../src/browse/library-source";
 import type { InspectorTabId } from "../src/shell";
 import { openStubTab } from "./workspace-fixture";
 
@@ -37,11 +36,8 @@ const tab = openStubTab;
 
 const inspectorWrites: { tab: string | null; value: InspectorTabId }[] = [];
 const deps = {
-  openHome: mock((id: "media" | "publish") => {
+  openHome: mock((id: "content" | "media" | "publish") => {
     tab(workspaceHomeTabId(id), { mode: `${id}-home`, path: null });
-  }),
-  openLibrary: mock(() => {
-    tab(libraryTabId(), { mode: "manage", path: null });
   }),
   openStyles: mock(() => {
     const existing = workspace.tabs.get("project.json");
@@ -76,7 +72,6 @@ beforeEach(() => {
   shell.docks.right.collapsed = false;
   inspectorWrites.length = 0;
   deps.openHome.mockClear();
-  deps.openLibrary.mockClear();
   deps.openStyles.mockClear();
   stopFollow = installWorkspaceFollow(deps);
 });
@@ -136,14 +131,14 @@ describe("the switch: showing a workspace shows its tabs", () => {
     switchWorkspace("content", deps);
     expect(shell.workspace).toBe("content");
     expect(activeTab.value?.id).toBe("content/posts/one.md");
-    expect(deps.openLibrary).not.toHaveBeenCalled();
+    expect(deps.openHome).not.toHaveBeenCalled();
   });
 
   test("with none open it opens the workspace's home", () => {
     tab("pages/index.json");
     switchWorkspace("content", deps);
-    expect(deps.openLibrary).toHaveBeenCalledTimes(1);
-    expect(activeTab.value?.id).toBe(libraryTabId());
+    expect(deps.openHome).toHaveBeenCalledWith("content");
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("content"));
 
     switchWorkspace("media", deps);
     expect(deps.openHome).toHaveBeenCalledWith("media");
@@ -305,15 +300,15 @@ describe("Content's Inspector follows what is being written", () => {
     expect(shell.docks.right.collapsed).toBe(false);
   });
 
-  test("moving between the Library and an entry inside Content opens and closes it", () => {
+  test("moving between the Content home and an entry inside Content opens and closes it", () => {
     tab("pages/index.json");
     switchWorkspace("content", deps);
-    expect(activeTab.value?.id).toBe(libraryTabId());
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("content"));
     expect(shell.docks.right.collapsed).toBe(true);
     tab("content/posts/one.md", { mode: "edit" });
     expect(shell.workspace).toBe("content");
     expect(shell.docks.right.collapsed).toBe(false);
-    activateTab(libraryTabId());
+    activateTab(workspaceHomeTabId("content"));
     expect(shell.docks.right.collapsed).toBe(true);
   });
 

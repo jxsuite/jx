@@ -14,9 +14,9 @@
  *    fill in and "absent" is a validation failure they did not cause.
  * 2. **Where the entry files are** is `collectionInfo`'s answer, imported rather than recomputed.
  *    Three copies of "which collection owns this path, and what extension do its entries carry"
- *    already exist (`utils/studio-utils.ts`'s `findContentTypeSchema`, `grid/sources/content-
- *    source.ts`'s `collectionInfo`, `browse/library-model.ts`'s `contentTypeFor`); this module adds
- *    no fourth and calls the two that are exported.
+ *    existed when this was written (`utils/studio-utils.ts`'s `findContentTypeSchema`,
+ *    `grid/sources/content-source.ts`'s `collectionInfo`, and `browse/library-model.ts`'s
+ *    `contentTypeFor`, since deleted); this module adds no fourth and calls the exported ones.
  *
  * **The draft axis is NOT here.** `content/draft-state.ts` owns what a draft is and whether drafts
  * are listed, because this module imports `content-source.ts` and the grid source must be able to

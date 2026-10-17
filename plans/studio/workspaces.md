@@ -2,17 +2,12 @@
 status: ready
 disposition: implement
 claims:
-  - studio.md#3.1
   - studio.md#5.5
-  - studio.md#6
   - studio.md#7.1
-  - studio.md#9.1.1
-  - studio.md#9.1.2
   - studio.md#17.1
   - studio.md#22
   - studio.md#22.1
   - studio.md#22.2
-  - studio.md#22.3
   - studio.md#22.5
   - studio.md#22.6
   - studio.md#22.7
@@ -45,9 +40,9 @@ Code anchors for each area were surveyed before the spec text was written (shell
 - studio.md §3.1, §5.5, §5.7, §6, §7.1, §9.1.1, §9.1.2, §17.1 → Implemented.
 - studio.md §9.3 → Implemented (landed with `WKS1.5`).
 - Follow-ups that stay Pending, claimed here until each lands or is split into its own plan: the entry body spliced into its template page's bound body (§22.5's second marker), the Missing alt text and tag filters (§22.6's second marker), deploy Rollback, and Send for review on a host with no `createPullRequest` (§22.8's second marker). When only these remain, split them into plans of their own (one per store or API they need) and delete this plan.
-- Left open by the Design slice, closed by later slices: §6's Entry tab has no entry fields until `WKS1.4`; §3.1 and §22.3 name Content's Collections panel (`WKS1.4`). §5.7's media section, which listed `public/` alone, closed with `WKS1.5`'s wider scan, and §5.7 is Implemented.
+- Left open by the Design slice and closed by the Content slice (`WKS1.4`): §6's Entry tab carries the entry's fields, and §3.1 and §22.3 draw Content's Collections panel, so all three are Implemented. §5.7's media section, which listed `public/` alone, closed with `WKS1.5`'s wider scan, and §5.7 is Implemented.
 - Left open by the Settings dialog slice (`WKS1.7`, landed), closed by later slices: §17.1 stays Partial, and claimed here, until the two sections it moved out arrive. The CSS Variables editor (`renderCssVarsEditor`) is hosted by the Variables view (`WKS1.6`) and Deploy (`renderDeploySection`) by Publish › Hosting (`WKS1.8`); both are kept with their tests, listed in `tests/reachability.test.ts` as `AWAITING_STYLES` and `AWAITING_PUBLISH`, and those slices delete the ledger lines. `css-variables-shot` runs `styles.open` until `WKS1.6` re-points it at the Variables view.
-- Left open by the Add new slice, closed by later slices: §9.1.1's new entry opens in the entry form until Content's writing mode lands (`WKS1.4`), named on §9.1.1's marker, which stays claimed here. Its upload half closed with `WKS1.5`: an upload lands in Media with the first file selected.
+- Left open by the Add new slice and closed by later slices: §9.1.1's new entry opens where it is written since `WKS1.4`, and its upload half closed with `WKS1.5` (an upload lands in Media with the first file selected), so §9.1.1 is Implemented.
 - Not a graduation: studio.md keeps other open items.
 
 ## Decisions
@@ -117,7 +112,7 @@ Each slice lands its code, tests, docs, screenshot re-authoring and marker flips
 | WKS1.1  | Workspace model, `view.setWorkspace` and `⌘1`–`⌘5`, tab ownership and strip filter, switcher with ⚙ menu, frame presets                 | studio.md#22, studio.md#22.1, studio.md#22.2, studio.md#22.3, studio.md#3.1 (frame) | open  |
 | WKS1.2  | Design: Site panel, Design-only rail and developer panels, Inspector Page · Element · Assistant with auto-switch, insert fixes          | studio.md#5.7, studio.md#6, studio.md#3.1 (Inspector)                               | done  |
 | WKS1.3  | Add new dialog, `deriveCreation`, `file.new`, collection creation, one custom-element-name validator                                    | studio.md#9.1.1                                                                     | done  |
-| WKS1.4  | Content: Collections panel, Content home, collection header, entries in their layout, Entry tab; Library deleted                        | studio.md#9.1.2, studio.md#22.5                                                     | open  |
+| WKS1.4  | Content: Collections panel, Content home, collection header, entries in their layout, Entry tab; Library deleted                        | studio.md#9.1.2, studio.md#22.5                                                     | done  |
 | WKS1.5  | Media: media library surface, pick mode, `public/media/` default, Replace, scan scope                                                   | studio.md#9.3, studio.md#22.6                                                       | done  |
 | WKS1.6  | Styles: Styles workspace frame, `tokens` editor, View picker, `styles.open` alias, CSS Variables moved                                  | studio.md#7.1, studio.md#22.7                                                       | open  |
 | WKS1.7  | Project Settings dialog in three groups, `group` on sections and contributions, settings editor kind deleted                            | studio.md#17.1                                                                      | done  |

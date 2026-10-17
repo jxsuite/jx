@@ -134,7 +134,7 @@ const KNOWN_UNREACHABLE = {
   },
   "browse/library-model.ts": {
     isLibraryLayout:
-      "the type guard behind `library.setLayout`'s argument. The command validates through its " +
+      "the type guard behind `content.setLayout`'s argument. The command validates through its " +
       "JSON-Schema `args` enum instead, so the guard is a second spelling of the same rule",
   },
   "canvas/canvas-perf.ts": { resetCanvasPerf: TEST_RESET },

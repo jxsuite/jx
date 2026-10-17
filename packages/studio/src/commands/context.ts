@@ -57,7 +57,6 @@ export type EditorKind =
   | "grid"
   | "code"
   | "diff"
-  | "library"
   | "config"
   | "entry"
   | "media"
@@ -96,9 +95,9 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
   /* A workspace's home (`workspace/workspace-home.ts`): the surface a workspace opens on when none
      of its own tabs is open. No document, no selection, nothing to paste into, so not the Canvas
      key scope a mode this map did not know would fall into. */
+  ["content-home", "home"],
   ["media-home", "home"],
   ["publish-home", "home"],
-  ["manage", "library"],
   /* The Media viewer — `media/media-pane.ts`. An image, a video, a font specimen: files the studio
      can SHOW but has no document model for, which is why clicking one used to end in "No format
      class imported for …", advice that means nothing about a PNG. */
@@ -130,7 +129,6 @@ export const EDITOR_KIND_LABELS: Readonly<Record<EditorKind, string>> = {
   grid: "Grid",
   home: "Home",
   media: "Media",
-  library: "Library",
   none: "None",
 };
 

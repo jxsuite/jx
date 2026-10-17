@@ -45,6 +45,7 @@
  * the document it is warning you about.
  */
 
+import { writesEntryOnCanvas } from "../content/content-collections";
 import { projectState, updateUi } from "../store";
 import { effect, effectScope } from "../reactivity";
 import { PRIMARY_PANE, focusPane, workspace } from "../workspace/workspace";
@@ -832,7 +833,12 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
   ]
     .filter((part) => part !== null)
     .join(" · ");
-  const hasLayout = isPageDoc(tab) && Boolean(getEffectiveLayoutPath(tab.doc.document.$layout));
+  /* An entry written on the canvas is wrapped in its template's layout like a page (§22.5), so it
+     offers the same "show layout" choice. Whether a layout resolves for it is read asynchronously
+     by the canvas; the project default is the answer this bar can give synchronously. */
+  const hasLayout =
+    (isPageDoc(tab) && Boolean(getEffectiveLayoutPath(tab.doc.document.$layout))) ||
+    (Boolean(projectState?.isSiteProject) && writesEntryOnCanvas(tab.documentPath));
   const page = isPageDoc(tab);
   const params = page ? paramRows(tab) : [];
   const props = page ? [] : propRows(tab, paneId);

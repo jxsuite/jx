@@ -2,17 +2,18 @@
 /**
  * Workspace homes — the virtual tab a workspace opens on when none of its own tabs is open.
  *
- * A home is a tab like the Library is a tab: it sits in a pane's strip, it can be closed, and it
- * has a canvas mode of its own (`media-home`, `publish-home`) that `canvas/canvas-render.ts` routes
- * here. It has no document — the tab carries a stub, exactly as the grid tabs do — and its id is in
- * the `workspace://` space `workspace/workspace-ids.ts` declares, so it can never collide with a
- * file.
+ * A home is a tab like a grid is a tab: it sits in a pane's strip, it can be closed, and it has a
+ * canvas mode of its own (`content-home`, `media-home`, `publish-home`) that
+ * `canvas/canvas-render.ts` routes here. It has no document — the tab carries a stub, exactly as
+ * the grid tabs do — and its id is in the `workspace://` space `workspace/workspace-ids.ts`
+ * declares, so it can never collide with a file.
  *
- * What a home DRAWS is its workspace's own surface where it has one: the Media home is the media
- * library (`media/media-library.ts`, studio.md §22.6). A home without one yet draws a small empty
- * state naming the workspace and what it is for (`surfaces/workspace-home.json`), which is
- * Publish's until its surface lands. The mechanism (the tab, the mode, the routing and the per-pane
- * mount) is the same for both.
+ * What a home DRAWS is its workspace's own surface where it has one: the Content home is the
+ * collection it shows (`browse/library-pane.ts`, studio.md §22.5) and the Media home is the media
+ * library (`media/media-library.ts`, §22.6). A home without one yet draws a small empty state
+ * naming the workspace and what it is for (`surfaces/workspace-home.json`), which is Publish's
+ * until its surface lands. The mechanism (the tab, the mode, the routing and the per-pane mount) is
+ * the same for both.
  *
  * @docs studio/interface
  */
@@ -30,6 +31,7 @@ import {
   mediaLibraryMounted,
   renderMediaLibrary,
 } from "../media/media-library";
+import { detachLibraryPane, libraryPaneMounted, renderLibraryMode } from "../browse/library-pane";
 import { paneRegion } from "../ui/regions";
 import type { HomeWorkspaceId } from "./workspace-ids";
 import type { Tab } from "../tabs/tab";
@@ -86,8 +88,12 @@ const _active = new Map<string, ActiveHome>();
 
 /** Whether this tab's home is already mounted in this pane and still in the document. */
 export function workspaceHomeMounted(paneId: string, tab: Tab): boolean {
-  if (homeWorkspaceOfTabId(tab.id) === "media") {
+  const id = homeWorkspaceOfTabId(tab.id);
+  if (id === "media") {
     return mediaLibraryMounted(paneId, tab);
+  }
+  if (id === "content") {
+    return libraryPaneMounted(paneId, tab);
   }
   const home = _active.get(paneId);
   return (
@@ -98,6 +104,7 @@ export function workspaceHomeMounted(paneId: string, tab: Tab): boolean {
 /** Tear one pane's home down (mode change, tab switch, project close). Idempotent. */
 export function detachWorkspaceHome(paneId: string): void {
   detachMediaLibrary(paneId);
+  detachLibraryPane(paneId);
   const home = _active.get(paneId);
   if (!home) {
     return;
@@ -142,8 +149,13 @@ export function renderWorkspaceHome(surface: CanvasSurface, tab: Tab): void {
     return;
   }
   detachWorkspaceHome(paneId);
-  if (homeWorkspaceOfTabId(tab.id) === "media") {
+  const id = homeWorkspaceOfTabId(tab.id);
+  if (id === "media") {
     renderMediaLibrary(surface, tab);
+    return;
+  }
+  if (id === "content") {
+    renderLibraryMode(surface, tab);
     return;
   }
   const mounted = mountWorkspaceHomeSurface(wrap, workspaceHomeView(paneId, tab));

@@ -165,7 +165,7 @@ export function entryDraftPill(tab: Tab): DraftPill | null {
 // ─── The form ────────────────────────────────────────────────────────────────
 
 /** The form's host context: enum pointers resolve against this project's configuration. */
-function formContext(tab: Tab): SchemaFormContext {
+export function formContext(tab: Tab): SchemaFormContext {
   return {
     fieldKeyPrefix: `entry:${tab.id}`,
     resolvePointer: (pointer, scope) =>
@@ -184,7 +184,7 @@ function formContext(tab: Tab): SchemaFormContext {
  * missing from the file is a fact about the document, and saying so is the whole reason the form
  * knows the schema.
  */
-function absentRequiredErrors(
+export function absentRequiredErrors(
   collection: EntryCollection,
   fields: EntryFields,
 ): Record<string, string> {

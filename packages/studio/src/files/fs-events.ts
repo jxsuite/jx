@@ -237,11 +237,11 @@ export async function relistLoadedDirs(
 }
 
 /**
- * Modes only a tab whose `document` is a placeholder offers: the media viewer, a CSV grid, the
- * Library. Spelled out as strings, not imported, because each constant's module drags its whole
- * editor in behind it.
+ * Modes only a tab whose `document` is a placeholder offers: the media viewer and a CSV grid.
+ * Spelled out as strings, not imported, because each constant's module drags its whole editor in
+ * behind it. A workspace home has no file at all, so it never reaches the re-read.
  */
-const STUB_DOCUMENT_MODES = new Set(["media", "grid", "manage"]);
+const STUB_DOCUMENT_MODES = new Set(["media", "grid"]);
 
 /**
  * Whether a tab's `document` is a placeholder rather than its parsed file. Such a tab reads its
@@ -297,8 +297,12 @@ export interface FsSyncContext {
    * Handed the project-relative paths the batch touched, so a cache that only one directory can
    * change (the media listing, the component registry) can ignore the rest. `undefined` means the
    * stream had a gap and any path may have changed.
+   *
+   * `structural` says whether the batch added, removed or renamed anything, as opposed to only
+   * rewriting files that already existed: a cache of the file SET can ignore a batch of plain
+   * `change` events, which is every save. It is `true` after a gap.
    */
-  invalidateDerivedCaches?: (paths?: readonly string[]) => void;
+  invalidateDerivedCaches?: (paths?: readonly string[], structural?: boolean) => void;
   /**
    * After a reconnect, the clean, non-collab open tabs whose files may have changed while the
    * stream was down. The handler re-reads them; it should leave a tab whose content did not change
@@ -367,7 +371,7 @@ export function startFsSync(ctx: FsSyncContext): () => void {
     );
     if (reason === "reconnect") {
       invalidateUsages();
-      ctx.invalidateDerivedCaches?.();
+      ctx.invalidateDerivedCaches?.(undefined, true);
       await Promise.all([relist, reloadIgnoreCache()]);
     } else {
       await relist;
@@ -417,7 +421,10 @@ export function startFsSync(ctx: FsSyncContext): () => void {
       // Removed layout's `$head` to the open page, a `$paths` enumeration listing entries that are
       // Gone.
       invalidateUsages();
-      ctx.invalidateDerivedCaches?.(events.map((event) => event.path));
+      ctx.invalidateDerivedCaches?.(
+        events.map((event) => event.path),
+        events.some((event) => event.type !== "change"),
+      );
       // Content versions are derived state of the same kind, and Studio's own writes change bytes:
       // A version kept past its echo would let an immutable cache answer with the old file.
       forgetEventVersions(events);

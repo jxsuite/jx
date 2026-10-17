@@ -45,6 +45,11 @@ import { previewAssetSrc } from "../canvas/asset-refs";
 import { IMAGE_EXTENSIONS, extensionOf } from "../files/media-upload";
 import { renderPagePanelSurface, unmountPagePanelSurface } from "../surfaces/panel-page";
 import { collectionForFile } from "../content/collection-match";
+import {
+  isEntryTab,
+  renderEntryInspector,
+  unmountEntryInspector,
+} from "../content/entry-inspector";
 
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
@@ -1515,6 +1520,7 @@ let _tabHost: HTMLElement | null = null;
  */
 export function bindPageHost(host: HTMLElement | null): void {
   if (_tabHost && _tabHost !== host) {
+    unmountEntryInspector(_tabHost);
     unmountPagePanelSurface(_tabHost);
     if (_host === _tabHost) {
       _host = null;
@@ -1537,14 +1543,23 @@ export function renderPageTab(): void {
     return;
   }
   const tab = activeTab.value;
-  if (!tab) {
+  if (!tab || isEntryTab(tab)) {
     unmountPagePanelSurface(host);
     if (_host === host) {
       _host = null;
       _ctx = null;
     }
+    /* A collection entry's tab is titled Entry and draws the entry's own settings — status,
+       fields, page URL, file (§22.5) — rather than a page's title, head and SEO preview: the
+       entry's page is its collection's template, and its head is that page's. */
+    if (tab) {
+      renderEntryInspector(host, tab);
+    } else {
+      unmountEntryInspector(host);
+    }
     return;
   }
+  unmountEntryInspector(host);
   const isContent = tab.doc.mode === "content";
   renderPagePanel(host, {
     /* The Page tab IS an app-level surface: it shows the focused document by definition, so it

@@ -434,7 +434,7 @@ describe("the contract-1 bespoke verbs (the migration's codemod, applied at read
             { do: "openSettings", section: "contexts" },
             { do: "editFunction", path: ["children", 3], eventKey: "onClick" },
             { do: "select", path: null },
-            { do: "openBrowse" },
+            { do: "showWelcome" },
             // Not a command verb: raw input and sleeps stay out of the command list.
             { do: "wait", ms: 400 },
             { do: "canvasKey", key: "Enter" },
@@ -446,7 +446,7 @@ describe("the contract-1 bespoke verbs (the migration's codemod, applied at read
       ["settings.open", { section: "contexts" }],
       ["formula.editEvent", { path: ["children", 3], eventKey: "onClick" }],
       ["selection.set", { path: null }],
-      ["library.open", {}],
+      ["project.showWelcome", {}],
     ]);
   });
 

@@ -77,11 +77,27 @@
             "workspace": "content"
           },
           "cmd": "view.setWorkspace"
+        },
+        {
+          "args": {
+            "collection": "pages"
+          },
+          "cmd": "content.showCollection"
+        },
+        {
+          "args": {
+            "layout": "cards"
+          },
+          "cmd": "content.setLayout"
         }
       ],
       "expect": [
         {
-          "region": "pane.primary"
+          "state": {
+            "editor": {
+              "kind": "home"
+            }
+          }
         }
       ],
       "capture": [
@@ -1565,9 +1581,9 @@
       "steps": [
         {
           "args": {
-            "tab": "files"
+            "workspace": "content"
           },
-          "cmd": "view.setActivity"
+          "cmd": "view.setWorkspace"
         },
         {
           "args": {
@@ -1724,7 +1740,7 @@
           "region": "overlay.menu:block-action-bar/insertData",
           "text": "",
           "unstable": {
-            "reason": "the SUBJECT of this shot is the open merge-tag list, and a list is a control — \"insert.data\" (P5) is the ITEM, and running it photographs a token spliced into the middle of the heading's existing text instead. Either the shot is deleted and docs/start/first-collection.md §12 becomes prose, or block-action-bar.ts grows an idempotent verb that opens the list; both are calls the docs owner makes, not the manifest.",
+            "reason": "the SUBJECT of this shot is the open merge-tag list, and a list is a control \u2014 \"insert.data\" (P5) is the ITEM, and running it photographs a token spliced into the middle of the heading's existing text instead. Either the shot is deleted and docs/start/first-collection.md \u00a712 becomes prose, or block-action-bar.ts grows an idempotent verb that opens the list; both are calls the docs owner makes, not the manifest.",
             "until": "P7"
           }
         }
@@ -2319,7 +2335,7 @@
       "docs": ["studio/editing/frontmatter"],
       "open": {
         "project": "packages/starters/sites/blog",
-        "file": "content/posts/designing-for-slowness.md",
+        "file": "pages/about.md",
         "view": "edit",
         "viewport": {
           "width": 1920,

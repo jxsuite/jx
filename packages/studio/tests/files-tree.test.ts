@@ -1091,7 +1091,7 @@ describe("file context menu", () => {
     expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["pages/home.json"]);
   });
 
-  test("Open Entry Form opens the tab in entry mode — the route the palette could not offer", async () => {
+  test("Open Entry opens a Markdown entry where it is written — the route the palette could not offer", async () => {
     await treeWithRegistry();
 
     await openMenuOn("posts/first.md");
@@ -1101,7 +1101,8 @@ describe("file context menu", () => {
 
     const tab = [...workspace.tabs.values()].find((t) => t.documentPath === "posts/first.md")!;
     expect(tab).toBeDefined();
-    expect(tab.session.ui.canvasMode).toBe("entry");
+    // An entry with a body is written on the canvas (studio.md §22.5); a JSON one opens its form.
+    expect(tab.session.ui.canvasMode).toBe("edit");
   });
 
   test("the declared rows come from the registry — with none published, they are absent", async () => {

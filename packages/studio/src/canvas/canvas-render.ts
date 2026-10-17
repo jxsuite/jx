@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
  * Canvas render — extracted from studio.js (Phase 4o). Multi-mode canvas rendering orchestrator:
- * dispatches to manage/source/edit/design/preview rendering paths.
+ * dispatches to source/edit/design/preview rendering paths.
  */
 
 import { render, nothing } from "lit-html";
@@ -49,7 +49,6 @@ import { parseSourceForPath } from "../files/file-ops";
 import { serializeDocument } from "../files/serialize-document";
 import { parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 import { detachGridPanel, gridPanelMounted, renderGridMode } from "../grid/grid-panel";
-import { detachLibraryPane, libraryPaneMounted, renderLibraryMode } from "../browse/library-pane";
 import { detachEntryPane, entryPaneMounted, renderEntryMode } from "../content/entry-editor";
 import { detachMediaPane, mediaPaneMounted, renderMediaMode } from "../media/media-pane";
 import {
@@ -71,6 +70,12 @@ import { diffModelUrisFor, modelUriFor, monacoLangForPath } from "../services/mo
 import { renderWelcome } from "../surfaces/welcome";
 import { emptyState } from "../surfaces/empty-state";
 import { attachDocumentHeaderHost, hasDocumentHeader } from "../panels/frontmatter-panel";
+import {
+  attachWritingBanner,
+  detachWritingBanner,
+  renderWritingBanner,
+} from "../content/writing-banner";
+import { writesEntryOnCanvas } from "../content/content-collections";
 import { mountCanvasStage } from "../surfaces/canvas-stage";
 import type {
   CanvasStageActions,
@@ -285,6 +290,8 @@ function stageActions(surface: CanvasSurface): CanvasStageActions {
         surface.panzoomWrap = element;
       } else if (part === "doc-header") {
         attachDocumentHeaderHost(surface.paneId, element);
+      } else if (part === "writing-banner") {
+        attachWritingBanner(surface.paneId, element);
       } else if (part === "diff-toolbar") {
         setDiffToolbarHost(surface.paneId, element);
       }
@@ -323,7 +330,7 @@ function drawStage(
   /* There is no card-host release here, and there must not be one: `renderCanvasImpl` already
      releases it for EVERY mode that draws no header, one branch above this one. A second answer to
      the same question is how the two drift — and this one would answer only for the frames that
-     reach a stage, leaving grid, library, entry and media to the first. */
+     reach a stage, leaving grid, the homes, entry and media to the first. */
   const standing = surface.stage;
   const stage = standing ?? mountCanvasStage(surface.wrap, view, stageActions(surface));
   surface.stage = stage;
@@ -617,8 +624,8 @@ function resetCanvasView(surface: CanvasSurface) {
   const canvasWrap = surface.wrap;
   const { paneId } = surface;
   detachGridPanel(paneId);
-  detachLibraryPane(paneId);
   detachEntryPane(paneId);
+  detachWritingBanner(paneId);
   detachMediaPane(paneId);
   detachWorkspaceHome(paneId);
   disposeSourceCollab(surface);
@@ -1052,8 +1059,23 @@ function renderCanvasImpl(surface: CanvasSurface) {
      frontmatter — over a document this pane does not own, and two cards editing one document's
      frontmatter side by side is two writers for one field. A lens is a view; the card belongs to
      the pane that owns the tab. */
+  /* A collection entry written in Edit carries the writing-mode banner INSTEAD of the card
+     (§22.5): the canvas wraps it in its template's layout, and the banner says the layout is
+     locked. Not in a lens, for the card's reason: the banner's door belongs to the pane that owns
+     the tab. */
+  const wantsWritingBanner =
+    canvasMode === "edit" &&
+    derivationOfPane(surface.paneId)?.kind !== "lens" &&
+    Boolean(projectState?.isSiteProject) &&
+    writesEntryOnCanvas(tab.documentPath);
+  if (!wantsWritingBanner) {
+    detachWritingBanner(surface.paneId);
+  }
+  /* An entry's fields are the Inspector's Entry tab's (§6), and nowhere else: the card over an
+     entry drew the same title and date a second time, each copy committing its own way. */
   const wantsDocHeader =
     canvasMode === "edit" &&
+    !wantsWritingBanner &&
     derivationOfPane(surface.paneId)?.kind !== "lens" &&
     hasDocumentHeader(tab);
   if (!wantsDocHeader) {
@@ -1166,12 +1188,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
     return;
   }
 
-  // Library fast-path, same shape: the Library pane owns its own reactivity (view state, scan,
-  // Window), so a same-tab re-render while it is mounted needs nothing from the canvas pipeline.
-  if (canvasMode === "manage" && libraryPaneMounted(surface.paneId, tab) && !modeChanged) {
-    return;
-  }
-
   // Entry fast-path, same shape: the entry form owns its own effect over the tab's frontmatter, so
   // A field commit repaints the form and nothing reaches the canvas pipeline.
   if (canvasMode === "entry" && entryPaneMounted(surface.paneId, tab) && !modeChanged) {
@@ -1253,17 +1269,14 @@ function renderCanvasImpl(surface: CanvasSurface) {
     // Destroy the grid panel if switching away from grid mode
     detachGridPanel(surface.paneId);
 
-    // The Library holds an IntersectionObserver and an LRU of live runtime subtrees; leaving the
-    // Mode without releasing them is exactly the unbounded retention its LRU cap exists to remove.
-    detachLibraryPane(surface.paneId);
-
-    // Same for the entry form, whose effect scope subscribes to the document's frontmatter
+    // The entry form's effect scope subscribes to the document's frontmatter
     detachEntryPane(surface.paneId);
 
     // And for the media viewer, whose effect scope subscribes to the tab's path
     detachMediaPane(surface.paneId);
 
-    // And for a workspace home, whose surface holds a mounted document
+    // And for a workspace home, whose surface holds a mounted document (the Content home's
+    // IntersectionObserver and preview LRU among them)
     detachWorkspaceHome(surface.paneId);
 
     // Dispose Monaco editor if switching away from source mode
@@ -1375,18 +1388,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
     return;
   }
 
-  /* Library mode: the project's own contents, over a GridSource, in one of five layouts
-     (`browse/library-pane.ts`). `commands/context.ts` already mapped `manage` to the `library`
-     editor kind — this is the surface that map was pointing at. */
-  if (canvasMode === "manage") {
-    canvasWrap.style.padding = "0";
-    canvasWrap.style.display = "block";
-    renderLibraryMode(surface, tab);
-    return;
-  }
-
   /* Entry mode: one content entry's fields, typed by its collection's schema
-     (`content/entry-editor.ts`). Same non-iframe-editor pattern as the Library and Settings — and
+     (`content/entry-editor.ts`). Same non-iframe-editor pattern as the grid and the homes — and
      the reason `entry` is in `commands/context.ts`'s mode map, without which a form over a
      frontmatter record would have resolved into the CANVAS key scope. */
   if (canvasMode === "entry") {
@@ -1667,9 +1670,10 @@ function renderCanvasImpl(surface: CanvasSurface) {
        between — the page ended at an invisible line and the band read as a hairline over one
        continuous surface. At 0 the clip happens AT the border, which is what makes the border read
        as the band's edge; the scroller's own 32px of top padding is the breathing room. */
-    canvasWrap.style.flexDirection = wantsDocHeader ? "column" : "";
-    canvasWrap.style.alignItems = wantsDocHeader ? "stretch" : "";
-    canvasWrap.style.gap = wantsDocHeader ? "0px" : "";
+    const stacks = wantsDocHeader || wantsWritingBanner;
+    canvasWrap.style.flexDirection = stacks ? "column" : "";
+    canvasWrap.style.alignItems = stacks ? "stretch" : "";
+    canvasWrap.style.gap = stacks ? "0px" : "";
     void drawStage(
       surface,
       {
@@ -1685,13 +1689,16 @@ function renderCanvasImpl(surface: CanvasSurface) {
         handles: "shown",
         hug: isComponentDoc,
         innerPart: "edit-column",
-        lead: wantsDocHeader ? "header" : "none",
+        lead: wantsWritingBanner ? "banner" : wantsDocHeader ? "header" : "none",
         panels: [entry.item],
       },
       [entry],
     ).then((stage) => {
       if (!stage) {
         return;
+      }
+      if (wantsWritingBanner) {
+        renderWritingBanner(surface.paneId, tab);
       }
       const editColumn = stageHost(surface, "edit-column");
       const scroller = stageHost(surface, "edit-canvas");
@@ -1996,11 +2003,11 @@ setSurfaceTeardown((surface) => {
   clearDiffView(surface.paneId);
   setDiffToolbarHost(surface.paneId, null);
   detachGridPanel(surface.paneId);
-  detachLibraryPane(surface.paneId);
   detachEntryPane(surface.paneId);
   detachMediaPane(surface.paneId);
   detachWorkspaceHome(surface.paneId);
   attachDocumentHeaderHost(surface.paneId, null);
+  detachWritingBanner(surface.paneId);
   disposeSourceCollab(surface);
   disposeSourceEditor(surface);
   surface.centerObserver?.disconnect();

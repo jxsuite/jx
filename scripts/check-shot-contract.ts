@@ -290,7 +290,6 @@ interface LegacyVerb {
 const LEGACY_ACTIONS: ReadonlyMap<string, LegacyVerb> = new Map([
   ["editDef", { id: "formula.editDef" }],
   ["editFunction", { id: "formula.editEvent" }],
-  ["openBrowse", { id: "library.open" }],
   ["openDataGrid", { id: "data.openGrid" }],
   ["openNewProject", { id: "project.new" }],
   ["openQuickSearch", { id: "search.openPalette" }],

@@ -20,6 +20,7 @@ import {
   KIND_INFO,
   layoutValueFor,
   presetSchema,
+  schemaPresets,
   START_ARTICLE,
   START_BLANK,
   START_COPY,
@@ -408,7 +409,7 @@ describe("media", () => {
 describe("small derivations", () => {
   test("item nouns and the default template", () => {
     expect([itemNoun("recipes"), itemNoun("stories"), itemNoun("news"), itemNoun("glass")]).toEqual(
-      ["recipe", "story", "new", "glass"],
+      ["recipe", "story", "news", "glass"],
     );
     expect(defaultTemplateChoice(CTX)).toBe("./layouts/base.json");
     expect(defaultTemplateChoice({ ...CTX, defaultLayout: null })).toBe("./layouts/base.json");
@@ -446,4 +447,19 @@ describe("what is written validates", () => {
       await validateProjectConfig({ content: { [config!.name]: config!.entry }, name: "Demo" }),
     ).toEqual([]);
   }, 30_000);
+});
+
+describe("schemaPresets", () => {
+  test("an existing collection's schema amounts to the presets whose keys it declares", () => {
+    const schema = {
+      properties: { cover: { type: "string" }, date: { type: "string" }, title: {} },
+    };
+    expect(schemaPresets(schema, true)).toEqual(["title", "image", "richText", "date"]);
+    expect(schemaPresets(schema, false)).toEqual(["title", "image", "date"]);
+  });
+
+  test("it is presetSchema's inverse, and a collection with no schema has only its body", () => {
+    expect(schemaPresets(presetSchema(["title", "tags"]), false)).toEqual(["title", "tags"]);
+    expect(schemaPresets(null, true)).toEqual(["richText"]);
+  });
 });

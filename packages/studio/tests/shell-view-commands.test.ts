@@ -131,7 +131,7 @@ describe("view.setActivity", () => {
     // Stale script or an older session still carries.
     expect(() => registry.run("view.setActivity", { tab: "head" })).toThrow(
       'command "view.setActivity" argument "tab": "head" is not declared — declared: ' +
-        "site, files, search, git, i18n, layers, data, packages, insert",
+        "site, collections, files, search, git, i18n, layers, data, packages, insert",
     );
     expect(shell.leftTab).toBe("layers");
   });
@@ -344,7 +344,7 @@ describe("the enums do not drift from what the shell renders", () => {
     // Registry and this enum agree, which is asserted in `tests/panel-registry.test.ts`; here we
     // Only check that the rail really has stopped keeping its own list.
     expect(declaredValues("../src/surfaces/rail.ts")).toEqual([]);
-    expect(NAVIGATOR_PANEL_IDS.length).toBe(9);
+    expect(NAVIGATOR_PANEL_IDS.length).toBe(10);
   });
 
   test("the Inspector renders exactly INSPECTOR_TAB_IDS", () => {

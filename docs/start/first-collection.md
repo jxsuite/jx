@@ -48,13 +48,13 @@ You should now see three field rows in the schema. These become the form every p
 2. Choose **Entry** in the list on the left. It appears now that your project has a content type, and **Posts** is already picked as its collection.
 3. Type `Hello World` and click **Create entry**.
 
-![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../images/mode-manage.png)
+![The Content workspace showing a collection as cards with live previews, with the Collections panel on the left](../images/mode-manage.png)
 
-Studio creates `content/posts/hello-world.md` with every schema field pre-filled (the title with the name you typed, the rest with a sensible blank) and opens it. In [The Library](/docs/studio/projects/browse), the entry appears under the **Content** filter, labeled with its type.
+Studio creates `content/posts/hello-world.md` with every schema field pre-filled (the title with the name you typed, the rest with a sensible blank) and opens it in the [Content workspace](/docs/studio/projects/browse), where **Posts** is now listed in the Collections panel on the left.
 
 ## 4. Fill it in
 
-The post opens with the same fields your schema defined:
+The post opens on the canvas, inside your site's template: the banner above it says the text is yours to write and the layout is locked. Its fields are on the right, in the Inspector's **Entry** tab:
 
 1. Check that **title** says `Hello World`.
 2. Pick today in the **date** field.
@@ -64,20 +64,20 @@ Then click into the page below and write a paragraph or two of body text.
 
 ![Jx Studio editing markdown content inline with a WYSIWYG editor](../images/mode-edit.png)
 
-You should see the frontmatter form filled in and your words on the page. The same fields also live in the **Page** panel. See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
+You should see the fields filled in and your words on the page. See **[Write an entry](/docs/studio/projects/browse#write-an-entry)** for the rest of the Entry tab.
 
 ## 5. Add two more posts
 
 Repeat step 3 twice, naming them `Grid mode rocks` and `Hello again` (or anything you like). This time skip the other fields on purpose; you'll fill them in bulk next.
 
-You should now have three entries under The Library's **Content** filter, two of them with nothing but a title.
+You should now have three entries under **Posts** in the Collections panel, two of them with nothing but a title.
 
 ## 6. Open the collection as a grid
 
 Editing entries one file at a time doesn't scale, so Studio can open the whole collection as a spreadsheet:
 
-1. Run **Show Files** from :kbd[⌘K] to open the Files panel. (To keep it on the Navigator rail, turn on **Show developer panels** in Preferences › Appearance.)
-2. Right-click the `content/posts` folder and choose **Edit Collection in Grid**.
+1. Click **Posts** in the Collections panel, then click **Edit in grid** in the toolbar above the list. (The same action is on the right-click menu of the `content/posts` folder in the Files panel, as **Edit Collection in Grid**.)
+2. The grid opens in the Content workspace, beside your posts. A view you save there is listed under **Posts** in the Collections panel next time.
 
 ![The posts collection open in Grid mode, one row per entry with title, date, and description columns](../images/blog-grid.png)
 
@@ -167,7 +167,7 @@ The listing links nowhere yet, and that's deliberate: one page per post is the j
 
 A complete content pipeline, end to end:
 
-- A **content type** (`posts`) gives you schema-backed entries with one-click creation from The Library.
+- A **content type** (`posts`) gives you schema-backed entries with one-click creation from **New post** in the Content workspace.
 - **Three entries**, edited both one at a time (the Document Header card) and in bulk (**Grid mode**).
 - A **ContentCollection** state entry is the collection as live, sorted data on a page.
 - A **repeater** whose template binds `item.data` fields is one designed card, rendered per post.

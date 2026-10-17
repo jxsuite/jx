@@ -72,7 +72,7 @@ The bar only names a language when it differs from the document's own, so a Fren
 
 ## Finding files by language
 
-The [Library](/docs/studio/projects/browse) has a **Language** facet and column, and the Files tree tags each row with the language of the directory it sits under, in that language's own name (_français_ rather than _French_).
+The [Content workspace](/docs/studio/projects/browse) has a **Language** facet and column, and the Files tree tags each row with the language of the directory it sits under, in that language's own name (_français_ rather than _French_).
 
 ## Commands
 

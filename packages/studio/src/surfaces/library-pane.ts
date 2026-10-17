@@ -1,13 +1,14 @@
 /// <reference lib="dom" />
 /**
- * The Library surface: the pane that BROWSES a project's files, as a Jx document over the kit.
+ * The Content home surface: one collection, browsed, as a Jx document over the kit (studio.md
+ * §22.5).
  *
- * This is the adapter. `browse/library-pane.ts` keeps the Library — the scan, the filter, the
- * window, the creation and upload flows, the per-file menu — and hands this module one projection:
- * a word saying which of nine things to draw, the toolbar's chips already marked, and rows whose
+ * This is the adapter. `browse/library-pane.ts` keeps the home — the scan, the collection and its
+ * filter, the window, the header line, the per-file menu — and hands this module one projection: a
+ * word saying which of eight things to draw, the toolbar's chips already marked, and rows whose
  * every field is already a string. The document renders that and decides nothing.
  *
- * **Nine cases, one discriminant.** `$switch` over a value is the only conditional a document has,
+ * **Eight cases, one discriminant.** `$switch` over a value is the only conditional a document has,
  * and "is the scan running, did it finish, did the project have anything in it, did the filter keep
  * any of it, and which layout is on" is five questions. The pane answers them once and the surface
  * reads a word — which is also what keeps the four honest empty states from collapsing back into
@@ -22,8 +23,8 @@
  * **The container is CLEARED, because this is a pane and not a panel.** A panel is handed
  * `.panel-content`, a node lit renders `nothing` into, whose comment markers must survive; the
  * canvas stage is handed to whichever mode owns it whole, and `canvas/canvas-render.ts` hands it
- * over by emptying it. So the mount empties it too, which is what stops two Libraries stacking when
- * a repaint lands before the first mount has settled.
+ * over by emptying it. So the mount empties it too, which is what stops two homes stacking when a
+ * repaint lands before the first mount has settled.
  *
  * @docs studio/projects/browse
  */
@@ -40,11 +41,11 @@ import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 registerSurface("library-pane", libraryDoc);
 
 /**
- * Which of nine things the body draws.
+ * Which of eight things the body draws.
  *
  * The first four are the states the Manage view called "No files found" — a scan still running, a
- * scan that could not finish, a project with no files at all, and a filter that matched none of
- * them — and the last five are the layouts. One word, so no two of them can be true at once.
+ * scan that could not finish, a collection with nothing in it, and a filter that matched none of it
+ * — and the last four are the views. One word, so no two of them can be true at once.
  */
 export type LibraryViewKind =
   | "loading"
@@ -52,7 +53,6 @@ export type LibraryViewKind =
   | "empty"
   | "nomatch"
   | "cards"
-  | "media"
   | "table"
   | "calendar"
   | "board";
@@ -69,9 +69,7 @@ export interface LibraryRow {
    * Which of three things stands in the art box.
    *
    * `image` is the file itself, `doc` is the live-preview island the host fills, and `glyph` is the
-   * honest answer for a file nothing here can draw. Media tiles never say `doc`: a tile is a
-   * thumbnail of an asset, and a live document render inside one is the cost the Media layout
-   * exists to avoid.
+   * honest answer for a file nothing here can draw.
    */
   art: "image" | "doc" | "glyph";
   /** The URL an `image` loads. Empty for the other two. */
@@ -99,10 +97,10 @@ export interface LibraryColumn {
  * note; only Board prints a count, and only the Calendar's undated section is dimmed.
  */
 export interface LibraryGroup {
-  /** The group's identity across repaints — the date, or the category name. */
+  /** The group's identity across repaints — the date, or the folder. */
   id: string;
   title: string;
-  /** Board's honest total for the category, already a string. Empty for a Calendar day. */
+  /** Board's honest total for the folder, already a string. Empty for a Calendar day. */
   count: string;
   /** What this group left out, or the undated section's count. */
   note: string;
@@ -112,21 +110,51 @@ export interface LibraryGroup {
   files: LibraryRow[];
 }
 
-/** A toolbar chip: a category or a layout, and whether it is the one in force. */
+/** A toolbar chip: a view, and whether it is the one in force. */
 export interface LibraryChip {
   key: string;
   label: string;
   checked: "true" | "false";
 }
 
+/**
+ * The header line: where a collection's entries are published (§22.5).
+ *
+ * `page` reads "Each post has a page at `/blog/:slug` using Post" with **Design the post page**;
+ * `none` reads "Entries have no page of their own" with **Add one**; `loading` is the sentence
+ * shown while the pages are being read; `hidden` draws nothing (Pages, a file-backed collection).
+ */
+export interface LibraryPageLine {
+  state: "hidden" | "loading" | "page" | "none";
+  /** The sentence before the pattern, or the whole sentence for `loading` and `none`. */
+  text: string;
+  /** The URL pattern, drawn as code. */
+  pattern: string;
+  /** "using Post", or "with no template". */
+  template: string;
+  /** The button that opens the page in Design. */
+  designLabel: string;
+}
+
 /** Everything the document draws, as one value. */
 export interface LibraryView {
-  /** The region id stamped on the root, so the screenshot pipeline can address the Library. */
+  /** The region id stamped on the root, so the screenshot pipeline can address the home. */
   region: string;
-  /** The region id on the scroller, which is also the drop zone. */
-  dropRegion: string;
   view: LibraryViewKind;
-  categories: LibraryChip[];
+  /** The collection's title: "Pages", "Posts". */
+  title: string;
+  /** The line under the title, or "" for none. */
+  subtitle: string;
+  /** The search field's label: "Search posts". */
+  searchLabel: string;
+  /** The create button's label: "New post". */
+  newLabel: string;
+  /**
+   * Whether **Fields** and **Edit in grid** are drawn: a declared collection has fields and a grid
+   * of its own, Pages does not.
+   */
+  fieldsState: "hidden" | "shown";
+  page: LibraryPageLine;
   layouts: LibraryChip[];
   /**
    * Whether the language facet is drawn at all.
@@ -138,14 +166,8 @@ export interface LibraryView {
   localeOptions: SurfaceOption[];
   localeValue: string;
   query: string;
-  /** Where an upload lands, as the label's tooltip says it — before the files are chosen. */
-  uploadHint: string;
-  /** The picker's `accept`, from the media registry. */
-  uploadAccept: string;
   bannerState: "hidden" | "shown";
   bannerText: string;
-  /** `"true"` while a drag is over the body. A state the host holds, not a class a handler adds. */
-  dropActive: "true" | "false";
   /** The `nomatch` sentence, naming the filters that produced it. */
   emptyMessage: string;
   /** The second line of `incomplete` and `nomatch`. */
@@ -162,28 +184,24 @@ export interface LibraryView {
   truncatedState: "hidden" | "shown";
 }
 
-/** What a control can ask the Library to do. Every one of them is a decision the pane owns. */
+/** What a control can ask the home to do. Every one of them is a decision the pane owns. */
 export interface LibraryActions {
-  setCategory: (key: string) => void;
   setLayout: (key: string) => void;
   setLocale: (value: string) => void;
   search: (value: string) => void;
   openFile: (path: string) => void;
   /** Right-click on a row, at the pointer. */
   contextMenu: (path: string, x: number, y: number) => void;
-  /** **New** opens Add new on the kind the active category names. */
+  /** **New <item>** opens Add new on the collection's kind. */
   openNew: () => void;
-  /**
-   * A file picker settled.
-   *
-   * The ELEMENT rather than its list, because a file input that is not cleared refuses the same
-   * file twice — and the picker is the surface's own control, so the host is the one that clears
-   * it.
-   */
-  upload: (input: HTMLInputElement) => void;
-  dragOver: () => void;
-  dragOut: () => void;
-  drop: (files: FileList | null) => void;
+  /** **Fields** opens Project Settings › Content types on this collection. */
+  openFields: () => void;
+  /** **Edit in grid** opens the collection's grid (`collection.editInGrid`). */
+  openGrid: () => void;
+  /** **Design the <item> page** opens the collection's page in Design. */
+  designPage: () => void;
+  /** **Add one** writes the collection's page. */
+  addPage: () => void;
   scrolled: () => void;
   retry: () => void;
   reset: () => void;
@@ -211,19 +229,20 @@ interface LibraryScope extends LibraryView, LibraryActions {}
 /** Write a projection into the scope. */
 function project(scope: LibraryScope, view: LibraryView): void {
   scope.region = view.region;
-  scope.dropRegion = view.dropRegion;
   scope.view = view.view;
-  scope.categories = view.categories;
+  scope.title = view.title;
+  scope.subtitle = view.subtitle;
+  scope.searchLabel = view.searchLabel;
+  scope.newLabel = view.newLabel;
+  scope.fieldsState = view.fieldsState;
+  scope.page = view.page;
   scope.layouts = view.layouts;
   scope.localeState = view.localeState;
   scope.localeOptions = view.localeOptions;
   scope.localeValue = view.localeValue;
   scope.query = view.query;
-  scope.uploadHint = view.uploadHint;
-  scope.uploadAccept = view.uploadAccept;
   scope.bannerState = view.bannerState;
   scope.bannerText = view.bannerText;
-  scope.dropActive = view.dropActive;
   scope.emptyMessage = view.emptyMessage;
   scope.emptyDetail = view.emptyDetail;
   scope.pad = view.pad;
@@ -251,7 +270,7 @@ function rowPath(state: JxScope | undefined): string {
 }
 
 /**
- * Mount the Library document into `host`, wired to `actions`.
+ * Mount the Content home document into `host`, wired to `actions`.
  *
  * @param {HTMLElement} host - The pane's canvas stage
  * @param {LibraryView} view - What to draw right now
@@ -269,23 +288,23 @@ export function mountLibrarySurface(
   const listening = new AbortController();
   placeholderBrokenImages(host, listening.signal);
   const scope: LibraryScope = reactive<LibraryScope>({
+    addPage: actions.addPage,
     bannerState: "hidden",
     bannerText: "",
-    categories: [],
     columns: [],
     contextMenu: actions.contextMenu,
-    dragOut: actions.dragOut,
-    dragOver: actions.dragOver,
-    drop: actions.drop,
-    dropActive: "false",
-    dropRegion: "",
+    designPage: actions.designPage,
     emptyDetail: "",
     emptyMessage: "",
+    fieldsState: "hidden",
     groups: [],
     layouts: [],
     localeOptions: [],
     localeState: "hidden",
     localeValue: "",
+    newLabel: "",
+    openFields: actions.openFields,
+    openGrid: actions.openGrid,
     openFile: actions.openFile,
     openNew: actions.openNew,
     pad: "",
@@ -296,18 +315,18 @@ export function mountLibrarySurface(
     region: "",
     reset: actions.reset,
     retry: actions.retry,
+    page: { designLabel: "", pattern: "", state: "hidden", template: "", text: "" },
     rows: [],
     scrolled: actions.scrolled,
     scroller: actions.scroller,
     search: actions.search,
-    setCategory: actions.setCategory,
+    searchLabel: "",
     setLayout: actions.setLayout,
     setLocale: actions.setLocale,
+    subtitle: "",
+    title: "",
     truncated: "",
     truncatedState: "hidden",
-    upload: actions.upload,
-    uploadAccept: "",
-    uploadHint: "",
     view: "loading",
   });
   project(scope, view);

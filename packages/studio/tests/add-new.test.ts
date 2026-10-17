@@ -106,6 +106,17 @@ function setup(
     },
     title: "Workspace",
   });
+  /* A new collection opens the Content workspace ON it: the Content home's own verb, which opens
+     the home and, through it, the workspace. */
+  registry.register({
+    category: "Project",
+    id: "content.showCollection",
+    level: "project",
+    run: (_ctx, args: CommandArgValues | undefined) => {
+      workspaceRuns.push(args);
+    },
+    title: "Show Collection",
+  });
   registry.register({
     category: "Project",
     id: "media.browse",
@@ -500,7 +511,7 @@ describe("a collection", () => {
       field: "id",
       param: "slug",
     });
-    expect(workspaceRuns).toEqual([{ workspace: "content" }]);
+    expect(workspaceRuns).toEqual([{ collection: "recipes" }]);
   });
 
   test("own page off writes no page", async () => {
@@ -959,5 +970,48 @@ describe("a collection that half lands", () => {
           toast.message.includes("pages/recipes/[slug].json could not be written"),
       ),
     ).toBe(true);
+  });
+});
+
+describe("a page for a collection that has none", () => {
+  const RECIPES = {
+    recipes: {
+      format: "json",
+      schema: {
+        properties: { cover: { type: "string" }, title: { type: "string" } },
+        type: "object",
+      },
+      source: "./content/recipes",
+    },
+  };
+
+  test("writes the page Add new writes for a new collection, in the default template", async () => {
+    setup({}, { content: RECIPES });
+    const path = await flow.addCollectionPage("recipes");
+    expect(path).toBe("pages/recipes/[slug].json");
+    const page = fileJson("pages/recipes/[slug].json");
+    expect(page.$paths).toEqual({ contentType: "recipes", field: "id", param: "slug" });
+    // The default template already applies, so the page says nothing about it.
+    expect(page.$layout).toBeUndefined();
+    expect(page.title).toBe("${state.entry.data.title}");
+    const children = Array.isArray(page.children) ? page.children : [];
+    expect(children.map((child) => (isJsonObject(child) ? child.tagName : null))).toEqual([
+      "h1",
+      "img",
+    ]);
+  });
+
+  test("refuses a collection the project does not declare, and one that already has the page", async () => {
+    setup({ "pages/recipes/[slug].json": "{}" }, { content: RECIPES });
+    expect(await flow.addCollectionPage("gone")).toBeNull();
+    expect(problems.at(-1)?.message).toContain('"gone" is not a collection');
+    expect(await flow.addCollectionPage("recipes")).toBeNull();
+    expect(problems.at(-1)?.message).toBe("pages/recipes/[slug].json already exists.");
+    expect(platform.state.files.get("pages/recipes/[slug].json")).toBe("{}");
+  });
+
+  test("a write that fails answers null", async () => {
+    setup({}, { content: RECIPES }, { writeFile: () => Promise.reject(new Error("disk full")) });
+    expect(await flow.addCollectionPage("recipes")).toBeNull();
   });
 });

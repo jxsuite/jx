@@ -25,9 +25,10 @@
  *   is the platform's.
  *
  * **Retired, with a name, a chord and a residue** (`studio-ui-guidelines.md` §12.2): Open Project +
- * New Project + recents → the pill and `Project: Open Recent…`; `Manage` → `File: Browse Library`;
- * `Publish` → the `Publish:` family; `Sync Project` → Source Control. The five-mode switcher lives
- * in the pane context bar and is reachable as `View: Set Canvas Mode` in the palette.
+ * New Project + recents → the pill and `Project: Open Recent…`; `Manage` → the Content workspace
+ * (`view.setWorkspace { workspace: "content" }`, ⌘2); `Publish` → the `Publish:` family; `Sync
+ * Project` → Source Control. The five-mode switcher lives in the pane context bar and is reachable
+ * as `View: Set Canvas Mode` in the palette.
  *
  * @docs studio/interface
  */

@@ -990,7 +990,6 @@ export function initShortcuts(registry: CommandRegistry, stageContext: StageCont
  * scrolled with the wheel at all.
  *
  * - `grid` — a Tabulator viewport with its own virtual scroller.
- * - `manage` — the Library's ordinary overflow container.
  * - `settings` — the Project Settings document (`panels/settings-pane.ts`): an `overflow-y: auto`
  *   section column, plus the Raw JSON `<pre>`'s own box inside it.
  * - `entry` — the Entry editor's `overflow-y: auto` form (`content/entry-editor.ts`).
@@ -1000,9 +999,10 @@ export function initShortcuts(registry: CommandRegistry, stageContext: StageCont
  *   there is no artboard here to zoom, either.
  */
 const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
+  /* The Content home — `browse/library-pane.ts`. Its own scrolling list, nothing to zoom. */
+  "content-home",
   "entry",
   "grid",
-  "manage",
   /* `media` — the Media viewer's own scrolling column (`media/media-pane.ts`). There is no artboard
      here either: a wheel over an image is a scroll down the page it sits on, not a zoom. */
   "media",

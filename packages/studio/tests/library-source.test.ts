@@ -11,9 +11,8 @@ import {
   createLibrarySource,
   libraryColumns,
   libraryRow,
-  libraryTabId,
 } from "../src/browse/library-source";
-import { gridTabLabel, makeGridTabId, parseGridTabId } from "../src/grid/grid-source";
+import { gridTabLabel, parseGridTabId } from "../src/grid/grid-source";
 import type { DirEntry } from "../src/types";
 
 function tree() {
@@ -50,14 +49,14 @@ beforeEach(() => {
   resetStudioState({ projectConfig: null, projectDirs: ["pages", "public"] });
 });
 
-describe("the tab id", () => {
-  test("round-trips, and reads as Library rather than as a grid", () => {
-    expect(libraryTabId()).toBe("grid://library");
-    expect(parseGridTabId(makeGridTabId({ kind: "library" }))).toEqual({ kind: "library" });
-    expect(gridTabLabel("grid://library")).toBe("Library");
+describe("the id", () => {
+  test("is the Content home's tab id, and no grid id names a Library any more", () => {
+    expect(createLibrarySource().id).toBe("workspace://content");
+    expect(parseGridTabId("grid://library")).toBeNull();
+    expect(gridTabLabel("grid://library")).toBeNull();
   });
 
-  test("does not collide with the collection whose name is 'library'", () => {
+  test("a collection named 'library' is still a collection", () => {
     expect(parseGridTabId("grid://collection/library")).toEqual({
       kind: "collection",
       name: "library",
@@ -74,14 +73,15 @@ describe("columns and rows", () => {
 
   test("a row carries nulls where the platform reported nothing, never invented values", () => {
     const row = libraryRow({
-      category: "Pages",
+      collection: "pages",
       ext: ".json",
+      media: false,
       name: "b.json",
       path: "pages/b.json",
       type: ".json",
     });
     expect(row.key).toBe("pages/b.json");
-    expect(row.cells.size).toBeNull();
+    expect(row.cells.url).toBe("/b");
     expect(row.cells.modified).toBeNull();
     expect(row.cells.locale).toBeNull();
   });
@@ -94,8 +94,9 @@ describe("columns and rows", () => {
    */
   test("every declared column has a cell in the row the GridSource hands back", () => {
     const row = libraryRow({
-      category: "Pages",
+      collection: "pages",
       ext: ".json",
+      media: false,
       locale: "fr",
       name: "b.json",
       path: "pages/fr/b.json",
@@ -182,25 +183,34 @@ describe("createLibrarySource", () => {
     expect(result.inserts[0]!.ok).toBe(false);
     // The refusal points the author at where those edits DO live.
     expect(LIBRARY_READ_ONLY).toBe(
-      "The Library lists files; it does not edit them. Rename, duplicate or delete from the file's " +
-        "context menu, or open the file to edit it.",
+      "The Content workspace lists files; it does not edit them in the list. Rename, duplicate or " +
+        "delete from the file's context menu, or open the file to edit it.",
     );
   });
 
   test("columns() answers the table's own column set", async () => {
     const source = createLibrarySource();
     const columns = await source.columns();
-    expect(columns.map((c) => c.field)).toEqual([
+    expect(columns.map((c) => c.field)).toEqual(["name", "url", "locale", "modified", "path"]);
+    // A collection leads with what an entry says about itself, and keeps its file after.
+    expect(libraryColumns("posts").map((c) => c.field)).toEqual([
+      "title",
       "name",
-      "category",
       "locale",
-      "type",
-      "size",
       "modified",
       "path",
     ]);
-    expect(source.label).toBe("Library");
-    expect(source.id).toBe("grid://library");
+    expect(libraryColumns("posts").find((c) => c.field === "name")?.title).toBe("File");
+    expect(libraryColumns("posts", { date: true, status: true }).map((c) => c.field)).toEqual([
+      "title",
+      "status",
+      "date",
+      "name",
+      "locale",
+      "modified",
+      "path",
+    ]);
+    expect(source.label).toBe("Content");
   });
 
   test("with no project open it scans nothing and reports nothing", async () => {

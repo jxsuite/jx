@@ -1,6 +1,6 @@
 /**
- * The measured case of site-architecture.md §7.2, as a test: a 300-page project opening the
- * Library's "All" category.
+ * The measured case of site-architecture.md §7.2, as a test: a 300-page project opening the Content
+ * home's Pages collection.
  *
  * The Manage view this replaces rendered one card per file with NO cap, and each page/layout/
  * component/content card mounted a real `@jxsuite/runtime` render of that document into an
@@ -34,7 +34,7 @@ const {
   invalidateLibrary,
   librarySource,
   renderLibraryMode,
-  setLibraryCategory,
+  resetContentView,
   setLibraryLayout,
   setLibraryLocale,
   setLibrarySearch,
@@ -103,10 +103,10 @@ async function mount(): Promise<HTMLElement> {
   host.remove();
   closeAllTabs();
   const tab = openTab({
-    capabilities: { modes: ["manage"] },
+    capabilities: { modes: ["content-home"] },
     document: { children: [], tagName: "div" },
     documentPath: null,
-    id: "grid://library",
+    id: "workspace://content",
   });
   host = document.createElement("div");
   document.body.append(host);
@@ -170,7 +170,7 @@ beforeEach(() => {
   resetNotifications();
   detachLibraryPane("primary");
   invalidateLibrary();
-  setLibraryCategory("all");
+  resetContentView();
   setLibraryLayout("cards");
   setLibraryLocale("");
   setLibrarySearch("");
@@ -182,7 +182,7 @@ afterEach(() => {
   host.remove();
 });
 
-describe(`${PAGE_COUNT} pages, "All"`, () => {
+describe(`${PAGE_COUNT} pages, the Pages collection`, () => {
   test("the rendered card count collapses from the whole project to one viewport", async () => {
     const unwindowedStart = performance.now();
     await mount();
@@ -199,7 +199,7 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
 
     // Printed rather than asserted: a wall-clock threshold in CI measures the runner, not the code.
     console.error(
-      `[library perf] ${PAGE_COUNT} pages, "All", cards layout, ${LIBRARY_VIEWPORT.width}×${LIBRARY_VIEWPORT.height} pane\n` +
+      `[library perf] ${PAGE_COUNT} pages, Pages, cards layout, ${LIBRARY_VIEWPORT.width}×${LIBRARY_VIEWPORT.height} pane\n` +
         `  before (no window): ${unwindowed} cards · ${unwindowedNodes} list nodes · ` +
         `${unwindowedPreviews} preview reads · ${unwindowedMs.toFixed(0)} ms first paint\n` +
         `  after  (windowed):  ${windowed} cards · ${windowedNodes} list nodes · ` +

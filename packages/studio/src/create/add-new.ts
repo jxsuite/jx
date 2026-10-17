@@ -25,6 +25,7 @@ import { seedEntry } from "../content/entry-model";
 import { slugify, validateNewFileName } from "../files/new-file-name";
 import { customElementNameProblem, deriveTagName } from "./element-name";
 import { DEFAULT_MEDIA_DIR } from "../files/media-upload";
+import { itemNoun } from "../content/content-collections";
 import type {
   ContentTypeSchema,
   ContentTypeSchemaField,
@@ -320,16 +321,8 @@ export function defaultTemplateChoice(ctx: CreationContext): string {
   return ctx.layouts[0]?.ref ?? START_BLANK;
 }
 
-/** A collection's item, said in the singular: `recipes` → `recipe`, `stories` → `story`. */
-export function itemNoun(collection: string): string {
-  if (/[^aeiou]ies$/.test(collection)) {
-    return `${collection.slice(0, -3)}y`;
-  }
-  if (/[^s]s$/.test(collection)) {
-    return collection.slice(0, -1);
-  }
-  return collection;
-}
+/** A collection's item, said in the singular. Defined with the collections it names. */
+export { itemNoun } from "../content/content-collections";
 
 /**
  * A page URL as the reader typed it, reduced to path segments: each one slugified, empty ones
@@ -358,6 +351,22 @@ export function presetSchema(fields: readonly FieldPreset[]): ContentTypeSchema 
     schema.required = ["title"];
   }
   return schema;
+}
+
+/**
+ * The presets an EXISTING collection's schema amounts to, which is what its page binds: each preset
+ * whose key the schema declares, and Rich text when the entries are written in a format with a body
+ * (anything but JSON). The inverse of {@link presetSchema}, for a collection Add new did not make.
+ */
+export function schemaPresets(
+  schema: ContentTypeSchema | null | undefined,
+  hasBody: boolean,
+): FieldPreset[] {
+  const properties = schema?.properties ?? {};
+  return FIELD_PRESETS.filter((preset) => {
+    const { key } = FIELD_PRESET_INFO[preset];
+    return key === null ? hasBody : Object.hasOwn(properties, key);
+  });
 }
 
 /**

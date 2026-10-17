@@ -852,17 +852,16 @@ Additionally, the **Browse** canvas mode provides a full-screen project file tab
 
 ### 7.2 Content Collection Browser
 
-> **Status: Partial.** The Library ships as a `GridSource` editor with all five layouts and windowed, LRU-capped previews (`packages/studio/src/browse/library-source.ts`, `library-layouts.ts`, `library-preview.ts`). Cards, Calendar and Board work over every project file rather than a collection's own fields, and the layout is one module-scoped value (`libraryView.layout` in `library-pane.ts`), neither chosen per collection nor saved with a view: `packages/studio/src/grid/grid-layout.ts` saves only columns, sort, grouping and filter per grid.
+> **Status: Partial.** The browser ships as the Content workspace's home (`studio.md` §22.5): one collection at a time, the built-in Pages or a declared collection, over a `GridSource` scan with four views and windowed, LRU-capped previews (`packages/studio/src/browse/library-pane.ts`, `library-source.ts`, `library-layouts.ts`, `library-preview.ts`). Each collection keeps its own view, search and language for the session (`contentView` in `library-pane.ts`). Cards, Calendar and Board work over the collection's files rather than its entries' own fields, and a collection's view is not saved with a grid view: `packages/studio/src/grid/grid-layout.ts` saves only columns, sort, grouping and filter per grid.
 
-The **Library** is the collection browser — an editor kind over a `GridSource`, so a collection is the same kind of thing as a data table and is windowed by the same primitive.
+The **Content home** is the collection browser, over a `GridSource`, so a collection is the same kind of thing as a data table and is windowed by the same primitive. Media is not a collection: it is browsed in the Media workspace (`studio.md` §22.6).
 
 | Layout       | Status                                                                   | Description                                                               |
 | ------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| **Table**    | **Implemented**                                                          | Name, Category, Type, Path. Filterable by category and search.            |
+| **Table**    | **Implemented**                                                          | Name, URL (for Pages), Locale, Modified, Path. Filterable by search.      |
 | **Cards**    | **Partial** — windowed previews ship; no entry field is read into a card | Hero image, title and summary, with previews mounted only while on screen |
 | **Calendar** | **Partial** — dated by a filename prefix or mtime, never a schema date   | Date-sorted, for date-bearing collections                                 |
-| **Board**    | **Partial** — grouped by the fixed Library category, not a chosen field  | Grouped by a chosen field                                                 |
-| **Media**    | **Implemented**                                                          | Thumbnails, for the asset categories                                      |
+| **Board**    | **Partial** — grouped by the folder an entry is in, not a chosen field   | Grouped by a chosen field                                                 |
 
 **Views are windowed, and the window is the contract.** Rendering a live runtime instance per card does not survive a real project: the measured case is 300 pages in one category, where the whole list is 300 cards and 1,830 DOM nodes against a window's 40 and 270. Previews are mounted by an `IntersectionObserver` and held in an LRU whose cap must exceed one window's worth — a cap smaller than the window thrashes against itself and re-renders continuously.
 
@@ -881,7 +880,7 @@ Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG ca
 
 #### Frontmatter Form
 
-> **Status: Partial.** A content entry belonging to a collection with a schema opens the **entry editor**, a schema-driven form over the same widget mapping the inspector uses (`packages/studio/src/content/entry-editor.ts` over `mountSchemaForm` in `packages/studio/src/ui/schema-form.ts`). Five rows of the table below do not ship there: `format: "date"` and `format: "uri-reference"` are plain text fields, a `boolean` is a checkbox rather than a toggle, and an `array` of `string` and an `object` are raw JSON text.
+> **Status: Partial.** Entry editing is canvas-first (`studio.md` §22.5): an entry with a body is written on the canvas inside its template's layout, and its fields are the Inspector's Entry tab, the same schema-driven form over the same widget mapping the inspector uses (`packages/studio/src/content/entry-inspector.ts` over `mountSchemaForm` in `packages/studio/src/ui/schema-form.ts`). A JSON or file-backed entry opens the form-only **entry editor** instead (`content/entry-editor.ts`). Splicing an entry into its template page's bound body is Pending (`studio.md` §22.5). Five rows of the table below do not ship there: `format: "date"` and `format: "uri-reference"` are plain text fields, a `boolean` is a checkbox rather than a toggle, and an `array` of `string` and an `object` are raw JSON text.
 
 **One editor, two storage shapes.** Where an entry's fields LIVE depends on its format and nothing else: a Markdown entry keeps them in frontmatter, a JSON entry _is_ the document. The editor reads and writes whichever the format declares — forking the editor per format is how a JSON entry came to render a blank form and discard every edit while reporting success.
 
@@ -911,8 +910,8 @@ Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG ca
 | Operation       | Status          | Action                                                                                                                                                                    |
 | --------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Create**      | **Implemented** | Collection-scoped **New Entry**, seeded from the content type's schema defaults so the entry is valid the moment it exists. One creation flow, shared with the file tree. |
-| **Read**        | **Implemented** | The Library lists a collection; opening an entry gives the WYSIWYG canvas (Markdown) or the entry editor (JSON).                                                          |
-| **Update**      | **Implemented** | The entry editor edits an entry's fields for both storage shapes — Markdown frontmatter and the JSON document itself.                                                     |
+| **Read**        | **Implemented** | The Content home lists a collection; opening an entry gives the WYSIWYG canvas inside its layout (Markdown) or the entry editor (JSON).                                   |
+| **Update**      | **Implemented** | The Entry tab and the entry editor edit an entry's fields for both storage shapes — Markdown frontmatter and the JSON document itself.                                    |
 | **Delete**      | **Implemented** | Context menu → Delete, behind a confirmation that states the reference count (§9.4).                                                                                      |
 | **Rename/Move** | **Implemented** | Context menu → Rename. Updates the filename, and therefore the entry id and slug.                                                                                         |
 

@@ -41,7 +41,7 @@ Reach for a component when the same element shows up more than once, or when a p
 
 ## Create one
 
-All three, and collections and uploads too, come from one dialog: **Add new**. Open it with :kbd[⌘N], the **+** at the top of the [Site panel](/docs/studio/interface#the-site-panel), **New** in the [Library](/docs/studio/projects/browse), or **Add New…** in the command palette. In a browser, which keeps :kbd[⌘N] for a new window, press :kbd[⌘⌥N] instead.
+All three, and collections and uploads too, come from one dialog: **Add new**. Open it with :kbd[⌘N], the **+** at the top of the [Site panel](/docs/studio/interface#the-site-panel), **New page** in the [Content workspace](/docs/studio/projects/browse), or **Add New…** in the command palette. In a browser, which keeps :kbd[⌘N] for a new window, press :kbd[⌘⌥N] instead.
 
 1. Pick what to make from the list on the left: **Page**, **Collection**, **Template** (what this page calls a layout), **Component** or **Media**. Once your project has a content collection, **Entry** is there too.
 2. Type a name. It is the only thing the dialog requires, and the cursor is already in the field.
@@ -58,10 +58,10 @@ The line above the buttons says what will be written before you write it: _Saved
 
 A new page, template or component opens in a tab, ready to edit, and a new component is in the Site panel's **Components** and the [Insert palette](/docs/studio/design/elements) straight away. An upload opens the [Media workspace](/docs/studio/projects/media#the-media-workspace) with the first file selected. Collections and entries are covered in **[Content types](/docs/studio/projects/content-types)**.
 
-![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../../images/mode-manage.png)
+![The Content workspace showing the Pages collection as cards with live previews, with the Collections panel on the left](../../images/mode-manage.png)
 
 :::doc-note
-Studio writes each new file into `pages/`, `layouts/`, or `components/` in your project folder. They are plain files you can rename, duplicate, or delete from the Library's right-click menu.
+Studio writes each new file into `pages/`, `layouts/`, or `components/` in your project folder. They are plain files you can rename, duplicate, or delete from the right-click menu of the Files panel, or, for a page, of the Content workspace.
 :::
 
 ## Where is it used?

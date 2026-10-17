@@ -54,7 +54,7 @@ import { collabCommands } from "../collab/collab-commands";
 import { assistantCommands } from "../panels/ai-panel";
 import { preferencesCommands } from "../settings/preferences-dialog";
 import { aboutCommands } from "../about/about-modal";
-import { libraryCommands } from "../browse/library-commands";
+import { contentViewCommands } from "../browse/library-commands";
 import { sourceControlCommands } from "../panels/git-panel";
 import { publishCommands } from "../publish/publish-commands";
 import { gridViewCommands } from "../grid/grid-panel";
@@ -152,7 +152,8 @@ export function appCommandSet(): AnyCommand[] {
     ...assistantCommands(),
     ...preferencesCommands(),
     ...aboutCommands(),
-    ...libraryCommands(),
+    // The Content home's verbs: which collection it shows, and that collection's own view.
+    ...contentViewCommands(),
     ...contentCommands(),
     // Add new (`file.new`): the one creation dialog, and its no-dialog form for a named kind.
     ...addNewCommands(),

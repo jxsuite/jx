@@ -32,4 +32,4 @@ Everything you write saves as standard Markdown with your metadata on top. Open 
 ## Next
 
 - Structure and style the page in **[Design mode](/docs/studio/design)**
-- Organize the content files themselves in **[the Library](/docs/studio/projects/browse)**
+- Organize pages and entries in **[the Content workspace](/docs/studio/projects/browse)**

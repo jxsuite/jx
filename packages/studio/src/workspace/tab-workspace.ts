@@ -2,13 +2,13 @@
  * Which workspace a tab belongs to, and which of a pane's tabs its strip draws.
  *
  * Every tab belongs to exactly one workspace, and the answer is DERIVED from the tab rather than
- * stored on it: what a tab is (a Library, a media file, a comparison) and how it is being edited
- * (the configuration document's stylebook editor) are already on the tab, so a stored field would
- * be a second record of the same fact, free to disagree with it.
+ * stored on it: what a tab is (a home, a media file, a comparison) and how it is being edited (the
+ * configuration document's stylebook editor) are already on the tab, so a stored field would be a
+ * second record of the same fact, free to disagree with it.
  *
- * - **Content**: the Library and the collection and page grids; an entry's form editor; and any file
- *   a content collection owns (collection-match.ts is the one matcher), because an entry is written
- *   in Content even when it is opened from somewhere else.
+ * - **Content**: the Content home and the collection and page grids; an entry's form editor; and any
+ *   file a content collection owns (collection-match.ts is the one matcher), because an entry is
+ *   written in Content even when it is opened from somewhere else.
  * - **Media**: the media home and every media file's viewer.
  * - **Styles**: `project.json`, in either of its editors (Project Styles or the source). Project
  *   Settings is a dialog over every workspace (§17.1), not a tab, so it belongs to none.
@@ -33,7 +33,7 @@ import type { WorkspaceId } from "./workspace-ids";
 import type { Tab } from "../tabs/tab";
 
 /** The editors that are Content's whatever document they are over. */
-const CONTENT_MODES: ReadonlySet<string> = new Set(["entry", "manage"]);
+const CONTENT_MODES: ReadonlySet<string> = new Set(["entry"]);
 
 /** The workspace `tab` belongs to. Pure over the tab and the open project's configuration. */
 export function workspaceOfTab(tab: Tab): WorkspaceId {
@@ -71,8 +71,8 @@ const CANVAS_WRITING_MODES: ReadonlySet<string> = new Set(["edit", "design"]);
 
 /**
  * Whether a tab is a document being written on the canvas: a file-backed tab in an editing canvas
- * mode. A Library, a grid, an entry's form, a home and a code view are not. Content's preset reads
- * it to draw the Inspector while an entry is written (`shell.ts`'s `WORKSPACE_PRESETS`).
+ * mode. A grid, an entry's form, a home and a code view are not. Content's preset reads it to draw
+ * the Inspector while an entry is written (`shell.ts`'s `WORKSPACE_PRESETS`).
  */
 export function writesOnCanvas(tab: Tab): boolean {
   return (

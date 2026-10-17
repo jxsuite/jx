@@ -2640,6 +2640,25 @@ describe("the Document Header slot", () => {
     expect(stageEl().style.gap).toBe("");
   });
 
+  test("a collection entry gets the writing banner in the card's place, never both", async () => {
+    /* An entry's fields belong to the Inspector's Entry tab (§6). The card would draw the same
+       title and date a second time over the canvas, each copy committing its own way. */
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: { content: { posts: { format: "markdown", source: "./content/posts" } } },
+    });
+    const tab = openSyncedTab(undefined, { documentPath: "content/posts/hello.md" });
+    tab.doc.document.title = "Hello";
+    setMode("edit");
+    renderCanvas();
+    await flush();
+
+    expect(slot()).toBeNull();
+    expect(stageEl().querySelector('[part="writing-banner"]')).not.toBeNull();
+    // Still a band across the pane, so the stage stacks exactly as it does under the card.
+    expect(stageEl().style.flexDirection).toBe("column");
+  });
+
   test("Edit → Design → Edit takes the card down and brings it back", async () => {
     /* The two moving parts are `wantsDocHeader` releasing the host (`attachDocumentHeaderHost(…,
        null)`) and the mode transition clearing the two inline writes Edit made to stack the cell.

@@ -298,7 +298,7 @@ describe("mode → editor kind", () => {
     ["grid", "grid", "design"],
     ["stylebook", "config", "design"],
     ["git-diff", "diff", "design"],
-    ["manage", "library", "design"],
+    ["content-home", "home", "design"],
   ])("%s → kind %s / view %s", (mode, kind, view) => {
     expect(editorKindForMode(mode)).toBe(kind);
     expect(canvasViewForMode(mode)).toBe(view);

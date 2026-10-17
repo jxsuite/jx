@@ -43,7 +43,7 @@ import {
 import { mediaKind } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
 import { elementForAsset } from "../editor/file-drop-action";
-import { pagePathsDef } from "../page-params";
+import { readPageFacts } from "../content/collection-pages";
 import { listCollectionEntryIds } from "../grid/sources/content-source";
 import { loadUsages, peekUsages, splitUsages } from "../services/references";
 import { projectMediaFiles } from "../ui/media-picker";
@@ -61,7 +61,6 @@ import {
 
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { ComponentEntry } from "../files/components";
-import type { FormatFrontmatter } from "../format/format-host";
 import type { ProjectMediaFile } from "../ui/media-picker";
 import type {
   SitePanelSurfaceHandle,
@@ -99,31 +98,8 @@ function declaredCollections(): string[] {
 
 /** The collection a dynamic page's `$paths` expands over, read from the file itself. */
 async function contentTypeOf(path: string): Promise<string | null> {
-  try {
-    const source = await getPlatform().readFile(path);
-    let document: JxMutableNode | null = null;
-    let frontmatter: FormatFrontmatter | null = null;
-    if (path.endsWith(".json")) {
-      /* SAFETY: a `.json` file under `pages/` is a page document by the project layout; a file that
-         does not parse throws into the catch below, which is "no collection". */
-      document = JSON.parse(source) as JxMutableNode;
-    } else {
-      const { parseSourceForPath } = await import("../files/file-ops");
-      const parsed = await parseSourceForPath(path, source);
-      /* SAFETY: a format class's parser returns its file as a Jx element tree (the format
-         contract); `pagePathsDef` reads `$paths` off it and nothing else. */
-      document = parsed.document as JxMutableNode;
-      ({ frontmatter } = parsed);
-    }
-    const paths = pagePathsDef({ document, frontmatter });
-    if (!paths || Array.isArray(paths) || !("contentType" in paths)) {
-      return null;
-    }
-    const type = paths.contentType;
-    return isString(type) && type !== "" ? type : null;
-  } catch {
-    return null;
-  }
+  const facts = await readPageFacts(path);
+  return facts.contentType;
 }
 
 /** Read the index: one walk of `pages/` and `layouts/`, then each dynamic page's `$paths`. */

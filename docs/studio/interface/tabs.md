@@ -32,7 +32,7 @@ Every document you open in Jx Studio belongs to a **pane**. A pane is one editor
 
 ## Opening and switching
 
-Open documents from the **Files** panel, the **[Library](/docs/studio/projects/browse)**, or the Command Center (:kbd[⌘K], or :kbd[⌘P] straight into file search). Click a document in the strip to switch to it; the Files tree follows along, so the strip and the tree never disagree about where you are.
+Open documents from the **Site** panel, the **[Content workspace](/docs/studio/projects/browse)**, or the Command Center (:kbd[⌘K], or :kbd[⌘P] straight into file search). Click a document in the strip to switch to it; the Files tree follows along, so the strip and the tree never disagree about where you are.
 
 **The strip shows the workspace you are in.** Every document belongs to one of the five [workspaces](/docs/studio/interface#workspaces): a page to Design, an entry to Content, an image to Media, Project Styles to Styles, a comparison to Publish. Each pane's strip shows only the current workspace's documents, and :kbd[⌃Tab] moves only between them. The others stay open in their places and come back when you switch back. Opening a document from another workspace switches to it, and closing a workspace's last document leaves the pane empty rather than switching you somewhere else.
 
@@ -142,7 +142,7 @@ In the middle of the status bar, along the foot of the window, a breadcrumb trai
 
 Under the strip, a labelled row states three things about the document in that pane, and only those three:
 
-- **Editor** is which editor is open on it: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Library** or **Project Styles**. It offers only the editors this file actually supports, so it never holds an entry that cannot be picked, and a document with one editor prints its name as text, with no dropdown to open. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
+- **Editor** is which editor is open on it: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Home** or **Project Styles**. It offers only the editors this file actually supports, so it never holds an entry that cannot be picked, and a document with one editor prints its name as text, with no dropdown to open. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
 - **View**, for the Canvas editor, offers **Edit │ Design** with a **Preview** toggle beside them. See [Modes and views](/docs/studio/interface/modes).
 - **Context** is what the page is being rendered _with_: the breakpoint, the color scheme, any feature queries, the rendering [language](/docs/studio/interface/languages) on a multilingual project, and whether the layout's own elements are shown. The summary reads at a glance (`Base · Auto`); open it for the full set, and for **Manage contexts…**, which takes you to where breakpoints and schemes are defined. Beside it, a second popover headed **resolving with** carries the document's own data, stacked one per line: a picker per URL parameter on a dynamic page, a small field per option on a component. Its summary counts the values you have set (`2 set`, or `Defaults` when you have set none).
 
@@ -155,4 +155,4 @@ Editor-specific actions sit at the right of the bar: **Export**, in the **Code**
 ## Next
 
 - Find any file fast with **[Quick Access](/docs/studio/interface/quick-access)**
-- Browse the whole project visually in **[the Library](/docs/studio/projects/browse)**
+- Browse pages and entries visually in **[the Content workspace](/docs/studio/projects/browse)**

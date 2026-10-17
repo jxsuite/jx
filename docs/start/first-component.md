@@ -24,11 +24,9 @@ You should now see your project open on the canvas.
 
 ## 2. Create the component
 
-1. Press :kbd[⌘⇧E] to open **The Library**.
-2. Click **New** and choose **Component**.
-3. Type `counter-card` and confirm.
-
-![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../images/mode-manage.png)
+1. Press :kbd[⌘N] to open **Add new** (in a browser, :kbd[⌘⌥N]), or click the **+** at the top of the Site panel.
+2. Choose **Component**.
+3. Type `counter-card` and click **Create component**.
 
 Studio writes `components/counter-card.json` and opens it in a new tab, an empty canvas ready to fill. (When to reach for a component versus a page or layout is covered in **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components)**.)
 

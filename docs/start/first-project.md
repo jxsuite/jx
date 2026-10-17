@@ -25,9 +25,9 @@ Already have a Jx project? Use **Open Project** to point Studio at a folder on d
 
 ## 3. Browse, edit, design
 
-Studio gives you a surface for each part of the job. The **Site** panel on the left lists your pages by address, with the templates, components and media they are made of: click a page to open it, or drag a component or an image straight onto the canvas. Its **+** opens **Add new** (also :kbd[⌘N]), the one dialog that makes a page, a template, a component, a collection or an upload: type a name and Studio works out the file. Every image, video and document lives in the **[Media](/docs/studio/projects/media)** workspace (:kbd[⌘3]), where you upload, replace and delete them; an upload lands in `public/media/`. For a bigger view, **[The Library](/docs/studio/projects/browse)** shows pages, components, content, and media as cards with live previews.
+Studio gives you a surface for each part of the job. The **Site** panel on the left lists your pages by address, with the templates, components and media they are made of: click a page to open it, or drag a component or an image straight onto the canvas. Its **+** opens **Add new** (also :kbd[⌘N]), the one dialog that makes a page, a template, a component, a collection or an upload: type a name and Studio works out the file. Every image, video and document lives in the **[Media](/docs/studio/projects/media)** workspace (:kbd[⌘3]), where you upload, replace and delete them; an upload lands in `public/media/`. Your pages and the entries of every collection are browsed in the **[Content](/docs/studio/projects/browse)** workspace (:kbd[⌘2]), as a table or as cards with live previews, and an entry is written there too, on the canvas inside its template.
 
-![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../images/mode-manage.png)
+![The Content workspace showing the Pages collection as cards with live previews, with the Collections panel on the left](../images/mode-manage.png)
 
 Open a content page and switch to **[Edit mode](/docs/studio/editing)** to write inline: click any text and type, use slash commands for blocks, fill in frontmatter in the Inspector's **Page** tab. Open a component and switch to **[Design](/docs/studio/design)** for the visual canvas: a live preview at every breakpoint, and a full CSS inspector for spacing, type, color, and hover states.
 
@@ -55,5 +55,5 @@ There is one boundary to know about: **Studio publishes code; it doesn't build o
 
 ## What's next
 
-- **Using Studio:** [The Library](/docs/studio/projects/browse) · [Edit mode](/docs/studio/editing) · [Design mode](/docs/studio/design) · [Logic](/docs/studio/logic) · [Publish](/docs/studio/publish)
+- **Using Studio:** [The Content workspace](/docs/studio/projects/browse) · [Edit mode](/docs/studio/editing) · [Design mode](/docs/studio/design) · [Logic](/docs/studio/logic) · [Publish](/docs/studio/publish)
 - **For developers:** [Site architecture](/docs/framework/site) · [Component model](/docs/framework/concepts/components) · [Spec overview](/docs/framework)

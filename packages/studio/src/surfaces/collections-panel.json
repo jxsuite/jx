@@ -1,0 +1,593 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioCollectionsPanel",
+  "$description": "The Collections panel (specs/studio.md §22.5): the Content workspace's Navigator. With no entry being written it lists the built-in Pages and every collection the project declares, each with its entry count and its saved grid views beneath it, and **+ New collection** at the foot; choosing a collection shows it in the Content home. While an entry is being written it lists that collection's entries instead (thumbnail, title, status) under **‹ <Collection>** to go back, with **+ New <item>** at the foot. `panels/collections-panel.ts` keeps every decision; this document draws rows whose every field is already a string.",
+  "tagName": "div",
+  "attributes": {
+    "part": "collections"
+  },
+  "style": {
+    "$description": "The Collections panel's own look, keyed on `part`. Rows are native buttons, because a row opens one thing and a button is the element that says so to every reader; the selected row is the one whose `data-selected` is true, which the flow sets from what the focused pane shows. A collection's saved views are indented under it, and the entries list leads with a back row, the Content-Entry board's list.",
+    "display": "flex",
+    "flexDirection": "column",
+    "height": "100%",
+    "minHeight": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"list\"], & [part=\"entries\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "flex": "1",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "padding": "var(--jx-space-2) 0 var(--jx-space-4)"
+    },
+    "& [part=\"rows\"], & [part=\"views\"]": {
+      "display": "flex",
+      "flexDirection": "column"
+    },
+    "& [part=\"collection-row\"], & [part=\"view-row\"], & [part=\"entry-row\"], & [part=\"back\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "width": "100%",
+      "boxSizing": "border-box",
+      "minHeight": "28px",
+      "padding": "var(--jx-space-1) var(--jx-space-3)",
+      "border": "none",
+      "background": "transparent",
+      "color": "inherit",
+      "font": "inherit",
+      "textAlign": "start",
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"view-row\"]": {
+      "paddingLeft": "calc(var(--jx-space-3) + var(--jx-space-4))",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"back\"]": {
+      "fontWeight": "600",
+      "borderBottom": "1px solid var(--border)",
+      "marginBottom": "var(--jx-space-1)"
+    },
+    "& [data-selected=\"true\"]": {
+      "background": "var(--accent-15)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"row-label\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"row-count\"]": {
+      "flexShrink": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "fontVariantNumeric": "tabular-nums"
+    },
+    "& [part=\"view-glyph\"], & [part=\"back-glyph\"]": {
+      "flexShrink": "0",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"entry-row\"]": {
+      "minHeight": "44px"
+    },
+    "& [part=\"entry-art\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "flexShrink": "0",
+      "width": "36px",
+      "height": "36px",
+      "overflow": "hidden",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--bg-panel)",
+      "border": "1px solid var(--border)"
+    },
+    "& [part=\"entry-thumb\"]": {
+      "width": "100%",
+      "height": "100%",
+      "objectFit": "cover"
+    },
+    "& [part=\"entry-glyph\"]": {
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"entry-text\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"entry-title\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"entry-status\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"entry-status\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"entry-status\"][data-status=\"Draft\"]": {
+      "color": "var(--warning)"
+    },
+    "& [part=\"note\"], & [part=\"no-project\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"foot\"]": {
+      "padding": "var(--jx-space-2) var(--jx-space-2) 0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/body"
+      },
+      "cases": {
+        "none": {
+          "tagName": "p",
+          "attributes": {
+            "part": "no-project"
+          },
+          "textContent": "Open a project to see its pages and collections."
+        },
+        "list": {
+          "tagName": "div",
+          "attributes": {
+            "part": "list"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "rows",
+                "role": "list"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/collections"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "collection",
+                      "role": "listitem",
+                      "data-collection": "${$map.item.key}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "button",
+                        "attributes": {
+                          "part": "collection-row",
+                          "type": "button",
+                          "data-selected": "${$map.item.selected}",
+                          "aria-current": "${$map.item.selected === 'true' ? 'true' : null}"
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/showCollection"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "row-label"
+                            },
+                            "textContent": "${$map.item.title}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "row-count"
+                            },
+                            "textContent": "${$map.item.count}"
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "views",
+                          "role": "list",
+                          "aria-label": "Saved views"
+                        },
+                        "children": [
+                          {
+                            "$prototype": "Array",
+                            "items": {
+                              "$ref": "$map/item/views"
+                            },
+                            "key": {
+                              "$ref": "$map/item/key"
+                            },
+                            "map": {
+                              "$description": "The list item. A button keeps its own role, so the item is the wrapper around it, as a collection row's is.",
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "view-item",
+                                "role": "listitem"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "button",
+                                  "attributes": {
+                                    "part": "view-row",
+                                    "type": "button",
+                                    "title": "Open the grid on this saved view"
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/applyView"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/key"
+                                          },
+                                          {
+                                            "$ref": "$map/item/name"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "jx-icon",
+                                      "attributes": {
+                                        "part": "view-glyph"
+                                      },
+                                      "$props": {
+                                        "name": "rows"
+                                      }
+                                    },
+                                    {
+                                      "tagName": "span",
+                                      "attributes": {
+                                        "part": "row-label"
+                                      },
+                                      "textContent": "${$map.item.name}"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "foot"
+              },
+              "children": [
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "new-collection"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "plus",
+                    "haspopup": "dialog"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/newCollection"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Add new on its Collection kind (`file.new { kind: \"collection\" }`)."
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "New collection"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "entries": {
+          "tagName": "div",
+          "attributes": {
+            "part": "entries"
+          },
+          "children": [
+            {
+              "tagName": "button",
+              "attributes": {
+                "part": "back",
+                "type": "button",
+                "title": "Back to the collection"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/back"
+                    },
+                    "value": []
+                  }
+                ],
+                "description": "Back to the collection in the Content home (`content.showCollection`)."
+              },
+              "children": [
+                {
+                  "tagName": "jx-icon",
+                  "attributes": {
+                    "part": "back-glyph"
+                  },
+                  "$props": {
+                    "name": "caret-left"
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "row-label"
+                  },
+                  "textContent": "${state.backTitle}"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "row-count"
+                  },
+                  "textContent": "${state.backCount}"
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "entries-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/entriesState"
+              },
+              "cases": {
+                "loading": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "textContent": "Reading the entries…"
+                },
+                "empty": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "note"
+                  },
+                  "textContent": "No entries yet."
+                },
+                "listed": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "rows",
+                    "role": "list"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/entries"
+                      },
+                      "key": {
+                        "$ref": "$map/item/path"
+                      },
+                      "map": {
+                        "$description": "The list item. A button keeps its own role, so the item is the wrapper around it, as a collection row's is.",
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "entry-item",
+                          "role": "listitem"
+                        },
+                        "children": [
+                          {
+                            "tagName": "button",
+                            "attributes": {
+                              "part": "entry-row",
+                              "type": "button",
+                              "data-path": "${$map.item.path}",
+                              "data-selected": "${$map.item.selected}",
+                              "aria-current": "${$map.item.selected === 'true' ? 'true' : null}",
+                              "title": "${$map.item.path}"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/openEntry"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/path"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "entry-art"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "art-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/art"
+                                    },
+                                    "cases": {
+                                      "image": {
+                                        "tagName": "img",
+                                        "attributes": {
+                                          "part": "entry-thumb",
+                                          "src": "${$map.item.thumb}",
+                                          "alt": "",
+                                          "loading": "lazy"
+                                        }
+                                      },
+                                      "glyph": {
+                                        "tagName": "jx-icon",
+                                        "attributes": {
+                                          "part": "entry-glyph"
+                                        },
+                                        "$props": {
+                                          "name": "file-text"
+                                        }
+                                      }
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "entry-text"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "entry-title"
+                                    },
+                                    "textContent": "${$map.item.title}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "entry-status",
+                                      "data-status": "${$map.item.status}"
+                                    },
+                                    "textContent": "${$map.item.status}"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "foot"
+              },
+              "children": [
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "new-entry"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "plus",
+                    "haspopup": "dialog"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/newEntry"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Add new on its Entry kind, in this collection (`file.new { kind: \"entry\", collection }`)."
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.newLabel}"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

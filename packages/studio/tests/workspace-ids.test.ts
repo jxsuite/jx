@@ -61,13 +61,17 @@ describe("the ids", () => {
 });
 
 describe("the homes", () => {
-  test("Media and Publish open on a generic home; the other three do not", () => {
-    expect(Object.keys(WORKSPACE_HOME_MODES).toSorted()).toEqual(["media", "publish"]);
-    expect(WORKSPACE_IDS.filter((id) => isHomeWorkspace(id))).toEqual(["media", "publish"]);
+  test("Content, Media and Publish open on a generic home; Design and Styles do not", () => {
+    expect(Object.keys(WORKSPACE_HOME_MODES).toSorted()).toEqual(["content", "media", "publish"]);
+    expect(WORKSPACE_IDS.filter((id) => isHomeWorkspace(id))).toEqual([
+      "content",
+      "media",
+      "publish",
+    ]);
   });
 
   test("a home's tab id round-trips, and is never a path", () => {
-    for (const id of ["media", "publish"] as const) {
+    for (const id of ["content", "media", "publish"] as const) {
       const tabId = workspaceHomeTabId(id);
       expect(tabId).toBe(`workspace://${id}`);
       expect(homeWorkspaceOfTabId(tabId)).toBe(id);

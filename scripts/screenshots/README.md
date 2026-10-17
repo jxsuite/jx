@@ -116,7 +116,7 @@ A **seed** may only write state whose real writer is a network or IPC boundary. 
 ```jsonc
 { "input": "hover",    "region": "navigator/panel:git" }
 { "input": "type",     "text": "/", "region": "inspector/field:href" }  // region is optional
-{ "input": "dragOver", "region": "pane.primary/library/dropZone" }
+{ "input": "dragOver", "region": "pane.primary/media-library" }
 { "input": "caret",    "path": ["children", 3], "clickCount": 2 }
 ```
 

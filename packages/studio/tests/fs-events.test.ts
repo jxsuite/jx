@@ -182,10 +182,12 @@ describe("startFsSync", () => {
     resetStudioState({ dirs: new Map(), expanded: new Set() });
     let drops = 0;
     const seen: (readonly string[] | undefined)[] = [];
+    const structural: (boolean | undefined)[] = [];
     const stop = startFsSync({
-      invalidateDerivedCaches: (paths) => {
+      invalidateDerivedCaches: (paths, changedSet) => {
         drops += 1;
         seen.push(paths);
+        structural.push(changedSet);
       },
       renderLeftPanel: () => {},
     });
@@ -201,6 +203,11 @@ describe("startFsSync", () => {
     expect(drops).toBe(2);
     // Each drop names the batch's paths, so a cache one directory owns can ignore the rest.
     expect(seen).toEqual([["pages/new.md"], ["layouts/base.json"]]);
+
+    // A batch that only rewrote existing files says so, so a cache of the file SET can skip it.
+    handler([{ isDir: false, path: "pages/new.md", type: "change" }]);
+    expect(drops).toBe(3);
+    expect(structural).toEqual([true, true, false]);
     stop();
   });
 
@@ -497,12 +504,6 @@ describe("cleanOpenTabPaths", () => {
       documentPath: "fonts/a.woff2",
       id: "fonts/a.woff2",
     });
-    openTab({
-      capabilities: { modes: ["manage"] },
-      document: { tagName: "div" },
-      documentPath: "library.json",
-      id: "library",
-    });
     registerCollabPath("pages/shared.json");
     try {
       expect(cleanOpenTabPaths()).toEqual(["pages/clean.json"]);
@@ -547,7 +548,10 @@ describe("startFsSync resync", () => {
     const content: string[][] = [];
     const calls = { content, drops: 0, renders: 0 };
     const ctx = {
-      invalidateDerivedCaches: () => {
+      invalidateDerivedCaches: (paths?: readonly string[], structural?: boolean) => {
+        // A gap may have changed anything, the file set included.
+        expect(paths).toBeUndefined();
+        expect(structural).toBe(true);
         calls.drops += 1;
       },
       onResyncContent: (paths: string[]) => {

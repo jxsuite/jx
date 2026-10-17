@@ -21,7 +21,6 @@ import {
 } from "../src/workspace/tab-workspace";
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
 import { makeGridTabId } from "../src/grid/grid-source";
-import { libraryTabId } from "../src/browse/library-source";
 import { openStubTab, openVirtualTab } from "./workspace-fixture";
 import type { StubTabOptions } from "./workspace-fixture";
 import type { WorkspaceId } from "../src/workspace/workspace-ids";
@@ -69,11 +68,11 @@ describe("workspaceOfTab", () => {
     expect(workspaceOfNew("content/catalogue.csv")).toBe("design");
   });
 
-  test("the Library, the page grid and a collection grid are Content's; a data grid is Design's", () => {
+  test("the Content home, the page grid and a collection grid are Content's; a data grid is Design's", () => {
     const pages = makeGridTabId({ kind: "pages" });
     const posts = makeGridTabId({ kind: "collection", name: "posts" });
     const users = makeGridTabId({ connection: "db", kind: "data", table: "users" });
-    expect(workspaceOfVirtual(libraryTabId(), "manage")).toBe("content");
+    expect(workspaceOfVirtual(workspaceHomeTabId("content"), "content-home")).toBe("content");
     expect(workspaceOfVirtual(pages, "grid")).toBe("content");
     expect(workspaceOfVirtual(posts, "grid")).toBe("content");
     expect(workspaceOfVirtual(users, "grid")).toBe("design");
@@ -108,8 +107,8 @@ describe("writesOnCanvas", () => {
     expect(writesOnCanvas(tab("pages/b.json", { mode: "design" }))).toBe(true);
     expect(writesOnCanvas(tab("content/posts/c.md", { mode: "entry" }))).toBe(false);
     expect(writesOnCanvas(tab("pages/d.json", { mode: "source" }))).toBe(false);
-    const library = libraryTabId();
-    expect(writesOnCanvas(openVirtualTab(library, "manage"))).toBe(false);
+    const content = workspaceHomeTabId("content");
+    expect(writesOnCanvas(openVirtualTab(content, "content-home"))).toBe(false);
     const home = workspaceHomeTabId("media");
     expect(writesOnCanvas(openVirtualTab(home, "edit"))).toBe(false);
     const grid = makeGridTabId({ kind: "collection", name: "posts" });

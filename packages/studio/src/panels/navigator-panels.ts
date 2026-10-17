@@ -34,6 +34,7 @@ import { registerPackagesPanel } from "./imports-panel";
 import { registerBottomPanels } from "./bottom-dock";
 import { registerLayersPanel } from "./layers-panel";
 import { registerSitePanel } from "./site-panel";
+import { registerCollectionsPanel } from "./collections-panel";
 import { getPanel, listPanels, railPanelSet, registerPanel, resetPanels } from "./panel-registry";
 import type { PanelRecord } from "./panel-registry";
 
@@ -56,6 +57,9 @@ export function registerNavigatorPanels(): void {
 
   // ── PROJECT group ───────────────────────────────────────────────────────────
   registerSitePanel();
+  /* The Content workspace's Navigator (§22.5): off the rail, because Content draws none, and opened
+     by that workspace's frame. */
+  registerCollectionsPanel();
   registerFilesPanel();
   registerPanel({
     id: "search",

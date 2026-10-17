@@ -1,6 +1,7 @@
 /**
- * The content-entry verbs: open one as a form, mark one a draft, and choose whether drafts are
- * listed at all — and {@link createEntry}, the New File tree's route into a collection folder.
+ * The content-entry verbs: open one where it is written, mark one a draft, and choose whether
+ * drafts are listed at all — and {@link createEntry}, the New File tree's route into a collection
+ * folder.
  *
  * Creating an entry from anywhere else is Add new's (`file.new { kind: "entry", collection }`,
  * `create/add-new-flow.ts`), which seeds through {@link entryFormatName} and `entryBody` exactly as
@@ -38,7 +39,8 @@ import { collectionOfPath, entryCollection } from "./entry-model";
 import { entryBody } from "../create/add-new";
 import { collectionForDirectory } from "./collection-match";
 import { LOCALE_PLACEHOLDER } from "../canvas/asset-resolve";
-import { openEntryEditor, setEntryDraft } from "./entry-editor";
+import { setEntryDraft } from "./entry-editor";
+import { openEntry } from "./entry-open";
 import { errorMessage } from "@jxsuite/schema/parse";
 import type { EntryCollection } from "./entry-model";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -176,7 +178,7 @@ export async function createEntry(
   }
   // The picker's choices just changed; a cached list would keep offering the old set.
   invalidateReferenceEntries(collection.name);
-  await openEntryEditor(created);
+  await openEntry(created);
   return created;
 }
 
@@ -201,11 +203,12 @@ export function contentCommands(): AnyCommand[] {
       requires: "an open project",
       when: (ctx) => ctx.project.open,
       /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: this opens a surface;
-         the model has `open_document`. */
+         the model has `open_document`. An entry with a body opens on the canvas in its writing
+         editor, inside its template's layout; a JSON entry opens in the form (§22.5). */
       run: async (_ctx, args) => {
-        await openEntryEditor(stringArg("content.openEntry", args, "path"));
+        await openEntry(stringArg("content.openEntry", args, "path"));
       },
-      title: "Open Entry Form",
+      title: "Open Entry",
     },
     {
       args: argsSchema({

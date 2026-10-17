@@ -18,7 +18,6 @@ import { activeTab, workspace } from "../src/workspace/workspace";
 import { getPlatform } from "../src/platform";
 import { shell } from "../src/shell";
 import { isJsonObject } from "@jxsuite/schema/guards";
-import { libraryTabId } from "../src/browse/library-source";
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
 import { PROJECT_CONFIG_PATH } from "../src/tabs/tab";
 import type { AutomationApi } from "../src/services/automation";
@@ -70,7 +69,7 @@ describe("the hook installed, over the composed registry", () => {
       "data.openGrid",
       "formula.editDef",
       "inspector.setSection",
-      "library.open",
+      "content.showCollection",
       "project.new",
       "settings.open",
       "style.setSelector",
@@ -167,7 +166,7 @@ describe("run() reaches the implementations", () => {
 
   test("an undeclared panel id refuses through the hook, naming the declared set", async () => {
     expect(await refusal("view.setActivity", { tab: "head" })).toContain(
-      "is not declared — declared: site, files, search, git, i18n, layers, data, packages, insert",
+      "is not declared — declared: site, collections, files, search, git, i18n, layers, data, packages, insert",
     );
   });
 
@@ -225,7 +224,7 @@ describe("view.setWorkspace reaches the bootstrap's homes", () => {
 
     await api().run("view.setWorkspace", { workspace: "content" });
     expect(shell.workspace).toBe("content");
-    expect(activeTab.value?.id).toBe(libraryTabId());
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("content"));
 
     // Styles' home is `project.json` in its stylebook editor, and its preset selects the
     // Inspector's Style tab ON that document, through the bootstrap's `setInspectorTab`.

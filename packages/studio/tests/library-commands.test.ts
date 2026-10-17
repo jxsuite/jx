@@ -1,11 +1,9 @@
 /**
- * Tests for src/browse/library-commands.ts — the Library's verbs, run for real.
+ * Tests for src/browse/library-commands.ts — the Content home's verbs, run for real.
  *
- * `tests/project-gap-commands.test.ts` checks the RECORDS (ids, placement, refusals). This file
- * checks that running each one reaches the state it names, because the point of making them records
- * is that the palette, a chord, `__jxAutomation` and the assistant all get the same behaviour the
- * toolbar button has — the Manage view's category filter and view switch were buttons and nothing
- * else, and the screenshot pipeline had to press them through an XPath on their labels.
+ * Running each one must reach the state it names, because the point of making them records is that
+ * the palette, `__jxAutomation`, the Collections panel's rows and the home's own controls all get
+ * the same behaviour. And each view setter writes the SHOWN collection's own view.
  */
 import { installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -17,14 +15,23 @@ void mock.module("../src/files/files.js", () => ({
   loadDirectory: () => Promise.resolve(),
   openFileInTab: () => Promise.resolve(),
 }));
+/* `content.showCollection` lazily imports the home's opener; doubling it gives the test a witness
+   and keeps two real imports of it from ever overlapping (AGENTS.md, the coverage note). */
+const homesOpened: string[] = [];
+void mock.module("../src/workspace/workspace-home.js", () => ({
+  openWorkspaceHome: (id: string) => {
+    homesOpened.push(id);
+  },
+}));
 
 const { LIBRARY_LAYOUTS } = await import("../src/browse/library-model");
-const { libraryCommands, registerLibraryCommands } = await import("../src/browse/library-commands");
-const { libraryView, detachLibraryPane, invalidateLibrary, librarySource } =
+const { contentViewCommands, registerContentViewCommands, showCollection } =
+  await import("../src/browse/library-commands");
+const { collectionView, contentView, detachLibraryPane, librarySource, resetContentView } =
   await import("../src/browse/library-pane");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
-const { closeAllTabs, workspace } = await import("../src/workspace/workspace");
+const { closeAllTabs } = await import("../src/workspace/workspace");
 
 let ctx: CommandContext;
 let registry: CommandRegistry;
@@ -32,6 +39,7 @@ let listed: string[];
 
 beforeEach(() => {
   listed = [];
+  homesOpened.length = 0;
   installMockPlatform({
     listDirectory: (path: string) => {
       listed.push(path);
@@ -45,74 +53,85 @@ beforeEach(() => {
   });
   closeAllTabs();
   detachLibraryPane("primary");
-  invalidateLibrary();
-  libraryView.category = "all";
-  libraryView.layout = "cards";
-  libraryView.locale = "";
-  libraryView.query = "";
+  resetContentView();
   ctx = makeContext({ project: { isSite: true, open: true } });
   registry = createCommandRegistry({ getContext: () => ctx });
-  registerLibraryCommands(registry);
+  registerContentViewCommands(registry);
 });
 
 describe("running the verbs", () => {
-  test("library.open opens the Library tab", async () => {
-    await registry.run("library.open");
-    expect(workspace.tabs.has("grid://library")).toBe(true);
+  test("content.showCollection shows the collection and opens the Content home", async () => {
+    await registry.run("content.showCollection", { collection: "posts" });
+    expect(contentView.collection).toBe("posts");
+    expect(homesOpened).toEqual(["content"]);
   });
 
-  test("library.setCategory reaches the state the button reaches", async () => {
-    await registry.run("library.setCategory", { category: "media" });
-    expect(libraryView.category).toBe("media");
-  });
-
-  test("library.setLayout names each of the five arrangements", async () => {
-    for (const layout of LIBRARY_LAYOUTS) {
-      await registry.run("library.setLayout", { layout });
-      expect(libraryView.layout).toBe(layout);
-    }
-  });
-
-  test("library.setSearch sets the filter, and an omitted query CLEARS it", async () => {
-    await registry.run("library.setSearch", { query: "hero" });
-    expect(libraryView.query).toBe("hero");
-    await registry.run("library.setSearch");
-    expect(libraryView.query).toBe("");
-  });
-
-  test('library.setLocale names a language, and "all" clears it', async () => {
-    resetStudioState({
-      projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "fr"] } },
-      projectDirs: ["pages"],
-    });
-    ctx = makeContext({ project: { isMultilingual: true, isSite: true, open: true } });
-    await registry.run("library.setLocale", { locale: "fr" });
-    expect(libraryView.locale).toBe("fr");
-    await registry.run("library.setLocale", { locale: "all" });
-    expect(libraryView.locale).toBe("");
-  });
-
-  test("library.setLocale refuses a language the project does not declare, naming the set", async () => {
-    resetStudioState({
-      projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "fr"] } },
-      projectDirs: ["pages"],
-    });
-    ctx = makeContext({ project: { isMultilingual: true, isSite: true, open: true } });
-    // `run` throws synchronously out of `enumArg`, so the refusal has to be caught, not awaited.
+  test("content.showCollection names Pages and every declared collection, and refuses others", async () => {
+    const record = contentViewCommands().find((c) => c.id === "content.showCollection")!;
+    expect(record.args?.properties?.collection?.enum).toEqual(["pages", "posts"]);
     let refusal = "";
     try {
-      await Promise.resolve(registry.run("library.setLocale", { locale: "de" }));
+      await Promise.resolve(registry.run("content.showCollection", { collection: "nope" }));
+    } catch (error) {
+      refusal = error instanceof Error ? error.message : String(error);
+    }
+    expect(refusal).toContain("pages, posts");
+    expect(contentView.collection).toBe("pages");
+  });
+
+  test("showCollection is the same path the command runs", async () => {
+    await showCollection("pages");
+    expect(contentView.collection).toBe("pages");
+    expect(homesOpened).toEqual(["content"]);
+  });
+
+  test("content.setLayout names each of the four views, on the shown collection only", async () => {
+    for (const layout of LIBRARY_LAYOUTS) {
+      await registry.run("content.setLayout", { layout });
+      expect(collectionView().layout).toBe(layout);
+    }
+    expect(collectionView("posts").layout).toBe("table");
+  });
+
+  test("content.setSearch sets the filter, and an omitted query CLEARS it", async () => {
+    await registry.run("content.setSearch", { query: "hero" });
+    expect(collectionView().query).toBe("hero");
+    await registry.run("content.setSearch");
+    expect(collectionView().query).toBe("");
+  });
+
+  test('content.setLocale names a language, and "all" clears it', async () => {
+    resetStudioState({
+      projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "fr"] } },
+      projectDirs: ["pages"],
+    });
+    ctx = makeContext({ project: { isMultilingual: true, isSite: true, open: true } });
+    await registry.run("content.setLocale", { locale: "fr" });
+    expect(collectionView().locale).toBe("fr");
+    await registry.run("content.setLocale", { locale: "all" });
+    expect(collectionView().locale).toBe("");
+  });
+
+  test("content.setLocale refuses a language the project does not declare, naming the set", async () => {
+    resetStudioState({
+      projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "fr"] } },
+      projectDirs: ["pages"],
+    });
+    ctx = makeContext({ project: { isMultilingual: true, isSite: true, open: true } });
+    let refusal = "";
+    try {
+      await Promise.resolve(registry.run("content.setLocale", { locale: "de" }));
     } catch (error) {
       refusal = error instanceof Error ? error.message : String(error);
     }
     expect(refusal).toContain("all, en, fr");
-    expect(libraryView.locale).toBe("");
+    expect(collectionView().locale).toBe("");
   });
 
-  test("library.refresh re-reads the project", async () => {
-    await registry.run("library.refresh");
+  test("content.refresh re-reads the project", async () => {
+    await registry.run("content.refresh");
     expect(listed).toEqual(["pages"]);
-    await registry.run("library.refresh");
+    await registry.run("content.refresh");
     expect(listed).toEqual(["pages", "pages"]);
     expect(librarySource().files().length).toBe(1);
   });
@@ -120,13 +139,11 @@ describe("running the verbs", () => {
 
 describe("the records", () => {
   /*
-   * The enum is a GETTER for the reason `content/entry-commands.ts` documents: these records are
-   * built at module scope, before any project exists, so a snapshot would freeze at `["all"]` and
-   * the palette would offer that forever after. Reading it twice across a project switch is the
-   * only assertion that can tell a getter from a value.
+   * The enums are GETTERS: these records are built at module scope, before any project exists, so
+   * a snapshot would freeze at the empty project's answer forever after.
    */
-  test("library.setLocale's enum is read when the palette asks, not when the record is built", () => {
-    const record = libraryCommands().find((c) => c.id === "library.setLocale")!;
+  test("the locale enum is read when the palette asks, not when the record is built", () => {
+    const record = contentViewCommands().find((c) => c.id === "content.setLocale")!;
     const property = record.args?.properties?.locale;
     resetStudioState({ projectConfig: {} });
     expect(property?.enum).toEqual(["all"]);
@@ -136,39 +153,28 @@ describe("the records", () => {
     expect(property?.enum).toEqual(["all", "en-US", "fr"]);
   });
 
-  test("library.setLocale is the only one a monolingual project hides", () => {
+  test("content.setLocale is the only one a monolingual project hides", () => {
     ctx = makeContext({ project: { isMultilingual: false, isSite: true, open: true } });
-    const hidden = libraryCommands()
+    const hidden = contentViewCommands()
       .map((c) => c.id)
       .filter((id) => !registry.isVisible(id));
-    expect(hidden).toEqual(["library.setLocale"]);
+    expect(hidden).toEqual(["content.setLocale"]);
   });
 
-  test("every one is project-level, and none is offered to the assistant", () => {
-    for (const command of libraryCommands()) {
+  test("every one is project-level, palette-only, and none is offered to the assistant", () => {
+    for (const command of contentViewCommands()) {
       expect(command.level).toBe("project");
-      // The first deletion rule of studio-ui-guidelines.md §12.4: each of these shapes a listing a
-      // Person reads, and the model has `list_files` / `search_files` for the same facts. A
-      // Declaration would MAKE a tool.
       expect([command.id, command.aiTool]).toEqual([command.id, undefined]);
+      expect([command.id, command.menus]).toEqual([command.id, ["palette"]]);
       expect(command.category).toBe("Project");
+      expect(command.id).not.toMatch(/\.toggle[A-Z]/);
     }
   });
 
   test("every one is hidden with no project open", () => {
     ctx = makeContext();
-    for (const command of libraryCommands()) {
+    for (const command of contentViewCommands()) {
       expect([command.id, registry.isVisible(command.id)]).toEqual([command.id, false]);
-    }
-  });
-
-  test("only library.open renders outside the palette", () => {
-    for (const command of libraryCommands()) {
-      const menus = command.menus ?? [];
-      expect([command.id, menus.includes("commandbar/overflow")]).toEqual([
-        command.id,
-        command.id === "library.open",
-      ]);
     }
   });
 });

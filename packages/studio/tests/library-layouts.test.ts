@@ -1,5 +1,5 @@
 /**
- * Tests for src/browse/library-layouts.ts — the geometry and the projections behind five layouts.
+ * Tests for src/browse/library-layouts.ts — the geometry and the projections behind four views.
  *
  * The markup moved to `surfaces/library-pane.json` and the assertions moved with it: what is left
  * here is what a document cannot express. Two properties matter beyond "it projects": the grouped
@@ -18,6 +18,7 @@ import {
   cellText,
   cellTextOf,
   columnsAt,
+  entryFactsFrom,
   formatModified,
   formatSize,
   libraryRow,
@@ -25,13 +26,15 @@ import {
 import { LIBRARY_LAYOUTS } from "../src/browse/library-model";
 import { libraryColumns } from "../src/browse/library-source";
 import type { LibraryFile } from "../src/browse/library-model";
+import type { EntryFacts } from "../src/browse/library-layouts";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 function page(index: number): LibraryFile {
   return {
-    category: "Pages",
+    collection: "pages",
     ext: ".json",
+    media: false,
     modified: "2024-06-07T00:00:00.000Z",
     name: `page-${index}.json`,
     path: `pages/page-${index}.json`,
@@ -41,16 +44,18 @@ function page(index: number): LibraryFile {
 }
 
 const IMAGE: LibraryFile = {
-  category: "Media",
+  collection: null,
   ext: ".png",
+  media: true,
   name: "logo.png",
   path: "public/logo.png",
   type: ".png",
 };
 
 const SCRIPT: LibraryFile = {
-  category: "Other",
+  collection: null,
   ext: ".sh",
+  media: false,
   name: "deploy.sh",
   path: "bin/deploy.sh",
   type: ".sh",
@@ -64,7 +69,7 @@ describe("geometry", () => {
       expect(LAYOUT_METRICS[layout]).toBeDefined();
     }
     const windowed = LIBRARY_LAYOUTS.filter((l) => LAYOUT_METRICS[l].windowed);
-    expect(windowed.toSorted()).toEqual(["cards", "media", "table"]);
+    expect(windowed.toSorted()).toEqual(["cards", "table"]);
   });
 
   test("columnsAt divides the width by the item width, and never returns zero", () => {
@@ -105,7 +110,8 @@ describe("cell text", () => {
       expect(cellText(filled, column.field), column.field).not.toBe("");
     }
     expect(cellText(file, "name")).toBe("page-1.json");
-    expect(cellText(file, "category")).toBe("Pages");
+    expect(cellText(file, "url")).toBe("/page-1");
+    expect(cellText(IMAGE, "url")).toBe("");
     expect(cellText(file, "type")).toBe(".json");
     expect(cellText(file, "path")).toBe("pages/page-1.json");
     expect(cellText(file, "invented")).toBe("");
@@ -148,13 +154,12 @@ describe("a row", () => {
   });
 
   test("a previewable document claims the island only where the layout draws one", () => {
-    // Cards may; a Media tile is a thumbnail of an asset, and a live runtime render inside one is
-    // The whole cost that layout exists to avoid.
+    // Cards may; Table draws text, and a live runtime render inside a row is a cost it never pays.
     expect(libraryRow(page(1), [], true).art).toBe("doc");
     expect(libraryRow(page(1), [], false).art).toBe("glyph");
   });
 
-  test("a file nothing can preview gets a glyph rather than an empty box", () => {
+  test("a file in no collection gets a glyph rather than an empty box", () => {
     expect(libraryRow(SCRIPT, [], true).art).toBe("glyph");
     expect(libraryRow(SCRIPT, [], true).src).toBe("");
   });
@@ -223,11 +228,11 @@ describe("Calendar", () => {
 // ─── Board ───────────────────────────────────────────────────────────────────
 
 describe("Board", () => {
-  test("one column per category, each printing its own total", () => {
-    const groups = boardView([page(1), page(2), IMAGE]);
-    expect(groups).toHaveLength(2);
-    expect(groups[0]!.title).toBe("Pages");
+  test("one column per folder, in path order, each printing its own total", () => {
+    const groups = boardView([page(1), page(2), { ...page(3), path: "pages/blog/page-3.json" }]);
+    expect(groups.map((group) => group.title)).toEqual(["pages", "pages/blog"]);
     expect(groups[0]!.count).toBe("2");
+    expect(groups[1]!.count).toBe("1");
   });
 
   test("caps a column and states the remainder rather than truncating in silence", () => {
@@ -253,5 +258,83 @@ describe("Board", () => {
         expect(file.cells).toEqual([]);
       }
     }
+  });
+});
+
+// ─── Entries ─────────────────────────────────────────────────────────────────
+
+/** A post in a flat collection, as the tutorial's `content/posts/*.md` are. */
+function post(slug: string): LibraryFile {
+  return {
+    collection: "posts",
+    ext: ".md",
+    media: false,
+    modified: "2024-06-07T00:00:00.000Z",
+    name: `${slug}.md`,
+    path: `content/posts/${slug}.md`,
+    type: ".md",
+  };
+}
+
+const factsOf = entryFactsFrom(
+  new Map<string, EntryFacts>([
+    ["content/posts/a.md", { date: "2026-01-02", status: "Published", title: "Hello world" }],
+    ["content/posts/b.md", { date: "", status: "Draft", title: "Winter prep" }],
+    ["content/posts/c.md", { date: "2026-01-02", status: "Published", title: "Grid mode rocks" }],
+  ]),
+);
+
+describe("entries say what they are", () => {
+  test("a row is named by the entry's title, and its cells carry its status and date", () => {
+    const columns = libraryColumns("posts", { date: true, status: true });
+    const row = libraryRow(post("a"), columns, false, factsOf(post("a")));
+    expect(row.name).toBe("Hello world");
+    expect(row.cells.map((cell) => cell.text).slice(0, 4)).toEqual([
+      "Hello world",
+      "Published",
+      "2026-01-02",
+      "a.md",
+    ]);
+  });
+
+  test("an entry not read yet is titled by its file, with no status or date", () => {
+    expect(cellText(post("x"), "title")).toBe("x.md");
+    expect(cellText(post("x"), "status")).toBe("");
+    expect(cellText(post("x"), "date")).toBe("");
+  });
+
+  test("Board groups a flat collection by status, the work in progress first", () => {
+    const groups = boardView([post("a"), post("b"), post("c")], factsOf);
+    expect(groups.map((group) => [group.title, group.count])).toEqual([
+      ["Draft", "1"],
+      ["Published", "2"],
+    ]);
+    expect(groups[1]!.files.map((file) => file.name)).toEqual(["Hello world", "Grid mode rocks"]);
+  });
+
+  test("Board orders an unknown status after the known ones, and names a missing one", () => {
+    const odd = entryFactsFrom(
+      new Map<string, EntryFacts>([
+        ["content/posts/a.md", { date: "", status: "Archived", title: "A" }],
+        ["content/posts/b.md", { date: "", status: "Draft", title: "B" }],
+        ["content/posts/c.md", { date: "", status: "", title: "C" }],
+        ["content/posts/d.md", { date: "", status: "Draft", title: "D" }],
+      ]),
+    );
+    const groups = boardView([post("a"), post("b"), post("c"), post("d")], odd);
+    expect(groups.map((group) => group.title)).toEqual(["Draft", "Archived", "No status"]);
+  });
+
+  test("Board with no statuses falls back to folders", () => {
+    const groups = boardView([post("a"), post("b")], entryFactsFrom(new Map()));
+    expect(groups.map((g) => g.title)).toEqual(["content/posts"]);
+  });
+
+  test("Calendar dates an entry by its own date field, and the file only when it has none", () => {
+    const { groups } = calendarView([post("a"), post("b"), post("c")], factsOf);
+    expect(groups.map((group) => [group.title, group.files.map((file) => file.name)])).toEqual([
+      ["2026-01-02", ["Hello world", "Grid mode rocks"]],
+      ["2024-06-07", ["Winter prep"]],
+    ]);
   });
 });

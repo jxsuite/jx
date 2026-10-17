@@ -181,10 +181,12 @@ describe("panel placement matrix", () => {
 // ─── the composed set ─────────────────────────────────────────────────────────
 
 describe("the Navigator's panel set", () => {
-  test("registers nine records, in registration order — and Problems is not one of them", () => {
+  test("registers ten records, in registration order — and Problems is not one of them", () => {
     expect(navigatorPanelSet().map((p) => p.id)).toEqual([
       // The Site panel leads: the Project group's one button and the Navigator's default (§5.7).
       "site",
+      // The Content workspace's Navigator (§22.5): no rail button, opened by that workspace's frame.
+      "collections",
       "files",
       "search",
       "git",
@@ -209,7 +211,7 @@ describe("the Navigator's panel set", () => {
   test("registerNavigatorPanels is idempotent — the app mounts once, a suite mounts per case", () => {
     registerNavigatorPanels();
     registerNavigatorPanels();
-    expect(listPanels("navigator")).toHaveLength(9);
+    expect(listPanels("navigator")).toHaveLength(10);
     // …and it composes the Bottom dock's tabs in the same pass, still exactly once each. There is
     // No `diff` among them: it was a reserved id with no record behind it, so it could only ever
     // Select a hidden tab.
@@ -378,7 +380,14 @@ describe("every project-level panel renders with no document open", () => {
     // The corollary is about a panel's LEVEL and not about which dock hosts it. Named rather than
     // Counted: a panel that quietly stopped being project-level would otherwise shrink this loop
     // To nothing and still pass.
-    expect(panels.map((p) => p.id)).toEqual(["site", "files", "git", "problems", "activity"]);
+    expect(panels.map((p) => p.id)).toEqual([
+      "site",
+      "collections",
+      "files",
+      "git",
+      "problems",
+      "activity",
+    ]);
 
     const deps = projectPanelDeps();
     const paint = async (): Promise<Map<string, HTMLElement>> => {

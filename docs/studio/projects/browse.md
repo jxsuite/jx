@@ -1,6 +1,9 @@
 ---
-title: "The Library"
-description: "Every page, layout, component, entry and asset in one Jx Studio tab: five layouts, a category filter, and an empty state that tells the truth."
+title: "The Content workspace"
+description: "Browse your pages and every content collection, see where each collection is published, and write entries on the canvas inside their template."
+spec:
+  - studio.md#9.1.2
+  - studio.md#22.5
 code:
   - packages/studio/src/browse/library-pane.ts
   - packages/studio/src/surfaces/library-pane.ts
@@ -9,97 +12,122 @@ code:
   - packages/studio/src/browse/library-source.ts
   - packages/studio/src/browse/library-commands.ts
   - packages/studio/src/browse/library-preview.ts
+  - packages/studio/src/content/content-collections.ts
+  - packages/studio/src/content/collection-pages.ts
+  - packages/studio/src/content/entry-summaries.ts
+  - packages/studio/src/panels/collections-panel.ts
+  - packages/studio/src/surfaces/collections-panel.ts
 ---
 
-# The Library
+# The Content workspace
 
-The Library is your project seen whole: every page, layout, component, content entry and asset, in one place, with live previews. Click the **Content** workspace tab in the Command Bar (:kbd[⌘2]), which opens the Library when no content tab is open, or press :kbd[⌘⇧E]. It is also on :kbd[⌘K] as **Open Library**, in the **⬢ menu** in the Command Bar, and in the right-click menu of the Files tree.
+The Content workspace is where you browse and write what your site says: its pages, and the entries of every [content collection](/docs/studio/projects/content-types). Click **Content** in the Command Bar, or press :kbd[⌘2]. It opens on the collection you last looked at, or on **Pages** the first time.
 
-An image a preview cannot draw shows as a grey placeholder: a media file that will not load, a component whose image comes from a property with nothing filled in, or an image with no source yet.
+![The Content workspace showing the Pages collection as cards with live previews, with the Collections panel on the left](../../images/mode-manage.png)
 
-It opens as a document tab like any other, which is the useful part. It sits in the strip beside the page you were working on, one click away for the rest of the session, and :kbd[⌘\] moves it into a second pane so you can browse the project with a page still live beside it.
+## The Collections panel
 
-![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../../images/mode-manage.png)
+The panel on the left lists **Pages** first, then every collection your project declares, in the order `project.json` declares them, each with how many entries it holds. Click one to show it.
 
-## Narrow it down
+- A collection's **saved grid views** are listed under it. Click one to open the collection's grid with that view applied. You save a view from the grid's **View** menu; see [Data grids](/docs/studio/data/grid).
+- **+ New collection** at the foot opens **Add new** on **Collection**: a name, the fields each entry has, and whether each entry gets a page of its own. See [Content types](/docs/studio/projects/content-types).
 
-Two controls sit at the top left, and they compose:
+While you are writing an entry, the panel lists that collection's entries instead, each with its thumbnail (the entry's first image field), its title and whether it is a draft. **‹ Posts** at the top takes you back to the collection, and **+ New post** at the foot adds another entry to it.
 
-- **Categories**: **All**, **Pages**, **Layouts**, **Components**, **Content**, **Media**. A file's category comes from the folder it lives in (`pages/`, `layouts/`, `components/`, `content/` and `data/`, `public/` and `styles/`), except that anything with an image, video, audio, font or PDF extension counts as Media wherever it sits.
-- **Filter files**: free text, matched against each file's name and its path, so `blog/` narrows to a folder and `hero` narrows to a name.
-- **Language**: appears only on a [multilingual project](/docs/framework/site/i18n), and only once the scan actually holds more than one language. Each file's language is the locale directory it sits under (`pages/fr-ca/about.json` is French), shown in its own column and named in its own language (_français_, not _French_).
+## One collection at a time
 
-Every one of these is a command as well as a control, so the toolbar is never the only way in. :kbd[⌘K] → **Library: Show Category** → the category points the Library at Content whether or not the Library is the tab in front of you. **Library: Filter Files**, **Library: Show Language**, **Library: Set Layout** and **Library: Rescan Files** are the rest of the set; they are listed with everything else on **[Commands](/docs/studio/interface/commands)**.
+The middle of the window shows the collection you chose, under its title. The toolbar holds:
 
-:::doc-note
-The Library lists files, so a draft entry sits in it beside a published one. Being a draft is a property of the entry: the switch, the pill on its tab and the project-wide **Include Drafts** perspective are covered in **[Content types](/docs/studio/projects/content-types#drafts)**.
-:::
+- the **view switch**: **Table**, **Cards**, **Calendar** and **Board**;
+- **Search**, matched against each file's name and its path, so `2026` narrows to this year's posts and `hero` to a name;
+- **Language**, on a [multilingual project](/docs/framework/site/i18n) whose collection holds more than one language;
+- **Edit in grid**, which opens the collection as a [grid](/docs/studio/data/grid), one row per entry (a collection only);
+- **Fields**, which opens [Project Settings](/docs/studio/projects/settings) on this collection's fields (a collection only; pages have none);
+- **New page** or **New post** (the collection's own word for one item), which opens **Add new** on that collection.
 
-## Five layouts
+Each collection keeps its own view, search and language. Pages in **Table** and Posts in **Cards** is a state you can leave and come back to.
 
-The layout switch is on the right of the toolbar, and :kbd[⌘K] → **Library: Set Layout** does the same thing by name. All five draw the same scan, so switching layout repaints. It never re-reads your project.
-
-| Layout       | What it is good for                                                                          |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| **Table**    | Name, Category, Type, Size, Modified and Path in columns: the densest way to find one file   |
-| **Cards**    | A live preview of every page, layout, component and entry, with its name and type underneath |
-| **Media**    | Tight image-first tiles, the layout to reach for with **Media** selected                     |
-| **Calendar** | Entries grouped by day, newest first: dated posts, in the order you published them           |
-| **Board**    | One column per category, each with a count, for the shape of the project at a glance         |
+Every control is a command too, so the toolbar is never the only way in: :kbd[⌘K] → **Content: Show Collection** shows a collection by name, and **Content: Set View**, **Content: Search Collection**, **Content: Show Language** and **Content: Rescan Files** are the rest. They are listed with everything else on **[Commands](/docs/studio/interface/commands)**.
 
 :::doc-note
-The Table lists files; it does not edit them. Names, sizes and paths are facts about the file, and changing one is a rename, not a cell edit, so renaming, duplicating and deleting live in the right-click menu below, where the confirmation can tell you what else is affected.
+A collection lists its entry files, so a draft sits beside a published entry. Being a draft is a property of the entry: the switch, the pill on its tab and the project-wide **Include Drafts** perspective are covered in **[Content types](/docs/studio/projects/content-types#drafts)**.
 :::
 
-**Calendar** places a file on the day its name starts with (`2026-04-12-spring-menu.md`), and falls back to the file's modification time. A file with neither is listed under **No date** rather than parked on today. It draws the 60 most recent days and says how many older ones it left out.
+## Where a collection is published
 
-**Board** caps each column at 25 items and prints how many more there are, with the count of the whole column in its heading. Both grouped layouts draw names only. For the full list, switch to Table.
+Above a collection's list, one line says where its entries appear on your site:
 
-## Big projects stay quick
+- **Each post has a page at `/blog/:slug` using Post**: the collection has a template page, here `pages/blog/[slug].json`, and every entry is published at that address. **Design the post page** opens the template page in the Design workspace.
+- **Entries have no page of their own**: no page in `pages/` expands over this collection. **Add one** writes `pages/<collection>/[slug].json`, the same page **Add new** writes when you create a collection with **Give each item its own page** on, bound to the collection's title, image and body.
 
-The Library renders what fits the window, not what is in the project: a 300-page site draws about forty cards, and the rest arrive as you scroll. A card's live preview is built the moment the card comes into view (never before), and a fixed number of rendered previews stay in memory however long you browse. Table, Calendar and Board draw text only, so they stay cheap by construction.
+Studio reads this from your pages rather than storing it: the template page is the page whose `$paths` names the collection, so the line can never disagree with what the site build publishes.
+
+## Four views
+
+All four draw the same scan, so switching view repaints. It never re-reads your project.
+
+| View         | What it is good for                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Table**    | For pages: Name, URL, Locale, Modified and Path. For entries: each entry's **Title**, its **Status** and **Date** when it has them, then its file. The densest way to find one |
+| **Cards**    | A live preview of every page or entry, with its title (or file name) underneath                                                                                                |
+| **Calendar** | Entries grouped by day, newest first: dated posts, in the order you published them                                                                                             |
+| **Board**    | One column per status (**Draft**, **Published**) when the collection has a draft workflow, otherwise one per folder, each with a count                                         |
+
+:::doc-note
+The Table lists files; it does not edit them. Changing a name is a rename, not a cell edit, so renaming, duplicating and deleting live in the right-click menu below, where the confirmation can tell you what else is affected. To edit entries' fields in a spreadsheet, click **Edit in grid** in the toolbar, which opens the collection's [grid](/docs/studio/data/grid).
+:::
+
+**Calendar** places an entry on the date its own date field holds (a field the collection's schema types as a date, or one named `date` or `published`). Otherwise it uses the day the file name starts with (`2026-04-12-spring-menu.md`), and then the file's modification time. A file with neither is listed under **No date** rather than parked on today. It draws the 60 most recent days and says how many older ones it left out.
+
+**Board** caps each column at 25 items and prints how many more there are. Both grouped views draw titles only. For the full list, switch to Table.
+
+## Write an entry
+
+Click an entry to open it. An entry with a body, such as a Markdown post, opens on the canvas in **Edit**, inside the template its pages are drawn in: the entry's own template if it names one, otherwise its collection page's, otherwise your project's default. A slim banner above the canvas says what that means:
+
+> Writing mode: text and media are editable, the layout is locked · **Design the post page**
+
+The header, the footer and everything else the template draws are shown, dimmed and locked, so you write in context without being able to break the layout. The button opens the collection's template page in the Design workspace, with the same words as the line above the collection. A collection with no page of its own names the template instead: **Edit the Base template in Design**.
+
+The Inspector on the right shows the **Entry** tab while you write: the entry's **status** (a **Draft** switch, when the collection has a draft workflow), its **fields** as the collection's schema types them, the **URL** its page publishes it at, and the **file** it is stored in. The Element tab is there too, because writing still selects elements.
+
+An entry with no body (a JSON entry is nothing but its fields) opens in the [entry form](/docs/studio/projects/content-types#edit-an-entrys-fields) instead.
+
+:::doc-note
+Studio wraps an entry in its template's **layout**. A template page that draws its own wrapper around the entry (a hero over the entry's body, say) shows that wrapper when you preview the page itself, not while you write the entry.
+:::
 
 ## Open, rename, duplicate, delete
 
-Click any item to open it in a tab. Right-click for **Open**, **Rename…**, **Duplicate** and **Delete**. A duplicate lands beside the original with `-copy` on its name.
-
-A media tile opens in the **[Media viewer](/docs/studio/projects/media#open-a-media-file)**: the picture at full size, with its dimensions, the reference a document writes for it, and the pages that use it.
+Right-click any item for **Open**, **Rename…**, **Duplicate** and **Delete**. A page opens in the Design workspace; an entry opens where it is written. A duplicate lands beside the original with `-copy` on its name.
 
 Rename and delete go through the same confirmations as the Files panel, and they carry the same counts: a rename tells you how many references Studio will rewrite for you, and a delete tells you how many stop resolving. See **[Before you delete, rename or convert](/docs/studio/projects/pages-layouts-components#before-you-delete-rename-or-convert)**.
 
-## Create something
+Images, video, fonts and documents are not content: they live in the [Media workspace](/docs/studio/projects/media), and so does uploading.
 
-**New** opens **Add new** on the kind the category you are looking at names: a page from **Pages** or **All**, a template from **Layouts**, a component from **Components**, an entry from **Content**, an upload from **Media**. The dialog lists every kind, so you can switch. See **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components#create-one)**.
+## Big projects stay quick
 
-Studio asks for a name, says what it will save and where before you click, and refuses a name that folder already holds. The new file opens in a tab straight away.
-
-## Upload media
-
-Drag images, video, audio, PDFs or fonts onto the Library, or click **Upload**, and Studio writes them into your project.
-
-The destination is the active category's folder, and the Upload button says which one before you drop: with **Media** selected, files land in `public/media/`. **All** has no folder of its own, so its uploads land in `public/media/` too, the same default the [Media workspace](/docs/studio/projects/media#the-media-workspace) uses; there is no folder to choose. An upload never overwrites: a file whose name is taken becomes `hero-1.jpg`. The site build optimizes images automatically (responsive `srcset`, WebP/AVIF).
-
-The Library is one of four places you can add media from. See **[Media](/docs/studio/projects/media)** for the canvas, Files-panel and image-field routes.
+The Content workspace renders what fits the window, not what is in the project: a 300-page site draws about forty cards, and the rest arrive as you scroll. A card's live preview is built the moment the card comes into view (never before), and a fixed number of rendered previews stay in memory however long you browse. Table, Calendar and Board draw text only, so they stay cheap by construction.
 
 ## When the list is short
 
-A short list has more than one cause, and the Library distinguishes them instead of printing one sentence for all of them:
+A short list has more than one cause, and the Content workspace says which:
 
 - **Scanning the project…**: the scan is still running. Nothing is claimed yet.
-- **This project has no files yet**: the scan finished and found nothing. The fix is **New**.
-- **No files match "hero" in Content**: your filter matched nothing, with the project's total beside it and a **Clear filters** button.
+- **No posts yet.**: the scan finished and the collection is empty. The fix is **New post**.
+- **No posts match "hero"**: your search matched nothing, with the collection's total beside it and a **Clear filters** button.
 - **Nothing to show, and the scan did not finish**: Studio could not read one or more of your project's directories, so the list is incomplete rather than empty. It offers **Retry**.
 
-That last one also shows up as a banner above the partial list, saying how many directories could not be read and naming the first of them, and as a Problem in the bottom dock naming the directory and the error, with the same retry attached. A scan slow enough to look like a hang gets an **Activity** row while it runs. See **[Problems and progress](/docs/studio/interface/problems-and-progress)**.
+That last one also shows up as a banner above the partial list, naming the first directory that could not be read, and as a Problem in the bottom dock with the same retry attached. A scan slow enough to look like a hang gets an **Activity** row while it runs. See **[Problems and progress](/docs/studio/interface/problems-and-progress)**.
 
 :::doc-warning
-An unreadable directory and an empty one mean very different things: one is a project you have not filled in yet, the other is a listing you should not trust. If you see the incomplete banner, fix the directory (or press **Retry**) before concluding a file is missing.
+An unreadable directory and an empty one mean very different things: one is a collection you have not filled in yet, the other is a listing you should not trust. If you see the incomplete banner, fix the directory (or press **Retry**) before concluding an entry is missing.
 :::
 
-**Library: Rescan Files** re-reads the project from scratch at any time. Studio also re-scans on its own after anything it creates, renames, duplicates or deletes here, and after an upload from anywhere in Studio.
+**Content: Rescan Files** re-reads the project from scratch at any time. Studio also re-scans on its own after anything it creates, renames, duplicates or deletes, and after a file changes on disk.
 
 ## Next
 
+- **[Content types](/docs/studio/projects/content-types)**: collections, their fields, entries and drafts
 - **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components)**: which kind of file you want
-- **[Content types](/docs/studio/projects/content-types)**: collections, entries and the entry form
-- **[Media](/docs/studio/projects/media)**: the Media workspace, where every image, video, document and font is filtered, uploaded, replaced and deleted
+- **[Media](/docs/studio/projects/media)**: where every image, video, document and font is uploaded, replaced and deleted

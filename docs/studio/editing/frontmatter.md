@@ -61,11 +61,11 @@ The escape hatch for everything else that can live in a page's head: analytics, 
 
 ## The Document Header card
 
-Every page with frontmatter or head tags carries a **Document Header** card in Edit view. It's docked across the top of the canvas pane, as wide as the pane rather than the page, and it stays in place while you scroll the page beneath it; a long form scrolls inside the card, under the wheel as well as by its scrollbar, instead of pushing the page down. The card never takes more than half the pane, so there's always a page to work on under it. Design view leaves it out so the artboards get the whole pane, and the same fields stay on the Inspector's **Page** tab.
+Every page with frontmatter or head tags carries a **Document Header** card in Edit view. It's docked across the top of the canvas pane, as wide as the pane rather than the page, and it stays in place while you scroll the page beneath it; a long form scrolls inside the card, under the wheel as well as by its scrollbar, instead of pushing the page down. The card never takes more than half the pane, so there's always a page to work on under it. Design view leaves it out so the artboards get the whole pane, and the same fields stay on the Inspector's **Page** tab. A collection entry written on the canvas has no card either: the writing banner stands in its place, and the entry's fields are on the Inspector's **Entry** tab, so they are never edited in two places at once.
 
 Its bar names what the document is: the collection it belongs to, or **Document** when it belongs to none. For a page it also prints the route it will be published at. Underneath sit the **Title** field, the layout picker for site pages, and the collection's own fields: the same set as the Page panel's Frontmatter section. Click the bar to fold the card down to that one line, and click it again to open it. Studio remembers your last choice: every document you open afterwards starts with its card open or folded to match, even after a restart, while documents that are already open keep the state you left them in. A document that has a header always shows its bar in Edit view.
 
-![The Document Header card above a post open in Edit view](../../images/properties-bar.png)
+![The Document Header card above a page open in Edit view](../../images/properties-bar.png)
 
 Closing the card are a **Search appearance…** button and one disclosure, **Raw head tags**: every head entry no form owns, listed read-only, so a tag you can't see can't surprise you. The Page panel remains the place to add and remove those.
 

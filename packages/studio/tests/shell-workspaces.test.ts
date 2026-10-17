@@ -74,11 +74,13 @@ describe("the presets", () => {
     }
   });
 
-  test("Content, Media and Publish collapse both side docks; Design and Styles open both", () => {
-    for (const id of ["content", "media", "publish"] as const) {
+  test("Media and Publish collapse both side docks; Content opens Collections; Design and Styles open both", () => {
+    for (const id of ["media", "publish"] as const) {
       expect(WORKSPACE_PRESETS[id].navigator.open).toBe(false);
       expect(WORKSPACE_PRESETS[id].inspector.open).toBe(false);
     }
+    expect(WORKSPACE_PRESETS.content.navigator).toEqual({ open: true, panel: "collections" });
+    expect(WORKSPACE_PRESETS.content.inspector.open).toBe(false);
     for (const id of ["design", "styles"] as const) {
       expect(WORKSPACE_PRESETS[id].navigator.open).toBe(true);
       expect(WORKSPACE_PRESETS[id].inspector.open).toBe(true);
@@ -164,7 +166,8 @@ describe("enterWorkspace", () => {
     expect(presetInspectorOpen("design", false)).toBe(true);
     enterWorkspace("content", { ...deps, writingOnCanvas: () => true });
     expect(shell.docks.right.collapsed).toBe(false);
-    expect(shell.docks.left.collapsed).toBe(true);
+    expect(shell.docks.left.collapsed).toBe(false);
+    expect(shell.leftTab).toBe("collections");
     enterWorkspace("design", deps);
     enterWorkspace("content", { ...deps, writingOnCanvas: () => false });
     expect(shell.docks.right.collapsed).toBe(true);
