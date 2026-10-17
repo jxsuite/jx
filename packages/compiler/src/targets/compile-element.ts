@@ -23,6 +23,7 @@ import {
   srcExportName,
   srcImportBinding,
   tagNameToClassName,
+  templateValueSource,
 } from "../shared.ts";
 import {
   bodyReturnsValue,
@@ -620,13 +621,14 @@ export function emitElementModule(
     );
   }
 
-  /* Emitted with the same `state.` → `this.state.` rewrite the inline-body path below uses, into a
-     template literal — which is what `evaluateTemplate` is, so the result is a string on both
-     sides rather than a string here and a raw value there. */
+  /* Emitted with the same `state.` → `this.state.` rewrite the inline-body path below uses. A
+     single expression keeps its own type and anything else is a template literal, exactly as the
+     runtime and the build-time scope evaluate it (spec.md §5.3), so a component reads the same
+     value hydrated as it did prerendered. */
   for (const [key, template] of templateEntries) {
     lines.push(
       "",
-      `    ${refAccessor("this.state", escapeToken(key))} = computed(() => \`${template.replaceAll("state.", "this.state.")}\`);`,
+      `    ${refAccessor("this.state", escapeToken(key))} = computed(() => ${templateValueSource(template.replaceAll("state.", "this.state."))});`,
     );
   }
 

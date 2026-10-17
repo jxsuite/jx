@@ -360,7 +360,7 @@ The `format` keyword provides rendering hints for visual editors. It does not af
 }
 ```
 
-**Emitted as:** `computed(() => \`...template...\`)`
+**Emitted as:** `computed(() => (expression))` when the string is a single `${…}` from end to end, and `computed(() => \`...template...\`)` otherwise.
 
 **Rules:**
 
@@ -368,8 +368,9 @@ The `format` keyword provides rendering hints for visual editors. It does not af
 - The string must be a pure expression — no statements, no assignments, no semicolons
 - `return` is never written — the expression value is the signal value
 - `state` refers exclusively to the current component's reactive scope
+- **A single expression keeps its own type.** `"${state.items.length === 0}"` is the boolean `false`, `"${state.count * 2}"` is a number, and `"${state.icons[state.name]}"` is `undefined` when the key is absent. Any text outside the one `${…}`, or a second `${…}`, makes the value a string by template-literal interpolation: `"${state.score}%"` is `"90%"`. This is the line an attribute binding draws (§8.3), and every tier draws it in the same place, so a prerendered page, a hydrated component and Studio's canvas read one entry as one value.
 
-> **Status: Implemented.** Runtime compiles template strings via `new Function("state", "$map", `` `return \`${str}\`` ``)`.
+> **Status: Implemented.** The runtime (`evaluateValueTemplate`), the build-time scope (`evaluateStaticTemplate`) and both compile targets (`templateValueSource`) decide "single expression" with the one `isSingleExpression` brace scan.
 
 #### Shape 4 — Prototype (`$prototype`)
 
