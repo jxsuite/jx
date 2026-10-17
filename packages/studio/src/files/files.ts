@@ -95,7 +95,14 @@ import {
 } from "../format/format-host";
 import { convertTargets, creationFormats, knownDocumentExtensions } from "../format/format-choices";
 import { collectionForDirectory } from "../content/collection-match";
-import { markSessionRestored, persistedSession, resetProjectShell, setActivityTab } from "../shell";
+import {
+  markSessionRestored,
+  persistedSession,
+  persistedWorkspace,
+  resetProjectShell,
+  setActivityTab,
+} from "../shell";
+import type { WorkspaceId } from "../workspace/workspace-ids";
 import { restoreSession } from "../workspace/session";
 import { cleanupGitPanel } from "../panels/git-panel";
 import { addRecentProject, trackRecentFile } from "../recent-projects";
@@ -424,6 +431,31 @@ export async function openLastSessionOrHome(): Promise<boolean> {
   // `projectState.projectRoot`, the recent-list entry. One reader of one field cannot disagree with
   // The writer; three callers passing three spellings silently restore nothing.
   const session = persistedSession(workspace.projectRoot);
+  /* The workspace it was left in, read BEFORE anything opens: every tab the restore activates
+     enters its own workspace, and that entry is persisted over the stored one. */
+  const left = persistedWorkspace(workspace.projectRoot);
+  const restored = await restoreSessionOrHome(session);
+  _showWorkspace?.(left);
+  return restored;
+}
+
+/**
+ * How a project open shows the workspace it was left in, once its documents are open. Installed by
+ * the bootstrap (`workspace/workspace-switch.ts`'s `switchWorkspace`), because the switch opens
+ * homes this module must not import; unset, the restore leaves the workspace wherever its tabs
+ * did.
+ */
+let _showWorkspace: ((id: WorkspaceId) => void) | null = null;
+
+/** Install (or with `null`, remove) what {@link openLastSessionOrHome} shows the workspace with. */
+export function setSessionWorkspaceShow(show: ((id: WorkspaceId) => void) | null): void {
+  _showWorkspace = show;
+}
+
+/** The body of {@link openLastSessionOrHome}: the session, or the home page. */
+async function restoreSessionOrHome(
+  session: ReturnType<typeof persistedSession>,
+): Promise<boolean> {
   // Read first, THEN allow writes: the persist effect fires the moment `workspace.projectRoot` is
   // Set, and an empty workspace captured at that instant would overwrite the very record this line
   // Reads. See `markSessionRestored`.

@@ -7,7 +7,8 @@
  * a command, so what the document is handed is a PROJECTION of the registry rather than a list of
  * buttons: `primary` is `forPlacement("commandbar/primary")` (capped at five by
  * `scripts/check-chrome-budget.ts`), `docks` is the three dock records with the shell's state
- * beside them, `layouts` is the project's own layout record, and the ⬢ Studio menu is
+ * beside them, `workspaces` is the five-workspace switcher with `shell.workspace` selected, the ⚙
+ * gear is the `settings/menu` placement, and the ⬢ Studio menu is
  * `forPlacement("commandbar/overflow")` opened on the `menu` surface. With no project open the same
  * document renders; the records' own `when` clauses empty it (§13.1: enablement is a predicate with
  * a sentence, never a second template).
@@ -33,11 +34,10 @@
 
 import { presenceProjection } from "../collab/presence-chips";
 import { effect, effectScope, reactive } from "../reactivity";
-import { activeTab } from "../workspace/workspace";
+import { activeTab, workspace } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
 import { shell } from "../shell";
 import { openQuickSearch } from "../panels/quick-search";
-import { showPromptDialog } from "../ui/layers";
 import { getPlatform, hasPlatform } from "../platform";
 import { getPreviewNavigateHandler } from "../canvas/preview-navigate";
 import { armPreviewOverlay, flushPreviewOverlay } from "../preview/preview-overlay";
@@ -49,6 +49,14 @@ import { notify } from "../services/notify";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { rectOf } from "../utils/geometry";
 import { openMenu } from "./menu";
+import {
+  dismissSettingsMenu,
+  isSettingsMenuOpen,
+  openSettingsMenu,
+  SETTINGS_MENU_PLACEMENT,
+} from "../panels/settings-menu";
+import { WORKSPACES } from "../workspace/workspace-ids";
+import type { WorkspaceId } from "../workspace/workspace-ids";
 import commandbarDoc from "./commandbar.json";
 import type { PresenceProjection } from "../collab/presence-chips";
 import type { MenuHandle, MenuRowProjection } from "./menu";
@@ -121,12 +129,22 @@ export interface DockProjection {
   disabled: boolean;
 }
 
-/** One layout tab. */
-export interface LayoutTabProjection {
-  id: string;
-  name: string;
-  active: boolean;
+/** One workspace tab. */
+export interface WorkspaceTabProjection {
+  id: WorkspaceId;
   title: string;
+  icon: string;
+  /** The tab's tooltip: its title and chord, plus what its badge counts. */
+  tooltip: string;
+  /** The count drawn beside the title; empty for none, which hides the badge. */
+  badge: string;
+  /**
+   * What the badge counts, in words, as the tab's `aria-description`; empty for none. The badge is
+   * decorative, so this is how the count reaches a screen reader: the tab's NAME stays its title,
+   * which is what the label draws.
+   */
+  description: string;
+  hasBadge: boolean;
 }
 
 /** One segment of the address bar. */
@@ -149,8 +167,12 @@ interface CommandBarScope {
   csd: WindowControlLayout;
   menuVisible: boolean;
   menuOpen: boolean;
-  layoutsVisible: boolean;
-  layouts: LayoutTabProjection[];
+  workspacesVisible: boolean;
+  workspaces: WorkspaceTabProjection[];
+  /** The selected workspace tab's value: `shell.workspace`. */
+  workspace: string;
+  settingsVisible: boolean;
+  settingsOpen: boolean;
   segments: SegmentProjection[];
   chord: string;
   hasChord: boolean;
@@ -161,9 +183,8 @@ interface CommandBarScope {
   run: (id: string) => void;
   openSegment: (key: SegmentProjection["key"]) => void;
   openPicker: () => void;
-  setLayout: (id: string) => void;
-  renameLayout: (id: string) => void;
-  saveLayout: () => void;
+  setWorkspace: (id: string) => void;
+  openSettings: (anchor: EventTarget | null) => void;
   openStudioMenu: (opener: HTMLElement) => void;
   windowControl: (action: keyof WindowControls) => void;
 }
@@ -514,30 +535,6 @@ export function selectionSegmentLabel(tab: Tab | null): string {
   return nodeLabel(getNodeAtPath(tab.doc.document, selection));
 }
 
-/** Ask for a name, then run the command. Exported for the same reason `runOpenInBrowser` is. */
-export async function saveLayoutPrompt(registry: CommandRegistry): Promise<void> {
-  const name = await showPromptDialog("Save layout", {
-    confirmLabel: "Save",
-    message: "Remembers this project's Navigator panel, dock widths and Inspector tab.",
-    placeholder: "Layout name",
-  });
-  if (name) {
-    await runReported(registry, "view.saveLayout", { name }, "Command Bar");
-  }
-}
-
-/** The double-click gesture, routed through the command so the rename has one implementation. */
-export async function renameLayoutPrompt(
-  registry: CommandRegistry,
-  layout: string,
-  current: string,
-): Promise<void> {
-  const name = await showPromptDialog("Rename layout", { confirmLabel: "Rename", value: current });
-  if (name) {
-    await runReported(registry, "view.renameLayout", { layout, name }, "Command Bar");
-  }
-}
-
 interface WindowControls {
   minimize: () => void;
   maximize: () => void;
@@ -555,7 +552,7 @@ function windowControls(): WindowControls | undefined {
   return platform.windowControls as WindowControls | undefined;
 }
 
-// ─── The Command Center pill, the layout tabs and the docks, projected ───────
+// ─── The Command Center pill, the workspace tabs and the docks, projected ────
 
 /**
  * `◈ project › document › selection`: four facts about where you are, in non-collapsible chrome
@@ -584,25 +581,35 @@ function projectSegments(tab: Tab | null): SegmentProjection[] {
 }
 
 /**
- * `Write · Design · Build · Ship · +` — named arrangements, as plain-text tabs.
+ * `Design · Content · Media · Styles · Publish`: the five workspaces, as a tablist.
  *
- * Each tab RUNS `view.setLayout`, so the click, the palette row and an agent all take the same
- * path; double-clicking one renames it, and `+` saves whatever is on screen now. **A layout
- * reconfigures; it never removes**: every panel stays on the rail, on its chord and in the palette
- * after any layout is applied.
+ * Each tab RUNS `view.setWorkspace`, so the click, ⌘1–5, the palette row and a script all take the
+ * same path, and the selected tab is `shell.workspace` rather than a second record of it. Publish
+ * carries the count of uncommitted changes, which is what the workspace is there to deal with; at
+ * zero the badge is not drawn, because "0" is a number a reader has to read to learn nothing.
  */
-function projectLayouts(registry: CommandRegistry | null): LayoutTabProjection[] {
+function projectWorkspaces(registry: CommandRegistry | null): WorkspaceTabProjection[] {
   // `get` first: a registry that has not been handed the shell's records yet (the skeleton the bar
   // Paints before the bootstrap composes them) has no verb to ask about.
-  if (!registry?.get("view.setLayout") || !registry.isEnabled("view.setLayout")) {
+  if (!registry?.get("view.setWorkspace") || !registry.isEnabled("view.setWorkspace")) {
     return [];
   }
-  return shell.layouts.map((preset) => ({
-    active: preset.id === shell.layout,
-    id: preset.id,
-    name: preset.name,
-    title: `${preset.name} layout — double-click to rename`,
-  }));
+  const dirty = shell.git.status?.files.length ?? 0;
+  return WORKSPACES.map((entry) => {
+    const badge = entry.id === "publish" && dirty > 0 ? String(dirty) : "";
+    const chord = registry.keymap.formatBinding(`workspace.focus.${entry.id}`);
+    const named = chord ? `${entry.title} (${chord})` : entry.title;
+    const description = badge ? `${badge} unpublished ${dirty === 1 ? "change" : "changes"}` : "";
+    return {
+      badge,
+      description,
+      hasBadge: badge !== "",
+      icon: entry.icon,
+      id: entry.id,
+      title: entry.title,
+      tooltip: description ? `${named}, ${description}` : named,
+    };
+  });
 }
 
 /** The primary verb cluster: exactly what declared `commandbar/primary`, in the registry's order. */
@@ -734,8 +741,6 @@ function state(): CommandBarScope {
     csd: "none",
     docks: [],
     hasChord: false,
-    layouts: [],
-    layoutsVisible: false,
     menuOpen: false,
     menuVisible: false,
     openPicker: () => {
@@ -744,36 +749,43 @@ function state(): CommandBarScope {
     openSegment: (key) => {
       openQuickSearch(SEGMENT_MODES[key]);
     },
+    openSettings: (anchor: EventTarget | null) => {
+      if (!(anchor instanceof HTMLElement)) {
+        return;
+      }
+      openSettingsMenu(anchor, {
+        rerender: () => {
+          if (_state) {
+            _state.settingsOpen = isSettingsMenuOpen();
+          }
+        },
+      });
+    },
     openStudioMenu,
     presence: NO_PRESENCE,
     presenceVisible: false,
     primary: [],
-    renameLayout: (id) => {
-      const registry = activeRegistry();
-      const preset = shell.layouts.find((layout) => layout.id === id);
-      if (registry && preset) {
-        void renameLayoutPrompt(registry, id, preset.name);
-      }
-    },
     run: (id) => {
       const registry = activeRegistry();
       if (registry?.isEnabled(id)) {
         void runReported(registry, id, undefined, "Command Bar");
       }
     },
-    saveLayout: () => {
-      const registry = activeRegistry();
-      if (registry) {
-        void saveLayoutPrompt(registry);
-      }
-    },
     segments: [],
-    setLayout: (id) => {
-      void runActiveReported("view.setLayout", { layout: id }, "Command Bar");
+    /* Run from each tab's CLICK, not from the strip's `change`: `jx-tabs` dispatches no change for
+       the tab already selected, and activating the selected workspace again is how an author gets
+       its home back after closing it. Enter and Space click the tab too (manual activation). */
+    setWorkspace: (id) => {
+      void runActiveReported("view.setWorkspace", { workspace: id }, "Command Bar");
     },
+    settingsOpen: false,
+    settingsVisible: false,
     windowControl: (action) => {
       windowControls()?.[action]();
     },
+    workspace: "",
+    workspaces: [],
+    workspacesVisible: false,
   });
   return _state;
 }
@@ -789,8 +801,12 @@ function project(): void {
   const controls = windowControls();
   scope.csd = controls ? (isMacPlatform() ? "mac" : "other") : "none";
   scope.menuVisible = registry !== null;
-  scope.layouts = projectLayouts(registry);
-  scope.layoutsVisible = scope.layouts.length > 0;
+  scope.workspaces = projectWorkspaces(registry);
+  scope.workspacesVisible = scope.workspaces.length > 0;
+  scope.workspace = shell.workspace;
+  scope.settingsVisible =
+    registry !== null && registry.forPlacement(SETTINGS_MENU_PLACEMENT).length > 0;
+  scope.settingsOpen = isSettingsMenuOpen();
   scope.segments = projectSegments(tab);
   scope.chord = registry?.keymap.formatBinding("palette.open") ?? "";
   scope.hasChord = scope.chord !== "";
@@ -830,10 +846,12 @@ export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}): void {
       void shell.docks.bottom.collapsed;
       void shell.git.status;
       void shell.layoutSelection;
-      // The layout tabs are a rendering of the project's own record, so the band repaints when a
-      // Layout is saved, renamed or deleted from anywhere.
-      void shell.layout;
-      void shell.layouts;
+      // The workspace tabs follow the shell, so a switch made by a chord, a script or a tab's
+      // Activation repaints the selected tab.
+      void shell.workspace;
+      // The project opening is what makes the workspace tabs (and the pill's project name) live:
+      // `projectState` is not reactive, and the reactive root it is opened beside is.
+      void workspace.projectRoot;
       // The registry itself is reactive state: it is composed AFTER this mount runs, and reading it
       // Here is what repaints the band from a skeleton into the real bar.
       void activeRegistry();
@@ -866,6 +884,7 @@ export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}): void {
 
 export function unmount(): void {
   _menu?.close();
+  dismissSettingsMenu();
   _scope?.stop();
   _scope = null;
   const pending = _mount;

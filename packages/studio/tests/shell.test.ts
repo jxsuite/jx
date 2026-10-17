@@ -324,15 +324,13 @@ describe("resetProjectShell", () => {
     expect(shell.settingsTab).toBe("stylebook");
   });
 
-  test("keeps the workspace arrangement — docks, layout preset and rail panel", () => {
+  test("keeps the window's arrangement — docks and rail panel", () => {
     setActivityTab("files");
     setDockCollapsed("right", true);
-    shell.layout = "write";
 
     resetProjectShell();
 
     expect(shell.leftTab).toBe("files");
     expect(shell.docks.right.collapsed).toBe(true);
-    expect(shell.layout).toBe("write");
   });
 });

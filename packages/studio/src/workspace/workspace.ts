@@ -622,6 +622,28 @@ export function paneIsEmpty(pane: Pane): boolean {
    comes back with the section that does, and not one release earlier. */
 
 /**
+ * Which tabs a fallback may land on: the tabs of the workspace on screen.
+ *
+ * When the active tab leaves a pane (closed, or moved), the pane falls back to another of its tabs.
+ * A fallback onto a tab of a DIFFERENT workspace would switch the workspace under the author, who
+ * closed a tab and did not ask to go anywhere — so the fallback is scoped, and a pane with no tab
+ * of the workspace left shows none. The predicate is INJECTED by `workspace/workspace-switch.ts`,
+ * because the rule that says which workspace a tab is in reads the project's collections, and this
+ * module sits below all of that. Unset, every tab qualifies, which is the model before workspaces.
+ */
+let _tabScope: (tabId: string) => boolean = () => true;
+
+/** Install the fallback scope. `workspace/workspace-switch.ts` calls it once at boot. */
+export function setTabScope(scope: ((tabId: string) => boolean) | null): void {
+  _tabScope = scope ?? (() => true);
+}
+
+/** The rightmost tab of a pane that is in scope: the safe default when its active tab leaves. */
+function rightmostInScope(pane: Pane): string | null {
+  return pane.tabOrder.findLast((id) => _tabScope(id)) ?? null;
+}
+
+/**
  * Remove a tab id from whichever pane holds it, without touching the tab itself.
  *
  * Exported for `workspace/pane-derive.ts`, which needs both halves of a move: `pane.derive` hands
@@ -636,7 +658,7 @@ export function detachTab(tabId: string) {
     }
     pane.tabOrder = pane.tabOrder.filter((id) => id !== tabId);
     if (pane.activeTabId === tabId) {
-      pane.activeTabId = pane.tabOrder.at(-1) ?? null;
+      pane.activeTabId = rightmostInScope(pane);
     }
     /* The PRIMARY is exempt HERE and only here. `splitRight` moves the tab out of the source pane
        through this function, so a lone document split from the primary empties it — and that state
@@ -786,6 +808,22 @@ function resetTabCycle() {
 function syncTreeSelection(tab: Tab) {
   if (projectState && tab.documentPath) {
     projectState.selectedPath = tab.documentPath;
+  }
+}
+
+/**
+ * Show no tab in a pane, leaving its strip exactly as it is.
+ *
+ * What a pane shows when the workspace on screen has no tab in it: its other tabs are another
+ * workspace's, and they come back when that workspace does. Written only by
+ * `workspace/workspace-switch.ts`; nothing about the tabs, the MRU order or the focus changes.
+ *
+ * @param {string} paneId
+ */
+export function clearPaneActiveTab(paneId: string) {
+  const pane = paneById(paneId);
+  if (pane) {
+    pane.activeTabId = null;
   }
 }
 
@@ -1059,9 +1097,8 @@ export function closeTab(tabId: string) {
   // Rightmost there as the safe default, so this only ever improves on it.
   const survivor = activePane();
   const next =
-    workspace.mruOrder.find((id) => survivor.tabOrder.includes(id)) ??
-    survivor.tabOrder.at(-1) ??
-    null;
+    workspace.mruOrder.find((id) => survivor.tabOrder.includes(id) && _tabScope(id)) ??
+    rightmostInScope(survivor);
   if (next) {
     setActiveTab(next);
   }
@@ -1144,7 +1181,8 @@ export function takeClosedTabPath(): string | undefined {
  */
 export function cycleTab(step: number): string | undefined {
   if (!_cycleList) {
-    _cycleList = workspace.mruOrder.filter((id) => workspace.tabs.has(id));
+    // The workspace on screen's tabs: ⌃Tab walks what the strips draw, never into another workspace.
+    _cycleList = workspace.mruOrder.filter((id) => workspace.tabs.has(id) && _tabScope(id));
     _cycleIndex = 0;
   }
   const list = _cycleList;

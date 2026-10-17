@@ -169,6 +169,13 @@
     "#app.bottom-collapsed #bottom-dock, #app.bottom-collapsed #resize-bottom": {
       "display": "none"
     },
+    "#app.rail-hidden": {
+      "$description": "The rail column, out of the grid. `src/shell.ts`'s applyDockLayout() stamps the class from the active workspace's preset: the rail is Design's, and every other workspace gives its 56px to the pane. The column is zero rather than removed so every named line below keeps its place.",
+      "grid-template-columns": "[rail] 0px [nav] var(--panel-w-left) [pane] 1fr [insp] var(--panel-w-right)"
+    },
+    "#app.rail-hidden #activity-bar": {
+      "display": "none"
+    },
     "#statusbar": {
       "$description": "\u246b Status bar Three fields in the shell's own level order, separated by a rule rather than by a run of \"|\" characters: the boundary between PROJECT, DOCUMENT and SELECTION is structural, and the eye should be able to find it without reading.",
       "grid-row": "4",

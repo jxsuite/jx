@@ -31,8 +31,13 @@ import type { MonacoSurface } from "../src/view";
 import type { PeerPresence } from "../src/collab/collab-state";
 import type { Tab } from "../src/tabs/tab";
 import { surfaceForPane } from "../src/canvas/surface-registry";
+import { installWorkspaceFollow } from "../src/workspace/workspace-switch";
+import { shell } from "../src/shell";
 
 let host: HTMLElement;
+/* The app's follow: activating a tab enters its workspace, so a content entry opened here is drawn
+   in Content's strip exactly as it is in the running shell. */
+let stopFollow: () => void = () => {};
 
 function open(id: string, documentPath: string | null = `/project/${id}.json`) {
   return openTab({
@@ -98,10 +103,13 @@ beforeEach(() => {
   initLayers();
   host = document.querySelector<HTMLElement>("#tab-strip")!;
   closeAllTabs();
+  shell.workspace = "design";
+  stopFollow = installWorkspaceFollow({ setInspectorTab: () => {} });
   mount(host);
 });
 
 afterEach(() => {
+  stopFollow();
   unmount();
   closeAllTabs();
   document.body.innerHTML = "";

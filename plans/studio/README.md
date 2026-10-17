@@ -56,7 +56,7 @@ Paths are under `packages/studio/` unless they name another workspace.
 
 - Editorial drift the census found, but that is no open item, rides with the plan nearest to it rather than being fixed here, because the census rewrites no prose:
   - §4.4's and §8.2's stale §8.2.x cross-references go with `plan:studio/canvas-modes-table`.
-  - §9.4's "(§9.2)" goes with `plan:studio/library-upload-destination-text`.
+  - §9.4's "(§9.2)" goes with `plan:studio/workspaces`, which rewrote §9.3 beside it (it belonged to the library-upload-destination-text plan, deleted with that rewrite).
   - §10.2's "the rail foot's menu" goes with `plan:studio/keyboard-shortcut-tables`.
   - §16.6's "`jx build`" goes with `plan:studio/panel-scheduler-text`.
   - §1's Spectrum clause goes with `plan:studio/dependency-table`.

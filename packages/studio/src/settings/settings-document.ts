@@ -27,7 +27,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { optionalStringArg, stringProperty } from "../commands/command-args";
 import { notify } from "../services/notify";
 import { projectState } from "../state";
-import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { PROJECT_CONFIG_PATH, SETTINGS_MODE } from "../tabs/tab";
 import { lendProjectConfigLayout } from "../tabs/project-config";
 import { activeTab, focusPane, openTab, workspace } from "../workspace/workspace";
 import {
@@ -52,14 +52,8 @@ import { PROJECT_STYLES_TITLE, PROJECT_STYLES_VIEW } from "../style/project-styl
 import type { Tab } from "../tabs/tab";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
-/**
- * The canvas mode the settings editor draws under.
- *
- * `project.json` already declared `["stylebook", "source"]` (`tabs/tab.ts`'s `inferModes`); this is
- * the third editor over the same document and it leads, because reaching configuration through a
- * form is what "Settings" means to everyone who is not reading the file.
- */
-export const SETTINGS_MODE = "settings";
+/** The canvas mode the settings editor draws under; defined in `tabs/tab.ts`, re-exported here. */
+export { SETTINGS_MODE } from "../tabs/tab";
 
 /** The tab's mode list when Project Settings opens it. Settings first, so it is the initial mode. */
 const SETTINGS_TAB_MODES = [SETTINGS_MODE, "stylebook", "source"];

@@ -528,15 +528,15 @@ function cycleRegion(direction: 1 | -1): void {
   }
 }
 
-// ─── Panel and inspector focus (⌘1–8, ⌘⇧1–4) ─────────────────────────────────
+// ─── Panel and inspector focus (`panel.focus.*`, ⌘⇧1–4) ──────────────────────
 
 /**
  * Toggle-FOCUS, not toggle-visible.
  *
- * ⌘1 from the canvas reveals Files and puts the caret in it; ⌘1 again — with Files already focused
- * — collapses the dock and hands the caret back to the pane. The distinction matters because the
- * common case is "take me there", and a toggle-visible binding makes that a coin flip on whichever
- * panel happened to be showing.
+ * `Show Files` from the canvas reveals Files and puts the caret in it; running it again — with
+ * Files already focused — collapses the dock and hands the caret back to the pane. The distinction
+ * matters because the common case is "take me there", and a toggle-visible binding makes that a
+ * coin flip on whichever panel happened to be showing.
  *
  * Every panel this can be handed lives in the Navigator. The roster is the rail plus the rail-less
  * NAVIGATOR panels (`panels/navigator-panels.ts`), so a Bottom-dock record cannot reach here — the
@@ -546,14 +546,14 @@ function cycleRegion(direction: 1 | -1): void {
  */
 function focusPanel(panelId: string): void {
   /* THE DOOR. `shell.ts`'s `NAVIGATOR_PANEL_IDS` docstring says the command is what refuses an
-     undeclared id, "at the one door a caller comes through" — this is that door for ⌘1–8, and it
+     undeclared id, "at the one door a caller comes through" — this is that door for `panel.focus.*`, and it
      was the only one of three doors that had no lock. `setActivityTab` now takes a
      `NavigatorPanelId`, so the roster's `string` has to be narrowed somewhere; narrowing HERE keeps
      `commands/defaults.ts` free of shell types, which is the property that lets three CI checks
      load the command set in a bare Bun process.
 
      A throw rather than a silent return: `tests/navigator-panels.test.ts` asserts the enum and the
-     registry agree, so this is unreachable while that passes, and a chord that quietly does nothing
+     registry agree, so this is unreachable while that passes, and a command that quietly does nothing
      is precisely the defect this change is closing. */
   const id = requireNavigatorPanelId(panelId, "panel.focus");
   const alreadyThere =
@@ -1006,7 +1006,10 @@ const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
   /* `media` — the Media viewer's own scrolling column (`media/media-pane.ts`). There is no artboard
      here either: a wheel over an image is a scroll down the page it sits on, not a zoom. */
   "media",
+  /* A workspace's home — `workspace/workspace-home.ts`. A centred column with nothing to zoom. */
+  "media-home",
   "preview",
+  "publish-home",
   "settings",
 ]);
 

@@ -294,6 +294,32 @@ describe("the modes whose panel owns its own reactivity", () => {
     expect(canvasPanels).toHaveLength(0);
   });
 
+  /* A workspace home is the real module, not a double: it is a standing document with no
+     reactivity of its own, so the hand-over, the stop and the fast path are all one mount. */
+  test("a workspace home takes the stage, stops there, and a same-tab repaint rebuilds nothing", async () => {
+    setMode("media-home");
+    renderCanvas();
+    await flush(4);
+
+    // The home fills the stage by its own style block, so nothing is written onto the stage.
+    expect(stage().style.padding).toBe("");
+    expect(stage().style.display).toBe("");
+    expect(stage().querySelector('[part="panzoom"]')).toBeNull();
+    const home = stage().querySelector('[part="home"]');
+    expect(home).not.toBeNull();
+
+    renderCanvas();
+    await flush(4);
+    expect(stage().querySelector('[part="home"]')).toBe(home);
+
+    // Leaving the mode takes the home down with the rest of the stage.
+    setMode("manage");
+    renderCanvas();
+    await flush(4);
+    expect(stage().querySelector('[part="home"]')).toBeNull();
+    expect(library.render).toHaveBeenCalledTimes(1);
+  });
+
   /* THE FAST PATHS. Each panel runs its own effect scope over the document, so a same-tab repaint
      while it is mounted must draw nothing at all — a second `render*Mode` would tear the live pane
      down and rebuild it under whatever the author was doing in it. */

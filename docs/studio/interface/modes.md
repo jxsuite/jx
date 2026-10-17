@@ -93,7 +93,7 @@ Every file opens in its natural editor and view, and the two controls offer only
 
 Any file with uncommitted changes also offers **Diff**, including files that have no other editor at all. Opening one of those from the Files tree still says Studio has no editor for it; Source Control asks the narrower question of what changed, and answers it.
 
-Opening `project.json` from the Files tree lands on **Project Styles**; **Open Project Settings** puts that same document into its settings editor, and **Open Project Styles** puts it back. All three are in the **Settings** menu at the foot of the rail.
+Opening `project.json` from the Files tree lands on **Project Styles**; **Open Project Settings** puts that same document into its settings editor, and **Open Project Styles** puts it back. All three are in the **Settings** menu in the Command Bar.
 
 A file that belongs to a content collection also has an **Entry** editor. **Open Entry Form** is how you reach it, and it joins that file's **Editor** control from then on, so you can move between the form and the body without losing your place in either.
 

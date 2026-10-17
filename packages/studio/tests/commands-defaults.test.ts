@@ -12,7 +12,6 @@ import {
   INSPECTOR_TABS,
   noopCommandDeps,
   panelFocusCommands,
-  RAIL_CHORD_LIMIT,
 } from "../src/commands/defaults";
 import type { CommandDeps, DockId, PaletteMode, RailPanel } from "../src/commands/defaults";
 import { appCommandSet } from "../src/commands/app-commands";
@@ -517,21 +516,30 @@ describe("the direct keys (§5.1, §6)", () => {
     return registry;
   }
 
-  test("⌘1–8 are spent on rail panels, in rail order", () => {
+  test("every rail panel gets a record, in rail order, titled for its panel", () => {
     const registry = registryWithRail();
-    expect(registry.keymap.resolveChord("mod+1", ["global"])?.commandId).toBe("panel.focus.files");
-    expect(registry.keymap.resolveChord("mod+2", ["global"])?.commandId).toBe("panel.focus.layers");
+    expect(registry.get("panel.focus.files")?.title).toBe("Show Files");
     expect(registry.get("panel.focus.layers")?.title).toBe("Show Outline");
+    expect(registry.get("panel.focus.insert")?.title).toBe("Show Insert");
   });
 
-  test("a rail-less panel keeps its name and its palette row, and spends no chord", () => {
-    /* The price studio-ui-guidelines.md §12.2 sets for losing chrome, paid exactly: a name, a
-       palette row, no number. */
+  test("no panel record carries a chord: the digit row is the workspaces'", () => {
+    /* ⌘1–8 followed the rail until the workspaces took ⌘1–5 (`view.setWorkspace`). The rail is
+       Design's alone, so a chord that reached a panel from Publish would open a column the
+       workspace does not draw. The records keep their names and their palette rows. */
+    const many: RailPanel[] = Array.from({ length: 11 }, (_unused, index) => ({
+      id: `p${index}`,
+      title: `P${index}`,
+    }));
+    const deps = { ...noopCommandDeps(), panelRoster: many };
+    expect(panelFocusCommands(deps)).toHaveLength(11);
+    expect(panelFocusCommands(deps).filter((command) => command.keybinding !== undefined)).toEqual(
+      [],
+    );
     const registry = registryWithRail();
-    expect(registry.get("panel.focus.insert")?.title).toBe("Show Insert");
-    expect(registry.keymap.bindingsFor("panel.focus.insert")).toEqual([]);
-    // Search holds a rail slot even though it is not built, so it still consumes ⌘3.
-    expect(registry.keymap.resolveChord("mod+3", ["global"])?.commandId).toBe("panel.focus.search");
+    for (const panel of RAIL_PANELS) {
+      expect(registry.keymap.bindingsFor(`panel.focus.${panel.id}`)).toEqual([]);
+    }
   });
 
   test("a declared-but-unbuilt panel has no live command", () => {
@@ -540,33 +548,22 @@ describe("the direct keys (§5.1, §6)", () => {
     expect(registry.isVisible("panel.focus.files")).toBe(true);
   });
 
-  test("only the first eight rail panels get a chord", () => {
-    const many: RailPanel[] = Array.from({ length: 11 }, (_unused, index) => ({
-      id: `p${index}`,
-      title: `P${index}`,
-    }));
-    const deps = { ...noopCommandDeps(), panelRoster: many };
-    const bound = panelFocusCommands(deps).filter((command) => command.keybinding !== undefined);
-    expect(bound).toHaveLength(RAIL_CHORD_LIMIT);
-    expect(bound.at(-1)?.keybinding).toBe("mod+8");
-  });
-
-  test("the running app binds ⌘1–8 to the panel registry's own rail order", () => {
+  test("the running app binds ⌘1–5 to the five workspaces, in top-bar order", () => {
     const registry = createCommandRegistry({ getContext: everythingContext, mac: true });
     registry.registerAll(appCommandSet());
-    const rail = panelFocusRoster().filter((panel) => panel.rail !== false);
-    for (const [index, panel] of rail.slice(0, RAIL_CHORD_LIMIT).entries()) {
+    for (const [index, id] of ["design", "content", "media", "styles", "publish"].entries()) {
       expect(registry.keymap.resolveChord(`mod+${index + 1}`, ["global"])?.commandId).toBe(
-        `panel.focus.${panel.id}`,
+        `workspace.focus.${id}`,
       );
+    }
+    for (const digit of ["6", "7", "8"]) {
+      expect(registry.keymap.resolveChord(`mod+${digit}`, ["global"])).toBeUndefined();
     }
   });
 
   test("no chord addresses Problems — it is a Bottom-dock tab, reached by its own verb", () => {
     const registry = createCommandRegistry({ getContext: everythingContext, mac: true });
     registry.registerAll(appCommandSet());
-    // ⌘4 belongs to the DOCUMENT group's first panel now that the PROJECT group is three long.
-    expect(registry.keymap.resolveChord("mod+4", ["global"])?.commandId).toBe("panel.focus.layers");
     // The roster follows the rail, so there is no `panel.focus.problems` record at all — not a
     // Chordless one. `view.setBottomTab { tab: "problems" }` is the single door, the same one Diff,
     // Logic and Activity use, and the status bar's warning count runs it.

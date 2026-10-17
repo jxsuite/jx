@@ -11,7 +11,7 @@ code:
 
 There is no single "logic mode" in Studio. Interactivity comes from a few focused surfaces you move between, and each one answers a different question:
 
-- **[Data](/docs/studio/logic/data)**: the Navigator rail's :kbd[⌘6]. _What does this page or component know, and what is it worth right now?_ Declare values, computed entries, data sources, and functions here, and read what each one resolved to as the page runs. Fetches wait for a **Refresh** or for preview and do not re-run on every edit.
+- **[Data](/docs/studio/logic/data)**: the **Data** button on the Navigator rail. _What does this page or component know, and what is it worth right now?_ Declare values, computed entries, data sources, and functions here, and read what each one resolved to as the page runs. Fetches wait for a **Refresh** or for preview and do not re-run on every edit.
 - **[The Logic tab](/docs/studio/logic/events)**: the Inspector's third tab, :kbd[⌘⇧3]. _How does this element behave?_ Events, repeating lists, conditions, and a custom element's outward contract all live here, because they are one job: wiring the selected element to something.
 - **[Formulas](/docs/studio/logic/formulas)**: not a place but an affordance. _How is this value computed?_ A state entry can be a formula, an event can run one, and every operand inside one can be another, with live previews of the real result as you build. A **[formula workspace](/docs/studio/logic/formula-workspace)** opens in the Bottom dock when a formula outgrows an inline field. It sits under the page rather than over it, so you can watch the value it computes change as you edit it.
 - **[Code](/docs/studio/logic/code)**: the escape hatch. A real code editor for function bodies, and a **Code** canvas mode that shows any file as raw source.
@@ -24,10 +24,10 @@ Together they cover the whole range: most interactions never need code, and the 
 
 Here is the shape of the workflow, end to end:
 
-1. Open a component and press :kbd[⌘6] for **Data**. Choose _+ Add… > Value_, name it `$count`, set its **Type** to `integer` and its **Default** to `0`. The component now knows a number.
+1. Open a component and click **Data** on the Navigator rail. Choose _+ Add… > Value_, name it `$count`, set its **Type** to `integer` and its **Default** to `0`. The component now knows a number.
 2. Add a button to the canvas and set its text to show `$count`. Click the **value source** chip beside **Text Content** on the Content tab, pick **From data…**, and choose `$count`.
 3. With the button selected, open the Inspector's **Logic** tab and click **Add Event**. Set the event to `onclick`, choose the **Expression** mode, and build the one-step formula `$count += 1`.
-4. Pick **Preview** in the **View** control on the context bar and click the button. The number climbs, and in the **Data** panel (:kbd[⌘6]) you can watch `$count` change in real time.
+4. Pick **Preview** in the **View** control on the context bar and click the button. The number climbs, and in the **Data** panel you can watch `$count` change in real time.
 
 No files were written by hand: Studio stored the value, the binding, and the handler inside the component's own JSON file.
 

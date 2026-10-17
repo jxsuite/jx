@@ -3,17 +3,26 @@ status: drafted
 disposition: implement
 claims:
   - studio.md#5.1
-requires: []
+requires:
+  - studio/workspaces
 workspaces:
   - packages/studio
 size: M
 ---
 
-# The Search panel finds text across the project from its reserved rail slot, and the rail table names the icons it draws
+# The Search panel finds text across the project as a rail-less Navigator panel
 
 ## Context
 
-`specs/studio.md` §5.1, line 315 (the section was unmarked before the census):
+**Reconciled with the workspace redesign (2026-10-16).** `plan:studio/workspaces` rewrote §5.1 in place for the Design-only rail (Site, Outline, Data; Files and Packages behind a preference) and left this plan as the owner of §5.1's one remaining open item. Its marker now reads, in its last sentence: "Search does not ship either: its record is registered with `when: NOT_YET_BUILT` and a placeholder render, so there is no Search surface to reach." Three facts below are superseded and are not to be implemented as written:
+
+- **The Icon column is gone.** The rewrite removed it from the table rather than correcting it, so this plan's second part is closed.
+- **There is no rail slot and no ⌘2.** `⌘1`–`⌘5` select workspaces and `panel.focus.<id>` carries no chord (§5.1, §22.1), and Search is one of the panels registered `rail: false` whatever the developer-panels preference says. The Open decision on where Search sits is resolved below.
+- **§5.7 is the Site Panel.** Search's contract becomes §5.8.
+
+The implementation and test steps that assume a rail button, `railIds()` containing `search`, or ⌘2 are re-detailed against the shipped rail once the workspace slices that change the rail have landed, which is why this plan requires that one. The original context follows.
+
+`specs/studio.md` §5.1, line 315, as the census found it (the section was unmarked before the census):
 
 > **Status: Partial.** The level-grouped rail, the rail-less Insert and Languages panels and the bottom-anchored Settings menu ship (`packages/studio/src/panels/navigator-panels.ts`, `panels/settings-menu.ts`). Search does not: its record is registered with `when: NOT_YET_BUILT` and a placeholder render, so there is no Search surface to reach. The Icon column is stale: the records use `stack`, `file`, `database` and `cube` for Outline, Page, Data and Packages.
 
@@ -29,16 +38,16 @@ Two parts under one anchor, so one plan holds both: the panel is built, and the 
 
 ## Outcome
 
-- studio.md §5.1 → Implemented: the marker goes; the table lists Search in the Project group and the four corrected icons; Insert and Languages are the two rail-less panels.
-- A new studio.md §5.7 "Search Panel" states the contract: what is read, what matches, what a hit addresses, and how the results say they are incomplete.
+- studio.md §5.1 → Implemented once the workspace plan has flipped its own parts: the marker goes; Search is drawn as a rail-less panel reached from the palette and `view.setActivity`, beside Insert and Languages.
+- A new studio.md §5.8 "Search Panel" states the contract: what is read, what matches, what a hit addresses, and how the results say they are incomplete.
 - Not a graduation: studio.md keeps other open items.
 
 ## Decisions
 
 - **Open:** implement Search, or give up the slot. Recommendation: implement. Every other part of the reservation already exists (the id, the region, the rail slot, ⌘2), nothing else in Studio finds a word across pages, and both alternatives cost more than they save: `remove` moves ⌘3 to ⌘7 down one, which every author's muscle memory and the nine docs pages that print those chords would have to follow, and `defer` (a `Future` remainder that keeps the hidden record) leaves ⌘2 printed in the shortcut sheet as a chord that does nothing.
-- **Open:** where Search sits. Recommendation: on the rail, Project group, ⌘2, and §5.1 is corrected to say so. The code, the chrome budget and the docs' numbering all assume it, and §5.1's own closing rule refuses a rail-less panel "for a surface that is the only way to do something", which a project-wide search is. It leaves `rail/project` at 3 of 4.
+- **Decided:** Search is rail-less, by the workspace redesign: the rail is the Design workspace's alone and holds Site, Outline and Data, and the digit chords select workspaces. §5.1's closing rule (a rail-less panel needs another door) is met by the palette and `view.setActivity`; whether Search also gains a Command Bar or Quick Access door is re-decided when this plan is re-detailed. The earlier recommendation (on the rail, Project group, ⌘2) is withdrawn.
 - **Open:** what a query matches. Recommendation: each string a document renders or names an element by, matched as a case-insensitive literal substring. That means text children, `textContent`, string attribute values, a component instance's string `$props` values, `$id`, `$title` and a custom element's tag name (each hit addresses its Outline row), plus the page's strings: a JSON page's root `title`, its `$head` entries' `textContent` and string attributes, and a format file's frontmatter strings (a top-level string, or each string in a top-level array; each addresses the document). A `${…}` span inside a string is an expression and is not matched; the literal text around it is, so `Posted` finds `Posted ${state.date}` and `state` finds nothing there. State entries, `$defs`, `style`, `$switch` expressions and function bodies are not searched: they belong to the Data panel (§5.6) and the Logic tab, and a hit on them could select nothing the Outline shows. No regex, case or whole-word toggles in this pass, and each string is matched on its own, so `foo <strong>bar</strong>` is not found as `foo bar`.
-- **Decided:** the contract is a new §5.7, and §5.1 names the panel and points to it, because §5 gives every Navigator panel its own subsection and §5.1 is about the rail.
+- **Decided:** the contract is a new §5.8, and §5.1 names the panel and points to it, because §5 gives every Navigator panel its own subsection and §5.1 is about the rail.
 - **Decided:** no backend route. The index is built in the shell from `scanLibrary(projectState.projectDirs, getPlatform())`, `platform.readFile`, and the tab opener's own steps (`parseSourceForPath` or `parseJsonDocument`, then `normalizeArrayChildren`), because every backend already answers those calls and only those steps produce the path the opened tab will hold. The document set is exactly what `openFileInTab` opens as a document tab: a scanned file whose category is not `Media`, whose extension is not `.csv` (the grid's), and which is either a `.json` that is a Jx document (an object with a string `tagName` or a `children` array) or claimed by a format with a `parse` capability (`formatByExtension(ext, "parse")`). Root `project.json`, `package.json` and the generated `*schema.json` pair are outside the scanned directories and never read.
 - **Decided:** an open tab whose `documentPath` is in the document set is searched from memory (`tab.doc.document` and `tab.doc.content.frontmatter`), recomputed per query, and its disk copy is not read while it is open. Unsaved edits are found, and a hit's path is the tab's by construction.
 - **Decided:** the index holds extracted entries, never parsed documents. It is built lazily when the panel shows a non-empty query, reads with six requests in flight, and is keyed to the `workspace.projectRoot` it was built for (reactive, unlike `projectState`): a mismatch resets it to cold, and a build whose root changed mid-flight discards what it read, so no project-open hook is needed. A document path with no entries, no recorded failure and no open tab is unread, and a build reads exactly the unread paths. Invalidation rides the existing `invalidateDerivedCaches` seam, widened to receive the raw batch (echoes included, since Studio's own saves, renames and deletes change what matches): `add` and `change` make a path unread (adding it to the document set when it qualifies), `unlink` drops it, `unlinkDir` drops everything under it, and `addDir` makes the next build rescan the listing. A hit made stale in the gap is handled on activation (below).
@@ -73,7 +82,7 @@ Two parts under one anchor, so one plan holds both: the panel is built, and the 
 6. **Composition**: add `...searchCommands()` to `appCommandSet()` in `src/commands/app-commands.ts`, and `registerSearchCommands(commandRegistry)` beside `registerLibraryCommands` in `src/studio.ts`. `app-commands-composition.test.ts` finds the factory by its `…Commands(): AnyCommand[]` shape and fails until both are there.
 7. **Comments that would turn false**: `railDeclarations()` and `PanelRecord.when` in `src/panels/panel-registry.ts` (`when` now gates by context, e.g. Languages); the `NOT_YET_BUILT` note in `src/panels/bottom-dock.ts`; `panelFocusCommands`'s "(Search, Problems)" in `src/commands/defaults.ts`; the `panelAvailable` docstring in `src/shell.ts`, which should name a gated panel that still exists (`i18n`).
 
-**Integration contract.** Once this lands, `panel.focus.search` (⌘2) and `view.setActivity { tab: "search" }` show a real panel. `search.setQuery { query }` is a registered project-level setter with `menus: ["never"]`, reachable by `registry.run`, shots and `__jxAutomation`; it joins the palette only if the palette learns to prompt for a string. `services/project-search.ts` exports `extractSearchEntries`, `matchSearch`, `ensureSearchIndex`, `searchableEntries`, `invalidateSearchIndex`, `searchIndex` and `SEARCH_RESULT_CAP`, so a later palette mode over the same entries (the content search `quick-search.ts`'s header anticipates) reuses the index rather than building a second one. `invalidateDerivedCaches` receives the raw event batch. `NOT_YET_BUILT` no longer exists. studio.md §5.7 is the contract a later change to what Search matches must edit.
+**Integration contract.** Once this lands, `panel.focus.search` (⌘2) and `view.setActivity { tab: "search" }` show a real panel. `search.setQuery { query }` is a registered project-level setter with `menus: ["never"]`, reachable by `registry.run`, shots and `__jxAutomation`; it joins the palette only if the palette learns to prompt for a string. `services/project-search.ts` exports `extractSearchEntries`, `matchSearch`, `ensureSearchIndex`, `searchableEntries`, `invalidateSearchIndex`, `searchIndex` and `SEARCH_RESULT_CAP`, so a later palette mode over the same entries (the content search `quick-search.ts`'s header anticipates) reuses the index rather than building a second one. `invalidateDerivedCaches` receives the raw event batch. `NOT_YET_BUILT` no longer exists. studio.md §5.8 is the contract a later change to what Search matches must edit.
 
 ## Tests
 
@@ -116,10 +125,10 @@ Coverage: `packages/studio/bunfig.toml` gates every file at `lines = 0.958, func
 **`specs/studio.md`**, in place:
 
 - §5.1: delete the marker line (the section was unmarked before the census).
-- §5.1's table: a Search row between Files and Source Control (Group Project, Tab Search, Id `search`, Icon `magnifying-glass`, Panel "Text and names across the project's documents (§5.7)"), and the Icon cells for Outline, Page, Data and Packages become `stack`, `file`, `database` and `cube`.
+- §5.1's table: a Search row between Files and Source Control (Group Project, Tab Search, Id `search`, Icon `magnifying-glass`, Panel "Text and names across the project's documents (§5.8)"), and the Icon cells for Outline, Page, Data and Packages become `stack`, `file`, `database` and `cube`.
 - §5.1, after the table, add: "Rail order is chord order: `panel.focus.<id>` binds ⌘1 onward down this table, and a panel its `when` hides keeps its number, so no chord moves when one appears."
-- §5.1: "Three more panels are registered `rail: false` — **Search** (`search`, project level), **Insert** …" becomes "Two more panels are registered `rail: false`: **Insert** …", with the Insert and Languages clauses kept. The closing paragraph gains a last sentence: "Search is on the rail for that reason: nothing else finds a word across the project (§5.7)."
-- New **§5.7 Search Panel**, after §5.6 and before §6, unmarked. Adjust it to how the three Open decisions resolve:
+- §5.1: "Three more panels are registered `rail: false` — **Search** (`search`, project level), **Insert** …" becomes "Two more panels are registered `rail: false`: **Insert** …", with the Insert and Languages clauses kept. The closing paragraph gains a last sentence: "Search is on the rail for that reason: nothing else finds a word across the project (§5.8)."
+- New **§5.8 Search Panel**, after §5.6 and before §6, unmarked. Adjust it to how the three Open decisions resolve:
 
   > Search finds text across the project's documents. The palette matches file names, and with `@` the open document's elements; nothing else looks inside every page. It is a project-level panel on the rail (§5.1).
   >

@@ -53,6 +53,12 @@ import { detachLibraryPane, libraryPaneMounted, renderLibraryMode } from "../bro
 import { detachEntryPane, entryPaneMounted, renderEntryMode } from "../content/entry-editor";
 import { detachMediaPane, mediaPaneMounted, renderMediaMode } from "../media/media-pane";
 import {
+  detachWorkspaceHome,
+  isWorkspaceHomeMode,
+  renderWorkspaceHome,
+  workspaceHomeMounted,
+} from "../workspace/workspace-home";
+import {
   detachSettingsPane,
   renderSettingsPane,
   settingsPaneMounted,
@@ -619,6 +625,7 @@ function resetCanvasView(surface: CanvasSurface) {
   detachLibraryPane(paneId);
   detachEntryPane(paneId);
   detachMediaPane(paneId);
+  detachWorkspaceHome(paneId);
   detachSettingsPane(paneId);
   disposeSourceCollab(surface);
   disposeSourceEditor(surface);
@@ -1183,6 +1190,15 @@ function renderCanvasImpl(surface: CanvasSurface) {
     return;
   }
 
+  // Workspace-home fast-path, same shape: a home is a standing document with nothing to re-render.
+  if (
+    isWorkspaceHomeMode(canvasMode) &&
+    workspaceHomeMounted(surface.paneId, tab) &&
+    !modeChanged
+  ) {
+    return;
+  }
+
   // Settings fast-path, same shape: the Project Settings editor subscribes to the section registry
   // And to its own chosen section, so a mounted editor needs nothing from the canvas pipeline.
   if (canvasMode === "settings" && settingsPaneMounted(surface) && !modeChanged) {
@@ -1258,6 +1274,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
 
     // And for the media viewer, whose effect scope subscribes to the tab's path
     detachMediaPane(surface.paneId);
+
+    // And for a workspace home, whose surface holds a mounted document
+    detachWorkspaceHome(surface.paneId);
 
     // Same for the Project Settings editor, which holds a registry subscription
     detachSettingsPane(surface.paneId);
@@ -1409,6 +1428,14 @@ function renderCanvasImpl(surface: CanvasSurface) {
     canvasWrap.style.padding = "0";
     canvasWrap.style.display = "block";
     renderMediaMode(surface, tab);
+    return;
+  }
+
+  /* A workspace's home: the surface a workspace opens on when none of its own tabs is open
+     (`workspace/workspace-home.ts`). Unlike the five above it writes nothing onto the stage: the
+     home's own style block fills it (`surfaces/workspace-home.json`). */
+  if (isWorkspaceHomeMode(canvasMode)) {
+    renderWorkspaceHome(surface, tab);
     return;
   }
 
@@ -1998,6 +2025,7 @@ setSurfaceTeardown((surface) => {
   detachLibraryPane(surface.paneId);
   detachEntryPane(surface.paneId);
   detachMediaPane(surface.paneId);
+  detachWorkspaceHome(surface.paneId);
   detachSettingsPane(surface.paneId);
   attachDocumentHeaderHost(surface.paneId, null);
   disposeSourceCollab(surface);

@@ -49,7 +49,7 @@ This is the one thing the rest of the toolchain cannot tell you. A build is perf
 **Stale** means the default language's file is newer than the translation. A file your platform reports no timestamp for is shown as present, never stale, because an absent timestamp isn't evidence of being behind.
 :::
 
-The panel has no rail button on purpose: a language grid shouldn't cost a rail slot in every monolingual project, or push every document panel's :kbd[⌘1]–:kbd[⌘8] chord along by one.
+The panel has no rail button on purpose: a language grid shouldn't cost a rail slot in every monolingual project.
 
 ## Side by side
 

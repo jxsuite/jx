@@ -13,6 +13,12 @@ code:
   - packages/studio/src/surfaces/commandbar.ts
   - packages/studio/src/preview/preview-overlay.ts
   - packages/studio/src/surfaces/rail.ts
+  - packages/studio/src/workspace/workspace-ids.ts
+  - packages/studio/src/workspace/tab-workspace.ts
+  - packages/studio/src/workspace/workspace-switch.ts
+  - packages/studio/src/workspace/workspace-home.ts
+  - packages/studio/src/surfaces/workspace-home.ts
+  - packages/studio/src/surfaces/workspace-home.json
   - packages/studio/src/panels/left-panel.ts
   - packages/studio/src/files/files.ts
   - packages/studio/src/surfaces/files-panel.json
@@ -45,9 +51,10 @@ The bar across the top of the window. Everything in it is a command, so what you
 From left to right:
 
 - The **Studio menu** (the ≡ button at the left edge) holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Open Library**, **Preferences…**, **Zen Mode**, and the rest.
-- The **layout tabs** (**Write · Design · Build · Ship**) are named arrangements of the workspace. Clicking one sets the Navigator panel, the dock widths, the Inspector tab and the Bottom dock in a single step. Double-click a tab to rename it, and press **+** to save whatever is on screen now as a layout of your own. Layouts are remembered per project.
+- The **workspace tabs** (**Design · Content · Media · Styles · Publish**, :kbd[⌘1] to :kbd[⌘5]) switch what you are working on. See [Workspaces](#workspaces). The **Publish** tab counts the changes you have not published yet.
 - The **Command Center pill** sits in the middle: `◈ project › document › selection`, with :kbd[⌘K] at its right end. It names the project you're in, the document you're editing and the element you have selected, and each segment is a button that opens the palette already scoped to that level. Click the pill's empty space to open the palette with nothing pre-picked. The pill is where you go to _search_ for a place; the [jump bar](#the-jump-bar) in the status bar is where you _step_ to one.
 - The **verb cluster** on the right holds the four actions worth a permanent button: **Save**, **Open in Browser**, **Undo** and **Redo**. A greyed-out one tells you in its tooltip what it is waiting for: **Save** stays greyed out until the document has unsaved changes, and lights up with the first keystroke.
+- The **Settings** gear opens a menu rather than a panel. See [The Settings menu](#the-settings-menu).
 - **Dock toggles** for the Navigator (:kbd[⌘B]), the Inspector (:kbd[⌘⌥B]) and the Bottom dock (:kbd[⌘J]).
 
 In the desktop app, the window's minimize, maximize and close controls also live in this row.
@@ -62,8 +69,24 @@ It is always there. When the open file has no route it's disabled and its toolti
 
 **Build Site** is the other half, and it answers a different question: not "what does this page look like?" but "does my site build?" It's in the Studio menu and the Command Center. It runs the real compiler (bundling, image variants, the sitemap and the rest) and reports what it produced. That's the one to reach for before you publish; Open in Browser is the one for everything else.
 
-:::doc-tip
-A layout reconfigures the workspace; it never takes anything away. Every panel stays on the rail, on its shortcut and in the palette after any layout is applied.
+## Workspaces
+
+Studio has five workspaces, one for each kind of work. Every open tab belongs to exactly one of them, and each pane's tab strip shows only the tabs of the workspace you are in. Nothing is closed when you switch: the other tabs keep their places and come back with their workspace.
+
+- **Design** (:kbd[⌘1]): pages, layouts, components and every other file, on the canvas. It is the only workspace with the rail.
+- **Content** (:kbd[⌘2]): the [Library](/docs/studio/projects/browse), the content grids and every entry of a content collection.
+- **Media** (:kbd[⌘3]): your images, video, audio and documents, and the viewer for each one.
+- **Styles** (:kbd[⌘4]): [Project Styles](/docs/studio/design/stylebook), the design tokens and element defaults over `project.json`.
+- **Publish** (:kbd[⌘5]): your unpublished changes and the comparison of each one.
+
+Switching to a workspace takes you back to the tab you were last in there. When it has no tab open it opens its home instead: the Library for Content, Project Styles for Styles, and a home page of its own for Media and Publish. Design with nothing open shows an empty canvas. Closed a workspace's home? Click its tab in the Command Bar again and the home comes back.
+
+Opening a document switches to its workspace for you, so opening a page from the Library lands you in Design, and opening an entry lands you in Content. The same goes for a second pane: it only ever shows a tab of the workspace you are in, and **Compare With…** on a document from another workspace switches you to that workspace to show it.
+
+Each workspace sets up the window for its kind of work every time you enter it: Design opens the Navigator and the Inspector, Styles opens the Outline beside the Style tab, and Media and Publish give the whole width to their own page. Content does the same for the Library, and opens the Inspector while you write an entry on the canvas. The dock toggles work in every workspace until you leave it, and Design comes back on the Navigator panel you left it on. The workspace you were in is remembered per project, so a project reopens where you left it.
+
+:::doc-note
+**Project settings** opens in the Design workspace for now, whichever workspace you open it from, because it shares its tab with Project Styles.
 :::
 
 ## Navigator rail
@@ -72,21 +95,23 @@ The vertical strip on the far left. Every button carries a **text label under it
 
 **Project**
 
-- **Files** (:kbd[⌘1]): the project file tree. Open, rename, convert and organize the files in your project folder. **New File…** (from the panel's toolbar, or from a folder's right-click menu) opens the [creation dialog](#creating-a-file), which asks for a name and offers a **Format** picker beside it. Studio picks the starting content from the format you choose. The tree leaves out whatever your project ignores; see [Files the tree hides](#files-the-tree-hides). Drag files in from your desktop and they upload into whichever folder you drop them on; see [Media](/docs/studio/projects/media). Drag a file onto the other pane's strip, or right-click it and choose **Open to the Side**, to open it in a [second pane](/docs/studio/interface/tabs#two-panes) instead of the one you are in. On a [multilingual project](/docs/studio/interface/languages), a file under a language's directory carries that language's name beside it: _français_, not _French_.
-- **Source Control** (:kbd[⌘3]), labelled **Source** on the rail: the built-in git client. A badge counts changed files. See [Publish](/docs/studio/publish).
+- **Files**: the project file tree. Open, rename, convert and organize the files in your project folder. **New File…** (from the panel's toolbar, or from a folder's right-click menu) opens the [creation dialog](#creating-a-file), which asks for a name and offers a **Format** picker beside it. Studio picks the starting content from the format you choose. The tree leaves out whatever your project ignores; see [Files the tree hides](#files-the-tree-hides). Drag files in from your desktop and they upload into whichever folder you drop them on; see [Media](/docs/studio/projects/media). Drag a file onto the other pane's strip, or right-click it and choose **Open to the Side**, to open it in a [second pane](/docs/studio/interface/tabs#two-panes) instead of the one you are in. On a [multilingual project](/docs/studio/interface/languages), a file under a language's directory carries that language's name beside it: _français_, not _French_.
+- **Source Control**, labelled **Source** on the rail: the built-in git client. A badge counts changed files. See [Publish](/docs/studio/publish).
 
 **Document**
 
-- **Outline** (:kbd[⌘4]): the element structure of the open page or component, as a tree you can select and reorder. In **Project Styles** it lists the style targets instead.
-- **Page** (:kbd[⌘5]): the page's title, description and social preview.
-- **Data** (:kbd[⌘6]): the values, data sources and functions the document knows about, with what each one currently resolves to. See [Logic](/docs/studio/logic).
-- **Packages** (:kbd[⌘7]): the components and packages the open document pulls in.
+- **Outline**: the element structure of the open page or component, as a tree you can select and reorder. In **Project Styles** it lists the style targets instead.
+- **Page**: the page's title, description and social preview.
+- **Data**: the values, data sources and functions the document knows about, with what each one currently resolves to. See [Logic](/docs/studio/logic).
+- **Packages**: the components and packages the open document pulls in.
 
-Clicking the button of the panel that's already open collapses the Navigator; clicking any button brings it back. A document-level panel with no document open says what it needs.
+Clicking the button of the panel that's already open collapses the Navigator; clicking any button brings it back. A document-level panel with no document open says what it needs. Every panel is also in the palette as **Show** and its name, for example **Show Files**.
 
 **Insert**, the palette of elements and components you can add to a page, is not on the rail, because you reach for it at the moment you're placing something, and it is not a view you sit in. Run **Show Insert** from the palette (:kbd[⌘K]) to open it in the Navigator.
 
-At the foot of the rail are the two buttons that don't open a Navigator panel. **Library** opens the [Library](/docs/studio/projects/browse), every page, layout, component, entry and asset in your project, as a tab of its own; it shows as pressed while that tab is the one you're looking at. Below it, **Settings** opens a menu rather than a panel:
+### The Settings menu
+
+The **Settings** gear at the right of the Command Bar opens a menu rather than a panel:
 
 - **Preferences…** (:kbd[⌘,]) holds the settings that belong to Studio itself and follow you between projects: the theme, the AI provider, your accounts, the keyboard sheet. Its submenu jumps straight to one of those four. See **[Preferences](/docs/studio/interface/preferences)**.
 - **Open Project Settings** (:kbd[⌘⇧,]) holds this project's configuration, from the site name through contexts, data shapes and packages to the deploy target. Its submenu lists every section, so you can land on the one you want instead of arriving at Overview and hunting. See **[Project settings](/docs/studio/projects/settings)**.

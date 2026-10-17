@@ -10,7 +10,7 @@ code:
 
 # Dependencies and imports
 
-Packages is where you decide which building blocks a document, or the whole site, can use: components from your own project, and components from npm packages (the web's public library of ready-made building blocks). Open it by clicking **Packages** in the **Document** group of the Navigator rail, or with :kbd[⌘8].
+Packages is where you decide which building blocks a document, or the whole site, can use: components from your own project, and components from npm packages (the web's public library of ready-made building blocks). Open it by clicking **Packages** in the **Document** group of the Navigator rail, or by running **Show Packages** from :kbd[⌘K].
 
 ![The Packages panel showing a package section with per-component checkboxes](../../images/imports-panel.png)
 

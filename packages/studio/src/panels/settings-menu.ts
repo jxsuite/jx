@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The rail foot's ⚙ Settings menu — a RENDERING of the `settings/menu` placement.
+ * The top bar's ⚙ Settings menu — a RENDERING of the `settings/menu` placement.
  *
  * The gear used to run one command. That was the right shape for a pinned slot and the wrong shape
  * for the question people bring to it: Studio has two settings families at two containment levels —
@@ -26,10 +26,11 @@
  *
  * The menu is the `menu` surface (`surfaces/menu.json`, through `surfaces/menu.ts`). What is left
  * here is the projection — which records, which sections, what each row runs — and where the panel
- * hangs: off the gear's right edge, its bottom flush with the rail's, which is also the floor every
- * submenu keeps above the status bar. The section subscription lives for as long as the menu is up:
- * six of Project Settings' sections are contributed by extensions and register a tick after the
- * built-ins (`settings/extension-sections.ts`), so a menu opened in that window would otherwise be
+ * hangs: below the gear, right-aligned to it. The gear moved from the rail's foot to the top bar
+ * because the rail is drawn only in the Design workspace, and the settings are every workspace's.
+ * The section subscription lives for as long as the menu is up: six of Project Settings' sections
+ * are contributed by extensions and register a tick after the built-ins
+ * (`settings/extension-sections.ts`), so a menu opened in that window would otherwise be
  * permanently short. It deliberately does NOT call the sync itself: opening a menu must not do IO.
  *
  * @docs studio/interface/preferences
@@ -42,7 +43,6 @@ import { LEVELS } from "../commands/levels";
 import { onSettingsDocumentChanged, sortedSettingsSections } from "../settings/section-registry";
 import { PREFERENCES_SECTIONS } from "../settings/preferences-sections";
 import { openMenu } from "../surfaces/menu";
-import { REGION_ATTR } from "../ui/regions";
 import { rectOf } from "../utils/geometry";
 
 import type { CommandArgValues } from "../commands/command-args";
@@ -51,7 +51,7 @@ import type { Level } from "../commands/levels";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { KeyedLabel } from "../ui/surface";
 
-/** The placement the rail's gear renders. One definition site for the string. */
+/** The placement the top bar's gear renders. One definition site for the string. */
 export const SETTINGS_MENU_PLACEMENT = "settings/menu" as const;
 
 let _menu: MenuHandle | null = null;
@@ -161,26 +161,9 @@ function buildSettingsMenuRows(registry: CommandRegistry): MenuRowProjection[] {
   });
 }
 
-// ─── Geometry ─────────────────────────────────────────────────────────────────
-
-/**
- * The lowest edge any menu in this stack may reach.
- *
- * The trigger's REGION, not the viewport. The gear sits in the rail, whose bottom is the status
- * bar's top — so clamping to the viewport would let a tall submenu run down over the status bar
- * while the root menu sits neatly above it. One floor for both levels is what keeps the stack
- * looking like one surface, and it is expressed through the shell's own addressing grammar rather
- * than a selector into markup — so a menu button in another region would align to that one without
- * this function learning about it.
- */
-function menuFloor(anchor: HTMLElement): number {
-  const host = anchor.closest<HTMLElement>(`[${REGION_ATTR}]`);
-  return host ? rectOf(host).bottom : window.innerHeight;
-}
-
 // ─── Public surface ───────────────────────────────────────────────────────────
 
-/** Whether the gear menu is on screen. The rail reads it for `aria-expanded`. */
+/** Whether the gear menu is on screen. The top bar reads it for `aria-expanded`. */
 export function isSettingsMenuOpen(): boolean {
   return _menu !== null;
 }
@@ -197,7 +180,7 @@ export function dismissSettingsMenu(): void {
  * class stay lit BINDINGS rather than imperative attribute writes; a stale `aria-expanded` is a
  * defect this app has shipped before. Same seam as `showContextMenu(e, path, { rerender })`.
  *
- * @param anchor The control the menu hangs off — the rail's gear.
+ * @param anchor The control the menu hangs off — the top bar's gear.
  */
 export function openSettingsMenu(anchor: HTMLElement, opts: { rerender?: () => void } = {}): void {
   if (_menu) {
@@ -213,9 +196,7 @@ export function openSettingsMenu(anchor: HTMLElement, opts: { rerender?: () => v
     return;
   }
   _rerender = opts.rerender ?? null;
-  const floor = (): number => menuFloor(anchor);
   const handle = openMenu({
-    floor,
     label: "Settings",
     onClosed: (closedHandle) => {
       if (_menu !== closedHandle) {
@@ -230,13 +211,16 @@ export function openSettingsMenu(anchor: HTMLElement, opts: { rerender?: () => v
       rerender?.();
     },
     opener: anchor,
-    /* Hanging off the trigger's right edge, with its BOTTOM flush with the bottom of the region the
-       trigger lives in. Not "below the trigger": the gear is the last control in a full-height rail
-       whose foot abuts the status bar, so a menu dropped below it would be off-screen, and one
-       aligned to the button would float six pixels of `.rail-footer` padding clear of the status
-       bar. Floored at 4, because Project Settings has ~16 sections once extensions have contributed
-       and a menu taller than the area must keep its FIRST rows on screen. */
-    place: (box) => ({ x: rectOf(anchor).right + 4, y: Math.max(4, floor() - box.height) }),
+    /* Below the gear, its RIGHT edge flush with the gear's. The gear sits at the right-hand end of
+       the top bar, just before the dock toggles, so a menu hanging from its left edge would run off
+       the window; right-aligning it is a function of the menu's own width, which is why this is a
+       `place` callback run once the panel has been laid out. Floored at 4 on the left, so a menu
+       wider than the space to the gear's left keeps its leading edge on screen. */
+    place: (box) => {
+      const gear = rectOf(anchor);
+      return { x: Math.max(4, gear.right - box.width), y: gear.bottom + 4 };
+    },
+    placement: "block-end span-inline-start",
     region: "settings",
     rows,
   });

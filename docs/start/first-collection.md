@@ -18,7 +18,7 @@ In this tutorial you give your site a blog the structured way: a `posts` content
 
 A content type is your CMS schema: where a collection's entries live, and what fields each one carries.
 
-1. Open the **Settings** menu at the foot of the rail and pick **Open Project Settings › Content Types**. (:kbd[⌘K] and **Open Project Settings** gets you to the same place.)
+1. Open the **Settings** menu in the Command Bar and pick **Open Project Settings › Content Types**. (:kbd[⌘K] and **Open Project Settings** gets you to the same place.)
 2. Click **New Entry** at the bottom of the type list.
 3. Type `Posts` and click **Create**.
 
@@ -60,7 +60,7 @@ Then click into the page below and write a paragraph or two of body text.
 
 ![Jx Studio editing markdown content inline with a WYSIWYG editor](../images/mode-edit.png)
 
-You should see the frontmatter form filled in and your words on the page. The same fields also live in the **Page** panel, :kbd[⌘5]. See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
+You should see the frontmatter form filled in and your words on the page. The same fields also live in the **Page** panel. See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
 
 ## 5. Add two more posts
 
@@ -72,7 +72,7 @@ You should now have three entries under The Library's **Content** filter, two of
 
 Editing entries one file at a time doesn't scale, so Studio can open the whole collection as a spreadsheet:
 
-1. Click **Files** in the **Project** group of the Navigator rail, or press :kbd[⌘1].
+1. Click **Files** in the **Project** group of the Navigator rail.
 2. Right-click the `content/posts` folder and choose **Edit Collection in Grid**.
 
 ![The posts collection open in Grid mode, one row per entry with title, date, and description columns](../images/blog-grid.png)
@@ -114,14 +114,14 @@ You should see one plausible-looking post card on the canvas. Style it as much o
 
 The page needs the posts as data it can render:
 
-1. Press :kbd[⌘6] for the **Data** panel, then click the **+ Add…** picker.
+1. Click **Data** on the Navigator rail to open the **Data** panel, then click the **+ Add…** picker.
 2. Pick **ContentCollection**, listed with the sources your project's imports and extensions provide.
 3. Rename the new entry to `posts` (type the name and press :kbd[Enter]).
 4. Set **contentType** to `posts`, and add a **sort** rule on the `date` field with order `desc`, so the newest post lists first.
 
 ![The Data panel editing a ContentCollection entry with contentType posts and a date sort rule](../images/blog-collection-state.png)
 
-Open the **Data** panel (:kbd[⌘6]) and you should see `posts` worth `Array(3)`, which is your three entries, live. Filters, limits, and the other sources are covered in **[Data sources](/docs/studio/logic/data-sources)**.
+Open the **Data** panel and you should see `posts` worth `Array(3)`, which is your three entries, live. Filters, limits, and the other sources are covered in **[Data sources](/docs/studio/logic/data-sources)**.
 
 ## 11. Repeat the card for every post
 

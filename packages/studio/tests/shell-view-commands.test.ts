@@ -78,11 +78,12 @@ describe("the records themselves", () => {
       "view.toggleBottomDock",
       "view.setBottomTab",
       "view.setAssistant",
-      "view.setLayout",
-      "view.saveLayout",
-      "view.renameLayout",
-      "view.deleteLayout",
-      "view.resetLayout",
+      "view.setWorkspace",
+      "workspace.focus.design",
+      "workspace.focus.content",
+      "workspace.focus.media",
+      "workspace.focus.styles",
+      "workspace.focus.publish",
       "view.setTheme",
     ]);
     // ⌘J is the one toggle this module declares, and it is here rather than in
@@ -93,13 +94,20 @@ describe("the records themselves", () => {
 
   test("every record that takes arguments declares a schema for them", () => {
     // The palette prompt and the AI parameter list are both projections of `args`, so a verb with
-    // Parameters must declare them — and `view.resetLayout`, which has none, must NOT declare an
-    // Empty schema that would have the palette prompt for nothing.
+    // Parameters must declare them — and the five `workspace.focus.*` chord records, which take
+    // None, must NOT declare an empty schema that would have the palette prompt for nothing.
     const undeclared = registry
       .list()
       .filter((command) => !command.args)
       .map((command) => command.id);
-    expect(undeclared).toEqual(["view.toggleBottomDock", "view.resetLayout"]);
+    expect(undeclared).toEqual([
+      "view.toggleBottomDock",
+      "workspace.focus.design",
+      "workspace.focus.content",
+      "workspace.focus.media",
+      "workspace.focus.styles",
+      "workspace.focus.publish",
+    ]);
   });
 });
 

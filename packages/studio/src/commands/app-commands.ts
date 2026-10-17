@@ -111,9 +111,9 @@ function viaRegistration(): AnyCommand[] {
  */
 export function appCommandSet(): AnyCommand[] {
   return [
-    // The panel roster is the one dependency the checks must supply for real: the ⌘1–8 records are
-    // Generated from it, so an empty one would hide eight commands (and their chords) from the
-    // Level check, the chrome budget and the generated keyboard sheet alike.
+    // The panel roster is the one dependency the checks must supply for real: the `panel.focus.*`
+    // Records are generated from it, so an empty one would hide a command per panel from the level
+    // Check, the chrome budget and the generated command sheet alike.
     ...defaultCommands({ ...noopCommandDeps(), panelRoster: panelFocusRoster() }),
     ...viaRegistration(),
     ...derivationCommands(noopDerivationDeps()),

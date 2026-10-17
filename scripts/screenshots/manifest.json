@@ -74,12 +74,9 @@
       "steps": [
         {
           "args": {
-            "tab": "files"
+            "workspace": "content"
           },
-          "cmd": "view.setActivity"
-        },
-        {
-          "cmd": "library.open"
+          "cmd": "view.setWorkspace"
         }
       ],
       "expect": [
@@ -2302,7 +2299,10 @@
       },
       "steps": [
         {
-          "cmd": "library.open"
+          "args": {
+            "workspace": "content"
+          },
+          "cmd": "view.setWorkspace"
         },
         {
           "input": "dragOver",

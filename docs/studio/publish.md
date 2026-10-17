@@ -50,7 +50,7 @@ A step Studio can't answer says so with a **?** rather than guessing. "Nothing h
 The **status bar** carries the same chain in 24 pixels: its project field shows the **next blocking step** as its label, so the item both explains what's missing and fixes it when you click it. With the chain whole it reads **Deployed**, and clicking it opens your provider's dashboard.
 
 :::doc-tip
-The **Ship** layout tab arranges the window for exactly this: Source Control in the Navigator, the Bottom dock open on **Activity**, and the Inspector collapsed so the diff gets the full width. A layout never removes anything: the Inspector is one :kbd[⌘⌥B] away from coming back.
+The **Publish** workspace (:kbd[⌘5]) is where this work lives: its tab in the Command Bar counts your unpublished changes, and every comparison you open belongs to it.
 :::
 
 ## The Publish commands

@@ -18,7 +18,7 @@ code:
 
 # Source control
 
-Source Control is Studio's built-in git client, a Navigator panel that records your work as commits and keeps your copy of the project in sync with its repository. Open it by clicking **Source** in the **Project** group of the Navigator rail (its tooltip gives the full name, Source Control), or with :kbd[⌘3]; a badge on the button counts the files that have changed. It is a project-level panel: its header reads **SOURCE CONTROL · project**, and the badge stands whether or not a document is open.
+Source Control is Studio's built-in git client, a Navigator panel that records your work as commits and keeps your copy of the project in sync with its repository. Open it by clicking **Source** in the **Project** group of the Navigator rail (its tooltip gives the full name, Source Control), or by running **Show Source Control** from :kbd[⌘K]; a badge on the button counts the files that have changed. It is a project-level panel: its header reads **SOURCE CONTROL · project**, and the badge stands whether or not a document is open.
 
 ![The Source Control panel with sync status, branch selector, commit box, and changed files](../../images/git-panel.png)
 

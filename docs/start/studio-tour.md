@@ -21,7 +21,7 @@ Everything in Jx Studio happens in one window. This page is your map: what each 
 
 ## The Command Bar
 
-The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **layout tabs** (**Write · Design · Build · Ship**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Read more in **[The workspace](/docs/studio/interface)**.
+The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **workspace tabs** (**Design · Content · Media · Styles · Publish**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), the **Settings** gear, and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Read more in **[The workspace](/docs/studio/interface)**.
 
 ## The Command Center
 
@@ -29,7 +29,7 @@ The pill in the middle of the Command Bar reads `◈ project › document › se
 
 ## The Navigator
 
-The labelled rail on the far left, and the panel it opens beside it. The rail is in two groups. **Project**: **Files** (:kbd[⌘1]) and **Source** (the Source Control panel, :kbd[⌘3]). **Document**: **Outline** (:kbd[⌘4]), **Page** (:kbd[⌘5]), **Data** (:kbd[⌘6]) and **Packages** (:kbd[⌘7]). One panel shows at a time, under a header naming it and the level it works at, so you always know what you're looking at. At its foot, the **Settings** button opens a menu holding three entries, each with a submenu that jumps straight to a section: **Preferences…** for the app, **Open Project Settings** and **Open Project Styles** for this project. Each panel is described in **[The workspace](/docs/studio/interface)**.
+The labelled rail on the far left, and the panel it opens beside it. The rail belongs to the **Design** workspace and is in two groups. **Project**: **Files** and **Source** (the Source Control panel). **Document**: **Outline**, **Page**, **Data** and **Packages**. One panel shows at a time, under a header naming it and the level it works at, so you always know what you're looking at. The **Settings** gear in the Command Bar opens a menu holding three entries, each with a submenu that jumps straight to a section: **Preferences…** for the app, **Open Project Settings** and **Open Project Styles** for this project. Each panel is described in **[The workspace](/docs/studio/interface)**.
 
 ## The panes and the canvas
 

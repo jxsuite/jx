@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioCommandBar",
-  "$description": "The Command Bar: a rendering of the command registry. The adapter hands in `primary` (what declared commandbar/primary), `docks` (the three dock toggles), `layouts`, the Command Center's `segments`, the collaboration `presence` and `csd` (which window-control layout, if any). Nothing here decides what an action is called.",
+  "$description": "The Command Bar: a rendering of the command registry. The adapter hands in `primary` (what declared commandbar/primary), `docks` (the three dock toggles), `workspaces` (the five workspaces, with `workspace` selected), `settingsVisible`/`settingsOpen` for the gear that renders the settings/menu placement, the Command Center's `segments`, the collaboration `presence` and `csd` (which window-control layout, if any). Nothing here decides what an action is called.",
   "tagName": "div",
   "attributes": {
     "part": "bar"
@@ -21,7 +21,7 @@
       "flex": "1",
       "flexShrink": "999"
     },
-    "& [part=\"csd-lead\"], & [part=\"csd-trail\"], & [part=\"menu-slot\"], & [part=\"layouts-slot\"], & [part=\"presence-slot\"]": {
+    "& [part=\"csd-lead\"], & [part=\"csd-trail\"], & [part=\"menu-slot\"], & [part=\"workspaces-slot\"], & [part=\"presence-slot\"], & [part=\"settings-slot\"]": {
       "display": "contents"
     },
     "& [part=\"window-controls\"]": {
@@ -69,34 +69,38 @@
       "color": "rgba(0, 0, 0, 0.5)",
       "--jx-icon-size": "8px"
     },
-    "& [part=\"layouts\"]": {
-      "display": "flex",
-      "alignItems": "center",
+    "& [part=\"workspaces\"]": {
+      "$description": "The kit's tablist, retuned for a 36px band: no rule under the strip (the band's own border is the floor), and the tabs sit on the band's centre line rather than on a strip edge.",
+      "flexShrink": "0",
+      "borderBottom": "none",
       "gap": "2px",
-      "flexShrink": "0"
+      "fontSize": "var(--jx-text-sm)"
     },
-    "& [part=\"layout\"]": {
+    "& [part=\"workspace\"]": {
       "padding": "2px var(--jx-space-3)",
-      "border": "none",
       "borderRadius": "var(--jx-radius-sm)",
-      "background": "none",
       "color": "var(--jx-fg-dim)",
-      "font": "inherit",
-      "fontSize": "var(--jx-text-sm)",
-      "cursor": "pointer",
       "whiteSpace": "nowrap",
+      "--jx-icon-size": "14px",
       ":hover": {
         "background": "var(--jx-hover-bg)",
         "color": "var(--jx-fg)"
-      },
-      ":focus-visible": {
-        "outline": "var(--jx-focus-ring)",
-        "outlineOffset": "-2px"
       }
     },
-    "& [part=\"layout\"][data-active]": {
+    "& [part=\"workspace\"][aria-selected=\"true\"]": {
       "color": "var(--jx-fg)",
       "background": "var(--jx-hover-bg)"
+    },
+    "& [part=\"workspace-badge\"]": {
+      "$description": "The count of unpublished changes on the Publish tab. Decorative: the tab's tooltip says what it counts, and the badge is not drawn at zero.",
+      "minWidth": "16px",
+      "padding": "0 4px",
+      "borderRadius": "8px",
+      "background": "var(--jx-accent)",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "16px",
+      "textAlign": "center"
     },
     "& [part=\"center\"]": {
       "display": "flex",
@@ -229,6 +233,9 @@
       },
       "& [part=\"primary\"] jx-button > [part=\"control\"]": {
         "gap": "0"
+      },
+      "& [part=\"workspace\"] > [part=\"label\"]": {
+        "display": "none"
       }
     }
   },
@@ -407,49 +414,50 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "layouts-slot",
+        "part": "workspaces-slot",
         "role": "none"
       },
       "$switch": {
-        "$ref": "#/state/layoutsVisible"
+        "$ref": "#/state/workspacesVisible"
       },
       "cases": {
         "true": {
-          "tagName": "div",
+          "tagName": "jx-tabs",
           "attributes": {
-            "part": "layouts",
-            "role": "tablist",
-            "aria-label": "Layouts"
+            "part": "workspaces",
+            "selected": "${state.workspace}",
+            "class": "electrobun-webkit-app-region-no-drag"
+          },
+          "$props": {
+            "label": "Workspaces",
+            "activation": "manual"
           },
           "children": [
             {
               "$prototype": "Array",
               "items": {
-                "$ref": "#/state/layouts"
+                "$ref": "#/state/workspaces"
               },
               "key": {
                 "$ref": "$map/item/id"
               },
               "map": {
-                "tagName": "button",
+                "tagName": "jx-tab",
                 "attributes": {
-                  "part": "layout",
-                  "type": "button",
-                  "role": "tab",
-                  "aria-selected": "${$map.item.active ? 'true' : 'false'}",
-                  "data-layout": "${$map.item.id}",
-                  "data-active": "${$map.item.active ? '' : null}",
-                  "title": "${$map.item.title}",
-                  "class": "electrobun-webkit-app-region-no-drag"
+                  "part": "workspace",
+                  "value": "${$map.item.id}",
+                  "label": "${$map.item.title}",
+                  "title": "${$map.item.tooltip}",
+                  "aria-description": "${$map.item.description || null}",
+                  "data-workspace": "${$map.item.id}"
                 },
-                "textContent": "${$map.item.name}",
                 "onclick": {
                   "$prototype": "Function",
                   "body": [
                     {
                       "operator": "call",
                       "target": {
-                        "$ref": "#/state/setLayout"
+                        "$ref": "#/state/setWorkspace"
                       },
                       "value": [
                         {
@@ -459,45 +467,40 @@
                     }
                   ]
                 },
-                "ondblclick": {
-                  "$prototype": "Function",
-                  "body": [
-                    {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/renameLayout"
-                      },
-                      "value": [
-                        {
-                          "$ref": "$map/item/id"
-                        }
-                      ]
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "tagName": "jx-action-button",
-              "$props": {
-                "label": "Save layout",
-                "hint": "Save the current arrangement as a layout",
-                "icon": "plus",
-                "size": "sm"
-              },
-              "attributes": {
-                "part": "layout-add",
-                "class": "electrobun-webkit-app-region-no-drag"
-              },
-              "onclick": {
-                "$prototype": "Function",
-                "body": [
+                "children": [
                   {
-                    "operator": "call",
-                    "target": {
-                      "$ref": "#/state/saveLayout"
+                    "tagName": "jx-icon",
+                    "attributes": {
+                      "slot": "icon"
                     },
-                    "value": []
+                    "$props": {
+                      "name": {
+                        "$ref": "$map/item/icon"
+                      }
+                    }
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "slot": "status",
+                      "part": "workspace-badge-slot"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/hasBadge"
+                    },
+                    "cases": {
+                      "true": {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "workspace-badge",
+                          "aria-hidden": "true"
+                        },
+                        "textContent": "${$map.item.badge}"
+                      }
+                    }
                   }
                 ]
               }
@@ -827,6 +830,79 @@
               }
             }
           ]
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "settings-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/settingsVisible"
+      },
+      "cases": {
+        "true": {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Settings",
+            "hint": "Settings",
+            "icon": "gear",
+            "size": "sm",
+            "haspopup": "menu",
+            "expanded": {
+              "$ref": "#/state/settingsOpen"
+            }
+          },
+          "attributes": {
+            "data-menu": "settings",
+            "class": "electrobun-webkit-app-region-no-drag"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/openSettings"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/currentTarget"
+                  }
+                ]
+              }
+            ]
+          },
+          "onkeydown": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "$switch": {
+                  "$ref": "event#/key"
+                },
+                "cases": {
+                  "ArrowDown": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/openSettings"
+                      },
+                      "value": [
+                        {
+                          "$ref": "event#/currentTarget"
+                        }
+                      ]
+                    },
+                    {
+                      "preventDefault": true
+                    }
+                  ]
+                }
+              }
+            ]
+          }
         }
       }
     },

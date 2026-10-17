@@ -1442,52 +1442,40 @@ describe("direct keys", () => {
     setInspectorTab("properties");
   });
 
-  test("⌘1 reveals and focuses Files; ⌘1 again collapses and returns to the pane", () => {
+  test("Show Files reveals and focuses Files; running it again collapses and returns to the pane", async () => {
     shell.leftTab = "layers";
-    pressDoc("1", { ctrlKey: true });
+    await registry.run("panel.focus.files");
     expect(shell.leftTab).toBe("files");
     expect(shell.docks.left.collapsed).toBe(false);
     expect(shell.focusRegion).toBe("navigator");
 
-    // Toggle-FOCUS, not toggle-visible: the second press only closes because focus is already here.
-    pressDoc("1", { ctrlKey: true });
+    // Toggle-FOCUS, not toggle-visible: the second run only closes because focus is already here.
+    await registry.run("panel.focus.files");
     expect(shell.docks.left.collapsed).toBe(true);
     expect(shell.focusRegion).toBe("pane");
   });
 
-  test("⌘1 from another panel switches rather than closing", () => {
+  test("Show Files from another panel switches rather than closing", async () => {
     shell.leftTab = "layers";
     shell.focusRegion = "navigator";
-    pressDoc("1", { ctrlKey: true });
+    await registry.run("panel.focus.files");
     expect(shell.leftTab).toBe("files");
     expect(shell.docks.left.collapsed).toBe(false);
   });
 
-  test("⌘4 is the DOCUMENT group's first panel, and no chord reaches the Bottom dock", () => {
-    /* Both of these used to be Problems. It held the fourth slot with its body in the Bottom dock,
-       so `focusPanel` carried a branch that opened a different dock than every other chord —
-       ⌘1–⌘3 and ⌘5–⌘8 moved the Navigator and ⌘4 moved the bottom. The rail is the Navigator's
-       again; the Bottom dock is reached by `view.setBottomTab`, which names the tab it means. */
+  test("no digit chord reaches a panel any more, and none reaches the Bottom dock", () => {
+    /* The digit row switches workspaces now (⌘1–5, `view.setWorkspace`); the panel records keep
+       their palette rows and lose their chords. Pressing every digit must leave the Navigator and
+       the Bottom dock exactly as they were. */
     shell.leftTab = "files";
     shell.bottomTab = "activity";
     setDockCollapsed("bottom", true);
-    pressDoc("4", { ctrlKey: true });
-    expect(shell.leftTab).toBe("layers");
-    // The Bottom dock is untouched by every rail chord, not merely by this one.
-    for (const key of ["1", "2", "3", "4", "5", "6", "7", "8"]) {
+    for (const key of ["6", "7", "8"]) {
       pressDoc(key, { ctrlKey: true });
     }
+    expect(shell.leftTab).toBe("files");
     expect(shell.docks.bottom.collapsed).toBe(true);
     expect(shell.bottomTab).toBe("activity");
-  });
-
-  test("⌘4 from elsewhere re-reveals rather than closing", () => {
-    setDockCollapsed("bottom", false);
-    shell.bottomTab = "problems";
-    shell.focusRegion = "navigator";
-    pressDoc("4", { ctrlKey: true });
-    expect(shell.docks.bottom.collapsed).toBe(false);
-    expect(shell.bottomTab).toBe("problems");
   });
 
   test("⌘⇧2 opens the Inspector dock, ⌘⇧4 selects its Assistant tab", () => {

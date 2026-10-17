@@ -58,6 +58,7 @@ import { isEditing } from "./editor/inline-edit";
 import { applyTransform, registerCanvasViewCommands } from "./canvas/canvas-utils";
 import { diffCommands, setDiffChromeRepaint } from "./canvas/diff-toolbar";
 import type { CanvasSurface } from "./canvas/canvas-surface";
+import type { InspectorTabId } from "./shell";
 import {
   initCanvasRender,
   registerSelectionSetCommand,
@@ -126,6 +127,7 @@ import {
   openLastSessionOrHome,
   reloadCleanTab,
   reloadTabsIfChanged,
+  setSessionWorkspaceShow,
 } from "./files/files";
 import { resetIgnoreCache } from "./files/gitignore";
 import { resetAssetVersions } from "./files/asset-versions";
@@ -249,9 +251,17 @@ import { setOpenDialog } from "./canvas/dialog-state";
 import { registerA11yCommands } from "./services/a11y-report";
 import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
-import { registerGridCommands } from "./grid/grid-open";
+import { openLibraryTab, registerGridCommands } from "./grid/grid-open";
 import { registerExtensionCommands } from "./settings/extension-commands";
-import { registerSettingsCommands } from "./settings/settings-document";
+import { registerSettingsCommands, showSettingsDocument } from "./settings/settings-document";
+import { PROJECT_STYLES_VIEW } from "./style/project-styles";
+import {
+  installWorkspaceFollow,
+  revealInPane,
+  switchWorkspace,
+} from "./workspace/workspace-switch";
+import type { WorkspaceId } from "./workspace/workspace-ids";
+import { openWorkspaceHome } from "./workspace/workspace-home";
 import { registerPreferencesCommands } from "./settings/preferences-dialog";
 import { registerAboutCommands } from "./about/about-modal";
 import { registerCollabCommands } from "./collab/collab-commands";
@@ -1459,7 +1469,16 @@ registerStudioCommands(
 );
 
 // Tab navigation (⌃Tab MRU cycling, ⌘⇧T reopen-closed) is defined beside the tab model it drives.
-registerTabCommands(commandRegistry, { openFile: openFileInTab, openFileInPane });
+/* `pane.compareWith` opens into the other pane without moving the keyboard; a compared document of
+   another workspace would land hidden by that pane's strip, so it is revealed, which enters its
+   workspace (`workspace/workspace-switch.ts`). */
+registerTabCommands(commandRegistry, {
+  openFile: openFileInTab,
+  openFileInPane: async (paneId, path) => {
+    await openFileInPane(paneId, path);
+    revealInPane(paneId, path);
+  },
+});
 
 /* The derivation's own two verbs (§18.4), beside the `PaneDerivation` they read and write rather
    than in `paneCommands()`. `tests/app-commands-composition.test.ts` is the guard that this line
@@ -1475,6 +1494,29 @@ commandRegistry.registerAll(derivationCommands(derivationDeps));
  * available or what it does — that would be the second definition site the design exists to prevent
  * (§13).
  */
+/* The workspace's two halves (`workspace/workspace-switch.ts`): the follow, which enters a tab's
+   workspace whenever a tab is activated, and the switch `view.setWorkspace` runs, which puts a
+   workspace's tabs (or its home) on screen. The homes that belong to other modules are handed in,
+   so the switch imports neither the Library nor the settings document. */
+const workspaceDeps = {
+  openHome: (id: "media" | "publish") => {
+    openWorkspaceHome(id);
+  },
+  openLibrary: () => {
+    openLibraryTab();
+  },
+  openStyles: () => {
+    showSettingsDocument(PROJECT_STYLES_VIEW);
+  },
+  setInspectorTab: (tab: InspectorTabId) => rightPanelMod.setInspectorTab(tab),
+};
+installWorkspaceFollow(workspaceDeps);
+/** Show a workspace with the bootstrap's homes: what `view.setWorkspace` and a reopen both run. */
+function showWorkspaceWithHomes(id: WorkspaceId): void {
+  switchWorkspace(id, workspaceDeps);
+}
+// A project reopens in the workspace it was left in, once its documents are open (§22.1).
+setSessionWorkspaceShow(showWorkspaceWithHomes);
 registerShellViewCommands(commandRegistry, {
   // The registry's own answer, so a gated-off panel cannot be persisted as a showing tab.
   panelAvailable: (id) => {
@@ -1483,6 +1525,7 @@ registerShellViewCommands(commandRegistry, {
   },
   inspectorTab: () => rightPanelMod.inspectorTab(),
   setInspectorTab: (tab) => rightPanelMod.setInspectorTab(tab),
+  showWorkspace: showWorkspaceWithHomes,
 });
 registerCanvasViewCommands(commandRegistry, {
   getCanvasMode,

@@ -280,6 +280,7 @@ describe("probe.state", () => {
       "pane",
       "project",
       "selection",
+      "workspace",
     ]);
   });
 });

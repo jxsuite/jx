@@ -133,6 +133,7 @@ export function createLiveContext(sources: LiveContextSources): () => CommandCon
     ctx.git.ahead = shell.git.status?.ahead ?? 0;
     ctx.git.behind = shell.git.status?.behind ?? 0;
     ctx.git.dirtyCount = shell.git.status?.files.length ?? 0;
+    ctx.workspace.id = shell.workspace;
 
     ctx.document.open = tab !== null;
     // Typing still in a source buffer is unsaved work too, though the document has not seen it.

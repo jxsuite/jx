@@ -146,6 +146,12 @@ async function rereadOpenComparison(): Promise<void> {
  */
 export async function noteFileSaved(path: string | null): Promise<void> {
   shell.git.rev += 1;
+  /* The count of unpublished changes is drawn on the Publish workspace tab in every workspace, and
+     the panel's poll only runs while Source Control is showing, so a save re-reads the status
+     itself. Not awaited: the comparison below does not depend on it. */
+  if (!shell.git.loading) {
+    void refreshGitStatus();
+  }
   const state = shell.git.diffState;
   if (!path || state?.filePath !== path) {
     return;

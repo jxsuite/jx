@@ -208,6 +208,7 @@ export function panelContext(): CommandContext {
   ctx.project.isMultilingual =
     (resolveI18n(projectState?.projectConfig ?? {}).i18n?.locales.length ?? 0) > 1;
   ctx.git.dirtyCount = shell.git.status?.files.length ?? 0;
+  ctx.workspace.id = shell.workspace;
   ctx.document.open = activeTab.value !== null;
   return ctx;
 }
@@ -334,10 +335,10 @@ export function railGroups(ctx: CommandContext): RailGroup[] {
 /**
  * The rail's panels flattened into rail order — PROJECT group, then DOCUMENT group.
  *
- * This is the order ⌘1–8 follow, and it is derived from the same two rows the rail draws rather
- * than from registration order, so a panel registered by its dock's module (Problems, from
- * `panels/bottom-dock.ts`) still lands in the slot its LEVEL gives it. `when` is not applied: a
- * chord roster that changed length with context would move every chord after the hidden panel.
+ * This is the order the `panel.focus.*` records follow, and it is derived from the same two rows
+ * the rail draws rather than from registration order, so a panel registered by its dock's module
+ * still lands in the slot its LEVEL gives it. `when` is not applied: a roster that changed length
+ * with context would reorder the palette under the reader.
  */
 export function railPanelSet(): PanelRecord[] {
   const railable = railablePanels();

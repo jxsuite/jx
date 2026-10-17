@@ -7,8 +7,8 @@
  * Nothing here decides what a panel is called, what level it is, or what it draws — that would be
  * the second definition site the registry exists to prevent.
  *
- * **Registration order is rail order** within a level group: PROJECT (Files ⌘1 · Search ⌘2 · Source
- * Control ⌘3) above the divider, DOCUMENT (Outline ⌘4 · Page ⌘5 · Data ⌘6 · Packages ⌘7) below it.
+ * **Registration order is rail order** within a level group: PROJECT (Files · Search · Source
+ * Control) above the divider, DOCUMENT (Outline · Page · Data · Packages) below it.
  *
  * **Every rail button opens the Navigator.** Problems used to hold the fourth PROJECT slot while
  * its body was drawn in the Bottom dock, and paying for that took a per-dock branch in three

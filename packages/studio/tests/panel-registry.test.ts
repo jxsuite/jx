@@ -582,6 +582,14 @@ describe("panelContext", () => {
     expect(panelContext().git.dirtyCount).toBe(0);
   });
 
+  test("computes the workspace on screen, which a panel may gate on", () => {
+    const before = shell.workspace;
+    shell.workspace = "styles";
+    expect(panelContext().workspace.id).toBe("styles");
+    shell.workspace = before;
+    expect(panelContext().workspace.id).toBe(before);
+  });
+
   /*
    * A key a panel gates on has to be computed here, and this one was not: `isMultilingual` was
    * declared, assigned in `live-context.ts`, and left at its `emptyContext()` default in this

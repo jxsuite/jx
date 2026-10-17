@@ -1211,6 +1211,23 @@ describe("keeping an open comparison fresh", () => {
     expect(git.diffState.currentContent).toBe("OLD");
   });
 
+  /* The Publish workspace tab counts the working tree's changes in every workspace, and the poll
+     only runs while Source Control is showing, so a save is what keeps that count current. */
+  test("a save re-reads the git status, unless a read is already in flight", async () => {
+    seedRepoUi();
+    git.diffState = null;
+    calls.length = 0;
+    await noteFileSaved("src/page.json");
+    await flush();
+    expect(callNames()).toContain("gitStatus");
+    calls.length = 0;
+    git.loading = true;
+    await noteFileSaved("src/page.json");
+    await flush();
+    expect(callNames()).not.toContain("gitStatus");
+    git.loading = false;
+  });
+
   test("a save with no comparison open is harmless", async () => {
     seedRepoUi();
     git.diffState = null;

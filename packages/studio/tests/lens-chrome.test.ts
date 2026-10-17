@@ -764,6 +764,37 @@ describe("the tab strip in a derived pane", () => {
     expect(stripHost.querySelector('[part="overflow"]:not([hidden])')).not.toBeNull();
   });
 
+  /* A RESOLVED companion owns a real tab, so the branch above never fired for it; after a switch to
+     a workspace that tab is not in, the workspace filter left nothing to draw, and the pane showed
+     its document under a blank row with no ✕. */
+  test("a resolved COMPANION whose tab is another workspace's still draws its chip", async () => {
+    lensGrid();
+    setPaneDerivation(SECONDARY_PANE, {
+      kind: "companion",
+      preset: "layout",
+      reason: "",
+      resolved: "scratch.json",
+      sourcePaneId: PRIMARY_PANE,
+      status: "ready",
+    });
+    const side = paneById(SECONDARY_PANE)!;
+    if (!side.tabOrder.includes("scratch.json")) {
+      moveTabToPane("scratch.json", SECONDARY_PANE);
+    }
+    side.activeTabId = "scratch.json";
+    focusPane(SECONDARY_PANE);
+    tabStrip.mount(stripHost);
+    await flush();
+    expect(stripHost.querySelectorAll('[part="tab"]')).toHaveLength(1);
+
+    shell.workspace = "media";
+    await flush();
+    expect(stripHost.querySelectorAll('[part="tab"]')).toHaveLength(0);
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe("Layout");
+    expect(stripHost.querySelector('[part="overflow"]:not([hidden])')).not.toBeNull();
+    shell.workspace = "design";
+  });
+
   test("draws ONE derivation chip and no tab chips", async () => {
     lensGrid();
     /* `hostFor` falls back to the primary's host for a pane with no stamped region, and `render`

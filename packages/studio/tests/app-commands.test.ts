@@ -119,6 +119,9 @@ describe("the set", () => {
       // And the plural is how the ids carry it.
       "styles",
       "view",
+      // `workspace.focus.<id>` — ⌘1–5, one record per workspace, each running `view.setWorkspace`'s
+      // Own path. A chord carries no argument, which is why the setter cannot hold them itself.
+      "workspace",
     ]);
   });
 

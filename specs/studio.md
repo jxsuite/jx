@@ -31,14 +31,16 @@ At the component level, Studio is a visual builder for individual Jx files. At t
 
 ### 3.1 Layout
 
-Four-column layout:
+> **Status: Partial.** The four columns, the Assistant inside the Inspector, the one dock record and the per-workspace frame ship (`packages/studio/src/surfaces/shell.json`, `src/shell.ts`'s `WORKSPACE_PRESETS` and `applyDockLayout`): the rail is drawn in Design alone and each workspace opens or collapses the Navigator and Inspector on entry (§22.3). The columns' contents do not yet match the table: the Navigator offers Files, Source Control and Page where §5.1 puts the Site panel, and the Inspector's tabs are Content · Style · Logic · Assistant rather than Page · Element · Assistant (§6).
 
-| Column    | Content                                                 |
-| --------- | ------------------------------------------------------- |
-| Rail      | Navigator rail — panel buttons, grouped by level        |
-| Navigator | One panel at a time (Files, Outline, Source Control, …) |
-| Center    | Canvas (live preview) + Command Bar                     |
-| Inspector | Four tabs: Content · Style · Logic · Assistant          |
+Four-column layout. Which columns a frame draws is the active workspace's choice (§22.3); the columns themselves never change:
+
+| Column    | Content                                                                                                         |
+| --------- | --------------------------------------------------------------------------------------------------------------- |
+| Rail      | Navigator rail — panel buttons, grouped by level; drawn in the Design workspace only (§5.1)                     |
+| Navigator | One panel at a time: Site, Outline or Data in Design; Collections in Content; the Project Styles tree in Styles |
+| Center    | The Command Bar and its workspace switcher (§22.2) over the pane grid: a canvas, or the workspace's own surface |
+| Inspector | Three tabs: Page · Element · Assistant (§6)                                                                     |
 
 **There is no assistant column.** The AI chat is the Inspector dock's fourth tab, so it shares that dock's cell and its width: showing it costs zero additional pixels, and the two docks are the only things that carry a width, a collapse flag and a resize handle. Two states that a separate column made expressible — "assistant open over a collapsed inspector", and "assistant open at 0px" — are unreachable by construction rather than by a rule.
 
@@ -318,36 +320,39 @@ Formatting applies to a range, so the buttons are disabled for a collapsed caret
 
 ### 5.1 Activity Bar
 
-> **Status: Partial.** The level-grouped rail, the rail-less Insert and Languages panels, the Library button and the bottom-anchored Settings menu ship (`packages/studio/src/panels/navigator-panels.ts`, `panels/settings-menu.ts`). Search does not: its record is registered with `when: NOT_YET_BUILT` and a placeholder render, so there is no Search surface to reach. The Icon column is stale: the records use `stack`, `file`, `database` and `cube` for Outline, Page, Data and Packages.
+> **Status: Partial.** The level-grouped rail, the `railLabel` rule, the rail-less Insert and Languages panels and the ⚙ Settings menu's rows ship (`packages/studio/src/panels/navigator-panels.ts`, `panels/settings-menu.ts`, `surfaces/rail.ts`). The rail is drawn in the Design workspace alone (§22.3) and has no foot: the Library button is gone and the ⚙ Settings menu is in the Command Bar (§22.2, `surfaces/commandbar.json`). The rest of the rail this section describes does not ship yet: its Project group holds Files and Source Control and its Document group Page and Packages where the table holds the Site panel (§5.7), Outline and Data, and there is no **Show developer panels** preference. Search does not ship either: its record is registered with `when: NOT_YET_BUILT` and a placeholder render, so there is no Search surface to reach.
 
-Vertical tab strip for switching panel views, drawn from the panel registry in two labelled groups. A panel's `level` decides its group, so the rail says what a panel writes to before you open it: **Project** panels change the project, **Document** panels change the open document.
+Vertical tab strip for switching panel views, drawn from the panel registry in two labelled groups. **The rail belongs to the Design workspace** (§22.3): Content, Media, Styles and Publish each name their Navigator panel, or none, in their frame, so a rail there would offer panels the workspace does not use. A panel's `level` decides its group, so the rail says what a panel writes to before you open it: **Project** panels change the project, **Document** panels change the open document.
 
-| Group    | Tab            | Id         | Icon            | Panel                                      |
-| -------- | -------------- | ---------- | --------------- | ------------------------------------------ |
-| Project  | Files          | `files`    | `folder`        | Project file tree                          |
-| Project  | Source Control | `git`      | `git-branch`    | Git source control                         |
-| Document | Outline        | `layers`   | `layers`        | Document structure tree                    |
-| Document | Page           | `page`     | `view-all-tags` | Page meta, head entries and route params   |
-| Document | Data           | `data`     | `data`          | State definitions AND what they resolve to |
-| Document | Packages       | `packages` | `box`           | Imported components and packages           |
+| Group    | Tab     | Id       | Panel                                                                    |
+| -------- | ------- | -------- | ------------------------------------------------------------------------ |
+| Project  | Site    | `site`   | The project's pages by route, its templates, components and media (§5.7) |
+| Document | Outline | `layers` | Document structure tree                                                  |
+| Document | Data    | `data`   | State definitions AND what they resolve to                               |
 
-A record's `title` is the button's accessible name, its tooltip and the panel header. The text under the glyph is the title unless the record declares a shorter `railLabel`, which must be a leading part of the title (WCAG 2.5.3, Label in Name) so the words on screen are inside the name a reader hears; `registerPanel()` refuses one that is blank or is not. Source Control declares **Source**: the full title is 71px against the stacked label's 48px box at `--jx-text-xs`, and the kit ellipsizes a stacked label rather than wrapping it, so the rail read "Source …". The header, the `Show Source Control` command and the chrome-budget rows keep the title.
+The Site panel is the default Navigator panel, the one a fresh project and an unknown stored id open on. The icons are the records' own kit-manifest names, and this table does not copy them: a copied icon name is a cell that goes stale the first time a record changes, which is what happened to the four this table used to carry.
 
-Three more panels are registered `rail: false` — **Search** (`search`, project level), **Insert** (`insert`, document level, the HTML element palette and the project's component library) and **Languages** (`i18n`, project level, §20.4). They have records, regions and `panel.focus.<id>` commands like any other panel; what they give up is a rail button, because the group is a glance and a glance does not scale.
+A record's `title` is the button's accessible name, its tooltip and the panel header. The text under the glyph is the title unless the record declares a shorter `railLabel`, which must be a leading part of the title (WCAG 2.5.3, Label in Name) so the words on screen are inside the name a reader hears; `registerPanel()` refuses one that is blank or is not. Source Control declared **Source** while it had a rail button: the full title is 71px against the stacked label's 48px box at `--jx-text-xs`, and the kit ellipsizes a stacked label rather than wrapping it, so the rail read "Source …". The rule outlived the button.
 
-**The rail's foot holds the two controls that open no Navigator panel: Library, then ⚙ Settings.** Every button above them toggles a Navigator panel; these two do not, so they sit together at the foot rather than among the panels. **Library** runs `library.open` (§9.1.2) and is shown while that command is, which is while a project is open. The Library is a canvas tab rather than a panel, so the button is pressed while that tab is the focused one and is not a toggle: pressing it again does not close the tab.
+**Developer panels are off the rail by default.** Files (`files`) and Packages (`packages`) are registered `rail: false` unless the Preferences switch **Show developer panels** (default off, §15) is on, which puts Files back in the Project group and Packages in the Document group. A site author works in pages, templates, components and media, and the Site panel lists those by what they are rather than by where they are stored; an author who wants the tree turns it on once. With the switch off both stay reachable by `view.setActivity` and from the palette, so the switch hides a button and not a capability.
 
-**⚙ Settings** opens a **menu** rather than running a command. Its rows are `forPlacement("settings/menu")` — today `app.preferences` (⌘,), `settings.open` (⌘⇧,) and `styles.open` — ordered by level with a divider at the boundary, and each row with a `section` argument offers that argument's values as a submenu, so a section of Preferences or of Project Settings is one click deep.
+Three more panels are registered `rail: false` whatever the switch says — **Search** (`search`, project level), **Insert** (`insert`, document level, the HTML element palette and the project's component library) and **Languages** (`i18n`, project level, §20.4). They have records, regions and `panel.focus.<id>` commands like any other panel; what they give up is a rail button, because the group is a glance and a glance does not scale. Two former Navigator panels are not panels of this dock at all: **Page** is the Inspector's first tab (§6), and **Source Control** is hosted by the Publish workspace (§5.5, §22.8). `RENAMED_PANEL_IDS` maps a stored `page` to `site`, so a remembered Page panel reopens the Navigator on the Site panel rather than on nothing.
 
-It is a menu because the two settings families sit at two levels. A **pinned slot** has room for one thing and must lie about the rest by omission: for a release the foot ran `app.preferences` alone, and project configuration was reachable only from the ⬢ menu and the palette, so the control most people press when looking for settings could not offer the project's. A menu prints each row's own name, chord and gate, so it can hold both and say which is which — the same reason `commandbar/overflow` admits three levels (`studio-ui-guidelines.md` §12.1). The rail's **panel** groups above it stay single-level, because a panel has no row to explain itself with.
+**The `panel.focus.<id>` commands carry no chord.** `⌘1`–`⌘5` select the five workspaces (§22.1), and a rail drawn in one workspace of five cannot own the window's digit chords. Every panel stays one palette row away.
 
-With no project open the two project rows render **disabled, carrying their `requires` sentence** — `studio-ui-guidelines.md` §12.3's rule, and the same thing the palette does. They gate on `enablement` rather than `when` for exactly this reason: hiding them left the gear holding one row on the welcome screen and saying nothing about the two surfaces most people open it looking for, so "why can't I" had no answer anywhere. The gate itself is unchanged; `registry.run` and the assistant's tool still refuse.
+**The rail has no foot.** It held two controls that open no Navigator panel, Library and ⚙ Settings, and neither stays. The Library is the Content workspace now (§9.1.2, §22.5), so its button and `⌘⇧E` went with it. The ⚙ Settings menu moved into the Command Bar (§22.2), because a rail drawn in one workspace cannot be where the other four find their settings.
+
+**⚙ Settings** opens a **menu** rather than running a command. Its rows are `forPlacement("settings/menu")` — `app.preferences` (⌘,) and `settings.open` (⌘⇧,) — ordered by level with a divider at the boundary, and each row with a `section` argument offers that argument's values as a submenu, so a section of Preferences or of Project Settings is one click deep. Project Styles is not a row: it is a workspace (§22.7), and a menu row beside the switcher that does the same thing would be a second door to one place.
+
+It is a menu because the two settings families sit at two levels. A **pinned slot** has room for one thing and must lie about the rest by omission: for a release the foot ran `app.preferences` alone, and project configuration was reachable only from the ⬢ menu and the palette, so the control most people press when looking for settings could not offer the project's. A menu prints each row's own name, chord and gate, so it can hold both and say which is which — the same reason `commandbar/overflow` admits three levels (`studio-ui-guidelines.md` §12.1). The rail's **panel** groups stay single-level, because a panel has no row to explain itself with.
+
+With no project open the project row renders **disabled, carrying its `requires` sentence** — `studio-ui-guidelines.md` §12.3's rule, and the same thing the palette does. It gates on `enablement` rather than `when` for exactly this reason: hiding it left the gear holding one row on the welcome screen and saying nothing about the surface most people open it looking for, so "why can't I" had no answer anywhere. The gate itself is unchanged; `registry.run` and the assistant's tool still refuse.
 
 ⌘, is unchanged and still opens Preferences from anywhere; the menu's first row prints that chord.
 
-**The menu is anchored by its BOTTOM**, flush with the bottom of the region its trigger sits in — the rail, whose foot is the status bar's top — and grows upward. A control at the foot of a full-height rail has nothing below it, so "drop the menu under the button" is not available; and the region rather than the button is what makes it flush, because the rail's foot carries padding the status bar does not. Both levels of the stack share that floor, so a long submenu scrolls inside itself instead of running down over the status bar.
+**The menu hangs from its trigger and grows downward**, clamped to the window. Both levels of the stack share the window's floor, so a long submenu scrolls inside itself instead of running down over the status bar. It was anchored by its bottom while it lived at the rail's foot, because a control at the foot of a full-height rail has nothing below it; in the Command Bar the opposite is true.
 
-**A rail-less panel is a panel you have to already know about.** That is an acceptable price for a surface with another door — Insert is reachable from the canvas and the palette — and not an acceptable one for a surface that is the only way to do something. The State panel was rail-less for one release and its editor was the only place a state variable or a component property could be declared; the answer was to merge it into Data (§5.6), not to leave it findable by search.
+**A rail-less panel is a panel you have to already know about.** That is an acceptable price for a surface with another door — Insert is reachable from the canvas and the palette, Files and Packages from the palette and one preference — and not an acceptable one for a surface that is the only way to do something. The State panel was rail-less for one release and its editor was the only place a state variable or a component property could be declared; the answer was to merge it into Data (§5.6), not to leave it findable by search.
 
 ### 5.2 Layers Panel
 
@@ -399,9 +404,15 @@ Project component library discovered via the platform (`discoverComponents()`), 
 
 Components are drag-and-drop sources for inserting into the canvas.
 
+**The Site panel's Components section (§5.7) is a second door onto this catalogue, not a second catalogue.** It reads the same registry and the same preview cache, and a drop from either inserts through the one path §9.1.3 names, so the two cannot disagree about which components a project has or whether one is imported.
+
 ### 5.5 Source Control Panel
 
-Git-integrated source control panel providing commit, staging, branch management, and sync operations without leaving the studio. All git operations are performed server-side via `Bun.spawn(["git", ...])` and exposed through the PAL.
+> **Status: Partial.** The panel's content ships as described below, as a Navigator panel with a rail button and a badge (`packages/studio/src/panels/git-panel.ts`, `surfaces/git-panel.json`). Where it lives does not: the Publish workspace that hosts it (§22.8) does not exist, so it is still reached from the rail, by `panel.focus.git` from the status bar's branch item and from the GitHub publish notice, and its verbs are still the panel's own `ACTIONS` rather than a flow module the workspace owns.
+
+**Source Control is not a Navigator panel; the Publish workspace hosts it** (§22.8). Its change list, commit area and history are Publish › Review changes, its branch picker is Publish › Branches, and its sync verbs run from both. The `git` panel record, its rail button and its `panel.focus.git` command are gone; every caller that revealed the panel (the status bar's branch item, the GitHub publish notice) runs `view.setWorkspace { workspace: "publish" }` instead, and the count the rail badge carried is the Publish tab's badge in the switcher (§22.2). The `git.*` and `publish.*` command ids are unchanged, because the deploy checklist, `runDeploy` and the GitHub flows name them. What the rest of this section specifies is the content, which moves unchanged.
+
+Git-integrated source control providing commit, staging, branch management, and sync operations without leaving the studio. All git operations are performed server-side via `Bun.spawn(["git", ...])` and exposed through the PAL.
 
 #### Layout (top to bottom)
 
@@ -489,13 +500,44 @@ Expanding a row opens the entry's editor — name, type, prototype fields, expre
 
 `data.expandRow` is the row verb — `{ name }` to open, `{ name, expanded: false }` to close, and a refusal listing the entries the document defines when the name is not one of them. It replaced a second verb that opened exactly one editor, from the second panel that listed the same names.
 
+### 5.7 Site Panel
+
+> **Status: Pending.** No `site` panel is registered (`NAVIGATOR_PANEL_IDS` in `packages/studio/src/shell.ts` has none), and nothing lists the project by route. Pages, layouts and components are reached through the Files tree and the Library (`browse/library-pane.ts`), components are inserted from the rail-less Insert panel (`panels/elements-panel.ts`), and media is dragged onto the canvas only from the operating system.
+
+**The project as an author thinks of it: pages by address, then the parts pages are made of.** The Site panel (`site`, project level, the Project rail group's one button and the Navigator's default) lists four sections, top to bottom, under a header holding a filter field and a **+** that opens Add new (§9.1.1). The filter narrows every section at once by name, route or tag, and a section with no match collapses to its heading rather than disappearing, so the reader can see the filter is what emptied it.
+
+| Section    | Lists                                                                                                                       | A row opens           | A row drags                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------- | ----------------------------- |
+| Pages      | Every routed file under `pages/`, by route, static before dynamic before catch-all                                          | The page, in Design   | —                             |
+| Templates  | Every layout under `layouts/`, with "used by N pages" where the reference index can answer                                  | The layout, in Design | —                             |
+| Components | The project's components as cards with live previews                                                                        | The component         | An instance of it             |
+| Media      | Thumbnails of the project's media, with an **Open Media** link that runs `view.setWorkspace { workspace: "media" }` (§22.6) | The file's viewer     | An element that references it |
+
+**Routes come from the router, not from the panel.** The Pages section orders and labels rows with `fileToRoute` and `compareRoutes` from `@jxsuite/site/routes`, the functions the build's page discovery uses, so the panel's order is the order the site resolves routes in and its labels are the URLs a visitor types. A dynamic page whose `$paths.contentType` names a collection is nested under a row for that collection, "<Collection> (N entries)", and labelled "<Name> page" beside its pattern (`/blog/:slug`), because to an author it is the page every entry gets rather than a file with brackets in its name.
+
+**A drag from this panel is an insert the canvas already understands.** A component card drags `{ type: "block", fragment: buildComponentInstance(component) }` and a media thumbnail drags `{ type: "block", fragment: elementForAsset(file) }`; the canvas drop handler applies both, and imports the component through `enableElement` (§9.1.3) on drop exactly as the Insert panel's drag does. The drag sources are bound through the surface's `onNodeCreated` hook, as the Files panel binds its rows, never by querying the mounted DOM. Previews come from the Library's preview cache and observer (§9.1.2), so a card scrolled past is not rendered twice and a card never scrolled to is not rendered at all.
+
+**Insertion has one meaning everywhere.** A click on an Insert panel component card imports the component as its drag does; the slash menu and the canvas **+** gain a **Components** group that inserts `buildComponentInstance` and calls `enableElement`. A component that can be dropped but not clicked in, or that inserts from one menu without being imported, is a page that does not resolve the element it shows.
+
+The body is a surface document (`src/surfaces/site-panel.json`) over its adapter, like every Navigator panel body (`studio-ui-guidelines.md` §9.3).
+
 ## 6. Inspector (Right Panel)
 
-Four **text-labelled** tabs, in this order: **Content · Style · Logic · Assistant**. The tab ids (`properties`, `style`, `events`, `assistant`) are the values `view.setRightTab` accepts and the values `⌘⇧1`–`⌘⇧4` address, so the strip, the keymap and the automation surface cannot disagree about which tabs exist. Icon-only tabs are gone: a dock the author reads all day states its own names.
+> **Status: Pending.** The Inspector ships with four tabs, Content · Style · Logic · Assistant (`INSPECTOR_TABS` in `packages/studio/src/commands/defaults.ts`, `INSPECTOR_TAB_IDS` in `src/shell.ts`, `surfaces/inspector-dock.json`). There is no Page tab (the Page panel is a Navigator panel, `registerPagePanel` in `panels/head-panel.ts`), no Element tab grouping the three node tabs, no contextual title and no selection-driven switch; and the dock placement matrix admits only `selection`-level panels to the Inspector (`PANEL_PLACEMENT_MATRIX` in `commands/levels.ts`), which a document-level Page tab needs widened.
+
+Three **text-labelled** tabs, in this order: **Page · Element · Assistant**. Icon-only tabs are gone: a dock the author reads all day states its own names.
+
+**Page** is the open document's own settings, and its title says which kind of document that is: **Page** for a file under `pages/`, **Template** for one under `layouts/`, **Component** for one under `components/`, **Entry** for a collection entry, and **Document** for anything else. Its body is the former Navigator Page panel (title, URL and route params, template, search and sharing, the advanced head), re-hosted unchanged; for a collection entry it also carries the entry's fields (`entry-fields` over the schema form), its draft state (`site-architecture.md` §7.6) and its page URL (§22.5).
+
+**Element** is the selected node, and it keeps the three views the strip used to spend three tabs on — **Content**, **Style** and **Logic** — as a sub-switch inside its body. The leaf ids stay addressable: `page`, `properties`, `style`, `events` and `assistant` are the values `view.setRightTab` accepts and the ids `inspector.focus.<id>` addresses, so `view.setRightTab { tab: "style" }` shows Element with Style chosen. The strip, the keymap and the automation surface still cannot disagree about which views exist; what changed is that three of them share one tab, because they share one target.
+
+**Assistant** is unchanged (§3.1, below).
 
 Every tab renders under a header naming the tab and **what it is pointed at** — the selected node, or the document when nothing is selected, or "no document" when nothing is open.
 
-The tab selection is per-document (`session.ui.rightTab`), so the tab you were on returns with the file. With no document open there is nowhere per-document to keep it, and the Assistant is usable in exactly that state (the New Project hand-off sends a brief before any document exists), so the selection falls back to a single window-level value rather than being refused. An undeclared stored id coerces to Content.
+**The strip follows the selection, and yields to the author.** When the selection goes from empty to non-empty while the strip shows Page, it switches to Element, on the leaf last used there; when the selection becomes empty while it shows Element, it switches to Page. Only the transition switches: an author who clicks a tab keeps it until the selection next crosses empty, so a deliberate Page with a node selected is not taken away by the next click on the canvas. The Assistant is never switched away from, because a conversation is not about the selection.
+
+The tab selection is per-document (`session.ui.rightTab`), so the tab you were on returns with the file. With no document open there is nowhere per-document to keep it, and the Assistant is usable in exactly that state (the New Project hand-off sends a brief before any document exists), so the selection falls back to a single window-level value rather than being refused. An undeclared stored id coerces to Page.
 
 **The Assistant tab is where long agent work is watched, and where it stops to ask.** A site import runs for minutes and reports a line at a time; it renders under the tool call that started it, so the run and its chip are one thing and the account survives the run rather than dying with a dialog. A question the agent raises renders in the same transcript, as that call's own card, and the composer becomes its answer field — the next send answers the question instead of opening a new turn. Both contracts are `ai.md` §3.4–§3.5; what this section fixes is that they are drawn HERE, in a tab that is usable before any project exists. **The tab's surface document binds on its FIRST show, and its server — the machinery the document draws — mounts at boot.** A pending prompt seeded before the tab is ever picked is queued with the machinery the mount always installed, and a prompt arriving by hand-off (the New Project import of `desktop.md` §4.5, which reveals the tab before seeding) binds the document in the same tick; a prompt the reader pays no visit to is not lost, it is one more message waiting inside the transcript when the body first appears.
 
@@ -767,11 +809,17 @@ Until then the gap is stated rather than hidden, because the alternative is a pi
 
 ### 7.1 Overview
 
-The project's design tokens and element defaults, edited as a **document** (§17) with the live canvas beside them: every HTML element and project component rendered under the project's root styles, so tuning a token shows the page changing rather than describing it.
+> **Status: Partial.** Project Styles ships as the `stylebook` editor of the `project.json` tab, its stylebook Outline and its Style tab, reached by `styles.open` (`packages/studio/src/settings/settings-document.ts`, `panels/stylebook-panel.ts`, `panels/stylebook-layers-panel.ts`). The workspace around it does not: there is no Styles workspace (§22.7), `styles.open` runs `showSettingsDocument("stylebook")` from the rail's Settings menu rather than switching workspace, the `project.json` tab has no `tokens` editor, and the CSS Variables editor is a section of Project Settings (`settings/css-vars-editor.ts`) rather than the Variables view.
+
+The project's design tokens and element defaults, edited as a **document** (§17) with the live canvas beside them: every HTML element and project component rendered under the project's root styles, so tuning a token shows the page changing rather than describing it. **It is the Styles workspace's home** (§22.7): the workspace's Navigator is the Project Styles tree (§7.3) and its Inspector the Element tab's Style view (§6, §7.4).
 
 **The user-facing name is Project Styles; `"stylebook"` remains the wire value.** It is a member of `CANVAS_MODES` and therefore of the `ParentToIframe` union, so renaming it would require the studio bundle and `dist/iframe-entry.js` rebuilt in lockstep. The id and the name are different things, and the code says which is which. A colour token is pickable from any colour field's palette, and a font token from the font row's menu; a size field takes a `var()` reference typed, because a picker for it is promised nowhere (ui.md §5.5, `jx-token-field`). A colour scheme is declared as a row in Contexts (§17.1) rather than by a control that exists only here.
 
-**`styles.open` is how it is reached by name** (project level, `requires: "an open project"`). Until it existed, Project Styles had no command at all: the pane's Editor control can only re-mode a tab that is already open, and the only other door was a button inside Project Settings › Overview that wrote `session.ui.canvasMode` itself. So from a closed configuration tab there was no way to ask for it — `canvas.setMode` is document level and requires an open document. It is a peer of `settings.open` over the same `project.json` tab and declares the same availability rule (§17.1), and it renders in the rail foot's Settings menu and the palette.
+**Three views of one tab.** The Styles workspace's pane-context View picker offers **Elements** (the `stylebook` editor, the specimens), **Variables** (the `tokens` editor) and **Code** (`source`), all over the one `project.json` tab, so switching view never discards the document's history and an edit in one is undoable from another. **Variables** is the CSS custom-property editor that used to be Project Settings › CSS Variables: every `--name` in the project's `style`, grouped colour, font, size and other, each with its per-context overrides (a scheme's `@--name` block, written in place by the token model), and a link to Project Settings › Advanced › Contexts, the one place a scheme or a breakpoint is declared. It moved because a token is a style, and a style edited in a settings form is edited without the canvas that shows what it did.
+
+**There are no invented variants.** An element default is keyed by its tag (`h1`, `a`), a state is a CSS pseudo-class nested under that tag (§7.4), and a context is a declared `$media` entry. A "primary button" style that is not one of those three things is a component's own style or a class the author writes, not a fourth axis Project Styles makes up.
+
+**`styles.open` is how it is reached by name** (project level, `requires: "an open project"`), and it is an alias: it runs `view.setWorkspace { workspace: "styles" }`, whose home is this view (§22.1). Until it existed, Project Styles had no command at all: the pane's Editor control can only re-mode a tab that is already open, and the only other door was a button inside Project Settings › Overview that wrote `session.ui.canvasMode` itself. So from a closed configuration tab there was no way to ask for it — `canvas.setMode` is document level and requires an open document. It declares the same availability rule as `settings.open` (§17.1) because both write `project.json`, and it renders in the palette; the switcher's Styles tab and `⌘4` are the doors a reader sees.
 
 ### 7.2 Canvas
 
@@ -962,17 +1010,40 @@ The studio tracks:
 
 ### 9.1.1 Create, Rename, Delete
 
+> **Status: Partial.** The New File, Rename, Convert Format and Delete dialogs, the format picker, collection-aware creation, the consequence lines and the drag-move rules ship (`createFileIn` in `packages/studio/src/files/files.ts`, `browse/library-pane.ts`). Add new does not: there is no `file.new` command and no `add-new` surface, a page, layout, component or entry is created from the Library's **New ›** menu (`libraryNewEntries` in `browse/library-pane.ts`), a collection cannot be created at all except by editing `project.json`, and the two component-name rules disagree (`VALID_NAME` in `editor/convert-to-component.ts` and `componentSeed` in `browse/library-pane.ts`).
+
 Every name the user supplies is collected through the dialog flows in §8.7 of studio-ui-guidelines.md — no native browser prompts:
 
-| Action                                                        | Dialog                                                                                                                          |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Files panel **New File** (toolbar and directory context menu) | New File — a name field pre-filled `untitled`, plus a **Format** picker that owns the extension; scoped to the target directory |
-| Files / Browse **Rename**                                     | Rename — pre-filled with the current name                                                                                       |
-| Files **Convert Format…**                                     | Convert Format — the target, and the consequences, before the button                                                            |
-| Browse **New ›** _entity_                                     | New _Type_ — pre-filled `untitled`, slugified into the type's directory                                                         |
-| Files / Browse **Delete**                                     | Confirmation dialog                                                                                                             |
+| Action                                                                                               | Dialog                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Add new** (`file.new`: the Site panel's **+**, Content's **New**, Media's **Upload**, the palette) | Add new — a kind, a name and that kind's options, with the path it will write stated before the button (below)                  |
+| Files panel **New File** (toolbar and directory context menu)                                        | New File — a name field pre-filled `untitled`, plus a **Format** picker that owns the extension; scoped to the target directory |
+| Files / Content **Rename**                                                                           | Rename — pre-filled with the current name                                                                                       |
+| Files **Convert Format…**                                                                            | Convert Format — the target, and the consequences, before the button                                                            |
+| Files / Content / Media **Delete**                                                                   | Confirmation dialog                                                                                                             |
 
 Blank input is rejected in place: the dialog stays open with negative help text rather than closing.
+
+##### One dialog creates every kind
+
+> **Status: Pending.** Nothing below ships; the creation paths it replaces are named on this section's leading marker.
+
+**Add new** (`file.new { kind?, name?, collection? }`) is one `jx-dialog` in the dialog layer (`src/surfaces/add-new.json`) with the kinds down its left side — **Page**, **Collection**, **Template**, **Component**, **Media**, and an **Entry** row per declared collection — and, on its right, a **name**, which is the only required input, over that kind's options. A one-line hint under the name derives the result live — "Saved as `pages/about.json` · opens at `/about`" — so the path is stated before the button rather than discovered after it. The command takes `⌘N` where the host owns that chord (the desktop app) and `⌘⌥N` where a browser keeps `⌘N` for a new window; its `kind` and `name` make it an assistant tool when a name is supplied (`studio-ui-guidelines.md` §12.4).
+
+| Kind       | Options                                                                                                | Writes                                                                                                                                                                                                                                        | Then                                      |
+| ---------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Page       | Start from a template (each layout, or Blank); **Article** for prose; the URL, editable under **Edit** | `pages/<slug>.json`, or `.md` for an Article, with `$layout` set to the chosen template                                                                                                                                                       | Opens in Design                           |
+| Collection | Field presets; **Give each item its own page**, with its URL pattern and template                      | `content.<name>` in `project.json` (`source: "./content/<name>"`, the format, a schema with the chosen fields) through the configuration chokepoint (§17.1), the folder with a first entry, and with own pages on, `pages/<name>/[slug].json` | Content, showing the collection           |
+| Template   | Wrap in an existing template, or nothing                                                               | `layouts/<slug>.json` — always `.json`, because a layout is resolved as JSON only                                                                                                                                                             | Opens in Design                           |
+| Component  | Start from **Blank** or from **Current selection** (the convert-to-component flow)                     | `components/<slug>.json` with a `tagName`                                                                                                                                                                                                     | Registered, then opens in Design          |
+| Media      | A drop zone and **Browse…**                                                                            | The files, into `public/media/` through the upload core (§9.3)                                                                                                                                                                                | Media, with the uploads selected          |
+| Entry      | The collection (when not already chosen)                                                               | A seeded entry in the collection's source root, in its fixed format (below)                                                                                                                                                                   | Opens in Content, in writing mode (§22.5) |
+
+**The derivation is one pure function.** `deriveCreation(kind, name, context)` answers the directory, file name, extension, route and initial content that the hint prints and the write performs, so what the dialog says is what it writes by construction. Names slugify for pages, templates and collections. A component's tag is a valid custom element name (HTML's `valid custom element name` production) through one exported validator that replaces the two rules that disagreed, and a slug with no hyphen gains a `site-` prefix rather than being refused. Collision, `..` and blank-name refusals are New File's (above), because the dialog validates and composes through the same functions and only its write differs.
+
+**A collection's own page is the starter's shape.** With **Give each item its own page** on, the template page is `pages/<name>/[slug].json` with `$paths: { contentType: "<name>" }` over the `slug` param, a `ContentEntry` state entry for the current entry, the chosen `$layout`, and a body bound to the entry's title and body: the shape the blog starter's `pages/[slug].json` ships, so a created collection renders exactly as a scaffolded one.
+
+Every door that created something before goes through this one: the Site panel's **+**, Content's **New <item>**, Media's **Upload**, `content.newEntry`, and the convert-to-component flow, which keeps its own transaction but takes its tag from the shared deriver. After a component is created the component registry is reloaded, so the new card is in the Site panel and the Insert palette before the dialog has finished closing.
 
 ##### The extension is chosen, not typed
 
@@ -1041,9 +1112,15 @@ Two rules, and both are about the stack rather than about any one target.
 
 ### 9.1.2 The Library
 
-Every page, layout, component, content entry and asset in one browsable tab, with live previews. Reached by the **Library** button at the rail's foot (§5.1), by `⌘⇧E`, by name from the palette, from the Command Bar's overflow, and from the Files tree's context menu — five doors, because it is the content surface for a site with a collection and a palette search is not a door a reader finds.
+> **Status: Pending.** The Library ships as one canvas tab over every project file, with the All, Pages, Layouts, Components, Content and Media categories, reached as the Content workspace's interim home (§22.1), `library.open` (`⌘⇧E`), the palette, the Command Bar's overflow and the Files tree's menu (`packages/studio/src/browse/library-pane.ts`, `browse/library-model.ts`, `browse/library-commands.ts`). None of what replaces it ships: there is no Content workspace and no Collections panel (§22.5), and categories are folders matched by `contentTypeFor` rather than collections matched by `content/collection-match.ts`.
 
-**A preview that cannot draw an image draws a placeholder.** A media file that will not load, a component whose image prop is a `${}` binding with nothing to bind, and a document whose `src` is empty all show the canvas's grey placeholder rather than the browser's broken-image glyph.
+**The Library is the Content workspace now** (§22.5). It answered "where is everything" with one tab of every file, and that question has better answers in three places: pages, templates and components are listed by what they are in the Site panel (§5.7), media in the Media workspace (§22.6), and entries in the collection that holds them. What remains is the Library's real job, browsing and writing a collection, and that is the Content workspace's home tab: a built-in **Pages** collection (every routed file under `pages/`, static and dynamic) followed by every collection the project declares, each over the Library's table, cards, calendar and board views.
+
+**`content/collection-match.ts` is the only matcher.** A file belongs to a collection when `collectionForFile` says so, and to no collection otherwise; the folder categories (Layouts, Components, Media) and `contentTypeFor` are deleted, because a third matcher that disagrees with the first is how the same entry appeared in one collection's grid and another's Library category. The All category and the folder it asked for on upload go with them.
+
+**What is deleted, and what replaces each door.** `library.open` and its `⌘⇧E`, the rail-foot Library button, the `manage` editor kind and the Library's virtual tab go; `view.setWorkspace { workspace: "content" }` and `⌘2` reach Content. The Library's model, layouts, preview cache and preview observer stay, re-scoped: the Content home renders them per collection, and the Site panel and the Media grid reuse the preview cache.
+
+**A preview that cannot draw an image draws a placeholder.** A media file that will not load, a component whose image prop is a `${}` binding with nothing to bind, and a document whose `src` is empty all show the canvas's grey placeholder rather than the browser's broken-image glyph, in every surface that draws a preview.
 
 ### 9.1.3 Importing a component
 
@@ -1096,9 +1173,9 @@ Only directories **already loaded** are re-listed, eight at a time: the tree's l
 
 ### 9.3 Media Upload
 
-> **Status: Partial.** Adding media to a project is a direct gesture from wherever the author already is. Every surface funnels through one upload core (`packages/studio/src/files/media-upload.ts`); they differ only in how the destination directory is chosen. The core, collision suffixes, canvas drop semantics, transport and declared limits ship (`editor/file-drop-action.ts`). The Surfaces table's fourth row names a Manage view that no longer exists: the Library (`browse/library-pane.ts`) replaced it, and its All category asks for a folder, defaulting to `public`, rather than falling back to the context-aware destination (`resolveUploadDir`).
+> **Status: Partial.** Adding media to a project is a direct gesture from wherever the author already is. Every surface funnels through one upload core (`packages/studio/src/files/media-upload.ts`); they differ only in how the destination directory is chosen. The core, collision suffixes, canvas drop semantics, transport and declared limits ship (`editor/file-drop-action.ts`), and so do the Media viewer and the field picker's compact popover (`media/media-pane.ts`, `surfaces/media-browser.ts`). The destinations do not: an upload with no context lands in `public/` rather than `public/media/` (`uploadDirFor`), and the Surfaces table's Media workspace row is still the Library (`browse/library-pane.ts`), whose All category asks for a folder (`resolveUploadDir`). Neither **Replace** nor the picker's **Browse all media…** exists, and the field picker and the search-appearance dialog keep two lists of media choices (`ui/media-picker.ts`, `panels/seo-modal.ts`).
 
-**And every media file can be OPENED, in the Media mode of §4.2.** Adding one was a direct gesture from anywhere; looking at one was impossible from anywhere, because the open path reads a file as text and no format class claims a PNG. Clicking an asset in the Files tree or a tile in the Library opens it in a tab keyed by its path, showing the file, what it is, the site URL a document references it by, and which documents use it — the answer `site-architecture.md` §9.4 lists as having had no reader outside the delete confirmation, so the only way to learn what an image was for was to try removing it.
+**And every media file can be OPENED, in the Media mode of §4.2.** Adding one was a direct gesture from anywhere; looking at one was impossible from anywhere, because the open path reads a file as text and no format class claims a PNG. Clicking an asset in the Files tree, a thumbnail in the Site panel, or **Open in viewer** on a tile in the Media workspace opens it in a tab keyed by its path, showing the file, what it is, the site URL a document references it by, and which documents use it — the answer `site-architecture.md` §9.4 lists as having had no reader outside the delete confirmation, so the only way to learn what an image was for was to try removing it. That tab belongs to the Media workspace (§22.1).
 
 #### Surfaces
 
@@ -1107,13 +1184,19 @@ Only directories **already loaded** are re-listed, eight at a time: the tree's l
 | Image field (`format: "image"`, `$input: "media"`) | **Upload** button beside the path field         | Context-aware (below); the field takes the new ref                                                |
 | Canvas                                             | Drop files from the OS                          | Context-aware                                                                                     |
 | Files tree                                         | Drop on a row, or **Upload Files…** in its menu | The row's directory (a file row targets its parent); the tree background targets the project root |
-| Manage view                                        | Drop anywhere, or the **Upload** button         | The active category's own directory; "All" falls back to context-aware                            |
+| Media workspace (§22.6), and Add new › Media       | Drop anywhere, or the **Upload** button         | `public/media/`; no folder is asked for                                                           |
 
 #### Destination and references
 
-Without an explicit directory, an upload follows the active document: one inside a content collection co-locates its media in `content/<collection>/images/`, everything else lands in `public/`. The reference written into the document follows `site-architecture.md` §9.3 — `public/` contents are referenced from the site root (`/hero.jpg`), a content asset relative to its own entry (`./images/hero.jpg`), anything else relative to the project root.
+Without an explicit directory, an upload follows the active document: one inside a content collection co-locates its media in `content/<collection>/images/`, everything else lands in `public/media/`. The reference written into the document follows `site-architecture.md` §9.3 — `public/` contents are referenced from the site root (`/media/hero.jpg`), a content asset relative to its own entry (`./images/hero.jpg`), anything else relative to the project root. `public/media/` is a default and not a rule: a file the author places anywhere under `public/` by hand, or drops on a Files-tree folder, is media exactly as much, and the Media workspace lists it.
 
 An upload **never overwrites**: a colliding name gains a `-1`, `-2`, … suffix before its extension, resolved against a single listing of the destination (so a multi-file batch does not collide with itself either). A file that fails to upload is reported and skipped; the rest of the batch still lands.
+
+**Replace is the one overwrite, and it is asked for by name.** The Media workspace's detail pane offers **Replace** on a selected file: the chosen file is written to the selected file's own path, so every reference to it keeps resolving and now shows the new bytes. Because the path does not change, nothing about it tells a cache that the file did, so a replace forgets that path's content version (§3.4) and invalidates its usages, and every preview and canvas that draws it re-requests it. Replace is the only door that writes over an existing file; an upload under a colliding name still suffixes.
+
+**One picker, two sizes.** A media field's **Choose** opens the compact popover over the project's media, and its last row, **Browse all media…**, opens the Media workspace's own surface in a `jx-dialog` in pick mode — the same filters, search and grid, with a footer of **Cancel** and **Use <file>**. One flow module owns both, and the search-appearance dialog's image choice goes through it rather than keeping its own list, so "what media does this project have" has one answer in every chooser.
+
+**The media a project has is `public/**` and every collection's `images/`.** The Media workspace, the pickers and the Site panel's Media section scan both, because a collection's co-located images are as much the project's media as the files under `public/`, and a picker that could not see them could not choose a cover image the author had just uploaded to an entry.
 
 #### Canvas drop semantics
 
@@ -1272,7 +1355,7 @@ Invoked by chord while blocked, the reason goes to the status bar instead of ope
 
 ### 10.2 Build Site
 
-The compiler, kept reachable under its own verb. **Build Site** (`project.buildSite`, the rail foot's menu and the palette, no default chord) runs `platform.buildSite()` and reports what it produced: routes, files, and any errors by name.
+The compiler, kept reachable under its own verb. **Build Site** (`project.buildSite`, the Command Bar's ⚙ Settings menu and the palette, no default chord) runs `platform.buildSite()` and reports what it produced: routes, files, and any errors by name.
 
 It is a separate command rather than a mode of §10.1 because the two questions are separate. A build answers "does my site build?" — it runs the bundler, resolves `timing: "server"` at build time, optimizes images into responsive variants, and emits the sitemap, headers, redirects and service worker. A live preview runs none of those and does not pretend to. Coupling them meant every look at a page paid for a full compile, and the compile's own answer arrived as a side effect of asking something else.
 
@@ -1577,7 +1660,7 @@ The rule generalises past this dialog: **before a surface writes, it establishes
 
 ### 14.8 The session survives a relaunch
 
-**A project reopens with the documents it was left with.** Stored per project root in that project's namespaced record beside its named layouts: each pane's documents in strip order, which one was active, which pane had the keyboard, and per document the settings a person deliberately chose — canvas mode, the preview flag, both zooms, and the rendering context.
+**A project reopens with the documents it was left with.** Stored per project root in that project's namespaced record beside its workspace (§22.1): each pane's documents in strip order, which one was active, which pane had the keyboard, and per document the settings a person deliberately chose — canvas mode, the preview flag, both zooms, and the rendering context.
 
 **Paths, not tab ids.** A tab id is minted per open and means nothing across a reload; the path is the identity the workspace already dedupes on. Selection, hover, clipboard and undo history are not stored: they are derived or transient, and restoring a selection into a document that changed on disk would point at a node that may not exist.
 
@@ -1601,7 +1684,7 @@ A URL that NAMES a document — `?file=`, or a `?project=` pointing into the pro
 
 Preferences is a focus-managed dialog over the overlay contract in `studio-ui-guidelines.md` §8.7. It does not suspend the app, and it is reachable with **no project open** — a first run needs it exactly there. Re-opening it while it is up selects the named section rather than stacking a second sheet.
 
-Three doors reach it: ⌘,, the palette, and the first row of the rail foot's **Settings** menu (§5.1), whose submenu is the four sections below. That submenu is a deep link rather than a second surface precisely because of the re-opening rule above — picking **Accounts** from the gear and picking it from the sheet's own nav are the same operation, `app.preferences { section }`.
+Three doors reach it: ⌘,, the palette, and the first row of the Command Bar's ⚙ **Settings** menu (§5.1, §22.2), whose submenu is the four sections below. That submenu is a deep link rather than a second surface precisely because of the re-opening rule above — picking **Accounts** from the gear and picking it from the sheet's own nav are the same operation, `app.preferences { section }`.
 
 | Section    | Contents                                                                                                                                                                                       |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1733,9 +1816,23 @@ Project configuration used to be edited through a modal by **29 fire-and-forget 
 
 ### 17.1 Configuration is a document
 
-`project.json` is a **Tab**, which is what makes the rest true rather than aspirational: it gets undo, the dirty flag, ⌘S and the history delegate from the same machinery every document uses. Two surfaces render it — **Project Settings** (sections as inner nav: Overview, Contexts, Site head, Locales, CSS Variables, Data Shapes, Content types, Data tables, Connections, Packages, Extensions, Deploy, Raw JSON, plus whatever else an extension contributes) and **Project Styles** (§7) — and both edit one object.
+> **Status: Pending.** `project.json` is a Tab and both surfaces edit it (`packages/studio/src/tabs/project-config.ts`), but Project Settings is not the dialog described below: it is the `settings` editor of that tab, an inner nav over every section in one list (`settings/settings-document.ts`, `panels/settings-pane.ts`), CSS Variables and Deploy are still among its sections, `SettingsSection` has no `group` and the `$studio.settings` contribution block carries none, and Raw JSON's **Edit as code** re-modes the containing tab.
 
-**Each surface is reached by one command**, `settings.open { section, entry }` and `styles.open`, and the two declare the **same availability rule** because they write the same state (§13, `studio-ui-guidelines.md` §12.4). Both open the tab if it is closed and switch its editor if it is not, so neither ever discards the document's history. Project Settings' sections are one click deep from the rail foot's Settings menu (§5.1), and that submenu is the same projection the inner nav draws — a contributed section appears in both or in neither.
+`project.json` is a **Tab**, which is what makes the rest true rather than aspirational: it gets undo, the dirty flag, ⌘S and the history delegate from the same machinery every document uses. Two surfaces render it — **Project Settings**, a dialog, and **Project Styles** (§7), the Styles workspace's home — and both edit one object.
+
+**Project Settings is a dialog, not a tab.** `settings.open { section, entry }` opens a `jx-dialog` in the dialog layer (region `overlay.dialog:settings`) hosting the settings surface — its section nav and the chosen section's body — and closing it returns the author to the workspace and document they were in. It was a canvas editor of the `project.json` tab, which spent a pane and a tab-strip slot on something visited for a minute, and put "which workspace does this tab belong to" to a tab that belongs to none. The `settings` editor kind, its tab modes and `shell.settingsTab` are deleted with it.
+
+**The nav is three groups.** Every section declares a `group`, and the `$studio.settings` contribution block declares one too (default `integrations`), so an extension's section lands in the group its author chose:
+
+| Group        | Sections                                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| General      | Overview, Locales                                                                                                                                                  |
+| Integrations | Extensions, and every contributed section: Content types, Data tables, Authentication, Connections, Site search, Feeds, and whatever else an extension contributes |
+| Advanced     | Contexts, Site head, Data Shapes, Packages, Raw JSON                                                                                                               |
+
+**Two sections moved out, and the dialog says where.** CSS Variables is the Styles workspace's Variables view (§7.1), and Deploy is Publish › Hosting (§22.8). A footnote under the nav names them — Colours and fonts are in Styles, Hosting and domain in Publish, and head and SEO defaults are also on the Page tab (§6) — because a section that vanishes without a forwarding address reads as a feature that was removed. **Edit as code** in Raw JSON closes the dialog and opens `project.json` in its `source` editor in the Styles workspace, which is the one place the tab is shown.
+
+**Each surface is reached by one command**, `settings.open { section, entry }` and `styles.open`, and the two declare the **same availability rule** because they write the same state (§13, `studio-ui-guidelines.md` §12.4). `settings.open` keeps its arguments and its refusal of an unknown section, so every deep link that names a section — the entry editor's Fields, the Languages panel, the Contexts links in the Style tab and the Variables view — opens the dialog on it. `styles.open` switches to the Styles workspace (§7.1), which opens the tab if it is closed and switches its editor if it is not, so neither command ever discards the document's history. Project Settings' sections are one click deep from the Command Bar's Settings menu (§5.1, §22.2), and that submenu is the same projection the dialog's nav draws — a contributed section appears in both or in neither.
 
 Three rules follow, and they are the section's whole content:
 
@@ -1926,6 +2023,126 @@ A changed `.ts`, `.css` or `.gitignore` has no document tree, and the tab model 
 ### 21.5 A comparison follows the working tree
 
 Two texts read once notice nothing. Every git operation and every save bumps a revision that both holders of a comparison watch, so the marks describe the file as it is rather than as it was when the review began. The author's position in the change list is CLAMPED across that re-read rather than reset: landing back at the first change after every save is what makes a review loop get abandoned.
+
+---
+
+## 22. Workspaces
+
+> **Status: Partial.** The model, the switcher and the frames ship (§22.1–§22.3, `packages/studio/src/workspace/workspace-ids.ts`, `workspace/tab-workspace.ts`, `workspace/workspace-switch.ts`, `src/shell.ts`), and the named layouts they replace are deleted. What each workspace draws does not ship yet (§22.4–§22.8): Content's home is the Library tab (§9.1.2), Media's and Publish's are an empty state that names the workspace (`workspace/workspace-home.ts`), Project Settings and Project Styles share the `project.json` tab (§17.1, §7.1), and Source Control is a Navigator panel (§5.5).
+
+**A workspace is the task the window is set up for.** There are five — **Design**, **Content**, **Media**, **Styles** and **Publish** — and the active one decides three things: which tabs the pane strips show, which Navigator panel and Inspector tab the frame draws, and what opens when the author switches to it with nothing of its own open. It decides nothing about what can be done. Every command keeps its record, its chord and its palette row in every workspace, so a workspace is where a task's controls are drawn and never a gate on them.
+
+### 22.1 The model
+
+> **Status: Partial.** `WORKSPACE_IDS`, `shell.workspace` persisted per project root, `view.setWorkspace` with its five chord records, `ctx.workspace` in all four contexts, `workspaceOfTab` and the strip filter (a second pane included) ship (`packages/studio/src/workspace/workspace-ids.ts`, `workspace/tab-workspace.ts`, `workspace/workspace-switch.ts`, `src/shell.ts`). Two homes are stand-ins: Content opens the Library tab rather than a Content home (§22.5), and Media and Publish open a generic home tab that names the workspace and points at where its work is done today (§22.6, §22.8). Opening **Project settings** classes the shared `project.json` tab as Design's while its settings editor is showing, so it opens in Design from any workspace until it becomes a dialog (§17.1).
+
+`WORKSPACE_IDS` is `["design", "content", "media", "styles", "publish"]`, in that order, declared in a module with no DOM import so the bare-Bun checks can load it, and duplicated nowhere else without a test asserting the copies agree (the `NAVIGATOR_PANEL_IDS` pattern). The titles are the ids capitalised; each has a kit-manifest icon.
+
+**State.** `shell.workspace` holds the active id, `"design"` by default. It persists per project root, in the project's namespaced record beside its pane session (§14.8), and an id that is missing, stale or unknown reads as `"design"` rather than throwing: a record written by another build is a fact about that build, not a reason to refuse to open the project. The workspace replaces the named layouts outright. Their presets, their save, rename, delete and reset verbs, the `+` that saved one and the stored `layout` and `layouts` fields are deleted, and a stored `layout` is dropped on read; the dock record (§3.1) stays, because dock sizes are the author's and not the task's.
+
+**Switching.** `view.setWorkspace { workspace }` is the one writer, a setter whose `args` schema is the `WORKSPACE_IDS` enum. A keybinding carries no arguments, so `⌘1`–`⌘5`, in the order above, are bound to five argument-free records, `workspace.focus.<id>` (**Go to Design** … **Go to Publish**), each running the setter's own path; they are the palette's rows for the switch, and `view.setWorkspace` itself is the scripted door and the one the switcher's tabs run, drawn in no menu. It activates the most recently active tab of the target workspace, remembered per workspace for the session; with none, it opens that workspace's **home**:
+
+| Workspace | Home                                                                               |
+| --------- | ---------------------------------------------------------------------------------- |
+| Design    | The last Design tab if one is open, otherwise the project's empty state            |
+| Content   | The Content home tab, on the Pages collection or the last collection shown (§22.5) |
+| Media     | The Media home tab (§22.6)                                                         |
+| Styles    | `project.json` in its `stylebook` editor (§7.1)                                    |
+| Publish   | The Publish home tab, on Review changes (§22.8)                                    |
+
+`ctx.workspace` is a context key (§13.4) wherever context is computed — the command context, its empty default, the live context and the panel context — because a panel `when` reading a key the panel context lacks reads the default silently, which is how a gate has been wrong before.
+
+**Every tab belongs to exactly one workspace, and the tab says which.** Ownership is derived by one pure function, `workspaceOfTab(tab)`, from what the tab holds, never stored on it:
+
+| Workspace | Owns                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Content   | The Content home and collection grid tabs, entry-form tabs, and every Markdown or JSON file `collectionForFile` places in a collection, because an entry is written in Content |
+| Media     | The Media home tab and every media viewer tab (the `media` editor of §4.2)                                                                                                     |
+| Styles    | The `project.json` tab, in any of its editors                                                                                                                                  |
+| Publish   | The Publish home tab and every comparison tab (§21)                                                                                                                            |
+| Design    | Everything else: pages, templates, components and every other file                                                                                                             |
+
+**Three invariants make the model one thing rather than three.** Activating a tab sets `shell.workspace` to `workspaceOfTab(tab)`, so opening a document from another workspace — **Edit the <item> template in Design** on an entry, a usage link in Media, a changed file in Publish — switches workspace by being activated, with no door of its own. Each pane's tab strip draws only the tabs of the active workspace, and a second pane (§18) follows the same filter, so a split never shows one workspace's document beside another's strip. And a tab hidden by the filter is still open: its document, history, dirty flag and session are untouched, ⌘S still saves it, and closing the window over its unsaved work still asks (§14.7).
+
+### 22.2 The switcher
+
+> **Status: Partial.** The tablist, the Publish count and the ⚙ Settings menu in the Command Bar ship (`packages/studio/src/surfaces/commandbar.json`, `surfaces/commandbar.ts`). The `publish.quick` chevron does not, because the quick publish dialog does not exist yet (§22.8).
+
+The workspaces are a **tablist in the Command Bar**, in the slot the named layouts held: one `tab` per workspace in `WORKSPACE_IDS` order, each its icon and its title, `aria-selected` on the active one, arrow keys moving between them and activation running `view.setWorkspace` (the WAI-ARIA tabs pattern, through the kit's `jx-tabs`). It is a placement and not a dock, so it is not counted against a dock's tab cap (`studio-ui-guidelines.md` §12.2), and it adds no `commandbar/primary` command.
+
+**Publish carries the count.** Its tab shows the number of changed files (`ctx.git.dirtyCount`), hidden at zero, which is the badge the Source Control rail button used to carry; beside it a separate chevron button runs `publish.quick`, which opens the quick publish dialog (§22.8). The chevron is its own control rather than part of the tab, because a tab that sometimes opens a dialog is a tab whose activation means two things. The badge is decorative; the count reaches assistive technology as the tab's `aria-description` ("3 unpublished changes"), so the tab's name stays its title. The switch runs on each tab's activation rather than on the tablist's `change`, because activating the selected tab again is how an author gets a closed home back, and `jx-tabs` reports no change for it.
+
+**The ⚙ Settings menu sits at the Command Bar's right**, before the dock toggles, with the rows §5.1 lists. It moved because the rail is drawn in Design alone, and settings have to be reachable from the four workspaces that have no rail.
+
+The primary cluster is unchanged: **Save** (`file.save`, ⌘S, the dirty dot) for the open document, undo, redo and Open in Browser. Publishing is never a primary command: it is a workspace, and the switcher already draws it.
+
+### 22.3 Frames
+
+> **Status: Partial.** The frames ship as `WORKSPACE_PRESETS` (`packages/studio/src/shell.ts`), applied on every entry and when a project opens, with the rail taken out of the grid by the `rail-hidden` class on `#app`. Two Navigator panels the table names do not exist yet: Design shows the last Design panel rather than the Site panel (§5.7), and Content collapses its Navigator rather than drawing Collections (§22.5).
+
+Each workspace declares a **frame**: whether the rail is drawn, which Navigator panel the Navigator shows, whether the Inspector is drawn and on which tab, and whether the Bottom dock is touched. A frame is applied when its workspace is entered; inside the workspace the author's dock toggles still work, and the next entry applies the frame again. A hidden dock is hidden by a class on `#app` set where the dock layout is applied, never by an inline style, and its stored size is kept.
+
+| Workspace | Rail  | Navigator                                       | Inspector                                                          | Bottom dock           |
+| --------- | ----- | ----------------------------------------------- | ------------------------------------------------------------------ | --------------------- |
+| Design    | Drawn | The Site panel (§5.7), or the last Design panel | Drawn                                                              | As the author left it |
+| Content   | —     | Collections (§22.5)                             | Drawn only while an entry is written on the canvas; else collapsed | As left               |
+| Media     | —     | —                                               | —                                                                  | As left               |
+| Styles    | —     | The Project Styles tree (§7.3)                  | Drawn, on Element › Style                                          | As left               |
+| Publish   | —     | —                                               | —                                                                  | As left               |
+
+Media and Publish draw neither dock because their home surfaces own their own layout: a filter column, a grid and a detail pane in Media, and four sub-tabs in Publish. A Navigator beside them would be a second list of the same things.
+
+### 22.4 Design
+
+> **Status: Pending.** The Site panel (§5.7), the three-tab Inspector (§6), the Developer panels switch and the rail groups below do not exist; see their sections.
+
+Design is where pages, templates and components are built, and it is the only workspace with a rail (§5.1): **Project** holds the Site panel, **Document** holds Outline and Data, and Files and Packages join them only with **Show developer panels** on. Its Inspector is Page · Element · Assistant (§6), with the selection-driven switch. Every other workspace leaves a Design document open behind it, so a switch to Design and back is two activations and never a reload.
+
+### 22.5 Content
+
+> **Status: Pending.** There is no Content workspace, Collections panel or Content home tab; collections are browsed through the Library's Content category and the collection grid (`grid/grid-open.ts`), an entry opens either as a bare document on the canvas, with no template around it, or in the form-only `entry` editor (`content/entry-editor.ts`), and nothing derives a collection's page pattern.
+
+**The Collections panel** is the Content workspace's Navigator: the built-in **Pages** collection and every declared collection, in declaration order, each with its entry count, its saved grid views (`site-architecture.md` §7.2) listed beneath it, and **+ New collection** (Add new › Collection, §9.1.1) at the foot. Choosing a collection shows it in the Content home tab. While an entry is being written, the panel shows that collection's entries instead — thumbnail, title, status — under **‹ <Collection>** to go back and **+ New <item>**.
+
+**The Content home** is the collection, browsed: its title, a view switch over the Library's **Table**, **Cards**, **Calendar** and **Board** views, search, **Filter**, **Fields** (Project Settings › Content types on this collection, §17.1) and **New <item>** (Add new › Entry). Above the view, one line says where the collection's entries are published: "Each <item> has a page at `/blog/:slug` using <template>", with **Design the <item> page** opening that template page in Design, or "Entries have no page of their own" with **Add one**, which creates the template page as Add new's own-page option does. The line is derived by scanning `pages/` for a page whose `$paths.contentType` names the collection, because `project.json` records no URL pattern and a second record of one would disagree with the router.
+
+**An entry is written on the canvas, inside its template.** Opening an entry opens the entry's own file as an ordinary tab in its writing editor, owned by Content (§22.1). The canvas resolves a collection entry the way it resolves a page: the layout is the entry's `$layout`, else the `$layout` of the collection's template page, else the project's `defaults.layout`, and the layout's nodes are locked exactly as they are under a page. A slim banner above the canvas states the arrangement — "Writing mode: text and media are editable, the layout is locked" — with **Edit the <item> template in Design**. The Inspector's Page tab, titled **Entry**, carries the entry's fields, its draft state and its page URL (§6); the Element tab stays available, because writing still selects nodes. The form-only `entry` editor stays as the fallback for a collection the canvas cannot write — a JSON, CSV or file-backed source.
+
+> **Status: Pending.** Not part of the first build: an entry is wrapped in its template's **layout**, not spliced into the template **page**'s bound body. A template page that binds the entry into a wrapper of its own (a hero over `${entry.body}`) shows that wrapper only in Preview; writing mode shows the entry inside the layout alone. Splicing needs the canvas to map the edited entry's paths through the page's bound node, which the edit transforms do not do.
+
+### 22.6 Media
+
+> **Status: Pending.** There is no Media home tab and no `media-library` surface; media is browsed in the Library's Media category (`browse/library-pane.ts`), and the media viewer (§9.3) is its only detail view.
+
+**The Media home is a library of the project's media**, a surface (`src/surfaces/media-library.json`) with three columns. On the left, filters: **All media**, **Images**, **Video**, **Audio**, **Documents**, **Fonts** and **Unused**, the last computed lazily from the usage index (`site-architecture.md` §9.4) and shown with its count once known. In the middle, a grid of tiles with thumbnails drawn as they scroll into view, a search field, a sort (**Newest**, **Name**, **Size**) and **Upload**; a file dropped anywhere on the surface uploads too, to `public/media/` (§9.3). On the right, the selected file's detail: its preview, its facts (type, dimensions, size), its site URL with a copy button, its usage list with a link opening each document that uses it, and its actions — **Replace** (§9.3), **Delete** (the confirmation states the usage count, §9.1.1) and **Open in viewer**, which opens the media viewer tab.
+
+The same surface in pick mode is the full-size media picker (§9.3): the filters, search and grid, with a footer of **Cancel** and **Use <file>** in place of the detail pane's actions.
+
+> **Status: Pending.** Two filters are not part of the first build, because each needs a store that does not exist: **Missing alt text** (alt text is written per use, on the element, and no per-file alt record exists to filter by), and **tags** (no per-file tag store). Neither is drawn until its store exists; a filter that cannot be answered is not shipped as one that always answers nothing.
+
+### 22.7 Styles
+
+> **Status: Pending.** There is no Styles workspace; Project Styles is reached by `styles.open` from the rail's Settings menu and shares the window's frame with every other tab (§7.1).
+
+The Styles workspace is Project Styles (§7) given a frame: `project.json` in its `stylebook` editor as the home, the Project Styles tree as the Navigator, and the Element tab's Style view as the Inspector, so selecting a tag — on the canvas or in the tree — puts its default style beside it. The pane-context View picker switches the one tab between **Elements**, **Variables** and **Code** (§7.1). Every door that used to open the stylebook, or Project Settings › CSS Variables, opens this workspace: `styles.open`, the Overview's Project Styles row, and the Variables view's own deep links. Contexts stays a Project Settings section (Advanced), and the Variables view and the Style tab link to it.
+
+### 22.8 Publish
+
+> **Status: Pending.** There is no Publish workspace; changes are reviewed and committed in the Source Control panel (§5.5), deploys are configured in Project Settings › Deploy and run from the `publish.*` overflow commands (`publish/publish-commands.ts`), only the latest Cloudflare deployment is read (`latestDeployment` in `publish/pages-service.ts`), and no flow sends a change for review.
+
+**The Publish home** is a surface (`src/surfaces/publish-workspace.json`) with four sub-tabs.
+
+**Review changes** is the change list (the git status, grouped by component), each file's checkbox staging or unstaging it, each row opening its before-and-after comparison (§21), which opens in Publish. Below the list: the checks (the deploy checklist's next step, and a build check where the host can run one), the summary (the commit message), and the destination. **Publish live** commits to the current branch, syncs, and deploys when a deploy is configured. **Send for review** creates a branch named `studio/<slug of the summary>`, commits to it, pushes it and opens a pull request through the platform's `createPullRequest`. The verbs are the Source Control panel's, moved out of the panel into a flow module the workspace owns (§5.5), so there is one list of them (`studio-ui-guidelines.md` §12.5).
+
+**Deploys** is the live site (the configured production URL and its latest deployment), any deploy in progress with its activity steps (§16.4), the history of deployments — every row the host returns, not the latest alone — and the branch previews, the deployments whose environment is a preview.
+
+**Branches** is the branch list with checkout and create, and ahead/behind for the current branch. On a host where a branch is a session (the cloud), checkout reloads the window, and the action says so and asks first.
+
+**Hosting** is where the site is published from and to: its source (the remote, and the GitHub connection), its host (Jx Cloud or Cloudflare, through the existing connect flows), its build adapter (moved from Project Settings › Deploy, §17.1) and its domain.
+
+**Quick publish.** `publish.quick`, the chevron beside the Publish tab (§22.2), opens a dialog with the change count, a short change list, the destination choice, the checks line, **Publish now** and **Review all**, which switches to Review changes. The `git.*` and `publish.*` command ids keep their names, because the deploy checklist, `runDeploy` and the GitHub flows run them by id.
+
+> **Status: Pending.** Not part of the first build: **Rollback** in Deploys, because no host API is wired to it (the dev server's Cloudflare proxy allowlists no rollback route and the cloud broker exposes none); and **Send for review** on a host with no `createPullRequest` (today the dev server and the desktop app), where the choice is drawn disabled with the reason rather than falling back to a branch push that opens nothing.
 
 ---
 

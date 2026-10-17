@@ -121,9 +121,10 @@ function installRegistry(opts: RegistryOpts = {}): CommandRegistry {
 
 /** A stand-in for the rail's gear, measured at the foot of a 56px rail. */
 function gear(): HTMLElement {
+  // The top bar's gear: a 28px control near the right-hand end of a 36px band.
   const button = document.createElement("button");
   document.body.append(button);
-  stubRect(button, { height: 44, left: 0, top: 700, width: 56 });
+  stubRect(button, { height: 28, left: 900, top: 4, width: 28 });
   return button;
 }
 
@@ -851,55 +852,26 @@ describe("geometry", () => {
       requestAnimationFrame(() => resolve());
     });
 
-  test("the menu hangs off the trigger's right edge and ends flush with the floor", async () => {
-    /* Not "below the trigger": the gear is the last control in a full-height rail, so a menu
-       dropped below it would be off-screen. The BOTTOM edge is the anchored one and the menu grows
-       upward from it — flush, with no inset, because the floor is a real edge (the status bar's
-       top) rather than an arbitrary margin. */
+  test("the menu hangs below the gear, its right edge flush with the gear's", async () => {
+    /* The gear sits at the right-hand end of the top bar, so a menu hanging from its LEFT edge would
+       run off the window. Right-aligning it is a function of the menu's own width. */
     installRegistry();
     await withMenuSize({ height: 200, width: 260 }, async () => {
       await open();
       await frame();
     });
-    // `x = anchorRect.right + 4` — the gear is 56px wide at left 0.
-    expect(rootMenu()!.x).toBe(60);
-    // No region ancestor in this fixture, so the floor is the viewport.
-    expect(rootMenu()!.y).toBe(window.innerHeight - 200);
+    // `x = gear.right - width`: the gear's right edge is 928.
+    expect(rootMenu()!.x).toBe(668);
+    // `y = gear.bottom + 4`.
+    expect(rootMenu()!.y).toBe(36);
   });
 
-  test("it aligns to the REGION the trigger lives in, not to the trigger, and floors its submenus there", async () => {
-    /* The rail's foot carries 6px of padding, so the gear's own bottom floats clear of the status
-       bar; the rail's bottom IS the status bar's top. Aligning to the region is what puts the menu
-       flush with it — and it is the shell's own addressing grammar, so a menu button in another
-       region would align to that one without this code learning about it. */
-    const rail = document.createElement("div");
-    rail.dataset.jxRegion = "rail";
-    document.body.append(rail);
-    rail.append(anchor);
-    stubRect(rail, { height: 760, left: 0, top: 0, width: 56 });
+  test("a menu wider than the space left of the gear keeps its leading edge on screen", async () => {
     installRegistry();
-    await withMenuSize({ height: 200, width: 260 }, async () => {
+    await withMenuSize({ height: 200, width: 2000 }, async () => {
       await open();
       await frame();
     });
-    // The RAIL's bottom is 760, not the gear's 744, so the menu sits 200 above it.
-    expect(rootMenu()!.y).toBe(560);
-    // And every submenu keeps above the same floor.
-    expect(rootMenu()!.floor).toBe(760);
-    dismissSettingsMenu();
-    document.body.append(anchor);
-    rail.remove();
-  });
-
-  test("a menu taller than the viewport floors at 4 rather than going negative", async () => {
-    /* Project Settings has ~16 sections once extensions have contributed theirs. Capping only the
-       bottom edge would push `top` negative and take the FIRST rows off the top of the window,
-       where nothing can reach them — which is why both axes are floored, not just capped. */
-    installRegistry();
-    await withMenuSize({ height: window.innerHeight + 400, width: 260 }, async () => {
-      await open();
-      await frame();
-    });
-    expect(rootMenu()!.y).toBe(4);
+    expect(rootMenu()!.x).toBe(4);
   });
 });

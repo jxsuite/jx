@@ -34,8 +34,8 @@
  * does, because the document is appended into the `.panel-content` lit renders `nothing` into).
  *
  * **Off the rail.** `railDeclarations()` does not apply `when`, so a rail button here would spend
- * the last `rail/project` slot in every monolingual project and shift every document panel's ⌘1–8
- * chord by one. `i18n.showParity` is how this panel is reached.
+ * the last `rail/project` slot in every monolingual project. `i18n.showParity` is how this panel is
+ * reached.
  *
  * @docs studio/interface/languages
  */
@@ -606,8 +606,7 @@ export function registerI18nPanel(): void {
     // Button, and `check-icons.ts` fails on a resolver row no rail panel declares.
     icon: "globe",
     // OFF THE RAIL. `railDeclarations()` does not apply `when`, so a rail button would spend the
-    // Last rail/project slot in every monolingual project — and would shift every document panel's
-    // ⌘1-8 chord by one. `i18n.showParity` is how it is reached.
+    // Last rail/project slot in every monolingual project. `i18n.showParity` is how it is reached.
     rail: false,
     when: (ctx) => ctx.project.isMultilingual,
     // The body is a document, so lit draws nothing and the mount happens against the painted

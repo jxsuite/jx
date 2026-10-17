@@ -152,6 +152,13 @@ describe("project and git", () => {
     expect(ctx.project.isRepo).toBe(false);
     expect(ctx.git).toEqual({ ahead: 0, behind: 0, dirtyCount: 0 });
   });
+  test("the workspace on screen comes from the shell record", () => {
+    const before = shell.workspace;
+    shell.workspace = "publish";
+    expect(context().workspace).toEqual({ id: "publish" });
+    shell.workspace = before;
+    expect(context().workspace).toEqual({ id: before });
+  });
 });
 
 // ─── Document, editor, selection ──────────────────────────────────────────────

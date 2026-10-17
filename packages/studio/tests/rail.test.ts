@@ -2,8 +2,9 @@
  * The Navigator rail — `src/surfaces/rail.ts` over `src/surfaces/rail.json`.
  *
  * A rendering of the panel registry: every rail-able record, grouped by level, each a stacked
- * `jx-action-button` with a visible label and a real `aria-pressed`, the foot a menu button for the
- * `settings/menu` placement. The surface is reactive, so the cases write `shell` and read the DOM.
+ * `jx-action-button` with a visible label and a real `aria-pressed`. The rail has no foot: the gear
+ * is the top bar's (`tests/commandbar-workspaces.test.ts`). The surface is reactive, so the cases
+ * write `shell` and read the DOM.
  */
 import { flush, mountOverlayLayers, resetWorkspaceWithTab } from "./harness";
 import { hintOf } from "./kit-readers";
@@ -59,11 +60,6 @@ const railButton = (id: string) =>
 /** The native control inside a rail button — what carries the name and the pressed state. */
 const controlOf = (el: Element | null | undefined) =>
   el?.querySelector<HTMLButtonElement>('[part="control"]') ?? null;
-/** A foot button, addressed by its visible label. */
-const footerButton = (label: string) =>
-  [...bar().querySelectorAll<HTMLElement>('[part="foot"] jx-action-button')].find(
-    (el) => el.querySelector('[part="label"]')?.textContent.trim() === label,
-  );
 const labelsOf = () =>
   [...bar().querySelectorAll('jx-action-button [part="label"]')].map((el) => el.textContent.trim());
 const badgeOf = (id: string) => railButton(id)?.querySelector('[part="badge"]') ?? null;
@@ -82,16 +78,15 @@ function gitStatusWith(changed: number): GitStatusResult {
 
 const { mountShell, resetProjectShell, shell, unmountShell } = await import("../src/shell");
 const { closeAllTabs } = await import("../src/workspace/workspace");
-const { activeRegistry, setActiveRegistry } = await import("../src/commands/active-registry");
+const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { initLayers } = await import("../src/ui/layers");
-const { dismissSettingsMenu, isSettingsMenuOpen } = await import("../src/panels/settings-menu");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext } = await import("../src/commands/context");
 const { ICON_NAMES } = await import("@jxsuite/ui/icons");
 
 /**
- * The rail foot renders FROM the `settings/menu` PLACEMENT, so a rail whose registry declares
- * nothing for it has no foot. Only these records: this file is about the rail.
+ * A registry declaring a `settings/menu` record — which the rail must NOT draw: the gear lives in
+ * the top bar. Only these records: this file is about the rail.
  */
 function installPreferencesRegistry() {
   const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
@@ -151,7 +146,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  dismissSettingsMenu();
   unmount();
   await flush();
 });
@@ -226,15 +220,7 @@ describe("renderActivityBar", () => {
   test("every rail button carries a visible label; a railLabel shortens it, and the title stays the name and tooltip", async () => {
     installPreferencesRegistry();
     await render();
-    expect(labelsOf()).toEqual([
-      "Files",
-      "Source",
-      "Outline",
-      "Page",
-      "Data",
-      "Packages",
-      "Settings",
-    ]);
+    expect(labelsOf()).toEqual(["Files", "Source", "Outline", "Page", "Data", "Packages"]);
     /* "Source Control" is 71px against a 48px label box, so the kit ellipsed it to "Source …". The
        record declares the short label instead, and the full title is still what a screen reader
        announces (the visible word leads it, WCAG 2.5.3) and what the tooltip restores: the tip an
@@ -371,162 +357,16 @@ describe("renderActivityBar", () => {
     resetNotifications();
   });
 
-  test("the foot is a menu trigger, not a command button", async () => {
+  test("the rail has no foot: no gear and no Library button, whatever the registry declares", async () => {
+    /* The rail is drawn only in the Design workspace, so the settings every workspace needs moved
+       to the top bar, and the Library button left with the Library, which the Content workspace
+       replaces. A registry that declares a `settings/menu` record still draws no gear here. */
     installPreferencesRegistry();
     await render();
-    const gear = footerButton("Settings")!;
-    expect(gear).toBeDefined();
-    const control = controlOf(gear)!;
-    expect(control.getAttribute("aria-haspopup")).toBe("menu");
-    expect(control.getAttribute("aria-expanded")).toBe("false");
-    expect(gear.dataset.command).toBeUndefined();
-
-    const ran: string[] = [];
-    const registry = activeRegistry()!;
-    const original = registry.run.bind(registry);
-    registry.run = (id: string) => {
-      ran.push(id);
-      return Promise.resolve();
-    };
-    control.click();
-    registry.run = original;
-    await flush();
-
-    expect(ran).toEqual([]);
-    expect(controlOf(footerButton("Settings"))?.getAttribute("aria-expanded")).toBe("true");
-    expect(footerButton("Settings")?.dataset.expanded !== undefined).toBe(true);
-    expect(
-      document.querySelector('#layer-popover jx-menu-item[data-command-id="app.preferences"]'),
-    ).not.toBeNull();
-  });
-
-  test("the gear's first row is Preferences, and it runs the record", async () => {
-    installPreferencesRegistry();
-    await render();
-    controlOf(footerButton("Settings"))!.click();
-    await flush();
-
-    const ran: string[] = [];
-    const registry = activeRegistry()!;
-    const original = registry.run.bind(registry);
-    registry.run = (id: string) => {
-      ran.push(id);
-      return Promise.resolve();
-    };
-    const row = document.querySelector<HTMLElement>(
-      '#layer-popover jx-menu-item[data-command-id="app.preferences"]',
-    )!;
-    expect(row.textContent).toContain("Preferences…");
-    expect(row.querySelector("kbd")?.textContent).toBe("⌘,");
-    row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    registry.run = original;
-    await flush();
-
-    expect(ran).toEqual(["app.preferences"]);
-    expect(document.querySelector("#layer-popover jx-menu-item")).toBeNull();
-    expect(controlOf(footerButton("Settings"))?.getAttribute("aria-expanded")).toBe("false");
-  });
-
-  test("About still holds no rail slot, and Preferences is no longer one", async () => {
-    installPreferencesRegistry();
-    await render();
-    expect(footerButton("About")).toBeUndefined();
-    expect(footerButton("Preferences")).toBeUndefined();
-  });
-
-  test("either arrow opens the menu from the gear, and other keys fall through", async () => {
-    installPreferencesRegistry();
-    await render();
-    const press = (key: string) => {
-      const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key });
-      controlOf(footerButton("Settings"))!.dispatchEvent(event);
-      return event;
-    };
-    expect(press("a").defaultPrevented).toBe(false);
-    expect(isSettingsMenuOpen()).toBe(false);
-    expect(press("ArrowDown").defaultPrevented).toBe(true);
-    expect(isSettingsMenuOpen()).toBe(true);
-    dismissSettingsMenu();
-    expect(press("ArrowUp").defaultPrevented).toBe(true);
-    expect(isSettingsMenuOpen()).toBe(true);
-  });
-
-  test("a registry that declares nothing for the gear renders no foot", async () => {
-    const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
-    registry.register({
-      id: "app.preferences",
-      title: "Preferences…",
-      category: "View",
-      level: "application",
-      menus: ["palette"],
-      run: () => {},
-    });
-    setActiveRegistry(registry);
-    await render();
-    expect(bar().querySelector('[part="foot"] jx-action-button')).toBeNull();
-  });
-});
-
-// ─── The Library button ───────────────────────────────────────────────────────
-
-describe("the Library button", () => {
-  /** A registry declaring `library.open`, gated on an open project, like the real record. */
-  function installLibraryRegistry(projectOpen: boolean) {
-    const ran: string[] = [];
-    const registry = createCommandRegistry({
-      getContext: () => {
-        const ctx = emptyContext();
-        ctx.project.open = projectOpen;
-        return ctx;
-      },
-      mac: true,
-    });
-    registry.register({
-      id: "library.open",
-      title: "Open Library",
-      category: "Project",
-      level: "project",
-      menus: ["palette"],
-      when: (ctx) => ctx.project.open,
-      run: () => {
-        ran.push("library.open");
-      },
-    });
-    setActiveRegistry(registry);
-    return ran;
-  }
-
-  test("sits in the foot with a project open, and runs library.open", async () => {
-    const ran = installLibraryRegistry(true);
-    await render();
-    const library = footerButton("Library");
-    expect(library).toBeDefined();
-    // A glyph the kit ships: a name it lacked would draw an empty path.
-    expect(library?.querySelector('[part="icon"] jx-icon path')?.getAttribute("d")).toBeTruthy();
-    controlOf(library)!.click();
-    await flush();
-    expect(ran).toEqual(["library.open"]);
-  });
-
-  test("is absent when the command is not live, or not registered at all", async () => {
-    installLibraryRegistry(false);
-    await render();
-    expect(footerButton("Library")).toBeUndefined();
-    installPreferencesRegistry();
-    await render();
-    expect(footerButton("Library")).toBeUndefined();
-  });
-
-  test("is pressed while the Library tab is the focused one", async () => {
-    installLibraryRegistry(true);
-    const { libraryTabId } = await import("../src/browse/library-source");
-    resetWorkspaceWithTab({ tagName: "div" });
-    await render();
-    expect(footerButton("Library")?.dataset.selected).toBeUndefined();
-    const { openTab } = await import("../src/workspace/workspace");
-    openTab({ document: { tagName: "div" }, documentPath: null, id: libraryTabId() });
-    await render();
-    expect(footerButton("Library")?.dataset.selected).toBeDefined();
+    expect(bar().querySelector('[part="foot"]')).toBeNull();
+    expect(bar().querySelector("[data-rail-menu]")).toBeNull();
+    expect(bar().querySelector("[data-rail-action]")).toBeNull();
+    expect(railIds()).not.toContain("settings");
   });
 });
 

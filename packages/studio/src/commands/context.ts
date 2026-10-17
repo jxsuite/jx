@@ -23,6 +23,8 @@
 
 import type { KeyScope } from "./levels";
 import type { JxPath } from "../state";
+import { DEFAULT_WORKSPACE } from "../workspace/workspace-ids";
+import type { WorkspaceId } from "../workspace/workspace-ids";
 
 /** PAL-derived capability keys. One `when` clause replaces a scattered `if (platform.x)`. */
 export const CAPABILITIES = [
@@ -59,6 +61,7 @@ export type EditorKind =
   | "config"
   | "entry"
   | "media"
+  | "home"
   | "none";
 
 /** The Canvas view axis — one control, three values (§4.2). */
@@ -90,6 +93,11 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
   ["entry", "entry"],
   ["git-diff", "diff"],
   ["grid", "grid"],
+  /* A workspace's home (`workspace/workspace-home.ts`): the surface a workspace opens on when none
+     of its own tabs is open. No document, no selection, nothing to paste into, so not the Canvas
+     key scope a mode this map did not know would fall into. */
+  ["media-home", "home"],
+  ["publish-home", "home"],
   ["manage", "library"],
   /* The Media viewer — `media/media-pane.ts`. An image, a video, a font specimen: files the studio
      can SHOW but has no document model for, which is why clicking one used to end in "No format
@@ -125,6 +133,7 @@ export const EDITOR_KIND_LABELS: Readonly<Record<EditorKind, string>> = {
   diff: "Diff",
   entry: "Entry",
   grid: "Grid",
+  home: "Home",
   media: "Media",
   library: "Library",
   none: "None",
@@ -163,6 +172,15 @@ export interface CommandContext {
     ahead: number;
     behind: number;
     dirtyCount: number;
+  };
+  /**
+   * Which of the five workspaces is on screen (`shell.workspace`). A record or a panel whose
+   * surface belongs to one workspace gates on this, and every builder of a context — the live one,
+   * `panelContext()` and this module's empty one — has to fill it, or a predicate reads the default
+   * and silently never holds.
+   */
+  workspace: {
+    id: WorkspaceId;
   };
   document: {
     open: boolean;
@@ -293,6 +311,7 @@ export function emptyContext(): CommandContext {
   return {
     project: { open: false, isSite: false, isRepo: false, isMultilingual: false },
     git: { ahead: 0, behind: 0, dirtyCount: 0 },
+    workspace: { id: DEFAULT_WORKSPACE },
     document: { open: false, dirty: false, mode: "", canUndo: false, canRedo: false },
     editor: { kind: "none" },
     canvas: { view: "design" },

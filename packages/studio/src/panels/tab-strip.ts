@@ -54,6 +54,9 @@ import {
   workspace,
 } from "../workspace/workspace";
 import { gridTabLabel } from "../grid/grid-source";
+import { workspaceTabOrder } from "../workspace/tab-workspace";
+import { workspaceHomeLabel } from "../workspace/workspace-ids";
+import { shell } from "../shell";
 import { entryDraftPill } from "../content/entry-editor";
 import { DRAFT_FIELD, isDraftEntry } from "../content/draft-state";
 import { entryFields } from "../content/entry-fields";
@@ -246,7 +249,11 @@ export function mount(host: HTMLElement) {
            so a fact about a pane it does not draw — or about a tab in another pane's strip — has
            no reader inside this effect. */
       }
+      // The strip draws the workspace on screen's tabs alone, so a switch repaints every strip.
+      void shell.workspace;
       for (const tab of workspace.tabs.values()) {
+        // A tab's workspace follows its editor (`project.json` is Styles' in its stylebook only).
+        void tab.session.ui.canvasMode;
         void tab.doc.dirty;
         void tab.documentPath;
         void tab.pinned;
@@ -518,7 +525,14 @@ function project(pane: Pane): TabStripValues {
      that could put one there (`moveTabToPane`, through `revealOpenTab`) is reached solely by
      `openFileInPane`, which the follow calls for COMPANIONS. So the second disjunct is already
      total over a lens and the first chose nothing. */
-  if (derived && pane.tabOrder.length === 0) {
+  /* The tabs of the workspace on screen, in strip order. A pane's other tabs are another
+     workspace's: they keep their slots in `pane.tabOrder` and are simply not drawn. */
+  const visible = workspaceTabOrder(pane);
+  /* A derived pane none of whose tabs is in the workspace on screen draws its derivation chip too.
+     A COMPANION owns real tabs, and after a switch to Media or Publish the one it follows is
+     another workspace's: filtered away, it left a stage drawing a document under a blank row, with
+     no chip, no ✕ and no way out of the derivation. */
+  if (derived && visible.length === 0) {
     /* A COMPANION whose rule has not resolved reaches this too, and it has to. Its `tabOrder` is
        empty for a different reason than a lens's — the document it wants is not open YET, or the
        selection has nothing under it — and the branch below drew nothing: a pane with no chip,
@@ -534,7 +548,8 @@ function project(pane: Pane): TabStripValues {
        written as bookkeeping and both were unfalsifiable; the branch below owns the answer. */
     return derivationValues(pane, derived);
   }
-  if (pane.tabOrder.length === 0) {
+  // A non-derived pane whose every tab belongs elsewhere draws the same blank row an empty one does.
+  if (visible.length === 0) {
     /* An empty, non-derived pane WHILE A DRAG IS LIVE draws a `tabs` row with no chips instead of
        going blank: `blankValues` hides the row outright, and a hidden row has no `jx-tabs` element
        for `adoptStrip` to make a target of — so a tab dragged toward the empty primary beside a
@@ -569,7 +584,8 @@ function project(pane: Pane): TabStripValues {
     preset: "",
     stripLabel: stripLabel(pane),
     subject: "",
-    tabs: pane.tabOrder.flatMap((id, index) => chipView(pane, id, index, labels)),
+    // The chip's index is its slot in the pane's FULL order, which is what a drop is measured in.
+    tabs: visible.flatMap((id) => chipView(pane, id, pane.tabOrder.indexOf(id), labels)),
     trailing: _overflowing.get(pane.id) === true,
     trailingGlyph: "⌄",
     // ONE accessible name (`studio-ui-guidelines.md` §10): the glyph is hidden, so `title` is both
@@ -837,11 +853,13 @@ export function hiddenTabIds(paneId: string = workspace.activePaneId): string[] 
   const left = strip.scrollLeft;
   const right = left + strip.clientWidth;
   const hidden: string[] = [];
-  /* Typed, not filtered: a chip's position is what pairs it with `pane.tabOrder[index]`, so dropping
-     a node here would shift every later chip onto the wrong tab id. */
+  /* Typed, not filtered: a chip's position is what pairs it with the strip's drawn order, so dropping
+     a node here would shift every later chip onto the wrong tab id. The drawn order is the
+     workspace's tabs alone, which is what `project` drew. */
+  const drawn = workspaceTabOrder(pane);
   const chips = [...strip.querySelectorAll<HTMLElement>('[part="tab"]')];
   for (const [index, chip] of chips.entries()) {
-    const id = pane.tabOrder[index];
+    const id = drawn[index];
     if (id && (chip.offsetLeft < left || chip.offsetLeft + chip.offsetWidth > right)) {
       hidden.push(id);
     }
@@ -877,7 +895,7 @@ export function dismissOverflowMenu() {
 function openOverflowMenu(pane: Pane, labels: Map<string, string>, anchorEl: HTMLElement | null) {
   dismissOverflowMenu();
   const hidden = hiddenTabIds(pane.id);
-  const ids = hidden.length > 0 ? hidden : [...pane.tabOrder];
+  const ids = hidden.length > 0 ? hidden : workspaceTabOrder(pane);
   const anchor = rectOf(anchorEl ?? document.body);
   _overflowHandle = openMenu({
     /* The trigger says "Show hidden tabs" and this is the panel it opens, so it takes the same
@@ -1203,7 +1221,7 @@ function tabLabels(pane: Pane): Map<string, string> {
         ? [
             {
               documentPath: tab.documentPath,
-              fallback: gridTabLabel(tab.id) ?? "Untitled",
+              fallback: gridTabLabel(tab.id) ?? workspaceHomeLabel(tab.id) ?? "Untitled",
               id,
             },
           ]
@@ -1219,7 +1237,7 @@ function tabLabels(pane: Pane): Map<string, string> {
  * @returns {string}
  */
 function tabTooltip(tab: Tab): string {
-  const base = tab.documentPath || gridTabLabel(tab.id) || "Untitled";
+  const base = tab.documentPath || gridTabLabel(tab.id) || workspaceHomeLabel(tab.id) || "Untitled";
   const origin = tab.session.openedFrom;
   const withOrigin = origin?.documentPath ? `${base}\nOpened from ${origin.documentPath}` : base;
   return tab.preview ? `${withOrigin}\nPreview — double-click to keep open` : withOrigin;
