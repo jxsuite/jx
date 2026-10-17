@@ -13,7 +13,7 @@ import type { ProjectConfig } from "@jxsuite/schema/types";
 const calls = { registry: 0, sections: 0 };
 let failSections = false;
 
-mock.module("@jxsuite/compiler/project-sections", () => ({
+void mock.module("@jxsuite/compiler/project-sections", () => ({
   loadProjectSections: async (_root: string, config: ProjectConfig) => {
     calls.sections += 1;
     await Promise.resolve();
@@ -27,7 +27,7 @@ mock.module("@jxsuite/compiler/project-sections", () => ({
 const realFormatHost = await import("@jxsuite/compiler/format-host");
 const realBuildRegistry = realFormatHost.buildProjectExtensionRegistry;
 
-mock.module("@jxsuite/compiler/format-host", () => ({
+void mock.module("@jxsuite/compiler/format-host", () => ({
   ...realFormatHost,
   buildProjectExtensionRegistry: (...args: Parameters<typeof realBuildRegistry>) => {
     calls.registry += 1;
