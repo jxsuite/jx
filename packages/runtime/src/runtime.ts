@@ -936,10 +936,10 @@ export async function buildScope(
   // Wrap in Vue reactive proxy — deep reactivity from this point on
   const state = reactive(raw);
 
-  // Second pass: template strings → computed
+  // Second pass: template strings → computed, a single expression keeping its own type (§5.3)
   for (const [key, def] of Object.entries(defs)) {
     if (isString(def) && def.includes("${")) {
-      state[key] = computed(() => evaluateTemplate(def, state));
+      state[key] = computed(() => evaluateValueTemplate(def, state));
     }
   }
 
@@ -1224,12 +1224,16 @@ export function isSingleExpression(str: string): boolean {
 }
 
 /**
- * Evaluate a template for an ATTRIBUTE, keeping the expression's own type.
+ * Evaluate a template as a VALUE — a state entry (Shape 3) or an attribute — keeping the
+ * expression's own type.
  *
- * `evaluateTemplate` interpolates into a string, which is what text wants and what an attribute
- * cannot afford: `"${state.expanded}"` has to arrive as the boolean `false`, or `booleanAttrValue`
- * never sees a boolean, `open="false"` is written, and HTML reads that as open. Only a single
- * expression can carry a type at all — `"a ${b}"` is text by construction — which is the same line
+ * `evaluateTemplate` interpolates into a string, which is what text wants and what a value cannot
+ * afford: `"${state.expanded}"` has to arrive as the boolean `false`, or `booleanAttrValue` never
+ * sees a boolean, `open="false"` is written, and HTML reads that as open. A state entry is the same
+ * case one step removed: `"isBrand": "${state.name === 'github'}"` held the string `"false"`, which
+ * is truthy, so every `state.isBrand ? … : …` took the wrong branch in Studio and in a hydrated
+ * component while the prerendered page took the right one. Only a single expression can carry a
+ * type at all — `"a ${b}"` is text by construction — which is the same line
  * `evaluateStaticTemplate` draws in the compiler, and drawing it identically is what keeps a
  * prerendered page and the same document rendered live in agreement.
  *
@@ -1237,7 +1241,7 @@ export function isSingleExpression(str: string): boolean {
  * @param {JxScope} state - Reactive scope
  * @returns {JxScopeValue} The expression's value, or the interpolated string
  */
-function evaluateAttrTemplate(str: string, state: JxScope): JxScopeValue {
+function evaluateValueTemplate(str: string, state: JxScope): JxScopeValue {
   if (!isSingleExpression(str)) {
     return evaluateTemplate(str, state);
   }
@@ -2765,7 +2769,7 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
     if (isRefValue(v)) {
       effect(() => write(resolveRef(v.$ref, state)));
     } else if (isTemplateString(v)) {
-      bindTemplate(v, () => write(evaluateAttrTemplate(v, state)));
+      bindTemplate(v, () => write(evaluateValueTemplate(v, state)));
     } else {
       write(v);
     }

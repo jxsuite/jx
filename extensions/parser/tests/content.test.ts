@@ -270,30 +270,35 @@ describe("ContentCollection", () => {
     expect(new ContentCollection(config).config).toBe(config);
   });
 
-  test("resolves all entries for a known content type", () => {
+  test("resolves all entries for a known content type", async () => {
     const collection = new ContentCollection({ _project: makeProject(), contentType: "posts" });
-    expect(collection.resolve()).toHaveLength(3);
+    const resolved = await collection.resolve();
+    expect(resolved).toHaveLength(3);
   });
 
-  test("returns [] when the content type is unknown", () => {
+  test("returns [] when the content type is unknown", async () => {
     const collection = new ContentCollection({ _project: makeProject(), contentType: "pages" });
-    expect(collection.resolve()).toEqual([]);
+    const resolved = await collection.resolve();
+    expect(resolved).toEqual([]);
   });
 
-  test("returns [] when contentType is omitted", () => {
+  test("returns [] when contentType is omitted", async () => {
     const collection = new ContentCollection({ _project: makeProject() });
-    expect(collection.resolve()).toEqual([]);
+    const resolved = await collection.resolve();
+    expect(resolved).toEqual([]);
   });
 
-  test("returns [] when no project context is present", () => {
-    expect(new ContentCollection({ contentType: "posts" }).resolve()).toEqual([]);
+  test("returns [] when no project context is present", async () => {
+    const resolved = await new ContentCollection({ contentType: "posts" }).resolve();
+    expect(resolved).toEqual([]);
   });
 
-  test("returns [] when the project has no contentTypes map", () => {
-    expect(new ContentCollection({ _project: {}, contentType: "posts" }).resolve()).toEqual([]);
+  test("returns [] when the project has no contentTypes map", async () => {
+    const resolved = await new ContentCollection({ _project: {}, contentType: "posts" }).resolve();
+    expect(resolved).toEqual([]);
   });
 
-  test("applies filter, sort, and limit from config", () => {
+  test("applies filter, sort, and limit from config", async () => {
     const collection = new ContentCollection({
       _project: makeProject(),
       contentType: "posts",
@@ -301,16 +306,18 @@ describe("ContentCollection", () => {
       limit: 1,
       sort: { field: "views", order: "desc" },
     });
-    expect(collection.resolve().map((e) => e.id)).toEqual(["gamma"]);
+    const resolved = await collection.resolve();
+    expect(resolved.map((e) => e.id)).toEqual(["gamma"]);
   });
 
-  test("applies a shorthand object filter", () => {
+  test("applies a shorthand object filter", async () => {
     const collection = new ContentCollection({
       _project: makeProject(),
       contentType: "posts",
       filter: { title: "Alpha" },
     });
-    expect(collection.resolve().map((e) => e.id)).toEqual(["alpha"]);
+    const resolved = await collection.resolve();
+    expect(resolved.map((e) => e.id)).toEqual(["alpha"]);
   });
 });
 
@@ -322,23 +329,27 @@ describe("ContentEntry", () => {
     expect(new ContentEntry(config).config).toBe(config);
   });
 
-  test("resolves an entry by literal id", () => {
+  test("resolves an entry by literal id", async () => {
     const entry = new ContentEntry({ _project: makeProject(), contentType: "posts", id: "alpha" });
-    expect(entry.resolve()?.data.title).toBe("Alpha");
+    const resolved = await entry.resolve();
+    expect(resolved?.data.title).toBe("Alpha");
   });
 
-  test("returns null when the content type is unknown", () => {
+  test("returns null when the content type is unknown", async () => {
     const entry = new ContentEntry({ _project: makeProject(), contentType: "pages", id: "alpha" });
-    expect(entry.resolve()).toBeNull();
+    const resolved = await entry.resolve();
+    expect(resolved).toBeNull();
   });
 
-  test("returns null when no project context is present", () => {
-    expect(new ContentEntry({ contentType: "posts", id: "alpha" }).resolve()).toBeNull();
+  test("returns null when no project context is present", async () => {
+    const resolved = await new ContentEntry({ contentType: "posts", id: "alpha" }).resolve();
+    expect(resolved).toBeNull();
   });
 
-  test("returns null when no id is provided", () => {
+  test("returns null when no id is provided", async () => {
     const entry = new ContentEntry({ _project: makeProject(), contentType: "posts" });
-    expect(entry.resolve()).toBeNull();
+    const resolved = await entry.resolve();
+    expect(resolved).toBeNull();
   });
 
   /*
@@ -353,121 +364,134 @@ describe("ContentEntry", () => {
     ];
     const project = { content: new Map([["posts", localized]]) };
 
-    test("answers with the route's own language", () => {
+    test("answers with the route's own language", async () => {
       const fr = new ContentEntry({
         _document: { route: { locale: "fr-CA" } },
         _project: project,
         contentType: "posts",
         id: "hello",
       });
-      expect(fr.resolve()?.data.title).toBe("Bonjour");
+      const resolved = await fr.resolve();
+      expect(resolved?.data.title).toBe("Bonjour");
       const en = new ContentEntry({
         _document: { route: { locale: "en" } },
         _project: project,
         contentType: "posts",
         id: "hello",
       });
-      expect(en.resolve()?.data.title).toBe("Hello");
+      const resolved2 = await en.resolve();
+      expect(resolved2?.data.title).toBe("Hello");
     });
 
-    test("a language the collection has nothing in answers with nothing", () => {
+    test("a language the collection has nothing in answers with nothing", async () => {
       const ar = new ContentEntry({
         _document: { route: { locale: "ar" } },
         _project: project,
         contentType: "posts",
         id: "hello",
       });
-      expect(ar.resolve()).toBeNull();
+      const resolved = await ar.resolve();
+      expect(resolved).toBeNull();
     });
 
     // A route with no locale — a monolingual project, a standalone evaluation — is unscoped.
-    test("no route locale reads the whole collection", () => {
+    test("no route locale reads the whole collection", async () => {
       const any = new ContentEntry({ _project: project, contentType: "posts", id: "hello" });
-      expect(any.resolve()?.data.title).toBe("Hello");
+      const resolved = await any.resolve();
+      expect(resolved?.data.title).toBe("Hello");
     });
 
     // An unlocalized collection is not in one language; filtering it by the route's would empty it.
-    test("an unlocalized collection is untouched by the route's language", () => {
+    test("an unlocalized collection is untouched by the route's language", async () => {
       const plain = new ContentEntry({
         _document: { route: { locale: "fr-CA" } },
         _project: makeProject(),
         contentType: "posts",
         id: "alpha",
       });
-      expect(plain.resolve()?.data.title).toBe("Alpha");
+      const resolved = await plain.resolve();
+      expect(resolved?.data.title).toBe("Alpha");
     });
   });
 
-  test("returns null when the id matches nothing", () => {
+  test("returns null when the id matches nothing", async () => {
     const entry = new ContentEntry({ _project: makeProject(), contentType: "posts", id: "nope" });
-    expect(entry.resolve()).toBeNull();
+    const resolved = await entry.resolve();
+    expect(resolved).toBeNull();
   });
 
-  test("resolves a $params $ref through document path params", () => {
+  test("resolves a $params $ref through document path params", async () => {
     const entry = new ContentEntry({
       _document: { route: { _pathParams: { slug: "gamma" } } },
       _project: makeProject(),
       contentType: "posts",
       id: { $ref: "#/$params/slug" },
     });
-    expect(entry.resolve()?.data.title).toBe("Gamma");
+    const resolved = await entry.resolve();
+    expect(resolved?.data.title).toBe("Gamma");
   });
 
-  test("returns null when the $params $ref has no matching path param", () => {
+  test("returns null when the $params $ref has no matching path param", async () => {
     const entry = new ContentEntry({
       _document: { route: { _pathParams: {} } },
       _project: makeProject(),
       contentType: "posts",
       id: { $ref: "#/$params/slug" },
     });
-    expect(entry.resolve()).toBeNull();
+    const resolved = await entry.resolve();
+    expect(resolved).toBeNull();
   });
 
-  test("returns null for a $params $ref with no document context", () => {
+  test("returns null for a $params $ref with no document context", async () => {
     const entry = new ContentEntry({
       _project: makeProject(),
       contentType: "posts",
       id: { $ref: "#/$params/slug" },
     });
-    expect(entry.resolve()).toBeNull();
+    const resolved = await entry.resolve();
+    expect(resolved).toBeNull();
   });
 
-  test("non-$params object ids are passed through and find nothing", () => {
+  test("non-$params object ids are passed through and find nothing", async () => {
     const entry = new ContentEntry({
       _project: makeProject(),
       contentType: "posts",
       id: { $ref: "#/$defs/something" },
     });
-    expect(entry.resolve()).toBeNull();
+    const resolved = await entry.resolve();
+    expect(resolved).toBeNull();
   });
 
-  test("matches against a custom data field when field is set", () => {
+  test("matches against a custom data field when field is set", async () => {
     const entry = new ContentEntry({
       _project: makeProject(),
       contentType: "posts",
       field: "slug",
       id: "the-gamma",
     });
-    expect(entry.resolve()?.id).toBe("gamma");
+    const resolved = await entry.resolve();
+    expect(resolved?.id).toBe("gamma");
   });
 
-  test("returns null when the custom field matches nothing", () => {
+  test("returns null when the custom field matches nothing", async () => {
     const entry = new ContentEntry({
       _project: makeProject(),
       contentType: "posts",
       field: "slug",
       id: "missing",
     });
-    expect(entry.resolve()).toBeNull();
+    const resolved = await entry.resolve();
+    expect(resolved).toBeNull();
   });
 
-  test("field 'id' falls back to the id lookup", () => {
+  test("field 'id' falls back to the id lookup", async () => {
     const entry = new ContentEntry({
       _project: makeProject(),
       contentType: "posts",
       field: "id",
       id: "beta",
     });
-    expect(entry.resolve()?.data.title).toBe("Beta");
+    const resolved = await entry.resolve();
+    expect(resolved?.data.title).toBe("Beta");
   });
 });

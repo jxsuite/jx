@@ -37,6 +37,7 @@ import {
   pureSchemeOf,
   resolveStaticValue,
   srcImportBinding,
+  templateValueSource,
 } from "../shared.ts";
 import {
   bodyReturnsValue,
@@ -142,7 +143,7 @@ export function compileClient(
       // Naked primitive or array → reactive state
       if (isTemplateString(def)) {
         // Template string → computed on state so other computeds can ref it
-        computedEntries.push([key, `() => \`${def}\``]);
+        computedEntries.push([key, `() => ${templateValueSource(def)}`]);
       } else {
         stateEntries.push([key, def]);
       }

@@ -77,6 +77,8 @@ A string containing `${}` syntax:
 }
 ```
 
+A string that is one `${}` from end to end keeps the expression's own value, so `isEmpty` is a real boolean; any text around it makes the value a string. See [State](/docs/framework/concepts/state#shape-3-computed-templates).
+
 ### Shape 4: a prototype (`$prototype`)
 
 An object with `$prototype` for functions and data sources:

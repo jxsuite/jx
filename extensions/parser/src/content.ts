@@ -14,6 +14,8 @@ import type {
   JsonValue,
   ProjectConfig,
 } from "@jxsuite/schema/types";
+import { entriesOf } from "./content-data.ts";
+import type { ContentSectionData } from "./content-data.ts";
 import { parseComparable } from "./dates.ts";
 import type { ContentLoaderEntry } from "./types.ts";
 
@@ -43,7 +45,7 @@ export interface ContentQuery {
  * Content.projectData result) under its section key, and the project config.
  */
 interface ContentProjectContext {
-  content?: Map<string, ContentLoaderEntry[]>;
+  content?: ContentSectionData;
   /** The project config, for the i18n routing rules a locale prefix comes from. */
   config?: ProjectConfig | null;
 }
@@ -211,15 +213,22 @@ export function findEntry(entries: ContentLoaderEntry[], id: string) {
 // ─── Class Implementations ──────────────────────────────────────────────────
 
 export class ContentCollection {
+  /**
+   * Reads `_project.content` through `load` and `materialize`, so a host that loads sections on
+   * demand may hand it the section as it is, rather than completing it first (specs/extensions.md
+   * §8). A class without this flag gets the whole section, as it always has.
+   */
+  static projectOnDemand = true;
+
   config: CollectionConfig;
   /** @param {CollectionConfig} config */
   constructor(config: CollectionConfig) {
     this.config = config;
   }
 
-  resolve() {
+  async resolve() {
     const { contentType, filter, sort, limit, _project } = this.config;
-    const entries = _project?.content?.get(contentType ?? "");
+    const entries = await entriesOf(_project?.content, contentType ?? "");
     if (!entries) {
       return [];
     }
@@ -233,11 +242,17 @@ export class ContentCollection {
     if (limit != null) {
       query.limit = limit;
     }
-    return queryContentType(entries, query);
+    const result = queryContentType(entries, query);
+    // Only what is returned needs a body; the query above read frontmatter alone.
+    await _project?.content?.materialize?.(result);
+    return result;
   }
 }
 
 export class ContentEntry {
+  /** As {@link ContentCollection.projectOnDemand}: reads the section through `load`. */
+  static projectOnDemand = true;
+
   config: EntryConfig;
   /** @param {EntryConfig} config */
   constructor(config: EntryConfig) {
@@ -262,9 +277,16 @@ export class ContentEntry {
     return path.replace(/\/+$/, "") || "/";
   }
 
-  resolve() {
+  async resolve() {
+    const found = await this.#find();
+    await this.config._project?.content?.materialize?.([found]);
+    return found;
+  }
+
+  /** The entry this one names, found by frontmatter, route and id alone (its body may be pending). */
+  async #find(): Promise<ContentLoaderEntry | null> {
     const { contentType, id, field, _project, _document } = this.config;
-    const entries = _project?.content?.get(contentType ?? "");
+    const entries = await entriesOf(_project?.content, contentType ?? "");
     if (!entries) {
       return null;
     }

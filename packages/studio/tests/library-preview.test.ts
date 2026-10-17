@@ -198,6 +198,56 @@ describe("renderDocPreview", () => {
     }
   });
 
+  /* A desktop server gates its dev proxy on the token the canvas URL carries, and a page's `$src`
+     is relative to the page. Previews used the shell's URL for both, so every class on a previewed
+     page was refused (403) and resolved against `/__studio__/` besides. */
+  test("a page's $src class resolves against the page, with the canvas's dev-proxy token", async () => {
+    const { setResolveToken } = await import("@jxsuite/runtime");
+    /* SAFETY: as above — happy-dom's GlobalRegistrator puts `happyDOM` on globalThis. */
+    const { happyDOM } = globalThis as typeof globalThis & {
+      happyDOM?: { setURL: (u: string) => void };
+    };
+    happyDOM?.setURL("http://127.0.0.1:4000/__studio__/index.html");
+    installMockPlatform(
+      { canvasUrl: "/__studio__/canvas.html?rpcToken=tok" },
+      {
+        "pages/kb/index.json": JSON.stringify({
+          state: { entry: { $prototype: "Entry", $src: "../../lib/Entry.class.json" } },
+          tagName: "section",
+        }),
+      },
+    );
+    resetStudioState({ projectConfig: null, projectDirs: [], projectRoot: "/abs/site" });
+    const requests: { url: string; init: RequestInit | undefined }[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      (resource: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(resource);
+        requests.push({ init, url });
+        return Promise.resolve(
+          url.includes("/__jx_resolve__")
+            ? Response.json({ ok: true })
+            : new Response("missing", { status: 404 }),
+        );
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    try {
+      expect(await renderDocPreview("pages/kb/index.json")).not.toBeNull();
+      expect(requests.map((r) => r.url)).toEqual([
+        "http://127.0.0.1:4000//abs/site/lib/Entry.class.json",
+        "/__jx_resolve__?token=tok",
+      ]);
+      expect(JSON.parse(String(requests[1]!.init?.body))).toMatchObject({
+        $base: "http://127.0.0.1:4000//abs/site/pages/kb/index.json",
+        $src: "../../lib/Entry.class.json",
+      });
+    } finally {
+      globalThis.fetch = realFetch;
+      setResolveToken(null);
+    }
+  });
+
   test("a file that cannot be parsed is null, not a Problem", async () => {
     installMockPlatform({}, { "pages/broken.json": "{ not json" });
     expect(await renderDocPreview("pages/broken.json")).toBeNull();

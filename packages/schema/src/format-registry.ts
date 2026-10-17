@@ -262,6 +262,12 @@ export interface ProjectDataContext {
   registry: ExtensionRegistry;
   /** The host's injected I/O. */
   io?: FormatHostIO;
+  /**
+   * The host serves one page at a time and wants the section loaded on demand: an owner may answer
+   * data that loads each part the first time a class asks for it, rather than all of it up front.
+   * Absent means everything now, which is what a build needs (specs/extensions.md §8).
+   */
+  lazy?: boolean;
 }
 
 /**
