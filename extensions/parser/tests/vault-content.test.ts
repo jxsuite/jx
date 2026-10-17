@@ -760,7 +760,7 @@ describe("ContentEntry bound to its page", () => {
     captureWarnings();
     const data = await loadVault();
     expect(
-      new ContentEntry({ _project: { content: data }, contentType: "kb" }).resolve(),
+      await new ContentEntry({ _project: { content: data }, contentType: "kb" }).resolve(),
     ).toBeNull();
   });
 

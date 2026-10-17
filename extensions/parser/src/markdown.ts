@@ -40,6 +40,13 @@ export interface MarkdownLoadOptions {
   alerts?: JsonValue;
   /** Told of each `[!type]` marker whose type is not enabled (it stays a blockquote). */
   onUnknownAlert?: (type: string) => void;
+  /**
+   * Read the frontmatter and leave the body unparsed: the entry comes back without `$children` and
+   * without the `_meta` fields read from the body (`excerpt`, `toc`, `readingTime`, `wordCount`).
+   * The content loader asks for this when a host loads a collection lazily, and loads the file
+   * again without it once the entry is actually returned (specs/extensions.md §8).
+   */
+  deferBody?: boolean;
 }
 
 /** Options for {@link Markdown.discover}. */
@@ -105,18 +112,9 @@ export class Markdown {
     path: string,
     options: MarkdownLoadOptions = {},
   ): Promise<ContentLoaderEntry[]> {
-    const { processMarkdown } = await import("./md.ts");
+    const { processMarkdown, readFrontmatter } = await import("./md.ts");
     const { readFileSync, statSync } = await import("node:fs");
     const source = readFileSync(path, "utf8");
-    const result = processMarkdown(source, path, {
-      ...(options.directives !== undefined && { directives: options.directives }),
-      ...(options.directiveOptions !== undefined && {
-        directiveOptions: options.directiveOptions,
-      }),
-      ...(options.sourceRoot !== undefined && { sourceRoot: options.sourceRoot }),
-      ...(options.alerts !== undefined && { alerts: options.alerts }),
-      ...(options.onUnknownAlert !== undefined && { onUnknownAlert: options.onUnknownAlert }),
-    });
     const _meta: ContentLoaderEntry["_meta"] = {};
     /*
      * The modification time is the only date a file always has. A feed falls back to it when the
@@ -130,6 +128,19 @@ export class Markdown {
     } catch {
       // A format class may be handed content that is not on disk; an absent mtime is not an error.
     }
+    if (options.deferBody) {
+      const { frontmatter, slug } = readFrontmatter(source, path, options.sourceRoot);
+      return [{ _meta, body: source, data: frontmatter, id: slug }];
+    }
+    const result = processMarkdown(source, path, {
+      ...(options.directives !== undefined && { directives: options.directives }),
+      ...(options.directiveOptions !== undefined && {
+        directiveOptions: options.directiveOptions,
+      }),
+      ...(options.sourceRoot !== undefined && { sourceRoot: options.sourceRoot }),
+      ...(options.alerts !== undefined && { alerts: options.alerts }),
+      ...(options.onUnknownAlert !== undefined && { onUnknownAlert: options.onUnknownAlert }),
+    });
     // `processMarkdown` always derives all four, so every entry carries them.
     _meta.excerpt = result.$excerpt;
     _meta.toc = result.$toc;

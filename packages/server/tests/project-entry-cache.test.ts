@@ -8,19 +8,41 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 
-const calls = { registry: 0, sections: 0 };
+/** What the mocks saw: section loads and the `lazy` each asked for, registries, completions. */
+interface Calls {
+  completed: number;
+  lazy: (boolean | undefined)[];
+  registry: number;
+  sections: number;
+}
+const calls: Calls = { completed: 0, lazy: [], registry: 0, sections: 0 };
 let failSections = false;
 
 void mock.module("@jxsuite/compiler/project-sections", () => ({
-  loadProjectSections: async (_root: string, config: ProjectConfig) => {
+  loadProjectSections: async (
+    _root: string,
+    config: ProjectConfig,
+    _registry: ExtensionRegistry,
+    options: { lazy?: boolean } = {},
+  ) => {
     calls.sections += 1;
+    calls.lazy.push(options.lazy);
     await Promise.resolve();
     if (failSections) {
       throw new Error("sections failed");
     }
-    return { content: { name: config.name ?? null } };
+    /* A section that loads on demand, as the parser's content store does: `complete` is what a
+       host calls before handing `_project` to a class that reads it synchronously. */
+    const onDemand = {
+      complete: async () => {
+        calls.completed += 1;
+        await Promise.resolve();
+      },
+    };
+    return { content: { name: config.name ?? null }, onDemand, plain: "not completable" };
   },
 }));
 
@@ -96,6 +118,8 @@ afterAll(() => {
   rmSync(FIXTURES, { force: true, recursive: true });
 });
 beforeEach(() => {
+  calls.completed = 0;
+  calls.lazy = [];
   calls.registry = 0;
   calls.sections = 0;
   failSections = false;
@@ -158,5 +182,68 @@ describe("project entry cache", () => {
     mkdirSync(root, { recursive: true });
     expect(await projectAssetMounts(root)).toEqual([]);
     expect(await projectSiteBase(root)).toBe("");
+  });
+});
+
+/** A `.class.json` whose `$implementation` reports whether its sections were completed first. */
+function implementedClass(root: string, title: string, onDemand: boolean): void {
+  writeFileSync(
+    join(root, `${title}.js`),
+    `export class ${title} {
+  ${onDemand ? "static projectOnDemand = true;" : ""}
+  constructor(config) { this.config = config; }
+  resolve() { return { name: this.config._project?.content?.name ?? null }; }
+}
+`,
+  );
+  writeFileSync(
+    join(root, `${title}.class.json`),
+    JSON.stringify({ $implementation: `./${title}.js`, $prototype: "Class", title }),
+  );
+}
+
+/** What both fixture classes resolve to: the content section's marker. */
+interface NameResult {
+  name: string | null;
+}
+
+async function resolveClass(root: string, title: string): Promise<NameResult> {
+  const res = await handleResolve(
+    new Request("http://localhost/__jx_resolve__", {
+      body: JSON.stringify({ $prototype: title, $src: `./${title}.class.json` }),
+      method: "POST",
+    }),
+    root,
+  );
+  /* SAFETY: both fixture classes resolve to `{ name }`; a failed resolve is a non-2xx body the
+     assertions then reject. */
+  return (await res.json()) as NameResult;
+}
+
+describe("sections loaded on demand", () => {
+  test("the server asks for them on demand", async () => {
+    const root = project({ name: "lazy" });
+    await probe(root);
+    expect(calls.lazy).toEqual([true]);
+  });
+
+  test("a class that reads them synchronously gets them completed first", async () => {
+    const root = project({ name: "sync" });
+    implementedClass(root, "Sync", false);
+    expect(await resolveClass(root, "Sync")).toEqual({ name: "sync" });
+    expect(calls.completed).toBe(1);
+  });
+
+  test("a self-contained class gets them completed too: its bodies cannot await", async () => {
+    const root = project({ name: "self" });
+    await probe(root);
+    expect(calls.completed).toBe(1);
+  });
+
+  test("a class that declares projectOnDemand gets them as they are", async () => {
+    const root = project({ name: "lazy-class" });
+    implementedClass(root, "OnDemand", true);
+    expect(await resolveClass(root, "OnDemand")).toEqual({ name: "lazy-class" });
+    expect(calls.completed).toBe(0);
   });
 });
