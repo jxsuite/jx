@@ -165,6 +165,8 @@ Custom elements use the standard HTML `slot` mechanism for content composition. 
 
 A slot's own `children` act as fallback content, kept when the instance provides nothing for it.
 
+Whitespace between children is not content, so a component given only named children still shows its unnamed slot's fallback. When two slots share a name, the first one in the template takes the children and the second shows its fallback. A slot written directly inside another component's children passes on what it receives, placed by its own `slot` attribute.
+
 The `<slot>` itself leaves nothing behind. What the instance provided stands exactly where the slot was written, as a direct child of whatever contained it. That is what lets a component style what it was given: a rule like `"& > [part=\"body\"] > b"` reaches a slotted `<b>`, because the `<b>` really is a child of that part.
 
 ## Annotations
@@ -184,7 +186,7 @@ Studio's [Outline panel](/docs/studio/design/layers) shows `$title` as the eleme
 
 ## How it works
 
-The runtime creates the element with `document.createElement(tagName)`, assigns each listed property directly on the element object, and writes `attributes` entries with `setAttribute`. Properties whose values are templates or `$ref` bindings are wrapped in reactive effects, so the DOM updates whenever the underlying state changes. Slot distribution is manual light-DOM distribution: host children are captured before the template renders, then each `<slot>` is replaced by the children matching it, or by its own fallback children when nothing matches.
+The runtime creates the element with `document.createElement(tagName)`, assigns each listed property directly on the element object, and writes `attributes` entries with `setAttribute`. Properties whose values are templates or `$ref` bindings are wrapped in reactive effects, so the DOM updates whenever the underlying state changes. Slot distribution is manual light-DOM distribution: host children are captured before the template renders, then each `<slot>` is replaced by the children matching it, or by its own fallback children when nothing matches. A built page distributes the same way, in the component's module and in its prerendered HTML.
 
 ## Rules
 

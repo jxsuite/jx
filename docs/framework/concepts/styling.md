@@ -71,7 +71,7 @@ Base rules come first, so a state block overrides its own base property. That or
 
 When Studio renders the page live, the same rules are delivered through the document's adopted stylesheets and scoped with `data-jx` instead of a class. Different handle, same cascade, so what you see in the canvas is what the published page does.
 
-(You'll also see `data-jx-static` and `data-jx-prerendered` in compiled output. Those mark hydration state and are never used as CSS selectors.)
+(You'll also see `data-jx-static`, `data-jx-prerendered` and `data-jx-slots` in compiled output. Those mark hydration state and are never used as CSS selectors.)
 
 Your own `style` **attribute**, written under `attributes`, is untouched by any of this. It stays a literal attribute at inline precedence, so it wins over the object.
 

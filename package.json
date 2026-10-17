@@ -15,7 +15,7 @@
   ],
   "type": "module",
   "scripts": {
-    "all-the-things": "bun run build && bun run test:workspaces && bun run lint && bun run typecheck",
+    "all-the-things": "bun run build && bun run test:workspaces && bun run lint && bun run lint:typecheck && bun run typecheck",
     "build": "bun run build:parser && bun run build:search && bun run build:compiler && bun run build:runtime && bun run build:studio && bun run generate:schema",
     "build:compiler": "bun run --cwd packages/compiler build",
     "build:parser": "bun run --cwd extensions/parser build",
@@ -117,8 +117,9 @@
     "*.{ts,json,css,md}": [
       "oxfmt --no-error-on-unmatched-pattern"
     ],
-    "*.{ts}": [
-      "oxlint --fix"
+    "*.ts": [
+      "oxlint --fix",
+      "oxlint --type-aware -c .oxlintrc.typecheck.json"
     ]
   }
 }

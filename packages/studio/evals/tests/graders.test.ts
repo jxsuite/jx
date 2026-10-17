@@ -35,6 +35,17 @@ describe("render critic", () => {
     expect(pass).toBe(false);
     expect(errors.join("\n").toLowerCase()).toContain("not defined");
   });
+
+  test("reports a render that throws outside any binding as the throw it is", async () => {
+    // A binding's error arrives through the runtime's handler; this one still unwinds the render.
+    const { pass, errors } = await renderCritic({
+      tagName: "div",
+      state: { broken: { $prototype: "Function", body: "this is not valid javascript }{}{" } },
+      children: [{ tagName: "button", onclick: { $ref: "#/state/broken" }, children: ["Go"] }],
+    });
+    expect(pass).toBe(false);
+    expect(errors.join("\n")).toContain("Render threw:");
+  });
 });
 
 describe("schema grader", () => {

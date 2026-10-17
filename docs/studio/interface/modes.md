@@ -2,8 +2,10 @@
 title: "Editors and views"
 description: "The Editor and View controls in Jx Studio: what each editor and each view of the canvas is for, and which files offer which."
 spec:
+  - studio.md#4.1
   - studio.md#4.2
 code:
+  - packages/studio/src/utils/edit-display.ts
   - packages/studio/src/surfaces/commandbar.json
   - packages/studio/src/surfaces/commandbar.ts
   - packages/studio/src/commands/context.ts
@@ -25,6 +27,10 @@ Those seven names come from one list in Studio, which is why the pane's context 
 Edit is for writing. The canvas becomes the page itself: click any text and type, press `/` for blocks, fill in the page's metadata alongside. It reads like the finished page because it is the finished page. The context bar's **Size** control works here too: pick a [breakpoint](/docs/studio/design/breakpoints) and the column narrows to it, so you can write against the width your readers will have. Or drag the handle on either side of the column, and the width becomes anything you like with the breakpoint following it. Full guide: **[Edit mode](/docs/studio/editing)**.
 
 ![Jx Studio editing markdown content inline with a WYSIWYG editor](../../images/mode-edit.png)
+
+:::doc-note
+**Bound values show their real data in Edit and Design.** A style, a class, an image or a component setting that is bound to state renders with the value the page will have. Two things show their binding instead, written like `❪ state.title ❫`: bound text, so that editing it changes the binding rather than overwriting it, and anything inside a repeater that reads the current item, since the canvas draws the repeater's template once with no item to read.
+:::
 
 ## Design
 

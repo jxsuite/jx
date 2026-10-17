@@ -15,6 +15,7 @@ import {
   buildAttrs,
   buildInitialScope,
   buildInstanceScope,
+  createSlotFill,
   inlineStyleDeclarations,
   liftPropsAttributes,
   preRenderComponentHtml,
@@ -183,21 +184,81 @@ describe("preRenderComponentHtml — an instance inside a definition", () => {
     );
   });
 
-  test("a slot among its children passes the grandparent's slot content through", () => {
+  test("a slot among its children passes the grandparent's group through", () => {
     const def: JxElement = {
       children: [{ children: [{ tagName: "slot" }], tagName: "inner-wrap" }],
       tagName: "outer-box",
     };
-    expect(preRenderComponentHtml(def, null, "<p>from the page</p>", registry(innerWrap))).toBe(
+    const fill = createSlotFill([{ tagName: "p", textContent: "from the page" }], null, (c) =>
+      renderStaticNode(c, null),
+    );
+    expect(preRenderComponentHtml(def, null, fill, registry(innerWrap))).toBe(
       '<inner-wrap data-jx-static><div class="wrap"><p>from the page</p></div></inner-wrap>',
     );
   });
 
-  test("a nested instance with no children leaves the definition's slot in place", () => {
+  test("a named group forwarded through an unnamed slot lands in the nested default slot", () => {
+    const def: JxElement = {
+      children: [
+        { children: [{ attributes: { name: "head" }, tagName: "slot" }], tagName: "inner-wrap" },
+      ],
+      tagName: "outer-box",
+    };
+    const fill = createSlotFill(
+      [
+        { attributes: { slot: "head" }, tagName: "h1", textContent: "T" },
+        { tagName: "p", textContent: "body" },
+      ],
+      null,
+      (c) => renderStaticNode(c, null),
+    );
+    expect(preRenderComponentHtml(def, null, fill, registry(innerWrap))).toBe(
+      '<inner-wrap data-jx-static><div class="wrap"><h1 slot="head">T</h1></div></inner-wrap>',
+    );
+  });
+
+  test("a nested instance with no children unwraps the definition's slot to its fallback", () => {
     const def: JxElement = { children: [{ tagName: "inner-wrap" }], tagName: "outer-box" };
     expect(preRenderComponentHtml(def, null, null, registry(innerWrap))).toBe(
-      '<inner-wrap data-jx-static><div class="wrap"><slot></slot></div></inner-wrap>',
+      '<inner-wrap data-jx-static><div class="wrap"></div></inner-wrap>',
     );
+  });
+
+  test("a non-static nested instance carries data-jx-slots with an id unique in the page", () => {
+    const live: JxElement = {
+      children: [{ children: [{ tagName: "slot" }], tagName: "div" }],
+      onclick: { $prototype: "Function", body: "state.n++" },
+      state: { n: 0 },
+      tagName: "live-card",
+    };
+    const def: JxElement = {
+      children: [
+        { children: ["one"], tagName: "live-card" },
+        { children: ["two"], tagName: "live-card" },
+      ],
+      tagName: "outer-box",
+    };
+    const html = preRenderComponentHtml(def, null, null, {
+      ...registry(live),
+      slotIds: { n: 0 },
+    });
+    expect(html).toContain('data-jx-slots="1"');
+    expect(html).toContain('data-jx-slots="2"');
+    expect(html).toContain("<!--jx-slot 1 -->one<!--/jx-slot 1-->");
+    expect(html).toContain("<!--jx-slot 2 -->two<!--/jx-slot 2-->");
+  });
+
+  test("a non-static nested instance given no children carries data-jx-slots and no brackets", () => {
+    const live: JxElement = {
+      children: [{ children: [{ tagName: "slot" }], tagName: "div" }],
+      onclick: { $prototype: "Function", body: "state.n++" },
+      state: { n: 0 },
+      tagName: "live-card",
+    };
+    const def: JxElement = { children: [{ tagName: "live-card" }], tagName: "outer-box" };
+    const html = preRenderComponentHtml(def, null, null, { ...registry(live), slotIds: { n: 0 } });
+    expect(html).toContain('data-jx-slots="1"');
+    expect(html).not.toContain("<!--jx-slot");
   });
 
   test("a component among the instance's children is a sibling frame, not a nested one", () => {

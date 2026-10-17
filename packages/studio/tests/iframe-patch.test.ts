@@ -130,19 +130,21 @@ describe("applyIframePatch — set-style", () => {
     });
   });
 
-  test("blanks template-string style values (edit-mode transform)", () => {
+  test("a bound style value is live; one that reads the repeater row is dropped", () => {
     const { container, shadow } = mount(BASE);
     const op: JxDocOp = {
       key: "style",
       op: "set-key",
       path: ["children", 0],
-      value: { color: "${state.c}", fontSize: "12px" },
+      value: { color: "${state.c}", fontSize: "12px", width: "${item.w}" },
     };
     applyIframePatch(shadow, [op], container);
 
     const el = elAt(container, ["children", 0]);
-    // Template value blanked by the edit-mode transform, so no declaration is emitted for it.
-    expect(cssFor(el)).toBe(`[data-jx="${el.dataset.jx}"] { font-size: 12px }`);
+    // The binding reads its variable, which the element sets from the scope; the row one is gone.
+    expect(cssFor(el)).toBe(
+      `[data-jx="${el.dataset.jx}"] { color: var(--jx-s0); font-size: 12px }`,
+    );
   });
 
   test("clearing the style releases the element's rules", () => {

@@ -10,6 +10,7 @@ import {
   resetDocumentStyles,
   resolvePrototype,
   resolveRef,
+  setTemplateErrorHandler,
 } from "../src/runtime";
 import type { JsonValue, JxDocument, JxElement } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/types.ts";
@@ -179,16 +180,17 @@ describe("applyStyle gaps", () => {
        `--accent` does NOT: a reactive value on a custom property, in a rule targeting the element
        itself, is written inline under the AUTHOR'S name and emits no declaration. That keeps
        everything per-element out of the rule text, so two elements styled alike share one interned
-       rule — which the serial in `--jx-rN-M` otherwise makes impossible. */
+       rule. The `:hover` rule targets the element itself too, so its variable is named by position
+       alone (`--jx-s0`), with no per-element serial to keep it from interning either. */
     expect(elementCSS(el).split("\n")).toEqual([
-      `[data-jx="${uid}"]:hover { color: var(--jx-r0-0) }`,
+      `[data-jx="${uid}"]:hover { color: var(--jx-s0) }`,
     ]);
     expect(el.style.getPropertyValue("--accent")).toBe("red");
-    expect(el.style.cssText).toContain("--jx-r0-0: red");
+    expect(el.style.cssText).toContain("--jx-s0: red");
     state.c = "blue";
     await wait();
     expect(el.style.getPropertyValue("--accent")).toBe("blue");
-    expect(el.style.getPropertyValue("--jx-r0-0")).toBe("blue");
+    expect(el.style.getPropertyValue("--jx-s0")).toBe("blue");
   });
 
   test("two elements with the same reactive custom property share ONE interned rule", async () => {
@@ -229,6 +231,37 @@ describe("applyStyle gaps", () => {
     document.body.append(el);
     applyStyle(el, { "& > b": { "--tint": "${state.tint}" } }, {}, scope);
     expect(elementCSS(el)).toContain("--tint: var(--jx-r");
+  });
+
+  test("elements styled alike with a reactive SELF declaration share ONE interned rule", () => {
+    /* A self-target rule reads the variable its own element sets, so the name needs no serial. With
+       one, every row of a tree binding its indent interned fifteen rules of its own, and an Outline
+       scrolled through a long page grew the shared sheet past fourteen thousand rules. */
+    const rows = [0, 1, 2].map((depth) => {
+      const el = document.createElement("div");
+      document.body.append(el);
+      applyStyle(
+        el,
+        { ":hover": { opacity: "0.5" }, paddingInline: "${state.depth * 12}px" },
+        {},
+        reactive({ depth }),
+      );
+      return el;
+    });
+    expect(new Set(rows.map((el) => el.dataset.jx)).size).toBe(1);
+    expect(elementCSS(rows[0]!)).toContain("padding-inline: var(--jx-s0)");
+    expect(rows.map((el) => el.style.getPropertyValue("--jx-s0"))).toEqual(["0px", "12px", "24px"]);
+  });
+
+  test("a DESCENDANT reactive declaration still keeps each element's variable apart", () => {
+    const [a, b] = ["red", "blue"].map((tint) => {
+      const el = document.createElement("div");
+      document.body.append(el);
+      applyStyle(el, { "& > b": { color: "${state.tint}" } }, {}, reactive({ tint }));
+      return el;
+    });
+    expect(a!.dataset.jx).not.toBe(b!.dataset.jx);
+    expect(elementCSS(a!)).toMatch(/color: var\(--jx-r\d+-0\)/u);
   });
 
   test("nested selectors recurse (&, [attr], :pseudo, .class, descendant, and @media too)", () => {
@@ -753,5 +786,85 @@ describe("Jx gaps", () => {
     await Jx("http://localhost/gaps-cached.json", target);
     expect(fetchMock.mock.calls.length).toBe(1);
     expect(target.children.length).toBe(2);
+  });
+});
+
+// ─── Template bindings over state that is not there yet ──────────────────────
+
+describe("a template binding that throws", () => {
+  test("renders empty, keeps tracking, and fills in when its data arrives", async () => {
+    /* A collection resolved asynchronously reads `null` first. The binding's TypeError used to
+       escape `effect()`, which stops the effect, so it never re-ran — and the throw unwound the
+       whole render, blanking the page around it. */
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const state = reactive<{ posts: string[] | null }>({ posts: null });
+    const el = renderNode(
+      {
+        attributes: { "data-count": "${state.posts.length}" },
+        children: ["${state.posts.length} posts"],
+        tagName: "p",
+        title: "${state.posts[0]}",
+      },
+      state,
+    );
+    expect(el.textContent).toBe("");
+    expect(Object.hasOwn(el.dataset, "count")).toBe(false);
+    state.posts = ["a", "b"];
+    await wait();
+    expect(el.textContent).toBe("2 posts");
+    expect(el.dataset.count).toBe("2");
+    expect(el.title).toBe("a");
+    state.posts = null;
+    await wait();
+    state.posts = ["c"];
+    await wait();
+    // Reported once per template source, however many times it re-runs.
+    expect(
+      warn.mock.calls.filter(([msg]) => String(msg).includes("state.posts.length} posts")),
+    ).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  test("a host's handler hears every throw, in place of the once-per-source warning", () => {
+    // Studio's render critic must still refuse a page whose template can never evaluate.
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const heard: string[] = [];
+    setTemplateErrorHandler((error, source) => {
+      heard.push(`${source}: ${error instanceof Error ? error.constructor.name : "?"}`);
+    });
+    for (let i = 0; i < 2; i += 1) {
+      renderNode({ tagName: "b", textContent: "${missingThing}" }, reactive({}));
+    }
+    setTemplateErrorHandler(null);
+    expect(heard).toEqual(["${missingThing}: ReferenceError", "${missingThing}: ReferenceError"]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  test("one template source evaluates against each scope it is bound in", () => {
+    // Compiled functions are cached by source; the scope is an argument, never captured.
+    const a = renderNode(
+      { tagName: "span", textContent: "${state.name}" },
+      reactive({ name: "a" }),
+    );
+    const b = renderNode(
+      { tagName: "span", textContent: "${state.name}" },
+      reactive({ name: "b" }),
+    );
+    expect([a.textContent, b.textContent]).toEqual(["a", "b"]);
+  });
+
+  test("a cache that fills starts over and keeps answering correctly", () => {
+    /* Editing mints a source per keystroke, so the cache is bounded rather than left to grow.
+       Only the ends are asserted: Bun's JavaScriptCore can hand back another source's code for
+       `new Function` across thousands of near-identical bodies (seen with no cache at all), and
+       V8, where Studio runs, does not — that engine defect is not what this test is about. */
+    const state = reactive({ n: 2 });
+    const first = renderNode({ tagName: "i", textContent: "${state.n * 10}" }, state);
+    for (let i = 0; i < 4200; i += 1) {
+      renderNode({ tagName: "i", textContent: `\${state.n + ${i}}` }, state);
+    }
+    const again = renderNode({ tagName: "i", textContent: "${state.n * 10}" }, state);
+    expect([first.textContent, again.textContent]).toEqual(["20", "20"]);
   });
 });

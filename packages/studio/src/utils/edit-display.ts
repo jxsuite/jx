@@ -3,6 +3,8 @@
  * Edit-mode display transforms — extracted from studio.js (Phase 4i). Pure stateless functions that
  * convert document trees for visual editing (template expressions, $map, $switch, empty
  * placeholders).
+ *
+ * @docs studio/interface/modes
  */
 
 import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
@@ -55,6 +57,37 @@ const IMAGE_KEY_RE =
   /(src|poster|image|bg|background|icon|logo|photo|avatar|thumbnail|cover|banner)$/i;
 function isImageUrlKey(key: string): boolean {
   return IMAGE_KEY_RE.test(key);
+}
+
+/** A template that reads the repeater row (`item`, `index`, `$map`), which edit mode cannot supply. */
+const ROW_BINDING_RE = /(?<![\w$.])(?:item|index|\$map)\b/u;
+
+/** Whether a value is a template or `$ref` that reads the repeater row. */
+export function isRowBound(value: JxDocumentValue | undefined): boolean {
+  if (isString(value)) {
+    return value.includes("${") && ROW_BINDING_RE.test(value);
+  }
+  return isNodeObject(value) && isString(value.$ref) && /^(?:#\/)?\$map\//u.test(value.$ref);
+}
+
+/**
+ * What a row-bound value shows in the perimeter: link targets are inert, image-like keys the
+ * placeholder image, anything else its readable binding text.
+ *
+ * @param {string} key
+ * @param {JxDocumentValue | undefined} value
+ */
+function rowBoundDisplay(key: string, value: JxDocumentValue | undefined): string {
+  if (key === "href" || key === "action") {
+    return "";
+  }
+  if (isImageUrlKey(key)) {
+    return PLACEHOLDER_IMG;
+  }
+  if (isString(value)) {
+    return templateToEditDisplay(value);
+  }
+  return isNodeObject(value) && isString(value.$ref) ? refDisplayLabel(value.$ref) : "";
 }
 
 const textTags = new Set([
@@ -252,24 +285,15 @@ export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumen
     if (k === "state" || k === "$media" || k === "$elements") {
       out[k] = v; // Preserve as-is for runtime resolution
     } else if (k === "$props" && isDocumentContainer(v)) {
-      // Process $props values: convert template strings to display format
+      /* A component's inputs render LIVE. They are its configuration, not text the author edits in
+         place (a template-valued prop is refused by inline prop editing), and showing their binding
+         text instead fed it to the component as a value: a header's `variant` became the literal
+         `❪ state.headerVariant ❫` and matched none of its styles. A prop that reads the repeater
+         row is the exception — the perimeter draws one row with no row to read — so it keeps the
+         readable binding text, or the placeholder image for an image-like key. */
       const propsOut: RebuiltNode = {};
       for (const [pk, pv] of Object.entries(v)) {
-        if (isString(pv) && pv.includes("${")) {
-          // Image-like prop → neutral placeholder (the component renders it as an <img src>); link
-          // Targets → inert ""; everything else → the readable ❪ expr ❫ binding text.
-          if (isImageUrlKey(pk)) {
-            propsOut[pk] = PLACEHOLDER_IMG;
-          } else if (pk === "href" || pk === "action") {
-            propsOut[pk] = "";
-          } else {
-            propsOut[pk] = templateToEditDisplay(pv);
-          }
-        } else if (isNodeObject(pv) && pv.$ref) {
-          propsOut[pk] = refDisplayLabel(pv.$ref);
-        } else {
-          propsOut[pk] = pv;
-        }
+        propsOut[pk] = isRowBound(pv) ? rowBoundDisplay(pk, pv) : pv;
       }
       out[k] = propsOut;
     } else if (k === "children") {
@@ -309,35 +333,32 @@ export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumen
               ];
       }
     } else if (k === "attributes" && isMediaElement && isDocumentContainer(v)) {
-      // Process attributes for media elements: replace src/poster with transparent pixel
+      // A media element's src/poster: live, unless it reads the repeater row or names nothing.
       const processed: RebuiltNode = {};
       for (const [ak, av] of Object.entries(v)) {
-        if (ak === "src" || ak === "poster") {
-          if (isString(av) && av !== "" && !av.includes("${")) {
-            processed[ak] = av;
-          } else {
-            needsMediaPlaceholder = true;
-            processed[ak] = TRANSPARENT_PX;
-          }
-        } else if (isString(av) && av.includes("${")) {
-          const isUrlAttr = ak === "href" || ak === "action";
-          processed[ak] = isUrlAttr ? "" : templateToEditDisplay(av);
-        } else if (isNodeObject(av) && av.$ref) {
-          processed[ak] = refDisplayLabel(av.$ref);
+        if ((ak === "src" || ak === "poster") && (av === "" || av == null || isRowBound(av))) {
+          needsMediaPlaceholder = true;
+          processed[ak] = TRANSPARENT_PX;
         } else {
-          processed[ak] = av;
+          processed[ak] = isRowBound(av) ? rowBoundDisplay(ak, av) : av;
         }
       }
       out.attributes = processed;
+    } else if (k === "attributes" && isDocumentContainer(v)) {
+      const processed: RebuiltNode = {};
+      for (const [ak, av] of Object.entries(v)) {
+        processed[ak] = isRowBound(av) ? rowBoundDisplay(ak, av) : av;
+      }
+      out.attributes = processed;
     } else if (k === "style") {
-      /* Drop template-valued style declarations. State is not live in edit mode, so the value
-         cannot be resolved; omitting the property lets the cascade answer, which is exactly what
-         the `""` this used to write meant while declarations went inline. As a RULE, `color: ` is
-         a malformed declaration instead of a no-op. Mirrored by iframe-patch's editModeStyle. */
+      /* Live, like every binding but text: state IS live on the canvas. Only a declaration that
+         reads the repeater row is omitted — the perimeter has no row — and omitted rather than
+         blanked, because `color: ` is a malformed declaration in a rule where the cascade answers
+         an absent one. Mirrored by iframe-patch's editModeStyle. */
       if (isDocumentContainer(v)) {
         const s: RebuiltNode = {};
         for (const [sk, sv] of Object.entries(v)) {
-          if (!isString(sv) || !sv.includes("${")) {
+          if (!isRowBound(sv)) {
             s[sk] = sv;
           }
         }
@@ -345,34 +366,29 @@ export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumen
       } else {
         out.style = v;
       }
-    } else if (isString(v) && v.includes("${")) {
-      // Template string in a display property → show raw expression
-      const isMediaSrc = (k === "src" || k === "poster") && isMediaElement;
-      if (isMediaSrc) {
+    } else if (k === "$switch" && isString(v) && v.includes("${")) {
+      /* Not a render input any more: `cases` is replaced by the first case above, so a live
+         expression would hand the runtime a switch with nothing to choose from. */
+      out[k] = templateToEditDisplay(v);
+    } else if (k === "textContent" && isString(v) && v.includes("${")) {
+      // The author's text: shown as its binding, so editing it in place edits the template.
+      out[k] = templateToEditDisplay(v);
+    } else if (k === "textContent" && isNodeObject(v) && v.$ref) {
+      out[k] = refDisplayLabel(v.$ref);
+    } else if (isMediaElement && (k === "src" || k === "poster")) {
+      if (v === "" || v == null || isRowBound(v)) {
         needsMediaPlaceholder = true;
         out[k] = TRANSPARENT_PX;
       } else {
-        const isUrlAttr = k === "src" || k === "href" || k === "poster" || k === "action";
-        out[k] = isUrlAttr ? "" : templateToEditDisplay(v);
+        out[k] = v;
       }
-    } else if (isNodeObject(v) && v.$ref) {
-      // $ref binding → show ref path as literal text
-      const label = refDisplayLabel(v.$ref);
-      const isMediaSrc = (k === "src" || k === "poster") && isMediaElement;
-      if (isMediaSrc) {
-        needsMediaPlaceholder = true;
-        out[k] = TRANSPARENT_PX;
-      } else {
-        out[k] = label;
-      }
+    } else if (isRowBound(v)) {
+      out[k] = rowBoundDisplay(k, v);
+    } else if (isString(v) || (isNodeObject(v) && v.$ref)) {
+      // Any other bound or literal property renders as the page will.
+      out[k] = v;
     } else {
-      // Empty src/poster on media elements → use transparent pixel placeholder
-      if ((k === "src" || k === "poster") && v === "" && isMediaElement) {
-        needsMediaPlaceholder = true;
-        out[k] = TRANSPARENT_PX;
-      } else {
-        out[k] = prepareForEditMode(v);
-      }
+      out[k] = prepareForEditMode(v);
     }
   }
 

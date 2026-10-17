@@ -253,6 +253,8 @@ export interface ComponentMeta {
   props?: { name: string; type?: string; default?: JsonValue; [k: string]: JsonValue }[];
   slots?: ComponentSlotMeta[];
   hasElements?: boolean;
+  /** The custom-element tags the component's own tree renders (`componentMetaFrom`'s `uses`). */
+  uses?: string[];
 }
 
 // ─── Extensions (specs/extensions.md §9/§9.1) ────────────────────────────────

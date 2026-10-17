@@ -64,7 +64,7 @@ What a multiple selection changes:
 
 ## Rename an element
 
-Rows are named automatically from the element's content. To give one a name of your own ("Hero section" beats a `div` with a text preview), double-click the row, type the name, and press :kbd[Enter]. From the keyboard, :kbd[Enter] or :kbd[F2] on the focused row starts the same rename. Press :kbd[Esc] to cancel, or commit an empty name to go back to the automatic label.
+Rows are named automatically from what the element itself carries: its `id`, its own text, its first class, or a landmark name such as Main or Navigation. A container with none of those shows how many children it has rather than repeating the text of a row below it, so each line of text appears once in the tree, on the row that holds it. To give one a name of your own ("Hero section" beats a `div` with a text preview), double-click the row, type the name, and press :kbd[Enter]. From the keyboard, :kbd[Enter] or :kbd[F2] on the focused row starts the same rename. Press :kbd[Esc] to cancel, or commit an empty name to go back to the automatic label.
 
 :::doc-note
 The name is a display title only. Studio stores it as a `$title` key on the element in the file. It never changes what the page renders.
