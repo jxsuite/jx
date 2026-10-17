@@ -931,6 +931,35 @@ describe("chromium desktop platform", () => {
     expect(windowFocus.mock.calls.length).toBeGreaterThan(before);
   });
 
+  // ─── Electron shell (electron-shell/bridge.ts) ───────────────────────────
+
+  test("under Chromium --app there are no window controls: the browser frame has its own", () => {
+    expect(platform.windowControls).toBeUndefined();
+  });
+
+  test("under the Electron shell the bridge's controls are exposed and it raises the window", async () => {
+    const shellFocus = mock(() => Promise.resolve());
+    const controls = {
+      close: () => Promise.resolve(),
+      maximize: () => Promise.resolve(),
+      minimize: () => Promise.resolve(),
+    };
+    globalThis.__jxShell = { focus: shellFocus, windowControls: controls };
+    try {
+      const connected = clients.length;
+      const shelled = createDesktopPlatform();
+      const stopShelled = windowListeners.get("pagehide");
+      expect(shelled.windowControls).toBe(controls);
+      await until(() => clients.length > connected);
+      pushToClient({ method: "focusWindow" });
+      await until(() => shellFocus.mock.calls.length > 0);
+      expect(shellFocus).toHaveBeenCalled();
+      stopShelled?.();
+    } finally {
+      globalThis.__jxShell = undefined;
+    }
+  });
+
   // ─── Preview links ─────────────────────────────────────────────────────
 
   test("preview links are handed to the OS, not to this frameless app window", async () => {

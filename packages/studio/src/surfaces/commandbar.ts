@@ -549,9 +549,10 @@ function windowControls(): WindowControls | undefined {
   if (platform == null || !("windowControls" in platform)) {
     return undefined;
   }
-  /* SAFETY: the PAL interface deliberately leaves `windowControls` undeclared; the one adapter that
-     adds it is the desktop launcher's (`packages/desktop/src/platform.ts`), whose object carries the
-     `close`, `maximize` and `minimize` functions this bar calls. */
+  /* SAFETY: the PAL interface deliberately leaves `windowControls` undeclared; the adapters that add
+     it are the desktop launchers' (Electrobun's `packages/desktop/src/platform.ts`, and the Linux
+     launcher's `chromium/platform.ts` under its Electron shell), whose objects carry the `close`,
+     `maximize` and `minimize` functions this bar calls. */
   return platform.windowControls as WindowControls | undefined;
 }
 

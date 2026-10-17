@@ -22,6 +22,7 @@ import type {
   KeyValuePatch,
 } from "@jxsuite/protocol";
 import type { StudioRPC } from "../rpc-schema";
+import type { ShellBridge } from "../electron-shell/bridge";
 
 /* Inferred return type with a `satisfies` conformance check at the bottom, so callers see which of
    the PAL's OPTIONAL members this launcher actually implements — annotating `StudioPlatform` made
@@ -86,6 +87,9 @@ interface PendingReply {
 }
 
 export function createDesktopPlatform() {
+  /* The Electron shell's preload bridge (electron-shell/bridge.ts), absent under Chromium `--app`.
+     Read once: the preload runs before any page script and never changes. */
+  const shell: ShellBridge | undefined = globalThis.__jxShell;
   // The project server gates the WS upgrade on the token. The launcher passes it in the shell URL
   // (?token=…); read it here before the shell strips it from the address bar after boot.
   const token = new URLSearchParams(location.search).get("token") ?? "";
@@ -108,6 +112,11 @@ export function createDesktopPlatform() {
          this one already holds; nothing else in the shell can bring an OS window forward. */
       "focusWindow",
       () => {
+        /* The Electron shell can raise its own window; a Chromium `--app` page can only ask. */
+        if (shell) {
+          void shell.focus();
+          return;
+        }
         try {
           window.focus();
         } catch {
@@ -336,6 +345,11 @@ export function createDesktopPlatform() {
 
   const platform = {
     id: "desktop" as const,
+
+    /* Launcher-only, like Electrobun's (specs/desktop.md §3.1): present when the Electron shell
+       drew this window frameless, so the command bar draws the buttons and drag region. Undefined
+       under Chromium `--app`, whose frame already has both. */
+    windowControls: shell?.windowControls,
 
     /* New projects go where the user says: the modal's Location field, with Browse… backed by the
        XDG portal dialog below. The backend refuses a create without one. */
