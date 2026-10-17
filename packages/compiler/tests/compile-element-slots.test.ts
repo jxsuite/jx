@@ -113,8 +113,11 @@ async function settle(): Promise<void> {
  */
 function text(el: Element | null): string {
   const out: string[] = [];
-  for (const n of el?.childNodes ?? []) {
-    const value = n.nodeType === 8 ? "" : (n.textContent ?? "").trim();
+  if (!el) {
+    return "";
+  }
+  for (const n of el.childNodes) {
+    const value = n.nodeType === 8 ? "" : n.textContent.trim();
     if (value !== "") {
       out.push(value.replaceAll(/\s+/gu, " "));
     }

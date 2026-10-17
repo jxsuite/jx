@@ -4150,9 +4150,9 @@ function instanceSupplies(el: HTMLElement, key: string): boolean {
  */
 function nativeSetter(el: HTMLElement, key: string): ((value: JxScopeValue) => void) | undefined {
   for (
-    let proto: object | null = Object.getPrototypeOf(el);
+    let proto: object | null = Reflect.getPrototypeOf(el);
     proto;
-    proto = Object.getPrototypeOf(proto)
+    proto = Reflect.getPrototypeOf(proto)
   ) {
     const descriptor = Object.getOwnPropertyDescriptor(proto, key);
     if (descriptor) {
