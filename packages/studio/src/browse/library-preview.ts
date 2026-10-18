@@ -218,7 +218,7 @@ async function projectComponentPreview(
 }
 
 /** A project component's definition, or null when its file is not one. */
-async function readDefinition(path: string): Promise<JxDocument | null> {
+export async function readDefinition(path: string): Promise<JxDocument | null> {
   try {
     const parsed: unknown = JSON.parse(await getPlatform().readFile(path));
     /* SAFETY: a project component's `.json` is its definition, a Jx element document; a shape
@@ -240,7 +240,7 @@ async function readDefinition(path: string): Promise<JxDocument | null> {
  * the console once per card per paint. The same render, made here synchronously into an element
  * nobody sees, can be caught, and a definition that cannot render gets no instance preview.
  */
-async function rendersWith(
+export async function rendersWith(
   definition: JxDocument,
   path: string,
   props: ReadonlyMap<string, JsonValue>,

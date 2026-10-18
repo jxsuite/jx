@@ -187,6 +187,16 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
 
   async function gitLog(params: { limit?: number }): Promise<GitLogEntry[]> {
     const limit = params.limit ?? 50;
+    // No commits yet is an empty history, not a failure: `git log` exits 128 on an unborn HEAD.
+    // RepoGit first, so a folder that is not a repository still fails as it always has.
+    await repoGit("rev-parse", "--git-dir");
+    const hasHead = await git("rev-parse", "--verify", "--quiet", "HEAD").then(
+      () => true,
+      () => false,
+    );
+    if (!hasHead) {
+      return [];
+    }
     const output = await repoGit("log", `--max-count=${limit}`, "--format=%H%n%s%n%an%n%aI%n---");
     const entries: GitLogEntry[] = [];
     const chunks = output.trim().split("\n---\n").filter(Boolean);

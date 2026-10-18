@@ -33,6 +33,7 @@ import { parseMediaEntries } from "../utils/canvas-media";
 import { mediaDisplayName } from "./shared";
 import { buildStylebookDoc } from "./stylebook-doc";
 import { PROJECT_STYLES_TITLE } from "../style/project-styles";
+import { loadStylebookSpecimens } from "../style/stylebook-specimens";
 import { mountStylebookCanvas, panToStylebookTag } from "../canvas/iframe-host";
 import stylebookMeta from "../../data/stylebook-meta.json";
 import type { CanvasPanelEntry } from "../canvas/canvas-utils";
@@ -160,6 +161,9 @@ export async function renderStylebookMode(
   const tab = tabOfPane(surface.paneId);
   const filter = shell.stylebook.filter.toLowerCase();
   const { customizedOnly } = shell.stylebook;
+  const generation = surface.renderGeneration;
+  const registry = componentRegistry;
+  const specimensPending = loadStylebookSpecimens(registry);
 
   const effectiveMedia = getEffectiveMedia(tab?.doc.document?.$media);
   const { sizeBreakpoints, baseWidth } = parseMediaEntries(effectiveMedia);
@@ -238,10 +242,19 @@ export async function renderStylebookMode(
     chromeHost.replaceChildren(chromeBarNode);
   }
 
+  /* What each component card is drawn with (started before the stage was drawn), asked once per
+     registry, so only the first paint after the project's components are read waits for it. A
+     render that began while it was being asked owns the stage now, and this one stops. */
+  const specimens = await specimensPending;
+  if (surface.renderGeneration !== generation) {
+    return;
+  }
+
   // ONE generated doc shared by every panel — per-panel @media differentiation comes from each
   // Iframe's real viewport width, not from a per-panel style flatten.
   const generated = buildStylebookDoc({
-    components: componentRegistry,
+    components: registry,
+    specimens,
     customizedOnly: Boolean(customizedOnly),
     effectiveHead: getEffectiveHead(tab?.doc.document?.$head),
     effectiveMedia,

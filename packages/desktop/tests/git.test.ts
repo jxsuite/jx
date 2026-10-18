@@ -132,6 +132,20 @@ describe("gitLog", () => {
     expect(limited.length).toBe(1);
     expect(limited[0].message).toBe("second commit");
   });
+
+  test("a repository with no commits yet has an empty history", async () => {
+    const fresh = join(FIXTURES, "..", "_fixtures_git_unborn");
+    rmSync(fresh, { force: true, recursive: true });
+    mkdirSync(fresh, { recursive: true });
+    Bun.spawnSync(["git", "init"], { cwd: fresh });
+    setProjectRoot(fresh);
+    try {
+      expect(await gitLog({})).toEqual([]);
+    } finally {
+      setProjectRoot(FIXTURES);
+      rmSync(fresh, { force: true, recursive: true });
+    }
+  });
 });
 
 // ─── gitStage / gitUnstage ──────────────────────────────────────────────────

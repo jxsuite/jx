@@ -326,6 +326,21 @@ describe("git endpoints", () => {
     expect(branchData.current).toBe("main");
   });
 
+  test("GET log answers an unborn HEAD with an empty history, not a 500", async () => {
+    const fresh = resolve(import.meta.dir, "_git_fixture_unborn");
+    rmSync(fresh, { force: true, recursive: true });
+    mkdirSync(fresh, { recursive: true });
+    execSync("git init -b main", { cwd: fresh });
+    try {
+      const urlStr = "http://localhost/__studio/git/log?limit=5";
+      const res = await handleStudioApi(new Request(urlStr), new URL(urlStr), fresh);
+      expect(res?.status).toBe(200);
+      expect(await res?.json()).toEqual([]);
+    } finally {
+      rmSync(fresh, { force: true, recursive: true });
+    }
+  });
+
   test("GET log returns commit history", async () => {
     const res = await studioGitReq("/__studio/git/log?limit=5");
     const data =

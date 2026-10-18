@@ -9,13 +9,14 @@ import { describe, expect, test } from "bun:test";
 import {
   buildStylebookDoc,
   hasTagStyle,
+  sampleRowSpecimen,
   transposeStylebookStyle,
 } from "../src/panels/stylebook-doc";
 import type { BuildStylebookDocOpts } from "../src/panels/stylebook-doc";
 import { serializeJxPath } from "../src/canvas/path-mapping";
 import type { ComponentEntry } from "../src/files/components";
 import { isString } from "@jxsuite/schema/guards";
-import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type { JxMutableNode, JxStateDefinition, JxStyle } from "@jxsuite/schema/types";
 
 const META: BuildStylebookDocOpts["meta"] = {
   $sections: [
@@ -198,6 +199,76 @@ describe("buildStylebookDoc — tree shape", () => {
     expect(npmSpecimen.textContent).toBe("<sl-button>");
     expect(tagToCardPath.has("user-card")).toBe(true);
     expect(tagToCardPath.has("sl-button")).toBe(true);
+  });
+
+  test("specimens draw a card with sample props, a list's first row, or the placeholder box", () => {
+    const components: ComponentEntry[] = ["x-a", "x-b", "x-c", "x-d"].map((tagName) => ({
+      path: `components/${tagName}.json`,
+      props: [{ default: "'dflt'", name: "label" }],
+      source: "local",
+      tagName,
+    }));
+    const row = {
+      children: [
+        { $prototype: "Array", items: { $ref: "#/state/shows" }, map: { tagName: "x-b" } },
+      ],
+      state: { $page: { locale: "en" }, shows: [{ id: "one" }] },
+      tagName: "div",
+    };
+    const { doc } = build({
+      components,
+      specimens: new Map([
+        ["x-a", { kind: "props", props: { label: "Sample" } }],
+        ["x-b", { kind: "row", sample: { doc: row, file: "pages/index.json" } }],
+        ["x-c", { kind: "none" }],
+      ]),
+    });
+    const cards = kids(kids(kids(doc).at(-1)!)[1]!);
+    const specimen = (i: number) => kids(kids(cards[i]!)[0]!)[0]!;
+    expect(specimen(0)).toEqual({ $props: { label: "Sample" }, tagName: "x-a" });
+    // The row's list reads its own key, and the page state it was drawn in rides along.
+    expect(specimen(1).children).toEqual([
+      { $prototype: "Array", items: { $ref: "#/state/stylebookRow1" }, map: { tagName: "x-b" } },
+    ]);
+    expect(doc.state).toEqual({ $page: { locale: "en" }, stylebookRow1: [{ id: "one" }] });
+    expect(cls(specimen(2))).toBe("sb-fallback");
+    // No answer is the bare instance with its defaults, as before specimens existed.
+    expect(specimen(3)).toEqual({ attributes: { label: "dflt" }, tagName: "x-d" });
+  });
+
+  test("a row sample that is not a list is drawn as the bare instance", () => {
+    const { doc } = build({
+      components: [{ path: "components/x-r.json", source: "local", tagName: "x-r" }],
+      specimens: new Map([
+        ["x-r", { kind: "row", sample: { doc: { tagName: "div" }, file: "pages/a.json" } }],
+      ]),
+    });
+    const cards = kids(kids(kids(doc).at(-1)!)[1]!);
+    expect(kids(kids(cards[0]!)[0]!)[0]).toEqual({ tagName: "x-r" });
+    expect(doc.state).toBeUndefined();
+  });
+
+  test("sampleRowSpecimen refuses a sample that is not a repeater over a state list", () => {
+    const state = {};
+    expect(sampleRowSpecimen({ tagName: "div" }, "k", state)).toBeNull();
+    expect(
+      sampleRowSpecimen({ children: [{ items: { $ref: "#/x" }, tagName: "ul" }] }, "k", state),
+    ).toBeNull();
+    expect(
+      sampleRowSpecimen(
+        { children: [{ items: { $ref: "#/state/rows" }, tagName: "ul" }], state: { other: 1 } },
+        "k",
+        state,
+      ),
+    ).toBeNull();
+    // The first card's value of a shared name wins.
+    const shared = { $site: "first" } satisfies Record<string, JxStateDefinition>;
+    sampleRowSpecimen(
+      { children: [{ items: { $ref: "#/state/rows" } }], state: { $site: "second", rows: [] } },
+      "k",
+      shared,
+    );
+    expect(JSON.stringify(shared)).toBe('{"$site":"first","k":[]}');
   });
 });
 

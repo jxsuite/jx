@@ -1960,6 +1960,16 @@ export async function handleStudioApi(
 
       if (gitCmd === "log" && req.method === "GET") {
         const limit = url.searchParams.get("limit") || "20";
+        /* A repository with no commits yet has no history, which is an empty list, not a failure:
+           `git log` exits 128 on an unborn HEAD, and that 500 was the first console error every
+           freshly initialized project showed (studio.md §22.8). */
+        const hasHead = await runGit(["rev-parse", "--verify", "--quiet", "HEAD"]).then(
+          () => true,
+          () => false,
+        );
+        if (!hasHead) {
+          return Response.json([]);
+        }
         const out = await runGit(["log", `--max-count=${limit}`, "--format=%H\t%s\t%an\t%aI"]);
         const entries = out
           .trim()

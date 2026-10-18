@@ -3,6 +3,7 @@ title: "Project Styles"
 description: "Project Styles in Jx Studio: set the default look of every heading, button, and link in one catalog, live at any breakpoint."
 spec:
   - studio.md#7.1
+  - studio.md#7.2
   - studio.md#7.4
   - studio.md#22.7
 code:
@@ -19,6 +20,7 @@ code:
   - packages/studio/src/surfaces/panel-stylebook-layers.ts
   - packages/studio/src/surfaces/stylebook-chrome.ts
   - packages/studio/src/style/tag-inheritance.ts
+  - packages/studio/src/style/stylebook-specimens.ts
 ---
 
 # Project Styles
@@ -32,6 +34,8 @@ Your project file opens here, because that's the natural home for site-wide defa
 ## Read the catalog
 
 Project Styles shows the catalog at one breakpoint at a time, the one the context bar's size switcher names, so the specimens stay readable. Pick another size there and the catalog redraws at that width, so an element default that changes at Tablet is visibly different at Tablet. The catalog renders through the real runtime, exactly as the defaults will render on your pages.
+
+Each component card shows the component with real content, the same sample its preview in the Site panel uses: the example values its definition declares, or the values a page passes it. A component you only use as a row of a list is shown as that list's first row, with its data. A component that can't be drawn from any of these shows a plain box with its tag name instead of an empty card.
 
 Two controls sit above the canvas: a **Filter** box to narrow the catalog by name, and a **Customized** toggle to show only the elements you've already styled. The **Outline** panel mirrors the catalog as a tree and marks customized entries with a dot: elements with their nested parts (a table with its rows and cells), then your components. Switch the pane to **Variables** and the Outline lists your CSS custom properties instead; click one to jump to it in the Variables view.
 

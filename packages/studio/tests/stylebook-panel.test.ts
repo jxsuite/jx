@@ -50,6 +50,16 @@ void mock.module("../src/canvas/iframe-host", () => ({
   },
 }));
 
+/* The specimen answers read component files and usages; the panel only needs to hand them on. */
+let specimenAnswers = new Map<string, { kind: "none" }>();
+let specimenGate: Promise<void> = Promise.resolve();
+void mock.module("../src/style/stylebook-specimens", () => ({
+  loadStylebookSpecimens: async () => {
+    await specimenGate;
+    return specimenAnswers;
+  },
+}));
+
 const { renderStylebookMode, selectStylebookTag, stylebookBoards } =
   await import("../src/panels/stylebook-panel");
 const { bindCanvasPanels, canvasPanelEntry } = await import("../src/canvas/canvas-utils");
@@ -211,6 +221,39 @@ describe("renderStylebookMode", () => {
     await renderStylebookMode(stage, ctx);
     expect(canvasPanels.map((panel) => panel.mediaName)).toEqual(["md"]);
     expect(mounts[0]!.widthPx).toBe(768);
+  });
+
+  test("component cards are drawn with the specimens the registry's components answer", async () => {
+    makeTab();
+    componentRegistry.push({ path: "components/x-card.json", tagName: "x-card" });
+    specimenAnswers = new Map([["x-card", { kind: "none" }]]);
+    try {
+      await renderStylebookMode(stage, ctx);
+      const doc = JSON.stringify(mounts[0]!.generated.doc);
+      // `none` is the placeholder box, never a live instance that would throw.
+      expect(doc).toContain("sb-fallback");
+      expect(doc).not.toContain('"tagName":"x-card"');
+    } finally {
+      specimenAnswers = new Map();
+    }
+  });
+
+  test("a render superseded while specimens are asked mounts nothing", async () => {
+    makeTab();
+    let open = (): void => {};
+    specimenGate = new Promise((resolve) => {
+      open = resolve;
+    });
+    try {
+      const pending = renderStylebookMode(stage, ctx);
+      await flush();
+      stage.renderGeneration = 8;
+      open();
+      await pending;
+      expect(mounts).toHaveLength(0);
+    } finally {
+      specimenGate = Promise.resolve();
+    }
   });
 
   test("stylebookBoards keeps the named board, falls back to the first, and never empties", () => {

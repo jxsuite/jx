@@ -4,7 +4,13 @@ import { notifyModule } from "./notify-mock";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { canRedo, canUndo, redo, undo } from "../src/tabs/transact";
 import type { GridController } from "../src/grid/grid-controller";
-import type { CommitResult, GridEditBatch, GridRow, GridSource } from "../src/grid/grid-source";
+import type {
+  CommitResult,
+  GridCellValue,
+  GridEditBatch,
+  GridRow,
+  GridSource,
+} from "../src/grid/grid-source";
 import type { FsEvent } from "../src/types";
 
 const confirmCalls: string[] = [];
@@ -139,6 +145,26 @@ describe("createGridController", () => {
     const controller2 = createGridController(tab2, bad);
     await controller2.load();
     expect(controller2.state.error).toContain("nope");
+  });
+
+  test("an effect that reads the new rows reads their cells too, in the same run", async () => {
+    installMockPlatform();
+    const tab = openGridTab();
+    const controller = createGridController(tab, stubSource());
+    const { effect } = await import("../src/reactivity");
+    const seen: GridCellValue[] = [];
+    // What a record's entry form does: key from the rows, value through the baseline.
+    const stop = effect(() => {
+      const key = controller.state.rows[0]?.key;
+      if (key !== undefined) {
+        seen.push(controller.buffer.effectiveValue(key, "title"));
+      }
+    });
+    await controller.load();
+    await flush();
+    stop();
+    expect(seen).toContain("One");
+    expect(seen).not.toContain(null);
   });
 
   test("buffer dirtiness mirrors onto tab.doc.dirty", async () => {
