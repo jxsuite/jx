@@ -132,18 +132,57 @@ export function buildComponentInstance(comp: ComponentEntry): JxMutableNode {
 }
 
 /**
+ * Walk `parts` the way a path resolver does: `.` stays, `..` climbs, the rest descend. A climb
+ * above the start is kept as a leading `..`, which is how a project-relative path names a file
+ * outside the project.
+ */
+function normalizeParts(parts: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const part of parts) {
+    if (part === ".") {
+      continue;
+    }
+    if (part === ".." && out.length > 0 && out.at(-1) !== "..") {
+      out.pop();
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
+}
+
+/**
+ * The `$ref` a document at `fromDocPath` writes to reach `toCompPath`, both project-relative.
+ *
+ * A document can sit OUTSIDE the project: jxsuite.com's docs collection is `../../docs`, so an
+ * entry is `../../docs/extending/x.md`. Climbing from there back into the project needs the names
+ * of the folders the project sits in, which a project-relative path does not carry; counting its
+ * segments gave five `../` and a ref into a folder that does not exist, so every component a docs
+ * layout imports failed to register on the canvas. Such a path is resolved against `projectRoot`
+ * (the open project's, by default), the way the browser resolves the ref.
+ *
  * @param {string | null} fromDocPath
  * @param {string} toCompPath
+ * @param {string | null} [projectRoot]
  */
-export function computeRelativePath(fromDocPath: string | null, toCompPath: string) {
+export function computeRelativePath(
+  fromDocPath: string | null,
+  toCompPath: string,
+  projectRoot: string | null = projectState?.projectRoot ?? null,
+) {
   if (!fromDocPath) {
     return `./${toCompPath}`;
   }
   const from = fromDocPath.replaceAll("\\", "/");
   const to = toCompPath.replaceAll("\\", "/");
   const fromDir = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : "";
-  const fromParts = fromDir.split("/").filter(Boolean);
-  const toParts = to.split("/").filter(Boolean);
+  let fromParts = normalizeParts(fromDir.split("/").filter(Boolean));
+  let toParts = normalizeParts(to.split("/").filter(Boolean));
+  if (fromParts[0] === ".." && projectRoot) {
+    const rootParts = projectRoot.replaceAll("\\", "/").split("/").filter(Boolean);
+    fromParts = normalizeParts([...rootParts, ...fromParts]);
+    toParts = normalizeParts([...rootParts, ...toParts]);
+  }
   let common = 0;
   while (
     common < fromParts.length &&

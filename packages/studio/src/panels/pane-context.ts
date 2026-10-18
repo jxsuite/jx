@@ -931,8 +931,9 @@ function sizeRows(
  * cannot and must not claim to translate the page. What it does change is real: the artboard's
  * `lang` and its `dir`, and an RTL locale mirrors the layout on the stage. A control that let an
  * author believe it had translated anything would be worse than no control — which is also why the
- * sentence stops there: the build's `$page.locale` is not injected into the canvas render today, so
- * a tooltip promising it would be describing the site rather than the pane.
+ * sentence stops there: the page's `$page.locale` comes from its route on the canvas as in the
+ * build (studio.md §4.1), so this control does not change it, and a tooltip promising otherwise
+ * would describe something the pane does not do.
  *
  * Labelled with each locale's AUTONYM, for the reason `localeLabel` gives: a reader looking for
  * their own language scans for their own word for it.

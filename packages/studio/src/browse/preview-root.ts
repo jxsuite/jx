@@ -11,6 +11,7 @@
  */
 
 import { isFunction } from "@jxsuite/schema/guards";
+import { projectPreviewSheets } from "./preview-style";
 
 /**
  * The one rule a preview needs that its box cannot give it from outside: an image whose prop
@@ -60,7 +61,14 @@ function previewSheetFor(doc: Document): CSSStyleSheet | null {
 export function mountPreview(slot: HTMLElement, rendered: HTMLElement): void {
   const root = slot.shadowRoot ?? slot.attachShadow({ mode: "open" });
   const own = previewSheetFor(slot.ownerDocument);
-  root.adoptedStyleSheets = [...slot.ownerDocument.adoptedStyleSheets, ...(own ? [own] : [])];
+  /* The project's sheets first, the runtime's after them: on the page, the site's stylesheet is
+     in the document and the runtime's rules are adopted after it, so a component's own rule wins
+     over a site rule of equal specificity there, and must here. */
+  root.adoptedStyleSheets = [
+    ...projectPreviewSheets(),
+    ...slot.ownerDocument.adoptedStyleSheets,
+    ...(own ? [own] : []),
+  ];
   root.replaceChildren(rendered);
 }
 

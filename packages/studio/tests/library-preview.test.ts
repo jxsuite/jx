@@ -9,6 +9,8 @@ import { installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { setFormats } from "../src/format/format-host";
 import type { StudioFormat } from "../src/format/format-host";
+import type { ComponentEntry } from "../src/files/components";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 /** Swapped per test — the module export itself is frozen once mocked. */
 let componentPreview: () => Promise<HTMLElement> = () => {
@@ -17,13 +19,33 @@ let componentPreview: () => Promise<HTMLElement> = () => {
   return Promise.resolve(el);
 };
 
+/** The props each instance preview was given, newest last. */
+const previewProps: ReadonlyMap<string, JsonValue>[] = [];
+/** Whether the window can instantiate a component, as `defineComponent` answers. */
+let componentDefined = true;
+
 void mock.module("../src/panels/component-preview.js", () => ({
-  renderComponentPreview: () => componentPreview(),
+  defineComponent: () => Promise.resolve(componentDefined),
+  renderComponentPreview: (
+    _comp: ComponentEntry,
+    props: ReadonlyMap<string, JsonValue> = new Map(),
+  ) => {
+    previewProps.push(props);
+    return componentPreview();
+  },
+}));
+
+/** What the example sources answer, swapped per test (`component-examples.ts` has its own suite). */
+let exampleProps = new Map<string, JsonValue>();
+let sampleRow: { doc: JsonObject; file: string } | null = null;
+
+void mock.module("../src/browse/component-examples.js", () => ({
+  componentExampleProps: () => Promise.resolve(exampleProps),
+  componentSampleRow: () => Promise.resolve(sampleRow),
 }));
 
 const {
   PREVIEW_CACHE_LIMIT,
-  componentRendersBare,
   createPreviewCache,
   createPreviewObserver,
   previewFor,
@@ -41,6 +63,10 @@ beforeEach(() => {
   installMockPlatform({}, { "pages/index.json": '{"tagName":"section","children":[]}' });
   resetStudioState({ projectConfig: null, projectDirs: [] });
   componentRegistry.length = 0;
+  previewProps.length = 0;
+  componentDefined = true;
+  exampleProps = new Map<string, JsonValue>();
+  sampleRow = null;
   componentPreview = () => {
     const el = document.createElement("div");
     el.className = "component-preview";
@@ -334,17 +360,85 @@ describe("previewFor", () => {
       instances += 1;
       return Promise.resolve(document.createElement("mu-fine"));
     };
-    expect(await componentRendersBare("components/mu-card.json")).toBe(false);
-    expect(await componentRendersBare("components/fine.json")).toBe(true);
-    expect(await componentRendersBare("components/not-an-object.json")).toBe(false);
-    expect(await componentRendersBare("components/missing.json")).toBe(false);
+    componentRegistry.push({
+      path: "components/not-an-object.json",
+      source: "project",
+      tagName: "mu-array",
+    });
     const cache = createPreviewCache();
+    expect(await previewFor("components/not-an-object.json", cache)).toBeUndefined();
     expect(await previewFor("components/mu-card.json", cache)).toBeUndefined();
     // No instance was made for the card that cannot render, so nothing throws where none can catch.
     expect(instances).toBe(0);
     const fine = await previewFor("components/fine.json", cache);
     expect(fine?.tagName).toBe("MU-FINE");
     expect(instances).toBe(1);
+  });
+
+  /** A card whose render needs a real date, as the museum's does. */
+  const DATED = {
+    children: [{ tagName: "p", textContent: "${state.opens}" }],
+    state: {
+      date: "",
+      opens: {
+        $expression: {
+          operator: "call",
+          target: { $ref: "window#/Intl/formatDate" },
+          value: [{ $ref: "#/state/date" }, "en", { day: "numeric" }],
+        },
+      },
+    },
+    tagName: "mu-dated",
+  };
+
+  test("a component that renders with its sample props is drawn with them", async () => {
+    installMockPlatform({}, { "components/dated.json": JSON.stringify(DATED) });
+    componentRegistry.push({
+      path: "components/dated.json",
+      source: "project",
+      tagName: "mu-dated",
+    });
+    exampleProps = new Map<string, JsonValue>([["date", "2026-06-20"]]);
+    expect(await previewFor("components/dated.json", createPreviewCache())).toBeDefined();
+    expect([...(previewProps.at(-1) ?? [])]).toEqual([["date", "2026-06-20"]]);
+  });
+
+  test("a component used only as a list row is drawn as that list's first row", async () => {
+    installMockPlatform({}, { "components/dated.json": JSON.stringify(DATED) });
+    componentRegistry.push({
+      path: "components/dated.json",
+      source: "project",
+      tagName: "mu-dated",
+    });
+    sampleRow = {
+      doc: {
+        children: [{ tagName: "li", textContent: "${state.rows[0].title}" }],
+        state: { rows: [{ title: "Harbour" }] },
+        tagName: "div",
+      },
+      file: "pages/index.json",
+    };
+    const rendered = await previewFor("components/dated.json", createPreviewCache());
+    expect(rendered?.textContent).toBe("Harbour");
+    // No bare instance was made for a definition that cannot render without its row.
+    expect(previewProps).toHaveLength(0);
+  });
+
+  test("a list row whose element this window cannot define falls back to no preview", async () => {
+    installMockPlatform({}, { "components/dated.json": JSON.stringify(DATED) });
+    componentRegistry.push({
+      path: "components/dated.json",
+      source: "project",
+      tagName: "mu-dated",
+    });
+    sampleRow = { doc: { tagName: "div" }, file: "pages/index.json" };
+    componentDefined = false;
+    expect(await previewFor("components/dated.json", createPreviewCache())).toBeUndefined();
+  });
+
+  test("a project component whose file is gone has no preview", async () => {
+    componentRegistry.push({ path: "components/gone.json", source: "project", tagName: "mu-gone" });
+    expect(await previewFor("components/gone.json", createPreviewCache())).toBeUndefined();
   });
 });
 

@@ -107,6 +107,20 @@ describe("disposeSubtree / disposeAllSubtrees", () => {
     expect(() => disposeAllSubtrees()).not.toThrow();
   });
 
+  test("a node under a repeater is re-rendered with the sample row the full render used", async () => {
+    const rowCtx: IframeRenderCtx = {
+      ...ctx,
+      defs: await buildScope({ state: { rows: [{ t: "Harbour" }] } }, {}, "http://localhost/"),
+    };
+    const doc = docOf({
+      $prototype: "Array",
+      items: { $ref: "#/state/rows" },
+      map: { $props: { title: "${item.t}" }, tagName: "x-subtree-row" },
+    });
+    const el = elementOf(renderSubtreeIframe(doc, ["children", 0, "map"], rowCtx));
+    expect(el.title).toBe("Harbour");
+  });
+
   test("disposal actually stops a live binding effect (runtime-instance scope ownership)", async () => {
     // The subtree's effects are created by the runtime's copy of @vue/reactivity; a studio-instance
     // EffectScope would collect nothing and disposal would silently leak them (they'd keep firing

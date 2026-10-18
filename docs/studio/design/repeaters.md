@@ -4,6 +4,7 @@ description: "Repeaters in Jx Studio: turn one element into a repeating list, bi
 code:
   - packages/studio/src/editor/convert-to-repeater.ts
   - packages/studio/src/editor/repeater-scope.ts
+  - packages/studio/src/utils/edit-display.ts
   - packages/studio/src/panels/events-panel.ts
 ---
 
@@ -49,6 +50,8 @@ Inside the template, each item's data is in scope:
 - In the Inspector, any row whose **value source** is set to **From data…** offers the current item and its position alongside the document's own signals.
 
 Bind the template's text and attributes to item fields and every rendered copy fills itself in from its own item.
+
+On the design canvas, text the template draws shows its binding, such as `❪ item.data.title ❫`, so you can see and edit what it reads. A component in the template is handed the list's first item instead: a card component shows the first entry's title, dates and picture, because a component that formats a date or a language needs a real value to draw at all.
 
 :::doc-warning
 The template is one element styled once, so changes to it apply to every repeated item. To make one item special, style by position with a selector like `:first-child` (see **[Hover states and selectors](/docs/studio/design/states-and-selectors)**) or use data-driven styling.

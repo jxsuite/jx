@@ -1450,9 +1450,9 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
      * preset owns it. What is left over is genuinely a rendering context, and it is the half of
      * site-architecture.md §13.4 the canvas can show today: the artboard root's `lang` and `dir`.
      * That is why this is a verb and not a label — an RTL locale mirrors the layout on screen.
-     * (That section's other half, `$page.locale` in the rendered state, is injected by the
-     * compiler and not by the canvas's `substitutePreviewParams`; previewing it is a separate
-     * change to the render path.)
+     * (That section's other half, `$page.locale`, is injected into the canvas render from the
+     * page's route, as the build injects it (studio.md §4.1). This verb leaves it alone: the
+     * pane's language is a rendering context, not the page's (§20.2).)
      *
      * It lives in this file rather than in `i18n/i18n-commands.ts` because `contextTab`, `paneArg`
      * and `repaint` are local closures here, and every rendering-context verb needs all three: the

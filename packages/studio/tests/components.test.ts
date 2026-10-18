@@ -156,6 +156,29 @@ describe("computeRelativePath", () => {
     );
   });
 
+  test("a document outside the project climbs back in through the project's own folders", () => {
+    // The jxsuite.com docs collection is `../../docs`, so an entry sits two folders above the site.
+    expect(
+      computeRelativePath(
+        "../../docs/extending/x.md",
+        "components/site-toolbar.json",
+        "/repo/sites/jxsuite.com",
+      ),
+    ).toBe("../../sites/jxsuite.com/components/site-toolbar.json");
+  });
+
+  test("dot segments are walked, not counted", () => {
+    expect(computeRelativePath("pages/./a/../index.json", "components/x.json", null)).toBe(
+      "../components/x.json",
+    );
+  });
+
+  test("a document outside the project with no known root keeps the counted answer", () => {
+    expect(computeRelativePath("../docs/x.md", "components/x.json", null)).toBe(
+      "../../components/x.json",
+    );
+  });
+
   test("null fromDocPath returns ./ prefix", () => {
     expect(computeRelativePath(null, "components/button.json")).toBe("./components/button.json");
   });

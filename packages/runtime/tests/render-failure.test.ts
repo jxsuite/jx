@@ -125,6 +125,106 @@ describe("a render that throws at connection (spec.md §16.4)", () => {
     expect(card?.date).toBe("");
   });
 
+  test("a prop that arrives after connection draws the instance again, and onMount runs", async () => {
+    arm();
+    const tag = uniqueTag();
+    const def = datedCard(tag);
+    def.state!.mounted = false;
+    def.state!.onMount = {
+      $prototype: "Function",
+      body: [{ operator: "=", target: { $ref: "#/state/mounted" }, value: true }],
+    };
+    await defineElement(def);
+    await mount({ children: [{ children: ["given"], tagName: tag }] }, host);
+    await pause();
+    /* SAFETY: the instance defines an accessor for each public state entry its definition
+       declares, `date` and `mounted` among them; the query answers the one card just mounted. */
+    const card = host.querySelector(tag) as HTMLElement & { date: string; mounted: boolean };
+    expect(card.textContent).not.toContain("After");
+    // The value a list or a collection hands the instance once its data has loaded.
+    card.date = "2026-03-14";
+    await pause();
+    expect(card.querySelector("h3")?.textContent).toBe("Before");
+    expect(card.textContent).toContain("March 14");
+    expect(card.textContent).toContain("After");
+    // Slot content survives the redraw, and appears once.
+    expect(card.textContent.match(/given/g)).toHaveLength(1);
+    expect(card.mounted).toBe(true);
+    expect(errors).toHaveBeenCalledTimes(1);
+  });
+
+  test("a redraw that fails the same way is not reported again; a new failure is", async () => {
+    arm();
+    const tag = uniqueTag();
+    const def = datedCard(tag);
+    def.state!.locale = "en";
+    def.state!.opens = {
+      $expression: {
+        operator: "call",
+        target: { $ref: "window#/Intl/formatDate" },
+        value: [{ $ref: "#/state/date" }, { $ref: "#/state/locale" }, { month: "long" }],
+      },
+    };
+    await defineElement(def);
+    await mount({ children: [{ tagName: tag }] }, host);
+    await pause();
+    /* SAFETY: as above — `date` and `locale` are declared state entries, so both have accessors. */
+    const card = host.querySelector(tag) as HTMLElement & { date: string; locale: string };
+    card.date = "not a date either";
+    await pause();
+    expect(errors).toHaveBeenCalledTimes(1);
+    card.date = "2026-03-14";
+    card.locale = "❪ not a tag ❫";
+    await pause();
+    expect(errors).toHaveBeenCalledTimes(2);
+    expect(String(errors.mock.calls[1]![1])).toContain("language tag");
+    card.locale = "fr";
+    await pause();
+    expect(card.textContent).toContain("mars");
+  });
+
+  test("a bound prop named like an element property reaches the instance after connection", async () => {
+    arm();
+    const tag = uniqueTag();
+    // `title` is an HTMLElement property, so the instance defines no accessor for it (§16.2).
+    await defineElement({
+      children: [{ tagName: "h3", textContent: "${state.title}" }],
+      state: { title: "" },
+      tagName: tag,
+    });
+    const view = await mount(
+      {
+        children: [{ $props: { title: "${state.heading}" }, tagName: tag }],
+        state: { heading: "" },
+      },
+      host,
+    );
+    await pause();
+    view.scope.heading = "Harbour and Crane";
+    await pause();
+    expect(host.querySelector(`${tag} h3`)?.textContent).toBe("Harbour and Crane");
+    view.dispose();
+  });
+
+  test("an instance removed before its inputs change stops waiting for them", async () => {
+    arm();
+    const tag = uniqueTag();
+    await defineElement(datedCard(tag));
+    await mount({ children: [{ tagName: tag }] }, host);
+    await pause();
+    /* SAFETY: `date` is a declared state entry, so the instance has an accessor for it. */
+    const card = host.querySelector(tag) as HTMLElement & { date: string };
+    card.remove();
+    card.date = "2026-03-14";
+    await pause();
+    // Nothing was drawn into the detached host, and a later change does not try again.
+    expect(card.textContent).not.toContain("March");
+    host.append(card);
+    card.date = "2026-04-01";
+    await pause();
+    expect(card.textContent).not.toContain("April");
+  });
+
   test("a host the page discarded before its render failed reports nothing", async () => {
     arm();
     const tag = uniqueTag();

@@ -20,6 +20,7 @@ import {
   distributePageIntoLayout,
   getEffectiveElements,
   getEffectiveHead,
+  extensionClassPaths,
   getEffectiveImports,
   getEffectiveLayoutPath,
   getEffectiveMedia,
@@ -38,6 +39,9 @@ import { assetContextFor, hostAssetDeclarations } from "./asset-refs";
 import { collectionForFile } from "../content/collection-match";
 import { writesEntryOnCanvas } from "../content/content-collections";
 import { collectionPage, entryLayoutPath, entryLocale } from "../content/collection-pages";
+import { pageContextFor } from "./canvas-page-context";
+import { loadExtensions } from "../format/format-host";
+import { bakeRepeaterSources, extensionClassKeys, repeaterSourceKeys } from "./repeater-sources";
 
 import type { AssetContext } from "./asset-refs";
 import type { JxElement, JxMutableNode, JxPath, JxStyle } from "@jxsuite/schema/types";
@@ -349,6 +353,38 @@ export async function resolveCanvasDocument(
     }
   }
 
+  // `$site` and `$page`, as the build injects them (canvas-page-context.ts), in every mode: Preview
+  // Draws the page as it ships, and edit mode evaluates a component's bound props live.
+  if ((isPage || isEntry) && S.documentPath) {
+    const context = await pageContextFor(
+      {
+        documentPath: S.documentPath,
+        fields: isEntry ? (tab?.doc.content.frontmatter ?? null) : null,
+        isEntry,
+        lang: doc.$lang,
+        params: tab?.session.ui.previewParams ?? {},
+        title: doc.title,
+      },
+      projectState?.projectConfig,
+    );
+    if (context) {
+      // A rebuild, not a write: the render doc shares nodes with the tab's source document.
+      renderDoc = { ...renderDoc, state: { ...renderDoc.state, ...context } };
+    }
+  }
+
+  /* Class-backed state resolved before the render rather than by it (repeater-sources.ts): in every
+     mode, an entry naming an enabled extension's class by a bare `$prototype`, as the build
+     resolves it; in Edit and Design, also the collections a repeater reads, whose first item draws
+     the repeater's template. */
+  const extensions = await loadExtensions();
+  const classes = extensionClassPaths(extensions);
+  const bakeKeys = extensionClassKeys(renderDoc, classes);
+  if (canvasMode !== "preview") {
+    bakeKeys.push(...repeaterSourceKeys(doc));
+  }
+  renderDoc = await bakeRepeaterSources(renderDoc, [...new Set(bakeKeys)], docBase, classes);
+
   // Component definition docs (non-page): seed chosen test-prop values into the render doc's state
   // So a non-instantiated component previews with real data — templates, dataScope snapshots, and
   // Live/snapshot expression previews all see the values (M6, the previewParams mirror). Pure
@@ -430,13 +466,32 @@ export async function resolveCanvasDocument(
       if (node.tagName) {
         tags.add(displayTagName(node.tagName));
       }
+      /* Every place a node can hold the nodes it draws: its children, a repeater's row template and
+         a `$switch`'s cases. Preview keeps a repeater as written (`$prototype: "Array"` with the
+         row under `map`), so a walk of `children` alone never reached a component used only in a
+         list, and Preview drew three empty `<mu-exhibition-row>` elements that nothing defined.
+         Edit and Design passed only because their perimeter turns the template into a child. */
+      const kids: JxMutableNode[] = [];
       if (Array.isArray(node.children)) {
         for (const child of node.children) {
           if (!isString(child)) {
-            for (const t of collectTags(child)) {
-              tags.add(t);
-            }
+            kids.push(child);
           }
+        }
+      } else if (isMappedArray(node.children)) {
+        /* SAFETY: the bare mapped-array slot is a repeater node in all but its declared type, and
+           the walk reads only its `map` template, an element definition. */
+        kids.push(node.children as JxMutableNode);
+      }
+      if (isNonNullObject(node.map)) {
+        kids.push(node.map);
+      }
+      if (isNonNullObject(node.cases)) {
+        kids.push(...Object.values(node.cases));
+      }
+      for (const kid of kids) {
+        for (const t of collectTags(kid)) {
+          tags.add(t);
         }
       }
       return tags;
@@ -455,7 +510,7 @@ export async function resolveCanvasDocument(
   if (effectiveElements.length > 0) {
     renderDoc.$elements = effectiveElements;
   }
-  renderDoc.imports = getEffectiveImports(renderDoc.imports);
+  renderDoc.imports = getEffectiveImports(renderDoc.imports, extensions);
   // The effective-media/head getters always answer a value: the merge, or an empty one.
   renderDoc.$media = getEffectiveMedia(renderDoc.$media);
   renderDoc.$head = getEffectiveHead(renderDoc.$head);

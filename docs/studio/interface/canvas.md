@@ -19,6 +19,10 @@ code:
   - packages/studio/src/panels/canvas-dnd-bridge.ts
   - packages/studio/src/canvas/iframe-interaction.ts
   - packages/studio/src/tabs/selection.ts
+  - packages/studio/src/canvas/canvas-page-context.ts
+  - packages/studio/src/canvas/repeater-sources.ts
+  - packages/studio/src/canvas/npm-modules.ts
+  - packages/studio/src/utils/edit-display.ts
 ---
 
 # The canvas
@@ -130,6 +134,18 @@ The canvas is a page of your site, not a picture of one. Everything a published 
 
 :::doc-note
 The canvas stylesheet and the one `jx build` writes are produced by the same builder and compared byte for byte in the test suite, so the two cannot drift apart quietly. If the canvas and a built page ever do disagree about a project-level style, that is a bug worth reporting rather than a limit of the editor.
+:::
+
+## Your site's data
+
+The page on the canvas also knows where it is. `$page` and `$site` are filled in the way a build fills them: the page's URL, its title, its language and writing direction from the folder it sits in, and your site's name and languages. A collection entry gets the URL and language of the page that publishes it. So `${$page.locale}` formats a date in the page's own language on the canvas too, in every view.
+
+In Edit and Design, text your page draws from data shows the binding itself, such as `❪ item.title ❫`, because that is what you edit. A component is different: it is handed real values. A component inside a repeater is drawn with the list's first item, so an exhibition card shows the first exhibition's title, dates and gallery rather than failing on a date it cannot read. The list's data is loaded before the page draws.
+
+Data a layout reads from a content type, such as a sidebar's navigation, is loaded the same way, and a package script a component names with `npm:` is loaded from your project's installed packages.
+
+:::doc-note
+Two things a built page has are still missing on the canvas: state declared at the project level, and the list of a page's translations (`$page.alternates`), so a language switcher built from it stays empty here.
 :::
 
 ## Next

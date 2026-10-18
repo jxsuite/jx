@@ -11,6 +11,7 @@ import {
   isNodeObject,
   isNonNullObject,
   isNumber,
+  isRef,
   isString,
 } from "@jxsuite/schema/guards";
 import { isDocumentContainer } from "./strip-events";
@@ -215,13 +216,182 @@ export function restoreTemplateExpressions(el: HTMLElement) {
  * @param {JxMutableNode} arrayObj
  * @returns {JxMutableNode}
  */
-function arrayToPerimeter(arrayObj: JxMutableNode): JxMutableNode {
+function arrayToPerimeter(arrayObj: JxMutableNode, row: SampleRow): JxMutableNode {
   const template = arrayObj.map;
   return {
-    children: isNonNullObject(template) ? [prepareForEditMode(template)] : [],
+    children: isNonNullObject(template)
+      ? [prepareNode(template, sampleRowOf(arrayObj.items, row))]
+      : [],
     className: "repeater-perimeter",
     tagName: "div",
   };
+}
+
+// ─── Live component props ────────────────────────────────────────────────────
+
+/**
+ * The row a repeater's template is drawn with in edit mode, as a JavaScript expression the runtime
+ * evaluates in the template's own scope, or null outside a repeater or where the repeater's items
+ * cannot be read.
+ *
+ * It is the repeater's FIRST item. A perimeter draws one instance of the template, and a component
+ * inside it used to be handed each bound prop's display text (`❪ item.data.date ❫`) as its value.
+ * Text survives that; a component that formats the prop does not: `Intl/formatDate` and a locale
+ * tag reject it with a `RangeError` (spec.md §16.4), and the instance was not rendered at all. The
+ * first item is real data of exactly the shape the template was written for, and it is the row
+ * Preview draws first.
+ */
+export type SampleRow = string | null;
+
+/** A JSON value as a JavaScript literal: JSON is a subset of ECMAScript since ES2019. */
+function jsLiteral(value: JxDocumentValue): string {
+  return JSON.stringify(value);
+}
+
+/**
+ * A pointer the runtime resolves, as a JavaScript accessor over the template parameters, or null
+ * for a scheme a template cannot reach (`window#/`, `$defs`, an external file).
+ */
+function refAccessor(ref: string): string | null {
+  const pointer = ref.startsWith("#/") ? ref.slice(2) : ref;
+  const [head, ...rest] = pointer.split("/");
+  const base = head === "state" || head === "$map" ? head : null;
+  if (base === null) {
+    return null;
+  }
+  // JSON Pointer unescaping (RFC 6901): `~1` is `/`, `~0` is `~`, in that order.
+  const keys = rest.map((seg) => seg.replaceAll("~1", "/").replaceAll("~0", "~"));
+  return base + keys.map((key) => `?.[${jsLiteral(key)}]`).join("");
+}
+
+/** Evaluate `expr` where `item`, `index` and `$map` are the sample `row`, or as-is with no row. */
+function inRow(expr: string, row: SampleRow): string {
+  if (row === null) {
+    return `(${expr})`;
+  }
+  return `((r) => ((item, index, $map) => (${expr}))(r, 0, { index: 0, item: r }))(${row})`;
+}
+
+/** The first item of a repeater's `items`, read inside the enclosing sample `row` (if any). */
+function sampleRowOf(items: JxDocumentValue | undefined, row: SampleRow): SampleRow {
+  if (Array.isArray(items)) {
+    return `${jsLiteral(items)}[0]`;
+  }
+  if (isRef(items)) {
+    const accessor = refAccessor(items.$ref);
+    return accessor === null ? null : `${inRow(accessor, row)}?.[0]`;
+  }
+  const parts = isString(items) ? templateExpressions(items) : [];
+  if (isString(items) && parts.length === 1 && isWholeTemplate(items, parts[0]!)) {
+    return `${inRow(parts[0]!.expr, row)}?.[0]`;
+  }
+  return null;
+}
+
+/** One `${…}` of a template: where it starts and ends in the string, and its expression. */
+interface TemplatePart {
+  start: number;
+  end: number;
+  expr: string;
+}
+
+/** Whether `part` is the whole of `template`: one expression end to end, so it keeps its type. */
+function isWholeTemplate(template: string, part: TemplatePart): boolean {
+  return part.start === 0 && part.end === template.length - 1;
+}
+
+/**
+ * Each `${…}` of a template, located by brace depth rather than by pattern: an expression may hold
+ * an object literal or a nested template, which a `[^}]+` pattern cuts short.
+ */
+function templateExpressions(str: string): TemplatePart[] {
+  const found: TemplatePart[] = [];
+  let at = str.indexOf("${");
+  while (at !== -1) {
+    let depth = 0;
+    let end = -1;
+    for (let i = at + 1; i < str.length; i += 1) {
+      if (str[i] === "{") {
+        depth += 1;
+      } else if (str[i] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end === -1) {
+      break;
+    }
+    found.push({ end, expr: str.slice(at + 2, end), start: at });
+    at = str.indexOf("${", end + 1);
+  }
+  return found;
+}
+
+/**
+ * A bound component prop as edit mode passes it: the binding itself, evaluated LIVE by the runtime
+ * (against the page's own state and `$page`, and inside a repeater against its sample row) and
+ * guarded, so a binding with nothing to read yet (a collection still loading, an empty one) reads
+ * as the empty string, a component prop's usual default, rather than throwing out of the binding's
+ * effect.
+ *
+ * Display text is what edit mode shows for a binding the PAGE draws, because the author edits that
+ * text in place. A component's prop is not drawn by the page: the component decides what it means,
+ * and a date, a locale, a count or a colour cannot be a label.
+ */
+export function liveEditProp(template: string, row: SampleRow = null): string {
+  const parts = templateExpressions(template);
+  if (parts.length === 0) {
+    return template;
+  }
+  let out = "";
+  let last = 0;
+  for (const { start, end, expr } of parts) {
+    out += template.slice(last, start);
+    out += `\${(() => { try { return ${inRow(expr, row)}; } catch { return ""; } })()}`;
+    last = end + 1;
+  }
+  return out + template.slice(last);
+}
+
+/**
+ * A `$ref`-bound component prop in edit mode: a scope pointer resolves live as it is, and a row
+ * pointer (`$map/item/…`) is read from the sample row, or dropped where there is none so the
+ * component keeps its own default.
+ */
+function liveEditRefProp(ref: string, row: SampleRow): JxDocumentValue | undefined {
+  const pointer = ref.startsWith("#/") ? ref.slice(2) : ref;
+  if (pointer !== "$map" && !pointer.startsWith("$map/")) {
+    return { $ref: ref };
+  }
+  const accessor = refAccessor(ref);
+  return row === null || accessor === null ? undefined : liveEditProp(`\${${accessor}}`, row);
+}
+
+/**
+ * The sample row of the repeater template at `path` in `doc` (what {@link prepareForEditMode} draws
+ * a perimeter's instance with), so a subtree re-rendered on its own (`iframe-subtree.ts`) is
+ * prepared exactly as the full render prepared it.
+ */
+export function sampleRowAt(doc: JxDocumentValue, path: readonly (string | number)[]): SampleRow {
+  let node: JxDocumentValue | undefined = doc;
+  let row: SampleRow = null;
+  for (const seg of path) {
+    if (Array.isArray(node)) {
+      node = isNumber(seg) ? node[seg] : undefined;
+      continue;
+    }
+    if (!isNodeObject(node)) {
+      return row;
+    }
+    if (seg === "map" && node.$prototype === "Array") {
+      row = sampleRowOf(node.items, row);
+    }
+    node = isString(seg) ? node[seg] : undefined;
+  }
+  return row;
 }
 
 /**
@@ -244,13 +414,33 @@ function refDisplayLabel(ref: string): string {
  * @param {JxMutableNode} node
  * @returns {JxMutableNode}
  */
-export function prepareForEditMode(node: JxMutableNode): JxMutableNode;
-export function prepareForEditMode(node: JxDocumentValue): JxDocumentValue;
-export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumentValue | undefined;
-export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumentValue | undefined {
+export function prepareForEditMode(node: JxMutableNode, row?: SampleRow): JxMutableNode;
+export function prepareForEditMode(node: JxDocumentValue, row?: SampleRow): JxDocumentValue;
+export function prepareForEditMode(
+  node: JxDocumentValue | undefined,
+  row?: SampleRow,
+): JxDocumentValue | undefined;
+export function prepareForEditMode(
+  node: JxDocumentValue | undefined,
+  row: SampleRow = null,
+): JxDocumentValue | undefined {
+  return prepareNode(node, row);
+}
+
+/** {@link prepareForEditMode} for one value, inside the sample `row` of its enclosing repeater. */
+function prepareNode(node: JxMutableNode, row: SampleRow): JxMutableNode;
+function prepareNode(node: JxDocumentValue, row: SampleRow): JxDocumentValue;
+function prepareNode(
+  node: JxDocumentValue | undefined,
+  row: SampleRow,
+): JxDocumentValue | undefined;
+function prepareNode(
+  node: JxDocumentValue | undefined,
+  row: SampleRow,
+): JxDocumentValue | undefined {
   if (Array.isArray(node)) {
     // Arrays of nodes round-trip element-wise; the array itself is not a node.
-    return node.map((n) => prepareForEditMode(n));
+    return node.map((n) => prepareNode(n, row));
   }
   if (!isNodeObject(node)) {
     return node;
@@ -259,7 +449,7 @@ export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumen
   // A mapped-array node itself → its edit-mode perimeter (e.g. when the patcher re-renders an
   // Array node directly). Members inside a children array funnel here via the children branch.
   if (node.$prototype === "Array") {
-    return arrayToPerimeter(node);
+    return arrayToPerimeter(node, row);
   }
 
   const obj = node;
@@ -286,21 +476,24 @@ export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumen
     if (k === "state" || k === "$media" || k === "$elements") {
       out[k] = v; // Preserve as-is for runtime resolution
     } else if (k === "$props" && isDocumentContainer(v)) {
-      // Process $props values: convert template strings to display format
+      // Process $props values: a binding stays LIVE (see liveEditProp), never its display text.
       const propsOut: RebuiltNode = {};
       for (const [pk, pv] of Object.entries(v)) {
         if (isString(pv) && pv.includes("${")) {
           // Image-like prop → neutral placeholder (the component renders it as an <img src>); link
-          // Targets → inert ""; everything else → the readable ❪ expr ❫ binding text.
+          // Targets → inert ""; everything else → the binding, evaluated live and guarded.
           if (isImageUrlKey(pk)) {
             propsOut[pk] = PLACEHOLDER_IMG;
           } else if (pk === "href" || pk === "action") {
             propsOut[pk] = "";
           } else {
-            propsOut[pk] = templateToEditDisplay(pv);
+            propsOut[pk] = liveEditProp(pv, row);
           }
-        } else if (isNodeObject(pv) && pv.$ref) {
-          propsOut[pk] = refDisplayLabel(pv.$ref);
+        } else if (isRef(pv)) {
+          const live = liveEditRefProp(pv.$ref, row);
+          if (live !== undefined) {
+            propsOut[pk] = live;
+          }
         } else {
           propsOut[pk] = pv;
         }
@@ -310,12 +503,12 @@ export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumen
       if (Array.isArray(v)) {
         // Each member recurses; array pseudo-elements become a single repeater-perimeter element
         // (via the top-level array case) so they stay a 1:1 DOM node among their siblings.
-        out.children = v.map((c) => prepareForEditMode(c));
+        out.children = v.map((c) => prepareNode(c, row));
       } else if (isNodeObject(v) && v.$prototype === "Array") {
         // Legacy whole-children repeater → a single perimeter as the sole child.
-        out.children = [prepareForEditMode(v)];
+        out.children = [prepareNode(v, row)];
       } else {
-        out.children = prepareForEditMode(v);
+        out.children = prepareNode(v, row);
       }
     } else if (k === "cases" && obj.$switch && isDocumentContainer(v)) {
       // Replace $switch cases with a placeholder showing the first case or a label
@@ -324,7 +517,7 @@ export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumen
         const [, firstCase] = firstEntry;
         out.children =
           isDocumentContainer(firstCase) && !(isNodeObject(firstCase) && firstCase.$ref)
-            ? [prepareForEditMode(firstCase)]
+            ? [prepareNode(firstCase, row)]
             : [
                 {
                   style: {
@@ -405,7 +598,7 @@ export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumen
         needsMediaPlaceholder = true;
         out[k] = TRANSPARENT_PX;
       } else {
-        out[k] = prepareForEditMode(v);
+        out[k] = prepareNode(v, row);
       }
     }
   }

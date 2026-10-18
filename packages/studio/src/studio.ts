@@ -145,6 +145,7 @@ import { invalidateLibrary, resetContentView } from "./browse/library-pane";
 import { invalidateCollectionPages, resetCollectionPages } from "./content/collection-pages";
 import { invalidatePageSummaries } from "./content/page-summaries";
 import { invalidateEntrySummaries, noteSavedEntry } from "./content/entry-summaries";
+import { invalidateRepeaterSources } from "./canvas/repeater-sources";
 import { entryFields } from "./content/entry-fields";
 import { contentCacheDrops } from "./content/content-collections";
 import { resetWritingBanners } from "./content/writing-banner";
@@ -997,6 +998,7 @@ function ensureFsSync() {
       }
       if (drops.entries) {
         invalidateEntrySummaries();
+        invalidateRepeaterSources();
       }
       /* The media listing is a walk of `public/` and every collection's `images/`, so only a batch
          under one of them (or one that cannot say what changed) can make it wrong: a file added by
@@ -1329,6 +1331,7 @@ function resetProjectCaches(): void {
   resetCollectionPages();
   invalidatePageSummaries();
   invalidateEntrySummaries();
+  invalidateRepeaterSources();
   resetCollectionsPanel();
   resetWritingBanners();
   invalidateMediaCache();
@@ -1617,6 +1620,8 @@ const liveChrome = createLiveSurfaceSaver({
    registry reactively. */
 setDocumentSavedListener((path, doc, tab) => {
   void noteFileSaved(path);
+  // Any saved file can be data a repeater on the canvas reads; the next render asks again.
+  invalidateRepeaterSources();
   // An entry's new title or status reaches the Collections panel and the Content home at once.
   if (noteSavedEntry(path, entryFields(tab))) {
     renderLeftPanel();

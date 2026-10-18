@@ -28,7 +28,7 @@ code:
 4. `/_jx/*`: extension server mounts.
 5. `/__studio/*` is the Studio API (skipped when `studio: false`): the collab WebSocket upgrade, `activate`, then the AI, site-import, and code sub-APIs, then `handleStudioApi` for everything else.
 6. Custom `middleware`, if the embedder passed one.
-7. Static files: project files at their natural URLs, the active project's tree, `public/` at the site root, and bare npm specifiers resolved through `node_modules` and bundled on demand.
+7. Static files: project files at their natural URLs, the active project's tree, `public/` at the site root, and bare npm specifiers resolved through the active project's `node_modules`, then the root's, and bundled on demand.
 
 Ordering is load-bearing: the privileged endpoints must be claimed before the static fallback can ever see their paths, and `middleware` deliberately sits after the protocol routes so an embedder cannot accidentally shadow them.
 

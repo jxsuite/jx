@@ -218,6 +218,67 @@ describe("restoreSession", () => {
     expect(workspace.tabs.get(pane.activeTabId!)?.documentPath).toBe("pages/b.md");
   });
 
+  test("the restored active document is the most recently used one", async () => {
+    /* The real opener reopens every document WITHOUT moving the keyboard, so nothing promotes the
+       MRU list on the way in. The workspace switch that follows a restore activates the
+       workspace's most recent tab, and with an empty list it fell back to the strip's first: a
+       session left on the second entry came back on the first. */
+    const quiet = async (path: string) => {
+      openTab({
+        document: structuredClone(EMPTY_DOC),
+        documentPath: path,
+        focus: false,
+        id: `t:${path}`,
+      });
+      await Promise.resolve();
+    };
+    await restoreSession(
+      session({
+        panes: [
+          {
+            activeFile: "content/en/clay.md",
+            files: ["content/ar/clay.md", "content/en/clay.md", "pages/index.json"],
+            id: PRIMARY_PANE,
+          },
+        ],
+      }),
+      { ensureSecondPane: () => {}, openFile: quiet },
+    );
+    const pane = paneById(PRIMARY_PANE)!;
+    expect(workspace.tabs.get(pane.activeTabId!)?.documentPath).toBe("content/en/clay.md");
+    expect(workspace.tabs.get(workspace.mruOrder[0]!)?.documentPath).toBe("content/en/clay.md");
+  });
+
+  test("a side pane's active document is restored without taking the keyboard", async () => {
+    await restoreSession(
+      session({
+        panes: [
+          { activeFile: "pages/a.md", files: ["pages/a.md"], id: PRIMARY_PANE },
+          { activeFile: "pages/b.md", files: ["pages/b.md"], id: SECONDARY_PANE },
+        ],
+      }),
+      { ensureSecondPane: () => receivingPane(PRIMARY_PANE), openFile: opener() },
+    );
+    const side = paneById(SECONDARY_PANE)!;
+    expect(workspace.tabs.get(side.activeTabId!)?.documentPath).toBe("pages/b.md");
+    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+    expect(workspace.tabs.get(workspace.mruOrder[0]!)?.documentPath).toBe("pages/a.md");
+  });
+
+  test("a focused pane with no stored active document still takes the keyboard", async () => {
+    await restoreSession(
+      session({
+        focusedPane: SECONDARY_PANE,
+        panes: [
+          { activeFile: "pages/a.md", files: ["pages/a.md"], id: PRIMARY_PANE },
+          { activeFile: null, files: ["pages/b.md"], id: SECONDARY_PANE },
+        ],
+      }),
+      { ensureSecondPane: () => receivingPane(PRIMARY_PANE), openFile: opener() },
+    );
+    expect(workspace.activePaneId).toBe(SECONDARY_PANE);
+  });
+
   test("applies each document's view settings after every tab exists", async () => {
     await restoreSession(session({ ui: { "pages/a.md": { canvasMode: "source", zoom: 2 } } }), {
       openFile: opener(),

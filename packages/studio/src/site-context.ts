@@ -22,6 +22,7 @@ import type {
   JxStyle,
   ProjectConfig,
 } from "@jxsuite/schema/types";
+import type { ExtensionsInfo } from "./types";
 
 /**
  * Merge site $media with document $media. Document keys win on conflict.
@@ -71,15 +72,35 @@ export function getEffectiveStyle(docStyle?: JxStyle) {
  *   undefined)
  * @returns {Record<string, string>}
  */
-export function getEffectiveImports(docImports?: Record<string, string>) {
-  const siteImports = projectState?.projectConfig?.imports;
-  if (!siteImports) {
-    return docImports || {};
-  }
-  if (!docImports) {
-    return { ...siteImports };
-  }
-  return { ...siteImports, ...docImports };
+export function getEffectiveImports(
+  docImports?: Record<string, string>,
+  extensions: readonly ExtensionsInfo[] = [],
+) {
+  /* The enabled extensions' manifest classes come last in the order the build resolves a bare
+     `$prototype` in (spec.md §12.5: the document's `imports`, then the project's, then the
+     extension registry), so they are the base the other two are spread over. Without them a
+     layout's `{ "$prototype": "ContentEntry" }` named a class the build knows and the canvas did
+     not, and the canvas warned of an unknown prototype and drew the layout with no data. The
+     first extension to declare a name keeps it, as the registry's `byName` answers. */
+  return {
+    ...extensionClassPaths(extensions),
+    ...projectState?.projectConfig?.imports,
+    ...docImports,
+  };
+}
+
+/**
+ * The enabled extensions' manifest classes, by name, as descriptor paths: the last step of the
+ * build's bare-`$prototype` resolution (spec.md §12.5). The first extension to declare a name keeps
+ * it, as the registry's `byName` answers.
+ */
+export function extensionClassPaths(extensions: readonly ExtensionsInfo[]) {
+  const classes = extensions.flatMap((extension) =>
+    (extension.classes ?? [])
+      .filter((cls) => cls.path.endsWith(".class.json"))
+      .map((cls): [string, string] => [cls.name, cls.path]),
+  );
+  return Object.fromEntries(classes.toReversed());
 }
 
 /**

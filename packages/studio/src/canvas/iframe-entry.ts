@@ -56,9 +56,11 @@ import {
   redefineElement,
   resetDocumentStyles,
   setCanvasAssetResolver,
+  setNpmModuleResolver,
   setResolveToken,
 } from "@jxsuite/runtime";
 import { resolveAssetRef } from "./asset-resolve";
+import { npmModuleUrl } from "./npm-modules";
 import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
@@ -93,6 +95,14 @@ setBundleBase(import.meta.url);
 for (const [specifier, load] of Object.entries(KIT_LOADERS)) {
   preloadModule(specifier, load);
 }
+
+/*
+ * A document's `npm:` sidecar, from the package the project installed. The build bundles one
+ * (`compiler/src/site/bundler.ts`); this frame asks the dev server, which bundles
+ * `/node_modules/<package>/<subpath>` on demand through the package's own `exports`, the URL space
+ * `registerElements` already imports a bare `$elements` specifier from.
+ */
+setNpmModuleResolver((specifier) => npmModuleUrl(specifier, location.href));
 
 /**
  * Resolve the drop placement for a forwarded cursor: point hit-test → nearest `[data-jx-path]` →

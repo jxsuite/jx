@@ -11,6 +11,8 @@ import { installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resolveCanvasDocument } from "../src/canvas/canvas-live-render";
 import { invalidateLayoutCache } from "../src/site-context";
+import { setExtensions } from "../src/format/format-host";
+import { invalidateRepeaterSources } from "../src/canvas/repeater-sources";
 import { loadComponentRegistry } from "../src/files/components";
 import { activateTab, activeTab, closeAllTabs, openTab } from "../src/workspace/workspace";
 
@@ -318,6 +320,98 @@ describe("resolveCanvasDocument", () => {
     );
     const refs = (result.renderDoc.$elements ?? []).map((e) => (isString(e) ? undefined : e.$ref));
     expect(refs.some((r) => r?.includes("components/x-card-live.json"))).toBe(true);
+  });
+
+  test("auto-discovery reaches a component used only as a list's row or a $switch case", async () => {
+    installMockPlatform({
+      discoverComponents: async () => [
+        { path: "components/x-row.json", source: "jx", tagName: "x-row" },
+        { path: "components/x-case.json", source: "jx", tagName: "x-case" },
+        { path: "components/x-legacy.json", source: "jx", tagName: "x-legacy" },
+      ],
+    });
+    await loadComponentRegistry();
+    const result = await resolve(
+      {
+        children: [
+          { $prototype: "Array", items: [1], map: { tagName: "x-row" } },
+          { $switch: "a", cases: { a: { tagName: "x-case" } }, tagName: "div" },
+          {
+            children: { $prototype: "Array", items: [1], map: { tagName: "x-legacy" } },
+            tagName: "ul",
+          },
+        ],
+        tagName: "div",
+      },
+      // Preview keeps every repeater as written, which is where the walk used to stop.
+      { canvasMode: "preview", documentPath: "layouts/base.json" },
+    );
+    const refs = (result.renderDoc.$elements ?? []).map((e) => (isString(e) ? undefined : e.$ref));
+    for (const tag of ["x-row", "x-case", "x-legacy"]) {
+      expect(refs.some((r) => r?.includes(`components/${tag}.json`))).toBe(true);
+    }
+  });
+
+  test("a page is drawn with the $site and $page the build injects", async () => {
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: {
+        i18n: { defaultLocale: "en", locales: ["en", "ar"], routing: "prefix-except-default" },
+        name: "Atrium",
+      },
+    });
+    const result = await resolve(
+      { children: [], state: { own: 1 }, tagName: "main", title: "Visit" },
+      { canvasMode: "preview", documentPath: "pages/ar/visit.json" },
+    );
+    expect(result.renderDoc.state?.$page).toMatchObject({
+      locale: "ar",
+      title: "Visit",
+      url: "/ar/visit",
+    });
+    expect(result.renderDoc.state?.$site).toMatchObject({ name: "Atrium" });
+    expect(result.renderDoc.state?.own).toBe(1);
+  });
+
+  test("Edit resolves the collection a repeater reads, and every mode an extension class", async () => {
+    const asked: string[] = [];
+    installMockPlatform({
+      resolveClass: async (body) => {
+        asked.push(String(body.$src));
+        return body.$prototype === "ContentEntry" ? { id: "nav" } : [{ t: "first" }];
+      },
+    });
+    setExtensions([
+      {
+        classes: [{ name: "ContentEntry", path: "/ext/ContentEntry.class.json" }],
+        contributions: [],
+        name: "@jxsuite/parser",
+        specifier: "@jxsuite/parser",
+      },
+    ]);
+    resetStudioState({ isSiteProject: true, projectConfig: {} });
+    invalidateRepeaterSources();
+    const page: JxMutableNode = {
+      children: [{ $prototype: "Array", items: { $ref: "#/state/rows" }, map: { tagName: "li" } }],
+      state: {
+        nav: { $prototype: "ContentEntry", id: "nav" },
+        rows: { $prototype: "ContentCollection", $src: "@x/C.class.json", contentType: "rows" },
+      },
+      tagName: "main",
+    };
+    const edit = await resolve(page, { canvasMode: "edit", documentPath: "pages/index.json" });
+    expect(edit.renderDoc.state?.rows).toEqual([{ t: "first" }]);
+    expect(edit.renderDoc.state?.nav).toEqual({ id: "nav" });
+    expect(edit.renderDoc.imports?.ContentEntry).toBe("/ext/ContentEntry.class.json");
+    invalidateRepeaterSources();
+    asked.length = 0;
+    const preview = await resolve(page, {
+      canvasMode: "preview",
+      documentPath: "pages/index.json",
+    });
+    // Preview resolves its own lists as the page does; the extension class is resolved first.
+    expect(asked).toEqual(["/ext/ContentEntry.class.json"]);
+    expect(preview.renderDoc.state?.nav).toEqual({ id: "nav" });
   });
 });
 

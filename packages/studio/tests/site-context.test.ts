@@ -117,6 +117,35 @@ describe("getEffectiveImports", () => {
     expect(result.A).toBe("override.json");
     expect(result.B).toBe("b.json");
   });
+
+  test("the enabled extensions' classes come last, as the build resolves a bare $prototype", () => {
+    openProject({ imports: { ContentEntry: "./mine/ContentEntry.class.json" } });
+    const extensions = [
+      {
+        classes: [
+          { name: "ContentEntry", path: "/ext/parser/ContentEntry.class.json" },
+          { name: "Markdown", path: "/ext/parser/Markdown.class.json" },
+          { name: "NotAClass", path: "/ext/parser/readme.md" },
+        ],
+        contributions: [],
+        name: "@jxsuite/parser",
+        specifier: "@jxsuite/parser",
+      },
+      {
+        classes: [{ name: "Markdown", path: "/ext/other/Markdown.class.json" }],
+        contributions: [],
+        name: "other",
+        specifier: "other",
+      },
+      { contributions: [], name: "bare", specifier: "bare" },
+    ];
+    expect(getEffectiveImports({}, extensions)).toEqual({
+      // The project's own mapping wins over the registry's.
+      ContentEntry: "./mine/ContentEntry.class.json",
+      // The first extension to declare a name keeps it.
+      Markdown: "/ext/parser/Markdown.class.json",
+    });
+  });
 });
 
 // ─── getEffectiveElements ──────────────────────────────────────────────────

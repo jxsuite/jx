@@ -3291,14 +3291,27 @@ export async function mountIframeCanvas(
  * until it says `ready`. Counted either way: the message is this pass's work for this host whether
  * or not the frame has finished loading.
  */
-function deliverRender(state: HostState, message: ParentToIframe): void {
+function deliverRender(state: HostState, message: RenderMsg): void {
   canvasPerf.hostRenderPosts += 1;
   if (state.ready) {
     syncAssetVersions(state);
     state.channel.post(message);
-  } else {
-    state.pending = message;
+    return;
   }
+  /* The queue holds ONE render, and it must be the NEWEST, not the last to arrive. A page render
+     awaits its own resolution, so two renders started in order can finish out of order: on a
+     reload that restores two tabs, the frame is still booting, the first-opened tab's render (an
+     older gen) can resolve after the active tab's, and overwriting the slot posted the stale one
+     on `ready`. The frame drew the other tab's document, the ack adopted that tab's identity, and
+     the active tab's render was lost. A ready frame drops a stale gen itself (`latestGen`); the
+     queue has to make the same call. */
+  const queued = state.pending;
+  if (queued?.kind === "render" && queued.gen > message.gen) {
+    // Never posted, so never acked: its identity must not wait for an ack that cannot come.
+    state.pendingTabIds.delete(message.gen);
+    return;
+  }
+  state.pending = message;
 }
 
 /**
@@ -3328,7 +3341,7 @@ export function mountStylebookCanvas(
   // (and fake test channels pass messages by reference, so sharing one object would alias them).
   const cloneableDoc = plainCopy(generated.doc);
   const cloneableShadow = plainCopy(generated.doc);
-  const message: ParentToIframe = {
+  const message: RenderMsg = {
     // The specimen carries no tab identity, but the STAGE it is mounted into does: a stylebook is
     // Opened as a tab like anything else, and its `previewColorScheme` is that tab's.
     /* A stylebook specimen is generated, not a project document, so it references no project

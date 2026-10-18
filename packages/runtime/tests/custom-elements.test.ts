@@ -269,6 +269,30 @@ describe("Custom Elements", () => {
     el.remove();
   });
 
+  test("onMount runs with the host as this, as the compiled element calls it", async () => {
+    const tag = uniqueTag();
+    await defineElement({
+      children: [{ className: "inner", tagName: "p", textContent: "x" }],
+      state: {
+        found: "",
+        // The jxsuite.com search component's shape: the body reaches its host through `this`.
+        onMount: {
+          $prototype: "Function",
+          arguments: ["state"],
+          body: "state.found = this.querySelector('.inner') ? this.tagName.toLowerCase() : 'none';",
+        },
+      },
+      tagName: tag,
+    });
+    const el = document.createElement(tag);
+    document.body.append(el);
+    await new Promise((r) => {
+      setTimeout(r, 200);
+    });
+    expect("found" in el ? el.found : undefined).toBe(tag);
+    el.remove();
+  });
+
   test("throws for non-hyphenated tagName", async () => {
     const outcome = await defineElement({ state: {}, tagName: "nohyphen" }).then(
       () => "resolved",
