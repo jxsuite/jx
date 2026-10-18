@@ -6,6 +6,7 @@ spec:
   - desktop.md#3.4
   - desktop.md#4
   - desktop.md#9.5
+  - desktop.md#9.7
 code:
   - packages/desktop/src/boot.ts
   - packages/desktop/src/init.ts
@@ -18,6 +19,14 @@ code:
   - packages/desktop/src/platform.ts
   - packages/desktop/src/window-manager.ts
   - packages/desktop/src/chromium/shell-command.ts
+  - packages/desktop/src/hub/backend.ts
+  - packages/desktop/src/hub/handlers.ts
+  - packages/desktop/src/hub/main.ts
+  - packages/desktop/src/hub/protocol.ts
+  - packages/desktop/src/hub/window-hub.ts
+  - packages/desktop/src/electron-shell/app-main.ts
+  - packages/desktop/src/electron-shell/app.ts
+  - packages/desktop/src/electron-shell/backend-process.ts
   - packages/desktop/src/electron-shell/bridge.ts
   - packages/desktop/src/electron-shell/bundle.ts
   - packages/desktop/src/electron-shell/main.ts
@@ -90,7 +99,7 @@ Everything on this page applies to it. Projects open the same way, through the s
 
 - **Your package manager updates it**, so there is no in-app updater and _About_ shows no update status.
 
-The window itself is Studio's, as on every other platform: the command bar is the title bar, so drag it to move the window, and the minimize, maximize and close buttons sit at its right end. Resize the window from its edges as usual. If a project has unsaved changes, closing the window asks first.
+The window itself is Studio's, as on every other platform: the command bar is the title bar, so drag it to move the window, and the minimize, maximize and close buttons sit at its right end. Resize the window from its edges as usual. If a project has unsaved changes, closing the window asks first. The window opens the same way whatever starts `jx-studio`, including a task or extension in an editor such as VS Code.
 
 The Ubuntu snap is the exception. It runs Studio in a Chromium app window, so your desktop draws that window's frame and its buttons are your system's rather than Studio's.
 

@@ -58,6 +58,52 @@ export function findElectron(
   return named ? which(named) : null;
 }
 
+/**
+ * Where a macOS browser lives when nothing is on `PATH`: an app bundle's executable. Chrome first,
+ * as the browser most machines have, then Chromium.
+ */
+export const MAC_BROWSER_BUNDLES = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+] as const;
+
+/**
+ * A Chromium-family browser: the window's shell when Electron is not configured, and the site
+ * import's headless browser either way (puppeteer cannot open a page in Electron).
+ *
+ * @param env The launcher's environment; `CHROMIUM_BIN` wins when it resolves.
+ * @param platform On macOS a browser is an app bundle rather than a `PATH` entry, so the standard
+ *   bundles are tried last.
+ * @param which `Bun.which`, injectable for tests. It resolves on every platform, with no dependency
+ *   on a POSIX `which`, which a stock Windows shell lacks.
+ * @param exists `existsSync`, injectable for tests.
+ */
+export function findChromium(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+  which: (bin: string) => string | null = Bun.which,
+  exists: (path: string) => boolean = existsSync,
+): string | null {
+  const candidates = [
+    env.CHROMIUM_BIN,
+    "chromium",
+    "chromium-browser",
+    "google-chrome",
+    "google-chrome-stable",
+  ];
+  for (const bin of candidates) {
+    // An unset or empty CHROMIUM_BIN is skipped, not looked up.
+    const found = bin ? which(bin) : null;
+    if (found) {
+      return found;
+    }
+  }
+  if (platform === "darwin") {
+    return MAC_BROWSER_BUNDLES.find((bundle) => exists(bundle)) ?? null;
+  }
+  return null;
+}
+
 /** `chromium --app=…`, as §9.2 specifies it. */
 export function chromiumShellCommand(bin: string, target: ShellTarget): ShellCommand {
   return {
@@ -88,16 +134,20 @@ export interface ElectronShellFiles {
 /**
  * `electron <main.js> --jx-…`: Chromium switches first, so Electron applies them to its Chromium,
  * then the entry and the shell's own switches.
+ *
+ * @param platform The OS the shell will run on; `process.platform` by default.
  */
 export function electronShellCommand(
   bin: string,
   target: ShellTarget,
   files: ElectronShellFiles,
+  platform: NodeJS.Platform = process.platform,
 ): ShellCommand {
   const args = [
     ...target.platformArgs,
-    // X11's WM_CLASS; Wayland's app_id comes from the shell's `app.setDesktopName`.
-    "--class=jx-studio",
+    /* X11's WM_CLASS; Wayland's app_id comes from the shell's `app.setDesktopName`. Linux only:
+       macOS's Electron hands an unknown leading switch to Node, which exits on "bad option". */
+    ...(platform === "linux" ? ["--class=jx-studio"] : []),
     files.main,
     `--jx-url=${shellUrl(target)}`,
     `--jx-preload=${files.preload}`,
@@ -105,6 +155,69 @@ export function electronShellCommand(
   ];
   if (files.icon) {
     args.push(`--jx-icon=${files.icon}`);
+  }
+  return { args, bin, shell: "electron" };
+}
+
+/**
+ * The environment the shell is started with: the launcher's own, minus `ELECTRON_RUN_AS_NODE`.
+ *
+ * Any Electron app that spawns this launcher (VS Code's extension host sets the variable for every
+ * process it starts) passes the variable on, and Electron then runs `main.js` as plain Node, where
+ * `require("electron")` fails and no window opens. Chromium ignores it, so it is dropped for both.
+ *
+ * @param env The launcher's environment.
+ */
+export function shellEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const { ELECTRON_RUN_AS_NODE: _runAsNode, ...rest } = env;
+  return rest;
+}
+
+/** What the multi-window Electron app is started with. */
+export interface ElectronAppFiles {
+  /** The backend entry, run by Bun. */
+  backend: string;
+  /** The Bun executable the backend runs under. */
+  bun: string;
+  /** The window icon. */
+  icon: string | null;
+  /** The bundled main-process entry (`app-main.js`). */
+  main: string;
+  /** The bundled preload. */
+  preload: string;
+}
+
+/**
+ * `electron <app-main.js> --jx-…`: the multi-window app (`electron-shell/app.ts`).
+ *
+ * Unlike {@link electronShellCommand} it is given no URL and no profile: the backend it spawns
+ * stands up a server and a storage partition per window, and tells the app where each one is.
+ *
+ * @param bin The Electron executable.
+ * @param files What the app is made of.
+ * @param root The project to open first, or null for a welcome window.
+ * @param platform The OS the app will run on; `process.platform` by default.
+ */
+export function electronAppCommand(
+  bin: string,
+  files: ElectronAppFiles,
+  root: string | null,
+  platform: NodeJS.Platform = process.platform,
+): ShellCommand {
+  const args = [
+    // X11's WM_CLASS, on Linux only: elsewhere Electron hands an unknown leading switch to Node.
+    ...(platform === "linux" ? ["--class=jx-studio"] : []),
+    files.main,
+    `--jx-bun=${files.bun}`,
+    `--jx-backend=${files.backend}`,
+    `--jx-preload=${files.preload}`,
+  ];
+  if (files.icon) {
+    args.push(`--jx-icon=${files.icon}`);
+  }
+  if (root) {
+    // A switch, not a bare path: an unpackaged argv has no position that is the user's.
+    args.push(`--jx-project=${root}`);
   }
   return { args, bin, shell: "electron" };
 }

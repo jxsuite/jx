@@ -4,8 +4,12 @@ import { join } from "node:path";
 import {
   chromiumShellCommand,
   composeShellCommand,
+  MAC_BROWSER_BUNDLES,
+  electronAppCommand,
   electronShellCommand,
+  findChromium,
   findElectron,
+  shellEnv,
   shellIcon,
   shellUrl,
 } from "../src/chromium/shell-command";
@@ -65,7 +69,7 @@ describe("electronShellCommand", () => {
   const files = { icon: "/share/icon.png", main: "/b/main.js", preload: "/b/preload.js" };
 
   test("puts Chromium switches before the entry and the shell's own after it", () => {
-    expect(electronShellCommand("/bin/electron", target, files)).toEqual({
+    expect(electronShellCommand("/bin/electron", target, files, "linux")).toEqual({
       args: [
         "--ozone-platform=wayland",
         "--class=jx-studio",
@@ -80,9 +84,58 @@ describe("electronShellCommand", () => {
     });
   });
 
+  test("passes --class only on Linux, where it is X11's WM_CLASS", () => {
+    // On macOS, Electron hands a leading unknown switch to Node, which exits on "bad option".
+    const { args } = electronShellCommand("/bin/electron", target, files, "darwin");
+    expect(args).not.toContain("--class=jx-studio");
+    expect(args).toContain("/b/main.js");
+  });
+
   test("leaves the icon switch out when there is no icon", () => {
     const { args } = electronShellCommand("/bin/electron", target, { ...files, icon: null });
     expect(args.some((arg) => arg.startsWith("--jx-icon="))).toBe(false);
+  });
+});
+
+describe("electronAppCommand", () => {
+  const files = {
+    backend: "/src/hub/main.ts",
+    bun: "/bin/bun",
+    icon: "/share/icon.png",
+    main: "/b/app-main.js",
+    preload: "/b/preload.js",
+  };
+
+  test("starts the app on its bundle, and names the backend, Bun and the preload", () => {
+    expect(electronAppCommand("/bin/electron", files, "/proj", "darwin")).toEqual({
+      args: [
+        "/b/app-main.js",
+        "--jx-bun=/bin/bun",
+        "--jx-backend=/src/hub/main.ts",
+        "--jx-preload=/b/preload.js",
+        "--jx-icon=/share/icon.png",
+        "--jx-project=/proj",
+      ],
+      bin: "/bin/electron",
+      shell: "electron",
+    });
+  });
+
+  test("on Linux it also sets X11's WM_CLASS, before the script", () => {
+    const { args } = electronAppCommand("/bin/electron", files, null, "linux");
+    expect(args.slice(0, 2)).toEqual(["--class=jx-studio", "/b/app-main.js"]);
+  });
+
+  test("names the project by switch, because an unpackaged argv has no position that is the user's", () => {
+    const { args } = electronAppCommand("/bin/electron", files, "/proj");
+    expect(args.filter((arg) => !arg.startsWith("-"))).toEqual(["/b/app-main.js"]);
+  });
+
+  test("leaves the icon and the project out when there are none", () => {
+    const { args } = electronAppCommand("/bin/electron", { ...files, icon: null }, null);
+    expect(
+      args.some((arg) => arg.startsWith("--jx-icon=") || arg.startsWith("--jx-project=")),
+    ).toBe(false);
   });
 });
 
@@ -130,5 +183,52 @@ describe("shellIcon", () => {
 
   test("is null when the installed tree has none", () => {
     expect(shellIcon(join(import.meta.dir, "no-such-icon.png"))).toBeNull();
+  });
+});
+
+describe("findChromium", () => {
+  const none = (): string | null => null;
+
+  test("CHROMIUM_BIN wins, then the PATH names in order", () => {
+    const seen: string[] = [];
+    const which = (bin: string): string | null => {
+      seen.push(bin);
+      return bin === "google-chrome" ? "/usr/bin/google-chrome" : null;
+    };
+    expect(findChromium({ CHROMIUM_BIN: "/opt/c" }, "linux", which)).toBe("/usr/bin/google-chrome");
+    expect(seen).toEqual(["/opt/c", "chromium", "chromium-browser", "google-chrome"]);
+  });
+
+  test("an empty CHROMIUM_BIN is skipped, not looked up", () => {
+    const seen: string[] = [];
+    findChromium({ CHROMIUM_BIN: "" }, "linux", (bin) => {
+      seen.push(bin);
+      return null;
+    });
+    expect(seen).not.toContain("");
+  });
+
+  test("on Linux, nothing on PATH is no browser, whatever is in /Applications", () => {
+    expect(findChromium({}, "linux", none, () => true)).toBeNull();
+  });
+
+  test("on macOS, falls back to the standard app bundles, Chrome first", () => {
+    expect(findChromium({}, "darwin", none, () => true)).toBe(MAC_BROWSER_BUNDLES[0]);
+    expect(findChromium({}, "darwin", none, (p) => p === MAC_BROWSER_BUNDLES[1])).toBe(
+      MAC_BROWSER_BUNDLES[1],
+    );
+    expect(findChromium({}, "darwin", none, () => false)).toBeNull();
+  });
+
+  test("defaults to the host's platform, Bun.which and the filesystem", () => {
+    expect(findChromium({ CHROMIUM_BIN: "sh" })).toBe(Bun.which("sh"));
+  });
+});
+
+describe("shellEnv", () => {
+  test("drops ELECTRON_RUN_AS_NODE and keeps everything else", () => {
+    const env = { ELECTRON_RUN_AS_NODE: "1", HOME: "/home/u", PATH: "/bin" };
+    expect(shellEnv(env)).toEqual({ HOME: "/home/u", PATH: "/bin" });
+    expect(env.ELECTRON_RUN_AS_NODE).toBe("1");
   });
 });

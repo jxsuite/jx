@@ -105,14 +105,81 @@ async function chooseViaPortal(
   }
 }
 
-export function openFileDialog(timeoutMs?: number): Promise<string | null> {
-  return chooseViaPortal(
-    { directory: false, filters: true, title: "Open project.json" },
-    timeoutMs,
-  );
+/** Run an AppleScript, resolving its exit code and standard output. */
+export type RunAppleScript = (script: string) => Promise<{ exitCode: number; stdout: string }>;
+
+/**
+ * `osascript -e <script>`.
+ *
+ * @param bin The interpreter; tests substitute a program every host has.
+ */
+export async function runOsascript(
+  script: string,
+  bin = "osascript",
+): Promise<{ exitCode: number; stdout: string }> {
+  const child = Bun.spawn([bin, "-e", script], { stderr: "ignore", stdout: "pipe" });
+  const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+  return { exitCode, stdout };
 }
 
-/** Pick a folder — used by New Project to choose where to scaffold the project. */
-export function openDirectoryDialog(): Promise<string | null> {
-  return chooseViaPortal({ directory: true, title: "Choose a folder for your new project" });
+/**
+ * The macOS open panel, through AppleScript's `choose file` / `choose folder`: the freedesktop
+ * portal does not exist there, and the launcher is a Bun process with no AppKit of its own.
+ * Resolves the chosen POSIX path, or null on cancel (osascript exits non-zero with error -128).
+ *
+ * @param opts `directory` selects a folder rather than a JSON file; `title` is the panel's prompt.
+ * @param run The AppleScript runner, injectable for tests.
+ */
+export async function chooseViaAppleScript(
+  opts: { directory: boolean; title: string },
+  run: RunAppleScript = runOsascript,
+): Promise<string | null> {
+  // The prompt is a literal of this module's, but quoting it properly costs nothing.
+  const prompt = JSON.stringify(opts.title);
+  const choose = opts.directory
+    ? `choose folder with prompt ${prompt}`
+    : `choose file with prompt ${prompt} of type {"public.json"}`;
+  const { exitCode, stdout } = await run(`POSIX path of (${choose})`);
+  const path = stdout.trim();
+  if (exitCode !== 0 || path === "") {
+    return null;
+  }
+  // A folder's POSIX path ends in "/", which no other picker in the launcher returns.
+  return path.length > 1 ? path.replace(/\/$/, "") : path;
+}
+
+/**
+ * Pick a project.json: the desktop portal on Linux, the system open panel on macOS.
+ *
+ * @param timeoutMs How long the portal may stay open (Linux only).
+ * @param platform The OS; `process.platform` by default.
+ * @param run The AppleScript runner (macOS only), injectable for tests.
+ */
+export function openFileDialog(
+  timeoutMs?: number,
+  platform: NodeJS.Platform = process.platform,
+  run: RunAppleScript = runOsascript,
+): Promise<string | null> {
+  const title = "Open project.json";
+  if (platform === "darwin") {
+    return chooseViaAppleScript({ directory: false, title }, run);
+  }
+  return chooseViaPortal({ directory: false, filters: true, title }, timeoutMs);
+}
+
+/**
+ * Pick a folder — used by New Project to choose where to scaffold the project.
+ *
+ * @param platform The OS; `process.platform` by default.
+ * @param run The AppleScript runner (macOS only), injectable for tests.
+ */
+export function openDirectoryDialog(
+  platform: NodeJS.Platform = process.platform,
+  run: RunAppleScript = runOsascript,
+): Promise<string | null> {
+  const title = "Choose a folder for your new project";
+  if (platform === "darwin") {
+    return chooseViaAppleScript({ directory: true, title }, run);
+  }
+  return chooseViaPortal({ directory: true, title });
 }

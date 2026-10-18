@@ -8,12 +8,17 @@ import {
   shellBridge,
 } from "../src/electron-shell/bridge";
 import {
+  createStudioWindow,
+  installApplicationMenu,
   isExternalLink,
   isShellNavigation,
+  macApplicationMenu,
   parseShellArgs,
+  raiseWindow,
   registerWindowActions,
   shellWindowOptions,
   startShell,
+  switchValue,
 } from "../src/electron-shell/shell";
 import { fakeElectron } from "./_fake-electron";
 import type { FakeElectron, FakeWindow } from "./_fake-electron";
@@ -52,9 +57,12 @@ function fire(window: FakeWindow, name: string, ...args: unknown[]): void {
 }
 
 /** Start a shell over a fresh fake and return both. */
-async function started(argv = ARGV): Promise<{ fake: FakeElectron; window: FakeWindow }> {
+async function started(
+  argv = ARGV,
+  platform: NodeJS.Platform = "linux",
+): Promise<{ fake: FakeElectron; window: FakeWindow }> {
   const fake = fakeElectron();
-  await startShell(fake.api, argv);
+  await startShell(fake.api, argv, platform);
   const window = fake.windows.at(-1);
   if (!window) {
     throw new Error("no window opened");
@@ -190,7 +198,7 @@ describe("startShell", () => {
     expect(window.calls).not.toContain("show");
     window.ready?.();
     expect(window.calls).toContain("show");
-    fake.appListeners.get("window-all-closed")?.();
+    fake.emitApp("window-all-closed");
     expect(fake.quit).toHaveBeenCalled();
   });
 
@@ -263,6 +271,39 @@ describe("startShell", () => {
     await expect(startShell(fake.api, ["electron"])).rejects.toThrow("--jx-url");
     expect(fake.windows).toHaveLength(0);
   });
+
+  test("on macOS: names the app, sets the Dock icon, and installs the application menu", async () => {
+    const { fake, window } = await started(ARGV, "darwin");
+    // Electron defines setDesktopName on Linux only; calling it on macOS would throw.
+    expect(fake.desktopName).toEqual([]);
+    expect(fake.names).toEqual(["Jx Studio"]);
+    expect(fake.dockIcons).toEqual(["/share/icon.png"]);
+    expect(fake.menuTemplates).toEqual([macApplicationMenu()]);
+    expect(fake.setApplicationMenu).toHaveBeenCalledWith({ items: macApplicationMenu() });
+    // The same frameless window: Studio draws its macOS-style buttons (`csd: "mac"`).
+    expect(window.options.frame).toBe(false);
+    expect(window.loaded).toBe(URL_ARG);
+  });
+
+  test("on macOS without an icon, the Dock keeps its own", async () => {
+    const { fake } = await started(ARGV.slice(0, -1), "darwin");
+    expect(fake.dockIcons).toEqual([]);
+  });
+
+  test("other platforms get neither the desktop name nor a menu", async () => {
+    const { fake } = await started(ARGV, "win32");
+    expect(fake.desktopName).toEqual([]);
+    expect(fake.names).toEqual([]);
+    expect(fake.setApplicationMenu).toHaveBeenCalledWith(null);
+  });
+});
+
+describe("macApplicationMenu", () => {
+  test("is the platform's roles: app, edit, DevTools and window, with no file menu", () => {
+    const roles = macApplicationMenu().map((item) => item.role ?? item.label);
+    expect(roles).toEqual(["appMenu", "editMenu", "View", "windowMenu"]);
+    expect(macApplicationMenu()[2]?.submenu).toEqual([{ role: "toggleDevTools" }]);
+  });
 });
 
 describe("bridge", () => {
@@ -314,5 +355,115 @@ describe("entry points", () => {
     } finally {
       console.error = realError;
     }
+  });
+});
+
+describe("switchValue", () => {
+  test("reads a --jx-<name>= switch, and is null when it is absent", () => {
+    expect(switchValue(["--jx-a=1", "--jx-b=two=2"], "b")).toBe("two=2");
+    expect(switchValue(["--jx-a=1"], "b")).toBeNull();
+    expect(switchValue(["--jx-b="], "b")).toBe("");
+  });
+});
+
+describe("shellWindowOptions extras", () => {
+  const base = { icon: null, preload: "/b/preload.js" };
+
+  test("a window can have its own title and storage partition", () => {
+    const options = shellWindowOptions(base, { partition: "persist:p", title: "T" });
+    expect(options.title).toBe("T");
+    expect(options.webPreferences.partition).toBe("persist:p");
+  });
+
+  test("without extras it is the app's title in the default partition", () => {
+    const options = shellWindowOptions(base);
+    expect(options.title).toBe("Jx Studio");
+    expect("partition" in options.webPreferences).toBe(false);
+  });
+});
+
+describe("createStudioWindow", () => {
+  test("wires a window without loading its page, so a caller can hold it first", () => {
+    const fake = fakeElectron();
+    createStudioWindow(fake.api, {
+      icon: null,
+      partition: "persist:p",
+      preload: "/b/preload.js",
+      title: "T",
+      url: URL_ARG,
+    });
+    const window = fake.windows.at(0);
+    expect(window?.loaded).toBeUndefined();
+    expect(window?.options.webPreferences.partition).toBe("persist:p");
+    // The same guards every window gets: navigation, DevTools, the unsaved-changes prompt.
+    expect([...(window?.contents.listeners.keys() ?? [])].toSorted()).toEqual([
+      "before-input-event",
+      "will-navigate",
+      "will-prevent-unload",
+    ]);
+    expect(window?.contents.openHandler).toBeDefined();
+    expect(window?.ready).toBeDefined();
+  });
+});
+
+describe("raiseWindow", () => {
+  /** A window over a fresh fake, and the fake's record of it. */
+  function opened() {
+    const fake = fakeElectron();
+    const window = new fake.api.BrowserWindow(shellWindowOptions({ icon: null, preload: "/p" }));
+    const record = fake.windows.at(0);
+    if (!record) {
+      throw new Error("no window");
+    }
+    return { record, window };
+  }
+
+  test("shows and focuses a window that is on screen", () => {
+    const { record, window } = opened();
+    raiseWindow(window);
+    expect(record.calls).toEqual(["show", "focus"]);
+  });
+
+  test("restores a minimized window first", () => {
+    const { record, window } = opened();
+    record.minimized = true;
+    raiseWindow(window);
+    expect(record.calls).toEqual(["restore", "show", "focus"]);
+  });
+});
+
+describe("the macOS menu with a File menu", () => {
+  const actions = { newWindow: mock(() => {}), openProject: mock(() => {}) };
+
+  test("File sits between the app menu and Edit, with New Window and Open Project", () => {
+    const menu = macApplicationMenu(actions);
+    expect(menu.map((item) => item.role ?? item.label)).toEqual([
+      "appMenu",
+      "File",
+      "editMenu",
+      "View",
+      "windowMenu",
+    ]);
+    const labels = menu.at(1)?.submenu?.map((item) => item.label ?? item.role ?? item.type);
+    expect(labels).toEqual(["New Window", "Open Project…", "separator", "close"]);
+  });
+
+  test("its items run the actions, and carry no accelerator Studio's keymap would share", () => {
+    const items = macApplicationMenu(actions).at(1)?.submenu ?? [];
+    const newWindow = items.at(0);
+    items.at(1)?.click?.();
+    newWindow?.click?.();
+    expect(actions.newWindow).toHaveBeenCalledTimes(1);
+    expect(actions.openProject).toHaveBeenCalledTimes(1);
+    expect(newWindow && "accelerator" in newWindow).toBe(false);
+  });
+
+  test("installApplicationMenu installs it on macOS, and nothing elsewhere", () => {
+    const mac = fakeElectron();
+    installApplicationMenu(mac.api, "darwin", actions);
+    expect(mac.menuTemplates[0]?.some((item) => item.label === "File")).toBe(true);
+    const linux = fakeElectron();
+    installApplicationMenu(linux.api, "linux", actions);
+    expect(linux.setApplicationMenu).toHaveBeenCalledWith(null);
   });
 });

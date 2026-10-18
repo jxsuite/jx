@@ -16,6 +16,7 @@
     "build:release": "electrobun build --env=canary",
     "build:stable": "electrobun build --env=stable && bun run scripts/build-msi.ts",
     "chromium": "bun run scripts/pre-build-rpc.ts && bun run src/chromium/index.ts",
+    "electron": "bun run scripts/pre-build-rpc.ts && bun run scripts/run-electron-app.ts",
     "dev": "electrobun dev",
     "sync": "electrobun prepare",
     "sign:cert": "bun run scripts/sign-cert.ts",

@@ -93,7 +93,13 @@ import {
 import { createProjectServer } from "@jxsuite/server/project-server";
 import type { ImportApiOptions } from "@jxsuite/server/import-api";
 import { bundleElectronShell } from "../electron-shell/bundle";
-import { composeShellCommand, findElectron, shellIcon } from "./shell-command";
+import {
+  composeShellCommand,
+  findChromium,
+  findElectron,
+  shellEnv,
+  shellIcon,
+} from "./shell-command";
 import type { RpcHandler, RpcResult } from "@jxsuite/server/project-server";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonObject } from "@jxsuite/schema/types";
@@ -378,37 +384,11 @@ const defaultSession = {
   handlers,
 };
 
-// The launcher's Chromium binary doubles as puppeteer's browser for the import pipeline, so it is
-// Discovered before the server starts (NixOS-safe: no google-chrome-stable assumption).
-function findChromium(): string | null {
-  const candidates = [
-    process.env.CHROMIUM_BIN,
-    "chromium",
-    "chromium-browser",
-    "google-chrome",
-    "google-chrome-stable",
-  ];
-
-  // Bun.which resolves a binary in PATH on every platform (no dependency on a POSIX `which`, which
-  // Is absent from a stock Windows shell and made resolution flaky depending on the host shell).
-  for (const bin of candidates) {
-    // An unset or empty CHROMIUM_BIN is skipped, not looked up.
-    if (!bin) {
-      continue;
-    }
-    const found = Bun.which(bin);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
-}
-
 /* The window's shell (shell-command.ts). Chromium is still looked for when Electron draws the
    window, because it is the site import's headless browser: puppeteer cannot open a page in
    Electron, which answers `Target.createTarget` with "Not supported". */
 const electronBin = findElectron(process.env);
-const chromiumBin = findChromium();
+const chromiumBin = findChromium(process.env);
 if (!chromiumBin && !electronBin) {
   console.error("[chromium] No chromium/chrome found. Install chromium or set CHROMIUM_BIN.");
   process.exit(1);
@@ -553,7 +533,11 @@ async function launch(): Promise<void> {
     { bundle: bundleElectronShell, icon: shellIcon(), seedChromium: seedChromiumPreferences },
   );
   console.log(`[chromium] Launching ${command.shell}: ${command.bin}`);
-  const child = spawn(command.bin, command.args, { detached: false, stdio: "inherit" });
+  const child = spawn(command.bin, command.args, {
+    detached: false,
+    env: shellEnv(process.env),
+    stdio: "inherit",
+  });
   shellProcess = child;
   child.on("close", (code) => {
     console.log(`[chromium] Browser closed (code ${code})`);

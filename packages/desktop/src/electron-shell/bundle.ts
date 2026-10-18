@@ -19,6 +19,9 @@ export interface ShellBundle {
   preload: string;
 }
 
+/** The main-process entry to bundle: the single-window shell, or the multi-window app. */
+export type ShellEntry = "app-main" | "main";
+
 /** A fresh directory for this process's bundle, removed when the process exits. */
 function ownedDirectory(): string {
   const dir = mkdtempSync(join(tmpdir(), "jx-electron-shell-"));
@@ -27,14 +30,19 @@ function ownedDirectory(): string {
 }
 
 /**
- * Bundle `main.ts` and `preload.ts`.
+ * Bundle one main-process entry and the preload.
  *
+ * @param entry Which main-process entry (`main.ts` is the single-window shell, `app-main.ts` the
+ *   multi-window app).
  * @param outDir Where to write them; by default a directory of this process's own.
  * @throws {AggregateError} With the bundler's own messages when the build fails.
  */
-export async function bundleElectronShell(outDir = ownedDirectory()): Promise<ShellBundle> {
+export async function bundleElectronEntry(
+  entry: ShellEntry,
+  outDir = ownedDirectory(),
+): Promise<ShellBundle> {
   const result = await Bun.build({
-    entrypoints: [join(import.meta.dir, "main.ts"), join(import.meta.dir, "preload.ts")],
+    entrypoints: [join(import.meta.dir, `${entry}.ts`), join(import.meta.dir, "preload.ts")],
     external: ["electron"],
     format: "cjs",
     naming: "[name].js",
@@ -44,5 +52,25 @@ export async function bundleElectronShell(outDir = ownedDirectory()): Promise<Sh
   if (!result.success) {
     throw new AggregateError(result.logs, "Bundling the Electron shell failed.");
   }
-  return { main: join(outDir, "main.js"), preload: join(outDir, "preload.js") };
+  return { main: join(outDir, `${entry}.js`), preload: join(outDir, "preload.js") };
+}
+
+/**
+ * Bundle `main.ts` and `preload.ts`.
+ *
+ * @param outDir Where to write them; by default a directory of this process's own.
+ * @throws {AggregateError} With the bundler's own messages when the build fails.
+ */
+export function bundleElectronShell(outDir?: string): Promise<ShellBundle> {
+  return bundleElectronEntry("main", outDir);
+}
+
+/**
+ * Bundle `app-main.ts` and `preload.ts`: the multi-window application.
+ *
+ * @param outDir Where to write them; by default a directory of this process's own.
+ * @throws {AggregateError} With the bundler's own messages when the build fails.
+ */
+export function bundleElectronApp(outDir?: string): Promise<ShellBundle> {
+  return bundleElectronEntry("app-main", outDir);
 }

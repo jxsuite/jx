@@ -59,7 +59,7 @@ To install it instead of running it once:
 nix profile install github:jxsuite/jx/release
 ```
 
-Either form takes an optional project directory, as in `nix run github:jxsuite/jx/release -- ~/sites/my-site`, and opens the project picker without one.
+Either form takes an optional project directory, as in `nix run github:jxsuite/jx/release -- ~/sites/my-site`, and opens the project picker without one. Running it again while Studio is open does not start a second copy: it opens that project in the running app, or brings its window forward if it is already open.
 
 ### Fetch it instead of building it
 

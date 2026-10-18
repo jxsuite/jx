@@ -239,6 +239,17 @@ stdenv.mkDerivation {
     bun run build
     bun run --cwd packages/desktop scripts/pre-build-rpc.ts
 
+    # The Electron application's main process and preload (specs/desktop.md §9.7). Electron runs
+    # JavaScript, and a sandboxed preload must be CommonJS whose only `require` is `electron`, so
+    # both are bundled here, where the workspace's full tree still resolves them. The result needs
+    # nothing from node_modules at runtime. The backend it spawns is NOT bundled: it runs from
+    # source under Bun against the production install below, as the launcher always has.
+    bun build \
+      packages/desktop/src/electron-shell/app-main.ts \
+      packages/desktop/src/electron-shell/preload.ts \
+      --target=node --format=cjs --external electron \
+      --outdir packages/desktop/assets/electron
+
     # The tree above is the WORKSPACE's: every member's dependencies plus the root's dev tooling
     # (release-please, oxlint, typescript, ts-migrate, …), which is what the app used to ship
     # — a ~950 MB store path that every `nix run`, Cachix push and snap carried. What the app runs
@@ -290,13 +301,23 @@ stdenv.mkDerivation {
     ${lib.concatMapStringsSep "\n    " (p: "rm -rf $out/lib/jx-studio/node_modules/${p}") bundledIntoStudio}
     rm -rf $out/lib/jx-studio/packages/*/tests $out/lib/jx-studio/extensions/*/tests
 
-    # Electron draws the window: it is frameless, so Studio draws its own titlebar and window
-    # buttons (specs/desktop.md §9.5). Chromium stays for the site import's headless browser, which
-    # puppeteer cannot drive in Electron.
-    makeWrapper ${bun}/bin/bun $out/bin/jx-studio \
-      --add-flags "run $out/lib/jx-studio/packages/desktop/src/chromium/index.ts" \
+    # Electron is the root process and owns every window; the Bun backend is its child and owns
+    # every project (specs/desktop.md §9.7). The windows are frameless, so Studio draws its own
+    # titlebar and window buttons (§9.5). Chromium stays for the site import's headless browser,
+    # which puppeteer cannot drive in Electron.
+    #
+    # `--class` is X11's WM_CLASS; the Wayland app_id comes from the app itself. Electron 38 and
+    # later run native Wayland in a Wayland session without being asked, so there is no Ozone flag.
+    # A project path the user gives (`jx-studio ./site`) lands after these flags, which is where
+    # the app reads it from.
+    makeWrapper ${electron}/bin/electron $out/bin/jx-studio \
+      --add-flags "--class=jx-studio" \
+      --add-flags "$out/lib/jx-studio/packages/desktop/assets/electron/app-main.js" \
+      --add-flags "--jx-bun=${bun}/bin/bun" \
+      --add-flags "--jx-backend=$out/lib/jx-studio/packages/desktop/src/hub/main.ts" \
+      --add-flags "--jx-preload=$out/lib/jx-studio/packages/desktop/assets/electron/preload.js" \
+      --add-flags "--jx-icon=$out/lib/jx-studio/packages/desktop/icon.png" \
       --set CHROMIUM_BIN "${chromium}/bin/chromium" \
-      --set ELECTRON_BIN "${electron}/bin/electron" \
       --set JX_STUDIO_ASSETS "$out/lib/jx-studio/packages/desktop/assets/studio"
 
     # Installed by hand rather than through `desktopItems`, because that hook takes the STORE PATH's
@@ -324,11 +345,24 @@ stdenv.mkDerivation {
       --target=bun \
       ${lib.concatMapStringsSep " " (e: "--external ${e}") resolveExternals} \
       --outfile "$TMPDIR/resolve-check.js"
-    # The Electron shell is bundled at launch (electron-shell/bundle.ts); prove it bundles here.
-    bun build $out/lib/jx-studio/packages/desktop/src/electron-shell/main.ts \
-      $out/lib/jx-studio/packages/desktop/src/electron-shell/preload.ts \
-      --target=node --format=cjs --external electron \
-      --outdir "$TMPDIR/electron-shell-check"
+    # The backend runs from source against this tree, so prove ITS imports resolve too: it is the
+    # process every window's project lives in, and an undeclared dependency would otherwise fail on
+    # the first window a user opens.
+    bun build $out/lib/jx-studio/packages/desktop/src/hub/main.ts \
+      --target=bun \
+      ${lib.concatMapStringsSep " " (e: "--external ${e}") resolveExternals} \
+      --outfile "$TMPDIR/hub-check.js"
+    # The application's bundle was made at build time; prove it is the app and not an empty file,
+    # and that nothing of this repository's was left outside it for the runtime to look for.
+    app=$out/lib/jx-studio/packages/desktop/assets/electron
+    test -s $app/app-main.js
+    test -s $app/preload.js
+    grep -q second-instance $app/app-main.js
+    if grep -oE 'require\("[^"]+"\)' $app/app-main.js $app/preload.js \
+        | grep -vE 'require\("(electron|node:[a-z_/]+)"\)'; then
+      echo "the Electron bundle requires a module that is not electron or a Node builtin" >&2
+      exit 1
+    fi
     runHook postInstallCheck
   '';
 

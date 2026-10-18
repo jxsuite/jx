@@ -1,6 +1,6 @@
 /**
- * The slice of Electron's API the Linux shell uses, declared here rather than taken from the
- * `electron` package.
+ * The slice of Electron's API the shell uses, declared here rather than taken from the `electron`
+ * package.
  *
  * The package's only job in this repository would be its types: the binary comes from the system
  * (nixpkgs `electron`, named by `ELECTRON_BIN`), never from `node_modules`, and installing the npm
@@ -47,6 +47,8 @@ declare module "electron" {
   export interface WebPreferences {
     contextIsolation: boolean;
     nodeIntegration: boolean;
+    /** Where the page's storage lives; `persist:`-prefixed names survive a restart. */
+    partition?: string;
     preload: string;
     sandbox: boolean;
     spellcheck?: boolean;
@@ -67,6 +69,7 @@ declare module "electron" {
   export class BrowserWindow {
     constructor(options: BrowserWindowConstructorOptions);
     static fromWebContents(contents: WebContents): BrowserWindow | null;
+    static getFocusedWindow(): BrowserWindow | null;
     readonly webContents: WebContents;
     close(): void;
     focus(): void;
@@ -75,16 +78,42 @@ declare module "electron" {
     loadURL(url: string): Promise<void>;
     maximize(): void;
     minimize(): void;
+    on(event: "closed", listener: () => void): this;
     once(event: "ready-to-show", listener: () => void): this;
     restore(): void;
+    setTitle(title: string): void;
     show(): void;
     unmaximize(): void;
   }
 
+  /** The macOS Dock tile; `app.dock` is undefined on every other platform. */
+  export interface Dock {
+    setIcon: (image: string) => void;
+  }
+
+  /** The `app` events the shell listens for, by name. */
+  export interface AppEvents {
+    /** A file the user opened with the app (macOS: double-click, drop on the Dock tile). */
+    "open-file": (event: CancellableEvent, path: string) => void;
+    /** A second launch of the app, with the arguments and directory it was started with. */
+    "second-instance": (event: CancellableEvent, argv: string[], cwd: string) => void;
+    "window-all-closed": () => void;
+    "will-quit": () => void;
+  }
+
   export interface App {
-    on: (event: "window-all-closed", listener: () => void) => App;
+    dock?: Dock;
+    /** A directory Electron keeps for the user; only the one the app derives its own from. */
+    getPath: (name: "appData") => string;
+    /** The directory the app lives in: the entry script's, when run as `electron <script>`. */
+    getAppPath: () => string;
+    on: <Name extends keyof AppEvents>(event: Name, listener: AppEvents[Name]) => App;
     quit: () => void;
+    /** Take the single-instance lock: false means another instance holds it, and has been told. */
+    requestSingleInstanceLock: () => boolean;
+    /** Linux only: Electron does not define it elsewhere. */
     setDesktopName: (name: string) => void;
+    setName: (name: string) => void;
     setPath: (name: "sessionData" | "userData", path: string) => void;
     whenReady: () => Promise<void>;
   }
@@ -95,6 +124,17 @@ declare module "electron" {
 
   export interface IpcMain {
     handle: (channel: string, listener: (event: IpcMainInvokeEvent) => void) => void;
+  }
+
+  export interface OpenDialogOptions {
+    filters?: { extensions: string[]; name: string }[];
+    properties: ("createDirectory" | "openDirectory" | "openFile")[];
+    title: string;
+  }
+
+  export interface OpenDialogReturnValue {
+    canceled: boolean;
+    filePaths: string[];
   }
 
   export interface MessageBoxOptions {
@@ -109,10 +149,32 @@ declare module "electron" {
 
   export interface Dialog {
     showMessageBoxSync: (window: BrowserWindow, options: MessageBoxOptions) => number;
+    /** Sheet-modal on `window` when given one; free-standing otherwise. */
+    showOpenDialog: {
+      (window: BrowserWindow, options: OpenDialogOptions): Promise<OpenDialogReturnValue>;
+      (options: OpenDialogOptions): Promise<OpenDialogReturnValue>;
+    };
+  }
+
+  /** The menu roles the macOS application menu is built from. */
+  export type MenuRole = "appMenu" | "close" | "editMenu" | "toggleDevTools" | "windowMenu";
+
+  export interface MenuItemConstructorOptions {
+    click?: () => void;
+    label?: string;
+    role?: MenuRole;
+    submenu?: MenuItemConstructorOptions[];
+    type?: "separator";
+  }
+
+  /** An application menu, opaque to the shell once built. */
+  export interface ElectronMenu {
+    readonly items: readonly unknown[];
   }
 
   export interface ApplicationMenu {
-    setApplicationMenu: (menu: null) => void;
+    buildFromTemplate: (template: MenuItemConstructorOptions[]) => ElectronMenu;
+    setApplicationMenu: (menu: ElectronMenu | null) => void;
   }
 
   export interface Shell {
