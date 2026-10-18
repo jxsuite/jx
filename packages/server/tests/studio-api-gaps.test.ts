@@ -3,7 +3,7 @@ import { assertCreatableParent, handleStudioApi, isOwnedProjectDir } from "../sr
 import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
 import type { StudioApiOptions } from "../src/studio-api";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
-import { basename, join, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 
@@ -813,20 +813,22 @@ describe("files — gaps", () => {
     expect(names).toContain("ext.txt");
   });
 
-  test("returns 500 for a nonexistent directory", async () => {
+  test("returns 404 for a nonexistent directory", async () => {
     const { req, url } = getReq("/__studio/files?dir=does-not-exist");
     const res = await callApi(req, url);
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(404);
   });
 
-  test("reports files outside the active project relative to the server root", async () => {
-    // Listing the SERVER root while an external project is active: entries are not under the
-    // Project root, so they are reported relative to the server root instead.
+  test("reports files outside the active project relative to the project root", async () => {
+    // Listing the SERVER root while an external project is active: the entries are beside the
+    // Project, and a `../` path is the spelling the client can hand straight back (§4.1).
     const { req, url } = getReq(`/__studio/files?dir=${encodeURIComponent(ROOT)}&glob=*.txt`);
     const res = await callApi(req, url, ROOT, EXTERNAL);
     expect(res.status).toBe(200);
+    const expected = relative(EXTERNAL, join(ROOT, "blocker.txt")).replaceAll("\\", "/");
+    expect(expected.startsWith("..")).toBe(true);
     expect(await res.json()).toEqual(
-      expect.arrayContaining([expect.objectContaining({ path: "blocker.txt" })]),
+      expect.arrayContaining([expect.objectContaining({ path: expected })]),
     );
   });
 });

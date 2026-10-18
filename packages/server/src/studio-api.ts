@@ -798,16 +798,15 @@ export async function handleStudioApi(
       return problem("invalidRequest", errorMessage(error));
     }
 
-    /** Report a path relative to the active project root (or server root as fallback). */
-    const reportRelative = (fp: string) => {
-      if (activeProjectRoot) {
-        const rel = relative(activeProjectRoot, fp);
-        if (!rel.startsWith("..")) {
-          return fwd(rel);
-        }
-      }
-      return fwd(relative(root, fp));
-    };
+    /*
+     * Every path out is relative to the active project root (§4.1), a path BESIDE the project
+     * included: `../../docs/start`, not `docs/start`. A collection may live outside its project
+     * (`sites/jxsuite.com` declares `content.docs.source: "../../docs"`), and a server-root-relative
+     * reply for it reads as project-relative to the client, which resolves it against the server
+     * root again on the next call and names a directory nobody has. A recursive walk of that
+     * collection stopped at its first level, with a 500 for every subdirectory.
+     */
+    const reportRelative = (fp: string) => fwd(relative(activeProjectRoot ?? root, fp));
 
     try {
       if (pattern) {
@@ -848,7 +847,11 @@ export async function handleStudioApi(
       }
       return Response.json(byPathOrder(files));
     } catch (error) {
-      return problem("internalError", errorMessage(error));
+      // A directory that does not exist is a 404, not a server fault: a client probing whether a
+      // Folder exists yet (Add new's collision check) asks exactly this.
+      return isNotFound(error)
+        ? problem("notFound", errorMessage(error))
+        : problem("internalError", errorMessage(error));
     }
   }
 

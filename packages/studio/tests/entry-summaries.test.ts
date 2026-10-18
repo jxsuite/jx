@@ -26,6 +26,8 @@ const {
   imageFieldPath,
   invalidateEntrySummaries,
   onEntrySummariesRead,
+  noteEntrySaved,
+  noteSavedEntry,
   peekEntrySummaries,
   summarize,
 } = await import("../src/content/entry-summaries");
@@ -205,6 +207,36 @@ describe("peekEntrySummaries", () => {
     expect(entries[0]!.thumb).not.toBe("");
     expect(reads).toHaveLength(PATHS.length);
     stop();
+  });
+
+  /* Renaming an entry and pressing Save left the old title in the Collections panel and the Table:
+     nothing told the list, and a re-read could be answered from the five-second HTTP cache. A
+     save restates the entry from the fields it wrote. */
+  test("a saved entry is restated from its saved fields, without reading the file back", async () => {
+    peekEntrySummaries("posts", PATHS);
+    await flush(4);
+    const heard: number[] = [];
+    const stop = onEntrySummariesRead(() => heard.push(1));
+    const before = reads.length;
+    expect(noteSavedEntry("content/posts/a.md", { draft: true, title: "Renamed" })).toBe(true);
+    expect(heard).toEqual([1]);
+    expect(reads.length).toBe(before);
+    const entries = peekEntrySummaries("posts", PATHS)!;
+    expect([entries[0]!.title, entries[0]!.status]).toEqual(["Renamed", "Draft"]);
+    expect(entries).toHaveLength(PATHS.length);
+    stop();
+  });
+
+  test("a save restates nothing it has no list for: a page, another file, an unread collection", () => {
+    const saved = (path: string | null) => noteSavedEntry(path, {});
+    expect([saved(null), saved("pages/index.md"), saved("layouts/base.json")]).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    // The collection's list was never read, so there is no list to keep current.
+    expect(saved("content/posts/a.md")).toBe(false);
+    expect(noteEntrySaved("content/posts/zz.md", "posts", {})).toBe(false);
   });
 
   test("a changed list re-reads, and an invalidation forgets", async () => {

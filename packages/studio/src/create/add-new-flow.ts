@@ -21,7 +21,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { serializeJson } from "@jxsuite/schema/json-layout";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
-import { projectState } from "../store";
+import { projectState, renderOnly } from "../store";
 import { notify } from "../services/notify";
 import { layerHost } from "../ui/layers";
 import { activeRegistry } from "../commands/active-registry";
@@ -35,7 +35,12 @@ import {
 import { creationFormats } from "../format/format-choices";
 import { collectionNames, entryCollections } from "../content/entry-model";
 import { componentRegistry, noteComponentSaved } from "../files/components";
-import { listTakenNames, openFileInTab, writeNewFile } from "../files/files";
+import {
+  listTakenNames,
+  openFileInTab,
+  refreshProjectDirectoriesFor,
+  writeNewFile,
+} from "../files/files";
 import { slugify } from "../files/new-file-name";
 import { DEFAULT_MEDIA_DIR, uploadAccept, uploadAssets } from "../files/media-upload";
 import { commitProjectConfig } from "../tabs/project-config";
@@ -44,6 +49,7 @@ import { invalidateLayoutPickerCache, listLayoutEntries } from "../panels/head-p
 import { invalidateReferenceEntries } from "../ui/form-controls";
 import { openEntry } from "../content/entry-open";
 import { invalidateCollectionPages } from "../content/collection-pages";
+import { invalidatePageSummaries } from "../content/page-summaries";
 import { entryFormatName } from "../content/entry-commands";
 import { invalidateSiteIndex } from "../panels/site-panel";
 import { invalidateLibrary } from "../browse/library-pane";
@@ -56,6 +62,8 @@ import {
   creationProblem,
   defaultTemplateChoice,
   deriveCreation,
+  absentByParent,
+  byDepth,
   directoriesToList,
   DEFAULT_FIELD_PRESETS,
   FIELD_PRESET_INFO,
@@ -315,13 +323,19 @@ async function serializeBody(body: CreationBody): Promise<string> {
 
 /** List every directory a creation would write into, so its refusal is judged against disk. */
 async function listFor(creation: Creation, taken: Map<string, Set<string>>, fresh = false) {
-  await Promise.all(
-    directoriesToList(creation).map(async (dir) => {
-      if (fresh || !taken.has(dir)) {
-        taken.set(dir, await listTakenNames(dir));
-      }
-    }),
-  );
+  /* Shallowest first, so a directory whose parent's listing does not name it is known to be absent
+     without asking. Asking was a failed request per keystroke: typing a page's name probes the
+     folder its index would live in (`pages/pri`, `pages/pric`, …), and none of those exist. */
+  for (const level of byDepth(directoriesToList(creation))) {
+    await Promise.all(
+      level.map(async (dir) => {
+        if (!fresh && taken.has(dir)) {
+          return;
+        }
+        taken.set(dir, absentByParent(dir, taken) ? new Set() : await listTakenNames(dir));
+      }),
+    );
+  }
 }
 
 /** Tell everything that lists files that some just appeared. */
@@ -330,7 +344,16 @@ function announce(paths: readonly string[]): void {
   invalidateLibrary();
   if (paths.some((path) => path.startsWith("pages/"))) {
     invalidateCollectionPages();
+    invalidatePageSummaries();
   }
+  /* A first page or a first collection creates `pages/` or `content/`, which the project's
+     directory list (read at open) does not name yet; the Content scan walks that list. */
+  void refreshProjectDirectoriesFor(paths).then((reread) => {
+    if (reread) {
+      invalidateLibrary();
+      renderOnly("leftPanel");
+    }
+  });
 }
 
 /** One file of a creation, written; throws the reason it could not be. */

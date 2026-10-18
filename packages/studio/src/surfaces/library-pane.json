@@ -1135,7 +1135,8 @@
               "tagName": "div",
               "attributes": {
                 "part": "table",
-                "role": "table"
+                "role": "table",
+                "aria-label": "${state.title}"
               },
               "children": [
                 {

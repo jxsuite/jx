@@ -69,6 +69,12 @@ const SCRIPT: LibraryFile = {
 
 // ─── Geometry ────────────────────────────────────────────────────────────────
 
+/** What a read page states, so every Pages column has something to say. */
+const PAGE_FACTS = { date: "", status: "Draft", template: "Base", title: "Page 1" };
+
+/** Every optional Pages column switched on. */
+const ALL_PAGE_FACTS = { date: false, locale: true, status: true };
+
 describe("geometry", () => {
   test("every layout declares a metric, and only the flat ones window", () => {
     for (const layout of LIBRARY_LAYOUTS) {
@@ -112,9 +118,12 @@ describe("cell text", () => {
     /* Every field of this one is filled, so a declared column that fell through to the default
        case would read as "" here, the same as an unknown field. */
     const filled: LibraryFile = { ...file, locale: "fr" };
-    for (const column of libraryColumns()) {
-      expect(cellText(filled, column.field), column.field).not.toBe("");
+    for (const column of libraryColumns(undefined, ALL_PAGE_FACTS)) {
+      expect(cellText(filled, column.field, PAGE_FACTS), column.field).not.toBe("");
     }
+    // A page's template and title come from the page itself; until it is read they are blank.
+    expect(cellText(file, "template")).toBe("");
+    expect(cellText(file, "template", PAGE_FACTS)).toBe("Base");
     expect(cellText(file, "name")).toBe("page-1.json");
     expect(cellText(file, "url")).toBe("/page-1");
     expect(cellText(IMAGE, "url")).toBe("");
@@ -130,8 +139,11 @@ describe("cell text", () => {
    */
   test("a fully-populated file has NON-EMPTY text in every declared column", () => {
     const file: LibraryFile = { ...page(1), locale: "fr", path: "pages/fr/page-1.json" };
-    for (const column of libraryColumns()) {
-      expect([column.field, cellText(file, column.field)]).not.toEqual([column.field, ""]);
+    for (const column of libraryColumns(undefined, ALL_PAGE_FACTS)) {
+      expect([column.field, cellText(file, column.field, PAGE_FACTS)]).not.toEqual([
+        column.field,
+        "",
+      ]);
     }
   });
 
@@ -171,10 +183,11 @@ describe("a row", () => {
   });
 
   test("its cells are the SOURCE's columns, in order, not a second hand-written list", () => {
-    const columns = libraryColumns();
-    const row = libraryRow({ ...page(1), locale: "fr" }, columns, true);
+    const columns = libraryColumns(undefined, ALL_PAGE_FACTS);
+    const row = libraryRow({ ...page(1), locale: "fr" }, columns, true, PAGE_FACTS);
     expect(row.cells.map((cell) => cell.field)).toEqual(columns.map((c) => c.field));
-    expect(row.cells.find((cell) => cell.field === "name")?.text).toBe("page-1.json");
+    expect(row.cells.find((cell) => cell.field === "title")?.text).toBe("Page 1");
+    expect(row.cells.find((cell) => cell.field === "template")?.text).toBe("Base");
     expect(row.cells.find((cell) => cell.field === "locale")?.text).toBe("français");
   });
 

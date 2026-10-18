@@ -175,6 +175,7 @@ void mock.module("../src/content/entry-editor.js", () => ({
   formContext: () => ({}),
   entryDraftPill: () => null,
   entryPaneMounted: (paneId: string, tab: Tab) => entry.mounted.get(paneId) === tab,
+  fieldLabels: () => ({}),
   openEntryEditor: () => Promise.resolve(null),
   renderEntryMode: entry.render,
   setEntryDraft: () => {},

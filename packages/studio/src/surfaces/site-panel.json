@@ -152,19 +152,30 @@
       }
     },
     "& [part=\"card-preview\"]": {
-      "$description": "A live render is drawn at its natural size and clipped, like the Insert panel's cards: the card says what the component looks like, not how it lays out at 96px.",
-      "height": "56px",
+      "$description": "A live render on the light document surface the Insert panel's element cards use (`--canvas-*` does not follow the theme, because what is drawn here is a page's part, and a site's dark text on the dark chrome read as an empty black box). It is drawn at half size from its top left corner, so a component laid out for a page shows its face rather than a clipped corner of one oversized glyph.",
+      "position": "relative",
+      "height": "64px",
       "overflow": "hidden",
       "pointerEvents": "none",
-      "background": "var(--bg)",
-      "fontSize": "var(--jx-text-sm)"
+      "background": "white",
+      "color": "var(--canvas-fg-2)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"card-preview\"] > *": {
+      "transform": "scale(0.5)",
+      "transformOrigin": "top left",
+      "width": "200%",
+      "margin": "0"
+    },
+    "& [part=\"card-preview\"] img:not([src]), & [part=\"card-preview\"] img[src=\"\"]": {
+      "$description": "A component whose image prop defaults to nothing draws an image with no source, which the browser paints as a broken-image icon and its alt text. In a preview that is noise, not the component.",
+      "visibility": "hidden"
     },
     "& [part=\"card-label\"]": {
       "padding": "var(--jx-space-1) var(--jx-space-2)",
       "overflow": "hidden",
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap",
-      "fontFamily": "var(--font-mono)",
       "fontSize": "var(--jx-text-sm)",
       "textAlign": "start"
     },

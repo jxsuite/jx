@@ -1,6 +1,6 @@
 ---
 title: "Project Styles"
-description: "Project Styles in Jx Studio: set the default look of every heading, button, and link in one catalog, live at every breakpoint."
+description: "Project Styles in Jx Studio: set the default look of every heading, button, and link in one catalog, live at any breakpoint."
 spec:
   - studio.md#7.1
   - studio.md#7.4
@@ -30,7 +30,7 @@ Your project file opens here, because that's the natural home for site-wide defa
 
 ## Read the catalog
 
-Like Design mode, Project Styles shows one panel per breakpoint, all rendering the same catalog, so an element default that changes at Tablet is visibly different in the Tablet panel. The catalog renders through the real runtime, exactly as the defaults will render on your pages.
+Project Styles shows the catalog at one breakpoint at a time, the one the context bar's size switcher names, so the specimens stay readable. Pick another size there and the catalog redraws at that width, so an element default that changes at Tablet is visibly different at Tablet. The catalog renders through the real runtime, exactly as the defaults will render on your pages.
 
 Two controls sit above the canvas: a **Filter** box to narrow the catalog by name, and a **Customized** toggle to show only the elements you've already styled. The **Outline** panel mirrors the catalog as a tree and marks customized entries with a dot: elements with their nested parts (a table with its rows and cells), then your components. Switch the pane to **Variables** and the Outline lists your CSS custom properties instead; click one to jump to it in the Variables view.
 

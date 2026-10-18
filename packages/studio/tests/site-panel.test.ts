@@ -265,7 +265,7 @@ describe("Templates", () => {
 describe("Components", () => {
   test("the project's components are cards with live previews, then package ones by tag", async () => {
     await paint();
-    expect(texts("card-label")).toEqual(["<site-card>", "<acme-button>"]);
+    expect(texts("card-label")).toEqual(["Site card", "Acme button"]);
     // Only the project component has a definition to render, so only it is previewed.
     expect(previewFor).toHaveBeenCalledTimes(1);
     const previews = part("card-preview");
@@ -307,7 +307,7 @@ describe("Components", () => {
   test("the filter matches a package card by its package", async () => {
     await paint();
     await typeFilter("acme/widgets");
-    expect(texts("card-label")).toEqual(["<acme-button>"]);
+    expect(texts("card-label")).toEqual(["Acme button"]);
   });
 
   test("a card opens its definition, and drags an instance of the component", async () => {

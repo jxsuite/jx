@@ -130,10 +130,11 @@ describe("running the verbs", () => {
 
   test("content.refresh re-reads the project", async () => {
     await registry.run("content.refresh");
-    expect(listed).toEqual(["pages"]);
+    // The declared collection's source is walked too, though the project's own list lacks it.
+    expect(listed).toEqual(["pages", "content/posts"]);
     await registry.run("content.refresh");
-    expect(listed).toEqual(["pages", "pages"]);
-    expect(librarySource().files().length).toBe(1);
+    expect(listed).toEqual(["pages", "content/posts", "pages", "content/posts"]);
+    expect(librarySource().files().length).toBe(2);
   });
 });
 

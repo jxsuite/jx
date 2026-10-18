@@ -59,6 +59,13 @@ void mock.module("../src/ui/media-picker.js", () => ({
     browseCommit = onCommit;
   },
   uploadAndAssign: () => Promise.resolve(null),
+  // Reached through the form controls the panel's graph now loads; never driven here.
+  isMediaScanPath: () => false,
+  mountMediaPicker: () => {},
+  onProjectMediaChange: () => () => {},
+  openFullMediaPicker: () => Promise.resolve(null),
+  projectMediaFiles: () => null,
+  unmountMediaPicker: () => {},
 }));
 
 /* The Layout row's Edit template reaches the file opener through a lazy `import()` too, so it is

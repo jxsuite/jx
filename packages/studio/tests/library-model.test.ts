@@ -21,6 +21,8 @@ import {
   libraryDate,
   libraryLocales,
   projectLocales,
+  entryCollectionOf,
+  libraryScanDirs,
   scanLibrary,
 } from "../src/browse/library-model";
 import { resetAssetVersions, versionOf } from "../src/files/asset-versions";
@@ -189,6 +191,86 @@ describe("scanLibrary", () => {
     >;
     const scan = await scanLibrary(["content"], { listDirectory: listDirectory(tree) });
     expect([scan.files[0]!.type, scan.files[0]!.collection]).toEqual([".md", null]);
+  });
+
+  /* The jxsuite docs file their CLI pages under `framework/build/`: skipping the NAME `build`
+     dropped two entries and made the Content home and the Site panel disagree. */
+  test("walks a collection folder named build or dist", async () => {
+    const tree = {
+      "content/posts": [dir("build", "content/posts/build"), dir("dist", "content/posts/dist")],
+      "content/posts/build": [file("cli.md", "content/posts/build/cli.md")],
+      "content/posts/dist": [file("out.md", "content/posts/dist/out.md")],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(["content/posts"], { listDirectory: listDirectory(tree) });
+    expect(scan.files.map((f) => [f.path, f.collection])).toEqual([
+      ["content/posts/build/cli.md", "posts"],
+      ["content/posts/dist/out.md", "posts"],
+    ]);
+  });
+
+  test("an OPTIONAL root that cannot be read is empty, not a failure; its depths still fail", async () => {
+    const tree = {
+      shown: [dir("gone", "shown/gone")],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(
+      ["missing", "shown"],
+      { listDirectory: listDirectory(tree) },
+      new Set(["missing", "shown"]),
+    );
+    expect(scan.files).toEqual([]);
+    expect(scan.failures.map((f) => f.dir)).toEqual(["shown/gone"]);
+  });
+});
+
+describe("libraryScanDirs", () => {
+  test("adds every directory collection a project directory does not already cover", () => {
+    const config = {
+      content: {
+        catalogue: { source: "./data/products.csv" },
+        docs: { source: "../../docs" },
+        exhibitions: { source: "./content/exhibitions/{locale}/" },
+        none: {},
+        posts: { source: "./content/posts/" },
+        root: { source: "./" },
+      },
+    };
+    expect(libraryScanDirs(["pages", "content"], config)).toEqual([
+      "pages",
+      "content",
+      "../../docs",
+    ]);
+    // A collection declared after the project opened, before `content/` existed.
+    expect(libraryScanDirs(["pages"], config)).toEqual([
+      "pages",
+      "../../docs",
+      "content/exhibitions",
+      "content/posts",
+    ]);
+  });
+
+  test("hands back the project's own list, untouched, when nothing is missing", () => {
+    const dirs = ["pages", "content"];
+    expect(libraryScanDirs(dirs, { content: { posts: { source: "content/posts" } } })).toBe(dirs);
+    expect(libraryScanDirs(dirs, null)).toBe(dirs);
+  });
+});
+
+describe("entryCollectionOf", () => {
+  test("a declared format lists only its own files; an undeclared one lists everything", () => {
+    resetStudioState({
+      projectConfig: {
+        content: {
+          docs: { format: "json", source: "./docs/" },
+          notes: { source: "./notes/" },
+        },
+      },
+    });
+    expect(entryCollectionOf("docs/a.json")).toBe("docs");
+    // `nav.json` beside Markdown pages is the collection's folder, not one of its entries.
+    expect(entryCollectionOf("docs/nav.md")).toBeNull();
+    expect(entryCollectionOf("notes/a.md")).toBe("notes");
+    expect(entryCollectionOf("notes/b.json")).toBe("notes");
+    expect(entryCollectionOf("elsewhere/a.md")).toBeNull();
   });
 });
 

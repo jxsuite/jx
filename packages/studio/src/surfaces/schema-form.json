@@ -236,6 +236,9 @@
                       },
                       "multiline": {
                         "$ref": "$map/item/multiline"
+                      },
+                      "type": {
+                        "$ref": "$map/item/inputType"
                       }
                     },
                     "oninput": {

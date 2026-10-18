@@ -52,6 +52,9 @@ import {
   templateDisplayName,
 } from "../content/content-collections";
 import { onCollectionPagesRead, peekCollectionPage } from "../content/collection-pages";
+import { onPageSummariesRead, peekPageSummaries } from "../content/page-summaries";
+import { pageLabel, singularLabel } from "../panels/site-model";
+import { compareRoutes, fileToRoute } from "@jxsuite/site/routes";
 import {
   dateFieldOf,
   onEntrySummariesRead,
@@ -199,6 +202,18 @@ let scanAttempted = false;
 
 /** The source, creating it on first use. */
 export function librarySource(): LibrarySource {
+  /* A scan of a directory list the project has since outgrown is dropped here, on the next ask,
+     rather than by every door that can change the list: the project's directories loading after a
+     window restored into Content, or a collection being declared. Each of those repaints, and the
+     repaint is what asks. Without it the first answer, a walk of no directories, was cached as
+     "this project has no pages" until a reload. */
+  if (source?.stale() === true) {
+    source = null;
+    scanAttempted = false;
+    for (const panel of _active.values()) {
+      panel.cache.clear();
+    }
+  }
   source ??= createLibrarySource();
   return source;
 }
@@ -840,8 +855,11 @@ export function collectionEntryPaths(key: string): string[] {
  * through the Collections panel's summaries. Pages and a file-backed collection (whose entries are
  * rows of one file) answer nothing, and so does every entry until the read lands.
  */
-function entryFactsFor(collection: ContentCollection): EntryFactsOf {
-  if (collection.kind !== "collection" || collection.fileBacked || !librarySource().scanned()) {
+function entryFactsFor(collection: ContentCollection, layout: LibraryLayout): EntryFactsOf {
+  if (collection.kind === "pages") {
+    return librarySource().scanned() ? pageFactsFor(layout === "table") : entryFactsFrom(new Map());
+  }
+  if (collection.fileBacked || !librarySource().scanned()) {
     return entryFactsFrom(new Map());
   }
   const summaries = peekEntrySummaries(collection.key, collectionEntryPaths(collection.key));
@@ -852,6 +870,53 @@ function entryFactsFor(collection: ContentCollection): EntryFactsOf {
     ]),
   );
   return entryFactsFrom(byPath);
+}
+
+/**
+ * What each page says about itself in the Pages table: its name, as the Site panel gives it (Home,
+ * About, "Post page" for a collection's page), its template, and Draft for a page marked one.
+ *
+ * The name comes from the route, so it is there before any file is read; the template and the draft
+ * flag arrive with the page summaries. A page's Status reads Published only when some page in the
+ * project is a draft: with none, pages have no draft workflow, and a column of "Published" would be
+ * a state nobody defined. Only the Table draws a template or a status, so only the Table reads the
+ * pages: Cards, Calendar and Board name a page by its route and read nothing.
+ */
+function pageFactsFor(readPages: boolean): EntryFactsOf {
+  const paths = collectionEntryPaths(PAGES_COLLECTION);
+  const summaries = readPages ? peekPageSummaries(paths) : null;
+  const declared = new Set(Object.keys(projectState?.projectConfig?.content ?? {}));
+  const fallback = defaultLayoutPath();
+  const anyDraft = [...(summaries?.values() ?? [])].some((page) => page.draft);
+  const byPath = new Map<string, EntryFacts>(
+    paths.map((path) => {
+      const summary = summaries?.get(path);
+      const collection = summary?.contentType ?? null;
+      const layout = summary === undefined ? undefined : (summary.layout ?? fallback ?? false);
+      return [
+        path,
+        {
+          date: "",
+          status: summary === undefined || !anyDraft ? "" : summary.draft ? "Draft" : "Published",
+          template:
+            layout === undefined ? "" : layout === false ? "None" : templateDisplayName(layout),
+          title:
+            collection !== null && declared.has(collection)
+              ? `${singularLabel(collection)} page`
+              : pageLabel(fileToRoute(path), path),
+        },
+      ];
+    }),
+  );
+  return entryFactsFrom(byPath);
+}
+
+/** Pages in the order the router matches them, the order the Site panel lists them in. */
+function inRouteOrder(files: readonly LibraryFile[]): readonly LibraryFile[] {
+  return files
+    .map((file) => ({ file, route: fileToRoute(file.path) }))
+    .toSorted((a, b) => compareRoutes(a.route, b.route) || a.file.path.localeCompare(b.file.path))
+    .map(({ file }) => file);
 }
 
 /** A declared collection's schema, or null for one that declares none. */
@@ -893,24 +958,26 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
   const view = collectionView(collection.key);
   const { layout } = view;
   const all = filterLibrary(current.files(), { collection: collection.key, query: "" });
-  const files = filterLibrary(current.files(), {
+  const filtered = filterLibrary(current.files(), {
     collection: collection.key,
     locale: view.locale,
     query: view.query,
   });
+  const files = collection.kind === "pages" ? inRouteOrder(filtered) : filtered;
   const total = all.length;
   const kind = viewKind(current, layout, files.length, total);
   const range = windowFor(panel, layout, files.length);
   const slice = files.slice(range.start, range.end);
   const failures = current.failures();
   const locales = libraryLocales(all);
-  const factsOf = entryFactsFor(collection);
+  const factsOf = entryFactsFor(collection, layout);
   const facts = all.map((file) => factsOf(file));
   const schema = collection.kind === "collection" ? collectionSchema(collection.key) : null;
   const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema));
   const columns = libraryColumns(collection.key, {
     date: facts.some((entry) => (entry?.date ?? "") !== ""),
     fields: fieldColumns,
+    locale: locales.length > 1,
     status: facts.some((entry) => (entry?.status ?? "") !== ""),
   });
   const live = kind === "cards";
@@ -1102,9 +1169,11 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       // The collection's page and its entries' titles are both read after the first paint.
       const stopPages = onCollectionPagesRead(() => bump());
       const stopEntries = onEntrySummariesRead(() => bump());
+      const stopPageFacts = onPageSummariesRead(() => bump());
       return () => {
         stopPages();
         stopEntries();
+        stopPageFacts();
       };
     })(),
     wrap: canvasWrap,

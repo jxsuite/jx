@@ -40,6 +40,8 @@ export interface EntryFacts {
   date: string;
   /** The schema's fields as list text, keyed by field name, when the entry has been read. */
   fields?: EntryFieldTexts | undefined;
+  /** A page's template, by name ("Base", "None"), once the page has been read. */
+  template?: string | undefined;
 }
 
 /** The field a Board groups a collection by when it has no draft workflow, and its heading. */
@@ -173,6 +175,9 @@ export function cellText(file: LibraryFile, field: string, entry?: EntryFacts): 
     }
     case "status": {
       return entry?.status ?? "";
+    }
+    case "template": {
+      return entry?.template ?? "";
     }
     case "title": {
       // Until the entry is read, the file name: the title is never blank while it loads.

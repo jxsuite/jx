@@ -190,6 +190,29 @@ export async function loadProjectDirectories(): Promise<void> {
 }
 
 /**
+ * Re-read the project's directories when a write created a conventional one the list lacks.
+ *
+ * The list is read as the project opens, so a project that had no `pages/` or `content/` then does
+ * not grow one in the list when Add new writes its first page or collection, and the Content scan
+ * walks only what the list names. Resolves `true` when the list was re-read, so the caller knows a
+ * repaint is due; `false` (and no listing at all) when every written path was already covered.
+ *
+ * @param paths Project-relative paths just written.
+ */
+export async function refreshProjectDirectoriesFor(paths: readonly string[]): Promise<boolean> {
+  const known = new Set(projectState?.projectDirs);
+  const missing = paths.some((path) => {
+    const top = path.replaceAll("\\", "/").replace(/^\.\//, "").split("/")[0] ?? "";
+    return path.includes("/") && CONVENTIONAL_DIRS.has(top) && !known.has(top);
+  });
+  if (!missing) {
+    return false;
+  }
+  await loadProjectDirectories();
+  return true;
+}
+
+/**
  * Whether the tree currently draws the files `.gitignore` masks.
  *
  * Read through the kernel on every render rather than cached in a module variable: the setting

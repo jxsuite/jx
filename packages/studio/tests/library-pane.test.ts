@@ -100,6 +100,8 @@ const {
 const { invalidateCollectionPages } = await import("../src/content/collection-pages");
 const { templateDisplayName } = await import("../src/content/content-collections");
 const { invalidateEntrySummaries } = await import("../src/content/entry-summaries");
+const { invalidatePageSummaries } = await import("../src/content/page-summaries");
+const store = await import("../src/store");
 const { openTab, closeAllTabs } = await import("../src/workspace/workspace");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext } = await import("../src/commands/context");
@@ -189,7 +191,7 @@ function file(name: string, path: string): DirEntry {
 
 /** The one content collection the fixture project declares. */
 const POSTS = {
-  format: "json",
+  format: "Markdown",
   schema: {
     properties: {
       draft: { default: false, type: "boolean" },
@@ -526,9 +528,10 @@ describe("mounting", () => {
   test("scans the project once and lists only the shown collection's files", async () => {
     await mount();
     expect(librarySource().files().length).toBe(5);
+    // Pages are in the order the router matches them, the Site panel's order: Home first.
     expect(parts("card").map((card) => card.dataset.path)).toEqual([
-      "pages/about.json",
       "pages/index.json",
+      "pages/about.json",
     ]);
   });
 
@@ -576,6 +579,20 @@ describe("collections", () => {
   });
 
   test("counts before any scan start one and answer null until it lands", async () => {
+    expect(collectionCounts()).toBeNull();
+    await flush();
+    await flush();
+    expect(collectionCounts()?.get("pages")).toBe(2);
+  });
+
+  /* A window restored into Content asks for its rows before the project's directories have loaded.
+     The walk of none was cached as "this project has no pages" until a reload; the next ask that
+     finds the list grown drops it instead. */
+  test("a scan of a list the project has since outgrown is dropped on the next ask", async () => {
+    setup(TREE, []);
+    await mount();
+    expect(collectionCounts()?.get("pages")).toBeUndefined();
+    store.projectState!.projectDirs = Object.keys(TREE);
     expect(collectionCounts()).toBeNull();
     await flush();
     await flush();
@@ -1058,10 +1075,54 @@ describe("views", () => {
     expect(part("table-head")!.textContent).toContain("URL");
     expect(
       host.querySelector('[part="table-row"] [part="cell"][data-field="url"]')?.textContent,
-    ).toBe("/about");
+    ).toBe("/");
     setLibraryLayout("calendar");
     await flush();
     expect(part("calendar")).not.toBeNull();
+  });
+
+  /* The Content-Pages board: Title, URL, Template, Status, Edited, in route order. Two pages are
+     both `index.json` in a real site, so a file name is not a title. */
+  test("the Pages Table names each page as the Site panel does, with its template", async () => {
+    invalidatePageSummaries();
+    setup(TREE, Object.keys(TREE), {
+      "pages/about.json": '{"$layout":"./layouts/main.json","draft":true,"tagName":"div"}',
+      "pages/index.json": '{"tagName":"div"}',
+    });
+    await mount();
+    setLibraryLayout("table");
+    await flush();
+    await flush();
+    await flush();
+    const rows = parts("table-row").map((row) =>
+      [...row.querySelectorAll('[part="cell"]')].map((cell) => cell.textContent),
+    );
+    expect(part("table-head")!.textContent).toBe("TitleURLTemplateStatusEdited");
+    expect(part("table")!.getAttribute("aria-label")).toBe("Pages");
+    expect(rows.map((cells) => cells.slice(0, 4))).toEqual([
+      ["Home", "/", "None", "Published"],
+      ["About", "/about", "Main", "Draft"],
+    ]);
+  });
+
+  test("Calendar and Board name pages by route and read no page", async () => {
+    invalidatePageSummaries();
+    const reads: string[] = [];
+    installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
+      readFile: (path: string) => {
+        reads.push(path);
+        return Promise.resolve('{"tagName":"div"}');
+      },
+    });
+    resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    setLibraryLayout("board");
+    await mount();
+    await flush();
+    setLibraryLayout("calendar");
+    await flush();
+    expect(text()).toContain("Home");
+    expect(reads).toEqual([]);
   });
 
   test("an entry's Table has no URL column of its own", async () => {
@@ -1247,7 +1308,7 @@ describe("the per-file context menu", () => {
     menuRow("duplicate").click();
     await flush();
     await flush();
-    expect(written).toEqual(["pages/about-copy.json"]);
+    expect(written).toEqual(["pages/index-copy.json"]);
     expect(problems.length).toBe(0);
   });
 

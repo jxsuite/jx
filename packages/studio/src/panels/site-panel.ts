@@ -52,6 +52,7 @@ import { emptySitePanelValues, mountSitePanelSurface } from "../surfaces/site-pa
 import { registerPanel } from "./panel-registry";
 import {
   filterNeedle,
+  humanize,
   filterPageRows,
   matchesFilter,
   pageRows,
@@ -234,14 +235,16 @@ function ensureRegistry(): void {
  */
 function componentRows(needle: string, activePath: string | null): SiteComponentRow[] {
   return componentRegistry.flatMap((comp) => {
-    const label = `<${comp.tagName}>`;
+    // Named in words, as the board names them ("Post card"); the tag is in the hint and the filter.
+    const label = humanize(comp.tagName);
+    const tag = `<${comp.tagName}>`;
     const path = definitionPath(comp);
     if (!matchesFilter(needle, comp.tagName, path ?? "", comp.package ?? "")) {
       return [];
     }
     const hint = path
-      ? `Open ${label}, or drag it onto the canvas`
-      : `${label} from ${comp.package ?? "a package"}: open Packages, or drag it onto the canvas`;
+      ? `Open ${tag}, or drag it onto the canvas`
+      : `${tag} from ${comp.package ?? "a package"}: open Packages, or drag it onto the canvas`;
     return [
       {
         hint,

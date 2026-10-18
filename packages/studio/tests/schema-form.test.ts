@@ -311,6 +311,33 @@ describe("form dispatch", () => {
     expect(m.container.querySelector('[data-prop="customProp"]')).not.toBeNull();
   });
 
+  /* An entry's `date` was a free textbox with the raw key as its label. A `format: "date"` field is
+     a date input, and a host can title a row in words. */
+  test("a date field is a date input showing its day; a ui label titles the row", async () => {
+    const m = await mountForm(
+      {
+        properties: {
+          link: { format: "uri", type: "string" },
+          publishedAt: { format: "date", type: "string" },
+          stamp: { format: "date", type: "string" },
+          title: { type: "string" },
+        },
+      },
+      { link: "https://x.test", publishedAt: "2026-09-30", stamp: "2026-10-01T08:00:00.000Z" },
+      { ui: { publishedAt: { label: "Published at" } } },
+    );
+    const typeOf = (prop: string) => control(m, prop, "text").type;
+    expect([typeOf("publishedAt"), typeOf("stamp"), typeOf("link"), typeOf("title")]).toEqual([
+      "date",
+      "date",
+      "url",
+      "text",
+    ]);
+    expect(control(m, "stamp", "text").value).toBe("2026-10-01");
+    expect(part(m, "publishedAt", "label").textContent).toBe("Published at");
+    expect(part(m, "title", "label").textContent).toBe("title");
+  });
+
   test("string fields commit debounced patches; blank clears to undefined", async () => {
     const m = await mountForm(
       { properties: { empty: { type: "string" }, source: { type: "string" } } },

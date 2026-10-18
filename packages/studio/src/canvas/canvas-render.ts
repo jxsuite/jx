@@ -1238,7 +1238,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const curCustomized = shell.stylebook.customizedOnly;
     const filterChanged =
       curFilter !== surface.prevStylebookFilter ||
-      curCustomized !== surface.prevStylebookCustomizedOnly;
+      curCustomized !== surface.prevStylebookCustomizedOnly ||
+      activeMediaOfPane(surface.paneId) !== surface.prevStylebookMedia;
     if (!filterChanged) {
       const style = transposeStylebookStyle(getEffectiveStyle(tab.doc.document.style));
       if (postStyleUpdateToStylebookHosts(style) > 0) {
@@ -1329,6 +1330,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
   if (canvasMode === "stylebook") {
     surface.prevStylebookFilter = shell.stylebook.filter;
     surface.prevStylebookCustomizedOnly = shell.stylebook.customizedOnly;
+    surface.prevStylebookMedia = activeMediaOfPane(surface.paneId);
     void renderStylebookMode(surface, {
       applyTransform,
       canvasPanelEntry,

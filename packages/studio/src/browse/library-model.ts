@@ -22,12 +22,16 @@
 
 import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-upload";
 import { collectionKeyOfPath } from "../content/content-collections";
+import { collectionForFile } from "../content/collection-match";
+import { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
 import { projectState } from "../store";
 import { notedListing } from "../files/asset-versions";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { isString } from "@jxsuite/schema/guards";
 import { resolveI18n, servedLocaleOfPath } from "@jxsuite/schema/locale";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
-import type { DirEntry, StudioPlatform } from "../types";
+import type { ContentSectionEntry, DirEntry, StudioPlatform } from "../types";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 
 // ─── Files ───────────────────────────────────────────────────────────────────
 
@@ -77,8 +81,104 @@ export interface LibraryScan {
 
 // ─── The scan ────────────────────────────────────────────────────────────────
 
-/** Directory names never worth walking — a `node_modules` scan is minutes, not milliseconds. */
-const SKIP_DIRS = new Set(["node_modules", ".git", ".jx", "dist", "build", ".cache"]);
+/** A project-relative path without `./`, backslashes or a trailing slash. */
+function normalizeDir(path: string): string {
+  return path
+    .replaceAll("\\", "/")
+    .replace(/^(?:\.\/)+/, "")
+    .replace(/\/+$/, "");
+}
+
+/** Whether a `source` names one file (a CSV catalogue) rather than a directory to walk. */
+function namesOneFile(source: string): boolean {
+  if (source.endsWith("/")) {
+    return false;
+  }
+  const base = source.slice(source.lastIndexOf("/") + 1);
+  return /\.[a-z\d]+$/i.test(base);
+}
+
+/**
+ * The directories the Content scan walks: the conventional project directories that exist, plus
+ * every declared directory-collection `source` none of them already covers.
+ *
+ * The conventional list alone missed two real collections. A collection may live BESIDE the project
+ * (`sites/jxsuite.com` declares `content.docs.source: "../../docs"`), which no project directory
+ * can contain; and a collection created after the project opened (Add new › Collection) has its
+ * source under a `content/` that did not exist when the conventional list was read. Both were
+ * listed as empty, which is the lie {@link LibraryScan.failures} exists to end.
+ *
+ * A localized source is walked from the directory above its `{locale}` segment, which the walk
+ * descends into on its own. A file-backed source is a file, not a directory to walk.
+ *
+ * @param projectDirs The conventional directories present at the project root.
+ * @param config The project configuration whose `content` section declares the collections.
+ */
+export function libraryScanDirs(
+  projectDirs: readonly string[],
+  config: ProjectConfig | null | undefined,
+): readonly string[] {
+  const dirs: string[] = [];
+  for (const dir of projectDirs) {
+    dirs.push(normalizeDir(dir));
+  }
+  const extra: string[] = [];
+  /* SAFETY: `content` is the parser extension's section, collection name → entry object; only the
+     optional string `source` is read, and it is tested before use. */
+  const content = (config?.content ?? {}) as Record<string, ContentSectionEntry>;
+  for (const def of Object.values(content)) {
+    if (!isString(def.source) || def.source === "" || namesOneFile(def.source)) {
+      continue;
+    }
+    let source = normalizeDir(def.source);
+    const cut = source.indexOf(LOCALE_PLACEHOLDER);
+    if (cut !== -1) {
+      source = normalizeDir(source.slice(0, cut));
+    }
+    if (source === "" || source === ".") {
+      continue;
+    }
+    const covered = [...dirs, ...extra].some(
+      (dir) => source === dir || source.startsWith(`${dir}/`),
+    );
+    if (!covered) {
+      extra.push(source);
+    }
+  }
+  // The project's own list, unchanged, when every collection is already under it.
+  return extra.length === 0 ? projectDirs : [...projectDirs, ...extra];
+}
+
+/**
+ * The collection a scanned file is an ENTRY of, or `null`.
+ *
+ * `collectionKeyOfPath` answers which collection's folder holds a file, which is the question a
+ * convert or a creation asks. A listing asks a narrower one: is this a file the collection's loader
+ * reads? A Markdown collection's folder may hold a `nav.json` beside its pages (the jxsuite docs
+ * do), and counting it made the Content home and the Site panel disagree about one collection. So a
+ * collection that DECLARES its format lists only the files carrying that format's extension; one
+ * that declares none is left to the loader's reading of the source, as before.
+ */
+export function entryCollectionOf(path: string): string | null {
+  const key = collectionKeyOfPath(path);
+  if (key === null) {
+    return null;
+  }
+  const match = collectionForFile(path);
+  if (!match || match.name !== key || !match.def.format || match.ext === null) {
+    return key;
+  }
+  return path.toLowerCase().endsWith(match.ext.toLowerCase()) ? key : null;
+}
+
+/**
+ * Directory names never worth walking — a `node_modules` scan is minutes, not milliseconds.
+ *
+ * Not `build` or `dist`: the scan starts inside the project's own directories, never at its root
+ * where a build writes, and a collection is free to name a section `build` (the jxsuite docs file
+ * their CLI pages under `framework/build/`). Skipping the name dropped those entries silently.
+ */
+const SKIP_DIRS = new Set(["node_modules", ".git", ".jx", ".cache"]);
 
 /**
  * Walk one directory tree, collecting files and recording — never swallowing — what it could not
@@ -91,13 +191,17 @@ async function walk(
   out: LibraryFile[],
   failures: ScanFailure[],
   i18n: ResolvedI18n | null,
+  optional = false,
 ): Promise<void> {
   let entries: DirEntry[];
   try {
     // Noted: the Library walks every media directory, so it is where most versions are learned.
     entries = await notedListing(() => platform.listDirectory(dir));
   } catch (error) {
-    failures.push({ dir, error: errorMessage(error) });
+    // A declared collection's folder that does not exist yet is an empty collection, not a fault.
+    if (!optional) {
+      failures.push({ dir, error: errorMessage(error) });
+    }
     return;
   }
   const subdirectories: string[] = [];
@@ -110,7 +214,7 @@ async function walk(
     }
     const ext = extensionOf(entry.name);
     out.push({
-      collection: collectionKeyOfPath(entry.path),
+      collection: entryCollectionOf(entry.path),
       ext,
       locale: servedLocaleOfPath(entry.path, i18n) ?? undefined,
       media: MEDIA_EXTENSIONS.has(ext),
@@ -135,13 +239,16 @@ async function walk(
 export async function scanLibrary(
   dirs: readonly string[],
   platform: Pick<StudioPlatform, "listDirectory">,
+  optional: ReadonlySet<string> = new Set(),
 ): Promise<LibraryScan> {
   const files: LibraryFile[] = [];
   const failures: ScanFailure[] = [];
   // Resolved ONCE for the whole walk. `resolveI18n` canonicalizes every declared tag through
   // `Intl.Locale`, and a project with 300 pages would otherwise pay for that per file.
   const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
-  await Promise.all(dirs.map((dir) => walk(dir, platform, files, failures, i18n)));
+  await Promise.all(
+    dirs.map((dir) => walk(dir, platform, files, failures, i18n, optional.has(dir))),
+  );
   files.sort((a, b) => a.path.localeCompare(b.path));
   return { failures, files };
 }

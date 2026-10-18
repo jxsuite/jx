@@ -142,7 +142,9 @@ import { invalidateLayoutPickerCache } from "./panels/head-panel";
 import { installAutomationHook } from "./services/automation";
 import { invalidateLibrary, resetContentView } from "./browse/library-pane";
 import { invalidateCollectionPages, resetCollectionPages } from "./content/collection-pages";
-import { invalidateEntrySummaries } from "./content/entry-summaries";
+import { invalidatePageSummaries } from "./content/page-summaries";
+import { invalidateEntrySummaries, noteSavedEntry } from "./content/entry-summaries";
+import { entryFields } from "./content/entry-fields";
 import { contentCacheDrops } from "./content/content-collections";
 import { resetWritingBanners } from "./content/writing-banner";
 import { resetCollectionsPanel } from "./panels/collections-panel";
@@ -987,6 +989,7 @@ function ensureFsSync() {
       }
       if (drops.pages) {
         invalidateCollectionPages();
+        invalidatePageSummaries();
       }
       if (drops.entries) {
         invalidateEntrySummaries();
@@ -1320,6 +1323,7 @@ function resetProjectCaches(): void {
   resetSitePanel();
   resetContentView();
   resetCollectionPages();
+  invalidatePageSummaries();
   invalidateEntrySummaries();
   resetCollectionsPanel();
   resetWritingBanners();
@@ -1607,8 +1611,12 @@ const liveChrome = createLiveSurfaceSaver({
    Component Settings and the Library read the props the file has now rather than the ones the scan
    saw when the project opened. The Content tab and the Library are told, because neither reads the
    registry reactively. */
-setDocumentSavedListener((path, doc) => {
+setDocumentSavedListener((path, doc, tab) => {
   void noteFileSaved(path);
+  // An entry's new title or status reaches the Collections panel and the Content home at once.
+  if (noteSavedEntry(path, entryFields(tab))) {
+    renderLeftPanel();
+  }
   /* SAFETY: The listener fires for a tab's saved ROOT document, and a root document is a
      JxDocument held in the editor's mutable node form; `liveChrome` only acts on surface paths. */
   void liveChrome(path, doc as JxDocument);

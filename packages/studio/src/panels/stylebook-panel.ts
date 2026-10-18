@@ -24,7 +24,7 @@ import { projectState, updateSession } from "../store";
 import { createStylebookChromeSurface } from "../surfaces/stylebook-chrome";
 import type { StylebookChromeSurface } from "../surfaces/stylebook-chrome";
 import type { CanvasSurface } from "../canvas/canvas-surface";
-import { tabOfPane } from "../canvas/canvas-surface";
+import { activeMediaOfPane, tabOfPane } from "../canvas/canvas-surface";
 import { activeTab } from "../workspace/workspace";
 import { shell } from "../shell";
 import { componentRegistry } from "../files/components";
@@ -129,6 +129,24 @@ function chromeBar(surface: CanvasSurface): HTMLElement {
  * @param {StylebookCtx} ctx
  * @returns {Promise<void>} Settles once the artboards are in the page
  */
+/**
+ * The one breakpoint the specimen sheet is drawn at: the one the Context bar's size switcher names
+ * (its `activeMedia`, or the lens a split pane derives), else the base.
+ *
+ * It drew every declared breakpoint side by side, as Design does for a page, and fitting four
+ * artboards into one pane put a 1280px sheet at 24%, where no heading or paragraph can be read; a
+ * sheet of type specimens is read, not compared at a glance. One artboard at the breakpoint being
+ * styled is what the Styles workspace's board shows (Desktop · Tablet · Phone, one at a time), and
+ * it is the breakpoint a style edit lands on, because selecting a specimen writes `activeMedia`.
+ */
+export function stylebookBoards<T extends { name: string }>(
+  boards: readonly T[],
+  active: string | null,
+): T[] {
+  const named = boards.filter((board) => board.name === (active ?? "base"));
+  return named.length > 0 ? named : boards.slice(0, 1);
+}
+
 export async function renderStylebookMode(
   surface: CanvasSurface,
   ctx: StylebookCtx,
@@ -185,7 +203,7 @@ export async function renderStylebookMode(
       ),
     ];
   } else {
-    panelEntries = allPanelDefs.map((def) =>
+    panelEntries = stylebookBoards(allPanelDefs, activeMediaOfPane(surface.paneId)).map((def) =>
       ctx.canvasPanelEntry(def.name, `${def.displayName} (${def.width}px)`, false, def.width),
     );
   }

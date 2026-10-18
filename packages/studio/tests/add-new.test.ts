@@ -337,6 +337,21 @@ describe("a page", () => {
     expect(activeTab.value?.documentPath).toBe("pages/pricing.json");
   });
 
+  /* Each keystroke asked for the folder the page's index would live in (`pages/pri`, `pages/pric`,
+     …): a failed request per key on the dev server. The `pages` listing already says it is absent. */
+  test("typing a name lists no folder its parent's listing says is not there", async () => {
+    setup({ "pages/about.json": "{}" });
+    await open();
+    await typeName("Pri");
+    await typeName("Pricing plans");
+    await settle(undefined, 10);
+    const listed = platform.state.calls
+      .filter(([name]) => name === "listDirectory")
+      .map(([, dir]) => dir);
+    expect(listed).toContain("pages");
+    expect(listed.filter((dir) => String(dir).startsWith("pages/"))).toEqual([]);
+  });
+
   test("Start from offers every template, then Blank, and Blank opts out of the default", async () => {
     const { done } = await open();
     expect(parts("choice-card").map((el) => el.dataset.value)).toEqual([
@@ -512,6 +527,10 @@ describe("a collection", () => {
       param: "slug",
     });
     expect(workspaceRuns).toEqual([{ collection: "recipes" }]);
+    /* The project's directory list was read before `content/` and `pages/` existed; the Content
+       scan walks that list, so the first collection re-reads it rather than listing as empty. */
+    await settle(() => (store.projectState?.projectDirs ?? []).includes("content"));
+    expect(store.projectState?.projectDirs).toEqual(expect.arrayContaining(["content", "pages"]));
   });
 
   test("own page off writes no page", async () => {

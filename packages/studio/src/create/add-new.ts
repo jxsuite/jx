@@ -942,3 +942,33 @@ export function directoriesToList(creation: Creation): string[] {
   }
   return [...dirs];
 }
+
+/** Directories grouped by depth, shallowest group first: `.`, then `pages`, then `pages/a`. */
+export function byDepth(dirs: readonly string[]): string[][] {
+  const depthOf = (dir: string) => (dir === "." ? 0 : dir.split("/").length);
+  const levels = new Map<number, string[]>();
+  for (const dir of dirs) {
+    const depth = depthOf(dir);
+    levels.set(depth, [...(levels.get(depth) ?? []), dir]);
+  }
+  return [...levels.entries()].toSorted(([a], [b]) => a - b).map(([, group]) => group);
+}
+
+/**
+ * Whether a directory is known not to exist because its parent has been listed and does not name
+ * it. A name in the listing (file or folder) is not proof of a folder, so it is listed as usual.
+ *
+ * @param dir Project-relative directory.
+ * @param taken Lower-cased names per listed directory.
+ */
+export function absentByParent(
+  dir: string,
+  taken: ReadonlyMap<string, ReadonlySet<string>>,
+): boolean {
+  if (dir === ".") {
+    return false;
+  }
+  const slash = dir.lastIndexOf("/");
+  const parent = taken.get(slash === -1 ? "." : dir.slice(0, slash));
+  return parent !== undefined && !parent.has(dir.slice(slash + 1).toLowerCase());
+}

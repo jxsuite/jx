@@ -19,7 +19,7 @@ import { projectState } from "../store";
 import { workspaceHomeTabId } from "../workspace/workspace-ids";
 import { PAGES_COLLECTION } from "../content/content-collections";
 import { fileToRoute } from "@jxsuite/site/routes";
-import { scanLibrary } from "./library-model";
+import { libraryScanDirs, scanLibrary } from "./library-model";
 import { DRAFT_FIELD } from "../content/draft-state";
 import { isString } from "@jxsuite/schema/guards";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
@@ -44,6 +44,8 @@ export interface EntryColumnFacts {
   status: boolean;
   /** Some entry is dated by a field of its own. */
   date: boolean;
+  /** The files are in more than one language (the Pages table draws a Language column). */
+  locale?: boolean;
   /** The collection's own fields, each drawn as a column after Title, Status and Date. */
   fields?: readonly EntryFieldColumn[];
 }
@@ -112,10 +114,51 @@ export function entryFieldColumns(
 }
 
 /**
+ * The Pages table's columns (the Content-Pages board): **Title** (the name the route gives the
+ * page, as the Site panel names it), **URL**, **Template**, **Status** when some page is marked a
+ * draft, **Language** when the pages are in more than one, and **Edited**. No file name and no
+ * path: two pages are both `index.json`, and the URL already says where each one is.
+ */
+function pageColumns(facts?: EntryColumnFacts): GridColumn[] {
+  const columns: GridColumn[] = [
+    { editable: false, field: "title", kind: "string", title: "Title", widthHint: 240 },
+    // The URL is what tells two pages apart: no two routed files publish the same one.
+    { editable: false, field: "url", kind: "string", pk: true, title: "URL", widthHint: 200 },
+    { editable: false, field: "template", kind: "string", title: "Template", widthHint: 140 },
+  ];
+  if (facts?.status) {
+    columns.push({
+      editable: false,
+      field: "status",
+      kind: "string",
+      title: "Status",
+      widthHint: 100,
+    });
+  }
+  if (facts?.locale) {
+    columns.push({
+      editable: false,
+      field: "locale",
+      kind: "string",
+      title: "Language",
+      widthHint: 110,
+    });
+  }
+  columns.push({
+    editable: false,
+    field: "modified",
+    kind: "date",
+    title: "Edited",
+    widthHint: 120,
+  });
+  return columns;
+}
+
+/**
  * The Table view's columns for a collection. `path` is the row key and is never editable.
  *
- * Pages carry their URL, the one fact a page list is read for that the file name does not state. A
- * declared collection leads with what an entry is called and where it stands (its **Title**, then
+ * Pages are listed by what an author calls them and where they are published ({@link pageColumns}).
+ * A declared collection leads with what an entry is called and where it stands (its **Title**, then
  * its **Status** and **Date** when its entries have them), with the file it is stored in after: a
  * post is "Hello world, Draft", not `hello-world.md`.
  */
@@ -123,28 +166,13 @@ export function libraryColumns(
   collection: string = PAGES_COLLECTION,
   facts?: EntryColumnFacts,
 ): GridColumn[] {
-  const name: GridColumn = {
-    editable: false,
-    field: "name",
-    kind: "string",
-    pk: true,
-    title: "Name",
-    widthHint: 260,
-  };
-  const url: GridColumn = {
-    editable: false,
-    field: "url",
-    kind: "string",
-    title: "URL",
-    widthHint: 200,
-  };
   const fileFacts: GridColumn[] = [
     { editable: false, field: "locale", kind: "string", title: "Locale", widthHint: 90 },
     { editable: false, field: "modified", kind: "date", title: "Modified", widthHint: 160 },
     { editable: false, field: "path", kind: "readonly", title: "Path", widthHint: 320 },
   ];
   if (collection === PAGES_COLLECTION) {
-    return [name, url, ...fileFacts];
+    return pageColumns(facts);
   }
   const entry: GridColumn[] = [
     { editable: false, field: "title", kind: "string", title: "Title", widthHint: 260 },
@@ -182,8 +210,10 @@ export function libraryRow(file: LibraryFile): GridRow {
       // Distinguishes "no value" from "the empty string" everywhere else in this contract.
       locale: file.locale ?? null,
       modified: file.modified ?? null,
-      name: file.name,
-      path: file.path,
+      // The scan reads no file, so a status, a template and a title are the Content home's to add.
+      status: null,
+      template: null,
+      title: file.name,
       // A page's own URL; an entry's is its collection page's, which the scan does not read.
       url: file.collection === PAGES_COLLECTION ? fileToRoute(file.path).urlPattern : null,
     },
@@ -203,6 +233,15 @@ export interface LibrarySource extends GridSource {
   failures: () => readonly ScanFailure[];
   /** Whether a scan has completed at least once — "not loaded yet" is not "empty". */
   scanned: () => boolean;
+  /**
+   * Whether the completed scan walked a different directory list than the project has now.
+   *
+   * The list is read when the project's directories load and grows when a collection is declared,
+   * and either can happen after a scan already finished: a window restored straight into Content
+   * asks for its rows before the project's directories have loaded, and the walk of none is an
+   * answer of none. A stale scan is not an empty project, so its owner discards it.
+   */
+  stale: () => boolean;
 }
 
 /**
@@ -214,8 +253,12 @@ export interface LibrarySource extends GridSource {
 export function createLibrarySource(dirs?: () => readonly string[]): LibrarySource {
   let scan: LibraryScan | null = null;
   let inFlight: Promise<LibraryScan> | null = null;
+  /** The directory list the cached scan walked, joined: the key {@link LibrarySource.stale} tests. */
+  let scannedKey: string | null = null;
 
-  const projectDirs = dirs ?? (() => projectState?.projectDirs ?? []);
+  const projectDirs =
+    dirs ??
+    (() => libraryScanDirs(projectState?.projectDirs ?? [], projectState?.projectConfig ?? null));
 
   async function ensureScan(): Promise<LibraryScan> {
     if (scan) {
@@ -223,8 +266,14 @@ export function createLibrarySource(dirs?: () => readonly string[]): LibrarySour
     }
     // Coalesce: five layouts and a command can all ask at once on the first paint, and the answer
     // Is one walk of the project, not six.
-    inFlight ??= scanLibrary(projectDirs(), getPlatform()).then((result) => {
+    const walked = projectDirs();
+    /* A collection source the project's own list does not hold may not exist yet (a collection
+       declared before its first entry): its absence is an empty collection, never a failure. */
+    const conventional = new Set(dirs ? walked : (projectState?.projectDirs ?? []));
+    const optional = new Set(walked.filter((dir) => !conventional.has(dir)));
+    inFlight ??= scanLibrary(walked, getPlatform(), optional).then((result) => {
       scan = result;
+      scannedKey = walked.join("\n");
       inFlight = null;
       return result;
     });
@@ -268,5 +317,6 @@ export function createLibrarySource(dirs?: () => readonly string[]): LibrarySour
       return { rows: result.files.map((file) => libraryRow(file)), total: result.files.length };
     },
     scanned: () => scan !== null,
+    stale: () => scan !== null && scannedKey !== projectDirs().join("\n"),
   };
 }

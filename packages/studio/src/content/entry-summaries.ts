@@ -21,6 +21,7 @@ import { isImage } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
 import { hasDraftAxis, isDraftEntry } from "./draft-state";
 import { entryCollection } from "./entry-model";
+import { PAGES_COLLECTION, collectionKeyOfPath } from "./content-collections";
 import type { EntryFields } from "./entry-fields";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
 
@@ -286,6 +287,48 @@ export function peekEntrySummaries(
     _loading.set(inFlight, read);
   }
   return null;
+}
+
+/**
+ * Restate one entry from the fields Studio just saved, without reading the file back.
+ *
+ * A save is Studio's own write, so the fields it wrote are the answer, and re-reading them is both
+ * slower and wrong: the dev server lets a file read be cached for five seconds, and its watcher
+ * skips some trees outright, so the list kept the old title after an author renamed an entry and
+ * pressed Save. An entry no cached list holds is left to that list's own first read.
+ *
+ * @returns Whether a cached list held the entry and now states the saved fields.
+ */
+export function noteEntrySaved(path: string, collection: string, fields: EntryFields): boolean {
+  const cached = _cache.get(collection);
+  const index = cached?.entries.findIndex((entry) => entry.path === path) ?? -1;
+  if (!cached || index === -1) {
+    return false;
+  }
+  const entries = cached.entries.with(index, summarize(path, collection, fields));
+  _cache.set(collection, { entries, key: cached.key });
+  for (const listener of _listeners) {
+    listener();
+  }
+  return true;
+}
+
+/**
+ * After a document saved: restate its entry, when it is one, from the fields it saved.
+ *
+ * The caller says where the fields live (`entryFields(tab)`, the live record, not a copy), which
+ * keeps the editor's field store out of this data module's graph.
+ *
+ * @param path The saved document's path, or `null` for one with no file.
+ * @param fields The saved document's fields: a JSON entry's root, any other entry's frontmatter.
+ * @returns Whether a cached list changed, so the caller knows a repaint is due.
+ */
+export function noteSavedEntry(path: string | null, fields: EntryFields): boolean {
+  const collection = collectionKeyOfPath(path);
+  if (path === null || collection === null || collection === PAGES_COLLECTION) {
+    return false;
+  }
+  return noteEntrySaved(path, collection, fields);
 }
 
 /** Forget every summary. The next list re-reads its entries. */

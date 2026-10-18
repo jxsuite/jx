@@ -32,7 +32,7 @@ import {
 import { commitEntryFields, entryFields } from "./entry-fields";
 import { DRAFT_MEANING, hasDraftAxis, isDraftEntry } from "./draft-state";
 import { entryCollection } from "./entry-model";
-import { absentRequiredErrors, formContext, setEntryDraft } from "./entry-editor";
+import { absentRequiredErrors, fieldLabels, formContext, setEntryDraft } from "./entry-editor";
 import { mountEntryInspectorSurface } from "../surfaces/entry-inspector";
 import type { EntryInspectorHandle, EntryInspectorView } from "../surfaces/entry-inspector";
 import type { JsonSchema } from "../ui/schema-form";
@@ -117,6 +117,7 @@ function paintForm(standing: StandingInspector, tab: Tab): void {
       errors: absentRequiredErrors(collection, fields),
       onChange: (patch) => commitEntryFields(tab, patch),
       rerender: standing.redraw,
+      ui: fieldLabels(collection.schema),
     },
   );
   if (form.parentNode !== standing.formHost) {

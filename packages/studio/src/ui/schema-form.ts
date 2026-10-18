@@ -174,9 +174,10 @@ export interface RenderFormOptions {
   /**
    * Per-field overrides from `$studio.settings.entry.ui`: a registered control name, and/or an
    * `enum` source (choice list or `{ "$ref": "#/$context/<pointer>" }`) layered over the field
-   * schema — fragments stay valid JSON Schema while descriptors add dynamic choices.
+   * schema — fragments stay valid JSON Schema while descriptors add dynamic choices. `label` is the
+   * words the row is titled with in place of the property's key.
    */
-  ui?: Record<string, { control?: string; enum?: unknown }> | undefined;
+  ui?: Record<string, { control?: string; enum?: unknown; label?: string }> | undefined;
   rerender?: (() => void) | undefined;
   /**
    * Externally-produced diagnostics, keyed by property name — §16.1's inline tier, sourced.
@@ -941,11 +942,12 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
     invalid: error !== "",
     key: prop,
     kind: "text",
-    label: prop,
+    label: opts.ui?.[prop]?.label ?? prop,
     max: "",
     min: "",
     mono: false,
     multiline: false,
+    inputType: "text",
     options: [],
     placeholder: "",
     prop: ps.name || prop,
@@ -1109,8 +1111,26 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
   row.kind = "text";
   row.value = asText(current);
   row.placeholder = ps.default !== undefined ? String(ps.default) : (ps.examples?.[0] ?? "");
+  row.inputType = TEXT_INPUT_TYPES.get(ps.format ?? "") ?? "text";
+  /* A date input shows nothing for a value it cannot read, so a timestamp is shown as its day. YAML
+     reads an unquoted date as a Date, which reaches here as its quoted JSON. */
+  const day = /^"?(\d{4}-\d{2}-\d{2})/.exec(row.value);
+  if (row.inputType === "date" && day) {
+    row.value = day[1] ?? row.value;
+  }
   return row;
 }
+
+/**
+ * The native input a string format is typed in. `date` is the one that changes what can be typed: a
+ * date picker, and a value that is always `YYYY-MM-DD`, the `full-date` JSON Schema's `date` names.
+ * `email` and `uri` only change the keyboard a phone shows, and the value stays the text typed.
+ */
+const TEXT_INPUT_TYPES: ReadonlyMap<string, string> = new Map([
+  ["date", "date"],
+  ["email", "email"],
+  ["uri", "url"],
+]);
 
 /** The property chips above a JSON-Schema field: what shape is in there right now. */
 function schemaPropertyChips(current: JsonValue | undefined): { key: string; label: string }[] {

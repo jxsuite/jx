@@ -65,10 +65,24 @@ describe("the id", () => {
 });
 
 describe("columns and rows", () => {
-  test("every column is read-only, and the name is the row key", () => {
+  test("every column is read-only, and a page's URL is its key", () => {
     const columns = libraryColumns();
     expect(columns.every((c) => !c.editable)).toBe(true);
-    expect(columns.filter((c) => c.pk).map((c) => c.field)).toEqual(["name"]);
+    expect(columns.filter((c) => c.pk).map((c) => c.field)).toEqual(["url"]);
+  });
+
+  /* The Content-Pages board: a page is listed by what it is called and where it is published, not
+     by a file name two of them share (`index.json`), and never by its path. */
+  test("Pages read Title, URL, Template and Edited, with Status and Language only when they apply", () => {
+    expect(libraryColumns().map((c) => [c.field, c.title])).toEqual([
+      ["title", "Title"],
+      ["url", "URL"],
+      ["template", "Template"],
+      ["modified", "Edited"],
+    ]);
+    expect(
+      libraryColumns(undefined, { date: false, locale: true, status: true }).map((c) => c.field),
+    ).toEqual(["title", "url", "template", "status", "locale", "modified"]);
   });
 
   test("a row carries nulls where the platform reported nothing, never invented values", () => {
@@ -103,7 +117,7 @@ describe("columns and rows", () => {
       type: ".json",
     });
     expect(Object.keys(row.cells).toSorted()).toEqual(
-      libraryColumns()
+      libraryColumns(undefined, { date: false, locale: true, status: true })
         .map((c) => c.field)
         .toSorted(),
     );
@@ -139,6 +153,38 @@ describe("createLibrarySource", () => {
     await source.rows();
     await source.refresh!();
     expect(listed).toEqual(["pages", "public", "pages", "public"]);
+  });
+
+  /* A window restored into Content asks for rows before the project's directories have loaded, and
+     the walk of none is an answer of none. That answer is stale the moment the list arrives. */
+  test("a scan of a directory list the project has since outgrown is stale", async () => {
+    resetStudioState({ projectConfig: null, projectDirs: [] });
+    const source = createLibrarySource();
+    expect(source.stale()).toBe(false);
+    await source.rows();
+    expect([source.files().length, source.stale()]).toEqual([0, false]);
+    resetStudioState({ projectConfig: null, projectDirs: ["pages", "public"] });
+    expect(source.stale()).toBe(true);
+    await source.refresh!();
+    expect([source.files().length, source.stale()]).toEqual([3, false]);
+  });
+
+  test("walks a declared collection outside the project's list, and its absence is no failure", async () => {
+    install({ ...tree(), "../../docs": [{ name: "a.md", path: "../../docs/a.md", type: "file" }] });
+    resetStudioState({
+      projectConfig: {
+        content: { docs: { source: "../../docs" }, posts: { source: "./content/posts" } },
+      },
+      projectDirs: ["pages"],
+    });
+    const source = createLibrarySource();
+    await source.rows();
+    expect(listed).toEqual(["pages", "../../docs", "content/posts"]);
+    expect(source.files().map((f) => [f.path, f.collection])).toContainEqual([
+      "../../docs/a.md",
+      "docs",
+    ]);
+    expect(source.failures()).toEqual([]);
   });
 
   test("exposes the failures the scan collected, so an incomplete list can say so", async () => {
@@ -191,7 +237,7 @@ describe("createLibrarySource", () => {
   test("columns() answers the table's own column set", async () => {
     const source = createLibrarySource();
     const columns = await source.columns();
-    expect(columns.map((c) => c.field)).toEqual(["name", "url", "locale", "modified", "path"]);
+    expect(columns.map((c) => c.field)).toEqual(["title", "url", "template", "modified"]);
     // A collection leads with what an entry says about itself, and keeps its file (the Path) after.
     expect(libraryColumns("posts").map((c) => c.field)).toEqual([
       "title",

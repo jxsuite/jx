@@ -58,7 +58,9 @@ import type { EntryEditorSurfaceHandle, EntryEditorView } from "../surfaces/entr
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
 import type { Tab } from "../tabs/tab";
 import type { CanvasSurface } from "../canvas/canvas-surface";
-import type { JsonObject } from "@jxsuite/schema/types";
+import type { ContentTypeSchema, JsonObject } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import { fieldTitle } from "../browse/library-source";
 
 /** The `canvasMode` the entry form draws under. */
 export const ENTRY_MODE = "entry";
@@ -163,6 +165,22 @@ export function entryDraftPill(tab: Tab): DraftPill | null {
 }
 
 // ─── The form ────────────────────────────────────────────────────────────────
+
+/**
+ * The words each field's row is titled with: the schema's own `title` where it states one, else the
+ * key in words (`publishedAt` → "Published at"), the spelling the Content home's columns use. A raw
+ * key is a storage name, and an author reads "Cover", not `cover`.
+ */
+export function fieldLabels(
+  schema: ContentTypeSchema | null | undefined,
+): Record<string, { label: string }> {
+  return Object.fromEntries(
+    Object.entries(schema?.properties ?? {}).map(([name, field]) => [
+      name,
+      { label: isString(field.title) && field.title !== "" ? field.title : fieldTitle(name) },
+    ]),
+  );
+}
 
 /** The form's host context: enum pointers resolve against this project's configuration. */
 export function formContext(tab: Tab): SchemaFormContext {
@@ -296,6 +314,7 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
         errors: absentRequiredErrors(collection, fields),
         onChange: (patch) => commitEntryFields(tab, patch),
         rerender: redraw,
+        ui: fieldLabels(collection.schema),
       },
     );
     if (form.parentNode !== formHost) {

@@ -50,7 +50,8 @@ void mock.module("../src/canvas/iframe-host", () => ({
   },
 }));
 
-const { renderStylebookMode, selectStylebookTag } = await import("../src/panels/stylebook-panel");
+const { renderStylebookMode, selectStylebookTag, stylebookBoards } =
+  await import("../src/panels/stylebook-panel");
 const { bindCanvasPanels, canvasPanelEntry } = await import("../src/canvas/canvas-utils");
 const { initShellRefs } = await import("../src/store");
 const { activeCanvasSurface } = await import("../src/canvas/canvas-surface");
@@ -195,14 +196,29 @@ describe("renderStylebookMode", () => {
     expect(observeCenterUntilStable).toHaveBeenCalled();
   });
 
-  test("$media breakpoints → base + one panel per breakpoint, SAME generated doc for all", async () => {
-    makeTab({ $media: { "--": "320px", md: "(min-width: 768px)" } });
+  /* Four artboards fitted into one pane put a 1280px sheet at 24%, where no specimen can be read.
+     The sheet is ONE board, at the breakpoint the Context bar's size switcher names. */
+  test("$media breakpoints → one board, at the active breakpoint, else the base", async () => {
+    const tab = makeTab({ $media: { "--": "320px", md: "(min-width: 768px)" } });
     await renderStylebookMode(stage, ctx);
-    expect(canvasPanels.map((panel) => panel.mediaName)).toEqual(["base", "md"]);
-    expect(mounts).toHaveLength(2);
-    expect(mounts[0]!.generated).toBe(mounts[1]!.generated);
-    expect(mounts[1]!.widthPx).toBe(768);
+    expect(canvasPanels.map((panel) => panel.mediaName)).toEqual(["base"]);
+    expect(mounts).toHaveLength(1);
     expect(updateActivePanelHeaders).toHaveBeenCalled();
+
+    canvasPanels.length = 0;
+    mounts.length = 0;
+    tab.session.ui.activeMedia = "md";
+    await renderStylebookMode(stage, ctx);
+    expect(canvasPanels.map((panel) => panel.mediaName)).toEqual(["md"]);
+    expect(mounts[0]!.widthPx).toBe(768);
+  });
+
+  test("stylebookBoards keeps the named board, falls back to the first, and never empties", () => {
+    const boards = [{ name: "base" }, { name: "md" }, { name: "sm" }];
+    expect(stylebookBoards(boards, null)).toEqual([{ name: "base" }]);
+    expect(stylebookBoards(boards, "sm")).toEqual([{ name: "sm" }]);
+    expect(stylebookBoards(boards, "gone")).toEqual([{ name: "base" }]);
+    expect(stylebookBoards([], "md")).toEqual([]);
   });
 
   test("the chrome bar filter narrows the generated doc; Customized toggles the session flag", async () => {

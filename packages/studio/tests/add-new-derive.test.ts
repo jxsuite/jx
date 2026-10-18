@@ -14,6 +14,8 @@ import {
   CREATION_KINDS,
   defaultTemplateChoice,
   deriveCreation,
+  absentByParent,
+  byDepth,
   directoriesToList,
   entryBody,
   itemNoun,
@@ -551,5 +553,35 @@ describe("languages (site-architecture.md §13)", () => {
     expect(deriveCreation("page", "Hours", { locale: "en" }, always).route).toBe("/en/hours");
     const events = deriveCreation("collection", "Events", {}, always);
     expect(events.extraWrites[0]?.path).toBe("pages/en/events/[slug].json");
+  });
+});
+
+/* Typing a page's name probed the folder its index would live in once per keystroke
+   (`pages/pri`, `pages/pric`, …), and every one of those folders was missing: a failed request per
+   key. A folder the parent's listing does not name is known to be absent without asking. */
+describe("which directories need asking about", () => {
+  test("byDepth lists the shallowest first, so a parent is listed before its children", () => {
+    expect(byDepth(["pages/a/b", ".", "pages", "layouts", "pages/a"])).toEqual([
+      ["."],
+      ["pages", "layouts"],
+      ["pages/a"],
+      ["pages/a/b"],
+    ]);
+    expect(byDepth([])).toEqual([]);
+  });
+
+  test("absentByParent answers only from a listed parent, and only for a name it lacks", () => {
+    const taken = new Map([
+      [".", new Set(["pages"])],
+      ["pages", new Set(["about.json", "blog"])],
+    ]);
+    expect(absentByParent(".", taken)).toBe(false);
+    expect(absentByParent("pages", taken)).toBe(false);
+    expect(absentByParent("layouts", taken)).toBe(true);
+    expect(absentByParent("pages/pricing-plans", taken)).toBe(true);
+    // A name in the listing may be a folder: it is listed as usual.
+    expect(absentByParent("pages/Blog", taken)).toBe(false);
+    // A parent nobody has listed says nothing.
+    expect(absentByParent("content/posts", taken)).toBe(false);
   });
 });

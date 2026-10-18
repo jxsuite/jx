@@ -263,18 +263,18 @@ export async function openFile() {
  * rather than reading the file back, which is what keeps the shipped app from ever reading its
  * chrome from disk.
  */
-let _onDocumentSaved: (path: string | null, doc: JxMutableNode) => void = () => {};
+let _onDocumentSaved: (path: string | null, doc: JxMutableNode, tab: Tab) => void = () => {};
 
 /** Register the save listener. Called once, from the bootstrap. */
 export function setDocumentSavedListener(
-  listener: (path: string | null, doc: JxMutableNode) => void,
+  listener: (path: string | null, doc: JxMutableNode, tab: Tab) => void,
 ): void {
   _onDocumentSaved = listener;
 }
 
 function reportSaved(tab: Tab) {
   const doc = tab.doc.document;
-  _onDocumentSaved(tab.documentPath, doc);
+  _onDocumentSaved(tab.documentPath, doc, tab);
   const warning =
     isString(doc.tagName) && doc.tagName.includes("-") ? validateComponentSlots(doc) : null;
   if (warning) {

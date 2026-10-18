@@ -30,6 +30,7 @@ import {
   openHomePage,
   openProject,
   pickAndUploadTo,
+  refreshProjectDirectoriesFor,
   reloadFileInTab,
   reloadTabsIfChanged,
 } from "../src/files/files";
@@ -115,6 +116,32 @@ beforeEach(() => {
 });
 
 // ─── loadDirectory ────────────────────────────────────────────────────────────
+
+/* The project's directory list is read as it opens. A first page or a first collection creates
+   `pages/` or `content/` after that, and the Content scan walks the list, so a write into a
+   conventional directory the list lacks re-reads it. */
+describe("refreshProjectDirectoriesFor", () => {
+  test("re-reads the list when a write lands in a conventional directory it lacks", async () => {
+    installFsPlatform({ "content/notes/first.md": "x", "pages/index.json": "{}" });
+    siteState({ projectDirs: ["pages"] });
+    expect(await refreshProjectDirectoriesFor(["content/notes/first.md"])).toBe(true);
+    expect(requireProjectState().projectDirs).toEqual(["content", "pages"]);
+  });
+
+  test("leaves the list alone for a directory it holds, a root file or an unconventional one", async () => {
+    const { state } = installFsPlatform({ "pages/index.json": "{}" });
+    siteState({ projectDirs: ["pages"] });
+    expect(
+      await refreshProjectDirectoriesFor([
+        "pages/about.json",
+        "./pages/b.json",
+        "project.json",
+        "scripts/x.js",
+      ]),
+    ).toBe(false);
+    expect(state.calls.filter(([name]) => name === "listDirectory")).toHaveLength(0);
+  });
+});
 
 describe("loadDirectory", () => {
   test("does nothing when no project is loaded", async () => {
