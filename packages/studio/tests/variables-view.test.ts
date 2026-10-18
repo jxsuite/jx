@@ -141,8 +141,10 @@ describe("the view's place", () => {
     expect(view.saving).toContain("waiting for Save");
     expect(view.schemes).toContain("Contexts");
     expect(view.manageLabel).toBe("Manage contexts…");
-    // An undo is the one change that waits for Save, and the sentence says so.
-    expect(view.saving).toContain("Save writes the undone value");
+    // An undo is the one change that waits for Save, and the copy names it as the exception
+    // Rather than as a second rule that reads like a contradiction of the first.
+    expect(view.saving).toContain("Undo is the exception");
+    expect(view.schemes).toContain("Add override");
   });
 });
 

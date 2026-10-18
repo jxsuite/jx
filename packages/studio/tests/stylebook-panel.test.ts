@@ -388,35 +388,37 @@ describe("the Project Styles chrome bar", () => {
 // ─── selectStylebookTag ───────────────────────────────────────────────────────
 
 describe("selectStylebookTag", () => {
-  test("writes the stylebook selection session state (selection stays a path-empty [])", () => {
+  test("writes the stylebook selection session state and clears the document selection", () => {
     const tab = makeTab();
+    tab.session.selection = [["children", 0]];
     selectStylebookTag("table th", "md");
     expect(shell.stylebook.selection).toBe("table th");
     expect(tab.session.ui.activeSelector).toBe("table th");
     expect(tab.session.ui.rightTab).toBe("style");
     expect(tab.session.ui.activeMedia).toBe("md");
-    expect(tab.session.selection).toEqual([[]]);
+    // No document path names a specimen, so none is selected: not the root, which every reader
+    // Of the document selection would have named as the catalogue's `div`.
+    expect(tab.session.selection).toEqual([]);
   });
 
-  test("the session is parked before the stylebook selection moves", async () => {
+  test("the session is written before the stylebook selection moves", async () => {
     // The Style panel rebuilds synchronously when `shell.stylebook.selection` changes, so whatever
-    // Watches it must already find the tab's selection parked on the root. A fresh project.json
-    // Tab starts with no selection at all, which is the state the Styles workspace opens into.
+    // Watches it must already find the tab's session cleared and its selector in place.
     const { effect, effectScope } = await import("../src/reactivity");
     const tab = makeTab();
-    tab.session.selection = [];
+    tab.session.selection = [["children", 0]];
     const seen: string[] = [];
     const scope = effectScope();
     scope.run(() => {
       effect(() => {
         if (shell.stylebook.selection === "h1") {
-          seen.push(JSON.stringify(tab.session.selection));
+          seen.push(`${JSON.stringify(tab.session.selection)} ${tab.session.ui.activeSelector}`);
         }
       });
     });
     selectStylebookTag("h1");
     scope.stop();
-    expect(seen).toEqual(["[[]]"]);
+    expect(seen).toEqual(["[] h1"]);
   });
 
   test("omitting media leaves the current breakpoint context untouched", () => {

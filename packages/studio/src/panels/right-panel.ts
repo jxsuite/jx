@@ -41,6 +41,7 @@ import { getNodeAtPath, nodeLabel, requireShellRef, rightPanel } from "../store"
 import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
+import { stylebookTarget } from "../style/stylebook-target";
 import { bindLogicPanelHost } from "./events-panel";
 import { bindContentHost } from "./properties-panel";
 
@@ -281,10 +282,16 @@ export function unmount() {
  * Empty → non-empty while Page shows: Element, on the leaf last used there. Non-empty → empty while
  * an Element leaf shows: Page. The first look at a document records its state and switches nothing,
  * so focusing another tab is not a transition, and the Assistant is never left by this. Layout
- * chrome counts as a selection: the Content view is what explains it.
+ * chrome counts as a selection: the Content view is what explains it. So does a Styles specimen's
+ * tag, which is a selection of the catalogue rather than of the document.
  */
 function followSelection(tab: Tab): void {
-  const has = tab.session.selection.length > 0 || shell.layoutSelection !== null;
+  // A tag picked in the Styles workspace's Elements view is a selection too: it is what the Style
+  // Leaf is editing, and it leaves the document selection empty (`selectStylebookTag`).
+  const has =
+    tab.session.selection.length > 0 ||
+    shell.layoutSelection !== null ||
+    stylebookTarget(tab) !== null;
   const had = _hadSelection.get(tab);
   _hadSelection.set(tab, has);
   if (had === undefined || had === has) {
@@ -417,6 +424,12 @@ function inspectorTarget(showing: InspectorTabId): string {
   const layout = shell.layoutSelection;
   if (layout) {
     return `<${layout.tagName || "element"}> in ${layout.layoutFile || "the layout"}`;
+  }
+  // The Styles workspace's Elements view styles a TAG: name it, as the Style body's `h1 · Base`
+  // Does, rather than whatever node the document selection happens to hold.
+  const tag = stylebookTarget(tab);
+  if (tag) {
+    return tag;
   }
   const paths = tab.session.selection;
   const selection = primarySelection(paths);

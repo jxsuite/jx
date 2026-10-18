@@ -332,6 +332,28 @@ describe("stylebook mode", () => {
     expect(chip(c, "textAlign")?.textContent).toContain("from site tokens");
   });
 
+  test("an unset inherited property shows what the tag inherits from body and its ancestor tags", async () => {
+    // Font Family on `h1` read "depends on user agent" (the CSS initial value) while the specimen
+    // Was drawn in the project's body font.
+    const tab = setupTab({});
+    tab.doc.document.style = {
+      color: "black",
+      fontFamily: "var(--font-body)",
+      margin: "0",
+      table: { color: "navy", th: { fontWeight: "700" } },
+    };
+    shell.stylebook.selection = "table th";
+    tab.session.ui.activeSelector = "table th";
+    const c = await renderPanel("stylebook");
+    expect(chip(c, "fontFamily")?.dataset.state).toBe("inherited");
+    expect(chip(c, "fontFamily")?.textContent).toContain("from body");
+    expect(input(row(c, "fontFamily"))?.getAttribute("placeholder")).toBe("var(--font-body)");
+    // The nearest donor wins: `table` sets a colour, so `th` inherits that one.
+    expect(chip(c, "color")?.textContent).toContain("from table");
+    // A property CSS does not inherit is not offered as inherited.
+    expect(chip(c, "margin")?.dataset.state ?? "default").not.toBe("inherited");
+  });
+
   test("the selector menu offers the TAG's states, and choosing one writes under the tag", async () => {
     const tab = setupTab({});
     // Project Styles writes into the DOCUMENT's root style.

@@ -3368,6 +3368,59 @@ describe("stylebook host capability", () => {
     expect(channel.posts).toHaveLength(0);
   });
 
+  test("a pan posted while the selection measure is in flight leaves the selection reply current", async () => {
+    // The Styles Outline's row click: `selectStylebookTag(tag, …, { panCanvas: true })` moves the
+    // Selection (the watcher posts a measure) and pans in the SAME tick. The pan's id must not
+    // Retire the selection request, or the specimen is centred and never outlined.
+    const wrap = document.createElement("div");
+    wrap.id = "canvas-wrap";
+    document.body.append(wrap);
+    initShellRefs();
+    registerPrimaryStage();
+
+    const { canvasEl, channel } = await mountStylebookReady();
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: null }));
+    channel.posts.length = 0;
+
+    shell.stylebook.selection = "p";
+    await flush();
+    panToStylebookTag("p");
+    const [selMeasure, panMeasure] = channel.posts.filter(ofKind("measure"));
+    expect(selMeasure).toBeDefined();
+    expect(panMeasure).toBeDefined();
+    expect(panMeasure!.reqId).not.toBe(selMeasure!.reqId);
+
+    const sel = partOf(canvasEl, ".overlay-selection");
+    channel.deliver({
+      hits: [{ path: CARD_PATH, rect: { height: 40, width: 200, x: 12, y: 30 } }],
+      kind: "geometry",
+      reqId: selMeasure!.reqId,
+    });
+    channel.deliver({
+      hits: [{ path: CARD_PATH, rect: { height: 40, width: 200, x: 12, y: 30 } }],
+      kind: "geometry",
+      reqId: panMeasure!.reqId,
+    });
+    expect(sel.style.display).toBe("block");
+    expect(partOf(sel, ".overlay-label").textContent).toBe("<p>");
+  });
+
+  test("a selection reply that lands after the selection was cleared draws nothing", async () => {
+    const { canvasEl, channel } = await mountStylebookReady();
+    channel.posts.length = 0;
+    shell.stylebook.selection = "p";
+    await flush();
+    const measure = channel.posts.find(ofKind("measure"))!;
+    shell.stylebook.selection = null;
+    await flush();
+    channel.deliver({
+      hits: [{ path: CARD_PATH, rect: { height: 40, width: 200, x: 12, y: 30 } }],
+      kind: "geometry",
+      reqId: measure.reqId,
+    });
+    expect(partOf(canvasEl, ".overlay-selection").style.display).toBe("none");
+  });
+
   test("a later page mount on the same canvas clears the stylebook capability", async () => {
     const hits: unknown[] = [];
     setStylebookHitHandler((tag) => hits.push(tag));

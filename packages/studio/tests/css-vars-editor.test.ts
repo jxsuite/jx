@@ -85,7 +85,7 @@ function writtenBlock(state: MockPlatformState, key: string): JsonObject | undef
 
 /** The group whose heading reads `title`. */
 function groupByTitle(container: HTMLElement, title: string): HTMLElement {
-  const group = [...container.querySelectorAll('[part="group"]')].find(
+  const group = [...container.querySelectorAll('[part="token-group"]')].find(
     (g) => g.querySelector('[part="group-title"]')?.textContent.trim() === title,
   );
   if (!(group instanceof HTMLElement)) {
@@ -348,7 +348,7 @@ describe("font section", () => {
   test("renders a preview line and updates on change", async () => {
     const { container } = await setup(baseStyle());
     const body = tokenIn(container, "Fonts", "--font-body");
-    const preview = body.querySelector('[part="preview"]')!;
+    const preview = body.querySelector('[part="font-preview"]')!;
     expect(preview.textContent).toContain("quick brown fox");
     expect(getComputedStyle(preview).fontFamily).toContain("Georgia");
 
@@ -668,7 +668,7 @@ describe("token reference chips", () => {
       "#00aa55",
     );
     // The well shows the resolved colour rather than an empty square.
-    expect(getComputedStyle(accent.querySelector('[part="swatch"]')!).background).toContain(
+    expect(getComputedStyle(accent.querySelector('[part="well"]')!).background).toContain(
       "#00aa55",
     );
     expect(swatch(accent).value).toBe("#00aa55");
@@ -805,5 +805,34 @@ describe("revealing a token row (the surface's half)", () => {
     container.remove();
     await flush(4);
     expect(scrolled).toEqual([]);
+  });
+});
+
+// ─── The section's own part names stay its own ───────────────────────────────
+
+describe("the section's style rules reach only its own nodes", () => {
+  test("no rule names a part that a kit element drawn here carries inside it", async () => {
+    // The kit is light DOM, so `& [part="preview"]` (the font specimen's rule) also reached the
+    // Add override picker's own closed-state value: a 36px picker under every 20px field.
+    const { container } = await setup(baseStyle(), {
+      "--": "1280px",
+      "--sm": "(max-width: 600px)",
+    });
+    const kitParts = new Set<string>();
+    for (const el of container.querySelectorAll("*")) {
+      if (el.localName.startsWith("jx-")) {
+        for (const inner of el.querySelectorAll("[part]")) {
+          kitParts.add(inner.getAttribute("part") ?? "");
+        }
+      }
+    }
+    // The picker is drawn, so the name that collided is among the kit's.
+    expect(kitParts.has("preview")).toBe(true);
+    const { default: doc } = await import("../src/surfaces/settings-css-vars.json");
+    const ruled = Object.keys(doc.style).flatMap((selector) =>
+      [...selector.matchAll(/\[part="([^"]+)"\]/g)].map((match) => match[1] ?? ""),
+    );
+    expect(ruled).toContain("well");
+    expect(ruled.filter((part) => kitParts.has(part))).toEqual([]);
   });
 });

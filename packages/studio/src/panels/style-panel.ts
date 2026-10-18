@@ -91,6 +91,7 @@ import { showPromptDialog } from "../ui/layers";
 import { parseMediaEntries, schemeOfQuery } from "../utils/canvas-media";
 import { getEffectiveMedia, getEffectiveStyle } from "../site-context";
 import { computeInheritedSources } from "../utils/inherited-style";
+import { tagAncestorSources } from "../style/tag-inheritance";
 import { loadUsages, peekUsages, usageFiles } from "../services/references";
 import { mediaDisplayName } from "./shared";
 import {
@@ -1631,6 +1632,14 @@ function buildEditor(
         donor: source.donor === null ? "Base" : mediaDisplayName(source.donor),
         jump: () => updateUi(activeTab.value, "activeMedia", source.donor),
       };
+    }
+  }
+  // A Project Styles tag rule also inherits from the rules above it in this same file (`body`,
+  // Then each ancestor tag in its path), which is what its specimen is drawn with. The context walk
+  // Above outranks it: a value the tag itself sets at Base is nearer than anything it inherits.
+  if (stylebookPath) {
+    for (const [p, source] of Object.entries(tagAncestorSources(style, stylebookPath, editMedia))) {
+      inheritedInfo[p] ??= { donor: source.donor, value: source.value };
     }
   }
   const inheritedStyle: Record<string, string | number> = {};

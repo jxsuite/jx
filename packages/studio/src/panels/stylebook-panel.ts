@@ -278,15 +278,16 @@ export function selectStylebookTag(tag: string, media?: string | null, { panCanv
   if (media !== undefined) {
     ui.activeMedia = media;
   }
-  // The session is parked BEFORE the stylebook selection moves. Writing `shell.stylebook.selection`
-  // Re-runs the Style panel's effect synchronously, and that effect builds the tag editor against
-  // The tab's selection — so with the order reversed it ran against the empty selection a freshly
-  // Opened project.json tab has, threw, and the throw unwound this function before the park.
+  // The session is written BEFORE the stylebook selection moves: writing `shell.stylebook.selection`
+  // Re-runs the Style panel's effect synchronously, and it should find `activeSelector` and the
+  // Breakpoint already in place.
   updateSession(activeTab.value, {
-    // The ROOT path, not an empty selection: stylebook mode has always parked the selection on the
-    // Document element while the Style tab edits a TAG, and widening the field to a list changed
-    // Which literal spells that — `[[]]` is one selected path, the root — not what it means.
-    selection: [[]],
+    // EMPTY, not the root. A specimen is not a node of the document, so no document path names
+    // What is selected; `stylebookTarget` is how the chrome learns the tag. Parking on the root
+    // `[[]]` made every reader of the document selection (the command bar, the Inspector header)
+    // Name the catalogue's root `div` while `h1` was being edited, and it is what a canvas hit on
+    // A specimen already left behind, so the Outline and the canvas now agree.
+    selection: [],
     ui,
   });
   shell.stylebook.selection = tag;

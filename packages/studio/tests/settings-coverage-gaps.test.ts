@@ -342,7 +342,7 @@ describe("css vars editor gaps", () => {
   }
 
   function groupByTitle(container: HTMLElement, title: string): HTMLElement {
-    const group = [...container.querySelectorAll('[part="group"]')].find(
+    const group = [...container.querySelectorAll('[part="token-group"]')].find(
       (g): g is HTMLElement =>
         g instanceof HTMLElement &&
         g.querySelector('[part="group-title"]')?.textContent.trim() === title,

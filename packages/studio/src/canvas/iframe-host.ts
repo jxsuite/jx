@@ -156,7 +156,21 @@ export interface HostState {
   selectionPath: (string | number)[] | null;
   /** The whole selection this host last measured, so a re-measure redraws every box. */
   selectionPaths: readonly JxPath[];
-  /** Id of the most recent selection `measure` request, so stale `geometry` replies are dropped. */
+  /**
+   * The allocator every `measure` request this host posts draws its id from: selection, presence,
+   * pan-to-card and {@link measureCanvasPath}. One counter keeps the ids disjoint, so the `geometry`
+   * handler can dispatch on the id alone.
+   */
+  measureSeq: number;
+  /**
+   * Id of the most recent SELECTION `measure` request, so a stale selection reply is dropped.
+   *
+   * It names the request, not the counter. It used to be both, so any other measure posted while a
+   * selection measure was in flight superseded it: picking a tag in the Styles Outline posts the
+   * selection measure and then a pan-to-card measure in the same tick, the pan took the newer id,
+   * and the selection reply arrived to find itself stale. The specimen was centred and never
+   * outlined. A live peer's presence measure did the same to the page selection.
+   */
   selReqId: number;
   /**
    * The NON-primary selected paths the in-flight selection `measure` covers, serialized. The
@@ -164,7 +178,7 @@ export interface HostState {
    * selected node leaves it empty, so nothing but the selection box is ever drawn.
    */
   coSelectionKeys: Set<string>;
-  /** Id of the most recent presence `measure` request (allocated from the selReqId counter). */
+  /** Id of the most recent presence `measure` request (allocated from {@link HostState.measureSeq}). */
   presenceReqId: number;
   /** Serialized peer path → presence box meta for the in-flight presence measure. */
   presenceMeta: Map<string, { color: string; label: string }>;
@@ -272,8 +286,8 @@ export interface HostState {
   /**
    * Resolvers for {@link measureCanvasPath} requests, keyed by the `measure` reqId.
    *
-   * Allocated from the same `selReqId` counter as the selection and presence measures, so the three
-   * can never collide and the `geometry` handler can dispatch on the id alone.
+   * Allocated from the same `measureSeq` counter as the selection and presence measures, so the
+   * three can never collide and the `geometry` handler can dispatch on the id alone.
    */
   pendingMeasures: Map<number, (hits: NodeHit[]) => void>;
   /**
@@ -774,8 +788,8 @@ function measureIn(
   path: readonly (string | number)[],
 ): Promise<CanvasPoint | null> {
   return new Promise((resolve) => {
-    host.selReqId += 1;
-    const reqId = host.selReqId;
+    host.measureSeq += 1;
+    const reqId = host.measureSeq;
     const timer = setTimeout(() => {
       host.pendingMeasures.delete(reqId);
       resolve(null);
@@ -1718,8 +1732,8 @@ function requestPresence(host: HostState): void {
     host.overlay.setPresence([]);
     return;
   }
-  host.selReqId += 1;
-  host.presenceReqId = host.selReqId;
+  host.measureSeq += 1;
+  host.presenceReqId = host.measureSeq;
   host.channel.post({ kind: "measure", paths, reqId: host.presenceReqId });
 }
 
@@ -1743,6 +1757,8 @@ function requestSelection(host: HostState, sel: readonly JxPath[]): void {
     return;
   }
   if (!primary) {
+    // Nothing selected, so a reply still in flight answers a question nobody is asking any more.
+    host.selReqId = -1;
     host.coSelectionKeys.clear();
     host.overlay.setSelection(null);
     host.overlay.setCoSelection([]);
@@ -1755,7 +1771,8 @@ function requestSelection(host: HostState, sel: readonly JxPath[]): void {
   // Cross the postMessage boundary.
   const others = cloneSelection(sel.slice(0, -1));
   host.coSelectionKeys = new Set(others.map((path) => JSON.stringify(path)));
-  host.selReqId += 1;
+  host.measureSeq += 1;
+  host.selReqId = host.measureSeq;
   host.channel.post({
     kind: "measure",
     paths: [[...primary], ...others],
@@ -1776,13 +1793,15 @@ function requestStylebookSelection(host: HostState): void {
   const tag = shell.stylebook.selection;
   const cardPath = tag ? host.stylebook?.tagToCardPath.get(tag) : undefined;
   if (!tag || !cardPath) {
+    host.selReqId = -1;
     host.overlay.setSelection(null);
     return;
   }
   if (!host.ready) {
     return;
   }
-  host.selReqId += 1;
+  host.measureSeq += 1;
+  host.selReqId = host.measureSeq;
   host.channel.post({ kind: "measure", paths: [[...cardPath]], reqId: host.selReqId });
 }
 
@@ -1989,6 +2008,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     lastHover: null,
     lastSelectionRect: null,
     lastSnapshotSeq: 0,
+    measureSeq: 0,
     overlay,
     panReqId: -1,
     pending: null,
@@ -2004,7 +2024,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     ready: false,
     selectionPath: null,
     selectionPaths: [],
-    selReqId: 0,
+    selReqId: -1,
     snapshot: null,
     stylebook: null,
     tabId: null,
@@ -3525,9 +3545,9 @@ export function panToStylebookTag(tag: string): void {
   if (!cardPath) {
     return;
   }
-  host.selReqId += 1;
-  host.panReqId = host.selReqId;
-  host.channel.post({ kind: "measure", paths: [[...cardPath]], reqId: host.selReqId });
+  host.measureSeq += 1;
+  host.panReqId = host.measureSeq;
+  host.channel.post({ kind: "measure", paths: [[...cardPath]], reqId: host.panReqId });
 }
 
 // ─── Format-toolbar bridge (Phase 4b-2) ─────────────────────────────────────────

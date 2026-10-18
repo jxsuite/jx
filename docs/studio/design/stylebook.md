@@ -18,6 +18,7 @@ code:
   - packages/studio/src/panels/layers-panel.ts
   - packages/studio/src/surfaces/panel-stylebook-layers.ts
   - packages/studio/src/surfaces/stylebook-chrome.ts
+  - packages/studio/src/style/tag-inheritance.ts
 ---
 
 # Project Styles
@@ -36,7 +37,7 @@ Two controls sit above the canvas: a **Filter** box to narrow the catalog by nam
 
 ## Style an element type
 
-1. Click a specimen card on the canvas, or its row in **Outline**. The Inspector switches to the **Style** tab on its own.
+1. Click a specimen card on the canvas, or its row in **Outline**. The specimen is outlined on the canvas, the Inspector switches to the **Style** tab on its own, and the Command Bar's path and the Inspector header both name the tag you picked (`project.json › h1`, **Element · h1**).
 2. Read the Target Line before you type. Its scope chip reads **all `<h1>` in this document**. You are editing the element type, not one element. See **[Style inspector](/docs/studio/design/style-inspector)**.
 3. Edit styles with the full inspector: sections, provenance chips, and all.
 4. Watch every panel update: you're styling the element type, so every specimen of it changes at once, and so does every matching element the chip named.
@@ -56,6 +57,8 @@ The chip is there before your first keystroke, which is the point: this catalog 
 An element default you set here is an edit to the open file like any other: the tab shows its unsaved dot and **Save** (:kbd[⌘S]) writes it. The **Variables** view saves differently, and says so at its top: a variable change is written as you make it, together with any element default still waiting for Save.
 
 A value that arrives from your project's tokens rather than from this file carries an inherited chip reading **from site tokens**, so a default you did not write here is never mistaken for one you did. It has nowhere to jump to, because that value lives in the project's site-wide style, and you edit it in **[Design tokens](/docs/studio/design/tokens)**.
+
+A property your pages inherit, such as the font, size, line height or colour, shows what the element type would inherit when you leave it unset, with a chip naming where it comes from. Your project file's own root style is the page `body`, so an unstyled `h1` reads **from body** and shows the body font, and a cell nested under `table` reads **from table** for a colour the table sets. Set the property on the element type and your value takes over.
 
 ## Project Styles, element styles, or component styles?
 

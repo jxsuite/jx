@@ -48,6 +48,7 @@ import { shell } from "../shell";
 import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
 import { PROJECT_STYLES_VIEW } from "../style/project-styles";
+import { stylebookTarget } from "../style/stylebook-target";
 import { activeRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
 import { deployStatusItem } from "../publish/deploy-checklist";
@@ -255,15 +256,16 @@ function selectionField(registry: CommandRegistry | null): ProjectedField | null
      it was there. The Style panel gates on the same mode (`panels/style-panel.ts`).
 
      It also wins over the document selection here, because in that mode the document selection is
-     not the author's: picking a tag parks it on the root (`selectStylebookTag`), so the
-     "a single selection prints nothing" rule below hid the rule being edited in the one place it
-     applied. */
+     not the author's: picking a tag clears it (`selectStylebookTag`), so the "a single selection
+     prints nothing" rule below hid the rule being edited in the one place it applied. The command
+     bar and the Inspector header ask the same question through `stylebookTarget`. */
   if (tab?.session.ui.canvasMode === PROJECT_STYLES_VIEW) {
-    return shell.stylebook.selection
+    const target = stylebookTarget(tab);
+    return target
       ? projectField(registry, "selection", [
           {
             command: null,
-            label: shell.stylebook.selection.replaceAll(" ", " › "),
+            label: target.replaceAll(" ", " › "),
             title: "The style rule being edited",
           },
         ])

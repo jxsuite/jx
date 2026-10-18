@@ -37,6 +37,7 @@ import { presenceProjection } from "../collab/presence-chips";
 import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab, workspace } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
+import { stylebookTarget } from "../style/stylebook-target";
 import { shell } from "../shell";
 import { openQuickSearch } from "../panels/quick-search";
 import { getPlatform, hasPlatform } from "../platform";
@@ -509,10 +510,20 @@ export function documentSegmentLabel(tab: Tab | null): string {
   return root && trimmed.startsWith(`${root}/`) ? trimmed.slice(root.length + 1) : trimmed;
 }
 
-/** The selection's label — the Outline's own `nodeLabel`, so the two never disagree. */
+/**
+ * The selection's label — the Outline's own `nodeLabel`, so the two never disagree.
+ *
+ * In the Styles workspace's Elements view the selection is a TAG (`stylebookTarget`), and the
+ * segment names it the way the status bar and the Style body do: `project.json › h1`, not the root
+ * node of the catalogue's document.
+ */
 export function selectionSegmentLabel(tab: Tab | null): string {
   if (shell.layoutSelection) {
     return "layout";
+  }
+  const tag = stylebookTarget(tab);
+  if (tag) {
+    return tag.replaceAll(" ", " › ");
   }
   const paths = tab?.session.selection ?? [];
   const selection = primarySelection(paths);
@@ -849,6 +860,8 @@ export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}): void {
       void shell.docks.bottom.collapsed;
       void shell.git.status;
       void shell.layoutSelection;
+      // The pill's selection segment names a Styles specimen's tag (`selectionSegmentLabel`).
+      void shell.stylebook.selection;
       // The workspace tabs follow the shell, so a switch made by a chord, a script or a tab's
       // Activation repaints the selected tab.
       void shell.workspace;

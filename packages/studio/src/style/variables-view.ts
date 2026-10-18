@@ -14,7 +14,7 @@
  * chokepoint as it is made (`updateSiteConfig` → `commitProjectConfig`), which writes the whole
  * document and leaves the tab clean, while an edit in the Elements view is a transaction on the tab
  * that waits for ⌘S. Both models are kept; what is not allowed is the author learning the
- * difference from the Save button, so the view says it in a sentence ({@link VARIABLES_SAVING}).
+ * difference from the Save button, so the view says it in words ({@link VARIABLES_SAVING}).
  *
  * **One configuration object.** Before the editor draws, the open `project.json` tab is made the
  * configuration document of record (`projectConfigDocument`), so the object the editor mutates is
@@ -50,19 +50,26 @@ export const VARIABLES_TITLE = "Variables";
 
 /** What a variable is, in the words of the platform feature it is. */
 export const VARIABLES_LEDE =
-  "Your site's CSS custom properties: the --names in the root style block of project.json. " +
-  "Every page and component inherits them, and any style value can use one as var(--name).";
+  "Your site's CSS custom properties, kept in the root style block of project.json. Every page " +
+  "and component can use one in any style value as var(--name).";
 
-/** When an edit here reaches the file, which is not when an Elements edit does. */
+/**
+ * When an edit here reaches the file, which is not when an Elements edit does.
+ *
+ * Three sentences, each one rule, with the exception named AS an exception. It was one sentence
+ * saying a change is saved as you make it and the next saying Save writes the value, which a reader
+ * took as the view contradicting itself rather than as undo being the case that waits.
+ */
 export const VARIABLES_SAVING =
-  "A change here is saved to project.json as you make it, together with any element style " +
-  "change still waiting for Save. Undo takes a change back in the document, and Save writes " +
-  "the undone value to the file.";
+  "Each change here is written to project.json as you make it, so there is nothing to save " +
+  "afterwards. The write also saves any Elements change still waiting for Save, because both " +
+  "live in that file. Undo is the exception: an undone change waits for Save like any other edit.";
 
 /** Where color schemes and breakpoints are declared, which is not here. */
 export const VARIABLES_SCHEMES =
-  "Color schemes and breakpoints are declared in Project settings, under Contexts. A variable " +
-  "takes a different value in one through its Add override picker.";
+  "To give a variable another value in a color scheme or at a breakpoint, use Add override " +
+  "under its row. The schemes and breakpoints themselves are declared in Project settings, " +
+  "under Contexts.";
 
 /** What the view draws in `paneId`. Pure: every word is a constant. */
 export function variablesView(paneId: string): VariablesView {

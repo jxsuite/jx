@@ -523,6 +523,30 @@ describe("the layout selection", () => {
     expect(headerTarget()).toBe("<header> in layouts/base.json");
   });
 
+  test("a Styles specimen is named by its TAG, and counts as a selection", async () => {
+    // `selectStylebookTag` leaves the document selection empty: the header said the catalogue's
+    // Root `div` while `h1 · Base` was being edited, because it read only the document selection.
+    const tab = resetWorkspaceWithTab();
+    tab.session.ui.canvasMode = "stylebook";
+    mount(makeCtx());
+    render();
+    await flush(4);
+    expect(inspectorTab()).toBe("page");
+    shell.stylebook.selection = "h1";
+    await flush(4);
+    try {
+      expect(inspectorTab()).toBe("properties");
+      expect(headerTitle()).toBe("Element");
+      expect(headerTarget()).toBe("h1");
+      // The Variables view styles no tag, so the same pick is not this tab's target there.
+      tab.session.ui.canvasMode = "tokens";
+      await flush(4);
+      expect(headerTarget()).not.toBe("h1");
+    } finally {
+      shell.stylebook.selection = null;
+    }
+  });
+
   test("the inspector header names the BATCH when several elements are selected (§6.7)", async () => {
     const tab = resetWorkspaceWithTab();
     mount(makeCtx());
