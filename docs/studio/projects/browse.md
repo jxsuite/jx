@@ -57,7 +57,7 @@ A collection lists its entry files, so a draft sits beside a published entry. Be
 
 Above a collection's list, one line says where its entries appear on your site:
 
-- **Each post has a page at `/blog/:slug` using Post**: the collection has a template page, here `pages/blog/[slug].json`, and every entry is published at that address. **Design the post page** opens the template page in the Design workspace.
+- **Each post has a page at `/blog/:slug` using Post**: the collection has a template page, here `pages/blog/[slug].json`, and every entry is published at that address. **Design the post page** opens the template page in the Design workspace. In a multilingual project each language usually has its own template page, and the line names the one in the language you have filtered to (the default language when the filter shows all of them). An entry is written inside the template of its own language.
 - **Entries have no page of their own**: no page in `pages/` expands over this collection. **Add one** writes `pages/<collection>/[slug].json`, the same page **Add new** writes when you create a collection with **Give each item its own page** on, bound to the collection's title, image and body.
 
 Studio reads this from your pages rather than storing it: the template page is the page whose `$paths` names the collection, so the line can never disagree with what the site build publishes.

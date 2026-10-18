@@ -23,7 +23,12 @@ import { runActiveReported } from "../commands/run-reported";
 import { mountSchemaForm } from "../ui/schema-form";
 import { collectionForFile } from "./collection-match";
 import { capitalise, contentCollection } from "./content-collections";
-import { entryUrl, onCollectionPagesRead, peekCollectionPage } from "./collection-pages";
+import {
+  entryLocale,
+  entryUrl,
+  onCollectionPagesRead,
+  peekCollectionPage,
+} from "./collection-pages";
 import { commitEntryFields, entryFields } from "./entry-fields";
 import { DRAFT_MEANING, hasDraftAxis, isDraftEntry } from "./draft-state";
 import { entryCollection } from "./entry-model";
@@ -55,7 +60,7 @@ export function entryInspectorView(tab: Tab): EntryInspectorView {
   const fields = entryFields(tab);
   const draftAxis = hasDraftAxis(collection?.schema, fields);
   const draft = isDraftEntry(fields);
-  const page = name === "" ? null : peekCollectionPage(name);
+  const page = name === "" ? null : peekCollectionPage(name, entryLocale(path));
   const url = page ? entryUrl(page, path) : null;
   const isJson = path.endsWith(".json");
   return {

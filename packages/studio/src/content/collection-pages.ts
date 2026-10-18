@@ -19,6 +19,12 @@
 
 import { isString } from "@jxsuite/schema/guards";
 import { fileToRoute, isRoutedPageFile } from "@jxsuite/site/routes";
+import {
+  canonicalizeLocale,
+  localeOfPath,
+  resolveI18n,
+  servedLocaleOfPath,
+} from "@jxsuite/schema/locale";
 import { getPlatform, hasPlatform } from "../platform";
 import { projectState } from "../store";
 import { pagePathsDef } from "../page-params";
@@ -46,6 +52,11 @@ export interface CollectionPage {
   param: string | null;
   /** The page's `$layout`, as {@link PageFacts.layout}. */
   layout: string | false | undefined;
+  /**
+   * The language the page is served in (`pages/ar/exhibitions/[slug].json` → `ar`), or `null` in a
+   * project without `i18n` and for a page outside every locale tree.
+   */
+  locale: string | null;
 }
 
 /** The facts a page document states, from its parsed tree and (for a format page) frontmatter. */
@@ -93,8 +104,11 @@ export async function readPageFacts(path: string): Promise<PageFacts> {
 
 // ─── The index ───────────────────────────────────────────────────────────────
 
-let _index: Map<string, CollectionPage> | null = null;
-let _loading: Promise<Map<string, CollectionPage>> | null = null;
+/** Every template page of each collection, in path order. A multilingual site has one per language. */
+type CollectionPageIndex = Map<string, CollectionPage[]>;
+
+let _index: CollectionPageIndex | null = null;
+let _loading: Promise<CollectionPageIndex> | null = null;
 /** Bumped by every invalidation, so a read that started before one cannot land after it. */
 let _epoch = 0;
 /** Told when a read lands, so a surface showing a stale answer can repaint. */
@@ -120,7 +134,7 @@ async function listPages(dir: string, out: string[]): Promise<void> {
 }
 
 /** One walk of `pages/`, then the facts of every dynamic page in it. */
-async function readIndex(): Promise<Map<string, CollectionPage>> {
+async function readIndex(): Promise<CollectionPageIndex> {
   const files: string[] = [];
   await listPages("pages", files);
   /* Only routed pages: an underscore-prefixed file or folder is private to its directory and
@@ -129,16 +143,18 @@ async function readIndex(): Promise<Map<string, CollectionPage>> {
   const facts = await Promise.all(
     dynamic.map(async (path) => [path, await readPageFacts(path)] as const),
   );
-  const index = new Map<string, CollectionPage>();
+  const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
+  const index: CollectionPageIndex = new Map();
   for (const [path, fact] of facts) {
-    // The first page in path order wins, so two pages over one collection answer deterministically.
-    if (fact.contentType && !index.has(fact.contentType)) {
-      index.set(fact.contentType, {
+    if (fact.contentType) {
+      const page: CollectionPage = {
         layout: fact.layout,
+        locale: servedLocaleOfPath(path, i18n),
         param: fact.param,
         path,
         pattern: fileToRoute(path).urlPattern,
-      });
+      };
+      index.set(fact.contentType, [...(index.get(fact.contentType) ?? []), page]);
     }
   }
   return index;
@@ -150,7 +166,7 @@ async function readIndex(): Promise<Map<string, CollectionPage>> {
  * With no platform or no project there is nothing to read, and the answer is an empty map rather
  * than a rejection.
  */
-export function collectionPages(): Promise<Map<string, CollectionPage>> {
+export function collectionPages(): Promise<CollectionPageIndex> {
   if (_index) {
     return Promise.resolve(_index);
   }
@@ -174,21 +190,64 @@ export function collectionPages(): Promise<Map<string, CollectionPage>> {
 }
 
 /**
+ * The one of a collection's template pages that serves `locale`.
+ *
+ * A multilingual site gives a collection one template page per language
+ * (`pages/exhibitions/[slug].json`, `pages/ar/exhibitions/[slug].json`, …), and "the" page is the
+ * one in the language asked about: an Arabic entry is drawn in the Arabic page's layout, and the
+ * header for the English view names the English URL. With no language asked, or none of the pages
+ * in it, the answer is the site's default language's page, then a page outside every locale tree,
+ * then the first in path order, so two pages over one collection still answer deterministically.
+ */
+export function pageForLocale(
+  pages: readonly CollectionPage[] | undefined,
+  locale: string | null | undefined,
+): CollectionPage | null {
+  if (!pages || pages.length === 0) {
+    return null;
+  }
+  const wanted = canonicalizeLocale(locale);
+  const fallback = resolveI18n(projectState?.projectConfig ?? {}).i18n?.defaultLocale ?? null;
+  return (
+    (wanted === null ? undefined : pages.find((page) => page.locale === wanted)) ??
+    (fallback === null ? undefined : pages.find((page) => page.locale === fallback)) ??
+    pages.find((page) => page.locale === null) ??
+    pages[0]!
+  );
+}
+
+/** The language a collection entry is written in, read from its path (`content/x/ar/a.md` → `ar`). */
+export function entryLocale(path: string | null | undefined): string | null {
+  if (!path) {
+    return null;
+  }
+  return localeOfPath(path, resolveI18n(projectState?.projectConfig ?? {}).i18n);
+}
+
+/**
  * A collection's template page as the index stands: the page, `null` when the collection has none,
  * or `undefined` while the index has not been read yet (which starts the read).
+ *
+ * @param locale - The language asked about, as {@link pageForLocale} reads it.
  */
-export function peekCollectionPage(name: string): CollectionPage | null | undefined {
+export function peekCollectionPage(
+  name: string,
+  locale?: string | null,
+): CollectionPage | null | undefined {
   if (!_index) {
     void collectionPages();
     return undefined;
   }
-  return _index.get(name) ?? null;
+  return pageForLocale(_index.get(name), locale);
 }
 
-/** A collection's template page, reading the index if it has to. */
-export async function collectionPage(name: string): Promise<CollectionPage | null> {
+/** A collection's template page for a language, reading the index if it has to. */
+export async function collectionPage(
+  name: string,
+  locale?: string | null,
+): Promise<CollectionPage | null> {
   const index = await collectionPages();
-  return index.get(name) ?? null;
+  return pageForLocale(index.get(name), locale);
 }
 
 /** Forget the index. The next read walks `pages/` again. */

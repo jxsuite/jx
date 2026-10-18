@@ -84,6 +84,19 @@ export interface AddNewView {
   /** Whether the primary button can answer now. */
   canConfirm: boolean;
 
+  // ── language (page, entry, collection) ────────────────────────────────────
+  /** Whether the Language picker is drawn: a page, or an entry of a localized collection. */
+  localeShown: boolean;
+  localeOptions: SurfaceOption[];
+  /** The chosen language, a declared tag. */
+  locale: string;
+  /** Whether the project declares languages, which is when a collection can be localized. */
+  localizable: boolean;
+  /** Collection: one folder per language. */
+  localized: boolean;
+  /** The declared tags, said on the collection's checkbox: "en, fr-CA, ar". */
+  localeSummary: string;
+
   // ── page ──────────────────────────────────────────────────────────────────
   route: string;
   editingUrl: boolean;
@@ -133,6 +146,8 @@ export interface AddNewActions {
   pickComponentStart: (value: string) => void;
   pickCopy: (value: string) => void;
   pickCollection: (value: string) => void;
+  pickLocale: (value: string) => void;
+  setLocalized: (checked: boolean) => void;
   /**
    * The file picker settled. The ELEMENT rather than its list, because a file input that is not
    * cleared refuses the same file twice, and the input is this document's own control.
@@ -222,6 +237,7 @@ export function openAddNewSurface(options: AddNewSurfaceOptions): AddNewSurfaceH
     pickComponentStart: actions.pickComponentStart,
     pickCopy: actions.pickCopy,
     pickKind: actions.pickKind,
+    pickLocale: actions.pickLocale,
     pickPageTemplate: actions.pickPageTemplate,
     pickStart: actions.pickStart,
     pickWrap: actions.pickWrap,
@@ -232,6 +248,7 @@ export function openAddNewSurface(options: AddNewSurfaceOptions): AddNewSurfaceH
       scope.name = value;
       actions.setName(value);
     },
+    setLocalized: actions.setLocalized,
     setOwnPage: actions.setOwnPage,
     setUrl: (value: string) => {
       scope.url = value;

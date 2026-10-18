@@ -62,6 +62,10 @@ function requestOf(args: CommandArgValues): AddNewRequest {
   if (collection !== undefined) {
     request.collection = collection;
   }
+  const locale = optionalStringArg(FILE_NEW, args, "locale");
+  if (locale !== undefined) {
+    request.locale = locale;
+  }
   const template = optionalStringArg(FILE_NEW, args, "template");
   if (template !== undefined) {
     request.template = template;
@@ -129,6 +133,11 @@ export function addNewCommands(): AnyCommand[] {
           kind: enumProperty(
             CREATION_KINDS,
             "What to create: page, collection, template, component, media (an upload) or entry.",
+          ),
+          locale: stringProperty(
+            "For a page or an entry of a localized collection: the language it is written in, one " +
+              "of the project's i18n locales such as fr-CA. A page in another language is saved in " +
+              "that language's folder and opens under its URL prefix.",
           ),
           name: stringProperty(
             "The name. A page's URL, a template's file and a component's tag are derived from it. " +

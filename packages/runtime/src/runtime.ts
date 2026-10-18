@@ -4361,6 +4361,30 @@ const ROOT_INSTANCE_PATH: InstancePath = { expansion: 0, frames: [] };
 let _instancePath: InstancePath = ROOT_INSTANCE_PATH;
 
 /**
+ * Say that an instance was not rendered, on the two surfaces a host can reach (spec §16.4, §16.9):
+ * the console, and a bubbling, composed `jx-error` `ErrorEvent` from the element carrying the
+ * error. Nothing is said for a host no longer in the document, whose replacement reports for it.
+ *
+ * @param {HTMLElement} host - The instance
+ * @param {string} tagName - Its tag, for the console line
+ * @param {Error} error - Why
+ */
+function reportUnrendered(host: HTMLElement, tagName: string, error: Error): void {
+  if (!host.isConnected) {
+    return;
+  }
+  console.error(`Jx: <${tagName}> was not rendered:`, error);
+  host.dispatchEvent(
+    new ErrorEvent("jx-error", {
+      bubbles: true,
+      composed: true,
+      error,
+      message: error.message,
+    }),
+  );
+}
+
+/**
  * Run `fn` with `path` as the chain, so every instance that CONNECTS during it reads that chain.
  *
  * Restored rather than cleared afterwards: the enclosing render's chain is what was there, and a
@@ -4677,18 +4701,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         ownPath = extendInstancePath(enclosingPath, { props: supplied, tag: tagName });
       } catch (error) {
         this.replaceChildren();
-        if (!this.isConnected) {
-          return;
-        }
-        console.error(`Jx: <${tagName}> was not rendered:`, error);
-        this.dispatchEvent(
-          new ErrorEvent("jx-error", {
-            bubbles: true,
-            composed: true,
-            error,
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
+        reportUnrendered(this, tagName, error instanceof Error ? error : new Error(String(error)));
         return;
       }
       /*
@@ -4752,18 +4765,29 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       _canvasInsideStampedHost ||= this.dataset.jxPath !== undefined;
       /* And the chain, for the same span: an instance this definition draws connects inside
          `this.append` below and reads it there ({@link underInstancePath}). */
+      /* A render that throws is reported the way a refusal is (§16.4), for the same reason: thrown
+         onward from this async callback it is an unhandled rejection naming no element. The
+         children drawn before the throw stay; the one that threw, its later siblings and `onMount`
+         do not happen, and slot content is still distributed into the slots that were drawn. */
+      let failed = false;
       try {
         underInstancePath(ownPath, () => {
           for (const childDef of children) {
             this.append(renderNode(childDef, state));
           }
         });
+      } catch (error) {
+        failed = true;
+        reportUnrendered(this, tagName, error instanceof Error ? error : new Error(String(error)));
       } finally {
         _canvasInsideStampedHost = wasInside;
       }
 
       // Slot distribution (light DOM)
       distributeSlots(this, slottedChildren);
+      if (failed) {
+        return;
+      }
 
       /* Lifecycle: onMount, with the HOST as its second argument.
          A sidecar that must reach the element it belongs to had no way to: the runtime handed it

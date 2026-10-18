@@ -26,7 +26,7 @@ import {
   setResolveToken,
   setSkipServerFunctions,
 } from "@jxsuite/runtime";
-import { isFunction } from "@jxsuite/schema/guards";
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canvas/asset-refs";
 import { documentBase, hostResolveToken } from "../canvas/canvas-origin";
 import { projectState } from "../store";
@@ -176,6 +176,44 @@ export async function renderDocPreview(filePath: string): Promise<HTMLElement | 
 }
 
 /**
+ * Whether a project component's definition renders with its own defaults, tried on a detached copy
+ * before a live instance is made.
+ *
+ * A preview instance renders with nothing given to it, so it draws the definition's DEFAULT state,
+ * and a definition may not be able to: the museum starter's `<mu-exhibition-card>` formats a `date`
+ * that defaults to `""`, and `Intl/formatDate` of an empty date is a `RangeError`, exactly as `new
+ * Intl.DateTimeFormat().format(new Date(""))` is (`spec.md` §19.4c). The instance renders in its
+ * own async `connectedCallback`, so that throw is an unhandled rejection nobody can catch, once per
+ * card per paint. The same render, made here synchronously into an element nobody sees, CAN be
+ * caught, and a definition that cannot render bare gets no preview rather than an uncaught error.
+ * Its card keeps its name, and the definition still renders wherever it is given its props.
+ */
+export async function componentRendersBare(path: string): Promise<boolean> {
+  try {
+    const parsed: unknown = JSON.parse(await getPlatform().readFile(path));
+    if (!isNonNullObject(parsed) || Array.isArray(parsed)) {
+      return false;
+    }
+    /* SAFETY: a project component's `.json` is its definition, a Jx element document; a shape
+       renderNode cannot draw throws into the catch below, which is "does not render bare". */
+    const definition = parsed as JxDocument;
+    setSkipServerFunctions(true);
+    setResolveToken(hostResolveToken());
+    const scope = await buildScope(definition, {}, previewBase(path));
+    // Its own tag would make an instance, and the instance's render is the one that cannot be caught.
+    renderNode({ ...definition, tagName: "div" }, scope);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A component whose definition is a JSON file in the project, which is what can be tried first. */
+function isProjectDefinition(component: ComponentEntry): boolean {
+  return component.source !== "npm" && (component.path?.endsWith(".json") ?? false);
+}
+
+/**
  * The preview for one file — a registered component's own preview when there is one, the document
  * render otherwise. Cached; a cache hit does no work at all.
  */
@@ -190,6 +228,9 @@ export async function previewFor(
   let rendered: HTMLElement | null | undefined;
   try {
     const component = componentRegistry.find((c: ComponentEntry) => c.path === path);
+    if (component && isProjectDefinition(component) && !(await componentRendersBare(path))) {
+      return undefined;
+    }
     rendered = component ? await renderComponentPreview(component) : await renderDocPreview(path);
   } catch {
     return undefined;

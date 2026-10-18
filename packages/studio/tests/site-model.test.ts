@@ -63,6 +63,32 @@ describe("pageRows — routes come from the router", () => {
     expect(rows.indexOf(entry!)).toBe(rows.indexOf(heading!) + 1);
   });
 
+  test("a collection's pages stay together under its heading when routes interleave", () => {
+    // The museum's three localized exhibition pages sort around another collection's page.
+    // Nesting is by position, so each collection's group must be contiguous under its heading.
+    const interleaved = [
+      page("pages/ar/exhibitions/[slug].json", "exhibitions"),
+      page("pages/events/[slug].json", "events"),
+      page("pages/exhibitions/[slug].json", "exhibitions"),
+      page("pages/fr-ca/expositions/[slug].json", "exhibitions"),
+      page("pages/visit.json"),
+    ];
+    const counts = new Map<string, number | null>([
+      ["exhibitions", 9],
+      ["events", 1],
+    ]);
+    const rows = pageRows(interleaved, counts, null);
+    expect(rows.map((row) => [row.kind, row.detail])).toEqual([
+      ["page", "/visit"],
+      ["collection", "9 entries"],
+      ["entry-page", "/ar/exhibitions/:slug"],
+      ["entry-page", "/exhibitions/:slug"],
+      ["entry-page", "/fr-ca/expositions/:slug"],
+      ["collection", "1 entry"],
+      ["entry-page", "/events/:slug"],
+    ]);
+  });
+
   test("a contentType naming no declared collection is an ordinary page, not a heading", () => {
     const rows = pageRows(pages, collections, null);
     const tags = rows.find((row) => row.path === "pages/tags/[tag].json");

@@ -363,16 +363,20 @@ describe("entries", () => {
     });
   });
 
-  test("refuses no collection and a localized one", () => {
+  test("refuses no collection, and a localized one with no language", () => {
     const none = deriveCreation("entry", "X", {}, CTX);
     expect(none.fileName).toBe("");
     expect(creationProblem(none, "X", {}, CTX, NOTHING_TAKEN)).toBe(
       "Choose the collection this entry belongs to.",
     );
     const options = { collection: "news" };
-    expect(
-      creationProblem(deriveCreation("entry", "X", options, CTX), "X", options, CTX, NOTHING_TAKEN),
-    ).toContain("is a localized collection");
+    const placeless = deriveCreation("entry", "X", options, CTX);
+    // No hint naming a `{locale}` directory nobody has: there is nowhere to put it yet.
+    expect(placeless.fileName).toBe("");
+    expect(placeless.saved).toBe("");
+    expect(creationProblem(placeless, "X", options, CTX, NOTHING_TAKEN)).toBe(
+      "Choose the language this news is written in.",
+    );
   });
 
   test("entryBody seeds nothing it was not asked for, and JSON has no frontmatter", () => {
@@ -461,5 +465,91 @@ describe("schemaPresets", () => {
   test("it is presetSchema's inverse, and a collection with no schema has only its body", () => {
     expect(schemaPresets(presetSchema(["title", "tags"]), false)).toEqual(["title", "tags"]);
     expect(schemaPresets(null, true)).toEqual(["richText"]);
+  });
+});
+
+describe("languages (site-architecture.md §13)", () => {
+  const I18N_CTX: CreationContext = {
+    ...CTX,
+    collections: [
+      ...CTX.collections,
+      {
+        dir: "content/exhibitions/{locale}",
+        ext: ".md",
+        formatName: "Markdown",
+        localeDirs: { "fr-CA": "content/exhibitions/fr-CA" },
+        name: "exhibitions",
+        schema: { properties: { title: { type: "string" } } },
+      },
+    ],
+    i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"], routing: "prefix-except-default" },
+  };
+
+  test("an entry goes in the folder of the language it is written in", () => {
+    const french = deriveCreation(
+      "entry",
+      "Night Tide",
+      { collection: "exhibitions", locale: "fr-CA" },
+      I18N_CTX,
+    );
+    // The folder as it is spelled on disk, not a second lowercase one beside it.
+    expect(french.path).toBe("content/exhibitions/fr-CA/night-tide.md");
+    expect(french.saved).toBe("Saved as content/exhibitions/fr-CA/night-tide.md in exhibitions.");
+    const options = { collection: "exhibitions", locale: "ar" };
+    const arabic = deriveCreation("entry", "Night Tide", options, I18N_CTX);
+    // A language with no folder yet gets the lowercase spelling Studio writes everywhere else.
+    expect(arabic.path).toBe("content/exhibitions/ar/night-tide.md");
+    expect(creationProblem(arabic, "Night Tide", options, I18N_CTX, NOTHING_TAKEN)).toBe("");
+    // A tag the project does not declare is no language at all.
+    const german = { collection: "exhibitions", locale: "de" };
+    expect(deriveCreation("entry", "X", german, I18N_CTX).fileName).toBe("");
+    // A collection that is not localized ignores the language: it is served in every one.
+    const post = deriveCreation("entry", "Hi", { collection: "posts", locale: "ar" }, I18N_CTX);
+    expect(post.path).toBe("content/posts/hi.md");
+  });
+
+  test("a page in another language is saved in its tree and opens under its prefix", () => {
+    const page = deriveCreation("page", "Opening Hours", { locale: "fr-CA" }, I18N_CTX);
+    expect(page.path).toBe("pages/fr-ca/opening-hours.json");
+    expect(page.dir).toBe("pages/fr-ca");
+    expect(page.route).toBe("/fr-ca/opening-hours");
+    expect(page.saved).toBe(
+      "Saved as pages/fr-ca/opening-hours.json · opens at /fr-ca/opening-hours",
+    );
+    // The default language owns the unprefixed URL space.
+    expect(deriveCreation("page", "Opening Hours", { locale: "en" }, I18N_CTX).path).toBe(
+      "pages/opening-hours.json",
+    );
+    // An edited URL is moved into the language's tree too.
+    const nested = deriveCreation("page", "X", { locale: "ar", url: "/visit/hours" }, I18N_CTX);
+    expect(nested.path).toBe("pages/ar/visit/hours.json");
+    expect(directoriesToList(nested)).toContain("pages/ar/visit");
+    // Without a name there is nothing to move.
+    expect(deriveCreation("page", "", { locale: "ar" }, I18N_CTX).dir).toBe("pages");
+  });
+
+  test("a collection keeps one folder per language, its first entry in the default one", () => {
+    const events = deriveCreation("collection", "Events", {}, I18N_CTX);
+    expect(events.config?.entry.source).toBe("./content/events/{locale}");
+    expect(events.path).toBe("content/events/en/first-event.md");
+    expect(events.extraWrites.map((write) => write.path)).toEqual(["pages/events/[slug].json"]);
+    expect(events.saved).toContain("one folder per language under content/events/");
+    const flat = deriveCreation("collection", "Events", { localized: false }, I18N_CTX);
+    expect(flat.config?.entry.source).toBe("./content/events");
+    expect(flat.path).toBe("content/events/first-event.md");
+    // A project with no languages has nothing to localize over.
+    expect(
+      deriveCreation("collection", "Events", { localized: true }, CTX).config?.entry.source,
+    ).toBe("./content/events");
+  });
+
+  test("prefix-always puts even the default language's page under its prefix", () => {
+    const always: CreationContext = {
+      ...I18N_CTX,
+      i18n: { defaultLocale: "en", locales: ["en", "ar"], routing: "prefix-always" },
+    };
+    expect(deriveCreation("page", "Hours", { locale: "en" }, always).route).toBe("/en/hours");
+    const events = deriveCreation("collection", "Events", {}, always);
+    expect(events.extraWrites[0]?.path).toBe("pages/en/events/[slug].json");
   });
 });

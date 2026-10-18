@@ -30,7 +30,13 @@ import {
   contentCollection,
   contentCollections,
 } from "../content/content-collections";
-import { collectionCounts, collectionEntryPaths, shownCollectionKey } from "../browse/library-pane";
+import {
+  collectionCounts,
+  collectionEntryPaths,
+  collectionView,
+  shownCollectionKey,
+} from "../browse/library-pane";
+import { localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
 import { onEntrySummariesRead, peekEntrySummaries } from "../content/entry-summaries";
 import { openEntry } from "../content/entry-open";
 import { workspaceHomeTabId } from "../workspace/workspace-ids";
@@ -180,7 +186,9 @@ const ACTIONS: CollectionsPanelActions = {
     const writing = writingCollection(activeTab.value);
     void runActiveReported(
       "file.new",
-      writing === null ? { kind: "entry" } : { collection: writing, kind: "entry" },
+      writing === null
+        ? { kind: "entry" }
+        : { collection: writing, kind: "entry", ...newEntryLocale(writing) },
       SOURCE,
     );
   },
@@ -191,6 +199,19 @@ const ACTIONS: CollectionsPanelActions = {
     void runActiveReported("content.showCollection", { collection: key }, SOURCE);
   },
 };
+
+/**
+ * The language a new entry starts in from the entries list: the one the entry being written is in,
+ * else the one the collection's view is filtered to. Nothing when neither says, which leaves the
+ * dialog on the site's default.
+ */
+export function newEntryLocale(collection: string): { locale?: string } {
+  const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
+  const path = activeTab.value?.documentPath ?? null;
+  const own = path === null ? null : localeOfPath(path, i18n);
+  const locale = own ?? collectionView(collection).locale;
+  return locale === "" ? {} : { locale };
+}
 
 // ─── Mounting ────────────────────────────────────────────────────────────────
 

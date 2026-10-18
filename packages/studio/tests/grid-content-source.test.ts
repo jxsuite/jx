@@ -4,6 +4,7 @@ import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import {
   collectionDirs,
+  collectionSourceDirs,
   collectionInfo,
   createCollectionSource,
   createPagesSource,
@@ -94,6 +95,39 @@ describe("collection resolution", () => {
     setup();
     expect(await listCollectionEntryIds("posts")).toEqual(["hello", "world"]);
     expect(await listCollectionEntryIds("missing")).toEqual([]);
+  });
+
+  test("a localized collection is listed across its declared language folders", async () => {
+    installMockPlatform(
+      { formatAction: mockFormatAction },
+      {
+        "content/ex/ar/b.md": HELLO_MD,
+        "content/ex/de/stray.md": HELLO_MD,
+        "content/ex/en/a.md": HELLO_MD,
+        "content/ex/fr-CA/c.md": WORLD_MD,
+        "content/ex/images/x.md": HELLO_MD,
+      },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: { ex: { format: "Markdown", schema: {}, source: "./content/ex/{locale}/" } },
+        i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"] },
+      },
+    });
+    // The undeclared `de` folder and the co-located `images/` folder are not languages of it.
+    expect(await collectionSourceDirs({ dir: "content/ex/{locale}", name: "ex" })).toEqual([
+      "content/ex/ar",
+      "content/ex/en",
+      "content/ex/fr-CA",
+    ]);
+    expect(await listCollectionEntryIds("ex")).toEqual(["b", "a", "c"]);
+    const { total } = await createCollectionSource("ex").rows();
+    expect(total).toBe(3);
+  });
+
+  test("a localized collection with no folder yet has no directories", async () => {
+    setup();
+    expect(await collectionSourceDirs({ dir: "content/none/{locale}", name: "none" })).toEqual([]);
   });
 });
 

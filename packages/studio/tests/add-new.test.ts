@@ -1015,3 +1015,127 @@ describe("a page for a collection that has none", () => {
     expect(await flow.addCollectionPage("recipes")).toBeNull();
   });
 });
+
+// ─── Languages ────────────────────────────────────────────────────────────────
+
+describe("a multilingual site (site-architecture.md §13)", () => {
+  const I18N: JsonObject = {
+    content: {
+      exhibitions: { schema: { properties: {} }, source: "./content/exhibitions/{locale}/" },
+      notes: { schema: { properties: {} }, source: "./content/notes" },
+    },
+    i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"] },
+  };
+  const FILES = {
+    "content/exhibitions/en/a.json": "{}",
+    "content/exhibitions/fr-CA/a.json": "{}",
+  };
+
+  async function pickLocale(value: string) {
+    const select = part("locale")!.querySelector("select")!;
+    select.value = value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await settle(undefined, 10);
+  }
+
+  test("an entry asks for its language, starting from the one requested", async () => {
+    setup(FILES, I18N);
+    const { done } = await open({ collection: "exhibitions", kind: "entry", locale: "fr-CA" });
+    expect(part("locale")?.querySelector("select")?.value).toBe("fr-CA");
+    // Collections are named as the Content workspace names them, not by their ids.
+    const labels = [...part("collection")!.querySelectorAll("option")].map((o) => o.textContent);
+    expect(labels).toEqual(["Exhibitions", "Notes"]);
+    await typeName("Night Tide");
+    // The French folder as it is spelled on disk.
+    expect(saved()).toBe("Saved as content/exhibitions/fr-CA/night-tide.json in exhibitions.");
+    await pickLocale("ar");
+    expect(saved()).toBe("Saved as content/exhibitions/ar/night-tide.json in exhibitions.");
+    await confirm();
+    await done;
+    expect(fileJson("content/exhibitions/ar/night-tide.json")).toEqual({});
+  });
+
+  test("an entry with no language requested starts in the site's default", async () => {
+    setup(FILES, I18N);
+    await open({ collection: "exhibitions", kind: "entry" });
+    await typeName("Night Tide");
+    expect(saved()).toBe("Saved as content/exhibitions/en/night-tide.json in exhibitions.");
+  });
+
+  test("an entry of a collection that is not localized has no language to choose", async () => {
+    setup(FILES, I18N);
+    await open({ collection: "notes", kind: "entry" });
+    expect(part("locale")).toBeNull();
+  });
+
+  test("a page is saved in the tree of the language chosen", async () => {
+    setup(FILES, I18N);
+    await open({ kind: "page" });
+    await typeName("Opening Hours");
+    expect(saved()).toBe("Saved as pages/opening-hours.json · opens at /opening-hours");
+    await pickLocale("fr-CA");
+    expect(saved()).toBe("Saved as pages/fr-ca/opening-hours.json · opens at /fr-ca/opening-hours");
+  });
+
+  test("a collection is localized by default, and can opt out", async () => {
+    setup(FILES, I18N);
+    const { done } = await open({ kind: "collection" });
+    await typeName("Events");
+    expect(saved()).toContain("one folder per language under content/events/");
+    expect(part("localized")?.textContent).toContain("en, fr-CA, ar");
+    const box = dialog().querySelector<HTMLInputElement>('[part="localized"] input')!;
+    box.checked = false;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    await settle(undefined, 10);
+    expect(saved()).toContain("a content/events/ folder with a first entry");
+    box.checked = true;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    await settle(undefined, 10);
+    await confirm();
+    const result = await done;
+    expect(result?.wrote).toContain("content/events/en/first-event.json");
+  });
+
+  test("a project with no languages offers none", async () => {
+    await open({ kind: "page" });
+    expect(part("locale")).toBeNull();
+    await pickKind("collection");
+    expect(part("localized")).toBeNull();
+  });
+
+  test("createDirect takes a declared language and refuses any other", async () => {
+    setup(FILES, I18N);
+    const made = await flow.createDirect({
+      collection: "exhibitions",
+      kind: "entry",
+      locale: "ar",
+      name: "Night Tide",
+    });
+    expect(made.path).toBe("content/exhibitions/ar/night-tide.json");
+    let caught: unknown;
+    try {
+      await flow.createDirect({ kind: "page", locale: "de", name: "X" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(RangeError);
+    expect(String(caught)).toContain('"de" is not a language this project declares');
+    let bare: unknown;
+    try {
+      await flow.createDirect({ collection: "exhibitions", kind: "entry", name: "Y" });
+    } catch (error) {
+      bare = error;
+    }
+    expect(String(bare)).toContain("Choose the language this exhibition is written in.");
+  });
+
+  test("a project with no languages names none in the refusal", async () => {
+    let caught: unknown;
+    try {
+      await flow.createDirect({ kind: "page", locale: "fr", name: "X" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(String(caught)).toContain("declared: none");
+  });
+});

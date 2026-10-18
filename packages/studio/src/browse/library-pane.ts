@@ -91,6 +91,7 @@ import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { LibraryFile, LibraryLayout } from "./library-model";
 import type { EntryFacts, EntryFactsOf } from "./library-layouts";
 import type { LibrarySource } from "./library-source";
+import type { CommandArgValues } from "../commands/command-args";
 import type {
   LibraryChip,
   LibraryPageLine,
@@ -774,7 +775,8 @@ export function pageLineFor(
 
 /** Open the collection's page in Design: activating it enters Design (§22.1). */
 function designCollectionPage(name: string): void {
-  const page = peekCollectionPage(name);
+  // The page in the language the view is filtered to: the one the reader is looking at.
+  const page = peekCollectionPage(name, collectionView(name).locale);
   if (page) {
     void openFileInTab(page.path);
   }
@@ -965,7 +967,7 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
     padTop: `height:${range.padTop}px`,
     page: pageLineFor(
       collection,
-      pages ? null : peekCollectionPage(collection.key),
+      pages ? null : peekCollectionPage(collection.key, view.locale),
       defaultLayoutPath(),
     ),
     query: view.query,
@@ -1047,13 +1049,16 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     },
     openNew: () => {
       const collection = shownCollection();
-      void runActiveReported(
-        "file.new",
+      // The language the view is filtered to is the one the reader is writing in.
+      const { locale } = collectionView(collection.key);
+      const args: CommandArgValues =
         collection.kind === "pages"
           ? { kind: "page" }
-          : { collection: collection.key, kind: "entry" },
-        SOURCE,
-      );
+          : { collection: collection.key, kind: "entry" };
+      if (locale !== "") {
+        args.locale = locale;
+      }
+      void runActiveReported("file.new", args, SOURCE);
     },
     previewSlot: (element, path) => {
       if (panel) {

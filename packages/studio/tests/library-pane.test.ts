@@ -113,7 +113,14 @@ const { argsSchema, stringProperty } = await import("../src/commands/command-arg
 const runs: { id: string; args: unknown }[] = [];
 const registry = createCommandRegistry({ getContext: emptyContext });
 registry.register({
-  args: argsSchema({ collection: stringProperty("collection"), kind: stringProperty("kind") }, []),
+  args: argsSchema(
+    {
+      collection: stringProperty("collection"),
+      kind: stringProperty("kind"),
+      locale: stringProperty("locale"),
+    },
+    [],
+  ),
   category: "File",
   id: "file.new",
   level: "project",
@@ -667,9 +674,15 @@ describe("collections", () => {
     expect(part("new")!.textContent).toContain("New post");
     part("new")!.click();
     await flush();
+    // The language the view is filtered to is the one the new entry is written in.
+    setLibraryLocale("fr", "posts");
+    await flush();
+    part("new")!.click();
+    await flush();
     expect(runs.map((run) => run.args)).toEqual([
       { kind: "page" },
       { collection: "posts", kind: "entry" },
+      { collection: "posts", kind: "entry", locale: "fr" },
     ]);
   });
 
@@ -793,7 +806,13 @@ describe("the header line", () => {
     expect(pageLineFor(pages, null, null).state).toBe("hidden");
     expect(pageLineFor(csv, null, null).state).toBe("hidden");
     expect(pageLineFor(posts, undefined, null).state).toBe("loading");
-    const page = { layout: undefined, param: "slug", path: "pages/[slug].json", pattern: "/:slug" };
+    const page = {
+      layout: undefined,
+      param: "slug",
+      path: "pages/[slug].json",
+      pattern: "/:slug",
+      locale: null,
+    };
     expect(pageLineFor(posts, page, "./layouts/base.json").template).toBe("using Base");
     expect(pageLineFor(posts, page, null).template).toBe("with no template");
     expect(pageLineFor(posts, { ...page, layout: false }, "./layouts/base.json").template).toBe(

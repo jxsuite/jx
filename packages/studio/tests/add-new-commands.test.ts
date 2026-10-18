@@ -107,11 +107,12 @@ describe("running it", () => {
     await registry().run(FILE_NEW, {
       collection: "posts",
       kind: "entry",
+      locale: "fr-CA",
       name: "Hello",
       template: "base",
     });
     expect(created).toEqual([
-      { collection: "posts", kind: "entry", name: "Hello", template: "base" },
+      { collection: "posts", kind: "entry", locale: "fr-CA", name: "Hello", template: "base" },
     ]);
     expect(openedWith).toEqual([]);
     expect(report()).toEqual({

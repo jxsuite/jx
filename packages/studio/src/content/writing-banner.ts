@@ -22,7 +22,12 @@ import { paneRegion } from "../ui/regions";
 import { workspace } from "../workspace/workspace";
 import { collectionForFile } from "./collection-match";
 import { contentCollection, templateDisplayName } from "./content-collections";
-import { entryLayoutPath, onCollectionPagesRead, peekCollectionPage } from "./collection-pages";
+import {
+  entryLayoutPath,
+  entryLocale,
+  onCollectionPagesRead,
+  peekCollectionPage,
+} from "./collection-pages";
 import { mountWritingBannerSurface } from "../surfaces/writing-banner";
 import type { Tab } from "../tabs/tab";
 import type { WritingBannerHandle, WritingBannerView } from "../surfaces/writing-banner";
@@ -50,7 +55,7 @@ export function bannerTarget(tab: Tab): BannerTarget | null {
     return null;
   }
   const item = contentCollection(match.name)?.item ?? "entry";
-  const page = peekCollectionPage(match.name);
+  const page = peekCollectionPage(match.name, entryLocale(tab.documentPath));
   if (page) {
     return { actionLabel: `Design the ${item} page`, path: page.path };
   }

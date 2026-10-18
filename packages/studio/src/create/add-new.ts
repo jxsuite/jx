@@ -20,6 +20,8 @@
  */
 
 import { fileToRoute } from "@jxsuite/site/routes";
+import { canonicalizeLocale, translationPathFor } from "@jxsuite/schema/locale";
+import { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import { seedEntry } from "../content/entry-model";
 import { slugify, validateNewFileName } from "../files/new-file-name";
@@ -177,6 +179,13 @@ export interface CreationOptions {
   pageTemplate?: string | undefined;
   /** Entry: the collection it is created in. */
   collection?: string | undefined;
+  /**
+   * Page and Entry: the language it is written in, a declared locale tag. Ignored by a project that
+   * declares no `i18n`, and by an entry of a collection that is not localized.
+   */
+  locale?: string | undefined;
+  /** Collection: one folder per language (`content/<name>/{locale}`), in a project with `i18n`. */
+  localized?: boolean | undefined;
   /** Component: the tag of the component a copy is made of. */
   copyOf?: string | undefined;
   /** Media: how many files are waiting to upload. */
@@ -201,6 +210,20 @@ export interface CollectionChoice {
   schema: ContentTypeSchema | null;
   /** The format class that writes its entries, or `null` for native JSON. */
   formatName: string | null;
+  /**
+   * For a localized collection: each declared locale's directory as it is spelled on disk (`fr-CA`
+   * → `content/exhibitions/fr-CA`). A locale with no directory yet is absent, and gets the
+   * lowercase spelling Studio writes everywhere else.
+   */
+  localeDirs?: Readonly<Record<string, string>> | undefined;
+}
+
+/** The project's languages, as `@jxsuite/schema/locale` resolves its `i18n` block. */
+export interface CreationI18n {
+  defaultLocale: string;
+  /** Canonical tags, default first. */
+  locales: readonly string[];
+  routing: "prefix-except-default" | "prefix-always";
 }
 
 /** A format the derivation can write a body-bearing document in. */
@@ -231,6 +254,8 @@ export interface CreationContext {
   article: WritingFormat | null;
   /** The format a new collection's entries are written in, or `null` for native JSON. */
   contentFormat: WritingFormat | null;
+  /** The project's languages, or `null`/absent when it declares no `i18n`. */
+  i18n?: CreationI18n | null | undefined;
 }
 
 /**
@@ -443,6 +468,47 @@ export function collectionPageBody(
   return page;
 }
 
+/** A declared locale, canonical, or `null` when `tag` is not one of the project's. */
+export function declaredLocale(tag: string | undefined, ctx: CreationContext): string | null {
+  const i18n = ctx.i18n ?? null;
+  const canonical = canonicalizeLocale(tag);
+  return i18n !== null && canonical !== null && i18n.locales.includes(canonical) ? canonical : null;
+}
+
+/** Whether a collection keeps one folder per language. */
+export function isLocalizedCollection(collection: Pick<CollectionChoice, "dir">): boolean {
+  return collection.dir.includes(LOCALE_PLACEHOLDER);
+}
+
+/**
+ * A localized collection's directory for one language: the spelling already on disk, or the
+ * lowercase tag `translationPathFor` writes for a language that has no folder yet.
+ */
+export function localeDirOf(
+  collection: Pick<CollectionChoice, "dir" | "localeDirs">,
+  locale: string,
+): string {
+  return (
+    collection.localeDirs?.[locale] ??
+    collection.dir.replace(LOCALE_PLACEHOLDER, locale.toLowerCase())
+  );
+}
+
+/** A path moved into a language's tree (`pages/x.json` → `pages/fr-ca/x.json`), or unchanged. */
+function inLocale(path: string, locale: string | null, ctx: CreationContext): string {
+  const i18n = ctx.i18n ?? null;
+  if (locale === null || i18n === null) {
+    return path;
+  }
+  return translationPathFor(path, locale, { ...i18n, locales: [...i18n.locales] }) ?? path;
+}
+
+/** `pages/fr-ca/x.json` → `["pages/fr-ca", "x.json"]`. */
+function splitPath(path: string): [string, string] {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? [".", path] : [path.slice(0, slash), path.slice(slash + 1)];
+}
+
 // ─── The derivation ──────────────────────────────────────────────────────────
 
 /** A blank component's whole definition. */
@@ -470,9 +536,15 @@ function derivePage(name: string, options: CreationOptions, ctx: CreationContext
     options.url === undefined ? [slugify(name)].filter((s) => s !== "") : urlSegments(options.url);
   const stem =
     segments.length === 0 ? (options.url === undefined ? "" : "index") : segments.at(-1)!;
-  const dir = ["pages", ...segments.slice(0, -1)].join("/");
+  const plainDir = ["pages", ...segments.slice(0, -1)].join("/");
   const fileName = stem === "" ? "" : `${stem}${ext}`;
-  const path = join(dir, fileName);
+  /* A page in another language lives in that language's tree, which is where its URL comes from
+     (`site-architecture.md` §13.1). Moved after the name is composed, so the hint and the write
+     are the same path. */
+  const locale = declaredLocale(options.locale, ctx);
+  const path =
+    fileName === "" ? join(plainDir, fileName) : inLocale(join(plainDir, fileName), locale, ctx);
+  const dir = fileName === "" ? plainDir : splitPath(path)[0];
   const title = name.trim();
   let content: CreationBody;
   if (article) {
@@ -510,7 +582,11 @@ function derivePage(name: string, options: CreationOptions, ctx: CreationContext
 function deriveCollection(name: string, options: CreationOptions, ctx: CreationContext): Creation {
   const slug = slugify(name);
   const fields = options.fields ?? DEFAULT_FIELD_PRESETS;
-  const dir = `content/${slug}`;
+  const i18n = ctx.i18n ?? null;
+  // One folder per language, the first entry written in the default one (§13.3).
+  const localized = i18n !== null && options.localized !== false;
+  const root = `content/${slug}`;
+  const dir = localized ? `${root}/${i18n.defaultLocale.toLowerCase()}` : root;
   const format = ctx.contentFormat;
   const ext = format?.ext ?? ".json";
   const item = itemNoun(slug);
@@ -521,7 +597,7 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
   const entry: JsonObject = {
     format: format?.name ?? "json",
     schema: isJsonObject(stored) ? stored : {},
-    source: `./${dir}`,
+    source: localized ? `./${root}/${LOCALE_PLACEHOLDER}` : `./${root}`,
   };
   const first = entryBody({ ext, formatName: format?.name ?? null, schema }, `First ${item}`);
   const extraWrites: CreationWrite[] = [];
@@ -529,7 +605,11 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
   let pageNote = "";
   if (options.ownPage !== false && slug !== "") {
     const template = options.pageTemplate ?? defaultTemplateChoice(ctx);
-    const pagePath = `pages/${slug}/[slug].json`;
+    const pagePath = inLocale(
+      `pages/${slug}/[slug].json`,
+      localized ? i18n.defaultLocale : null,
+      ctx,
+    );
     route = fileToRoute(pagePath).urlPattern;
     extraWrites.push({
       body: {
@@ -552,7 +632,9 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
     saved:
       slug === ""
         ? ""
-        : `Adds a “${slug}” collection to project.json, a ${dir}/ folder with a first entry${pageNote}.`,
+        : localized
+          ? `Adds a “${slug}” collection to project.json with one folder per language under ${root}/, a first entry in ${dir}/${pageNote}.`
+          : `Adds a “${slug}” collection to project.json, a ${dir}/ folder with a first entry${pageNote}.`,
   };
   if (route !== undefined) {
     result.route = route;
@@ -607,8 +689,17 @@ function deriveEntry(name: string, options: CreationOptions, ctx: CreationContex
   const collection = ctx.collections.find((c) => c.name === options.collection) ?? null;
   const slug = slugify(name);
   const ext = collection?.ext ?? ".json";
-  const dir = collection?.dir ?? "content";
-  const fileName = slug === "" || collection === null ? "" : `${slug}${ext}`;
+  /* A localized collection's `dir` names no directory anybody has: the entry goes in the folder of
+     the language it is written in, and with no language there is nowhere to put it. */
+  const locale = declaredLocale(options.locale, ctx);
+  const placeless = collection !== null && isLocalizedCollection(collection) && locale === null;
+  const dir =
+    collection === null
+      ? "content"
+      : isLocalizedCollection(collection) && locale !== null
+        ? localeDirOf(collection, locale)
+        : collection.dir;
+  const fileName = slug === "" || collection === null || placeless ? "" : `${slug}${ext}`;
   const path = join(dir, fileName);
   return {
     content: collection ? entryBody(collection, name.trim()) : { doc: {}, format: null },
@@ -806,11 +897,8 @@ export function creationProblem(
       if (!collection) {
         return "Choose the collection this entry belongs to.";
       }
-      if (collection.dir.includes("{locale}")) {
-        return (
-          `“${collection.name}” is a localized collection. Open the folder for the language you ` +
-          "are writing in and create the entry there."
-        );
+      if (isLocalizedCollection(collection) && declaredLocale(options.locale, ctx) === null) {
+        return `Choose the language this ${itemNoun(collection.name)} is written in.`;
       }
       break;
     }

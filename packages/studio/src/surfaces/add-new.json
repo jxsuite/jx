@@ -151,7 +151,7 @@
       "flexDirection": "column",
       "gap": "var(--jx-space-3)"
     },
-    "& [part=\"name-slot\"], & [part=\"options-slot\"], & [part=\"url-slot\"], & [part=\"own-page-slot\"], & [part=\"copy-slot\"]": {
+    "& [part=\"name-slot\"], & [part=\"options-slot\"], & [part=\"url-slot\"], & [part=\"own-page-slot\"], & [part=\"copy-slot\"], & [part=\"locale-slot\"], & [part=\"localized-slot\"]": {
       "$description": "Branch hosts are structure rather than layout: `display: contents` puts what they carry straight into the column, so one gap rule spaces every row whether it is drawn or not.",
       "display": "contents"
     },
@@ -488,6 +488,62 @@
                     {
                       "tagName": "div",
                       "attributes": {
+                        "part": "locale-slot",
+                        "role": "none"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/localeShown"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-field",
+                          "attributes": {
+                            "part": "locale-row"
+                          },
+                          "$props": {
+                            "span": true,
+                            "label": "Language"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-select",
+                              "attributes": {
+                                "part": "locale"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "Language",
+                                "options": {
+                                  "$ref": "#/state/localeOptions"
+                                },
+                                "value": {
+                                  "$ref": "#/state/locale"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/pickLocale"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
                         "part": "url-row"
                       },
                       "children": [
@@ -795,6 +851,51 @@
                         "part": "note"
                       },
                       "textContent": "You can add or change fields later."
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "localized-slot",
+                        "role": "none"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/localizable"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-checkbox",
+                          "attributes": {
+                            "part": "localized"
+                          },
+                          "$props": {
+                            "checked": {
+                              "$ref": "#/state/localized"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setLocalized"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/checked"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "One folder per language (${state.localeSummary})"
+                            }
+                          ]
+                        }
+                      }
                     },
                     {
                       "tagName": "jx-checkbox",
@@ -1208,6 +1309,62 @@
                           }
                         }
                       ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "locale-slot",
+                        "role": "none"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/localeShown"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-field",
+                          "attributes": {
+                            "part": "locale-row"
+                          },
+                          "$props": {
+                            "span": true,
+                            "label": "Language"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-select",
+                              "attributes": {
+                                "part": "locale"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "Language",
+                                "options": {
+                                  "$ref": "#/state/localeOptions"
+                                },
+                                "value": {
+                                  "$ref": "#/state/locale"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/pickLocale"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
                     }
                   ]
                 },

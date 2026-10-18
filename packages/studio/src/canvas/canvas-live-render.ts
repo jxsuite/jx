@@ -37,7 +37,7 @@ import { isComponentDoc, substitutePreviewProps } from "../component-props";
 import { assetContextFor, hostAssetDeclarations } from "./asset-refs";
 import { collectionForFile } from "../content/collection-match";
 import { writesEntryOnCanvas } from "../content/content-collections";
-import { collectionPage, entryLayoutPath } from "../content/collection-pages";
+import { collectionPage, entryLayoutPath, entryLocale } from "../content/collection-pages";
 
 import type { AssetContext } from "./asset-refs";
 import type { JxElement, JxMutableNode, JxPath, JxStyle } from "@jxsuite/schema/types";
@@ -216,7 +216,7 @@ export async function entryLayout(
     doc.$layout ??
     (isString(fromFrontmatter) || fromFrontmatter === false ? fromFrontmatter : undefined);
   const match = path ? collectionForFile(path) : null;
-  const page = match ? await collectionPage(match.name) : null;
+  const page = match ? await collectionPage(match.name, entryLocale(path)) : null;
   return entryLayoutPath(own, page);
 }
 

@@ -1685,6 +1685,8 @@ Dependencies are registered depth-first before the parent.
 | `adoptedCallback`          | `onAdopted`   | Element moved to new document          |
 | `attributeChangedCallback` | (automatic)   | Observed attribute changes             |
 
+**A render that throws is reported, not thrown onward.** The interpreter renders an instance inside its async `connectedCallback`, so a definition whose render throws with the values it was given (a `date` defaulting to `""` passed to `Intl/formatDate`, whose `RangeError` is the standard's own, §19.4c) would otherwise surface as an unhandled rejection that names no element. It is reported on the same two surfaces as a refused instance (§16.9): the console line `Jx: <tag> was not rendered:` with the error, and a bubbling, composed `jx-error` `ErrorEvent` from the element. What rendered before the throw stays, slot content is still distributed into the slots that were drawn, the rest of the page renders, and `onMount` does not run for that instance. A host already out of the document reports nothing.
+
 `onMount` receives `(state, host)` — the element's scope and the element itself. A behaviour sidecar that has to reach the element it belongs to gets it as an argument; before it did not, and elements dispatched an event at themselves purely so a root handler could read `currentTarget`, which was a round trip standing in for a missing parameter. The other three hooks take `(state)`.
 
 A document mounted by a host through `mount()` ([embedding.md](./embedding.md) §2) runs the same two hooks at its own boundary: `onMount` once its root is attached, `onUnmount` from `dispose()`. The names are shared on purpose, so a component and a mounted document read alike.

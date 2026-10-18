@@ -77,7 +77,9 @@ Two things make an entry different from a blank file: it is named with the colle
 
 **The Files tree knows about this too.** Right-click a content type's folder and choose **New File…**: because that folder belongs to a collection, you get the New Entry flow (the collection's extension and the seeded fields, opened where the entry is written) rather than a blank document. In a **subfolder** of it the format picker is locked to the collection's extension instead, because a document there is still one of its entries but the images and notes beside them are not; the picker's **Other…** row still creates those. What it will not accept is a document of a different format, which the collection would discover as an entry it cannot read.
 
-A **localized** collection (a `{locale}` in its source) has no single folder to create into, so Add new refuses it and asks you to open the folder for the language you are writing in and create the entry there with **New File…**.
+A **localized** collection (a `{locale}` in its source) keeps one folder per language, so Add new asks which **Language** the entry is written in. It starts on the language the Content workspace is filtered to (or the language of the entry you are writing, from **+ New** in the entries list), else on the site's default, and the entry is saved in that language's folder: `content/exhibitions/fr-CA/night-tide.md`.
+
+In a multilingual project a new **Collection** is localized too, with **One folder per language** checked: its source is `./content/<name>/{locale}`, its first entry goes in the default language's folder, and its own page is the default language's. Uncheck it for a collection whose entries are the same in every language, which is then served under every language's URLs.
 
 An entry is also not something you can convert: **Convert Format…** is not offered inside a content type's folder, in either direction. Changing the format of one entry would remove it from the collection; the collection's format belongs to the type, and you change it here.
 

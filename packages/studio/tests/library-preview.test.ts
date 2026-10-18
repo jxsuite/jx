@@ -23,6 +23,7 @@ void mock.module("../src/panels/component-preview.js", () => ({
 
 const {
   PREVIEW_CACHE_LIMIT,
+  componentRendersBare,
   createPreviewCache,
   createPreviewObserver,
   previewFor,
@@ -295,6 +296,55 @@ describe("previewFor", () => {
       throw new Error("boom");
     };
     expect(await previewFor("components/bad.json", createPreviewCache())).toBeUndefined();
+  });
+
+  test("a project component that cannot render bare gets no preview, not an uncaught error", async () => {
+    // The museum's card formats a date that defaults to "": a RangeError, as the standard says.
+    const card = {
+      children: [{ tagName: "p", textContent: "${state.opens}" }],
+      state: {
+        date: "",
+        opens: {
+          $expression: {
+            operator: "call",
+            target: { $ref: "window#/Intl/formatDate" },
+            value: [{ $ref: "#/state/date" }, "en", { day: "numeric" }],
+          },
+        },
+      },
+      tagName: "mu-card",
+    };
+    installMockPlatform(
+      {},
+      {
+        "components/fine.json": JSON.stringify({
+          ...card,
+          state: { ...card.state, date: "2026-06-20" },
+        }),
+        "components/mu-card.json": JSON.stringify(card),
+        "components/not-an-object.json": "[]",
+      },
+    );
+    componentRegistry.push(
+      { path: "components/mu-card.json", source: "project", tagName: "mu-card" },
+      { path: "components/fine.json", source: "project", tagName: "mu-fine" },
+    );
+    let instances = 0;
+    componentPreview = () => {
+      instances += 1;
+      return Promise.resolve(document.createElement("mu-fine"));
+    };
+    expect(await componentRendersBare("components/mu-card.json")).toBe(false);
+    expect(await componentRendersBare("components/fine.json")).toBe(true);
+    expect(await componentRendersBare("components/not-an-object.json")).toBe(false);
+    expect(await componentRendersBare("components/missing.json")).toBe(false);
+    const cache = createPreviewCache();
+    expect(await previewFor("components/mu-card.json", cache)).toBeUndefined();
+    // No instance was made for the card that cannot render, so nothing throws where none can catch.
+    expect(instances).toBe(0);
+    const fine = await previewFor("components/fine.json", cache);
+    expect(fine?.tagName).toBe("MU-FINE");
+    expect(instances).toBe(1);
   });
 });
 

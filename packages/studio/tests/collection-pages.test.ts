@@ -23,10 +23,12 @@ const {
   collectionPage,
   collectionPages,
   entryLayoutPath,
+  entryLocale,
   entryUrl,
   invalidateCollectionPages,
   onCollectionPagesRead,
   pageFactsOf,
+  pageForLocale,
   peekCollectionPage,
   readPageFacts,
   resetCollectionPages,
@@ -145,15 +147,23 @@ describe("readPageFacts", () => {
 });
 
 describe("the index", () => {
-  test("maps each collection to its first template page, with its URL pattern", async () => {
+  test("maps each collection to its template pages, with their URL patterns", async () => {
     const index = await collectionPages();
-    expect(index.get("posts")).toEqual({
-      layout: "./layouts/post.json",
-      param: "slug",
-      path: "pages/blog/[slug].json",
-      pattern: "/blog/:slug",
-    });
-    expect(index.get("notes")?.path).toBe("pages/n/[id].md");
+    expect(index.get("posts")).toEqual([
+      {
+        layout: "./layouts/post.json",
+        locale: null,
+        param: "slug",
+        path: "pages/blog/[slug].json",
+        pattern: "/blog/:slug",
+      },
+    ]);
+    expect(index.get("notes")?.map((page) => page.path)).toEqual([
+      "pages/n/[id].md",
+      "pages/n/[x].json",
+    ]);
+    const notes = await collectionPage("notes");
+    expect(notes?.path).toBe("pages/n/[id].md");
     expect(await collectionPage("gone")).toBeNull();
   });
 
@@ -198,12 +208,92 @@ describe("the index", () => {
   });
 });
 
+describe("one template page per language", () => {
+  const I18N = {
+    defaults: { layout: "./layouts/base.json" },
+    i18n: {
+      defaultLocale: "en",
+      locales: ["en", "fr-CA", "ar"],
+      routing: "prefix-except-default" as const,
+    },
+  };
+  const LOCALIZED_TREE = {
+    pages: [
+      dir("ar", "pages/ar"),
+      dir("exhibitions", "pages/exhibitions"),
+      dir("fr-ca", "pages/fr-ca"),
+    ],
+    "pages/ar": [dir("exhibitions", "pages/ar/exhibitions")],
+    "pages/ar/exhibitions": [file("[slug].json", "pages/ar/exhibitions/[slug].json")],
+    "pages/exhibitions": [file("[slug].json", "pages/exhibitions/[slug].json")],
+    "pages/fr-ca": [dir("expositions", "pages/fr-ca/expositions")],
+    "pages/fr-ca/expositions": [file("[slug].json", "pages/fr-ca/expositions/[slug].json")],
+  } satisfies Record<string, DirEntry[]>;
+  const PATHS = { contentType: "exhibitions", param: "slug" };
+  const page = (layout: string) =>
+    JSON.stringify({ $layout: layout, $paths: PATHS, tagName: "article" });
+
+  beforeEach(() => {
+    installMockPlatform(
+      {
+        listDirectory: (path: string) => {
+          const entries = Object.entries(LOCALIZED_TREE).find(([dirPath]) => dirPath === path)?.[1];
+          return entries ? Promise.resolve(entries) : Promise.reject(new Error(path));
+        },
+      },
+      {
+        "pages/ar/exhibitions/[slug].json": page("./layouts/ar.json"),
+        // The default language's page names no layout: the project default applies.
+        "pages/exhibitions/[slug].json": JSON.stringify({ $paths: PATHS, tagName: "article" }),
+        "pages/fr-ca/expositions/[slug].json": page("./layouts/fr-ca.json"),
+      },
+    );
+    resetStudioState({ projectConfig: I18N });
+    resetCollectionPages();
+  });
+
+  test("the page in the language asked about, else the default language's", async () => {
+    const arabic = await collectionPage("exhibitions", "ar");
+    expect(arabic?.layout).toBe("./layouts/ar.json");
+    const french = await collectionPage("exhibitions", "fr-ca");
+    expect(french?.pattern).toBe("/fr-ca/expositions/:slug");
+    // Path order puts the Arabic page first; the default language still answers for "any".
+    const any = await collectionPage("exhibitions");
+    expect(any?.pattern).toBe("/exhibitions/:slug");
+    const undeclared = await collectionPage("exhibitions", "de");
+    expect(undeclared?.pattern).toBe("/exhibitions/:slug");
+    expect(peekCollectionPage("exhibitions", "en")?.locale).toBe("en");
+  });
+
+  test("an entry's language is read from its path", () => {
+    expect(entryLocale("content/exhibitions/ar/clay.md")).toBe("ar");
+    expect(entryLocale("content/exhibitions/fr-CA/clay.md")).toBe("fr-CA");
+    expect(entryLocale("content/posts/hello.md")).toBeNull();
+    expect(entryLocale(null)).toBeNull();
+  });
+
+  test("with no page in the default language, an unlocalized page, then the first", () => {
+    const at = (path: string, locale: string | null) => ({
+      layout: undefined,
+      locale,
+      param: "slug",
+      path,
+      pattern: path,
+    });
+    expect(pageForLocale(undefined, "ar")).toBeNull();
+    expect(pageForLocale([], null)).toBeNull();
+    expect(pageForLocale([at("a", "ar"), at("b", null)], "fr-CA")?.path).toBe("b");
+    expect(pageForLocale([at("a", "ar"), at("b", "fr-CA")], null)?.path).toBe("a");
+  });
+});
+
 describe("entryUrl", () => {
   const page = {
     layout: undefined,
     param: "slug",
     path: "pages/blog/[slug].json",
     pattern: "/blog/:slug",
+    locale: null,
   };
 
   test("fills the page's parameter with the entry's id", () => {
@@ -220,7 +310,13 @@ describe("entryUrl", () => {
 });
 
 describe("entryLayoutPath", () => {
-  const page = { layout: "./layouts/post.json", param: "slug", path: "p", pattern: "/:slug" };
+  const page = {
+    layout: "./layouts/post.json",
+    param: "slug",
+    path: "p",
+    pattern: "/:slug",
+    locale: null,
+  };
 
   test("the entry's own layout first, then its page's, then the project's default", () => {
     expect(entryLayoutPath("./layouts/own.json", page)).toBe("./layouts/own.json");

@@ -173,39 +173,53 @@ export function pageRows(
     )
     .toSorted((a, b) => compareRoutes(a.route, b.route) || a.fact.path.localeCompare(b.fact.path));
   const rows: SitePageRow[] = [];
+  const pageRow = (
+    fact: SitePageFact,
+    route: FileRoute,
+    kind: "page" | "entry-page",
+    label: string,
+  ): SitePageRow => ({
+    detail: route.urlPattern,
+    key: fact.path,
+    kind,
+    label,
+    path: fact.path,
+    selected: selectedFlag(fact.path === activePath),
+  });
+  /* A collection's pages, in route order. Its whole group is emitted at its heading, because the
+     surface nests by position: a page left where it sorted would read as the previous group's. */
+  const groups = new Map<string, RoutedPage[]>();
+  for (const page of routed) {
+    const collection = page.fact.contentType;
+    if (collection !== null && collections.has(collection)) {
+      groups.set(collection, [...(groups.get(collection) ?? []), page]);
+    }
+  }
   const headed = new Set<string>();
   for (const { fact, route } of routed) {
     const collection = fact.contentType;
-    if (collection === null || !collections.has(collection)) {
-      rows.push({
-        detail: route.urlPattern,
-        key: fact.path,
-        kind: "page",
-        label: pageLabel(route, fact.path),
-        path: fact.path,
-        selected: selectedFlag(fact.path === activePath),
-      });
+    const group = collection === null ? undefined : groups.get(collection);
+    if (collection === null || group === undefined) {
+      rows.push(pageRow(fact, route, "page", pageLabel(route, fact.path)));
       continue;
     }
-    if (!headed.has(collection)) {
-      headed.add(collection);
-      rows.push({
-        detail: entryCountLabel(collections.get(collection) ?? null),
-        key: `collection:${collection}`,
-        kind: "collection",
-        label: humanize(collection),
-        path: "",
-        selected: "false",
-      });
+    if (headed.has(collection)) {
+      continue;
     }
+    headed.add(collection);
     rows.push({
-      detail: route.urlPattern,
-      key: fact.path,
-      kind: "entry-page",
-      label: `${singularLabel(collection)} page`,
-      path: fact.path,
-      selected: selectedFlag(fact.path === activePath),
+      detail: entryCountLabel(collections.get(collection) ?? null),
+      key: `collection:${collection}`,
+      kind: "collection",
+      label: humanize(collection),
+      path: "",
+      selected: "false",
     });
+    for (const member of group) {
+      rows.push(
+        pageRow(member.fact, member.route, "entry-page", `${singularLabel(collection)} page`),
+      );
+    }
   }
   return rows;
 }

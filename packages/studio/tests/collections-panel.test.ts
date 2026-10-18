@@ -45,12 +45,13 @@ const { emptyContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { argsSchema, stringProperty } = await import("../src/commands/command-args");
 const { saveViewAs } = await import("../src/grid/grid-layout");
-const { resetContentView, setContentCollection, invalidateLibrary } =
+const { resetContentView, setContentCollection, setLibraryLocale, invalidateLibrary } =
   await import("../src/browse/library-pane");
 const { invalidateEntrySummaries } = await import("../src/content/entry-summaries");
 const {
   collectionGridId,
   collectionsPanelValues,
+  newEntryLocale,
   registerCollectionsPanel,
   resetCollectionsPanel,
   writingCollection,
@@ -315,6 +316,22 @@ describe("while an entry is being written", () => {
       { args: { collection: "posts" }, id: "content.showCollection" },
       { args: { collection: "posts", kind: "entry" }, id: "file.new" },
     ]);
+  });
+
+  test("a new entry starts in the language being written, else the one the view shows", () => {
+    resetStudioState({
+      projectConfig: {
+        content: { ex: { schema: {}, source: "./content/ex/{locale}/" } },
+        i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"] },
+      },
+    });
+    // Nothing says a language: the dialog starts on the site's default.
+    expect(newEntryLocale("ex")).toEqual({});
+    setLibraryLocale("fr-CA", "ex");
+    expect(newEntryLocale("ex")).toEqual({ locale: "fr-CA" });
+    // The entry being written outranks the view's filter.
+    writeEntry("content/ex/ar/clay.md");
+    expect(newEntryLocale("ex")).toEqual({ locale: "ar" });
   });
 
   test("a page is Design's, so a page tab lists the collections", () => {

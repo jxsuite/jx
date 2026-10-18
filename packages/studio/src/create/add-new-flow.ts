@@ -47,6 +47,9 @@ import { invalidateCollectionPages } from "../content/collection-pages";
 import { entryFormatName } from "../content/entry-commands";
 import { invalidateSiteIndex } from "../panels/site-panel";
 import { invalidateLibrary } from "../browse/library-pane";
+import { collectionSourceDirs } from "../grid/sources/content-source";
+import { humanize } from "../panels/site-model";
+import { canonicalizeLocale, localeLabel, localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
 import { openAddNewSurface } from "../surfaces/add-new";
 import {
   collectionPageBody,
@@ -67,12 +70,15 @@ import {
   START_BLANK,
   START_COPY,
   START_SELECTION,
+  declaredLocale,
+  isLocalizedCollection,
 } from "./add-new";
 import type {
   CollectionChoice,
   Creation,
   CreationBody,
   CreationContext,
+  CreationI18n,
   CreationKind,
   CreationOptions,
   FieldPreset,
@@ -109,6 +115,8 @@ export interface AddNewRequest {
   collection?: string | undefined;
   /** A layout (path, `layouts/x.json` or the stem `x`), `article`, or `blank`. */
   template?: string | undefined;
+  /** For a page or an entry: the language it is written in, a declared locale tag. */
+  locale?: string | undefined;
 }
 
 // ─── Reading the project ─────────────────────────────────────────────────────
@@ -146,19 +154,50 @@ function contentWritingFormat(): WritingFormat | null {
   return format && ext ? { ext, name: format.name } : null;
 }
 
+/** The project's languages, or `null` when it declares none. */
+function readI18n(): CreationI18n | null {
+  return resolveI18n(projectState?.projectConfig ?? {}).i18n;
+}
+
+/**
+ * A localized collection's language folders as they are spelled on disk, keyed by canonical tag:
+ * the museum starter writes `content/exhibitions/fr-CA`, and an entry created in French belongs in
+ * that folder rather than a second `fr-ca` beside it.
+ */
+async function readLocaleDirs(collection: { dir: string; name: string }) {
+  const dirs: Record<string, string> = {};
+  const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
+  for (const dir of await collectionSourceDirs(collection)) {
+    const tag = canonicalizeLocale(localeOfPath(dir, i18n));
+    if (tag !== null) {
+      dirs[tag] = dir;
+    }
+  }
+  return dirs;
+}
+
 /** Everything the derivation reads about the project, read now. */
 export async function readCreationContext(): Promise<CreationContext> {
   await loadFormats().catch(() => {
     /* An unreachable format registry leaves JSON, which is the one shape that needs none. */
   });
-  const collections: CollectionChoice[] = entryCollections().map((collection) => ({
-    dir: collection.dir,
-    ext: collection.ext,
-    formatName: entryFormatName(collection),
-    name: collection.name,
-    schema: collection.schema,
-  }));
+  const collections: CollectionChoice[] = await Promise.all(
+    entryCollections().map(async (collection) => {
+      const choice: CollectionChoice = {
+        dir: collection.dir,
+        ext: collection.ext,
+        formatName: entryFormatName(collection),
+        name: collection.name,
+        schema: collection.schema,
+      };
+      if (isLocalizedCollection(collection)) {
+        choice.localeDirs = await readLocaleDirs(collection);
+      }
+      return choice;
+    }),
+  );
   return {
+    i18n: readI18n(),
     article: articleFormat(),
     collections,
     componentTags: componentRegistry.map((component) => component.tagName),
@@ -228,6 +267,16 @@ function optionsForRequest(request: AddNewRequest, ctx: CreationContext): Creati
   const options: CreationOptions = {};
   if (request.collection !== undefined) {
     options.collection = request.collection;
+  }
+  if (request.locale !== undefined) {
+    if (declaredLocale(request.locale, ctx) === null) {
+      const declared = ctx.i18n?.locales ?? [];
+      throw new RangeError(
+        `command "file.new" argument "locale": "${request.locale}" is not a language this ` +
+          `project declares — declared: ${declared.length === 0 ? "none" : declared.join(", ")}`,
+      );
+    }
+    options.locale = request.locale;
   }
   if (request.template !== undefined) {
     const resolved = resolveTemplateArg(request.template, ctx.layouts);
@@ -519,6 +568,10 @@ interface DialogState {
   ownPage: boolean;
   pageTemplate: string;
   collection: string;
+  /** Page and Entry: the language, a declared tag; `""` in a project without `i18n`. */
+  locale: string;
+  /** Collection: one folder per language. */
+  localized: boolean;
   files: File[];
   dropActive: boolean;
   busy: boolean;
@@ -531,6 +584,9 @@ function optionsOf(state: DialogState): CreationOptions {
       const options: CreationOptions = { startFrom: state.pageStart };
       if (state.editingUrl) {
         options.url = state.url;
+      }
+      if (state.locale !== "") {
+        options.locale = state.locale;
       }
       return options;
     }
@@ -545,10 +601,22 @@ function optionsOf(state: DialogState): CreationOptions {
       return options;
     }
     case "collection": {
-      return { fields: state.fields, ownPage: state.ownPage, pageTemplate: state.pageTemplate };
+      return {
+        fields: state.fields,
+        localized: state.localized,
+        ownPage: state.ownPage,
+        pageTemplate: state.pageTemplate,
+      };
     }
     case "entry": {
-      return state.collection === "" ? {} : { collection: state.collection };
+      const options: CreationOptions = {};
+      if (state.collection !== "") {
+        options.collection = state.collection;
+      }
+      if (state.locale !== "") {
+        options.locale = state.locale;
+      }
+      return options;
     }
     default: {
       return { files: state.files.length };
@@ -642,6 +710,14 @@ function viewOf(
   );
   const slug = creation.config?.name ?? "";
   const item = itemNoun(slug === "" ? "items" : slug);
+  const languages = ctx.i18n?.locales ?? [];
+  const chosen = ctx.collections.find((c) => c.name === state.collection);
+  /* A page always has a language in a multilingual site; an entry only when its collection keeps
+     one folder per language (an unlocalized collection is served under every locale, §13.3). */
+  const localeShown =
+    languages.length > 0 &&
+    (state.kind === "page" ||
+      (state.kind === "entry" && chosen !== undefined && isLocalizedCollection(chosen)));
   const layoutOptions = [
     ...ctx.layouts.map((layout) => ({ label: layout.name, value: layout.ref })),
     { label: "No template", value: START_BLANK },
@@ -650,7 +726,7 @@ function viewOf(
     canConfirm: problem === "" && !state.busy,
     chordNote: chordNote(),
     collection: state.collection,
-    collectionOptions: ctx.collections.map((c) => ({ label: c.name, value: c.name })),
+    collectionOptions: ctx.collections.map((c) => ({ label: humanize(c.name), value: c.name })),
     componentChoices: [
       card("blank", "Blank", "an empty block", state.componentStart),
       card(
@@ -686,6 +762,12 @@ function viewOf(
     kindHint: info.hint,
     kindLabel: info.label,
     kinds,
+    locale: state.locale,
+    localeOptions: languages.map((tag) => ({ label: localeLabel(tag), value: tag })),
+    localeShown,
+    localeSummary: languages.join(", "),
+    localizable: languages.length > 0,
+    localized: state.localized,
     name: state.name,
     nameLabel: info.nameLabel,
     ownPage: state.ownPage,
@@ -763,6 +845,9 @@ async function start(
   const state: DialogState = {
     busy: false,
     collection: request.collection ?? ctx.collections[0]?.name ?? "",
+    // The language the request names (Content's language filter), else the site's default.
+    locale: declaredLocale(request.locale, ctx) ?? ctx.i18n?.defaultLocale ?? "",
+    localized: ctx.i18n !== null && ctx.i18n !== undefined,
     // Blank even with a selection: converting edits the open page, so it is chosen, never assumed.
     componentStart: "blank",
     copyOf: "",
@@ -911,6 +996,16 @@ async function start(
             }
           });
         }
+      },
+      pickLocale: (value) => {
+        change(() => {
+          state.locale = value;
+        });
+      },
+      setLocalized: (checked) => {
+        change(() => {
+          state.localized = checked;
+        });
       },
       pickCopy: (value) => {
         change(() => {
