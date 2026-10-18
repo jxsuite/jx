@@ -5,8 +5,9 @@
  *
  * - **Electron** (`electron-shell/`), when `ELECTRON_BIN` names one. Its window is frameless, so
  *   Studio draws the titlebar, window buttons and drag region it draws on every platform. It is
- *   always opt-in: the Electron application of §9.7 does not use this launcher at all, and the snap
- *   leaves the variable unset.
+ *   always opt-in: the Electron application of §9.7 does not use this launcher at all, and no
+ *   channel ships it. It is the development launcher of a checkout (`bun run chromium`) and the
+ *   fallback where no Electron is available.
  * - **Chromium `--app`** otherwise: the window frame is the browser's and the desktop's, and Studio
  *   draws none (§9.5 says why a browser cannot do better on Linux).
  *

@@ -37,7 +37,7 @@ On Ubuntu, and on any distribution with snapd, install Jx Studio from the Snap S
 sudo snap install jx-studio
 ```
 
-The snap runs Studio in a Chromium app window, draws natively on Wayland, and uses your system's graphics drivers for hardware acceleration. It updates itself through the Snap Store rather than through Studio's own update prompt.
+The snap runs the same Studio application as every other platform, with the window frame and buttons Studio draws itself, and draws natively on Wayland. It updates through the Snap Store rather than through Studio's own update prompt.
 
 The snap is confined, so it reaches the folders in your home directory and on removable media. To open a project on removable media, connect that interface once:
 

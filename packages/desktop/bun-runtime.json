@@ -1,5 +1,5 @@
 {
-  "$comment": "The Bun the packaged application runs its backend under, carried in resources/bun. The official release binary, pinned by version and SHA-256 per platform (from the release's SHASUMS256.txt). The Linux entries are the ones snap/snapcraft.yaml pins; tests/bun-runtime.test.ts holds them equal. Bump the version and the four sums together.",
+  "$comment": "The Bun the packaged application runs its backend under, carried in resources/bun. The official release binary, pinned by version and SHA-256 per platform (from the release's SHASUMS256.txt). The snap carries this same Bun inside the application, so it pins none of its own. Bump the version and the four sums together.",
   "version": "1.4.2",
   "assets": {
     "darwin-arm64": {

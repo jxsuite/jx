@@ -70,7 +70,7 @@ export interface UpdateEnvironment {
  *
  * Only where electron-updater can replace the running application: not in a checkout, not a Store
  * package (the Store does it), and on Linux only the AppImage (a `.deb` is the package manager's).
- * The Nix package and the snap are unpackaged here, and their own tools replace them.
+ * The Nix package and the snap are not AppImages, and their own tools replace them.
  *
  * @param environment The facts it depends on.
  */

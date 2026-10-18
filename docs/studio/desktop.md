@@ -102,9 +102,7 @@ Everything on this page applies to the NixOS build. Projects open the same way, 
 
 The window itself is Studio's, as on every other platform: the command bar is the title bar, so drag it to move the window, and the minimize, maximize and close buttons sit at its right end. Resize the window from its edges as usual. If a project has unsaved changes, closing the window asks first. The window opens the same way whatever starts `jx-studio`, including a task or extension in an editor such as VS Code.
 
-The Ubuntu snap is the exception. It runs Studio in a Chromium app window, so your desktop draws that window's frame and its buttons are your system's rather than Studio's.
-
-Windows there come from the _File_ menu's **New Window**, from the **This Window / New Window** question above, or from running `jx-studio <project>` again, and running it for a project that is already open raises that window instead of opening a second one.
+Further windows come from the _File_ menu's **New Window**, from the **This Window / New Window** question above, or from running `jx-studio <project>` again, and running it for a project that is already open raises that window instead of opening a second one.
 
 ## If a window can't reach the app
 

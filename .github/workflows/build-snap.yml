@@ -2,14 +2,10 @@
 # bundle-desktop-windows.yml does for the Microsoft Store package. snap-publish.yml takes it from the
 # release to the Snap Store.
 #
-# The snap runs the Chromium app-mode launcher, not the Electron application the other channels run.
-# Moving it needs a measurement first: the official Electron prebuilt must render with hardware
-# acceleration under the `gpu-2404` interface, which is why the snap carries Canonical's Chromium
-# (packages/desktop/AGENTS.md, "Snap Store Publishing").
-#
-# Nix builds the app tree (`nix build .#default`, the same derivation `nix run` ships); snapcraft
-# wraps it with Canonical's Chromium build and the official Bun binary
-# (packages/desktop/snap/snapcraft.yaml says why each comes from where it does).
+# The snap carries the same Electron application every other channel ships: electron-builder's
+# unpacked Linux build, staged beside snapcraft.yaml. snapcraft wraps it with the gnome runtime's
+# GTK and GPU stack and Canonical's Chromium build (the site import's browser)
+# (packages/desktop/snap/snapcraft.yaml says why).
 #
 # Two native runners, because nothing here cross-compiles, and both pinned to 24.04 rather than
 # `ubuntu-latest`: `--destructive-mode` builds on the host, which must match the snap's core24 base.
@@ -51,52 +47,22 @@ jobs:
         with:
           ref: ${{ inputs.tag_name || github.ref }}
 
-      # `install: false` for the reason nix.yml gives: the derivation's `src` is the whole tree, and
-      # a node_modules in it would change the store path on every run.
       - uses: ./.github/actions/setup-bun
-        with:
-          install: "false"
 
-      # A tag is what a release ships, so its bun.nix must already describe its lockfile (nix.yml's
-      # release leg, same rule). A dispatch without a tag is a trial build of a moving ref, where
-      # bun.nix may lag by design, so it regenerates in the working tree like nix.yml's main leg.
-      - name: bun.nix must describe the lockfile in this tree
-        env:
-          STRICT: ${{ inputs.tag_name != '' && 'true' || 'false' }}
+      # The unpacked build, not an AppImage: snapcraft wants the files. `--dir` runs the whole stage
+      # (backend bundle, studio assets, pinned Bun) and stops before the installer is made.
+      - name: Build the unpacked Linux app and stage it
         run: |
           set -euo pipefail
-          if [ "$STRICT" = "true" ]; then
-            bun scripts/check-bun-nix.ts
-          else
-            bun scripts/check-bun-nix.ts --fix
-          fi
+          bun run --cwd packages/desktop package --target linux --arch ${{ matrix.arch == 'amd64' && 'x64' || 'arm64' }} -- --dir --publish never
+          unpacked="$(find packages/desktop/artifacts -maxdepth 1 -type d -name 'linux*-unpacked' | head -n 1)"
+          test -n "$unpacked"
+          test -x "$unpacked/jx-studio"
+          cp -r "$unpacked" packages/desktop/snap-stage
+          bun -e 'console.log(require("./packages/desktop/package.json").version)' > packages/desktop/snap-stage/version.txt
 
-      - uses: DeterminateSystems/nix-installer-action@v23
-        with:
-          extra-conf: |
-            accept-flake-config = true
-          determinate: false
-
-      - uses: DeterminateSystems/magic-nix-cache-action@v15
-        with:
-          diagnostic-endpoint: ""
-          use-flakehub: false
-
-      # Pull-only. On a release, nix.yml has usually published this exact app closure already.
-      - uses: cachix/cachix-action@v17
-        with:
-          name: jxsuite
-          skipPush: true
-
-      # snapcraft.yaml's `app` part dumps `snap-stage/`. `cp -r` keeps the tree's internal relative
-      # symlinks (node_modules/@jxsuite/* -> ../../packages/*) as symlinks.
-      - name: Build the app tree with Nix and stage it
-        run: |
-          set -euo pipefail
-          nix build .#default --accept-flake-config -L
-          mkdir -p packages/desktop/snap-stage/lib
-          cp -r "$(readlink -f ./result)/lib/jx-studio" packages/desktop/snap-stage/lib/
-          chmod -R u+w packages/desktop/snap-stage
+      - name: The staged backend starts under the Bun that ships in the snap
+        run: bun run --cwd packages/desktop smoke
 
       # The chown is load-bearing. `sudo` leaves the snap owned by root, and review-tools is a strict
       # snap whose only file access is the `home` interface, whose AppArmor rule is

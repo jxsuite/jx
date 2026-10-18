@@ -33,7 +33,7 @@ Jx Studio is designed for three deployment targets that share a single core code
 | Target          | Runtime                       | Backend                       | Storage                   | Status                            |
 | --------------- | ----------------------------- | ----------------------------- | ------------------------- | --------------------------------- |
 | **Desktop app** | Electron + Bun backend (§9.7) | Bun process (local)           | Filesystem                | macOS, Windows, Linux, NixOS      |
-| **Snap**        | Chromium `--app` + Bun        | `@jxsuite/server` (localhost) | Filesystem via dev server | Ubuntu, via the Snap Store (§9.6) |
+| **Snap**        | Electron + Bun backend (§9.6) | Bun process (local)           | Filesystem                | Ubuntu, via the Snap Store (§9.6) |
 | **Dev mode**    | Chrome                        | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (Studio development)       |
 | **SaaS/PaaS**   | Browser                       | Session gateway over git      | Git repository            | Shipped (see §10)                 |
 
@@ -43,7 +43,7 @@ The desktop runtime is chosen at **build time**, not runtime:
 
 - **macOS, Windows, Linux (x64 and arm64)** → the Electron application of §9.7, packaged by electron-builder (§7): Electron is the root process and a Bun backend is its child, carried inside the application.
 - **NixOS** → the same application, built by Nix (§9.3), with nixpkgs Chromium kept as the site import's headless browser.
-- **Snap Store (Ubuntu)** → the Chromium app-mode launcher and the Nix-built app tree, run by Canonical's Chromium build in a strict snap (§9.6), until the official Electron prebuilt has been measured under the snap's graphics interface.
+- **Snap Store (Ubuntu)** → the same Electron application, unpacked from electron-builder and confined in a strict snap (§9.6), with Canonical's Chromium copied in only as the site import's browser.
 
 The studio package (`@jxsuite/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxsuite/server`) is one such implementation; the Electron application's Bun backend is another; a cloud API server is a third.
 
@@ -388,7 +388,7 @@ User fills the Parameters step (name, destination, slug)
         │    Location field, prefilled by nothing — required.
         │    Browse… renders only when the platform implements pickDirectory()
         │      ├── Electron desktop: native dialog.showOpenDialog (the XDG desktop portal on Linux)
-        │      ├── Snap launcher: native XDG desktop portal
+        │      ├── Development launcher: native XDG desktop portal
         │      ├── Dev server: showDirectoryPicker(), path recovered via a marker file (§8.2.1)
         │      └── A browser without the File System Access API: omitted — the path is typed
         │    null = the user cancelled → Location unchanged; a rejection → its message under Location
@@ -704,7 +704,7 @@ packages/desktop/
 ├── src/
 │   ├── electron-shell/           # Main process: app.ts, shell.ts, updater.ts, layout.ts, preload.ts
 │   ├── hub/                      # Backend: window hub, per-window handlers, the IPC protocol
-│   └── chromium/                 # The webview adapter and the snap's per-window launcher
+│   └── chromium/                 # The webview adapter and the development launcher
 └── build/, artifacts/            # Generated, gitignored: the staged tree, and what electron-builder writes
 ```
 
@@ -846,7 +846,7 @@ For the **desktop app**, `Utils.openFileDialog` with `canChooseFiles: true` and 
 
 Choosing where a **new** project goes (§4.5) cannot use any of the three steps above: the folder is empty by definition, so there is no `project.json` to read and nothing for `/__studio/sites` to match. The handle still carries no path.
 
-**This applies only to the plain dev-server browser session.** Every packaged build already has a real native folder dialog that returns a filesystem path directly, and keeps it — the Electron application uses `dialog.showOpenDialog` (the XDG desktop portal on Linux), and the snap's launcher uses the portal directly. A browser page has no such option, so it gets the fallback below rather than no **Browse…** button at all. A launcher window whose own adapter failed no longer falls back to this path (§3.3); desktop 5.0.0 through 5.1.3 did, which is how a packaged macOS window showed Chromium's picker in place of its native dialog and then did nothing with the answer.
+**This applies only to the plain dev-server browser session.** Every packaged build already has a real native folder dialog that returns a filesystem path directly, and keeps it — the Electron application uses `dialog.showOpenDialog` (the XDG desktop portal on Linux), and the development launcher uses the portal directly. A browser page has no such option, so it gets the fallback below rather than no **Browse…** button at all. A launcher window whose own adapter failed no longer falls back to this path (§3.3); desktop 5.0.0 through 5.1.3 did, which is how a packaged macOS window showed Chromium's picker in place of its native dialog and then did nothing with the answer.
 
 There, the handle is made to identify itself. Using the `readwrite` grant the picker just issued, `pickDirectoryPath` (`@jxsuite/studio/directory-picker`) tags the folder with a hidden `LOCATION_ID_FILE` — `.jx-loc-id`, defined in `@jxsuite/protocol` because the writer and the reader must agree on it — whose **contents** are a freshly generated 128-bit id, and asks the backend which directory carries that id:
 
@@ -870,7 +870,7 @@ A cancel (`AbortError`) resolves `null`, and the modal leaves the Location field
 
 > **Status: Implemented.** Available via `nix build` and `bun run desktop:chromium`.
 
-Every packaged build, the Nix package included, runs the Electron application of §9.7. The Ubuntu snap and a development checkout run a Bun launcher of their own (this section), in one of two window shells: a frameless **Electron** window when `ELECTRON_BIN` names one, so Studio draws its own titlebar as it does everywhere, or Chromium in `--app` mode otherwise. §9.5 records why the browser alone cannot give this build Studio's titlebar.
+Every packaged build, the Nix package and the Ubuntu snap included, runs the Electron application of §9.7. A development checkout (`bun run chromium`) runs a Bun launcher of its own (this section), and so does any machine with no Electron available, in one of two window shells: a frameless **Electron** window when `ELECTRON_BIN` names one, so Studio draws its own titlebar as it does everywhere, or Chromium in `--app` mode otherwise. §9.5 records why the browser alone cannot give this build Studio's titlebar.
 
 ### 9.1 Architecture
 
@@ -1001,36 +1001,37 @@ Everything else the Electron application implements, this launcher implements: `
 
 ### 9.6 Snap Package
 
-> **Status: Implemented.** `packages/desktop/snap/snapcraft.yaml`, `.github/workflows/build-snap.yml`, `.github/workflows/snap-publish.yml`, `scripts/snap-publish.ts`.
+> **Status: Implemented.** `packages/desktop/snap/snapcraft.yaml`, `packages/desktop/snap/local/jx-studio`, `packages/desktop/snap/gui/`, `.github/workflows/build-snap.yml`, `.github/workflows/snap-publish.yml`, `scripts/snap-publish.ts`.
 
-Ubuntu users get this build from the Snap Store as `jx-studio`. It runs the Chromium launcher rather than the Electron application until the official Electron prebuilt has been measured under the snap's `gpu-2404` graphics interface (§9.7), and the launcher selects Chromium's Ozone Wayland backend in a Wayland session (§9.2).
+Ubuntu users get this build from the Snap Store as `jx-studio`. It runs the same Electron application as every other channel (§9.7): electron-builder's unpacked Linux build, which brings its own Electron and the pinned Bun that runs its backend. Nothing in the snap is the Nix tree, and there is no Bun part of the snap's own.
 
-**Three ingredients, each from where it is built best.**
+**Two ingredients.**
 
-| Ingredient | Source                                                                                                                                                                                                                                                                                                                  |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App tree   | The Nix package's `lib/jx-studio` (§9.3), staged into the snap unchanged. It is the production install the install check has already resolved, and it names no `/nix/store` path a runtime would follow: JavaScript, assets, and npm's prebuilt native modules.                                                         |
-| Chromium   | Canonical's build, copied from the official `chromium` snap at build time (`usr/lib/chromium-browser` and the libraries it stages beside it; `chromedriver` dropped). It is compiled against the same Ubuntu userspace as the gnome runtime's GTK and the `gpu-2404` graphics stack, which is what the next row is for. |
-| Bun        | The official release binary, pinned by version and SHA-256 to the series CI runs. Nix's Bun loads its glibc from `/nix/store`.                                                                                                                                                                                          |
+| Ingredient | Source                                                                                                                                                                                                                                                                                                                                                                |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App        | `bun run --cwd packages/desktop package --target linux --arch <x64\|arm64> -- --dir --publish never` (§7), staged in `packages/desktop/snap-stage` and dumped under `$SNAP/app/`. The executable is `jx-studio`. Electron's setuid `chrome-sandbox` is removed, because the store refuses a setuid file and the sandbox it helps is the one this snap does not start. |
+| Chromium   | Canonical's build, copied from the official `chromium` snap at build time (`usr/lib/chromium-browser` and the libraries it stages beside it; `chromedriver` and the setuid sandbox helper dropped). It is not the shell. It is the site import's browser (`CHROME_PATH`), because puppeteer cannot open a page in Electron (§9.2).                                    |
 
-The snap cannot use the Chromium snap a user already has: a strictly confined snap cannot execute another snap's binaries, and the Chromium snap offers no slot to plug into. So the build carries its own copy, which means a Chromium update reaches Jx Studio users when Jx Studio is next released. That is accepted: the browser loads only the user's own projects from a loopback server.
+The snap cannot use the Chromium snap a user already has: a strictly confined snap cannot execute another snap's binaries, and the Chromium snap offers no slot to plug into. So the build carries its own copy, which means a Chromium update reaches Jx Studio users when Jx Studio is next released. That is accepted: the browser loads only the sites a user chooses to import.
 
-| Property    | Value                                                                                                                                                                                                                                                                                                           |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Base        | `core24`, with snapcraft's `gnome` extension: GTK from `gnome-46-2404`, and host-matched Mesa (plus the host's NVIDIA driver, through snapd) from `gpu-2404`. That is the hardware-accelerated path; nixpkgs Chromium looked for drivers only where NixOS installs them and rendered in software inside a snap. |
-| Confinement | `strict`, grade `stable`, architectures `amd64` and `arm64`, each built natively on a 24.04 runner.                                                                                                                                                                                                             |
-| Plugs       | The gnome extension's (`desktop`, `desktop-legacy`, `gsettings`, `opengl`, `wayland`, `x11`), plus `browser-support`, `home`, `network`, `network-bind` and `removable-media`.                                                                                                                                  |
-| Entry       | `bin/jx-studio` runs the Nix tree's `chromium/index.ts` with the snap's Bun, after the gnome extension's command chain has set up the display, GTK and GPU environment. `CHROMIUM_BIN` and `JX_STUDIO_ASSETS` are set in `snapcraft.yaml`.                                                                      |
+| Property    | Value                                                                                                                                                                                                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Base        | `core24`, with snapcraft's `gnome` extension: GTK from `gnome-46-2404`, and host-matched Mesa (plus the host's NVIDIA driver, through snapd) from `gpu-2404`. `stage-packages` carries the libraries Electron links against that neither the runtime nor Chromium's set has. |
+| Confinement | `strict`, grade `stable`, architectures `amd64` and `arm64`, each built natively on a 24.04 runner.                                                                                                                                                                          |
+| Plugs       | The gnome extension's (`desktop`, `desktop-legacy`, `gsettings`, `opengl`, `wayland`, `x11`), plus `browser-support`, `home`, `network`, `network-bind` and `removable-media`.                                                                                               |
+| Entry       | `bin/jx-studio` (`snap/local/jx-studio`) execs `$SNAP/app/jx-studio --no-sandbox --class=jx-studio`, after the gnome extension's command chain has set up the display, GTK and GPU environment. `snap/gui/jx-studio.desktop` is the launcher entry.                          |
 
-**Chromium's own sandbox is off inside the snap.** It needs `browser-support` with `allow-sandbox: true`, which the Snap Store grants only to trusted publishers after manual review. The launcher passes `--no-sandbox` when `$SNAP` is set (`chromiumPlatformArgs`), so snap confinement is the boundary, around a window that loads only this launcher's own loopback studio. Requesting `allow-sandbox` and dropping the flag is the upgrade path. The same branch passes the two flags Canonical's own Chromium launcher gives that binary: `--password-store=basic`, because the snap has no `password-manager-service` plug, and `--gtk-version=3`.
+**Electron's own sandbox is off inside the snap.** It needs `browser-support` with `allow-sandbox: true`, which the Snap Store grants only to trusted publishers after manual review. The launcher passes `--no-sandbox`, so snap confinement is the boundary, around windows that load only this application's own loopback studios. Requesting `allow-sandbox` and dropping the flag is the upgrade path. `--class=jx-studio` is X11's `WM_CLASS`, as on every Linux build (§9.7).
 
-**Updates belong to the store.** Like every packaged build (§9.5) it has no feed of its own and reports channel `snap`.
+**Hardware acceleration is unmeasured.** The snap carries the gnome extension's `gpu-2404` stack so that a host-matched driver is on offer, and Canonical's Chromium was the proven renderer there. Whether the official Electron prebuilt renders with hardware acceleration through it has not been measured, and the first store build is where that shows. This is a verification item, not a known defect: the snap runs the application either way, and a measured software-rendering result would be recorded here.
 
-**Publishing.** On a desktop release, `build-snap.yml` builds the app tree with Nix and packs it with `snapcraft pack --destructive-mode` for both architectures from the tag, runs the store's `snap-review` over each, and attaches them to the GitHub release; `snap-publish.yml` uploads them with `scripts/snap-publish.ts`. That script is a no-op until `SNAPCRAFT_STORE_CREDENTIALS` exists, treats a byte-identical re-upload and a manual-review hold as success, and warns when the exported login is within 30 days of expiring. Neither job gates the `release` branch.
+**Updates belong to the store.** Like every packaged build (§9.5) it has no feed of its own: the updater is off for a packaged Linux build that is not an AppImage, and the channel reports `snap`.
+
+**Publishing.** On a desktop release, `build-snap.yml` packages the unpacked Electron application and packs it with `snapcraft pack --destructive-mode` for both architectures from the tag, runs the store's `snap-review` over each, and attaches them to the GitHub release; `snap-publish.yml` uploads them with `scripts/snap-publish.ts`. That script is a no-op until `SNAPCRAFT_STORE_CREDENTIALS` exists, treats a byte-identical re-upload and a manual-review hold as success, and warns when the exported login is within 30 days of expiring. Neither job gates the `release` branch.
 
 ### 9.7 The Electron Application
 
-> **Status: Partial.** The application, its hub and its protocol ship (`packages/desktop/src/electron-shell/app.ts`, `packages/desktop/src/hub/`) and are what every installer (§7) and the Nix package run. The snap does not run it: it keeps the per-window launcher until the official Electron prebuilt has been measured under the snap's graphics interface (§9.6, and the last paragraph below).
+> **Status: Implemented.** `packages/desktop/src/electron-shell/app.ts`, `packages/desktop/src/hub/`. The application, its hub and its protocol ship and are what every installer (§7), the Nix package and the snap (§9.6) run.
 
 §9.5's Electron shell is one window in a process of its own, started by the Bun launcher of §9.2. This is the other arrangement: **Electron is the root process and owns every window, and a Bun backend is its child and owns every project.** It is the shape a packaged application has to have, because an application bundle's executable is Electron, not Bun, and it is the shape the single-framework goal needs. Nothing in the webview changes: the adapter is `chromium/platform.ts`, and a window's page talks to its own server over the same token-gated WebSocket.
 
@@ -1062,7 +1063,7 @@ The snap cannot use the Chromium snap a user already has: a strictly confined sn
 
 **Linux.** Electron 38 and later default `--ozone-platform` to `auto`, so the application is a native Wayland client in a Wayland session with no flag from this repository; the old launcher's Ozone arguments are not carried over, and setting them from JavaScript would be too late to matter. The wrapper passes `--class=jx-studio` for X11's `WM_CLASS`, and the application sets the Wayland `app_id` itself, as §9.3 explains. File pickers are Chromium's xdg-desktop-portal client, the same FileChooser portal the launcher's D-Bus client called, and Chromium's own non-portal chooser when no portal is running.
 
-**Not built here.** The snap. It runs the per-window launcher of §9.2 with Chromium `--app`, because the reason it carries Canonical's Chromium is hardware acceleration under `gpu-2404`, and nobody has measured whether the official Electron prebuilt gets it there. Packaging, signing, the updater and the release lanes are §7, whose own status (§7.6) says what has and has not yet run.
+**Not covered here.** Packaging, signing, the updater and the release lanes are §7, whose own status (§7.6) says what has and has not yet run. The snap (§9.6) packs the same unpacked build, and what remains open for it is a measurement, not a build: whether this Electron renders with hardware acceleration under the snap's `gpu-2404` interface.
 
 ---
 

@@ -98,8 +98,8 @@ jobs:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
     secrets: inherit
 
-  # The Ubuntu twin of desktop-windows -> store-publish. The snap is built from the Nix flake rather
-  # than the Electron application (build-snap.yml says why), and neither job gates the `release`
+  # The Ubuntu twin of desktop-windows -> store-publish. The snap packs the same unpacked Electron
+  # application as every other channel (build-snap.yml says how), and neither job gates the `release`
   # branch: a Store upload is a distribution channel, not part of what the tag is.
   build-snap:
     needs: release-please

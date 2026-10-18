@@ -98,6 +98,8 @@ appx:
   artifactName: win-${arch}-JxStudio.${ext}
 
 linux:
+  # Named explicitly: the snap's launcher and the desktop entries start this file.
+  executableName: jx-studio
   target:
     # The AppImage is the one electron-updater can replace in place. There is no deb: the snap and
     # the Nix package already cover the package-manager channels, and fpm, which electron-builder

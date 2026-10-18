@@ -203,7 +203,7 @@ if (!match) {
 
 The desktop adapter translates the same interface into JSON-RPC over a WebSocket: each member is a one-line `request(method, params)` call into handlers that run beside the project, in a loopback project server of the window's own that only accepts its token. A native file dialog (`openProject()`) is the shell's to draw, so the project server asks the shell for it and never opens one itself. Beyond the mapping, the adapter implements the desktop-only families: multi-window, backend-persisted recents and settings, `getAppInfo`.
 
-Studio runs in an Electron window (or, for the Snap build, a Chromium `--app` window) and talks to its project server over a WebSocket, so it is a good adapter to read if you are writing your own: one `request(method, params)` helper per member, the same optional families as any backend, and the handler names checked against one declaration (`packages/desktop/tests/_rpc-parity.ts`). Where Electron owns the window, a preload script exposes window controls as `globalThis.__jxShell`, and the adapter publishes them as `windowControls` when that bridge is present.
+Studio runs in an Electron window (or, in a development checkout, a Chromium `--app` window) and talks to its project server over a WebSocket, so it is a good adapter to read if you are writing your own: one `request(method, params)` helper per member, the same optional families as any backend, and the handler names checked against one declaration (`packages/desktop/tests/_rpc-parity.ts`). Where Electron owns the window, a preload script exposes window controls as `globalThis.__jxShell`, and the adapter publishes them as `windowControls` when that bridge is present.
 
 Two lessons from it generalize to any adapter:
 

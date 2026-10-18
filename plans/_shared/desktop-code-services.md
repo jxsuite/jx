@@ -31,7 +31,7 @@ workspaces:
 **What exists** (verified 2026-09-26)
 
 - `handleCodeApi(req, url)` in `packages/server/src/code-api.ts`: `format` from `oxfmt`'s Node API, `minify` from a module-level `Bun.Transpiler`, `lint` by spawning the path `resolveOxlintBin()` returns. server.md §5 is Implemented. `@jxsuite/server` has no `./code-api` export.
-- `codeService` in `project-session.ts` (`async function codeService(_request?: …) { return null; }`). It is registered by `hub/handlers.ts` (the Electron application's per-window map, `wire(session.codeService)`) and by `chromium/index.ts` (the snap's default session via `handlers.ts`), declared in `rpc-schema.ts`, and forwarded by `chromium/platform.ts`, the one adapter. `jxResolve` in the same file is the precedent for answering an RPC from a server module.
+- `codeService` in `project-session.ts` (`async function codeService(_request?: …) { return null; }`). It is registered by `hub/handlers.ts` (the Electron application's per-window map, `wire(session.codeService)`) and by `chromium/index.ts` (the development launcher's default session via `handlers.ts`), declared in `rpc-schema.ts`, and forwarded by `chromium/platform.ts`, the one adapter. `jxResolve` in the same file is the precedent for answering an RPC from a server module.
 - The editor (`panels/editors.ts`) formats on open, lints on open and on a 750 ms debounce, and minifies in `closeFunctionEditor`. Each treats `null` as a no-op. There is no control to disable.
 - `devserver.ts:679` POSTs to `/__studio/code/<action>` and maps a non-OK response to `null`. `cloud.ts:835` returns `null`.
 - `STUDIO_ROUTES` (`packages/protocol/src/routes.ts:249`): `codeFormat`, `codeMinify`, `codeLint`. Two of their texts are wrong. The request bodies are `{code, args?}`, not `{code, path?}`, and `codeMinify`'s degradation ("Compiled-output minification is skipped.") describes nothing that exists, because minify runs when the function editor closes.
@@ -48,7 +48,7 @@ workspaces:
 
 ## Outcome
 
-- desktop.md §5.3 → Implemented: both Bun-side entries (the Electron application's hub and the snap's chromium launcher) answer format, lint and minify from the dev server's implementation, in their own Bun process, packaged and Nix alike.
+- desktop.md §5.3 → Implemented: both Bun-side entries (the Electron application's hub and the development chromium launcher) answer format, lint and minify from the dev server's implementation, in their own Bun process, packaged and Nix alike.
 - studio.md §6.4 → Implemented: the editor's services come from the host. A host without code tooling (the cloud) resolves `null`, and the editor degrades silently as described. That is a stated contract, not an open item.
 - server.md §5 stays Implemented, rewritten in place: oxlint runs under the host's Bun with default rules, and format and minify answer 501 together when the formatter cannot load. §4.3 (the code services' 200) and §7 (the two dependencies) follow.
 
@@ -114,7 +114,7 @@ workspaces:
 **Integration contract.** Once this lands, a plan that requires it may rely on four things:
 
 - `@jxsuite/server/code-api` exports `runCodeService`, `CODE_SERVICE_ACTIONS`, `resolveOxlintCommand` and `handleCodeApi`.
-- Every Bun-side entry's `codeService` (the hub's and the snap launcher's) answers all three actions. It resolves `null` only for an unknown action, or for format and minify when the formatter cannot load.
+- Every Bun-side entry's `codeService` (the hub's and the development launcher's) answers all three actions. It resolves `null` only for an unknown action, or for format and minify when the formatter cannot load.
 - `packages/desktop/scripts/lib/backend-bundle.ts` (`BACKEND_CODE_TOOLS`) is the one list of staged code-tool paths, and `bun run smoke` proves the staged layout loads.
 - desktop.md §5.3 names the packaged layout.
 

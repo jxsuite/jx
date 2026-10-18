@@ -15,7 +15,7 @@ The architecture is specified in [`specs/desktop.md`](../../specs/desktop.md) §
 | macOS, Windows, Linux x64/arm64 | The Electron application, packaged by electron-builder | GitHub releases (auto-updates)      |
 | Windows (Store)                 | The same application, as an appx                       | Microsoft Store                     |
 | NixOS                           | The same application, built by Nix                     | `nix run github:jxsuite/jx/release` |
-| Ubuntu (snap)                   | The Bun launcher with Chromium `--app`                 | Snap Store                          |
+| Ubuntu (snap)                   | The same application, unpacked into a snap             | Snap Store                          |
 | Dev mode                        | Chrome + `@jxsuite/server`                             | Studio development                  |
 
 ## Prerequisites

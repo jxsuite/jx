@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { bunRuntimeFor, matchesChecksum } from "../scripts/lib/bun-runtime";
-
-const DESKTOP = resolve(import.meta.dir, "..");
 
 describe("bunRuntimeFor", () => {
   test.each([
@@ -23,12 +19,6 @@ describe("bunRuntimeFor", () => {
 
   test("a platform with no pinned release is an error, not an app that cannot start its backend", () => {
     expect(() => bunRuntimeFor("darwin", "x64")).toThrow("No Bun release is pinned for darwin-x64");
-  });
-
-  test("the Linux sums are the ones the snap pins, so the two cannot drift apart", () => {
-    const snap = readFileSync(resolve(DESKTOP, "snap/snapcraft.yaml"), "utf8");
-    expect(snap).toContain(bunRuntimeFor("linux", "x64").sha256);
-    expect(snap).toContain(bunRuntimeFor("linux", "arm64").sha256);
   });
 });
 

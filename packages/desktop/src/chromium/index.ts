@@ -507,10 +507,11 @@ export function seedChromiumPreferences(userDataDir: string): void {
  * - Under snap confinement (`$SNAP` is set by snapd) Chromium's own sandbox cannot start: it needs
  *   `browser-support`'s `allow-sandbox`, which the Snap Store grants only to trusted publishers
  *   after manual review. The snap's confinement is the boundary instead, and the page it loads is
- *   this launcher's own loopback studio (specs/desktop.md §9.6). The other two flags are the ones
- *   Canonical's own chromium launcher passes to the same binary: the snap has no
- *   `password-manager-service` plug, so the keyring must not be probed, and the gnome runtime it
- *   links against is GTK 3.
+ *   this launcher's own loopback studio. The snap itself now runs the Electron application
+ *   (specs/desktop.md §9.6), so this branch serves a launcher started inside confinement. The other
+ *   two flags are the ones Canonical's own chromium launcher passes to the same binary: the snap
+ *   has no `password-manager-service` plug, so the keyring must not be probed, and the gnome
+ *   runtime it links against is GTK 3.
  */
 export function chromiumPlatformArgs(env: NodeJS.ProcessEnv = process.env): string[] {
   const args: string[] = [];
