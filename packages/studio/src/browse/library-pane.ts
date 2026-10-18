@@ -59,6 +59,7 @@ import { pageLabel, singularLabel } from "../panels/site-model";
 import { compareRoutes, fileToRoute } from "@jxsuite/site/routes";
 import {
   dateFieldOf,
+  entryDay,
   onEntrySummariesRead,
   peekEntrySummaries,
   titleFieldOf,
@@ -67,6 +68,7 @@ import { entryCollection } from "../content/entry-model";
 import { isString } from "@jxsuite/schema/guards";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
 import { openEntry } from "../content/entry-open";
+import { requestGridReveal } from "../grid/grid-reveal";
 import {
   LIBRARY_LAYOUTS,
   LIBRARY_LAYOUT_LABELS,
@@ -574,7 +576,9 @@ function scheduleSettle(panel: ActiveLibraryPane): void {
  */
 export function openLibraryFile(file: Pick<LibraryFile, "path" | "collection" | "record">): void {
   if (file.record) {
-    // A record of a file-backed collection is written in its file's own grid.
+    /* A record of a file-backed collection is written in its file's own grid, which lands on the
+       record's row rather than leaving the reader to find it. */
+    requestGridReveal(file.record.source, file.record.row);
     void openFileInTab(file.record.source);
   } else if (file.collection === null || file.collection === PAGES_COLLECTION) {
     void openFileInTab(file.path);
@@ -866,16 +870,20 @@ function entryFactsFor(collection: ContentCollection, layout: LibraryLayout): En
     return librarySource().scanned() ? pageFactsFor(layout === "table") : entryFactsFrom(new Map());
   }
   if (collection.fileBacked) {
-    // A record's facts are its fields, read with the file by the scan.
+    /* A record's facts are its fields, read with the file by the scan; it is dated by its own date
+       field, as an entry file is, so the Calendar never falls back to the one file's mtime. */
+    const schema = collectionSchema(collection.key);
     const records = librarySource()
       .files()
       .filter((file) => file.collection === collection.key && file.record);
     return entryFactsFrom(
       new Map(
-        records.map((file) => [
-          file.path,
-          { date: "", fields: file.record!.fields, status: "", title: file.name },
-        ]),
+        records.map((file) => {
+          const { fields } = file.record!;
+          const dateField = dateFieldOf(schema, fields);
+          const date = dateField === null ? "" : entryDay(fields[dateField] ?? "");
+          return [file.path, { date, fields, status: "", title: file.name }];
+        }),
       ),
     );
   }

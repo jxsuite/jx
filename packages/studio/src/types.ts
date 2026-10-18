@@ -896,6 +896,8 @@ export interface ContentSectionEntry {
   source?: string;
   format?: string;
   schema?: ContentTypeSchema;
+  /** The field a file-backed collection's records are identified by (the loader's `idField`). */
+  idField?: string;
   $elements?: unknown[];
 }
 

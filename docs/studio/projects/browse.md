@@ -16,6 +16,8 @@ code:
   - packages/studio/src/content/collection-pages.ts
   - packages/studio/src/content/entry-summaries.ts
   - packages/studio/src/content/file-records.ts
+  - packages/studio/src/content/file-record-ids.ts
+  - packages/studio/src/grid/grid-reveal.ts
   - packages/studio/src/panels/collections-panel.ts
   - packages/studio/src/surfaces/collections-panel.ts
 ---
@@ -56,7 +58,7 @@ A collection lists its entry files, so a draft sits beside a published entry. Be
 
 ### A collection stored in one file
 
-A collection whose `source` names one file, such as a CSV price list (`"source": "./content/pricing/prices.csv"`), lists that file's records: one entry per row under the header (or per object of a JSON array), named by its `Title` (or `title`, `name`, `label` or `heading`) column, with the other columns in the Table. Its count in the Collections panel is its number of records. Clicking a record, or **Edit in grid**, opens the file in its grid, which is where you add, change and remove rows, so there is no **New** button and no right-click menu on a record.
+A collection whose `source` names one file, such as a CSV price list (`"source": "./content/pricing/prices.csv"`), lists that file's records: one entry per row under the header (or per object of a JSON array), named by its `Title` (or `title`, `name`, `label` or `heading`) column, with the other columns in the Table. Its count in the Collections panel and in the Site panel is its number of records. Clicking a record opens the file in its grid with that record's row selected and scrolled into view; **Edit in grid** opens the same grid. The grid is where you add, change and remove rows, so there is no **New** button and no right-click menu on a record. **Calendar** places each record on its own date column, as it places an entry file.
 
 ## Where a collection is published
 
@@ -82,7 +84,7 @@ All four draw the same scan, so switching view repaints. It never re-scans your 
 The Table lists files; it does not edit them. Changing a name is a rename, not a cell edit, so renaming, duplicating and deleting live in the right-click menu below, where the confirmation can tell you what else is affected. To edit entries' fields in a spreadsheet, click **Edit in grid** in the toolbar, which opens the collection's [grid](/docs/studio/data/grid).
 :::
 
-**Calendar** places an entry on the date its own date field holds (a field the collection's schema types as a date, or one named `date` or `published`). Otherwise it uses the day the file name starts with (`2026-04-12-spring-menu.md`), and then the file's modification time. A file with neither is listed under **No date** rather than parked on today. It draws the 60 most recent days and says how many older ones it left out.
+**Calendar** places an entry on the date its own date field holds (a field the collection's schema types as a date, or one named `date` or `published`; a date written `6/3/2026` counts as well as `2026-06-03`). Otherwise it uses the day the file name starts with (`2026-04-12-spring-menu.md`), and then the file's modification time. A file with neither is listed under **No date** rather than parked on today. It draws the 60 most recent days and says how many older ones it left out.
 
 **Board** groups by the first of the collection's fields that declares a fixed list of values, or else by the first field whose values repeat across entries, so a menu becomes Starters, Mains, Desserts and Drinks. Entries with that field empty sit in a last column of their own. Board caps each column at 25 items and prints how many more there are. Both grouped views draw titles only. For the full list, switch to Table.
 

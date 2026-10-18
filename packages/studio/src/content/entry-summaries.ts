@@ -141,9 +141,17 @@ export function entryDay(value: EntryFields[string] | Date): string {
     return written[1]!;
   }
   const parsed = new Date(value);
-  return value.trim() === "" || Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toISOString().slice(0, 10);
+  if (value.trim() === "" || Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  if (!value.includes(":")) {
+    /* A date with no time of day (`6/3/2026`, `March 4, 2026`) parses as LOCAL midnight, so its
+       UTC day is the day before anywhere east of Greenwich: the day is read where it was parsed. */
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${parsed.getFullYear()}-${month}-${day}`;
+  }
+  return parsed.toISOString().slice(0, 10);
 }
 
 /** The file name without its extension: `content/posts/hello.md` → `hello`. */

@@ -68,9 +68,10 @@ export interface LibraryFile {
   /**
    * Set when this row is one RECORD of a file-backed collection rather than a file: `path` is then
    * the record's key (`prices.csv#3`), and `source` the file it is stored in, which is what opening
-   * it opens (`content/file-records.ts`).
+   * it opens (`content/file-records.ts`); `row` is its place among the file's data rows, which is
+   * the row that file's grid lands on.
    */
-  record?: { source: string; fields: Readonly<Record<string, string>> } | undefined;
+  record?: { source: string; row: number; fields: Readonly<Record<string, string>> } | undefined;
 }
 
 /** A directory the scan could not read. Its presence means the listing is INCOMPLETE, not empty. */

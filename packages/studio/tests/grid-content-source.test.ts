@@ -97,6 +97,25 @@ describe("collection resolution", () => {
     expect(await listCollectionEntryIds("missing")).toEqual([]);
   });
 
+  test("listCollectionEntryIds reads a file-backed collection's records, never lists the file", async () => {
+    const { state } = installMockPlatform(
+      { formatAction: mockFormatAction },
+      { "content/projects.csv": "Title,Slug\nA,a-one\n,\nB,\n" },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: {
+          gone: { format: "Csv", schema: {}, source: "./content/gone.csv" },
+          projects: { format: "Csv", schema: {}, source: "./content/projects.csv" },
+        },
+      },
+    });
+    // The blank row is no record; a row with no id cell is named by its place, as the loader names it.
+    expect(await listCollectionEntryIds("projects")).toEqual(["a-one", "1"]);
+    expect(await listCollectionEntryIds("gone")).toEqual([]);
+    expect(state.calls.filter(([method]) => method === "listDirectory")).toEqual([]);
+  });
+
   test("a localized collection is listed across its declared language folders", async () => {
     installMockPlatform(
       { formatAction: mockFormatAction },

@@ -262,7 +262,7 @@ function recordRow(file: LibraryFile, record: FileRecord): LibraryFile {
     ...file,
     name: record.title,
     path: recordKey(file.path, record.index),
-    record: { fields: record.fields, source: file.path },
+    record: { fields: record.fields, row: record.row, source: file.path },
   };
 }
 

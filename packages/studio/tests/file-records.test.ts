@@ -17,11 +17,14 @@ describe("fileRecords", () => {
       {
         fields: { "4Hrs": "70.00", Title: "18' Tilt Trailer 9,990 GVW  ", sku: "tilt-9900" },
         index: 0,
+        row: 0,
         title: "18' Tilt Trailer 9,990 GVW",
       },
       {
         fields: { "4Hrs": "55", Title: "Mini Trencher", sku: "trencher" },
         index: 1,
+        // The blank row above it is still a row of the file's grid.
+        row: 2,
         title: "Mini Trencher",
       },
     ]);

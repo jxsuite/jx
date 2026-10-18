@@ -40,6 +40,8 @@ import {
 } from "../../format/format-host";
 import { parseSourceForPath } from "../../files/file-ops";
 import { collectionForDirectory } from "../../content/collection-match";
+import { collectionSourceFile } from "../../content/content-collections";
+import { fileRecordIds as recordIdsOf } from "../../content/file-record-ids";
 import { LOCALE_PLACEHOLDER } from "../../canvas/asset-resolve";
 import { columnsFromSchema, inferColumnsFromRows } from "../schema-columns";
 import { makeGridTabId } from "../grid-source";
@@ -168,12 +170,38 @@ async function listCollectionFiles(info: CollectionInfo): Promise<string[]> {
   return lists.flat().toSorted();
 }
 
-/** Entry ids (file stems) of a collection — used by relationship cell editors. */
+/**
+ * The ids of a file-backed collection's records (`content/file-records.ts`), or `null` when the
+ * source is a directory. A source that names a file is read, never listed: listing a CSV as a
+ * directory is a 500 from the dev server and a collection of no entries on screen.
+ */
+async function fileRecordIds(info: CollectionInfo): Promise<string[] | null> {
+  const file = collectionSourceFile(info.name);
+  if (file === null) {
+    return null;
+  }
+  let text: string;
+  try {
+    text = await getPlatform().readFile(file);
+  } catch {
+    return []; // A source file not written yet: an empty collection.
+  }
+  return recordIdsOf(file, text, info.def.idField);
+}
+
+/**
+ * Entry ids of a collection (file stems, or a file-backed collection's record ids), used by
+ * relationship cell editors and the Site panel's counts.
+ */
 export async function listCollectionEntryIds(typeName: string): Promise<string[]> {
   await loadFormats().catch(() => {}); // Extension resolution needs the format registry.
   const info = collectionInfo(typeName);
   if (!info) {
     return [];
+  }
+  const recordIds = await fileRecordIds(info);
+  if (recordIds !== null) {
+    return recordIds;
   }
   const files = await listCollectionFiles(info);
   return files.map((path) => {

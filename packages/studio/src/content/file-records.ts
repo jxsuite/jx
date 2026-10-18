@@ -21,8 +21,13 @@ import type { ContentTypeSchema, JsonValue } from "@jxsuite/schema/types";
 
 /** One record of a file-backed collection. */
 export interface FileRecord {
-  /** Its position in the file, from 0. */
+  /** Its position among the file's records, from 0. */
   index: number;
+  /**
+   * Its position among the file's data rows, from 0, blank rows counted: the row its file's grid
+   * shows it in, which a blank row above it makes differ from {@link index}.
+   */
+  row: number;
   /** What it is called: its title field, else its first text, else its row number. */
   title: string;
   /** Every field it holds, as list text, keyed by field name. */
@@ -41,16 +46,24 @@ function recordTitle(
   return (named || first || `Row ${index + 1}`).trim();
 }
 
+/** One record's fields, and the data row it was read from. */
+interface RecordFields {
+  fields: Record<string, string>;
+  row: number;
+}
+
 /** The records of a CSV text: one per data row under the header, blank rows skipped. */
-function csvFields(text: string): Record<string, string>[] {
+function csvFields(text: string): RecordFields[] {
   const { headers, rows } = parseCsv(text);
-  return rows
-    .filter((row) => row.some((cell) => cell.trim() !== ""))
-    .map((row) => Object.fromEntries(headers.map((header, i) => [header, row[i] ?? ""])));
+  return rows.flatMap((cells, row) =>
+    cells.some((cell) => cell.trim() !== "")
+      ? [{ fields: Object.fromEntries(headers.map((header, i) => [header, cells[i] ?? ""])), row }]
+      : [],
+  );
 }
 
 /** The records of a JSON text that is an array of objects, or null for any other JSON. */
-function jsonFields(text: string): Record<string, string>[] | null {
+function jsonFields(text: string): RecordFields[] | null {
   let parsed: JsonValue;
   try {
     // SAFETY: JSON.parse only ever yields JSON values; its `any` return type says nothing more.
@@ -61,11 +74,13 @@ function jsonFields(text: string): Record<string, string>[] | null {
   if (!Array.isArray(parsed)) {
     return null;
   }
-  return parsed.map((item) =>
-    isNonNullObject(item) && !Array.isArray(item)
-      ? Object.fromEntries(Object.entries(item).map(([key, value]) => [key, fieldText(value)]))
-      : {},
-  );
+  return parsed.map((item, row) => ({
+    fields:
+      isNonNullObject(item) && !Array.isArray(item)
+        ? Object.fromEntries(Object.entries(item).map(([key, value]) => [key, fieldText(value)]))
+        : {},
+    row,
+  }));
 }
 
 /**
@@ -90,9 +105,10 @@ export function fileRecords(
   if (rows === null) {
     return null;
   }
-  return rows.map((fields, index) => ({
+  return rows.map(({ fields, row }, index) => ({
     fields,
     index,
+    row,
     title: recordTitle(schema, fields, index),
   }));
 }

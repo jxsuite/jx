@@ -165,6 +165,9 @@ describe("an entry's date", () => {
     expect(entryDay("2026-03-04T23:30:00-08:00")).toBe("2026-03-04");
     expect(entryDay(" 2026-03-04 ")).toBe("2026-03-04");
     expect(entryDay("March 4, 2026 12:00 UTC")).toBe("2026-03-04");
+    // A day with no time of day is the day it names, in every time zone.
+    expect(entryDay("6/3/2026")).toBe("2026-06-03");
+    expect(entryDay("March 4, 2026")).toBe("2026-03-04");
     expect(entryDay(new Date("2026-03-04T12:00:00Z"))).toBe("2026-03-04");
     expect(entryDay(new Date("nope"))).toBe("");
     expect(entryDay("not a date")).toBe("");

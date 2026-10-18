@@ -41,6 +41,7 @@ import { createGridController, getGridController } from "./grid-controller";
 import { createCsvFileSource } from "./sources/csv-file-source";
 import { loadedGridEngine, loadGridEngine } from "./grid-lazy";
 import { parseGridTabId } from "./grid-source";
+import { clearGridReveal, pendingGridReveal } from "./grid-reveal";
 import { mountGridPanelSurface } from "../surfaces/grid-panel";
 import { openGridViewsSurface } from "../surfaces/grid-views";
 import { openGridReplaceSurface } from "../surfaces/grid-replace";
@@ -620,8 +621,31 @@ export function renderGridMode(surface: CanvasSurface, tab: Tab) {
           view.setSearch(layout?.filter ?? "");
         });
       }
+      revealRequested(engine, panel, tab.documentPath);
     });
   });
+}
+
+/**
+ * Land on the row a record's opener asked for (`grid-reveal.ts`), once the engine and the rows
+ * exist. The position counts the file's data rows as loaded, so it names a row whatever order a
+ * saved view sorts them into. The request is taken either way: a row that is gone is not revealed
+ * later by surprise.
+ */
+function revealRequested(
+  engine: GridController,
+  panel: ActiveGridPanel,
+  path: string | null | undefined,
+): void {
+  const position = pendingGridReveal(path);
+  if (position === undefined || !path || !panel.view || engine.state.loading) {
+    return;
+  }
+  clearGridReveal(path);
+  const row = engine.state.rows[position];
+  if (row) {
+    void panel.view.revealRow(row.key);
+  }
 }
 
 /** The frame a tab with no grid source draws: one sentence, and no controls to press. */

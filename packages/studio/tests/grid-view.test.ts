@@ -168,6 +168,32 @@ describe("createGridView — construction", () => {
   });
 });
 
+describe("createGridView — revealRow", () => {
+  test("waits for the table to be built, then selects the row's cells and scrolls to it", async () => {
+    const { table, view } = await setupView();
+    let settled = false;
+    const revealed = view.revealRow("b").then((found) => {
+      settled = true;
+      return found;
+    });
+    await Promise.resolve();
+    expect(settled).toBeFalse();
+    table.emit("tableBuilt");
+    expect(await revealed).toBeTrue();
+    expect(table.scrolledTo).toEqual(["b"]);
+    const [range] = table.getRanges();
+    expect(range!.getRows().map((row) => row.getData()[ROW_KEY_FIELD])).toEqual(["b"]);
+    expect(range!.getCells()[0]!.length).toBe(Object.keys(table.data[1]!).length);
+  });
+
+  test("answers false for a row the table does not hold", async () => {
+    const { table, view } = await setupView();
+    table.emit("tableBuilt");
+    expect(await view.revealRow("zz")).toBeFalse();
+    expect(table.scrolledTo).toEqual([]);
+  });
+});
+
 describe("gridIdleBlockers", () => {
   /*
    * Filtered by grid id rather than asserted whole. `liveGrids` is module state and every other

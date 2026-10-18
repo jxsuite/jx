@@ -289,6 +289,36 @@ describe("renderGridMode", () => {
     expect(text(wrap)).toContain("1 row");
   });
 
+  test("a record's opener lands the file's grid on that record's row, once", async () => {
+    installMockPlatform({}, { "content/p.csv": "Title,N\nOne,1\n,\nThree,3\n" });
+    const { clearGridReveal, pendingGridReveal, requestGridReveal } =
+      await import("../src/grid/grid-reveal");
+    const wrap = document.createElement("div");
+    document.body.append(wrap);
+    const tab = openTab({
+      capabilities: { modes: ["grid", "source"] },
+      document: { tagName: "div" },
+      documentPath: "content/p.csv",
+      id: "content/p.csv",
+    });
+    // The third data row (a blank one above it counts): position 2.
+    requestGridReveal("content/p.csv", 2);
+    renderGridMode(surfaceOf(wrap), tab);
+    await loadGridEngine();
+    await flush(3);
+    const table = FakeTabulator.instances.at(-1)!;
+    table.emit("tableBuilt");
+    await flush(3);
+    expect(table.scrolledTo).toEqual(["2"]);
+    expect(pendingGridReveal("content/p.csv")).toBeUndefined();
+    // A request for a row the file no longer has is taken, and reveals nothing.
+    requestGridReveal("content/p.csv", 9);
+    await flush(3);
+    expect(table.scrolledTo).toEqual(["2"]);
+    expect(pendingGridReveal("content/p.csv")).toBeUndefined();
+    clearGridReveal("content/p.csv");
+  });
+
   test("tabs without a controller get the sentence and no controls to press", async () => {
     const wrap = document.createElement("div");
     document.body.append(wrap);

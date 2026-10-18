@@ -98,6 +98,7 @@ const {
   shownCollection,
 } = await import("../src/browse/library-pane");
 const { invalidateCollectionPages } = await import("../src/content/collection-pages");
+const { clearGridReveal, pendingGridReveal } = await import("../src/grid/grid-reveal");
 const { templateDisplayName } = await import("../src/content/content-collections");
 const { invalidateEntrySummaries } = await import("../src/content/entry-summaries");
 const { invalidatePageSummaries } = await import("../src/content/page-summaries");
@@ -785,6 +786,9 @@ describe("collections", () => {
     expect(text()).toContain("Entries have no page of their own");
     rows[1]!.click();
     await flush();
+    // The file's grid is asked to land on the record that was opened, not on its first row.
+    expect(pendingGridReveal(csv)).toBe(1);
+    clearGridReveal(csv);
     // A record opens its file, and right-clicking one offers no file verbs that would hit the file.
     rows[1]!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     await flush();
@@ -794,6 +798,44 @@ describe("collections", () => {
     await flush();
     expect(opened).toEqual([csv, csv]);
     expect(runs).toEqual([]);
+  });
+
+  test("a CSV collection's Calendar dates each record by its own date field, not the file's mtime", async () => {
+    const csv = "content/projects.csv";
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          path === "content"
+            ? Promise.resolve([
+                { modified: "2026-10-06T12:00:00Z", name: "projects.csv", path: csv, type: "file" },
+              ])
+            : Promise.resolve([]),
+      },
+      { [csv]: "Title,Date\nKitchen,6/3/2026\nPatio,5/20/2026\nWall,\n" },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: {
+          projects: {
+            format: "Csv",
+            schema: { properties: { Date: { format: "date", type: "string" } } },
+            source: "./content/projects.csv",
+          },
+        },
+      },
+      projectDirs: ["content"],
+      projectRoot: "",
+    });
+    invalidateLibrary();
+    setLibraryLayout("calendar", "projects");
+    setContentCollection("projects");
+    await mount();
+    const shown = text();
+    expect(shown).toContain("2026-06-03");
+    expect(shown).toContain("2026-05-20");
+    // A record with no date of its own falls back to its file's, as an entry file does.
+    expect(shown).toContain("2026-10-06");
+    expect(shown.indexOf("Kitchen")).toBeLessThan(shown.indexOf("Patio"));
   });
 
   test("openLibraryFile routes a file in no collection to the ordinary opener", async () => {
