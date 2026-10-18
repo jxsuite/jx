@@ -276,6 +276,10 @@ export async function startApp(
   const packaged = app.isPackaged;
   const layout = packaged ? packagedLayout(resourcesPath, app.getAppPath(), platform) : null;
   const args = parseAppArgs(userArgs(argv), env, cwd, exists, app.getAppPath(), layout);
+  // An unpackaged run on macOS shows Electron's own Dock tile unless it is told otherwise.
+  if (args.icon) {
+    app.dock?.setIcon(args.icon);
+  }
   identifyApp(app, args, platform);
 
   const windows = new Map<number, BrowserWindow>();

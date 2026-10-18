@@ -244,6 +244,11 @@ describe("windows", () => {
     expect(handle.windows.has(1)).toBe(true);
   });
 
+  test("hands the icon it was given to the macOS Dock tile", async () => {
+    const { fake } = await started();
+    expect(fake.dockIcons).toEqual(["/share/icon.png"]);
+  });
+
   test("closing a window forgets it and tells the backend", async () => {
     const { backend, fake, handle } = await started();
     backend.emit({ type: "ready" });

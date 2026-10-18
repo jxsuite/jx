@@ -261,10 +261,23 @@ export async function composeShellCommand(
 }
 
 /**
+ * The icon file a platform shows: macOS gets its own full-bleed tile (`icon-macos.png`, rendered
+ * from `icon-macos.svg`, which carries the margin and shadow the Dock expects), everything else the
+ * flat `icon.png`.
+ *
+ * @param platform The OS the app runs on.
+ */
+export function iconFileFor(platform: NodeJS.Platform): string {
+  return platform === "darwin" ? "icon-macos.png" : "icon.png";
+}
+
+/**
  * The app icon beside this package, when the installed tree carries it.
  *
- * @param path Where to look; the package's own `icon.png` by default.
+ * @param path Where to look; this platform's icon in the package by default.
  */
-export function shellIcon(path = resolve(import.meta.dir, "../../icon.png")): string | null {
+export function shellIcon(
+  path = resolve(import.meta.dir, "../..", iconFileFor(process.platform)),
+): string | null {
   return existsSync(path) ? path : null;
 }

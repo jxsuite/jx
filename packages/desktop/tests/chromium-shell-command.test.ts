@@ -10,6 +10,7 @@ import {
   findChromium,
   findElectron,
   shellEnv,
+  iconFileFor,
   shellIcon,
   shellUrl,
 } from "../src/chromium/shell-command";
@@ -178,7 +179,13 @@ describe("composeShellCommand", () => {
 
 describe("shellIcon", () => {
   test("finds the package's own icon", () => {
-    expect(shellIcon()).toBe(join(import.meta.dir, "..", "icon.png"));
+    expect(shellIcon()).toBe(join(import.meta.dir, "..", iconFileFor(process.platform)));
+  });
+
+  test("macOS has its own tile; every other platform the flat icon", () => {
+    expect(iconFileFor("darwin")).toBe("icon-macos.png");
+    expect(iconFileFor("linux")).toBe("icon.png");
+    expect(iconFileFor("win32")).toBe("icon.png");
   });
 
   test("is null when the installed tree has none", () => {

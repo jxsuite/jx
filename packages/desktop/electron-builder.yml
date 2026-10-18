@@ -61,7 +61,8 @@ mac:
     - dmg
     # The zip is what electron-updater applies on macOS; the dmg is what a person downloads.
     - zip
-  icon: icon.png
+  # The macOS tile: `icon-macos.svg` rendered at 1024 px, which electron-builder turns into the icns.
+  icon: icon-macos.png
   artifactName: macos-${arch}-JxStudio.${ext}
   hardenedRuntime: true
   gatekeeperAssess: false

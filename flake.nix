@@ -116,7 +116,11 @@
 
                 magick "$ICONSET/icon_16x16.png" "$ICONSET/icon_32x32.png" "$ICONSET/icon_48x48.png" "$ICONSET/icon_256x256.png" "packages/desktop/icon.ico"
 
-                echo "Generated icons in $ICONSET/, packages/desktop/icon.png, and packages/desktop/icon.ico"
+                # macOS draws no mask of its own, so its tile is a separate source with the margin and
+                # shadow built in; electron-builder makes the icns from this 1024 px PNG.
+                rsvg-convert -w 1024 -h 1024 "packages/desktop/icon-macos.svg" -o "packages/desktop/icon-macos.png"
+
+                echo "Generated icons in $ICONSET/, packages/desktop/icon.png, packages/desktop/icon.ico, and packages/desktop/icon-macos.png"
               '')
               (pkgs.writeShellScriptBin "update-deps" ''
                 nix flake update
