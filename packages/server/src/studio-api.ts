@@ -201,6 +201,33 @@ export function isOwnedProjectDir(dir: string): boolean {
 }
 
 /**
+ * Whether the project at `dir` is under version control of its own, rather than a stranger inside
+ * somebody else's checkout.
+ *
+ * `git` answers for the nearest enclosing work tree, which is not the same question. A project
+ * copied into a folder another repository IGNORES (a scratch copy under a monorepo's `.cache/`, a
+ * download into a dotfiles repo's ignored `tmp/`) is "inside a work tree" by git's account, yet
+ * none of its files can ever be committed there: Publish would list the enclosing repository's
+ * branches and commits, and opening the project would fetch and pull a repository the user never
+ * chose. Such a project is therefore not a repository, and offers to initialise one. A project that
+ * is a TRACKED subfolder of a larger repository (a site inside a monorepo) still is one.
+ *
+ * @param {string} dir - The project root
+ * @returns {Promise<boolean>}
+ */
+export async function projectHasRepository(dir: string): Promise<boolean> {
+  const exitOf = async (args: string[]) => {
+    const proc = Bun.spawn(["git", ...args], { cwd: dir, stderr: "ignore", stdout: "ignore" });
+    return await proc.exited;
+  };
+  if ((await exitOf(["rev-parse", "--is-inside-work-tree"])) !== 0) {
+    return false;
+  }
+  // `check-ignore` exits 0 when the path IS ignored, 1 when it is not.
+  return (await exitOf(["check-ignore", "-q", "."])) !== 0;
+}
+
+/**
  * Parse raw `git status --porcelain=v2 --branch` output into structured data.
  *
  * @param {string} out
@@ -1804,15 +1831,13 @@ export async function handleStudioApi(
     };
 
     try {
+      /* Every command but the two that make a repository acts on THE PROJECT'S repository, so one
+         that has none of its own is refused rather than handed to whatever checkout encloses it
+         (see `projectHasRepository`). */
+      const makesRepository = gitCmd === "init" || gitCmd === "clone";
+      const hasRepository = makesRepository || (await projectHasRepository(cwd));
       if (gitCmd === "status" && req.method === "GET") {
-        // Check if we're in a git repo first
-        const checkProc = Bun.spawn(["git", "rev-parse", "--is-inside-work-tree"], {
-          cwd,
-          stderr: "pipe",
-          stdout: "pipe",
-        });
-        const checkExit = await checkProc.exited;
-        if (checkExit !== 0) {
+        if (!hasRepository) {
           return Response.json({
             ahead: 0,
             behind: 0,
@@ -1834,6 +1859,13 @@ export async function handleStudioApi(
           remotes: remotesOut.trim().split("\n").filter(Boolean),
         };
         return Response.json(fullStatus);
+      }
+
+      if (!hasRepository) {
+        return problem(
+          "conflict",
+          "This project is not a git repository of its own. Initialize one to use source control.",
+        );
       }
 
       if (gitCmd === "init" && req.method === "POST") {

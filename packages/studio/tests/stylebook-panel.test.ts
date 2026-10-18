@@ -382,6 +382,27 @@ describe("selectStylebookTag", () => {
     expect(tab.session.selection).toEqual([[]]);
   });
 
+  test("the session is parked before the stylebook selection moves", async () => {
+    // The Style panel rebuilds synchronously when `shell.stylebook.selection` changes, so whatever
+    // Watches it must already find the tab's selection parked on the root. A fresh project.json
+    // Tab starts with no selection at all, which is the state the Styles workspace opens into.
+    const { effect, effectScope } = await import("../src/reactivity");
+    const tab = makeTab();
+    tab.session.selection = [];
+    const seen: string[] = [];
+    const scope = effectScope();
+    scope.run(() => {
+      effect(() => {
+        if (shell.stylebook.selection === "h1") {
+          seen.push(JSON.stringify(tab.session.selection));
+        }
+      });
+    });
+    selectStylebookTag("h1");
+    scope.stop();
+    expect(seen).toEqual(["[[]]"]);
+  });
+
   test("omitting media leaves the current breakpoint context untouched", () => {
     const tab = makeTab();
     tab.session.ui.activeMedia = "md";

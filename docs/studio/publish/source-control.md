@@ -25,6 +25,8 @@ Source control is Studio's built-in git client: it records your work as commits 
 
 If the project isn't tracked by git yet, Review changes explains what a repository buys you and offers **Initialize Repository** to start tracking it. Once it is, **Create GitHub repository** puts it on GitHub; see **[GitHub](/docs/studio/publish/github)**. Projects created from the [New Project wizard](/docs/studio/projects/create) are already tracked, so you'll only meet this on a folder that came from somewhere else.
 
+A project copied into a folder that another repository ignores (a scratch copy inside a larger checkout, say) counts as not tracked too. Studio never publishes, switches branches or syncs in the repository around it, because none of the project's files could be committed there. A site that is a tracked folder of a larger repository is tracked as usual.
+
 With no project open at all, it says what publishing is for and offers **Clone Git Repository** where the platform supports it.
 
 ## Review your changes

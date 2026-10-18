@@ -25,6 +25,8 @@ The Page panel is the Inspector's first tab. Click it, press :kbd[⌘⇧1] (:kbd
 
 ![The Page panel showing Frontmatter, Page, and OpenGraph sections for a blog post](../../images/document-panel.png)
 
+A component has no page settings of its own, because its title, search and social details come from the page it is placed on. Its **Component** tab says so, and **Edit tag and props** selects the component's root, where Element › Content edits its tag name and the defaults of the props it takes.
+
 ### Frontmatter
 
 For a content page that belongs to a collection (a blog post, a product, a listing), this section lists the collection's fields, with required ones marked `*`. Each field gets a control that fits its type:
@@ -40,13 +42,14 @@ Any extra field already present in the file appears too, even if the collection 
 
 ### Layout
 
-Site pages also get a **Layout** picker: keep the project default, choose a specific layout, or pick **None**; see **[Pages, layouts, components](/docs/studio/projects/pages-layouts-components)**.
+Site pages also get a **Layout** picker: keep the project default, choose a specific layout, or pick **None**; see **[Pages, layouts, components](/docs/studio/projects/pages-layouts-components)**. **Edit template** under it opens the layout the page is drawn in, so you can change the header or footer every page shares.
 
 ### Page
 
 The basics every page should have:
 
 - **Title**: the browser-tab and search-result title.
+- **URL**: the address the page is published at, which comes from where its file sits in `pages/`. To change it, rename or move the file.
 - **Description**: the summary search engines show under the title.
 - **Viewport**: leave the suggested default unless you have a specific reason not to.
 - **Icon**: the small icon in the browser tab, picked from your media.

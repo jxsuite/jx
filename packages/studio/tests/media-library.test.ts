@@ -244,7 +244,20 @@ function text(name: string, within: ParentNode = stage): string {
 
 /** Answer a file input the way the platform does when the reader picks. */
 function choose(input: HTMLInputElement, chosen: File[]): void {
-  Object.defineProperty(input, "files", { configurable: true, value: chosen });
+  // A browser's `input.files` is LIVE: clearing the value empties the very list a handler read, so
+  // The double does the same, or a handler that resets before copying would pass here and upload
+  // Nothing in Chrome.
+  const live = [...chosen];
+  Object.defineProperty(input, "files", { configurable: true, get: () => live });
+  Object.defineProperty(input, "value", {
+    configurable: true,
+    get: () => (live.length > 0 ? live[0]!.name : ""),
+    set: (next: string) => {
+      if (next === "") {
+        live.length = 0;
+      }
+    },
+  });
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 

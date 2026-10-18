@@ -68,6 +68,25 @@ export function openWorkspaceHome(id: HomeWorkspaceId): Tab {
   });
 }
 
+/**
+ * Put a workspace's home in `paneId`'s strip without showing it, unless it is open already.
+ *
+ * A workspace with no Navigator (Media, Publish) has no other way back to its home than its tab: a
+ * media file opened from the Site panel lands in Media on its viewer, and with the home absent the
+ * strip offered that viewer alone and closing it left an empty stage. Keeping the home beside it is
+ * what makes the grid one click away, and what closing the viewer falls back to.
+ */
+export function placeWorkspaceHome(id: HomeWorkspaceId, paneId: string): void {
+  openTab({
+    background: true,
+    capabilities: { modes: [WORKSPACE_HOME_MODES[id]] },
+    document: structuredClone(HOME_STUB_DOCUMENT),
+    documentPath: null,
+    id: workspaceHomeTabId(id),
+    paneId,
+  });
+}
+
 // ─── Mounting ────────────────────────────────────────────────────────────────
 
 /** Whether this tab's home is already mounted in this pane and still in the document. */

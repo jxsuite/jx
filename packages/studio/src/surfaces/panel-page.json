@@ -85,6 +85,19 @@
       "width": "100%",
       "minWidth": "0"
     },
+    "& [part=\"readout\"]": {
+      "$description": "A derived value set as text in the field's place, monospaced because a URL is read character by character.",
+      "display": "block",
+      "padding": "2px 0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"row-action\"]": {
+      "alignSelf": "flex-start"
+    },
     "& [part=\"note\"]": {
       "$description": "What the row could not find out — the entries of a referenced collection that is empty, or the reason listing it failed. A sentence under the control, in the row's own label size, so it reads as part of the field rather than as an error banner.",
       "margin": "0",
@@ -501,6 +514,15 @@
                             ]
                           }
                         },
+                        "readout": {
+                          "$description": "A value the document derives rather than stores, such as a page's URL, which is its file's place under `pages/`. Shown, never edited here: an editable URL would be a rename, and a rename is the file tree's.",
+                          "tagName": "output",
+                          "attributes": {
+                            "part": "readout",
+                            "aria-label": "${$map.item.label}"
+                          },
+                          "textContent": "${$map.item.value}"
+                        },
                         "select": {
                           "tagName": "jx-select",
                           "attributes": {
@@ -677,6 +699,54 @@
                                   }
                                 ]
                               }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "action-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "$map/item/hasAction"
+                      },
+                      "cases": {
+                        "true": {
+                          "$description": "The row's one door elsewhere, named for what it opens: the Layout row's Edit template opens the layout in Design.",
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "row-action"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "secondary"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/runRowAction"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/key"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "${$map.item.action}"
                             }
                           ]
                         }

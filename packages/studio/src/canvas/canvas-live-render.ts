@@ -116,6 +116,50 @@ export function markLayoutNodes(node: JxMutableNode, file: string, path: JxPath 
 }
 
 /**
+ * A layout as the canvas wraps a document in it: read, its nodes marked with the file they come
+ * from, and itself wrapped in the layout ITS `$layout` names, all the way up.
+ *
+ * A layout can sit in another layout (`layouts/post.json` → `layouts/base.json`), and the build
+ * resolves the whole chain (`@jxsuite/site` `resolveLayout`), so a page drawn in the inner layout
+ * alone lost the outer one's nav and footer on the canvas and nowhere else. Each level is merged
+ * the way the build merges it, and each node keeps the marker of the file it was authored in, so
+ * opening a locked node still opens the layout that holds it. A cycle stops at the first repeat
+ * rather than recursing forever, and a parent that cannot be read leaves the chain where it is.
+ *
+ * @param {string} layoutPath - The `$layout` reference, project-relative as authored
+ * @param {Set<string>} [seen] - Files already on the chain
+ * @returns {Promise<JxMutableNode | null>} The merged, marked layout, or null when unreadable
+ */
+export async function resolveCanvasLayout(
+  layoutPath: string,
+  seen = new Set<string>(),
+): Promise<JxMutableNode | null> {
+  const file = layoutPath.replace(/^\.\//, "");
+  if (seen.has(file)) {
+    return null;
+  }
+  seen.add(file);
+  const layoutDoc = await resolveLayoutDoc(layoutPath);
+  if (!layoutDoc) {
+    return null;
+  }
+  // The SAME normalization resolveLayoutDoc reads the file with, so the marker's `file` is a path
+  // The editor can hand straight to navigateToComponent when the author asks to open it.
+  markLayoutNodes(layoutDoc, file);
+  const parentRef = layoutDoc.$layout;
+  if (!isString(parentRef) || !parentRef) {
+    return layoutDoc;
+  }
+  const parent = await resolveCanvasLayout(parentRef, seen);
+  if (!parent) {
+    return layoutDoc;
+  }
+  const merged = distributePageIntoLayout(parent, layoutDoc);
+  delete merged.$layout;
+  return merged;
+}
+
+/**
  * The layout a collection entry is drawn in (studio.md §22.5): the entry's own `$layout` (on its
  * document, or in its frontmatter for a Markdown entry), else its collection's template page's
  * `$layout`, else the project's `defaults.layout`. `null` when none applies.
@@ -216,11 +260,8 @@ export async function resolveCanvasDocument(
       ? await entryLayout(doc, tab, S.documentPath)
       : getEffectiveLayoutPath(doc.$layout);
     if (layoutPath) {
-      const layoutDoc = await resolveLayoutDoc(layoutPath);
+      const layoutDoc = await resolveCanvasLayout(layoutPath);
       if (layoutDoc) {
-        // The SAME normalization resolveLayoutDoc reads the file with, so the marker's `file` is a
-        // Path the editor can hand straight to navigateToComponent when the author asks to open it.
-        markLayoutNodes(layoutDoc, layoutPath.replace(/^\.\//, ""));
         const pageForSlots = canvasMode === "preview" ? structuredClone(toRaw(doc)) : renderDoc;
         const merged = distributePageIntoLayout(layoutDoc, pageForSlots);
         renderDoc =

@@ -61,8 +61,19 @@ void mock.module("../src/ui/media-picker.js", () => ({
   uploadAndAssign: () => Promise.resolve(null),
 }));
 
+/* The Layout row's Edit template reaches the file opener through a lazy `import()` too, so it is
+   doubled for the same reason: a witness to assert against, and no real import to overlap. */
+const openedFiles: string[] = [];
+void mock.module("../src/files/files.js", () => ({
+  openFileInTab: (path: string) => {
+    openedFiles.push(path);
+    return Promise.resolve();
+  },
+}));
+
 const {
   BUILD_FALLBACK_TITLE,
+  COMPONENT_TAB_MESSAGE,
   buildSeoPreview,
   invalidateLayoutHeadCache,
   invalidateLayoutPickerCache,
@@ -733,6 +744,40 @@ describe("layout section", () => {
     expect("$layout" in drawn.doc).toBe(false);
   });
 
+  test("Edit template opens the layout the page is drawn in, and is absent with none", async () => {
+    setupSitePage();
+    await draw({ tagName: "div" });
+    await flush();
+    openedFiles.length = 0;
+
+    const pressAction = (host: HTMLElement) => {
+      const button = section(host, "layout")!.querySelector<HTMLElement>('[part="row-action"]');
+      expect(button?.textContent).toContain("Edit template");
+      button!.click();
+    };
+    const byDefault = await draw({ tagName: "div" });
+    pressAction(byDefault.host);
+    const own = await draw({ $layout: "./layouts/blog.json", tagName: "div" });
+    pressAction(own.host);
+    await flush();
+    expect(openedFiles).toEqual(["layouts/main-layout.json", "layouts/blog.json"]);
+
+    const none = await draw({ $layout: false, tagName: "div" });
+    expect(section(none.host, "layout")!.querySelector('[part="row-action"]')).toBeNull();
+  });
+
+  test("a page states its URL, derived from its file, and a non-page has none", async () => {
+    setupSitePage("pages/blog/index.json");
+    const drawn = await draw({ tagName: "div" });
+    const url = section(drawn.host, "page")!.querySelector<HTMLElement>('[part="readout"]');
+    expect(url?.textContent).toBe("/blog");
+    expect(url?.getAttribute("aria-label")).toBe("URL");
+
+    resetWorkspaceWithTab(undefined, { documentPath: "layouts/base.json" });
+    const layoutDoc = await draw({ tagName: "div" });
+    expect(section(layoutDoc.host, "page")!.querySelector('[part="readout"]')).toBeNull();
+  });
+
   test("the clear dot removes an explicit $layout", async () => {
     setupSitePage();
     await draw({ tagName: "div" });
@@ -980,6 +1025,31 @@ describe("the Inspector's Page tab", () => {
     renderPageTab();
     await flush(4);
     expect(body.querySelector('[data-section="page"]')).toBeNull();
+  });
+
+  test("a component has no page form: it says so, and its one verb selects the root", async () => {
+    resetStudioState();
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "components/pricing-card.json" });
+    const body = await paint();
+    expect(body.querySelector('[data-section="page"]')).toBeNull();
+    expect(body.textContent).toContain(COMPONENT_TAB_MESSAGE);
+    const action = [...body.querySelectorAll<HTMLElement>("jx-button")].find((el) =>
+      el.textContent.includes("Edit tag and props"),
+    );
+    expect(action).toBeTruthy();
+    action!.click();
+    expect(tab.session.selection).toEqual([[]]);
+    expect(tab.session.ui.rightTab).toBe("properties");
+
+    // A repaint keeps the standing state; a page arriving puts the page form back.
+    const standing = body.firstChild;
+    renderPageTab();
+    expect(body.firstChild).toBe(standing);
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
+    renderPageTab();
+    await flush(4);
+    expect(body.querySelector('[data-section="page"]')).not.toBeNull();
+    expect(body.textContent).not.toContain(COMPONENT_TAB_MESSAGE);
   });
 
   test("letting the host go takes the surface out of it", async () => {

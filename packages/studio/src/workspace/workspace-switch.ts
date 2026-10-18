@@ -45,7 +45,7 @@ import {
   setTabScope,
   workspace,
 } from "./workspace";
-import { isHomeWorkspace } from "./workspace-ids";
+import { homeWorkspaceOfTabId, isHomeWorkspace } from "./workspace-ids";
 import {
   isTabInWorkspace,
   lastTabOfWorkspace,
@@ -67,6 +67,25 @@ export interface WorkspaceSwitchDeps extends WorkspaceDeps {
   openStyles: () => void;
   /** Open (or activate) a generic home tab (`workspace/workspace-home.ts`). */
   openHome: (id: HomeWorkspaceId) => void;
+}
+
+/** What the follow needs: the frame's deps, and the writer that keeps a home within reach. */
+export interface WorkspaceFollowDeps extends WorkspaceDeps {
+  /** Put a home in a pane's strip without showing it (`workspace-home.ts` `placeWorkspaceHome`). */
+  placeHome?: (id: HomeWorkspaceId, paneId: string) => void;
+}
+
+/**
+ * Whether entering `id` on `tab` should put the workspace's home beside it: a workspace with a home
+ * and no Navigator, entered on a tab that is not that home. Such a workspace has no other route
+ * back to its home, so a document of it never sits in the strip alone.
+ */
+export function wantsHomeBeside(id: WorkspaceId, tabId: string): id is HomeWorkspaceId {
+  return (
+    isHomeWorkspace(id) &&
+    !WORKSPACE_PRESETS[id].navigator.open &&
+    homeWorkspaceOfTabId(tabId) !== id
+  );
 }
 
 /**
@@ -194,7 +213,7 @@ let _scope: EffectScope | null = null;
  * It also scopes the panes' fallback (`workspace.ts`'s `setTabScope`), so closing a workspace's
  * last tab leaves the pane empty rather than switching the workspace under the author.
  */
-export function installWorkspaceFollow(deps: WorkspaceDeps): () => void {
+export function installWorkspaceFollow(deps: WorkspaceFollowDeps): () => void {
   if (_scope) {
     return stopWorkspaceFollow;
   }
@@ -222,7 +241,11 @@ export function installWorkspaceFollow(deps: WorkspaceDeps): () => void {
       pauseTracking();
       try {
         if (enterWorkspace(id, withTab)) {
-          alignPanes(id, paneOfTab(tab.id)?.id ?? null);
+          const paneId = paneOfTab(tab.id)?.id ?? null;
+          alignPanes(id, paneId);
+          if (paneId !== null && wantsHomeBeside(id, tab.id)) {
+            deps.placeHome?.(id, paneId);
+          }
         } else if (
           writing !== null &&
           nowWriting !== writing &&

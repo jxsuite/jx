@@ -10,7 +10,11 @@
  */
 import { installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { entryLayout, resolveCanvasDocument } from "../src/canvas/canvas-live-render";
+import {
+  entryLayout,
+  resolveCanvasDocument,
+  resolveCanvasLayout,
+} from "../src/canvas/canvas-live-render";
 import { classifyRenderNode } from "../src/canvas/path-mapping";
 import { invalidateLayoutCache } from "../src/site-context";
 import { invalidateCollectionPages } from "../src/content/collection-pages";
@@ -142,6 +146,47 @@ describe("the layout an entry is drawn in", () => {
     setup({}, { layout: "./layouts/base.json" });
     const tab = openEntryTab();
     expect(await entryLayout(tab.doc.document, tab, "notes/readme.md")).toBe("./layouts/base.json");
+  });
+});
+
+describe("a layout inside a layout", () => {
+  const NESTED_POST = { ...POST, $layout: "./layouts/base.json" };
+
+  test("the entry is drawn in the whole chain, each node marked with its own file", async () => {
+    setup({
+      "layouts/base.json": JSON.stringify(BASE),
+      "layouts/post.json": JSON.stringify(NESTED_POST),
+      "pages/blog/[slug].json": JSON.stringify({
+        $layout: "./layouts/post.json",
+        $paths: { contentType: "posts", param: "slug" },
+        tagName: "article",
+      }),
+    });
+    const tab = openEntryTab();
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    const header = renderNodeAt(result.renderDoc, ["children", 0]);
+    expect(header.textContent).toBe("Site header");
+    expect(header.$__layout).toEqual({ file: "layouts/base.json", path: ["children", 0] });
+    const postNav = renderNodeAt(result.renderDoc, ["children", 1, "children", 0]);
+    expect(postNav.textContent).toBe("Post nav");
+    expect(postNav.$__layout).toEqual({ file: "layouts/post.json", path: ["children", 0] });
+    expect(renderNodeAt(result.renderDoc, ["children", 2]).textContent).toBe("Site footer");
+    // The entry's body sits in the INNER layout's slot, and that is the editable region.
+    expect(result.mapperCtx.pageContentPrefix).toEqual(["children", 1, "children", 1, "children"]);
+    expect(result.renderDoc.$layout).toBeUndefined();
+  });
+
+  test("a cycle stops at the first repeat, and an unreadable parent leaves the chain", async () => {
+    setup({
+      "layouts/a.json": JSON.stringify({ ...POST, $layout: "./layouts/b.json" }),
+      "layouts/b.json": JSON.stringify({ ...BASE, $layout: "./layouts/a.json" }),
+      "layouts/orphan.json": JSON.stringify({ ...POST, $layout: "./layouts/missing.json" }),
+    });
+    const cyclic = await resolveCanvasLayout("./layouts/a.json");
+    expect(renderNodeAt(cyclic!, ["children", 0]).textContent).toBe("Site header");
+    const orphan = await resolveCanvasLayout("./layouts/orphan.json");
+    expect(renderNodeAt(orphan!, ["children", 0]).textContent).toBe("Post nav");
+    expect(await resolveCanvasLayout("./layouts/missing.json")).toBeNull();
   });
 });
 

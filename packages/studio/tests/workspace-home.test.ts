@@ -9,12 +9,13 @@
  */
 import { flush, resetStudioState, surfaceOf } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { closeAllTabs, workspace } from "../src/workspace/workspace";
+import { closeAllTabs, openTab, paneById, workspace } from "../src/workspace/workspace";
 import { editorKindForMode } from "../src/commands/context";
 import {
   detachWorkspaceHome,
   isWorkspaceHomeMode,
   openWorkspaceHome,
+  placeWorkspaceHome,
   renderWorkspaceHome,
   workspaceHomeMounted,
 } from "../src/workspace/workspace-home";
@@ -62,6 +63,27 @@ describe("opening a home", () => {
     expect(isWorkspaceHomeMode("media")).toBe(false);
     expect(editorKindForMode("media-home")).toBe("home");
     expect(editorKindForMode("publish-home")).toBe("home");
+  });
+});
+
+describe("placing a home beside a document", () => {
+  test("puts the home in the strip without showing it, and leaves an open one alone", () => {
+    const viewer = openTab({
+      canvasMode: "media",
+      document: { children: [], tagName: "div" },
+      documentPath: "public/logo.png",
+      id: "public/logo.png",
+    });
+    placeWorkspaceHome("media", "primary");
+    const homeId = workspaceHomeTabId("media");
+    expect(paneById("primary")?.tabOrder).toEqual([viewer.id, homeId]);
+    expect(paneById("primary")?.activeTabId).toBe(viewer.id);
+    expect(workspace.tabs.get(homeId)?.session.ui.canvasMode).toBe("media-home");
+
+    const placed = workspace.tabs.get(homeId);
+    placeWorkspaceHome("media", "primary");
+    expect(workspace.tabs.get(homeId)).toBe(placed);
+    expect(paneById("primary")?.tabOrder).toEqual([viewer.id, homeId]);
   });
 });
 

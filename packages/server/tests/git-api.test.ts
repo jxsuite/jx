@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { handleStudioApi, parseGitStatus } from "../src/studio-api";
+import { handleStudioApi, parseGitStatus, projectHasRepository } from "../src/studio-api";
 import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -395,5 +395,68 @@ describe("git endpoints", () => {
     expect(res.status).toBe(200);
     const data = /** @type {{ content: string }} */ await res.json();
     expect(data.content).toBe("hello");
+  });
+});
+
+// ── A project inside a folder another repository ignores ────────────────────
+
+describe("a project inside a folder another repository ignores", () => {
+  const OUTER = resolve(import.meta.dir, "_git_outer_fixture");
+  const NESTED = join(OUTER, "scratch", "site");
+
+  /** One request against the nested project, as the server sees it when that project is open. */
+  async function nestedReq(path: string, method = "GET") {
+    const urlStr = `http://localhost${path}`;
+    const res = await handleStudioApi(new Request(urlStr, { method }), new URL(urlStr), NESTED);
+    if (!res) {
+      throw new Error(`No response from handleStudioApi for ${method} ${path}`);
+    }
+    return res;
+  }
+
+  beforeAll(() => {
+    rmSync(OUTER, { force: true, recursive: true });
+    mkdirSync(NESTED, { recursive: true });
+    execSync("git init -q -b main", { cwd: OUTER });
+    writeFileSync(join(OUTER, ".gitignore"), "scratch/\n");
+    writeFileSync(join(NESTED, "project.json"), "{}");
+  });
+
+  afterAll(() => {
+    rmSync(OUTER, { force: true, recursive: true });
+  });
+
+  test("projectHasRepository tells an ignored folder from a tracked subfolder", async () => {
+    expect(await projectHasRepository(NESTED)).toBe(false);
+    mkdirSync(join(OUTER, "tracked"), { recursive: true });
+    expect(await projectHasRepository(join(OUTER, "tracked"))).toBe(true);
+  });
+
+  test("status says it is not a repository, rather than describing the enclosing one", async () => {
+    const res = await nestedReq("/__studio/git/status");
+    const data: GitStatusResult = await res.json();
+    expect(data.isRepo).toBe(false);
+    expect(data.branch).toBe("");
+  });
+
+  test("every other command is refused instead of reaching the enclosing repository", async () => {
+    for (const [path, method] of [
+      ["/__studio/git/branches", "GET"],
+      ["/__studio/git/fetch", "POST"],
+      ["/__studio/git/pull", "POST"],
+    ] as const) {
+      const res = await nestedReq(path, method);
+      expect(res.status).toBe(409);
+      expect(await res.text()).toContain("not a git repository of its own");
+    }
+  });
+
+  test("init gives the project a repository of its own", async () => {
+    const init = await nestedReq("/__studio/git/init", "POST");
+    expect(init.status).toBe(200);
+    const res = await nestedReq("/__studio/git/status");
+    const data: GitStatusResult = await res.json();
+    expect(data.isRepo).toBe(true);
+    expect(data.files.map((file) => file.path)).toContain("project.json");
   });
 });

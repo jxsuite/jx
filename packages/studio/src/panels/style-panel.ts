@@ -1454,9 +1454,10 @@ function buildEditor(
   opts: { effectiveStyle?: JxStyle | undefined; stylebookSelector?: string | null },
 ): StylePanelView {
   const { effectiveStyle, stylebookSelector = null } = opts;
-  /* SAFETY: `buildView` calls this with a primary selection it has checked, or in Stylebook, where
-     `selectStylebookTag` parks the selection on the root path `[[]]` rather than emptying it. */
-  const sel = primarySelection(tab.session.selection) as JxPath;
+  /* `buildView` calls this with a primary selection it has checked, or in Stylebook, where the
+     edit targets a TAG and the selection is only parked on the root. A Stylebook tab whose session
+     was never parked (or was cleared since) therefore means the root too, rather than a throw. */
+  const sel: JxPath = primarySelection(tab.session.selection) ?? [];
   /** The document's OWN style — what a commit writes into. */
   const ownRootStyle: JxStyle = node.style || {};
   const style = effectiveStyle ?? ownRootStyle;

@@ -255,11 +255,14 @@ export async function renderStylebookMode(
  * @param {string | null} [media]
  */
 export function selectStylebookTag(tag: string, media?: string | null, { panCanvas = false } = {}) {
-  shell.stylebook.selection = tag;
   const ui: Partial<TabUi> = { activeSelector: tag, rightTab: "style" };
   if (media !== undefined) {
     ui.activeMedia = media;
   }
+  // The session is parked BEFORE the stylebook selection moves. Writing `shell.stylebook.selection`
+  // Re-runs the Style panel's effect synchronously, and that effect builds the tag editor against
+  // The tab's selection — so with the order reversed it ran against the empty selection a freshly
+  // Opened project.json tab has, threw, and the throw unwound this function before the park.
   updateSession(activeTab.value, {
     // The ROOT path, not an empty selection: stylebook mode has always parked the selection on the
     // Document element while the Style tab edits a TAG, and widening the field to a list changed
@@ -267,6 +270,7 @@ export function selectStylebookTag(tag: string, media?: string | null, { panCanv
     selection: [[]],
     ui,
   });
+  shell.stylebook.selection = tag;
 
   if (tag && panCanvas) {
     panToStylebookTag(tag);

@@ -33,6 +33,8 @@ A layout is the shared frame around your pages: the header, footer, and everythi
 
 Reach for a layout when you catch yourself rebuilding the same surroundings on a second page.
 
+A layout can sit inside another one: a post layout that adds a byline can itself be wrapped in the base layout that carries the site's navigation and footer. The canvas draws the whole chain, the way the built site does, and the Site panel counts every page that names a layout, whether it writes `./layouts/post.json` or `layouts/post.json`.
+
 ## Components
 
 A component is a reusable building block: a card, a hero section, a testimonial, a navigation bar. Components live in the `components/` folder and can be placed on any page or layout, as many times as you like. Edit the component once and every place it appears updates.

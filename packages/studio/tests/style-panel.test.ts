@@ -356,6 +356,17 @@ describe("stylebook mode", () => {
     expect(tab.session.ui.activeSelector).toBe("a");
   });
 
+  test("a tag chosen before the selection is parked still opens its editor", async () => {
+    // The Styles workspace opens project.json with nothing selected; the tag editor edits the
+    // Document root, so an unparked selection means the root rather than a thrown rebuild.
+    const tab = setupTab({});
+    tab.session.selection = [];
+    shell.stylebook.selection = "h1";
+    const c = await renderPanel("stylebook");
+    expect(c.querySelector('[part="empty-message"]')).toBeNull();
+    expect(scopeChip(c)?.textContent).toContain("all <h1> in this document");
+  });
+
   test("a layout's stylebook rule is project-wide, and the band says how wide", async () => {
     setupTab({});
     resetStudioState();

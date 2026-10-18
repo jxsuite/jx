@@ -28,7 +28,7 @@
  */
 
 import { isString } from "@jxsuite/schema/guards";
-import { projectState, renderOnly } from "../store";
+import { projectState, renderOnly, updateSession } from "../store";
 import type { DirEntry, JsonValue } from "../types";
 import { activeTab } from "../workspace/workspace";
 import { activeRegistry } from "../commands/active-registry";
@@ -44,6 +44,8 @@ import { LIVE_PREVIEW } from "../ui/timing";
 import { previewAssetSrc } from "../canvas/asset-refs";
 import { IMAGE_EXTENSIONS, extensionOf } from "../files/media-upload";
 import { renderPagePanelSurface, unmountPagePanelSurface } from "../surfaces/panel-page";
+import { emptyState } from "../surfaces/empty-state";
+import type { EmptyStateSpec } from "./empty-state";
 import { collectionForFile } from "../content/collection-match";
 import {
   isEntryTab,
@@ -992,6 +994,22 @@ let _addValue = "";
 /** This projection's rows, by key. Rebuilt with each projection. */
 const _commits = new Map<string, RowCommit>();
 
+/** This projection's row buttons ({@link PageRow.action}), by row key. Rebuilt with each projection. */
+const _rowActions = new Map<string, () => void>();
+
+/**
+ * The page's URL, derived from where its file sits under `pages/` (`pages/about.md` → `/about`), as
+ * a readout: changing a URL is moving the file, which the file tree owns. `null` for anything that
+ * is not a page.
+ */
+function urlRow(tab: Tab | null): PageRow | null {
+  const route = tab?.documentPath ? pageRoute(tab.documentPath) : null;
+  if (route === null) {
+    return null;
+  }
+  return { ...blankRow("__url", "url", "URL"), kind: "readout", value: route };
+}
+
 /**
  * This projection's custom `$head` entries, by the key they were drawn with.
  *
@@ -1015,8 +1033,10 @@ const TAG_OPTIONS: SurfaceOption[] = [
 /** A blank row, so every kind carries every field the document's bindings read. */
 function blankRow(key: string, prop: string, label: string): PageRow {
   return {
+    action: "",
     checked: false,
     clearLabel: `Clear ${prop}`,
+    hasAction: false,
     hasNote: false,
     hasThumb: false,
     isSet: false,
@@ -1161,6 +1181,17 @@ function layoutSection(
     ...entries.map((l) => ({ label: l.name, value: l.path })),
   ];
   row.value = current === false ? "__none__" : current || "__default__";
+  // The template the page is drawn in, opened in Design: its own `$layout`, else the default.
+  const effective = getEffectiveLayoutPath(current);
+  if (effective) {
+    row.action = "Edit template";
+    row.hasAction = true;
+    _rowActions.set("__layout", () => {
+      void import("../files/files").then(({ openFileInTab }) =>
+        openFileInTab(effective.replace(/^\.\//, "")),
+      );
+    });
+  }
   return { hasSeo: false, key: "layout", rows: [row], title: "Layout" };
 }
 
@@ -1229,6 +1260,7 @@ function customEntries(head: JxHeadEntry[]): PageTagRow[] {
  */
 function view(ctx: PagePanelContext): PagePanelView {
   _commits.clear();
+  _rowActions.clear();
   const tab = activeTab.value;
   const doc = ctx.document;
   const head = doc.$head ?? [];
@@ -1242,12 +1274,14 @@ function view(ctx: PagePanelContext): PagePanelView {
   if (layout) {
     sections.push(layout);
   }
+  const url = urlRow(tab);
   sections.push(
     {
       hasSeo: true,
       key: "page",
       rows: [
         titleRow(doc, ctx.applyMutation),
+        ...(url ? [url] : []),
         ...PAGE_FIELDS.map((field) => metaRow(field, head, ctx.applyMutation)),
         iconRow(head, ctx.applyMutation),
       ],
@@ -1437,6 +1471,9 @@ const ACTIONS: PagePanelActions = {
     void activeRegistry()?.run("document.openSeo");
   },
   removeEntry,
+  runRowAction: (key) => {
+    _rowActions.get(key)?.();
+  },
   setBoolean: (key, checked) => commitNow(key, checked),
   setChoice: (key, value) => commitNow(key, value),
   setNumber: (key, value) => commitNow(key, value),
@@ -1505,6 +1542,28 @@ export function pageTabTitle(path: string | null | undefined): string {
   return collection && !collection.fileBacked ? "Entry" : "Document";
 }
 
+/** What the Component tab says: why there is no page form, and the one verb that reaches its own. */
+export const COMPONENT_TAB_MESSAGE =
+  "A component has no page settings: its title, search and social details come from the page that uses it.";
+
+/** The Component tab's empty state, for a component document's tab. */
+export function componentTabSpec(tab: Tab): EmptyStateSpec {
+  return {
+    actions: [
+      {
+        label: "Edit tag and props",
+        run: () => {
+          // The root is the component's definition; selecting it opens Element › Content on its
+          // Tag name and "Component Defaults" (`panels/properties-panel.ts`).
+          updateSession(tab, { selection: [[]], ui: { rightTab: "properties" } });
+        },
+      },
+    ],
+    detail: "Its tag name and the props it takes are set on its root element.",
+    message: COMPONENT_TAB_MESSAGE,
+  };
+}
+
 /** The sentence the Page tab shows with no document open. */
 export const PAGE_TAB_EMPTY = "Open a page to edit its title, description and social preview.";
 
@@ -1560,6 +1619,22 @@ export function renderPageTab(): void {
     return;
   }
   unmountEntryInspector(host);
+  /* A component is not a page: it has no title, no head and no social card of its own — the pages
+     that use it do. Its own settings (its tag, the props it takes and their defaults) are its ROOT
+     element's, edited in Element › Content, so the tab says that and goes there. */
+  if (pageTabTitle(tab.documentPath) === "Component") {
+    unmountPagePanelSurface(host);
+    if (_host === host) {
+      _host = null;
+      _ctx = null;
+    }
+    // Assigned on every repaint; placed only when it is not already the tab's one child.
+    const state = emptyState(host, componentTabSpec(tab));
+    if (host.firstChild !== state || host.childNodes.length !== 1) {
+      host.replaceChildren(state);
+    }
+    return;
+  }
   const isContent = tab.doc.mode === "content";
   renderPagePanel(host, {
     /* The Page tab IS an app-level surface: it shows the focused document by definition, so it

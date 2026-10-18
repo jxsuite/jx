@@ -117,6 +117,7 @@ const {
   nextRegion,
   openProjectFlow,
   REGION_CYCLE,
+  isStageBackground,
   registerStudioCommands,
 } = await import("../src/editor/shortcuts");
 const { createCommandRegistry } = await import("../src/commands/registry");
@@ -1723,6 +1724,30 @@ describe("stage background click", () => {
     expect(tab.session.selection).toEqual([]);
     surfaceForPane("primary").panzoomWrap = null;
     panzoom.remove();
+  });
+
+  test("clears it when Edit's frame (the margin around the page column) is clicked", () => {
+    // Edit has no pan/zoom surface: the grey margin beside the page is the scrolling frame box the
+    // Stage document draws with `data-slot="frame"`, and a click there is a click on nothing.
+    const tab = activeTab.value!;
+    const frame = document.createElement("div");
+    frame.dataset.slot = "frame";
+    const column = document.createElement("div");
+    frame.append(column);
+    wrapEl().append(frame);
+    tab.session.selection = [["children", 0]];
+    column.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(tab.session.selection).toEqual([["children", 0]]);
+    frame.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(tab.session.selection).toEqual([]);
+    frame.remove();
+  });
+
+  test("a frame box outside this stage is not this stage's background", () => {
+    const outside = document.createElement("div");
+    outside.dataset.slot = "frame";
+    expect(isStageBackground(outside, wrapEl(), null)).toBe(false);
+    expect(isStageBackground(null, wrapEl(), null)).toBe(false);
   });
 
   test("ignores a click on an artboard, and is a no-op with nothing selected", () => {

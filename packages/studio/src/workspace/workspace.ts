@@ -918,7 +918,24 @@ export function openTab(opts: {
   layout?: JsonLayout | null;
   /** The mode it opens in, when not its first declared one (`createTab`). */
   canvasMode?: string;
+  /**
+   * Put a NEW tab in the pane's strip without activating it; a tab already open is left exactly as
+   * it is. For a tab that belongs beside the one on screen rather than in front of it: a
+   * workspace's home kept within reach of a document of that workspace.
+   */
+  background?: boolean;
 }) {
+  if (opts.background === true) {
+    const open = workspace.tabs.get(opts.id);
+    if (open) {
+      return open;
+    }
+    const tab = createTab({ ...opts, preview: false });
+    const pane = (opts.paneId === undefined ? undefined : paneById(opts.paneId)) ?? activePane();
+    insertIntoPane(pane, tab.id);
+    workspace.tabs.set(tab.id, tab);
+    return tab;
+  }
   const previous = workspace.tabs.get(opts.id);
   const preview = opts.preview === true && previous?.pinned !== true;
   const tab = createTab({ ...opts, preview });

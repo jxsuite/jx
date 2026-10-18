@@ -268,7 +268,7 @@ import {
   switchWorkspace,
 } from "./workspace/workspace-switch";
 import type { HomeWorkspaceId, WorkspaceId } from "./workspace/workspace-ids";
-import { openWorkspaceHome } from "./workspace/workspace-home";
+import { openWorkspaceHome, placeWorkspaceHome } from "./workspace/workspace-home";
 import { registerPreferencesCommands } from "./settings/preferences-dialog";
 import { registerAboutCommands } from "./about/about-modal";
 import { registerCollabCommands } from "./collab/collab-commands";
@@ -1563,6 +1563,7 @@ const workspaceDeps = {
   openStyles: () => {
     showSettingsDocument(PROJECT_STYLES_VIEW);
   },
+  placeHome: placeWorkspaceHome,
   setInspectorTab: (tab: InspectorTabId) => rightPanelMod.setInspectorTab(tab),
 };
 installWorkspaceFollow(workspaceDeps);

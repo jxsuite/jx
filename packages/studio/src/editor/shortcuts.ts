@@ -1233,7 +1233,7 @@ export function installStageGestures(surface: CanvasSurface): () => void {
   canvasWrap.addEventListener(
     "click",
     (e: MouseEvent) => {
-      if (e.target !== canvasWrap && e.target !== surface.panzoomWrap) {
+      if (!isStageBackground(e.target, canvasWrap, surface.panzoomWrap)) {
         return;
       }
       const tab = tabOfPane(surface.paneId);
@@ -1249,6 +1249,27 @@ export function installStageGestures(surface: CanvasSurface): () => void {
     clearTimeout(zoomRelease);
     controller.abort();
   };
+}
+
+/**
+ * Whether a click landed on a stage's BACKGROUND rather than on anything drawn in it: the stage
+ * itself, the pan/zoom surface, or the frame box every view draws its artboards in.
+ *
+ * The frame box is the one that matters in Edit. Edit has no pan/zoom surface; its frame is the
+ * scrolling `[part="edit-canvas"]` that fills the stage around the page column, so the grey margin
+ * beside the page IS that box, and a test that knew only the stage and the pan/zoom surface never
+ * saw a click there. The frame is recognised by its static `data-slot`, which the stage document
+ * stamps on it in every view.
+ */
+export function isStageBackground(
+  target: EventTarget | null,
+  stage: Element,
+  panzoom: Element | null,
+): boolean {
+  if (target === stage || (panzoom !== null && target === panzoom)) {
+    return true;
+  }
+  return target instanceof HTMLElement && target.dataset.slot === "frame" && stage.contains(target);
 }
 
 /** The context a stage answers with before the bootstrap has published a reader. */

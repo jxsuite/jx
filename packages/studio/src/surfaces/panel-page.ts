@@ -49,8 +49,15 @@ export interface PageRow {
   prop: string;
   /** The visible label, already carrying the required marker where a schema asks for one. */
   label: string;
-  /** Which control the row draws. `textarea` is a multiline text field, not a second element. */
-  kind: "text" | "textarea" | "number" | "boolean" | "select" | "media";
+  /**
+   * Which control the row draws. `textarea` is a multiline text field, not a second element;
+   * `readout` is no control at all, a value the document derives (a page's URL) shown as text.
+   */
+  kind: "text" | "textarea" | "number" | "boolean" | "select" | "media" | "readout";
+  /** The row's one button, named for what it opens. Empty draws none. */
+  action: string;
+  /** Whether {@link PageRow.action} has anything in it; `$switch` is the document's conditional. */
+  hasAction: boolean;
   /**
    * Whether the value is set on this document — studio-ui-guidelines.md §4.2's dot, and the row's
    * only clear affordance.
@@ -139,6 +146,8 @@ export interface PagePanelActions {
   browse: (key: string, anchor: EventTarget | null) => void;
   /** Run the `document.openSeo` command — the door to Search appearance. */
   openSeo: () => void;
+  /** Press the row's own button ({@link PageRow.action}). */
+  runRowAction: (key: string) => void;
   /** Take one custom `$head` entry away. */
   removeEntry: (key: string) => void;
   /** State what the add form's tag picker now holds, before anything is decided about it. */

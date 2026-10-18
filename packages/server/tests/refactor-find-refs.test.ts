@@ -193,6 +193,18 @@ describe("findReferences", () => {
     // A BARE $layout value resolves against the project root, not the page's directory.
     expect(layout.files.map((f) => f.path)).toEqual(["pages/index.json"]);
 
+    // So does a `./` one, the spelling every starter's pages use, and so does a layout's own.
+    write("layouts/post.json", { $layout: "./layouts/base.json", children: [], tagName: "div" });
+    write("pages/blog/[slug].json", { $layout: "./layouts/post.json", children: [] });
+    invalidateReferenceCache();
+    const post = await findReferences({ path: "layouts/post.json", registry: reg, root });
+    expect(post.files.map((f) => f.path)).toEqual(["pages/blog/[slug].json"]);
+    const base = await findReferences({ path: "layouts/base.json", registry: reg, root });
+    expect(base.files.map((f) => f.path).toSorted()).toEqual([
+      "layouts/post.json",
+      "pages/index.json",
+    ]);
+
     const asset = await findReferences({ path: "public/bg.png", registry: reg, root });
     expect(asset.files.map((f) => f.path)).toEqual(["pages/styled.json"]);
     expect(asset.files[0]!.refs[0]!.refType).toBe("url");

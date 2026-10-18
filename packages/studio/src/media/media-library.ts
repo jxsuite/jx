@@ -796,9 +796,11 @@ function actionsFor(mount: LibraryMount) {
       mount.observer.observe(element);
     },
     upload: (input: HTMLInputElement) => {
-      const chosen = input.files;
+      // Copied before the reset: `input.files` is LIVE, so clearing the value (which lets the same
+      // File be chosen twice) would empty the list this reads.
+      const chosen = [...(input.files ?? [])];
       input.value = "";
-      if (chosen?.length) {
+      if (chosen.length > 0) {
         void uploadInto(mount, chosen);
       }
     },

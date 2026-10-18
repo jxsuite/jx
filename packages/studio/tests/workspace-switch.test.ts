@@ -27,6 +27,7 @@ import {
   installWorkspaceFollow,
   revealInPane,
   switchWorkspace,
+  wantsHomeBeside,
 } from "../src/workspace/workspace-switch";
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
 import { effect, effectScope } from "../src/reactivity";
@@ -379,5 +380,58 @@ describe("the fallback is scoped to the workspace", () => {
     endTabCycle();
     expect(activeTab.value?.id).toBe("pages/a.json");
     expect(shell.workspace).toBe("design");
+  });
+});
+
+describe("a workspace with no Navigator keeps its home within reach", () => {
+  /** The follow, restarted with a writer that places a home the way the bootstrap's does. */
+  function followPlacingHomes(): void {
+    stopFollow();
+    stopFollow = installWorkspaceFollow({
+      ...deps,
+      placeHome: (id, paneId) => {
+        openTab({
+          background: true,
+          canvasMode: `${id}-home`,
+          document: { children: [], tagName: "div" },
+          documentPath: null,
+          id: workspaceHomeTabId(id),
+          paneId,
+        });
+      },
+    });
+  }
+
+  test("a media viewer opened from Design lands in Media with the library beside it", () => {
+    followPlacingHomes();
+    tab("pages/index.json");
+    tab("public/logo.png", { mode: "media" });
+    expect(shell.workspace).toBe("media");
+    expect(activeTab.value?.id).toBe("public/logo.png");
+    expect(paneById("primary")?.tabOrder).toContain(workspaceHomeTabId("media"));
+  });
+
+  test("closing the viewer falls back to the library rather than an empty stage", () => {
+    followPlacingHomes();
+    tab("public/logo.png", { mode: "media" });
+    closeTab("public/logo.png");
+    expect(shell.workspace).toBe("media");
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("media"));
+  });
+
+  test("a workspace with a Navigator is left to it: an entry is not given the Content home", () => {
+    followPlacingHomes();
+    tab("content/posts/one.md");
+    expect(shell.workspace).toBe("content");
+    expect(workspace.tabs.has(workspaceHomeTabId("content"))).toBe(false);
+  });
+
+  test("wantsHomeBeside names only the navigator-less workspaces, and never the home itself", () => {
+    expect(wantsHomeBeside("media", "public/logo.png")).toBe(true);
+    expect(wantsHomeBeside("publish", "pages/index.json")).toBe(true);
+    expect(wantsHomeBeside("media", workspaceHomeTabId("media"))).toBe(false);
+    expect(wantsHomeBeside("content", "content/posts/one.md")).toBe(false);
+    expect(wantsHomeBeside("design", "pages/index.json")).toBe(false);
+    expect(wantsHomeBeside("styles", "project.json")).toBe(false);
   });
 });
