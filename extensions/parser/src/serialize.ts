@@ -567,6 +567,112 @@ function hasJxProps(el: JxElement) {
   return false;
 }
 
+/**
+ * The attributes each markdown-native tag can state in markdown syntax: a link's `href` and
+ * `title`, an image's `src`, `alt` and `title`, an ordered list's `start`. Any other attribute (an
+ * image's `width` and `height`, a heading's `id`) has no markdown spelling, so an element that
+ * carries one is written as a directive, which keeps every attribute, rather than as markdown that
+ * would drop it.
+ */
+const MD_ATTRIBUTES = new Map([
+  ["a", new Set(["href", "title"])],
+  ["img", new Set(["alt", "src", "title"])],
+  ["ol", new Set(["start"])],
+]);
+
+/** Whether every attribute an element carries has a markdown spelling for its tag. */
+function hasOnlyMarkdownAttributes(el: JxElement, tag: string): boolean {
+  const allowed = MD_ATTRIBUTES.get(tag);
+  return Object.keys(el.attributes ?? {}).every((name) => allowed?.has(name) ?? false);
+}
+
+/**
+ * The parts of a table. They are markdown only inside a table GFM can write ({@link isGfmTable}),
+ * which converts them itself; met anywhere else (a directive table's `tbody`, a stray `tr`) they
+ * are directives, since they have no markdown form of their own.
+ */
+const TABLE_PARTS: ReadonlySet<string> = new Set(["tbody", "td", "th", "thead", "tr"]);
+
+/** A table part's children, without the whitespace an HTML source left between its tags. */
+function partChildren(el: JxElement): (JxElement | string)[] {
+  return childList(el).filter((child) => !isString(child) || child.trim() !== "");
+}
+
+/** `slot` as a plain element of `tag`: no attributes and no Jx props, or `null`. */
+function plainPart(slot: JxElement | string | undefined, tag: string): JxElement | null {
+  if (slot === undefined || isString(slot) || slot.tagName !== tag) {
+    return null;
+  }
+  const attributes = Object.keys(slot.attributes ?? {});
+  return attributes.length === 0 && !hasJxProps(slot) ? slot : null;
+}
+
+/** Whether a table cell holds only what a GFM cell can: one line of inline content. */
+function isGfmCell(cell: JxElement): boolean {
+  if (cell.textContent != null) {
+    return !String(cell.textContent).includes("\n");
+  }
+  return childList(cell).every((child) =>
+    isString(child)
+      ? !child.includes("\n")
+      : isString(child.tagName) && (MD_INLINE.has(child.tagName) || child.tagName === "span"),
+  );
+}
+
+/** A row's cells when every one is a plain `cellTag` holding GFM cell content, else `null`. */
+function gfmRowCells(row: JxElement | string | undefined, cellTag: string): JxElement[] | null {
+  const tr = plainPart(row, "tr");
+  if (!tr || tr.textContent != null) {
+    return null;
+  }
+  const cells: JxElement[] = [];
+  for (const slot of partChildren(tr)) {
+    const cell = plainPart(slot, cellTag);
+    if (!cell || !isGfmCell(cell)) {
+      return null;
+    }
+    cells.push(cell);
+  }
+  return cells.length > 0 ? cells : null;
+}
+
+/**
+ * The rows of a table GFM can write and read back as the same element tree, or `null`: a `thead`
+ * holding one row of `th` cells, then optionally a `tbody` whose every row has as many `td` cells,
+ * none of them carrying an attribute or anything but one line of inline content. That is exactly
+ * the shape the parser makes of a pipe table. Any other table (no header row, `td` cells in the
+ * head, a caption, a class) would come back as a different tree, so it stays a directive.
+ */
+function gfmTableRows(el: JxElement): { head: JxElement[]; body: JxElement[][] } | null {
+  if (el.textContent != null) {
+    return null;
+  }
+  const [headSlot, bodySlot, ...rest] = partChildren(el);
+  const thead = plainPart(headSlot, "thead");
+  if (!thead || rest.length > 0) {
+    return null;
+  }
+  const headRows = partChildren(thead);
+  const head = headRows.length === 1 ? gfmRowCells(headRows[0], "th") : null;
+  if (!head) {
+    return null;
+  }
+  if (bodySlot === undefined) {
+    return { body: [], head };
+  }
+  const tbody = plainPart(bodySlot, "tbody");
+  const rows = tbody ? partChildren(tbody) : [];
+  const body: JxElement[][] = [];
+  for (const row of rows) {
+    const cells = gfmRowCells(row, "td");
+    if (!cells || cells.length !== head.length) {
+      return null;
+    }
+    body.push(cells);
+  }
+  return body.length > 0 ? { body, head } : null;
+}
+
 function convertJxNode(
   slot: JxDocumentValue | undefined,
   isBlock: boolean,
@@ -586,8 +692,19 @@ function convertJxNode(
 
   const tag = serializableTag(el.tagName) || "div";
 
-  // Not markdown-native or carries Jx-specific props → directive
-  if (!allowlist.has(tag) || hasJxProps(el)) {
+  /* Not markdown-native, carries Jx-specific props or an attribute markdown cannot spell, or is a
+     table part outside a GFM table → directive. So is an image standing at block level: markdown
+     has only the inline `![alt](src)`, which would run into the paragraph beside it, and the
+     `::img{…}` leaf it was read from is its exact form. */
+  const tableRows = tag === "table" ? gfmTableRows(el) : null;
+  if (
+    !allowlist.has(tag) ||
+    hasJxProps(el) ||
+    !hasOnlyMarkdownAttributes(el, tag) ||
+    TABLE_PARTS.has(tag) ||
+    (tag === "table" && tableRows === null) ||
+    (isBlock && tag === "img")
+  ) {
     return convertToDirective(el, isBlock, allowlist);
   }
 
@@ -696,38 +813,20 @@ function convertJxNode(
     }
 
     case "table": {
-      // Flatten thead/tbody back to rows
-      const rows: MdastNode[] = [];
-      for (const section of childList(el)) {
-        if (isString(section)) {
-          continue;
-        }
-        if (section.tagName === "thead" || section.tagName === "tbody") {
-          for (const row of childList(section)) {
-            const mdRow = convertJxNode(row, true, allowlist);
-            if (mdRow) {
-              if (section.tagName === "thead") {
-                for (const cell of mdRow.children ?? []) {
-                  cell.isHeader = true;
-                }
-              }
-              rows.push(mdRow);
-            }
-          }
-        }
-      }
-      return { children: rows, type: "table" };
-    }
-
-    case "tableRow": {
-      return {
-        children: convertJxChildren(childList(el), false, allowlist),
+      // Flatten thead/tbody back to rows: the header row first, as GFM writes it.
+      const { body, head } = tableRows ?? { body: [], head: [] };
+      const row = (cells: readonly JxElement[], isHeader: boolean): MdastNode => ({
+        children: cells.map((cell) => ({
+          children: inline(cell),
+          type: "tableCell",
+          ...(isHeader && { isHeader: true }),
+        })),
         type: "tableRow",
+      });
+      return {
+        children: [row(head, true), ...body.map((cells) => row(cells, false))],
+        type: "table",
       };
-    }
-
-    case "tableCell": {
-      return { children: inline(el), type: "tableCell" };
     }
     default: {
       break;
@@ -1760,7 +1859,7 @@ function serializeRoundtrip<ScopeValue>(
     }
 
     if (Object.keys(frontmatter).length > 0) {
-      lines.push("---", stringify(frontmatter).trim(), "---", "");
+      lines.push("---", stringifyFrontmatter(frontmatter), "---", "");
     }
   }
 
@@ -1770,15 +1869,27 @@ function serializeRoundtrip<ScopeValue>(
       .use(remarkGfm)
       .use(remarkDirective)
       .use(remarkStringifyPlugin, { bullet: "-", emphasis: "*", strong: "*" });
-    const md = processor.stringify(mdast);
-
-    lines.push(md);
+    // Runs of blank lines are squeezed in the body only: inside the frontmatter they are a block
+    // Scalar's own text (a `|-` excerpt's paragraph breaks), and squeezing them edits a value.
+    lines.push(processor.stringify(mdast).replaceAll(/\n{3,}/g, "\n\n"));
   }
 
-  return `${lines
-    .join("\n")
-    .replaceAll(/\n{3,}/g, "\n\n")
-    .trim()}\n`;
+  return `${lines.join("\n").trim()}\n`;
+}
+
+/**
+ * The frontmatter block's YAML, written so that every reader gets back the values it was given.
+ *
+ * - `lineWidth: 0`: a long string stays on its line. Folding it (`>`) is a style the author did not
+ *   choose, and a one-word edit that refolds every paragraph of an excerpt is a diff nobody can
+ *   review.
+ * - YAML 1.1 quoting: a string that a YAML 1.1 reader would type (`"2024-07-26T17:39:36Z"`, a
+ *   timestamp; `"yes"`, a boolean) stays quoted. The 1.2 core schema this package reads with calls
+ *   them strings unquoted, but the loaders a site's other tools use (js-yaml, gray-matter) do not,
+ *   and a date that was a string must not become a `Date` because Studio saved the file.
+ */
+function stringifyFrontmatter(frontmatter: DirectiveProps): string {
+  return stringify(frontmatter, { lineWidth: 0, version: "1.1" }).trim();
 }
 
 function serializeExport<ScopeValue>(doc: JxDocument, opts: SerializeOptions<ScopeValue>): string {

@@ -243,6 +243,39 @@ describe("the cache", () => {
     expect(fresh.filesReferencing).toBe(4);
   });
 
+  test("one sweep answers every question about the project until the tree moves", async () => {
+    seedProject();
+    write("public/a.png", "png");
+    write("public/b.png", "png");
+    write("public/c.png", "png");
+    write("pages/gallery.json", { children: [{ attributes: { src: "/a.png" }, tagName: "img" }] });
+    const reg = await registry();
+    const using = async (path: string, from = reg): Promise<number> => {
+      const result = await findReferences({ path, registry: from, root });
+      return result.filesReferencing;
+    };
+    expect(await using("public/a.png")).toBe(1);
+
+    // A document written after the sweep is invisible to a NEW question, because the index that
+    // Answers it was read once: a question per file is a filter over one sweep, not a sweep.
+    write("pages/late.json", {
+      children: [
+        { attributes: { src: "/b.png" }, tagName: "img" },
+        { attributes: { src: "/c.png" }, tagName: "img" },
+      ],
+    });
+    expect(await using("public/b.png")).toBe(0);
+    const tags = await findReferences({ registry: reg, root, tagName: "my-card" });
+    expect(tags.filesReferencing).toBe(3);
+
+    // A different registry is a different document set, so it is read afresh.
+    expect(await using("public/c.png", await registry())).toBe(1);
+
+    write("pages/later.json", { children: [{ attributes: { src: "/a.png" }, tagName: "img" }] });
+    invalidateReferenceCache(root);
+    expect(await using("public/a.png")).toBe(2);
+  });
+
   test("invalidation is per-root, and the argument-less form clears everything", async () => {
     seedProject();
     const reg = await registry();

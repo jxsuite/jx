@@ -114,7 +114,13 @@ describe("labels", () => {
     expect(pageLabel(fileToRoute("pages/index.json"), "pages/index.json")).toBe("Home");
     expect(pageLabel(fileToRoute("pages/about-us.md"), "pages/about-us.md")).toBe("About us");
     expect(pageLabel(fileToRoute("pages/blog/index.json"), "pages/blog/index.json")).toBe("Blog");
-    expect(pageLabel(fileToRoute("pages/p/[id].json"), "pages/p/[id].json")).toBe("Id");
+    expect(pageLabel(fileToRoute("pages/p/[id].json"), "pages/p/[id].json")).toBe("P");
+    expect(
+      pageLabel(fileToRoute("pages/project_tag/[slug].json"), "pages/project_tag/[slug].json"),
+    ).toBe("Project tag");
+    expect(
+      pageLabel(fileToRoute("pages/service-type/[slug].json"), "pages/service-type/[slug].json"),
+    ).toBe("Service type");
     expect(pageLabel(fileToRoute("pages/[...rest].json"), "pages/[...rest].json")).toBe("Rest");
   });
 

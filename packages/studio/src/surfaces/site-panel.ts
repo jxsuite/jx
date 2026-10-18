@@ -54,6 +54,11 @@ export interface SitePanelValues {
   media: SiteMediaRow[];
   mediaState: SiteSectionState;
   mediaCount: string;
+  /**
+   * The line under a strip that does not show every thumbnail the filter admits ("Show all 766 in
+   * Media"), or `""` when it shows them all.
+   */
+  mediaMore: string;
 }
 
 /** What a control can ask the panel to do. Read once, when the scope is made. */
@@ -101,6 +106,7 @@ export function emptySitePanelValues(): SitePanelValues {
     filter: "",
     media: [],
     mediaCount: "",
+    mediaMore: "",
     mediaState: "loading",
     pages: [],
     pagesCount: "",
@@ -127,6 +133,7 @@ function project(scope: SitePanelScope, values: SitePanelValues): void {
   scope.media = values.media;
   scope.mediaState = values.mediaState;
   scope.mediaCount = values.mediaCount;
+  scope.mediaMore = values.mediaMore;
 }
 
 /** The `part` a node was declared with, or the empty string. */

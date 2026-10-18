@@ -263,6 +263,18 @@ function definitionPath(comp: ComponentEntry | undefined): string | null {
   return comp?.path !== undefined && comp.source !== "npm" ? comp.path : null;
 }
 
+/**
+ * How many thumbnails the Media section draws. It is a strip, not the library: a project with
+ * hundreds of images made the panel thousands of pixels tall and gave every reader as many extra
+ * buttons, and the Media workspace is where all of them are browsed (§5.7).
+ */
+export const SITE_MEDIA_LIMIT = 8;
+
+/** "Show all 766 in Media" under a strip that holds fewer than the filter admits, else `""`. */
+export function mediaMoreLabel(admitted: number, shown: number): string {
+  return admitted > shown ? `Show all ${admitted} in Media` : "";
+}
+
 /** The media thumbnails the filter admits. */
 function mediaRows(
   files: readonly ProjectMediaFile[],
@@ -360,8 +372,9 @@ export function sitePanelValues(): SitePanelValues {
     componentsCount: countLabel(allComponents.length, components.length, registryLoading),
     componentsState: sectionState(registryLoading, allComponents.length, components.length),
     filter: _filter,
-    media: shownMedia,
+    media: shownMedia.slice(0, SITE_MEDIA_LIMIT),
     mediaCount: countLabel(allMedia.length, shownMedia.length, media === null),
+    mediaMore: mediaMoreLabel(shownMedia.length, Math.min(shownMedia.length, SITE_MEDIA_LIMIT)),
     mediaState: sectionState(media === null, allMedia.length, shownMedia.length),
     pages,
     pagesCount: countLabel(countable(allPages), countable(pages), index === null),

@@ -925,25 +925,65 @@ describe("Unused", () => {
     expect(text("empty-title")).toBe("No unused media");
   });
 
-  test("draws a counting line while the sweep runs", async () => {
-    let release: () => void = () => {};
+  /**
+   * Hold the sweep's FIRST question until `release()`, and pass every later one straight through,
+   * so a test ends with nothing left in flight for the next one to inherit (the usage cache keeps
+   * an in-flight question across invalidations by design).
+   */
+  async function holdFirstQuestion(): Promise<{ asked: string[]; release: () => void }> {
     install();
     const { getPlatform } = await import("../src/platform");
-    const platform = getPlatform();
-    const original = platform.findReferences!;
+    const original = getPlatform().findReferences!;
+    const asked: string[] = [];
+    let release: () => void = () => {};
     globalThis.__jxPlatform = {
       ...globalThis.__jxPlatform!,
-      findReferences: (query) =>
-        new Promise((resolve) => {
+      findReferences: (query) => {
+        asked.push(query.path ?? "");
+        if (asked.length > 1) {
+          return original(query);
+        }
+        return new Promise((resolve) => {
           release = () => resolve(original(query));
-        }),
+        });
+      },
     };
     invalidateMediaCache();
+    return {
+      asked,
+      release: () => {
+        release();
+      },
+    };
+  }
+
+  test("draws a counting line while the sweep runs", async () => {
+    const { release } = await holdFirstQuestion();
     await mountHome();
     pointer(filterButton("unused"), "click");
     await settle();
     expect(text("empty")).toMatch(/^Counting references… 0 of 6$/);
     release();
+    await settle(14);
+  });
+
+  test("stops asking when the reader leaves the filter, and starts again when it returns", async () => {
+    const { asked, release } = await holdFirstQuestion();
+    await mountHome();
+    pointer(filterButton("unused"), "click");
+    await settle();
+    expect(asked).toHaveLength(1);
+    pointer(filterButton("all"), "click");
+    release();
+    await settle(8);
+    // The answer in flight landed, and no second question followed it.
+    expect(asked).toHaveLength(1);
+    expect(filterRows().at(-1)).toBe("unused");
+    pointer(filterButton("unused"), "click");
+    await settle(20);
+    // The first answer is the cache's; the other five are asked now.
+    expect(asked).toHaveLength(6);
+    expect(filterRows().at(-1)).toBe("unused 5");
   });
 });
 

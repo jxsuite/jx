@@ -125,6 +125,66 @@ describe("pageFactsOf", () => {
   });
 });
 
+describe("pageFactsOf over an enumerated $paths", () => {
+  const entry = (contentType: string, ref: string) => ({
+    $prototype: "ContentEntry",
+    contentType,
+    id: { $ref: ref },
+  });
+
+  test("a taxonomy page is the page of the collection its route parameter reads an entry of", () => {
+    const page = {
+      $layout: "./layouts/index.json",
+      $paths: { param: "slug", values: ["chad-beiler", "kris-bucher"] },
+      state: {
+        author: entry("author", "#/$params/slug"),
+        recent: { $prototype: "ContentCollection", contentType: "post" },
+      },
+    };
+    expect(pageFactsOf(page, null)).toEqual({
+      contentType: "author",
+      field: null,
+      layout: "./layouts/index.json",
+      param: "slug",
+    });
+    // A Markdown page states both in its frontmatter.
+    expect(
+      pageFactsOf(
+        { tagName: "div" },
+        {
+          $paths: { param: "id", values: ["a"] },
+          state: { note: entry("notes", "#/$params/id") },
+        },
+      ).contentType,
+    ).toBe("notes");
+  });
+
+  test("values with no entry read by the parameter, or no parameter, state no collection", () => {
+    const none = { contentType: null, field: null, layout: undefined, param: null };
+    expect(pageFactsOf({ $paths: { param: "slug", values: ["a"] } }, null)).toEqual(none);
+    expect(
+      pageFactsOf(
+        {
+          $paths: { param: "slug", values: ["a"] },
+          state: {
+            fixed: entry("author", "#/$params/other"),
+            nameless: entry("", "#/$params/slug"),
+            odd: ["not", "an", "entry"],
+            plain: "text",
+          },
+        },
+        null,
+      ),
+    ).toEqual(none);
+    expect(
+      pageFactsOf(
+        { $paths: { values: ["a"] }, state: { a: entry("author", "#/$params/slug") } },
+        null,
+      ),
+    ).toEqual(none);
+  });
+});
+
 describe("readPageFacts", () => {
   test("parses a JSON page and a format page", async () => {
     const json = await readPageFacts("pages/blog/[slug].json");

@@ -3,11 +3,13 @@
  *
  * `project.json` records no URL pattern and no template for a collection. The route lives in the
  * template PAGE: a dynamic file under `pages/` whose `$paths.contentType` names the collection
- * (`pages/blog/[slug].json`, `$paths: { contentType: "posts", param: "slug" }`), and the layout an
- * entry is drawn in is that page's `$layout`. A second record of either in `project.json` would be
- * free to disagree with the router, so the Content workspace's header line ("Each post has a page
- * at `/blog/:slug` using Post") and the canvas's entry wrapping (`canvas/canvas-live-render.ts`)
- * both read this index (`specs/studio.md` §22.5).
+ * (`pages/blog/[slug].json`, `$paths: { contentType: "posts", param: "slug" }`), or whose
+ * `$paths.values` enumerate the ids of a `ContentEntry` it reads by its route parameter (a taxonomy
+ * page, `pages/author/[slug].json`), and the layout an entry is drawn in is that page's `$layout`.
+ * A second record of either in `project.json` would be free to disagree with the router, so the
+ * Content workspace's header line ("Each post has a page at `/blog/:slug` using Post") and the
+ * canvas's entry wrapping (`canvas/canvas-live-render.ts`) both read this index (`specs/studio.md`
+ * §22.5).
  *
  * One read per invalidation: a walk of `pages/`, then a parse of each dynamic page, cached until a
  * file event drops it ({@link invalidateCollectionPages}, wired beside the Site panel's index in
@@ -17,7 +19,7 @@
  * @docs studio/projects/browse
  */
 
-import { isNumber, isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { fileToRoute, isRoutedPageFile } from "@jxsuite/site/routes";
 import {
   canonicalizeLocale,
@@ -64,6 +66,32 @@ export interface CollectionPage {
   locale: string | null;
 }
 
+/**
+ * The collection a page enumerating its own `$paths.values` publishes one entry of per URL: the
+ * `contentType` of its `ContentEntry` state entry whose `id` is the route parameter (`{ "$ref":
+ * "#/$params/slug" }`). A taxonomy page (`pages/author/[slug].json`, listing the author slugs and
+ * reading `state.author` from the `author` collection by that slug) states its collection that way
+ * rather than with `$paths.contentType`, and is the collection's page all the same.
+ */
+function entryCollectionOf(
+  document: JxMutableNode | null,
+  frontmatter: FormatFrontmatter | null,
+  param: string,
+): string | null {
+  const state = document?.state ?? frontmatter?.state;
+  const target = `#/$params/${param}`;
+  for (const entry of Object.values(isJsonObject(state) ? state : {})) {
+    if (!isJsonObject(entry) || entry.$prototype !== "ContentEntry") {
+      continue;
+    }
+    const { contentType, id } = entry;
+    if (isJsonObject(id) && id.$ref === target && isString(contentType) && contentType !== "") {
+      return contentType;
+    }
+  }
+  return null;
+}
+
 /** The facts a page document states, from its parsed tree and (for a format page) frontmatter. */
 export function pageFactsOf(
   document: JxMutableNode | null,
@@ -80,6 +108,11 @@ export function pageFactsOf(
     param = isString(named) && named !== "" ? named : null;
     const from = "field" in paths ? paths.field : undefined;
     field = isString(from) && from !== "" && from !== "id" ? from : null;
+  } else if (paths && !Array.isArray(paths) && "values" in paths) {
+    const named = "param" in paths ? paths.param : undefined;
+    const enumerated = isString(named) && named !== "" ? named : null;
+    contentType = enumerated === null ? null : entryCollectionOf(document, frontmatter, enumerated);
+    param = contentType === null ? null : enumerated;
   }
   const own = document?.$layout ?? frontmatter?.$layout;
   const layout = isString(own) || own === false ? own : undefined;

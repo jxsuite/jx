@@ -68,6 +68,8 @@ const {
   mayDefineComponent,
   invalidateSiteIndex,
   mediaDragData,
+  mediaMoreLabel,
+  SITE_MEDIA_LIMIT,
   registerSitePanel,
   resetSitePanel,
   sitePanelValues,
@@ -344,6 +346,33 @@ describe("Media", () => {
     });
     expect(mediaDragData("public/brochure.pdf")?.fragment.tagName).toBe("a");
     expect(mediaDragData("public/missing.png")).toBeNull();
+  });
+
+  test("a strip of the first few, and the rest one click away in Media", async () => {
+    // Two fixture files: every one is shown and there is no "more" line.
+    await paint();
+    expect(sitePanelValues().mediaMore).toBe("");
+    expect(section("media").querySelector('[part="media-more"]')?.hasAttribute("hidden")).toBe(
+      true,
+    );
+    const many = Object.fromEntries(
+      Array.from({ length: 30 }, (_, i) => [
+        `public/media/p${String(i).padStart(2, "0")}.png`,
+        "png",
+      ]),
+    );
+    await project({}, many);
+    invalidateMediaCache();
+    await paint();
+    expect(part("media-thumb")).toHaveLength(SITE_MEDIA_LIMIT);
+    expect(section("media").querySelector('[part="section-count"]')?.textContent).toBe("32");
+    const more = section("media").querySelector<HTMLElement>('[part="media-more"]')!;
+    expect(more.hasAttribute("hidden")).toBe(false);
+    expect(more.textContent.trim()).toBe("Show all 32 in Media");
+    // A filter narrows what "all" is.
+    await typeFilter("p1");
+    expect(sitePanelValues().mediaMore).toBe("Show all 10 in Media");
+    expect(mediaMoreLabel(3, 3)).toBe("");
   });
 
   test("Open Media switches to the Media workspace", async () => {

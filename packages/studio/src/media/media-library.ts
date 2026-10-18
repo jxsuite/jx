@@ -15,9 +15,10 @@
  * only when the reader asks for **Unused**.
  *
  * **Unused is asked for, never assumed.** The sweep starts the first time the filter is chosen,
- * runs one query at a time, and the count stays blank until the last answer is in. A file whose
- * query failed is never counted as unused, and a host with no reference index draws no Unused
- * filter at all: a confident zero is the one answer a delete must never be prompted by.
+ * runs one query at a time, stops when no library shows the filter any more, and the count stays
+ * blank until the last answer is in. A file whose query failed is never counted as unused, and a
+ * host with no reference index draws no Unused filter at all: a confident zero is the one answer a
+ * delete must never be prompted by.
  *
  * **Uploads with no context land in `public/media/`** (`DEFAULT_MEDIA_DIR`): the Media home has no
  * document, so it always does. The pick dialog answers a field of the active document, so it
@@ -159,11 +160,20 @@ function resetUnused(): void {
   _sweepEpoch += 1;
 }
 
+/** Whether a live library still shows Unused: the one reader the sweep is running for. */
+function unusedWanted(): boolean {
+  return [..._mounts].some((mount) => !mount.disposed && mount.choice.filter === "unused");
+}
+
 /**
  * Ask the usage index about every file, one at a time, and settle {@link _unused}.
  *
- * One query in flight at a time, because each is a sweep of every document in the project, and a
- * library of two hundred images is not two hundred concurrent sweeps the backend should be handed.
+ * One query in flight at a time. The backend reads the project's references once and answers each
+ * question from that index (`@jxsuite/server/refactor`), so the first question pays for the sweep
+ * and the rest are filters over it; a burst of concurrent first questions would only queue behind
+ * it. The sweep stops the moment no library shows Unused any more: a reader who left the filter is
+ * not owed the rest of the answer, and every question already answered stays cached for the next
+ * time the filter is chosen.
  */
 async function sweepUnused(files: readonly ProjectMediaFile[]): Promise<void> {
   if (_sweepRunning || _unused !== null || !usagesSupported()) {
@@ -177,6 +187,10 @@ async function sweepUnused(files: readonly ProjectMediaFile[]): Promise<void> {
   for (const file of files) {
     const state = await loadMediaUsages(file.file);
     if (epoch !== _sweepEpoch) {
+      return;
+    }
+    if (!unusedWanted()) {
+      resetUnused();
       return;
     }
     if (state.status === "ready" && state.result.files.length === 0) {

@@ -128,19 +128,24 @@ function stem(path: string): string {
 }
 
 /**
- * A page's name, from its route rather than its file: `/` is Home, `/about` is About, and an index
- * file is named for its directory, because that is the name the URL gives it.
+ * A page's name, from its route rather than its file: `/` is Home, `/about` is About, an index file
+ * is named for its directory, and a dynamic page for the last static segment of its URL
+ * (`/project_tag/:slug` is Project tag), because that is the name the URL gives it.
  */
 export function pageLabel(route: FileRoute, path: string): string {
   if (route.urlPattern === "/") {
     return "Home";
   }
   const segments = route.urlPattern.split("/").filter((segment) => segment !== "");
+  const isParam = (segment: string): boolean => segment === "*" || segment.startsWith(":");
   const last = segments.at(-1) ?? stem(path);
-  if (last === "*" || last.startsWith(":")) {
-    return humanize(stem(path).replaceAll(/[[\].]/g, ""));
+  if (!isParam(last)) {
+    return humanize(last);
   }
-  return humanize(last);
+  /* A dynamic page is named for the directory its URL names (`/author/:slug` is Author), and only
+     a route with no static segment at all falls back to its file's parameter name. */
+  const named = segments.findLast((segment) => !isParam(segment));
+  return humanize(named ?? stem(path).replaceAll(/[[\].]/g, ""));
 }
 
 interface RoutedPage {
