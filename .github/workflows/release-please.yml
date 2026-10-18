@@ -517,14 +517,7 @@ jobs:
           exit 1
 
   pin-desktop-latest:
-    needs:
-      [
-        release-please,
-        desktop-linux,
-        desktop-macos,
-        desktop-windows,
-        verify-desktop-assets,
-      ]
+    needs: [release-please, desktop-linux, desktop-macos, desktop-windows, verify-desktop-assets]
     if: always() && needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     permissions:

@@ -1589,7 +1589,10 @@ export function createAnthropicProvider(options: {
   readonly version?: string;
   readonly defaultMaxTokens: number; // max_tokens is required (A5)
   readonly thinking?: Record<string, unknown>; // passthrough, e.g. {type:"adaptive"}
-  /** Sent only where the platform offers thinking-binding-controls-2026-08-01. Explicit, never the default. */
+  /**
+   * Sent only where the platform offers thinking-binding-controls-2026-08-01. Explicit, never the
+   * default.
+   */
   readonly bindingControls?: { readonly prefixMismatch: "drop_block" | "error" };
   readonly fetch?: typeof fetch;
 }): Provider;
@@ -1674,7 +1677,10 @@ export function recordingModel(
   inner: ModelFn,
   sink: (entry: Cassette["entries"][number]) => void,
 ): ModelFn;
-/** A miss yields an error frame {code:"replay_miss"} (onMiss "error") or fails the test (onMiss "throw"). */
+/**
+ * A miss yields an error frame {code:"replay_miss"} (onMiss "error") or fails the test (onMiss
+ * "throw").
+ */
 export function replayModel(cassette: Cassette, options?: { onMiss?: "error" | "throw" }): ModelFn;
 export interface UpstreamFixture {
   readonly status: number;
@@ -1691,7 +1697,10 @@ export interface ConformanceCase {
     installUpstream(f: typeof fetch): void;
   }): Promise<void>;
 }
-/** Shared by packages/ai, packages/server/tests/ai-api.test.ts and P/tests/ai-routes.test.ts. Throws AssertionError; imports no runner. */
+/**
+ * Shared by packages/ai, packages/server/tests/ai-api.test.ts and P/tests/ai-routes.test.ts. Throws
+ * AssertionError; imports no runner.
+ */
 export function gatewayConformanceCases(options?: {
   wire?: readonly number[];
   managed?: boolean;
@@ -1728,7 +1737,10 @@ J1.15 also moves in, next to it: `structuralBatch`, `isSpliceablePath`, `isAnces
 
 ```ts
 // st/tabs/transact.ts
-/** J1.1 contract this design integrates with (doc-ops map §4). If J1.1 lands returning boolean, J1.16 widens it additively. */
+/**
+ * J1.1 contract this design integrates with (doc-ops map §4). If J1.1 lands returning boolean,
+ * J1.16 widens it additively.
+ */
 export type ApplyDocOpsResult = "applied" | "unchanged" | "refused";
 export function applyDocOpsAsUser(
   tab: Tab,
@@ -1752,13 +1764,19 @@ export interface TransactOptions {
   coalesceKey?: string | null;
   actor?: ActorRef | null;
 }
-/** Synchronous-only attribution scope for command projections; reset in finally before any await resumes (J1.13). */
+/**
+ * Synchronous-only attribution scope for command projections; reset in finally before any await
+ * resumes (J1.13).
+ */
 export function runAsActor<T>(actor: ActorRef, fn: () => T): T;
 
 export interface BatchLane {
   // J1.13, replaces _batchTab/beginBatch/endBatch/batchTab/reanchorBatch
   readonly owner: ActorRef;
-  /** Close every open segment now (one ops-based entry per tab that RECORDED something); lane stays usable. */
+  /**
+   * Close every open segment now (one ops-based entry per tab that RECORDED something); lane stays
+   * usable.
+   */
   flush(): void;
   /** Flush and retire; returns where each entry landed, for Restore (D8). */
   close(): readonly { readonly tab: Tab; readonly entryIndex: number; readonly turnId: string }[];

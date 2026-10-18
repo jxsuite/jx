@@ -1,12 +1,12 @@
 /// <reference lib="dom" />
 /**
  * Cf-settings — the Cloudflare publish connection on platforms without a hosted OAuth broker (dev
- * server, desktop). The API token is stored like the AI key, over `settings/kernel.ts`. It only ever
- * leaves the machine to the same-origin `/__studio/cf/proxy`, which forwards it as a bearer to
+ * server, desktop). The API token is stored like the AI key, over `settings/kernel.ts`. It only
+ * ever leaves the machine to the same-origin `/__studio/cf/proxy`, which forwards it as a bearer to
  * api.cloudflare.com (not CORS-enabled, hence the proxy).
  *
- * As with the AI provider, a blank value is a VALUE: {@link clearCfConnection} is the deletion path,
- * so nothing can revoke a connection by rendering an empty field into a setter.
+ * As with the AI provider, a blank value is a VALUE: {@link clearCfConnection} is the deletion
+ * path, so nothing can revoke a connection by rendering an empty field into a setter.
  *
  * @license MIT
  */
