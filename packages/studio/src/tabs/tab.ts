@@ -2,7 +2,8 @@
 import { effectScope, reactive } from "../reactivity";
 import { formatByName, formatForPath } from "../format/format-host";
 import type { FormatFrontmatter } from "../format/format-host";
-import { normalizeArrayChildren } from "../state";
+import { normalizeDocument } from "./bare-repeaters";
+import type { BareRepeaters } from "./bare-repeaters";
 import type { JxPath } from "../state";
 import type { FormulaEditDef, FunctionEditDef, InlineEditDef, JsonValue } from "../types";
 import { editorKindForMode } from "../commands/context";
@@ -205,6 +206,13 @@ export interface Tab {
      * file.
      */
     layout: JsonLayout | null;
+    /**
+     * The repeaters the file wrote as a node's whole `children`, which loading rewrote into the
+     * member form the editor works in (`tabs/bare-repeaters.ts`); null when it wrote none. A fact
+     * about the file with the lifetime `layout` has: a reload or a source-view commit replaces it,
+     * an edit or an undo leaves it alone, and a save writes those repeaters back as they were.
+     */
+    bareRepeaters: BareRepeaters | null;
   };
   session: {
     /**
@@ -346,7 +354,7 @@ export function createTab({
 
   // Normalize legacy whole-children repeaters to the canonical array-member form before the doc
   // (and its first history checkpoint) are stored.
-  normalizeArrayChildren(document);
+  const bareRepeaters = normalizeDocument(document);
 
   const resolvedModes = capabilities?.modes ?? inferModes(documentPath, sourceFormat);
   // A tab opens in its first allowed mode — never one the toolbar would disable.
@@ -357,6 +365,7 @@ export function createTab({
   const initialPreview = resolvedModes[0] === "preview";
 
   const doc: Tab["doc"] = {
+    bareRepeaters,
     content: { frontmatter: frontmatter || {} },
     dirty: false,
     document,

@@ -186,6 +186,59 @@ describe("startCanvasIframe", () => {
     expect(document.documentElement.hasAttribute("dir")).toBe(false);
   });
 
+  // A frame that boots after the pane's locale was posted still draws the document's language.
+  test("a render carries the language and applies it before drawing", async () => {
+    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+    const container = document.createElement("div");
+    document.body.append(container);
+    teardown = startCanvasIframe({ channel: pair.iframe, container });
+    pair.flush();
+
+    const doc = { tagName: "p" };
+    pair.parent.post(renderMsg(1, doc, doc, { locale: { dir: "rtl", locale: "ar" } }));
+    pair.flush();
+    expect(document.documentElement.getAttribute("lang")).toBe("ar");
+    expect(document.documentElement.getAttribute("dir")).toBe("rtl");
+
+    // A left-to-right language writes no `dir`, as the built page never does.
+    pair.parent.post(renderMsg(2, doc, doc, { locale: { dir: "ltr", locale: "fr" } }));
+    pair.flush();
+    expect(document.documentElement.getAttribute("lang")).toBe("fr");
+    expect(document.documentElement.hasAttribute("dir")).toBe(false);
+
+    // A stale generation does not move it.
+    pair.parent.post(renderMsg(1, doc, doc, { locale: { dir: "rtl", locale: "ar" } }));
+    pair.flush();
+    expect(document.documentElement.getAttribute("lang")).toBe("fr");
+
+    pair.parent.post(renderMsg(3, { tagName: "p" }));
+    pair.flush();
+    expect(document.documentElement.hasAttribute("lang")).toBe(false);
+  });
+
+  // `canvas.html` boots `lang="en"`, and a project without locales must keep it.
+  test("a render with no language restores the root the frame booted with", () => {
+    document.documentElement.setAttribute("lang", "en");
+    try {
+      const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+      const container = document.createElement("div");
+      document.body.append(container);
+      teardown = startCanvasIframe({ channel: pair.iframe, container });
+      pair.flush();
+      const doc = { tagName: "p" };
+      pair.parent.post(renderMsg(1, doc, doc, { locale: { dir: "rtl", locale: "ar" } }));
+      pair.flush();
+      pair.parent.post(renderMsg(2, doc));
+      pair.flush();
+      expect(document.documentElement.getAttribute("lang")).toBe("en");
+      expect(document.documentElement.hasAttribute("dir")).toBe(false);
+    } finally {
+      teardown?.();
+      teardown = undefined;
+      document.documentElement.removeAttribute("lang");
+    }
+  });
+
   test("the keymap message arms the forwarding, and only then", async () => {
     /* The frame's authority arrives from the host, and the gap before it is deliberate: an unarmed
        frame forwards NOTHING and `preventDefault`s nothing, because a frame that guessed would

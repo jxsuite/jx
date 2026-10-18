@@ -77,6 +77,12 @@ export interface WireDiffMark {
 /** An artboard's whole mark set. Each side receives only its own; `[]` clears. */
 export type WireDiffMarks = readonly WireDiffMark[];
 
+/** A language as the frame applies it: the BCP 47 tag for `lang`, and its direction for `dir`. */
+export interface WireLocale {
+  locale: string;
+  dir: "ltr" | "rtl";
+}
+
 /** Messages the editor (parent) sends into the canvas iframe. */
 export type ParentToIframe =
   | { kind: "init"; gen: number }
@@ -135,6 +141,13 @@ export type ParentToIframe =
        * every re-render would close the panel the author is editing.
        */
       popoverOpen?: (string | number)[] | null;
+      /**
+       * The language the artboard is drawn in, carried on `render` for `colorScheme`'s reason: a
+       * frame that boots after the pane's locale was posted (a new host, a reload) would otherwise
+       * draw an Arabic document left to right until the locale next CHANGED. Absent or null clears
+       * `lang` and `dir`.
+       */
+      locale?: WireLocale | null;
       /** The dialog to draw open after this render, for the same reason. */
       dialogOpen?: (string | number)[] | null;
       gen: number;
@@ -188,8 +201,10 @@ export type ParentToIframe =
    * the frame — `localeDirection` is CLDR's answer via `Intl.Locale`, and the frame has no reason
    * to hold a second copy of the RTL script list.
    *
-   * `null` is "the document's own language": both attributes come off, and the frame falls back to
-   * whatever the rendered document declares.
+   * The host posts the language the pane DRAWS, not only an override: the preview choice, else the
+   * file's own, else the site default (`canvasLocaleOf`). `null` is a project that declares no
+   * locales: both attributes come off, and the frame falls back to whatever the rendered document
+   * declares.
    */
   | { kind: "setLocale"; locale: string | null; dir: "ltr" | "rtl" }
   /**

@@ -26,6 +26,7 @@ import {
   toolbarEl,
   updateSession,
 } from "./store";
+import { getEffectiveRenderLocale } from "./site-context";
 
 import {
   PRIMARY_PANE,
@@ -817,8 +818,11 @@ function installPaneRenderEffects(paneId: string): void {
      * The other half of `i18n.switchLocale`. Without this the control moves a chip and the artboard
      * goes on drawing the same document left-to-right, which makes the verb a label rather than a
      * rendering context. Scoped to THIS pane's stage for the reason the scheme effect above gives.
+     * The document's OWN language when nothing is chosen, so an Arabic file draws right to left
+     * without being asked (`getEffectiveRenderLocale`).
      */
-    const locale = tabOfPane(paneId)?.session.ui.previewLocale ?? null;
+    const tab = tabOfPane(paneId);
+    const locale = getEffectiveRenderLocale(tab?.session.ui.previewLocale, tab?.documentPath);
     postLocaleToLiveHosts(locale, surfaceForPane(paneId).wrap);
   });
 }

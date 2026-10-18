@@ -817,6 +817,16 @@ describe("rendering context", () => {
     expect(summary()).toBe(`Base · ${localeLabel("en")}`);
   });
 
+  // The artboard does not draw a tag the project dropped, so the bar must not report it either.
+  test("a restored tag the project no longer declares is not reported as the pane's language", async () => {
+    const tab = multilingual(["en", "fr"], "pages/fr/a-propos.json");
+    tab.session.ui.previewLocale = "ar";
+    await mountBar();
+    expect(summary()).toBe("Base");
+    const french = segments("locales").find((b) => nameOf(b) === localeLabel("fr"))!;
+    expect(control(french).getAttribute("aria-checked")).toBe("true");
+  });
+
   test("the layout switch shows for a site page with a layout and flips showLayout", async () => {
     resetStudioState({ isSiteProject: true });
     const tab = resetWorkspaceWithTab(

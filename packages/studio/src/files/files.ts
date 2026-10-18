@@ -80,6 +80,7 @@ import { runActiveReported, runReported } from "../commands/run-reported";
 import { collectionOfPath } from "../content/entry-model";
 import { confirmFileDelete, parseSourceForPath, renamePromptMessage } from "./file-ops";
 import { parseJsonDocument } from "@jxsuite/schema/json-layout";
+import { normalizeDocument } from "../tabs/bare-repeaters";
 // The pure half of the differ: order-insensitive equality with no Yjs behind it.
 import { deepEqual } from "@jxsuite/collab/diff-core";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
@@ -2516,12 +2517,16 @@ export async function reloadFileInTab(path: string, opts: { onlyIfChanged?: bool
           // The file changed under the tab, so its layout is whatever the new text says.
           const parsed = parseJsonDocument(content);
           tab.doc.layout = parsed.layout;
-          if (opts.onlyIfChanged && deepEqual(parsed.document, tab.doc.document)) {
-            return;
-          }
           /* SAFETY: this tab was opened on this `.json` path as a Jx document, and the file's schema
              Makes its top-level object a node — the object `parseJsonDocument` states it returns. */
-          tab.doc.document = parsed.document as JxMutableNode;
+          const document = parsed.document as JxMutableNode;
+          // The same member form the tab was opened in, so the comparison and every edit after it
+          // Read one shape, and the record of what the file wrote is the new text's.
+          tab.doc.bareRepeaters = normalizeDocument(document);
+          if (opts.onlyIfChanged && deepEqual(document, tab.doc.document)) {
+            return;
+          }
+          tab.doc.document = document;
         }
         tab.doc.dirty = false;
       } catch (error) {

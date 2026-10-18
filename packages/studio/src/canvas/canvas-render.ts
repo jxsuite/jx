@@ -72,6 +72,7 @@ import {
   commitBufferWrites,
 } from "../services/monaco-buffer";
 import { noteTyping } from "../tabs/typing";
+import { normalizeDocument } from "../tabs/bare-repeaters";
 import { diffModelUrisFor, modelUriFor, monacoLangForPath } from "../services/model-uri";
 import { renderWelcome } from "../surfaces/welcome";
 import { emptyState } from "../surfaces/empty-state";
@@ -869,7 +870,10 @@ async function mountSourceEditor(
           const parsed = parseJsonDocument(sourceEditor.getValue());
           /* SAFETY: a JSON source tab holds a Jx document, whose schema makes the top-level object
              parseJsonDocument returns a node; text that does not parse throws into the catch. */
-          tab.doc.document = parsed.document as JxMutableNode;
+          const document = parsed.document as JxMutableNode;
+          // The member form every edit assumes, and the record of the bare repeaters the text wrote.
+          tab.doc.bareRepeaters = normalizeDocument(document);
+          tab.doc.document = document;
           tab.doc.layout = parsed.layout;
           tab.doc.dirty = true;
           writes.markSettled();

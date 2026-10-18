@@ -40,6 +40,7 @@ import type { DirEntry, GitStatusResult, ProjectState, StudioPlatform } from "..
 import { uploadAccept } from "../src/files/media-upload";
 import { resetAssetVersions, versionOf } from "../src/files/asset-versions";
 import { deriveJsonLayout } from "@jxsuite/schema/json-layout";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import { registerCollabPath, unregisterCollabPath } from "../src/collab/collab-state";
 
 // ─── Local helpers ────────────────────────────────────────────────────────────
@@ -979,6 +980,33 @@ describe("reloadFileInTab", () => {
       const expected = deriveJsonLayout(reformatted);
       expect(expected.blankAfter.size).toBe(1);
       expect([...(tab.doc.layout?.blankAfter ?? [])]).toEqual([...expected.blankAfter]);
+    });
+
+    test("a reloaded bare repeater is normalized, compared and saved back bare", async () => {
+      const source: JxMutableNode = {
+        children: { $prototype: "Array", items: [], map: { tagName: "li" } },
+        tagName: "ul",
+      };
+      const text = `${JSON.stringify(source, null, 2)}\n`;
+      const { state } = installFsPlatform({ "pages/a.json": text });
+      siteState();
+      const tab = openTab({
+        document: structuredClone(source),
+        documentPath: "pages/a.json",
+        id: "pages/a.json",
+      });
+      const before = tab.doc.document;
+
+      // The file is the one the tab was opened from: once both are in the member form they agree.
+      await reloadFileInTab("pages/a.json", { onlyIfChanged: true });
+      expect(tab.doc.document).toBe(before);
+
+      // A change on disk is read in the member form, and a save writes the file's own form.
+      state.files.set("pages/a.json", text.replace('"li"', '"p"'));
+      await reloadFileInTab("pages/a.json");
+      expect(Array.isArray(tab.doc.document.children)).toBe(true);
+      const { serializeDocument } = await import("../src/files/serialize-document");
+      expect(await serializeDocument(tab)).toBe(text.replace('"li"', '"p"'));
     });
 
     test("a changed JSON file is reloaded as usual", async () => {

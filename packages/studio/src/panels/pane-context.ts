@@ -90,7 +90,12 @@ import {
 import { editorKindOf, editorKindsOf, modeForEditorKind } from "../tabs/tab";
 import { collabState } from "../collab/collab-state";
 import { activeRegistry } from "../commands/active-registry";
-import { getEffectiveLayoutPath, getEffectiveLocales, getEffectiveMedia } from "../site-context";
+import {
+  getEffectiveLayoutPath,
+  getEffectiveLocales,
+  getEffectiveMedia,
+  getEffectiveRenderLocale,
+} from "../site-context";
 import { localeLabel, localeOfPath } from "@jxsuite/schema/locale";
 import { isSchemeQuery } from "../utils/canvas-media";
 import { dynamicRouteParams, loadParamValues, pagePathsDef } from "../page-params";
@@ -795,10 +800,8 @@ interface PaneLocale {
  * A single declared locale is the same as none for this control — there is nothing to switch TO,
  * and "groups a document declares nothing for are absent" is the rule the whole popover follows.
  *
- * The fallback chain is what makes the control honest about a file it has not been told about:
- * `previewLocale` is the author's explicit choice, the path is the file's own language
- * (`site-architecture.md` §13.3 puts a translation in its own directory), and the default locale is
- * what an unprefixed page renders as.
+ * The language itself is `getEffectiveRenderLocale`'s answer (`site-context.ts`), the rule every
+ * artboard draws by: the choice, else the file's own language, else the default locale.
  */
 function localeOf(tab: Tab | null): PaneLocale | null {
   const i18n = getEffectiveLocales();
@@ -806,8 +809,10 @@ function localeOf(tab: Tab | null): PaneLocale | null {
     return null;
   }
   const pathLocale = localeOfPath(tab.documentPath ?? "", i18n);
-  const own = pathLocale ?? i18n.defaultLocale;
-  const effective = tab.session.ui.previewLocale ?? own;
+  /* The artboard's own rule, so the segment and the canvas cannot name two languages; a stored
+     choice the project no longer declares is not reported, because it is not drawn. */
+  const own = getEffectiveRenderLocale(null, tab.documentPath) ?? i18n.defaultLocale;
+  const effective = getEffectiveRenderLocale(tab.session.ui.previewLocale, tab.documentPath) ?? own;
   return { effective, i18n, overridden: effective !== own, pathLocale };
 }
 

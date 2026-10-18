@@ -9,6 +9,8 @@ import {
   applyCanvasDialogOpen,
   applyCanvasPopoverOpen,
   applyPreviewColorScheme,
+  applyPreviewLocale,
+  captureLocaleBaseline,
   applySiteStyle,
   CANVAS_OVERLAY_STYLE_ID,
   EDIT_PLACEHOLDER_STYLE_ID,
@@ -603,6 +605,37 @@ describe("applySiteStyle", () => {
     applySiteStyle({ "--brand": "#0f0" });
     expect(() => applySiteStyle(null)).not.toThrow();
     expect(document.head.querySelector("#jx-site-style")).toBeNull();
+  });
+});
+
+describe("applyPreviewLocale", () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute("lang");
+    document.documentElement.removeAttribute("dir");
+  });
+
+  test("captureLocaleBaseline reads the root as it booted", () => {
+    document.documentElement.setAttribute("lang", "en");
+    expect(captureLocaleBaseline(document)).toEqual({ dir: null, lang: "en" });
+  });
+
+  test("an RTL language sets both; an LTR one restores the booted dir", () => {
+    const baseline = { dir: null, lang: "en" };
+    applyPreviewLocale(document, { dir: "rtl", locale: "ar" }, baseline);
+    expect(document.documentElement.getAttribute("lang")).toBe("ar");
+    expect(document.documentElement.getAttribute("dir")).toBe("rtl");
+    applyPreviewLocale(document, { dir: "ltr", locale: "fr" }, baseline);
+    expect(document.documentElement.getAttribute("lang")).toBe("fr");
+    expect(document.documentElement.hasAttribute("dir")).toBe(false);
+  });
+
+  test("null restores the baseline, with values or without", () => {
+    applyPreviewLocale(document, null, { dir: "ltr", lang: "en" });
+    expect(document.documentElement.getAttribute("lang")).toBe("en");
+    expect(document.documentElement.getAttribute("dir")).toBe("ltr");
+    applyPreviewLocale(document, null, { dir: null, lang: null });
+    expect(document.documentElement.hasAttribute("lang")).toBe(false);
+    expect(document.documentElement.hasAttribute("dir")).toBe(false);
   });
 });
 

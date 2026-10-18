@@ -19,7 +19,7 @@ import {
 } from "../src/workspace/workspace";
 import { reactive } from "../src/reactivity";
 import { resetProjectShell, shell } from "../src/shell";
-import { initShellRefs, registerRenderer } from "../src/store";
+import { initShellRefs, registerRenderer, setProjectState } from "../src/store";
 import { activeCanvasSurface, surfaceForPane } from "../src/canvas/canvas-surface";
 import { canvasPerf, resetCanvasPerf } from "../src/canvas/canvas-perf";
 import { clearDragGhost, setDragGhost } from "../src/panels/drag-ghost";
@@ -496,6 +496,34 @@ describe("mountIframeCanvas", () => {
     expect(channels[0]!.posts[1]).toMatchObject({ colorScheme: "dark", kind: "render" });
   });
 
+  // A frame that boots after the pane's locale was posted must still draw the file's language.
+  test("the render message carries the language the tab is drawn in", async () => {
+    resetWorkspaceWithTab();
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "site",
+      projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "ar"] }, name: "site" },
+      projectRoot: "",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    try {
+      activeTab.value!.documentPath = "pages/ar/about.json";
+      const canvasEl = document.createElement("div");
+      document.body.append(canvasEl);
+      await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
+      channels[0]!.deliver({ kind: "ready" });
+      expect(channels[0]!.posts[0]).toMatchObject({
+        kind: "render",
+        locale: { dir: "rtl", locale: "ar" },
+      });
+    } finally {
+      setProjectState(null);
+    }
+  });
+
   /*
    * The scheme a render posts belongs to the tab being RENDERED, not to the tab with the keyboard.
    *
@@ -634,6 +662,21 @@ describe("mountIframeCanvas", () => {
     const before = channels[0]!.posts.length;
     postLocaleToLiveHosts("fr", elsewhere);
     expect(channels[0]!.posts).toHaveLength(before);
+  });
+
+  // A restored session writes the language after its files opened: the render a booting frame is
+  // Waiting for must carry it, since no render follows.
+  test("a language set while the host boots reaches the render it is waiting for", async () => {
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
+
+    postLocaleToLiveHosts("ar", canvasEl);
+    channels[0]!.deliver({ kind: "ready" });
+
+    const posted = channels[0]!.posts.filter((m) => m.kind === "render" || m.kind === "setLocale");
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toMatchObject({ kind: "render", locale: { dir: "rtl", locale: "ar" } });
   });
 
   /*

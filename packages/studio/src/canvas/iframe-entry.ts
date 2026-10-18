@@ -12,6 +12,8 @@ import {
   applyCanvasDialogOpen,
   applyCanvasPopoverOpen,
   applyPreviewColorScheme,
+  applyPreviewLocale,
+  captureLocaleBaseline,
   applySiteStyle,
   installCanvasImageRetry,
   renderResolvedDocument,
@@ -300,6 +302,8 @@ export function startCanvasIframe(opts: {
   // Alongside the handle so a superseded render's refs can't keep posting.
   let stopDataScopeWatch: (() => void) | null = null;
   let latestGen = -1;
+  // The root's language as the frame booted it, which a render with no language goes back to.
+  const localeBaseline = captureLocaleBaseline(container.ownerDocument);
   // The raw page doc the current DOM was rendered from — the patch source-of-truth. `renderedGen`
   // Tracks which generation it (and the DOM) reflect, so patches for an in-flight/superseded render
   // Are handled correctly rather than applied against the wrong tree.
@@ -963,17 +967,12 @@ export function startCanvasIframe(opts: {
       /* The other document-level attribute flip, and the whole visible half of an axis-3 locale:
          `dir` is what makes an RTL preview actually mirror, and `lang` is what CSS's `:lang()` and
          the font stack select on. Patch-free like the scheme above — the TEXT is whatever file is
-         open, because a translation in Jx is a different file rather than a different rendering.
-         Cleared rather than blanked when the pane goes back to the document's own language: an
-         empty `lang=""` is a document that claims to be in no language at all. */
-      const root = container.ownerDocument.documentElement;
-      if (msg.locale === null) {
-        root.removeAttribute("lang");
-        root.removeAttribute("dir");
-      } else {
-        root.setAttribute("lang", msg.locale);
-        root.setAttribute("dir", msg.dir);
-      }
+         open, because a translation in Jx is a different file rather than a different rendering. */
+      applyPreviewLocale(
+        container.ownerDocument,
+        msg.locale === null ? null : { dir: msg.dir, locale: msg.locale },
+        localeBaseline,
+      );
       return;
     }
     if (msg.kind === "siteStyleUpdate") {
@@ -985,6 +984,7 @@ export function startCanvasIframe(opts: {
       return;
     }
     applyPreviewColorScheme(container.ownerDocument, msg.colorScheme ?? null);
+    applyPreviewLocale(container.ownerDocument, msg.locale ?? null, localeBaseline);
     // A render replaces the DOM under a live edit session — COMMIT it first (never discard). The
     // Resulting editCommit/editEnd post synchronously here, so on the FIFO channel they precede
     // This render's renderComplete and the parent routes them by the host's not-yet-flipped tab
@@ -1080,6 +1080,8 @@ export function startCanvasIframe(opts: {
   channel.post({ kind: "ready" });
   return () => {
     off();
+    // Leave the root as it booted, so a frame started after this one captures the same baseline.
+    applyPreviewLocale(container.ownerDocument, null, localeBaseline);
     stopInteraction();
     stopKeyForwarding();
     stopInlineEdit();

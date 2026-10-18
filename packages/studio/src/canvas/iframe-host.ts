@@ -67,7 +67,9 @@ import type {
   SerializableRect,
   SerializedKey,
   SyncedChord,
+  WireLocale,
 } from "./iframe-protocol";
+import { getEffectiveRenderLocale } from "../site-context";
 import type { JxDocOp } from "../tabs/patch-ops";
 import type { IframeChannel } from "./iframe-channel";
 import type { OverlayLayer, OverlayPlacement } from "./iframe-overlay";
@@ -3008,7 +3010,7 @@ function drawHover(state: HostState, hit: NodeHit | null): void {
  */
 type PreparedRender = Omit<
   Extract<ParentToIframe, { kind: "render" }>,
-  "colorScheme" | "gen" | "kind"
+  "colorScheme" | "gen" | "kind" | "locale"
 >;
 
 /** One render pass's prepared payloads, by document IDENTITY. */
@@ -3237,6 +3239,8 @@ export async function mountIframeCanvas(
     colorScheme: schemeWireFor(viewTab),
     gen,
     kind: "render",
+    // The language this artboard draws in, per tab and at post time like the scheme.
+    locale: localeWireFor(viewTab),
     // Read at POST time for the same reason `colorScheme` is: a render replaces the DOM, so a panel
     // The author opened before this pass would close under them without it.
     popoverOpen: viewTab?.session.ui.openPopover ?? null,
@@ -3311,6 +3315,8 @@ export function mountStylebookCanvas(
        media and needs no resolution. */
     assets: null,
     colorScheme: schemeWireFor(tabOfContainer(canvasEl)),
+    // And its language, for the same reason: a stylebook draws `:lang()` rules and `dir` too.
+    locale: localeWireFor(tabOfContainer(canvasEl)),
     doc: cloneableDoc,
     docBase: `${canvasBaseOrigin()}/`,
     gen,
@@ -3392,6 +3398,21 @@ export function postColorSchemeToLiveHosts(
  * `dir` is computed here and sent with the tag: `localeDirection` is CLDR's answer through
  * `Intl.Locale`, and a frame deriving it again is a second copy of the RTL script list to keep.
  */
+/** A locale tag as the frame applies it, with its direction; null stays null. */
+function localeWire(locale: string | null): WireLocale | null {
+  return locale === null ? null : { dir: localeDirection(locale), locale };
+}
+
+/**
+ * The language a TAB's artboard draws in, as wire data (studio.md §20.2): the one rule
+ * `getEffectiveRenderLocale` answers, read at post time for `schemeWireFor`'s reason.
+ */
+function localeWireFor(tab: Tab | null): WireLocale | null {
+  return localeWire(
+    tab ? getEffectiveRenderLocale(tab.session.ui.previewLocale, tab.documentPath) : null,
+  );
+}
+
 export function postLocaleToLiveHosts(locale: string | null, root?: HTMLElement | null): void {
   const dir = localeDirection(locale);
   for (const host of liveHosts) {
@@ -3404,6 +3425,12 @@ export function postLocaleToLiveHosts(locale: string | null, root?: HTMLElement 
     }
     if (host.ready) {
       host.channel.post({ dir, kind: "setLocale", locale });
+    } else if (host.pending?.kind === "render") {
+      /* A host still booting draws the render it is waiting for, so THAT is what learns the
+         language: a restored session writes `previewLocale` after its files have opened, by which
+         time a pane's render may already be pending with the old value, and no render follows. A
+         host with nothing pending is skipped; its render reads the value when it is posted. */
+      host.pending = { ...host.pending, locale: localeWire(locale) };
     }
   }
 }

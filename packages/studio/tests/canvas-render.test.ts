@@ -1039,6 +1039,23 @@ describe("source mode", () => {
     });
   });
 
+  test("a bare repeater typed into the buffer is edited in the member form", async () => {
+    const tab = openSyncedTab();
+    setMode("source");
+    await withFastTimers(async (runPending) => {
+      renderCanvas();
+      await waitForEditors(1);
+      const [editor] = createdEditors;
+      editor!._ignoreNextChange = false;
+      editor!._model!._value =
+        '{ "children": { "$prototype": "Array", "items": [] }, "tagName": "ul" }';
+      fireModelChange(editor!);
+      await runPending();
+      expect(Array.isArray(tab.doc.document.children)).toBe(true);
+      expect([...(tab.doc.bareRepeaters?.pointers ?? [])]).toEqual([""]);
+    });
+  });
+
   test("invalid JSON edits do not touch the document", async () => {
     const tab = openSyncedTab();
     setMode("source");
