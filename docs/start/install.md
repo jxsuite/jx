@@ -14,18 +14,20 @@ Jx Studio is a desktop application: you run it on your own machine, against your
 
 Grab an installer for your platform from the [latest release](https://github.com/jxsuite/jx/releases/latest):
 
-| Platform              | Download                                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| macOS (Apple Silicon) | [`JxStudio.dmg`](https://github.com/jxsuite/jx/releases/latest/download/macos-arm64-JxStudio.dmg)             |
-| Windows (x64)         | [`JxStudio.msi`](https://github.com/jxsuite/jx/releases/latest/download/JxStudio.msi)                         |
-| Linux (x64)           | [`JxStudio.tar.gz`](https://github.com/jxsuite/jx/releases/latest/download/linux-x64-JxStudio-Setup.tar.gz)   |
-| Linux (ARM64)         | [`JxStudio.tar.gz`](https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio-Setup.tar.gz) |
+| Platform              | Download                                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| macOS (Apple Silicon) | [`JxStudio.dmg`](https://github.com/jxsuite/jx/releases/latest/download/macos-arm64-JxStudio.dmg)           |
+| Windows (x64)         | [`JxStudio-Setup.exe`](https://github.com/jxsuite/jx/releases/latest/download/win-x64-JxStudio-Setup.exe)   |
+| Linux (x64)           | [`JxStudio.AppImage`](https://github.com/jxsuite/jx/releases/latest/download/linux-x64-JxStudio.AppImage)   |
+| Linux (ARM64)         | [`JxStudio.AppImage`](https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio.AppImage) |
 
 The macOS build is notarized, so it opens without a Gatekeeper prompt. The Windows installer is not yet code-signed, so SmartScreen warns on first run. Choose **More info → Run anyway**. The [Download page](/download) has the same links plus checksums and release notes.
 
 :::doc-note
-Jx Studio is Apple Silicon only. Intel Macs can still run the last release built before Jx Studio moved to Electrobun 2, which publishes no macOS x64 build; that older release no longer receives automatic updates.
+Jx Studio is Apple Silicon only. There is no macOS x64 build, so Intel Macs can still run the last release that had one, which no longer receives automatic updates.
 :::
+
+On Linux, make the AppImage executable (`chmod +x JxStudio.AppImage`) and run it. It needs FUSE 2, which recent Ubuntu releases no longer install by default: `sudo apt install libfuse2t64` on 24.04, `libfuse2` before that. Ubuntu 24.04 and later also restrict the sandbox Electron relies on for apps that are not installed from a package, so on Ubuntu the snap below is the better route.
 
 ## Ubuntu (Snap Store)
 

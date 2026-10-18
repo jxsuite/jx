@@ -3,10 +3,10 @@
  *
  * `chromium/index.ts` answers a window's RPC from module-global functions bound to the one project
  * root its process holds; here a process holds many windows, so every method closes over the
- * window's own `ProjectSession` (and the git and package operations over it), the way Electrobun's
- * `buildWindowRpc` does. What the webview sends under each name is fixed by `rpc-schema.ts`, and
- * `tests/hub-handlers.test.ts` holds this map's names to that schema with the same exemptions the
- * Linux launcher carries, because the webview side is the same adapter (`chromium/platform.ts`).
+ * window's own `ProjectSession` (and the git and package operations over it). What the webview
+ * sends under each name is fixed by `rpc-schema.ts`, and `tests/hub-handlers.test.ts` holds this
+ * map's names to that schema, as `tests/chromium-index.test.ts` does the per-window launcher's,
+ * because the webview side is the same adapter (`chromium/platform.ts`).
  *
  * The window-level operations (open, focus, retitle, list) are not the session's to answer, so they
  * go through {@link HubControl}, which `window-hub.ts` implements.

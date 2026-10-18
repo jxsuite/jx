@@ -86,12 +86,12 @@ describe("resolveDefaultPlatform", () => {
   });
 
   test("throws PlatformUnavailableError, carrying the refusal, when a launcher announced and failed", () => {
-    globalThis.__jxLauncher = { launcher: "electrobun", error: { message: "boom" } };
+    globalThis.__jxLauncher = { launcher: "chromium", error: { message: "boom" } };
     const error = refusalError();
     expect(error).toBeInstanceOf(PlatformUnavailableError);
     expect(error.name).toBe("PlatformUnavailableError");
-    expect(error.refusal).toEqual({ kind: "launcher", launcher: "electrobun" });
-    expect(error.message).toContain("(electrobun)");
+    expect(error.refusal).toEqual({ kind: "launcher", launcher: "chromium" });
+    expect(error.message).toContain("(chromium)");
   });
 
   test("names an unnamed launcher as such", () => {
@@ -141,8 +141,8 @@ describe("bootRefusal", () => {
     });
     expect(bootRefusal(env({ launcher: {} }))).toEqual({ kind: "launcher", launcher: undefined });
     expect(
-      bootRefusal(env({ cloud: true, declared: true, launcher: { launcher: "electrobun" } })),
-    ).toEqual({ kind: "launcher", launcher: "electrobun" });
+      bootRefusal(env({ cloud: true, declared: true, launcher: { launcher: "chromium" } })),
+    ).toEqual({ kind: "launcher", launcher: "chromium" });
   });
 
   test("the refusal does not copy the recorded error — the screen reads it lazily", () => {
@@ -186,7 +186,7 @@ describe("bootEnvironment", () => {
   });
 
   test("reads the launcher signal, the cloud signal, the meta and the protocol", () => {
-    const signal: LauncherSignal = { launcher: "electrobun" };
+    const signal: LauncherSignal = { launcher: "chromium" };
     globalThis.__jxLauncher = signal;
     globalThis.__jxCloud = { project: null };
     addBootMeta();

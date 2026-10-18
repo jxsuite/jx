@@ -1,12 +1,11 @@
 /**
  * The window hub: every project window of the app, in one Bun process.
  *
- * It is the multi-window model Electrobun's `window-manager.ts` has (a `Map` of windows, one
- * `ProjectSession` and one loopback server each, dedupe by normalized project root) with the one
- * thing that was Electrobun's taken out. The hub never draws a window. It tells the Electron main
- * process to (`open-window`, `focus-window`, `set-title`, over `protocol.ts`) and is told when one
- * closes. Everything a window's page asks of the project goes to that window's own server, as it
- * does under the Linux launcher, so the webview side is the same adapter and none of it changes.
+ * A `Map` of windows, one `ProjectSession` and one loopback server each, deduped by normalized
+ * project root. The hub never draws a window. It tells the Electron main process to (`open-window`,
+ * `focus-window`, `set-title`, over `protocol.ts`) and is told when one closes. Everything a
+ * window's page asks of the project goes to that window's own server, as it does under the Linux
+ * launcher, so the webview side is the same adapter and none of it changes.
  *
  * One server per window rather than one for all of them, though `createProjectServer` could route
  * by window id: a window's server holds its own token and its own session, so a canvas iframe,
@@ -104,6 +103,8 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
   const { appInfo, importApi, send, studioDir } = options;
   const windows = new Map<number, Entry>();
   const dialogs = new Map<number, (path: string | null) => void>();
+  // What the updater last said, which only the shell hears; the About screen asks the backend.
+  let updateStatus: string | null = null;
   let nextWindow = 1;
   let nextDialog = 1;
 
@@ -154,7 +155,10 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
   }
 
   const control: HubControl = {
-    appInfo,
+    appInfo: () => {
+      const info = appInfo();
+      return updateStatus === null ? info : { ...info, updateStatus };
+    },
     findWindowByRoot,
     focus,
     listOpenWindows: () => [...windows.values()].map((entry) => windowRow(entry)),
@@ -288,6 +292,10 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
           const resolve = dialogs.get(message.requestId);
           dialogs.delete(message.requestId);
           resolve?.(message.path);
+          break;
+        }
+        case "update-status": {
+          updateStatus = message.text;
           break;
         }
         default: {

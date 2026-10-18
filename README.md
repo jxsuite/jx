@@ -110,7 +110,7 @@ An extension is an npm package with a `jx-extension.json` manifest contributing 
 | [`@jxsuite/compiler`](packages/compiler)     | Static compiler, island detector, site builder, and the `jx` CLI      |
 | [`@jxsuite/server`](packages/server)         | Dev server: live reload, proxy resolution, Studio backend             |
 | [`@jxsuite/studio`](packages/studio)         | The visual editor, as a backend-agnostic application                  |
-| [`@jxsuite/desktop`](packages/desktop)       | Jx Studio packaged for the desktop with Electrobun                    |
+| [`@jxsuite/desktop`](packages/desktop)       | Jx Studio packaged for the desktop with Electron                      |
 | [`@jxsuite/protocol`](packages/protocol)     | The Studio Backend Protocol: wire types and the canonical route table |
 | [`@jxsuite/collab`](packages/collab)         | Real-time co-editing: Y.Doc schema, op bridge, structural differ      |
 | [`@jxsuite/ai`](packages/ai)                 | Streaming LLM client, tool registry, and reactive chat state          |

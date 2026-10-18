@@ -59,7 +59,7 @@ import type {
   ReferencesResult,
   RenameReport,
 } from "@jxsuite/server/refactor";
-import { openExternal } from "./utils.ts";
+import { openExternal } from "./open-external.ts";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import type {
@@ -766,7 +766,7 @@ export function createProjectSession(initialRoot: string | null) {
       return result as JxMutableNode | string;
     } catch (error) {
       // Re-throw as a plain Error: non-Error rejection values (e.g. Bun's ResolveMessage) do not
-      // Survive the electrobun RPC bridge and crash the bun process as an unhandled rejection.
+      // Survive the JSON RPC and crash the bun process as an unhandled rejection.
       throw error instanceof Error ? error : new Error(String(error));
     }
   }
@@ -934,8 +934,8 @@ export function createProjectSession(initialRoot: string | null) {
    * A file's raw bytes, base64 across the wire.
    *
    * The mirror of {@link uploadFile}, and it exists because {@link readFileHandler} decodes UTF-8:
-   * a JPEG through that one comes back as replacement characters. The shell cannot get these bytes
-   * any other way — its own origin is `views://` and the loopback that serves project files is
+   * a JPEG through that one comes back as replacement characters. A shell whose own origin is not
+   * the loopback that serves project files cannot get these bytes any other way: the loopback is
    * cross-origin, so an `<img>` taints a canvas and a `fetch` is refused outright.
    */
   async function readFileBytesHandler(params: { path: string }): Promise<{ data: string }> {

@@ -21,12 +21,13 @@
     "fontFamily": "var(--jx-font-sans)",
     "color": "var(--jx-fg)",
     "& > [part=\"drag-strip\"]": {
-      "$description": "The window's handle. Electrobun's preload recognises the class and supplies the drag behaviour itself, so the rule here only sizes the strip: as tall as the hidden title bar would have been.",
+      "$description": "The window's handle. The `app-region-drag` class (shell-frame) makes the strip drag the frameless window, so the rule here sizes it, as tall as the hidden title bar would have been, and repeats the drag region so the strip works even before the shell stylesheet loads.",
       "position": "absolute",
       "top": "0",
       "left": "0",
       "right": "0",
-      "height": "calc(var(--jx-control-h) + var(--jx-space-3))"
+      "height": "calc(var(--jx-control-h) + var(--jx-space-3))",
+      "-webkit-app-region": "drag"
     },
     "& > [part=\"content\"]": {
       "position": "relative",
@@ -88,7 +89,7 @@
       "tagName": "div",
       "attributes": {
         "part": "drag-strip",
-        "class": "electrobun-webkit-app-region-drag",
+        "class": "app-region-drag",
         "aria-hidden": "true"
       }
     },

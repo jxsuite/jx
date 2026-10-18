@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AppInfo } from "@jxsuite/protocol";
 import type { HubControl, HubWindow } from "../src/hub/handlers";
 import type { ProjectSession, pickProjectFile } from "../src/project-session";
-import { CHROMIUM_RPC_EXEMPT, rpcParity } from "./_rpc-parity";
+import { rpcParity } from "./_rpc-parity";
 
 /*
  * `buildWindowHandlers` takes the window's session as an argument, so a recording stand-in goes
@@ -176,12 +176,10 @@ beforeEach(() => {
 });
 
 describe("schema parity", () => {
-  test("every declared request is answered here or explicitly answered elsewhere", () => {
-    const parity = rpcParity(Object.keys(build().handlers), CHROMIUM_RPC_EXEMPT);
+  test("every declared request is answered here", () => {
+    const parity = rpcParity(Object.keys(build().handlers));
     expect(parity.unhandled).toEqual([]);
     expect(parity.undeclared).toEqual([]);
-    expect(parity.staleExempt).toEqual([]);
-    expect(parity.orphanExempt).toEqual([]);
   });
 });
 

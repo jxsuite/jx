@@ -1,6 +1,7 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { bundleElectronApp, bundleElectronShell } from "../src/electron-shell/bundle";
@@ -76,11 +77,13 @@ describe("bundleElectronApp", () => {
     expect(main).not.toContain(join(import.meta.dir, ".."));
     expect(main).toContain("window-closed");
     /* Outside the bundle: Electron and Node's own modules, which the main process may use, and
-       nothing of this repository's. */
+       nothing of this repository's or anyone's. electron-updater is inlined, and brings its own
+       dependencies with it, which use the bare names (`path`, `fs`) as well as `node:`-prefixed ones. */
     const required = new Set([...main.matchAll(/require\("([^"]+)"\)/g)].map((match) => match[1]));
-    for (const name of required) {
-      expect(name === "electron" || name.startsWith("node:")).toBe(true);
-    }
+    const outside = [...required].filter(
+      (name) => name !== "electron" && !builtinModules.includes(name.replace(/^node:/, "")),
+    );
+    expect(outside).toEqual([]);
     expect(required.has("electron")).toBe(true);
   });
 

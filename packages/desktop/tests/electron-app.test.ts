@@ -6,6 +6,8 @@ import { parseAppArgs, projectDirOf, projectRootFrom, startApp } from "../src/el
 import type { AppDeps } from "../src/electron-shell/app";
 import type { BackendProcess } from "../src/electron-shell/backend-process";
 import { fakeElectron } from "./_fake-electron";
+import { fakeSchedule, fakeUpdater } from "./_fake-updater";
+import { packagedLayout } from "../src/electron-shell/layout";
 import type { FakeElectron } from "./_fake-electron";
 
 /** A backend the test drives: what the app sent it, and a way to speak for it. */
@@ -154,6 +156,7 @@ describe("parseAppArgs", () => {
       icon: "/share/icon.png",
       preload: "/b/preload.js",
       root: "/proj/alpha",
+      studio: null,
     });
   });
 
@@ -514,5 +517,219 @@ describe("app-main.ts", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("a project.json path names its project's folder", () => {
+  const none = (): boolean => false;
+
+  test("whether it arrives by switch or as a bare argument, as a file association delivers it", () => {
+    expect(projectRootFrom(["--jx-project=/p/site/project.json"], {}, "/cwd", none)).toBe(
+      "/p/site",
+    );
+    expect(projectRootFrom(["/p/site/project.json"], {}, "/cwd", none)).toBe("/p/site");
+    expect(projectRootFrom(["site/project.json"], {}, "/cwd", none)).toBe("/cwd/site");
+    // Only that file name: another .json is just a path the user chose.
+    expect(projectRootFrom(["/p/site/other.json"], {}, "/cwd", none)).toBe("/p/site/other.json");
+  });
+});
+
+describe("parseAppArgs for a packaged app", () => {
+  const layout = packagedLayout("/R", "/R/app.asar", "linux");
+
+  test("takes everything from the layout when no switch says otherwise", () => {
+    expect(parseAppArgs([], {}, "/cwd", () => false, "/R/app.asar", layout)).toEqual({
+      backend: "/R/backend/index.js",
+      bun: "/R/bun/bun",
+      icon: "/R/icon.png",
+      preload: "/R/app.asar/preload.js",
+      root: null,
+      studio: "/R/studio",
+    });
+  });
+
+  test("lets a switch override the layout", () => {
+    const args = parseAppArgs(
+      ["--jx-bun=/mine/bun"],
+      {},
+      "/cwd",
+      () => false,
+      "/R/app.asar",
+      layout,
+    );
+    expect(args.bun).toBe("/mine/bun");
+    expect(args.backend).toBe("/R/backend/index.js");
+  });
+
+  test("macOS gets no window icon, because the bundle draws its own", () => {
+    const mac = packagedLayout("/R", "/R/app.asar", "darwin");
+    expect(parseAppArgs([], {}, "/cwd", () => false, "/R/app.asar", mac).icon).toBeNull();
+  });
+});
+
+describe("startApp when packaged", () => {
+  /** Start a packaged app: the executable alone in argv, as the OS launches it. */
+  function packaged(options: { deps?: Partial<AppDeps>; platform?: NodeJS.Platform } = {}) {
+    return started({
+      argv: ["/Applications/Jx Studio"],
+      configure: (fake) => {
+        fake.packaged = true;
+      },
+      deps: {
+        loadUpdater: () => Promise.reject(new Error("not under test")),
+        platform: options.platform ?? "linux",
+        resourcesPath: "/R",
+        ...options.deps,
+      },
+    });
+  }
+
+  test("runs the backend from its own resources, with no switches", async () => {
+    errorsQuiet();
+    const { spawned } = await packaged();
+    expect(spawned[0]?.bin).toBe("/R/bun/bun");
+    expect(spawned[0]?.script).toBe("/R/backend/index.js");
+  });
+
+  test("tells the backend where the studio assets are, and that this is a stable build", async () => {
+    errorsQuiet();
+    const { spawned } = await packaged();
+    expect(spawned[0]?.env).toMatchObject({
+      HOME: "/home/u",
+      JX_STUDIO_ASSETS: "/R/studio",
+      JX_STUDIO_CHANNEL: "stable",
+    });
+  });
+
+  test("opens its windows with the preload inside app.asar", async () => {
+    errorsQuiet();
+    const { backend, fake } = await packaged();
+    backend.emit(openWindow);
+    expect(fake.windows[0]?.options.webPreferences.preload).toBe("/b/preload.js");
+  });
+
+  test("an unpackaged run sets neither, because its launcher says what it is", async () => {
+    const { spawned } = await started();
+    expect(spawned[0]?.env).not.toHaveProperty("JX_STUDIO_ASSETS");
+    expect(spawned[0]?.env).not.toHaveProperty("JX_STUDIO_CHANNEL");
+  });
+});
+
+/** Silence the "[electron-app]" line a packaged start logs when its updater is not under test. */
+function errorsQuiet(): void {
+  console.error = () => {};
+}
+
+describe("self-updates", () => {
+  /** Start a packaged app whose updater is the fake. */
+  async function updating(
+    options: {
+      answer?: number;
+      deps?: Partial<AppDeps>;
+      env?: NodeJS.ProcessEnv;
+      platform?: NodeJS.Platform;
+    } = {},
+  ) {
+    const updater = fakeUpdater();
+    const timers = fakeSchedule();
+    const load = mock(() => Promise.resolve(updater.updater));
+    const app = await started({
+      argv: ["/Applications/Jx Studio"],
+      configure: (fake) => {
+        fake.packaged = true;
+        fake.messageAnswer = options.answer ?? 0;
+      },
+      deps: {
+        env: options.env ?? {},
+        loadUpdater: load,
+        platform: options.platform ?? "darwin",
+        resourcesPath: "/R",
+        schedule: timers.schedule,
+        windowsStore: false,
+        ...options.deps,
+      },
+    });
+    await Bun.sleep(0);
+    return { ...app, load, timers, updater };
+  }
+
+  test("a packaged build starts the updater, which checks on its schedule", async () => {
+    const { load, timers, updater } = await updating();
+    expect(load).toHaveBeenCalledTimes(1);
+    timers.calls[0]?.run();
+    expect(updater.state.checks).toBe(1);
+  });
+
+  test.each([
+    ["a checkout", { configure: false }],
+    ["a Store install", { platform: "win32" as const, windowsStore: true }],
+    ["a Linux build that is not an AppImage", { platform: "linux" as const }],
+  ])("%s does not", async (_name, options) => {
+    const load = mock(() => Promise.resolve(fakeUpdater().updater));
+    await started({
+      // A checkout is told where everything is by switches; an installed app by its resources.
+      argv: "configure" in options ? ARGV : ["/Applications/Jx Studio"],
+      configure: (fake) => {
+        fake.packaged = !("configure" in options);
+      },
+      deps: {
+        env: {},
+        loadUpdater: load,
+        platform: "platform" in options ? options.platform : "darwin",
+        resourcesPath: "/R",
+        schedule: fakeSchedule().schedule,
+        windowsStore: "windowsStore" in options,
+      },
+    });
+    await Bun.sleep(0);
+    expect(load.mock.calls).toEqual([]);
+  });
+
+  test("a Linux AppImage does", async () => {
+    const { load } = await updating({
+      env: { APPIMAGE: "/h/JxStudio.AppImage" },
+      platform: "linux",
+    });
+    expect(load.mock.calls).toHaveLength(1);
+  });
+
+  test("tells the About screen, through the backend, what the updater found", async () => {
+    const { backend, updater } = await updating();
+    backend.emit({ type: "ready" });
+    updater.emit("update-available", { version: "9.9.9" });
+    expect(backend.sent.at(-1)).toEqual({
+      text: "Update available (9.9.9)",
+      type: "update-status",
+    });
+  });
+
+  test("asks before restarting into a downloaded update, and restarts when told to", async () => {
+    const { fake, updater } = await updating({ answer: 0 });
+    updater.emit("update-downloaded", { version: "2.0.0" });
+    await Bun.sleep(0);
+    expect(fake.messageBoxes[0]).toMatchObject({
+      buttons: ["Restart Now", "Later"],
+      message: "Jx Studio 2.0.0 is ready.",
+      type: "info",
+    });
+    expect(updater.state.quits).toBe(1);
+  });
+
+  test("leaves the app running when the user says later", async () => {
+    const { updater } = await updating({ answer: 1 });
+    updater.emit("update-downloaded", { version: "2.0.0" });
+    await Bun.sleep(0);
+    expect(updater.state.quits).toBe(0);
+  });
+
+  test("an updater that cannot load is reported and does not stop the app", async () => {
+    const errors = mock((..._args: unknown[]) => {});
+    console.error = errors;
+    const { handle } = await updating({
+      deps: { loadUpdater: () => Promise.reject(new Error("no module")) },
+    });
+    await Bun.sleep(0);
+    expect(errors.mock.calls[0]?.[0]).toBe("[electron-app]");
+    expect(handle.windows.size).toBe(0);
   });
 });

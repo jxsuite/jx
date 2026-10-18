@@ -43,10 +43,10 @@ const RECONNECT_MAX_MS = 30_000;
 /**
  * How long a request may wait for its reply before it is abandoned.
  *
- * Matches the electrobun launcher's `maxRequestTime`. Some handlers are genuinely slow — a build, a
- * dependency install, the XDG folder picker sitting open while somebody decides — so it is minutes
- * rather than seconds. What it rules out is the state this launcher used to reach: a request that
- * waits forever, pinning `platformInFlight()` and the idle probe with it.
+ * Some handlers are genuinely slow — a build, a dependency install, the XDG folder picker sitting
+ * open while somebody decides — so it is minutes rather than seconds. What it rules out is the
+ * state this launcher used to reach: a request that waits forever, pinning `platformInFlight()` and
+ * the idle probe with it.
  */
 const REQUEST_TIMEOUT_MS = 300_000;
 
@@ -96,15 +96,14 @@ export function createDesktopPlatform() {
   // The canvas iframe runs the in-iframe runtime, which authenticates its dev-proxy loopback
   // Resolve/server fetches with this same per-process rpcToken (?rpcToken=…). Thread it onto the
   // Canvas URL when present so createProjectServer does not 403 those fetches; keep the bare path
-  // Otherwise so a token-less/dev context stays byte-identical. Mirrors electrobun's getCanvasUrl.
+  // Otherwise so a token-less/dev context stays byte-identical. Both launchers do this.
   const canvasUrl = token
     ? `/__studio__/canvas.html?rpcToken=${encodeURIComponent(token)}`
     : "/__studio__/canvas.html";
   let nextId = 1;
   const pending = new Map<number, PendingReply>();
 
-  /* Server-initiated frames (`method`, no `id`) — the twin of electrobun's `handlers.messages`.
-     A launcher speaks first for the things the shell cannot ask about: a file changed under the
+  /* Server-initiated frames (`method`, no `id`). A launcher speaks first for the things the shell cannot ask about: a file changed under the
      project root, or another window asked this one to come forward. */
   const messages = new Map<string, (params: PushParams) => void>([
     [
@@ -322,10 +321,10 @@ export function createDesktopPlatform() {
    * Following a link in Preview exists to see the page behave like the deployed thing — routing,
    * history, devtools. A Chromium `--app` window has no address bar and no tab strip, so it is not
    * that, and navigating THIS one would replace the editor. The Bun side hands the URL to the OS
-   * (`Utils.openExternal`); on failure the studio's own `window.open` default still applies.
+   * (`openExternal`); on failure the studio's own `window.open` default still applies.
    *
-   * `View: Open in Browser` reuses the same seam, which is why it belongs here and not only on
-   * electrobun: without it the built page opened in a second frameless app window.
+   * `View: Open in Browser` reuses the same seam, which is why it belongs here: without it the
+   * built page opened in a second frameless app window.
    */
   setPreviewNavigateHandler((url: string) => {
     const fallback = () => {
@@ -346,7 +345,7 @@ export function createDesktopPlatform() {
   const platform = {
     id: "desktop" as const,
 
-    /* Launcher-only, like Electrobun's (specs/desktop.md §3.1): present when the Electron shell
+    /* Launcher-only (specs/desktop.md §3.1): present when the Electron shell
        drew this window frameless, so the command bar draws the buttons and drag region. Undefined
        under Chromium `--app`, whose frame already has both. */
     windowControls: shell?.windowControls,
@@ -357,10 +356,9 @@ export function createDesktopPlatform() {
 
     projectRoot: "",
 
-    // The chromium project server serves the canvas iframe doc under /__studio__/. Only chromium
-    // Sets this; electrobun and the dev server leave it unset and keep their default canvas path.
-    // The ?rpcToken (computed above) authenticates the in-iframe runtime's loopback resolve/server
-    // Fetches, mirroring electrobun's getCanvasUrl RPC.
+    // The project server serves the canvas iframe doc under /__studio__/. The dev server leaves
+    // This unset and keeps its default canvas path. The ?rpcToken (computed above) authenticates
+    // The in-iframe runtime's loopback resolve/server fetches.
     canvasUrl,
 
     async activate() {
@@ -393,7 +391,7 @@ export function createDesktopPlatform() {
         // The launcher's root defaults to the launch cwd, which usually holds no project.json.
         // Report "no project" (null) so the studio shows the welcome screen — returning a phantom
         // Non-site project instead sets projectState and suppresses the welcome screen for the
-        // Whole session (mirrors the electrobun platform's probeRootProject contract).
+        // Whole session.
         return null;
       }
     },
@@ -417,7 +415,7 @@ export function createDesktopPlatform() {
     },
 
     /*
-     * GitHub sign-in, launcher-only like the electrobun launcher's: the browser Studio has no
+     * GitHub sign-in, launcher-only: the browser Studio has no
      * loopback server to redirect to and keeps the device flow, so this is not a PAL member.
      */
     githubAuth: {
@@ -772,9 +770,10 @@ export function createDesktopPlatform() {
     },
 
     // ─── Multi-window ───────────────────────────────────────────────────────────
-    /* A window is a launcher process here, where on electrobun it is a BrowserWindow inside one.
-       Studio cannot tell the difference: it asks which project, then asks for it elsewhere, and
-       both launchers answer whether a window was opened or an existing one raised. */
+    /* A window is a launcher process under the per-window launcher and a BrowserWindow the hub
+       knows about in the Electron application. Studio cannot tell the difference: it asks which
+       project, then asks for it elsewhere, and both answer whether a window was opened or an
+       existing one raised. */
 
     /**
      * Pick a project WITHOUT binding this window to it — the New Window branch of Open Project.

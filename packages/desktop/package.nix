@@ -141,8 +141,8 @@ let
   # Optional imports the launcher's graph names but never needs installed: dbus-ts is Linux-portal
   # glue resolved at runtime, and oxfmt probes the Prettier plugins and the Astro compiler
   # (@astrojs/compiler-rs, an optional peer since oxfmt 0.73) only for languages a project actually
-  # formats. This is electrobun.config.ts's `build.bun.external` list, and
-  # tests/nix-bundle-completeness.test.ts holds the two equal.
+  # formats. This is `BACKEND_EXTERNALS` in scripts/lib/backend-bundle.ts, which the packaged
+  # application's backend bundle leaves out too, and tests/backend-bundle.test.ts holds the two equal.
   resolveExternals = [
     "dbus-ts"
     "@prettier/plugin-oxc"
@@ -165,28 +165,13 @@ let
     "tabulator-tables"
   ];
 
-  # The build sysroot is not the typecheck sysroot, and for one release the difference between them
-  # was decided by the FETCHER rather than by the tree.
-  #
-  # `vendor/electrobun` is a git submodule carrying the Electrobun SDK's TypeScript sources — what
-  # `packages/desktop/tsconfig.json` typechecks against, and what no phase below reads. Nothing here
-  # initialises it, so its CONTENT is absent either way. Its DIRECTORY is not: GitHub's tarball, the
-  # thing `github:jxsuite/jx/release` actually fetches, materialises the gitlink as an empty
-  # `vendor/electrobun`, while nix's git-tree source for a plain checkout — what CI builds — has no
-  # `vendor` entry at all. Two empty directories are still two NAR entries, so ONE commit produced
-  # TWO store paths: `671d1spz…` for the consumer, `sq57vgab…` for CI. The release pushed the second.
-  # `nix path-info` then found every byte of what was published and `nix build
-  # github:jxsuite/jx/release --max-jobs 0` still built from source, because the cache was complete
-  # at an address nobody asks for (#250, first release after the submodule landed).
-  #
-  # Filtering it states the invariant instead: `$out` is a function of the tree's CONTENT, not of how
-  # the tree arrived. The two trees are otherwise byte-identical — the NAR hash of the tarball source
-  # minus `vendor` equals the NAR hash of the checkout source exactly.
-  root = ../..;
-  src = lib.cleanSourceWith {
-    src = lib.cleanSource root;
-    filter = path: _type: path != "${toString root}/vendor";
-  };
+  # The source is whatever tree was fetched, cleaned. `$out` must be a function of that tree's
+  # CONTENT and not of how it arrived: a consumer of `github:jxsuite/jx/release` fetches GitHub's
+  # tarball, while CI builds a git checkout, and the two have to be byte-identical or one commit gets
+  # two store paths and the cache is complete at an address nobody asks for (desktop-v5.0.0, #250,
+  # when an uninitialised submodule's gitlink made them differ by two empty directories). There is
+  # no submodule now, and nix.yml's publish leg still asserts the two addresses agree.
+  src = lib.cleanSource ../..;
 in
 stdenv.mkDerivation {
   pname = "jx-studio";
@@ -358,11 +343,17 @@ stdenv.mkDerivation {
     test -s $app/app-main.js
     test -s $app/preload.js
     grep -q second-instance $app/app-main.js
-    if grep -oE 'require\("[^"]+"\)' $app/app-main.js $app/preload.js \
-        | grep -vE 'require\("(electron|node:[a-z_/]+)"\)'; then
-      echo "the Electron bundle requires a module that is not electron or a Node builtin" >&2
-      exit 1
-    fi
+    bun -e '
+      const { builtinModules } = require("node:module");
+      const { readFileSync } = require("node:fs");
+      const code = process.argv.slice(1).map((file) => readFileSync(file, "utf8")).join("\n");
+      const outside = [...new Set([...code.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1]))]
+        .filter((name) => name !== "electron" && !builtinModules.includes(name.replace(/^node:/, "")));
+      if (outside.length > 0) {
+        console.error("the Electron bundle requires modules that are not electron or a Node builtin: " + outside.join(", "));
+        process.exit(1);
+      }
+    ' $app/app-main.js $app/preload.js
     runHook postInstallCheck
   '';
 

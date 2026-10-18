@@ -16,7 +16,7 @@ We're crafting a comprehensive web-based application suite that aims to encompas
 Three areas carry long, load-bearing rationale that lives beside the code it governs rather than here. Read the file before touching the area. Claude Code, and any harness that loads nested instruction files, also picks it up on its own when it reads a file in that directory; Codex started at the root does not.
 
 - **`.github/AGENTS.md`**: Dependency Autopilot (Dependabot, auto-merge, why `bun.nix` lags, where the Nix build runs) and Releases (release-please's two silent failure modes and the integrity check). Read it before editing `.github/**`, `release-please-config.json` or `.release-please-manifest.json`, or anything about versions, tags and npm publishing.
-- **`packages/desktop/AGENTS.md`**: the vendored Electrobun SDK, Microsoft Store publishing and Snap Store publishing. Read it before editing `packages/desktop/**`, `vendor/electrobun`, `.gitmodules`, or the desktop release lanes (`bundle-desktop-*`, `build-msix`, `store-publish`, `build-snap`, `snap-publish`, `electrobun-vendor`).
+- **`packages/desktop/AGENTS.md`**: how the Electron application is packaged (electron-builder, the staged backend and the smoke test that proves it), Microsoft Store publishing and Snap Store publishing. Read it before editing `packages/desktop/**`, `electron-builder.yml`, or the desktop release lanes (`bundle-desktop-*`, `store-publish`, `build-snap`, `snap-publish`).
 - **`scripts/AGENTS.md`**: the Markdown no-wrap rule in full, why `--no-wrap` still keeps it dormant, and the three steps that turn it on. Read it before touching `scripts/normalize-markdown.ts`, `scripts/lib/unwrap-prose.ts` or `bun run format:md`.
 
 ## Studio UI Rules
@@ -65,7 +65,7 @@ Conventions:
 - **Ratchet**: when a PR meaningfully raises a workspace's worst-file coverage, raise that workspace's `coverageThreshold` to just below the new minimum. Lowering a threshold requires explicit justification in the PR description.
 - Run tests only via `bun test --isolate` (plain `bun test` has known order-dependent failures and is unsupported).
 - Studio tests: use the shared harness `packages/studio/tests/harness.ts` (lit rendering, state/tab resets, in-memory `StudioPlatform` mock, event helpers, happy-dom rect stubs). The first import of a DOM test file must be `./harness` or `./with-dom.js` — lit-html captures `document` at import time.
-- `mock.module()` before importing the module under test; `await import()` afterwards for modules with import-time side effects. sharp and `electrobun/main` must always be mocked (sharp is unloadable on NixOS; `electrobun/bun` is a deprecated alias no source here imports).
+- `mock.module()` before importing the module under test; `await import()` afterwards for modules with import-time side effects. sharp must always be mocked (it is unloadable on NixOS), and so must `electron`: a test hands the shell a fake from `packages/desktop/tests/_fake-electron.ts` and never loads the real module.
 - Check per-file coverage with `bun test --isolate --coverage` from the workspace directory (`packages/<pkg>` or `extensions/<ext>`); the table prints to stderr.
 
 ## Starter Roots and the Shadowed Core

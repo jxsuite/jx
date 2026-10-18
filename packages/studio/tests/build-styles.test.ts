@@ -357,8 +357,8 @@ describe("the shell frame", () => {
   });
 
   test("the platform's drag region stays a class, because it is a contract and not a look", () => {
-    // `commandbar.ts` adds it; the desktop window reads `-webkit-app-region` to move the window.
-    expect(frame).toContain("#toolbar.electrobun-webkit-app-region-drag");
+    // `commandbar.ts` and the boot-failure strip add it; the desktop window reads `-webkit-app-region` to move the window.
+    expect(frame).toContain(".app-region-drag {");
     expect(frame).toContain("-webkit-app-region: drag;");
   });
 

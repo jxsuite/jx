@@ -194,8 +194,8 @@ describe("studioShellHtml", () => {
     expect(studioShellHtml({ boot: [] })).not.toContain("jx-boot");
   });
 
-  /* Electrobun's macOS CEF path injects its preload by splicing after the literal "<head>"; an
-     attribute on the tag would silently move the preload out of the document. */
+  /* A host that injects a preload splices it in after the literal "<head>"; an attribute on the
+     tag would silently move the preload out of the document. */
   test("the head tag stays a literal, attribute-free <head> either way", () => {
     for (const html of [studioShellHtml(), studioShellHtml({ boot: ["/init.js"] })]) {
       expect(html).toContain("\n  <head>\n");

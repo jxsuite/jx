@@ -12,8 +12,9 @@
 #   Chromium looks for drivers where NixOS installs them, so inside a snap it rendered in software.
 # - Bun is the official release binary. Nix's Bun is patched to load its glibc from /nix/store.
 #
-# The Electrobun CEF bundle is not used: its Linux wrapper embeds CEF by X11 window id and cannot
-# run as a native Wayland client.
+# The snap runs the Bun launcher with Chromium `--app`, not the Electron application of
+# specs/desktop.md §9.7: whether the official Electron prebuilt renders with hardware acceleration
+# under gpu-2404 has not been measured, and that is the reason the snap carries Canonical's Chromium.
 name: jx-studio
 title: Jx Studio
 summary: Visual editor for Jx components, pages and sites

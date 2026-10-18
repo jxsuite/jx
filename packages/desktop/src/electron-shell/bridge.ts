@@ -24,9 +24,10 @@ export const SHELL_GLOBAL = "__jxShell";
 /**
  * The window actions Studio's command bar calls.
  *
- * The same shape Electrobun's adapter exposes as its launcher-only `windowControls` extra, minus
- * `getFrame`/`setFrame`: a frameless Electron window is resized by the window system from its own
- * edges, so Studio's page-drawn resize edges (which key on `getFrame`) stay off.
+ * The shape of the launcher-only `windowControls` extra of the desktop adapter (specs/desktop.md
+ * §3.1). There is no `getFrame`/`setFrame`: a frameless Electron window is resized by the window
+ * system from its own edges, so Studio's page-drawn resize edges (which key on `getFrame`) stay
+ * off.
  */
 export interface ShellWindowControls {
   close: () => Promise<void>;

@@ -103,6 +103,8 @@ declare module "electron" {
 
   export interface App {
     dock?: Dock;
+    /** Whether this is a packaged build, whose files live in `process.resourcesPath`. */
+    readonly isPackaged: boolean;
     /** A directory Electron keeps for the user; only the one the app derives its own from. */
     getPath: (name: "appData") => string;
     /** The directory the app lives in: the entry script's, when run as `electron <script>`. */
@@ -144,10 +146,12 @@ declare module "electron" {
     detail: string;
     message: string;
     title: string;
-    type: "warning";
+    type: "info" | "warning";
   }
 
   export interface Dialog {
+    /** Ask without blocking the main process; `response` is the index of the button chosen. */
+    showMessageBox: (options: MessageBoxOptions) => Promise<{ response: number }>;
     showMessageBoxSync: (window: BrowserWindow, options: MessageBoxOptions) => number;
     /** Sheet-modal on `window` when given one; free-standing otherwise. */
     showOpenDialog: {
@@ -196,4 +200,14 @@ declare module "electron" {
   export const ipcRenderer: IpcRenderer;
   export const Menu: ApplicationMenu;
   export const shell: Shell;
+}
+
+/** What Electron adds to Node's `process`, which Node's own `Process` type does not declare. */
+declare namespace NodeJS {
+  interface Process {
+    /** The directory the installed app's `resources` live in. */
+    resourcesPath?: string;
+    /** Set when the app runs as a Microsoft Store (appx) package. */
+    windowsStore?: boolean;
+  }
 }

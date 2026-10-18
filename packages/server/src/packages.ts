@@ -88,8 +88,8 @@ export function dependenciesNeedInstall(root: string): boolean {
 
 /**
  * Path to the bun executable. Uses the bun running the current process (`process.execPath`) so a
- * packaged desktop app spawns the bun bundled with its Electrobun distribution rather than relying
- * on a system-wide `bun` in `$PATH` (which end users may not have). Falls back to a PATH lookup if
+ * packaged desktop app spawns the bun bundled with its Electron distribution rather than relying on
+ * a system-wide `bun` in `$PATH` (which end users may not have). Falls back to a PATH lookup if
  * `execPath` is somehow unset.
  */
 export function bunExecutable(): string {

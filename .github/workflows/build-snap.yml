@@ -1,9 +1,11 @@
-# Builds the Ubuntu snap of Jx Studio and attaches it to the desktop release, the way build-msix.yml
-# does for the Microsoft Store package. snap-publish.yml takes it from the release to the Snap Store.
+# Builds the Ubuntu snap of Jx Studio and attaches it to the desktop release, the way
+# bundle-desktop-windows.yml does for the Microsoft Store package. snap-publish.yml takes it from the
+# release to the Snap Store.
 #
-# The snap runs the Chromium app-mode launcher, not the Electrobun bundle. Electrobun's Linux native
-# wrapper embeds CEF in GTK through an X11 window id (`gdk_x11_window_get_xid`, `XOpenDisplay`), so
-# with DISPLAY unset it dies with "cannot open display" and can only ever run under XWayland.
+# The snap runs the Chromium app-mode launcher, not the Electron application the other channels run.
+# Moving it needs a measurement first: the official Electron prebuilt must render with hardware
+# acceleration under the `gpu-2404` interface, which is why the snap carries Canonical's Chromium
+# (packages/desktop/AGENTS.md, "Snap Store Publishing").
 #
 # Nix builds the app tree (`nix build .#default`, the same derivation `nix run` ships); snapcraft
 # wraps it with Canonical's Chromium build and the official Bun binary

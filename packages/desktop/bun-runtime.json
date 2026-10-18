@@ -1,0 +1,22 @@
+{
+  "$comment": "The Bun the packaged application runs its backend under, carried in resources/bun. The official release binary, pinned by version and SHA-256 per platform (from the release's SHASUMS256.txt). The Linux entries are the ones snap/snapcraft.yaml pins; tests/bun-runtime.test.ts holds them equal. Bump the version and the four sums together.",
+  "version": "1.4.2",
+  "assets": {
+    "darwin-arm64": {
+      "file": "bun-darwin-aarch64",
+      "sha256": "90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f"
+    },
+    "linux-arm64": {
+      "file": "bun-linux-aarch64",
+      "sha256": "54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7"
+    },
+    "linux-x64": {
+      "file": "bun-linux-x64",
+      "sha256": "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913"
+    },
+    "win32-x64": {
+      "file": "bun-windows-x64",
+      "sha256": "ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405"
+    }
+  }
+}

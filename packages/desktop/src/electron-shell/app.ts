@@ -1,13 +1,13 @@
 /**
  * The Electron application: one main process that owns every Studio window.
  *
- * This is the shell the packaged app runs. Under Electrobun and under the Linux launcher a window
- * was either a `BrowserWindow` inside a Bun process or a whole process of its own; here Electron is
- * the root, the Bun backend (`hub/`) is its child, and a window is a `BrowserWindow` the backend
- * asked for. The division is the one the OS draws: Electron does what only an app can (windows, the
- * menu bar, native dialogs, the single-instance lock, file associations), and the backend does
- * everything about a project. They speak the small protocol in `hub/protocol.ts`; project I/O never
- * crosses it, and stays on each window's token-gated WebSocket.
+ * This is the shell the packaged app runs. Electron is the root process, the Bun backend (`hub/`)
+ * is its child, and a window is a `BrowserWindow` the backend asked for, where the per-window
+ * launcher (`chromium/index.ts`) makes every window a process of its own. The division is the one
+ * the OS draws: Electron does what only an app can (windows, the menu bar, native dialogs, the
+ * single-instance lock, file associations), and the backend does everything about a project. They
+ * speak the small protocol in `hub/protocol.ts`; project I/O never crosses it, and stays on each
+ * window's token-gated WebSocket.
  *
  * Takes the Electron API as a parameter, like `shell.ts`, so it can be exercised without Electron;
  * `app-main.ts` is the entry that passes the real one.
@@ -22,6 +22,8 @@ import { shellEnv } from "../chromium/shell-command";
 import type { BackendMessage, DialogKind, ShellMessage } from "../hub/protocol";
 import { spawnBackend } from "./backend-process";
 import type { BackendProcess, SpawnBackend } from "./backend-process";
+import { packagedLayout } from "./layout";
+import type { AppLayout } from "./layout";
 import {
   createStudioWindow,
   identifyApp,
@@ -30,8 +32,13 @@ import {
   registerWindowActions,
   switchValue,
 } from "./shell";
+import { DEFAULT_SCHEDULE, startUpdates, updatesEnabled } from "./updater";
+import type { AutoUpdater, UpdateSchedule } from "./updater";
 
-/** What the launcher tells the app, as `--jx-<name>=<value>` switches and one positional path. */
+/**
+ * What the app is told: `--jx-<name>=<value>` switches (an unpackaged run's only source) or,
+ * packaged, the layout of its own resources, and one bare project path.
+ */
 export interface AppArgs {
   /** The backend entry the Bun runtime runs. */
   backend: string;
@@ -43,6 +50,8 @@ export interface AppArgs {
   preload: string;
   /** The project to open first, or null for a welcome window. */
   root: string | null;
+  /** The studio assets directory, when the launch names one (a packaged app always does). */
+  studio: string | null;
 }
 
 /** What the app needs from the machine, each replaceable by a test. */
@@ -50,8 +59,15 @@ export interface AppDeps {
   cwd: string;
   env: NodeJS.ProcessEnv;
   exists: (path: string) => boolean;
+  /** Load electron-updater's `autoUpdater`; a parameter so a test never loads the real one. */
+  loadUpdater: () => Promise<AutoUpdater>;
   platform: NodeJS.Platform;
+  /** Electron's `process.resourcesPath`, where a packaged app keeps its files. */
+  resourcesPath: string;
+  schedule: UpdateSchedule;
   spawn: SpawnBackend;
+  /** Whether this is a Microsoft Store install, which the Store updates. */
+  windowsStore: boolean;
 }
 
 /** What a started app lets its caller reach. */
@@ -101,7 +117,7 @@ export function projectRootFrom(
   const bare = args.find((arg) => !arg.startsWith("-") && !isWithin(appPath, resolve(cwd, arg)));
   const named = switchValue(args, "project") ?? bare;
   if (named) {
-    return resolve(cwd, named);
+    return projectDirOf(resolve(cwd, named));
   }
   if (env.JSONSX_PROJECT_ROOT) {
     return resolve(cwd, env.JSONSX_PROJECT_ROOT);
@@ -117,7 +133,8 @@ export function projectRootFrom(
  * @param cwd The launch's working directory.
  * @param exists Whether a path exists.
  * @param appPath The directory the app lives in (`app.getAppPath()`), which holds no project.
- * @throws {Error} When the launcher left out a switch nothing can stand in for.
+ * @param layout A packaged app's own layout, which the switches override.
+ * @throws {Error} When neither a switch nor a layout says where something is.
  */
 export function parseAppArgs(
   args: readonly string[],
@@ -125,25 +142,65 @@ export function parseAppArgs(
   cwd: string,
   exists: (path: string) => boolean,
   appPath = "",
+  layout: AppLayout | null = null,
 ): AppArgs {
-  const backend = switchValue(args, "backend");
-  const bun = switchValue(args, "bun");
-  const preload = switchValue(args, "preload");
+  const backend = switchValue(args, "backend") ?? layout?.backend;
+  const bun = switchValue(args, "bun") ?? layout?.bun;
+  const preload = switchValue(args, "preload") ?? layout?.preload;
   if (!backend || !bun || !preload) {
     throw new Error("The Jx Studio app needs --jx-backend, --jx-bun and --jx-preload.");
   }
   return {
     backend,
     bun,
-    icon: switchValue(args, "icon"),
+    icon: switchValue(args, "icon") ?? layout?.icon ?? null,
     preload,
     root: projectRootFrom(args, env, cwd, exists, appPath),
+    studio: layout?.studio ?? null,
   };
 }
 
 /** The project directory a path the OS handed us names: a `project.json`'s folder, or the folder. */
 export function projectDirOf(path: string): string {
   return basename(path) === "project.json" ? dirname(path) : path;
+}
+
+/**
+ * Electron's `process.resourcesPath`: the installed app's `resources` directory, empty in a
+ * checkout.
+ */
+function electronResourcesPath(): string {
+  return process.resourcesPath ?? "";
+}
+
+/** The `autoUpdater` of electron-updater, loaded when an installation that can update itself starts. */
+export async function loadAutoUpdater(): Promise<AutoUpdater> {
+  const { autoUpdater } = await import("electron-updater");
+  return {
+    set autoDownload(value: boolean) {
+      autoUpdater.autoDownload = value;
+    },
+    get autoDownload() {
+      return autoUpdater.autoDownload;
+    },
+    set autoInstallOnAppQuit(value: boolean) {
+      autoUpdater.autoInstallOnAppQuit = value;
+    },
+    get autoInstallOnAppQuit() {
+      return autoUpdater.autoInstallOnAppQuit;
+    },
+    checkForUpdates: async () => {
+      await autoUpdater.checkForUpdates();
+    },
+    on: (event, listener) => {
+      /* SAFETY: each event `AutoUpdater` declares is one of electron-updater's, and `listener` is
+         typed for that event's own payload; TypeScript cannot correlate the generic name. */
+      autoUpdater.on(event, listener as never);
+    },
+    quitAndInstall: () => {
+      autoUpdater.quitAndInstall();
+    },
+  };
 }
 
 /**
@@ -193,8 +250,12 @@ export async function startApp(
     cwd = process.cwd(),
     env = process.env,
     exists = existsSync,
+    loadUpdater = loadAutoUpdater,
     platform = process.platform,
+    resourcesPath = electronResourcesPath(),
+    schedule = { ...DEFAULT_SCHEDULE, setInterval, setTimeout },
     spawn = spawnBackend,
+    windowsStore = process.windowsStore === true,
   } = deps;
   const { app } = electron;
   // Everything after the executable; the script, when there is one, is told apart by `appPath`.
@@ -212,7 +273,9 @@ export async function startApp(
     app.quit();
     return null;
   }
-  const args = parseAppArgs(userArgs(argv), env, cwd, exists, app.getAppPath());
+  const packaged = app.isPackaged;
+  const layout = packaged ? packagedLayout(resourcesPath, app.getAppPath(), platform) : null;
+  const args = parseAppArgs(userArgs(argv), env, cwd, exists, app.getAppPath(), layout);
   identifyApp(app, args, platform);
 
   const windows = new Map<number, BrowserWindow>();
@@ -313,9 +376,45 @@ export async function startApp(
     }
   }
 
-  backend = spawn(args.bun, args.backend, shellEnv(env));
+  /* A packaged app tells its backend where the studio assets are and what it is, which are what an
+     unpackaged run learns from its environment (the Nix wrapper sets JX_STUDIO_ASSETS). */
+  const backendEnv = shellEnv(env);
+  if (args.studio) {
+    backendEnv.JX_STUDIO_ASSETS = args.studio;
+    backendEnv.JX_STUDIO_CHANNEL = "stable";
+  }
+  backend = spawn(args.bun, args.backend, backendEnv);
   backend.onMessage(onBackend);
   // A backend that is gone leaves windows with nothing to talk to; end rather than show them.
   backend.onExit(() => app.quit());
+
+  if (updatesEnabled({ appImage: env.APPIMAGE, packaged, platform, windowsStore })) {
+    loadUpdater()
+      .then((updater) => {
+        startUpdates(
+          updater,
+          {
+            confirmRestart: async (version) => {
+              const { response } = await electron.dialog.showMessageBox({
+                buttons: ["Restart Now", "Later"],
+                cancelId: 1,
+                defaultId: 0,
+                detail:
+                  "Jx Studio restarts to finish updating. Choosing Later installs it the next time you quit.",
+                message: `Jx Studio ${version} is ready.`,
+                title: "Jx Studio",
+                type: "info",
+              });
+              return response === 0;
+            },
+            status: (text) => post({ text, type: "update-status" }),
+          },
+          schedule,
+        );
+      })
+      .catch((error: Error) => {
+        console.error("[electron-app]", error);
+      });
+  }
   return { backend, windows };
 }

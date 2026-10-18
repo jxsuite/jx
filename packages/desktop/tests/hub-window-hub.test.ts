@@ -286,6 +286,20 @@ describe("window hub", () => {
     }, 20_000);
   });
 
+  describe("update status", () => {
+    test("reaches the About screen once the updater has said something, and not before", async () => {
+      fixture = hubFixture();
+      fixture.hub.openProject(null);
+      const socket = await fixture.connect(nth(0));
+      expect(await socket.call("appInfo")).toEqual({ ...fixture.appInfo });
+      fixture.hub.handle({ text: "Update ready (9.9.9)", type: "update-status" });
+      expect(await socket.call("appInfo")).toEqual({
+        ...fixture.appInfo,
+        updateStatus: "Update ready (9.9.9)",
+      });
+    });
+  });
+
   describe("site import", () => {
     /** The status an unauthenticated import request gets from the window's server. */
     async function importStatus(): Promise<number> {

@@ -11,7 +11,6 @@ code:
   - packages/studio/src/platforms/devserver.ts
   - packages/studio/src/utils/base64.ts
   - packages/studio/src/files/asset-versions.ts
-  - packages/desktop/src/platform.ts
   - packages/desktop/src/chromium/platform.ts
   - packages/desktop/src/boot.ts
   - packages/studio/src/platforms/default-platform.ts
@@ -149,12 +148,12 @@ export function getPlatform() {
 The desktop app does this with a short init bundle loaded ahead of the Studio bundle. Its first import announces the launcher, and registration happens before anything asynchronous:
 
 ```ts
-// packages/desktop/src/init.ts, loaded before studio.js
+// packages/desktop/src/chromium/init.ts, loaded before studio.js
 import { bootLauncher } from "./boot"; // first: publishes globalThis.__jxLauncher
 import { hydrateGithubToken } from "@jxsuite/studio/github-auth-status";
 import { createDesktopPlatform } from "./platform";
 
-await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "electrobun" });
+await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "chromium" });
 ```
 
 If nothing has registered by the time Studio boots, what happens depends on whether your page declared a boot module:
@@ -198,20 +197,18 @@ if (!match) {
 }
 ```
 
-### Desktop (`packages/desktop/src/platform.ts`)
+### Desktop (`packages/desktop/src/chromium/platform.ts`)
 
 **Settings are written as patches.** `patchSettings({ set, remove })` changes only the keys it names and answers with the store as it then stands; a key named by neither must be left alone. That is a correctness rule and not an optimisation. A whole-map write means every writer implicitly claims the whole store, so a second window holding a different view of it silently overwrites the first. It also means a key your adapter has never heard of survives a write.
 
-The desktop adapter translates the same interface into ElectroBun RPC: each member is a one-line `rpc.request.*` call into Bun-side handlers (`openProject()` is literally `return await rpc.request.openProject()`, backed by a native file dialog in the Bun process). Beyond the mapping, it patches `window.fetch` so the runtime's dev-proxy endpoints (`/__jx_resolve__`, `/__jx_server__`) also ride the RPC bridge, and it implements the desktop-only families: multi-window, backend-persisted recents and settings, `getAppInfo`.
+The desktop adapter translates the same interface into JSON-RPC over a WebSocket: each member is a one-line `request(method, params)` call into handlers that run beside the project, in a loopback project server of the window's own that only accepts its token. A native file dialog (`openProject()`) is the shell's to draw, so the project server asks the shell for it and never opens one itself. Beyond the mapping, the adapter implements the desktop-only families: multi-window, backend-persisted recents and settings, `getAppInfo`.
 
-### Desktop, Chromium build (`packages/desktop/src/chromium/platform.ts`)
-
-The NixOS build runs Studio in a Chromium `--app` window and talks to its launcher over a WebSocket instead of ElectroBun's bridge, so it is a **second adapter over the same handler names**, one `request(method, params)` helper per member. It is a useful thing to read if you are writing your own: it implements the same optional families as the ElectroBun adapter, over a completely different transport, and the two are checked against one declaration (`packages/desktop/tests/_rpc-parity.ts`).
+Studio runs in an Electron window (or, for the Snap build, a Chromium `--app` window) and talks to its project server over a WebSocket, so it is a good adapter to read if you are writing your own: one `request(method, params)` helper per member, the same optional families as any backend, and the handler names checked against one declaration (`packages/desktop/tests/_rpc-parity.ts`). Where Electron owns the window, a preload script exposes window controls as `globalThis.__jxShell`, and the adapter publishes them as `windowControls` when that bridge is present.
 
 Two lessons from it generalize to any adapter:
 
 - **A member you do not implement is a feature the user does not get, silently.** Studio probes for methods and does not ask what kind of host you are, so the launcher answered `buildSite` over RPC for months while its adapter never exposed the method. **Open in Browser** reported that this backend could not preview the site. If you add a backend handler, add the member in the same change.
-- **Not every absent member is a gap.** This adapter deliberately omits the updater family (the system package manager owns updates, so there is no feed to report on) and `windowControls` (the desktop environment decorates the window, so Studio must not draw its own buttons). Omission is how you say "not here"; the alternative is a control that does nothing.
+- **Not every absent member is a gap.** A build can deliberately omit the updater family (the system package manager owns updates, so there is no feed to report on) and `windowControls` (the desktop environment decorates the window, so Studio must not draw its own buttons). Omission is how you say "not here"; the alternative is a control that does nothing.
 
 Its transport also carries messages the launcher sends **unprompted**: a frame with a `method` and no request id. That is how `subscribeFileEvents` is fed, and how another window asks this one to come forward. If your host can push, a subscription member is a local handler plus a dispatch line. No polling needed.
 

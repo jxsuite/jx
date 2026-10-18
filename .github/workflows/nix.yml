@@ -278,13 +278,13 @@ jobs:
           fi
 
           # A closure is only as useful as the address it lands at, and for desktop-v5.0.0 the two
-          # disagreed. This job builds the CHECKOUT; a consumer evaluates the GITHUB FLAKE, and the
-          # `vendor/electrobun` gitlink made those two trees differ by two empty directory entries —
-          # one commit, two store paths. The push succeeded, `nix path-info` found every byte of what
-          # it sent, and `nix build github:jxsuite/jx/release --max-jobs 0` still built from source.
-          # package.nix now filters `vendor` so the two agree by construction; this is the assertion
-          # that they still do, and it is the sentence the next such divergence will need — the
-          # symptom alone (`verify-cache` reporting a missing path) names no cause at all.
+          # disagreed. This job builds the CHECKOUT; a consumer evaluates the GITHUB FLAKE, and an
+          # uninitialised submodule's gitlink made those two trees differ by two empty directory
+          # entries — one commit, two store paths. The push succeeded, `nix path-info` found every
+          # byte of what it sent, and `nix build github:jxsuite/jx/release --max-jobs 0` still built
+          # from source. This is the assertion that the two agree, and it is the sentence the next
+          # such divergence will need — the symptom alone (`verify-cache` reporting a missing path)
+          # names no cause at all.
           #
           # NOT `2>&1`: `nix eval` prints fetch progress and evaluation warnings to stderr, and
           # merging those into the VALUE is exactly the defect that had `verify-cache` file five

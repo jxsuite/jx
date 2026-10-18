@@ -40,7 +40,9 @@ export type ShellMessage =
   /** The user closed a window; its session and server are no longer wanted. */
   | { type: "window-closed"; id: number }
   /** The answer to a `dialog`: the chosen path, or null when the user cancelled. */
-  | { type: "dialog-result"; path: string | null; requestId: number };
+  | { type: "dialog-result"; path: string | null; requestId: number }
+  /** What the updater last found, in words, for the About screen. */
+  | { type: "update-status"; text: string };
 
 /** Whether a value is an object with a string `type`, which is all a frame has to have to be read. */
 function hasType(value: unknown): value is { type: string } {
@@ -122,6 +124,9 @@ export function isShellMessage(value: unknown): value is ShellMessage {
         "path" in value &&
         (value.path === null || isString(value.path))
       );
+    }
+    case "update-status": {
+      return "text" in value && isString(value.text);
     }
     default: {
       return false;

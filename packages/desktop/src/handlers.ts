@@ -2,8 +2,8 @@
  * Legacy handler surface — kept for the chromium/ dev launcher and the test suite, which import
  * these free functions and drive a single process-global project root via setProjectRoot/
  * getProjectRoot. All real logic now lives in project-session.ts; this module is a thin shim over
- * one shared default ProjectSession. The Electrobun multi-window path (index.ts/window-manager.ts)
- * does NOT use this default session — it creates an explicit ProjectSession per window.
+ * one shared default ProjectSession. The Electron application's multi-window path (hub/) does NOT
+ * use this default session — it creates an explicit ProjectSession per window.
  */
 
 import { createProjectSession } from "./project-session";

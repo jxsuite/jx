@@ -1,0 +1,109 @@
+# Jx Studio's installers, built by electron-builder from what `scripts/stage-app.ts` assembles.
+#
+# Run `bun run package` (see `scripts/package-app.ts`): it stages first, because everything below
+# that starts with `build/` is generated and gitignored. What a packaged app is made of, and where
+# it looks for each piece, is `src/electron-shell/layout.ts`; the contract is specs/desktop.md §7.
+#
+# Electron is pinned here rather than installed: the npm `electron` package downloads a ~100 MB
+# binary in a postinstall this repository avoids, and electron-builder fetches the same release
+# itself. Keep the version equal to nixpkgs' `electron`, which the Nix package runs.
+appId: com.jxsuite.jx-studio
+productName: Jx Studio
+copyright: Copyright © Avunu LLC
+electronVersion: 43.7.7
+
+directories:
+  # The main process and the preload, with the package.json that names them. electron-builder packs
+  # this directory into `app.asar`.
+  app: build/app
+  output: artifacts
+  # Committed inputs (entitlements, the Store logos), kept apart from the generated `build/`.
+  buildResources: build-resources
+
+asar: true
+
+# The app directory is two self-contained bundles and a package.json, so nothing from a node_modules
+# belongs in the asar. Without this, electron-builder finds no dependencies in the app's own manifest,
+# falls back to searching the parent package, and packs its whole workspace graph (~700 MB).
+files:
+  - "**/*"
+  - "!node_modules"
+  - "!**/node_modules/**"
+
+# Nothing here has a native module of its own to rebuild: the backend is Bun's, and Bun brings its own.
+npmRebuild: false
+
+# Files a child process has to execute or read from disk, which cannot live inside `app.asar`.
+extraResources:
+  - from: build/resources/backend
+    to: backend
+  - from: build/resources/studio
+    to: studio
+  - from: build/resources/bun
+    to: bun
+  - from: icon.png
+    to: icon.png
+
+# The feed electron-updater reads: the `latest*.yml` files and installers that the desktop release
+# carries. The latest GitHub release is the desktop one, because the release lane marks it so.
+publish:
+  provider: generic
+  url: https://github.com/jxsuite/jx/releases/latest/download/
+
+fileAssociations:
+  - ext: json
+    name: Jx Project
+    role: Editor
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    # The zip is what electron-updater applies on macOS; the dmg is what a person downloads.
+    - zip
+  icon: icon.png
+  artifactName: macos-${arch}-JxStudio.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build-resources/entitlements.mac.plist
+  entitlementsInherit: build-resources/entitlements.mac.plist
+  # Notarizes when APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER are set, and says it skipped
+  # when they are not, so an unsigned local build still completes.
+  notarize: true
+
+win:
+  target:
+    - target: nsis
+      arch: x64
+    - target: appx
+      arch: x64
+  icon: icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: win-${arch}-JxStudio-Setup.${ext}
+
+# The Microsoft Store package. These three values are the Partner Center identity, which the Store
+# checks and which signing requires to equal the certificate's Subject; they are written once in
+# `scripts/msix-identity.ts`, and `tests/msix-identity.test.ts` holds this block equal to it.
+appx:
+  identityName: AvunuLLC.JxStudio
+  publisher: CN=118A192A-BE3D-4B35-A22B-EA889CD1D0B4
+  publisherDisplayName: Avunu
+  displayName: Jx Studio
+  applicationId: JxStudio
+  artifactName: win-${arch}-JxStudio.${ext}
+
+linux:
+  target:
+    # The AppImage is the one electron-updater can replace in place. There is no deb: the snap and
+    # the Nix package already cover the package-manager channels, and fpm, which electron-builder
+    # needs for one, does not ship for arm64.
+    - AppImage
+  icon: icon.png
+  category: Development
+  maintainer: Avunu LLC <support@jxsuite.com>
+  synopsis: Visual JSON component editor
+  artifactName: linux-${arch}-JxStudio.${ext}

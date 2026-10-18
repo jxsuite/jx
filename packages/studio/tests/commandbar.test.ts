@@ -10,7 +10,7 @@
  *   pre-scoped — the one place Studio now states which project is open.
  * - **`openInBrowserTarget` is a pure function** and is tested as one, route by route.
  */
-import { isAppRegionDragTarget } from "./electrobun-drag-region";
+import { isAppRegionDragTarget } from "./app-region-drag";
 import { flush, installMockPlatform, mountOverlayLayers, pointer } from "./harness";
 import { hintOf, printedOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -664,7 +664,7 @@ describe("window controls", () => {
     registerPartialPlatform({ windowControls: controls });
     await mountBar();
 
-    expect(root.classList.contains("electrobun-webkit-app-region-drag")).toBe(true);
+    expect(root.classList.contains("app-region-drag")).toBe(true);
     const group = root.querySelector<HTMLElement>('[part="window-controls"]')!;
     expect(group.dataset["mac"] !== undefined).toBe(false);
     expect(titles(group)).toEqual(["Minimize", "Maximize", "Close"]);
@@ -703,21 +703,21 @@ describe("window controls", () => {
   test("a browser has no window controls, and the band does not claim a drag region", async () => {
     await mountBar();
     expect(root.querySelector('[part="window-controls"]')).toBeNull();
-    expect(root.classList.contains("electrobun-webkit-app-region-drag")).toBe(false);
+    expect(root.classList.contains("app-region-drag")).toBe(false);
   });
 });
 
-// ─── Electrobun drag-region ancestry ───────────────────────────────────────────
+// ─── Frameless-window drag-region ancestry ───────────────────────────────────────────
 
 /*
  * The toolbar itself claims the whole bar as a drag handle (`root.classList`, above) so that
  * dragging blank space moves the window. Every interactive control inside it must therefore carry
- * its OWN no-drag signal in a form Electrobun's real ancestry walk can see — a literal class, not
- * a style declared through the runtime's `applyStyle`/`adoptedStyleSheets` path, which is
- * invisible to Electrobun's CSS scanner. Without it, a click anywhere in the bar falls through to
+ * its OWN no-drag signal in a form the ancestry rule can see — a literal class that shell-frame.json
+ * maps onto `-webkit-app-region`, not a style declared through the runtime's
+ * `applyStyle`/`adoptedStyleSheets` path. Without it, a click anywhere in the bar falls through to
  * the toolbar's drag class and starts a window-move instead of firing the control's handler.
  */
-describe("Electrobun drag-region ancestry", () => {
+describe("Frameless-window drag-region ancestry", () => {
   function fullContext(): CommandContext {
     return makeContext({
       document: { canRedo: true, canUndo: true, open: true },

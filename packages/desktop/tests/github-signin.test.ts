@@ -21,7 +21,7 @@ void mock.module("node:os", () => {
 /** URLs the flow tried to hand to the OS, and whether the handoff "worked". */
 const opened: string[] = [];
 let openSucceeds = true;
-void mock.module("../src/utils", () => ({
+void mock.module("../src/open-external", () => ({
   openExternal: (url: string) => {
     opened.push(url);
     return openSucceeds;

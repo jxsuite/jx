@@ -237,9 +237,9 @@ function openProjectInNewWindow(
  *
  * The server hands every handler the request frame's decoded `params`, untyped. What the shell
  * sends under each method name is fixed by rpc-schema.ts, which Studio's chromium transport and the
- * electrobun build's `defineRPC<StudioRPC>` map both compile against, and tests/_rpc-parity.ts
- * holds this map's method names to that schema. A handler that resolves `void` resolves
- * `undefined`, which the server sends as `null`.
+ * hub's per-window map (`hub/handlers.ts`) both compile against, and tests/_rpc-parity.ts holds
+ * this map's method names to that schema. A handler that resolves `void` resolves `undefined`,
+ * which the server sends as `null`.
  */
 function wire<P>(handler: (params: P) => Promise<RpcResult> | Promise<void>): RpcHandler {
   /* SAFETY: `params` is the decoded frame the shell sent for this method, whose shape rpc-schema.ts
@@ -422,7 +422,7 @@ setAuthorizationHost({
 });
 
 /* Push filesystem changes to the shell so the sidebar stays live, the way the dev server's SSE
-   `fs` event does and electrobun's per-window `onFileEvents` message does. Registering the sink is
+   `fs` event does and the hub's per-window `onFileEvents` push does. Registering the sink is
    what STARTS the watcher, and re-rooting the session re-arms it, so this one call covers the whole
    life of the window including the projects it is pointed at later. */
 setFileEventSink((events) => {

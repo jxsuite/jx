@@ -7,7 +7,7 @@ import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type * as GithubSignin from "../src/github-signin";
 import type * as Handlers from "../src/handlers";
-import { CHROMIUM_RPC_EXEMPT, rpcParity } from "./_rpc-parity";
+import { rpcParity } from "./_rpc-parity";
 
 // In-process import of src/chromium/index.ts, a launcher with import-time side effects.
 // Collaborators are mocked so tests can drive the embedded HTTP + WebSocket RPC server.
@@ -584,13 +584,10 @@ describe("seedChromiumPreferences", () => {
 // ─── Schema ↔ handler parity ────────────────────────────────────────────────
 
 describe("rpc schema parity", () => {
-  test("every declared request is handled here or explicitly answered elsewhere", () => {
-    const parity = rpcParity(Object.keys(chromiumIndex.handlers), CHROMIUM_RPC_EXEMPT);
+  test("every declared request is handled here", () => {
+    const parity = rpcParity(Object.keys(chromiumIndex.handlers));
     expect(parity.unhandled).toEqual([]);
     expect(parity.undeclared).toEqual([]);
-    // The exemptions are claims about this launcher, so they rot in both directions.
-    expect(parity.staleExempt).toEqual([]);
-    expect(parity.orphanExempt).toEqual([]);
   });
 });
 

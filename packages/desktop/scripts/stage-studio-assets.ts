@@ -46,8 +46,8 @@ export async function stageStudioAssets(desktopDir: string): Promise<void> {
    * This was an exact-string `html.replace()` on the package's own index.html, and it did not check
    * that the replace had matched — so a whitespace change upstream would have produced a packaged
    * app with no platform registered, which then self-registers the dev-server adapter and fetches
-   * `/__studio/*` against a `views://` origin. `boot` is an argument now, and generating the
-   * document means there is nothing left to miss.
+   * `/__studio/*` against an origin no dev server is behind. `boot` is an argument now, and
+   * generating the document means there is nothing left to miss.
    */
   await writeFile(
     join(outDir, "index.html"),

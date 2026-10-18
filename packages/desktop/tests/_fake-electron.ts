@@ -41,6 +41,12 @@ export interface FakeElectron {
   ) => void;
   /** What `app.requestSingleInstanceLock` answers. */
   lock: boolean;
+  /** The button `dialog.showMessageBox` answers with next. */
+  messageAnswer: number;
+  /** Each `dialog.showMessageBox` call's options. */
+  messageBoxes: Electron.MessageBoxOptions[];
+  /** Whether `app.isPackaged` reads true. */
+  packaged: boolean;
   /** Each `dialog.showOpenDialog` call: its options, and whether it named a parent window. */
   openDialogs: { options: Electron.OpenDialogOptions; parented: boolean }[];
   /** What `dialog.showOpenDialog` answers next. */
@@ -85,10 +91,13 @@ export function fakeElectron(): FakeElectron {
     loadError: null,
     lock: true,
     menuTemplates: [],
+    messageAnswer: 0,
+    messageBoxes: [],
     names: [],
     openAnswer: { canceled: true, filePaths: [] },
     openError: null,
     openDialogs: [],
+    packaged: false,
     exposed: new Map(),
     handlers: new Map(),
     invoked: [],
@@ -201,6 +210,9 @@ export function fakeElectron(): FakeElectron {
     },
     getAppPath: () => "/b",
     getPath: () => "/appdata",
+    get isPackaged(): boolean {
+      return record.packaged;
+    },
     on: (event, listener) => {
       // SAFETY: the map holds listeners of every event's shape; a test fires the one it named.
       record.appListeners.set(event, listener as (...args: never[]) => void);
@@ -230,6 +242,10 @@ export function fakeElectron(): FakeElectron {
       },
     },
     dialog: {
+      showMessageBox: (options) => {
+        record.messageBoxes.push(options);
+        return Promise.resolve({ response: record.messageAnswer });
+      },
       showMessageBoxSync: () => record.dialogAnswer,
       showOpenDialog: (
         first: Electron.BrowserWindow | Electron.OpenDialogOptions,

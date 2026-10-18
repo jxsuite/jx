@@ -50,6 +50,7 @@ describe("isShellMessage", () => {
       { id: 1, type: "window-closed" },
       { path: "/p/project.json", requestId: 2, type: "dialog-result" },
       { path: null, requestId: 3, type: "dialog-result" },
+      { text: "Update ready (1.2.3)", type: "update-status" },
     ]) {
       expect(isShellMessage(message)).toBe(true);
     }
@@ -65,6 +66,8 @@ describe("isShellMessage", () => {
       { path: "/p", requestId: "1", type: "dialog-result" },
       { requestId: 1, type: "dialog-result" },
       { path: 5, requestId: 1, type: "dialog-result" },
+      { type: "update-status" },
+      { text: 5, type: "update-status" },
     ]) {
       expect(isShellMessage(message)).toBe(false);
     }

@@ -5,12 +5,12 @@
  * its own frame, and on Linux nothing a page can ask for removes it — Chrome 155's Additional
  * Windowing Controls work only in an installed web app and leave Chromium's caption buttons in
  * place, and the Unframed display mode that would hide them is ChromeOS-only. An embedder owns its
- * window, so this one opens it without a frame and lets Studio draw the titlebar it already draws
- * under Electrobun.
+ * window, so this one opens it without a frame and lets Studio draw the titlebar it draws on every
+ * platform.
  *
- * The same window serves macOS, where the shell replaces Electrobun's: Studio draws its macOS-style
- * window buttons there too (`commandbar.ts`, `csd: "mac"`), and the shell adds the one thing macOS
- * requires of an app that Linux does not, an application menu (see {@link macApplicationMenu}).
+ * The same window serves macOS: Studio draws its macOS-style window buttons there too
+ * (`commandbar.ts`, `csd: "mac"`), and the shell adds the one thing macOS requires of an app that
+ * Linux does not, an application menu (see {@link macApplicationMenu}).
  *
  * Everything else stays the launcher's: the project server, the RPC socket, the window registry and
  * the one-process-per-window model (§9.4). The shell is given a URL and a profile directory and
@@ -73,8 +73,8 @@ export function switchValue(argv: readonly string[], name: string): string | nul
 /**
  * Whether a navigation stays inside the shell: only the launcher's own origin does.
  *
- * Mirrors Electrobun's `navigationRules` (`window-manager.ts`): Studio is one page plus same-origin
- * reloads, and anything else (a link in a preview, a docs link) belongs in the user's browser.
+ * Studio is one page plus same-origin reloads, and anything else (a link in a preview, a docs link)
+ * belongs in the user's browser.
  *
  * @param target Where the page is going.
  * @param origin The launcher's origin.
@@ -221,7 +221,7 @@ function bindDevTools(contents: WebContents): void {
  * alone. DevTools sits under View at the macOS chord, ⌥⌘I.
  */
 export function macApplicationMenu(actions?: MenuActions): Electron.MenuItemConstructorOptions[] {
-  /* Items without accelerators, as under Electrobun: both chords are Studio commands'
+  /* Items without accelerators: both chords are Studio commands'
      `keybinding` (`view.newWindow`, `project.open`), which its keymap dispatches, and a chord with
      two owners fires twice. The menu keeps the items because a native menu is where a macOS user
      looks for them. */
