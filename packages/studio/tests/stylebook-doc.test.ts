@@ -72,6 +72,18 @@ function kids(n: JxMutableNode): JxMutableNode[] {
 
 const cls = (n: JxMutableNode) => n.attributes?.class;
 
+describe("buildStylebookDoc — the project's head", () => {
+  test("carries the merged $head, so the specimens load the project's webfonts", () => {
+    const fonts = {
+      attributes: { href: "https://fonts.googleapis.com/css2?family=Barlow", rel: "stylesheet" },
+      tagName: "link",
+    };
+    expect(build({ effectiveHead: [fonts] }).doc.$head).toEqual([fonts]);
+    expect(build({ effectiveHead: [] }).doc.$head).toBeUndefined();
+    expect(build().doc.$head).toBeUndefined();
+  });
+});
+
 describe("buildStylebookDoc — tree shape", () => {
   test("root carries sb-root, $media, and the transposed style; sections wrap labelled card bodies", () => {
     const { doc } = build({ effectiveStyle: { h1: { color: "red" } } });

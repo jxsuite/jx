@@ -11,11 +11,14 @@ import {
   COMPONENTS_GROUP,
   componentInstance,
   componentSlashCommands,
-  importComponentInto,
+  mutateImportComponent,
 } from "../src/editor/insert-component";
 import { SITE_CARD } from "./shared-fixtures";
+import { mutateInsertNode, transactDoc, undo } from "../src/tabs/transact";
 import type { ComponentEntry } from "../src/files/components";
 import type { StudioPlatform } from "../src/types";
+import type { Tab } from "../src/tabs/tab";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 const CARD = SITE_CARD;
 const PACKAGE: ComponentEntry = {
@@ -36,26 +39,61 @@ beforeEach(async () => {
   await loadComponentRegistry();
 });
 
-describe("importComponentInto", () => {
+/** The import alone, in a transaction of its own, as a door with no insert would make it. */
+function importInto(tab: Tab, tagName: JxMutableNode["tagName"]): void {
+  transactDoc(tab, (t) => mutateImportComponent(t, tagName));
+}
+
+describe("mutateImportComponent", () => {
   test("imports a registered component once", () => {
     const tab = resetWorkspaceWithTab(
       { children: [], tagName: "div" },
       { documentPath: "pages/index.json" },
     );
-    importComponentInto(tab, "site-card");
+    importInto(tab, "site-card");
     expect(tab.doc.document.$elements).toEqual([{ $ref: "../components/site-card.json" }]);
-    importComponentInto(tab, "site-card");
+    importInto(tab, "site-card");
     expect(tab.doc.document.$elements).toHaveLength(1);
   });
 
   test("leaves an HTML element, a computed tag and an unknown component alone", () => {
     const tab = resetWorkspaceWithTab({ children: [], tagName: "div" });
-    importComponentInto(tab, "section");
-    importComponentInto(tab, {
+    importInto(tab, "section");
+    importInto(tab, {
       $expression: { cases: { a: "site-card" }, default: "div", operator: "switch", target: "a" },
     });
-    importComponentInto(tab, "never-registered");
+    importInto(tab, "never-registered");
     expect(tab.doc.document.$elements).toBeUndefined();
+  });
+});
+
+describe("mutateImportComponent, in the insert's transaction", () => {
+  test("inside the insert's transaction, one undo takes back the instance AND its import", () => {
+    const tab = resetWorkspaceWithTab(
+      { children: [{ tagName: "p", textContent: "x" }], tagName: "div" },
+      { documentPath: "pages/index.json" },
+    );
+    transactDoc(tab, (t) => {
+      mutateInsertNode(t, [], 1, { tagName: "site-card" });
+      mutateImportComponent(t, "site-card");
+    });
+    expect(tab.doc.document.$elements).toEqual([{ $ref: "../components/site-card.json" }]);
+    expect(tab.doc.document.children).toHaveLength(2);
+    undo(tab);
+    expect(tab.doc.document.$elements).toBeUndefined();
+    expect(tab.doc.document.children).toHaveLength(1);
+  });
+
+  test("a component already imported writes nothing beside its insert", () => {
+    const tab = resetWorkspaceWithTab(
+      { $elements: [{ $ref: "../components/site-card.json" }], children: [], tagName: "div" },
+      { documentPath: "pages/index.json" },
+    );
+    transactDoc(tab, (t) => {
+      mutateInsertNode(t, [], 0, { tagName: "site-card" });
+      mutateImportComponent(t, "site-card");
+    });
+    expect(tab.doc.document.$elements).toHaveLength(1);
   });
 });
 

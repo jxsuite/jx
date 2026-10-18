@@ -58,11 +58,19 @@ export function titleFieldOf(
   schema: ContentTypeSchema | null | undefined,
   fields: EntryFields = {},
 ): string | null {
-  const declared = schema?.properties ?? {};
+  // Whatever its capitalisation: a CSV's header row is often `Title`, and it is still the title.
+  const named = (keys: readonly string[]): string | null => {
+    for (const wanted of TITLE_FIELD_NAMES) {
+      const key = keys.find((candidate) => candidate.toLowerCase() === wanted);
+      if (key !== undefined) {
+        return key;
+      }
+    }
+    return null;
+  };
   return (
-    TITLE_FIELD_NAMES.find((name) => name in declared) ??
-    TITLE_FIELD_NAMES.find((name) => isString(fields[name])) ??
-    null
+    named(Object.keys(schema?.properties ?? {})) ??
+    named(Object.keys(fields).filter((key) => isString(fields[key])))
   );
 }
 

@@ -20,7 +20,7 @@ import {
   transactDoc,
 } from "../tabs/transact";
 import { defaultDef } from "../panels/shared";
-import { componentInstance, importComponentInto } from "./insert-component";
+import { componentInstance, mutateImportComponent } from "./insert-component";
 
 import { contentLength, contentOf, spliceAcross, toStored } from "./content-slice";
 import type { JxContentResult, SlashCommand } from "./inline-edit";
@@ -308,11 +308,11 @@ function insertComponentBlock(
       mutateUpdateProperty(t, path, "textContent", commitData.textContent);
     }
     mutateInsertNode(t, parentPath, at, instance);
+    mutateImportComponent(t, instance.tagName);
     if (isTabActive(tab)) {
       t.session.selection = [newPath];
     }
   });
-  importComponentInto(tab, instance.tagName);
   return newPath;
 }
 

@@ -28,7 +28,7 @@ import { activeMediaOfPane, tabOfPane } from "../canvas/canvas-surface";
 import { activeTab } from "../workspace/workspace";
 import { shell } from "../shell";
 import { componentRegistry } from "../files/components";
-import { getEffectiveMedia, getEffectiveStyle } from "../site-context";
+import { getEffectiveHead, getEffectiveMedia, getEffectiveStyle } from "../site-context";
 import { parseMediaEntries } from "../utils/canvas-media";
 import { mediaDisplayName } from "./shared";
 import { buildStylebookDoc } from "./stylebook-doc";
@@ -243,6 +243,7 @@ export async function renderStylebookMode(
   const generated = buildStylebookDoc({
     components: componentRegistry,
     customizedOnly: Boolean(customizedOnly),
+    effectiveHead: getEffectiveHead(tab?.doc.document?.$head),
     effectiveMedia,
     effectiveStyle: getEffectiveStyle(tab?.doc.document?.style),
     filter,

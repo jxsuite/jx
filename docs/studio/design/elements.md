@@ -44,6 +44,8 @@ For an exact placement, drag the card instead:
 2. As you move over the page, an indicator line shows where the element will land: before, after, or inside the element under the cursor.
 3. Drop to insert, or press :kbd[Esc] to cancel.
 
+A block (a component, an image, a section) dropped over a paragraph or a heading lands above or below it, never inside the sentence. Only text-level elements such as a link or bold text go inside a paragraph. A component arrives together with its import, so one :kbd[⌘Z] takes back both.
+
 The new element arrives selected, and the Inspector switches to its **Element** tab, ready for the [Content](/docs/studio/design/properties) and [Style](/docs/studio/design/style-inspector) views. Dragging works the same in Edit and Design view. **[The canvas](/docs/studio/interface/canvas)** covers the other ways to insert: the **+** affordance between elements and the slash menu, both of which list your components under a **Components** heading after the HTML elements. The **[Site panel](/docs/studio/interface#the-site-panel)**'s component cards drag onto the canvas the same way.
 
 :::doc-note

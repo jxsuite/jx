@@ -946,6 +946,8 @@ describe("syncStylebookCss", () => {
     expect(sheet()!.textContent).toContain(".sb-section");
     // The parent grid disabled preview hits; the iframe must NOT — clicks select specimens.
     expect(sheet()!.textContent).not.toContain("pointer-events: none");
+    // A list specimen keeps the padding its markers are drawn in; every other specimen sits flush.
+    expect(sheet()!.textContent).toContain(".element-card-preview > :not(ol, ul, menu) {");
     syncStylebookCss(document, "stylebook");
     expect(document.head.querySelectorAll(`#${STYLEBOOK_STYLE_ID}`)).toHaveLength(1);
   });

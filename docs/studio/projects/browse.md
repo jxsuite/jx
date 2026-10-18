@@ -15,6 +15,7 @@ code:
   - packages/studio/src/content/content-collections.ts
   - packages/studio/src/content/collection-pages.ts
   - packages/studio/src/content/entry-summaries.ts
+  - packages/studio/src/content/file-records.ts
   - packages/studio/src/panels/collections-panel.ts
   - packages/studio/src/surfaces/collections-panel.ts
 ---
@@ -52,6 +53,10 @@ Every control is a command too, so the toolbar is never the only way in: :kbd[‚å
 :::doc-note
 A collection lists its entry files, so a draft sits beside a published entry. Being a draft is a property of the entry: the switch, the pill on its tab and the project-wide **Include Drafts** perspective are covered in **[Content types](/docs/studio/projects/content-types#drafts)**.
 :::
+
+### A collection stored in one file
+
+A collection whose `source` names one file, such as a CSV price list (`"source": "./content/pricing/prices.csv"`), lists that file's records: one entry per row under the header (or per object of a JSON array), named by its `Title` (or `title`, `name`, `label` or `heading`) column, with the other columns in the Table. Its count in the Collections panel is its number of records. Clicking a record, or **Edit in grid**, opens the file in its grid, which is where you add, change and remove rows, so there is no **New** button and no right-click menu on a record.
 
 ## Where a collection is published
 

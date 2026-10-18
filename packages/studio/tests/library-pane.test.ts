@@ -742,6 +742,60 @@ describe("collections", () => {
     expect((group as HTMLElement & { label?: string }).label).toBe("View");
   });
 
+  test("a CSV collection is its records: counted, tabled with their fields, opened in the file", async () => {
+    const csv = "content/pricing/prices.csv";
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          path === "content"
+            ? Promise.resolve([{ name: "pricing", path: "content/pricing", type: "directory" }])
+            : path === "content/pricing"
+              ? Promise.resolve([file("prices.csv", csv)])
+              : Promise.resolve([]),
+      },
+      { [csv]: "Title,sku\nTilt Trailer,tilt\nMini Trencher,trencher\n" },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: {
+          pricing: {
+            format: "Csv",
+            schema: { properties: { Title: { type: "string" }, sku: { type: "string" } } },
+            source: "./content/pricing/prices.csv",
+          },
+        },
+      },
+      projectDirs: ["content"],
+      projectRoot: "",
+    });
+    invalidateLibrary();
+    setLibraryLayout("table", "pricing");
+    setContentCollection("pricing");
+    await mount();
+    expect(collectionCounts()?.get("pricing")).toBe(2);
+    const rows = parts("table-row");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Tilt Trailer"),
+      expect.stringContaining("Mini Trencher"),
+    ]);
+    expect(rows[0]!.textContent).toContain("tilt");
+    expect(rows[0]!.textContent).toContain(csv);
+    // Entries are rows of the file: no New, and the header line is drawn as for any collection.
+    expect(part("new")).toBeNull();
+    expect(text()).toContain("Entries have no page of their own");
+    rows[1]!.click();
+    await flush();
+    // A record opens its file, and right-clicking one offers no file verbs that would hit the file.
+    rows[1]!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    await flush();
+    expect(menuIds()).toEqual([]);
+    // Edit in grid opens the file's own grid: `collection.editInGrid` grids folders.
+    part("edit-grid")!.click();
+    await flush();
+    expect(opened).toEqual([csv, csv]);
+    expect(runs).toEqual([]);
+  });
+
   test("openLibraryFile routes a file in no collection to the ordinary opener", async () => {
     openLibraryFile({ collection: null, path: "layouts/main.json" });
     await flush();
@@ -821,9 +875,11 @@ describe("the header line", () => {
     };
     const csv = { ...posts, fileBacked: true };
     expect(pageLineFor(pages, null, null).state).toBe("hidden");
-    expect(pageLineFor(csv, null, null).state).toBe("hidden");
+    // A CSV collection's records can have pages too (`$paths` expands over them), so it has the line.
+    expect(pageLineFor(csv, null, null).state).toBe("none");
     expect(pageLineFor(posts, undefined, null).state).toBe("loading");
     const page = {
+      field: null,
       layout: undefined,
       param: "slug",
       path: "pages/[slug].json",

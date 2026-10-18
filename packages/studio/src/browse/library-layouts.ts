@@ -195,7 +195,8 @@ export function cellText(file: LibraryFile, field: string, entry?: EntryFacts): 
       return file.name;
     }
     case "path": {
-      return file.path;
+      // A record is stored in its collection's file; its key (`prices.csv#3`) is no path.
+      return file.record?.source ?? file.path;
     }
     case "size": {
       return formatSize(file.size);
@@ -241,7 +242,8 @@ export function libraryRow(
 ): LibraryRow {
   const image = isImage(file.ext);
   return {
-    art: image ? "image" : live && file.collection !== null ? "doc" : "glyph",
+    // A record is a row of a file, not a document the runtime can render.
+    art: image ? "image" : live && file.collection !== null && !file.record ? "doc" : "glyph",
     cells: columns.map((column) => ({
       field: column.field,
       text: cellText(file, column.field, entry),

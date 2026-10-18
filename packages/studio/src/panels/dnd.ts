@@ -31,7 +31,7 @@ import { primarySelection } from "../tabs/selection";
 import { activeTab } from "../workspace/workspace";
 import { view } from "../view";
 import { buildComponentInstance, componentRegistry } from "../files/components";
-import { importComponentInto } from "../editor/insert-component";
+import { mutateImportComponent } from "../editor/insert-component";
 import { renderComponentPreview } from "./component-preview";
 import { defaultDef, unsafeTags } from "./shared";
 import { elementAtPoint } from "../utils/geometry";
@@ -486,17 +486,17 @@ export function applyDropInstruction(
     /* SAFETY: every minter of a "block" payload — the Insert palette's element and component cards
        and the file drop (`file-drop-action.ts`) — sets `fragment` to the JxMutableNode it inserts. */
     const fragment = srcData.fragment as JxMutableNode;
-    if (slot) {
-      transactDoc(tab, (t) =>
-        mutateInsertNode(t, slot.parent, slot.index, structuredClone(fragment)),
-      );
-    }
-
     /* Auto-import to `$elements` if the dropped block is a custom component, through the rule
        every insertion door shares (`editor/insert-component.ts`, over the one `$elements` service):
        this call site once had its own duplicate rule and matched a local component by
        `ref.endsWith(basename)`, so dropping `./components/card.json` into a page that already
-       imported `./vendor/card.json` counted as already imported. */
-    importComponentInto(tab, fragment.tagName);
+       imported `./vendor/card.json` counted as already imported. The import is part of the same
+       transaction as the insert, so one ⌘Z takes back both. */
+    if (slot) {
+      transactDoc(tab, (t) => {
+        mutateInsertNode(t, slot.parent, slot.index, structuredClone(fragment));
+        mutateImportComponent(t, fragment.tagName);
+      });
+    }
   }
 }

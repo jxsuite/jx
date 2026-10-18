@@ -48,6 +48,8 @@ import { openFileInTab } from "../files/files";
 import { runActiveReported } from "../commands/run-reported";
 import {
   PAGES_COLLECTION,
+  collectionSourceFile,
+  declaredCollectionSchema,
   contentCollection,
   templateDisplayName,
 } from "../content/content-collections";
@@ -570,8 +572,11 @@ function scheduleSettle(panel: ActiveLibraryPane): void {
  * The same answer whichever collection drew the row, because the file says what it is: a page is
  * Design's, and activating it enters Design (§22.1).
  */
-export function openLibraryFile(file: Pick<LibraryFile, "path" | "collection">): void {
-  if (file.collection === null || file.collection === PAGES_COLLECTION) {
+export function openLibraryFile(file: Pick<LibraryFile, "path" | "collection" | "record">): void {
+  if (file.record) {
+    // A record of a file-backed collection is written in its file's own grid.
+    void openFileInTab(file.record.source);
+  } else if (file.collection === null || file.collection === PAGES_COLLECTION) {
     void openFileInTab(file.path);
   } else {
     void openEntry(file.path);
@@ -606,7 +611,8 @@ function fileAt(path: string): LibraryFile | null {
 /** The per-file menu, opened at the pointer. Region `content`. */
 function showLibraryContextMenu(path: string, x: number, y: number): void {
   const file = fileAt(path);
-  if (!file) {
+  // A record is a row of a file: renaming, duplicating or deleting "it" would act on the file.
+  if (!file || file.record) {
     return;
   }
   closeLibraryMenu();
@@ -770,7 +776,7 @@ export function pageLineFor(
     template: "",
     text: "",
   };
-  if (collection.kind === "pages" || collection.fileBacked) {
+  if (collection.kind === "pages") {
     return hidden;
   }
   if (page === undefined) {
@@ -859,7 +865,21 @@ function entryFactsFor(collection: ContentCollection, layout: LibraryLayout): En
   if (collection.kind === "pages") {
     return librarySource().scanned() ? pageFactsFor(layout === "table") : entryFactsFrom(new Map());
   }
-  if (collection.fileBacked || !librarySource().scanned()) {
+  if (collection.fileBacked) {
+    // A record's facts are its fields, read with the file by the scan.
+    const records = librarySource()
+      .files()
+      .filter((file) => file.collection === collection.key && file.record);
+    return entryFactsFrom(
+      new Map(
+        records.map((file) => [
+          file.path,
+          { date: "", fields: file.record!.fields, status: "", title: file.name },
+        ]),
+      ),
+    );
+  }
+  if (!librarySource().scanned()) {
     return entryFactsFrom(new Map());
   }
   const summaries = peekEntrySummaries(collection.key, collectionEntryPaths(collection.key));
@@ -921,7 +941,7 @@ function inRouteOrder(files: readonly LibraryFile[]): readonly LibraryFile[] {
 
 /** A declared collection's schema, or null for one that declares none. */
 function collectionSchema(key: string): ContentTypeSchema | null {
-  return entryCollection(key)?.schema ?? null;
+  return entryCollection(key)?.schema ?? declaredCollectionSchema(key);
 }
 
 /** The fields the Table names in a column of their own already: what an entry is called, its date. */
@@ -1029,6 +1049,8 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
     localeState: locales.length < 2 ? "hidden" : "shown",
     localeValue: view.locale === "" ? "all" : view.locale,
     newLabel: `New ${collection.item}`,
+    // A file-backed collection's entries are rows of its file, added in the file's grid.
+    newState: collection.fileBacked ? "hidden" : "shown",
     pad: `padding-top:${range.padTop}px;padding-bottom:${range.padBottom}px`,
     padBottom: `height:${range.padBottom}px`,
     padTop: `height:${range.padTop}px`,
@@ -1109,7 +1131,14 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       );
     },
     openGrid: () => {
-      void runActiveReported("collection.editInGrid", { name: shownCollection().key }, SOURCE);
+      const collection = shownCollection();
+      // A file-backed collection's grid is its file's own: `collection.editInGrid` grids folders.
+      const file = collection.fileBacked ? collectionSourceFile(collection.key) : null;
+      if (file) {
+        void openFileInTab(file);
+        return;
+      }
+      void runActiveReported("collection.editInGrid", { name: collection.key }, SOURCE);
     },
     openFile: (path) => {
       openLibraryFile(fileAt(path) ?? { collection: shownCollectionKey(), path });

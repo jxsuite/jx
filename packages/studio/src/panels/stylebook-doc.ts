@@ -22,7 +22,7 @@ import type { StylebookEntry } from "./stylebook-panel";
 import type { ComponentEntry } from "../files/components";
 import type { JxPath } from "../state";
 import { isNonNullObject } from "@jxsuite/schema/guards";
-import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type { JxHeadEntry, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
 export interface StylebookDocResult {
   /** The specimen document (plain JSON — safe to post over the bridge). */
@@ -150,6 +150,8 @@ export interface BuildStylebookDocOpts {
   effectiveStyle: JxStyle;
   /** Merged $media map (getEffectiveMedia output) — becomes the doc's $media. */
   effectiveMedia: Record<string, string>;
+  /** Merged project+document `$head` (getEffectiveHead output) — becomes the doc's `$head`. */
+  effectiveHead?: JxHeadEntry[];
   filter: string;
   customizedOnly: boolean;
   projectRoot: string | null;
@@ -324,6 +326,11 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
   const doc: JxMutableNode = {};
   if ($elements.length > 0) {
     doc.$elements = $elements;
+  }
+  /* The project's `$head` too: its webfont links are what make `fontFamily: 'Barlow'` render as
+     Barlow, and a specimen sheet drawn in the system fallback shows styles the site never has. */
+  if (opts.effectiveHead && opts.effectiveHead.length > 0) {
+    doc.$head = opts.effectiveHead;
   }
   doc.$media = opts.effectiveMedia;
   doc.attributes = { class: "sb-root" };

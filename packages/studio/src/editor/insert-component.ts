@@ -13,7 +13,8 @@
 import { isString } from "@jxsuite/schema/guards";
 import { buildComponentInstance, componentRegistry } from "../files/components";
 import { enableElement } from "../files/elements";
-import { transact } from "../tabs/transact";
+import { mutateUpdateProperty } from "../tabs/transact";
+import type { JxNodeValue } from "../tabs/transact";
 import type { ElementsEntry } from "../files/elements";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
@@ -30,27 +31,41 @@ export const COMPONENTS_GROUP = "Components";
  *
  * A computed tag (`{ $expression }`) names no registered component, so it is left alone too.
  *
- * @param tab The document the node was inserted into.
+ * This is a MUTATION: call it inside the transaction that inserts the instance, so the instance and
+ * its import are one undo step. As a transaction of its own after the insert, the first ⌘Z took
+ * back only the import and left a document using a component it no longer imported, which saves as
+ * an instance the page cannot resolve.
+ *
+ * @param tab The document the node was inserted into, inside a `transactDoc`.
  * @param tagName The inserted node's tag.
  */
-export function importComponentInto(tab: Tab, tagName: JxMutableNode["tagName"]): void {
+export function mutateImportComponent(tab: Tab, tagName: JxMutableNode["tagName"]): void {
+  const after = elementsImporting(tab, tagName);
+  if (after) {
+    /* Through the recorded mutator, not a bare assignment: a transaction that records ops is
+       undone by replaying their inverses, so an unrecorded write beside the insert would survive
+       the ⌘Z that took the instance back, and never reach a co-editor.
+       SAFETY: `$elements` entries are JSON — module specifiers, `{ $ref }` imports and inline
+       element definitions — which is what a node key holds. */
+    mutateUpdateProperty(tab, [], "$elements", after as JxNodeValue);
+  }
+}
+
+/** The document's `$elements` with the component imported, or null when nothing would change. */
+function elementsImporting(tab: Tab, tagName: JxMutableNode["tagName"]): ElementsEntry[] | null {
   if (!isString(tagName) || !tagName.includes("-")) {
-    return;
+    return null;
   }
   const comp = componentRegistry.find((entry) => entry.tagName === tagName);
   if (!comp) {
-    return;
+    return null;
   }
   /* SAFETY: `$elements` holds module specifiers and `{ $ref }` imports; the document type and
      files/elements.ts spell an inline entry as JxMutableNode and JxElement respectively, two editor
      views of the same JSON object that enableElement only compares by `$ref`. */
   const before = (tab.doc.document.$elements ?? []) as ElementsEntry[];
   const after = enableElement(before, comp, tab.documentPath ?? null);
-  if (after.length !== before.length) {
-    transact(tab, (doc: JxMutableNode) => {
-      doc.$elements = after;
-    });
-  }
+  return after.length === before.length ? null : after;
 }
 
 /** A fresh instance of a registered component, or null for a tag the registry does not know. */
@@ -63,7 +78,7 @@ export function componentInstance(tagName: string): JxMutableNode | null {
  * Every registered component as a slash-menu offer, under the Components heading: the project's
  * own, described by their definition file, and the ones installed packages provide, described by
  * their package. A package component needs no prior enabling, because inserting one imports its
- * package ({@link importComponentInto}), exactly as the canvas drop does.
+ * package ({@link mutateImportComponent}), exactly as the canvas drop does.
  */
 export function componentSlashCommands(): SlashCommand[] {
   return componentRegistry.map((comp) => ({

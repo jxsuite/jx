@@ -61,7 +61,7 @@ export function entryInspectorView(tab: Tab): EntryInspectorView {
   const draftAxis = hasDraftAxis(collection?.schema, fields);
   const draft = isDraftEntry(fields);
   const page = name === "" ? null : peekCollectionPage(name, entryLocale(path));
-  const url = page ? entryUrl(page, path) : null;
+  const url = page ? entryUrl(page, path, fields) : null;
   const isJson = path.endsWith(".json");
   return {
     draft,

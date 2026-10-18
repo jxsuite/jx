@@ -71,7 +71,8 @@ const imported: string[] = [];
 void mock.module("../src/editor/insert-component", () => ({
   componentInstance: (tag: string): JxMutableNode | null =>
     tag === "site-card" ? { $props: { heading: "Hi" }, tagName: tag } : null,
-  importComponentInto: (_tab: FakeTab, tag: string) => {
+  // Called INSIDE the insert's transaction, so the instance and its import are one undo step.
+  mutateImportComponent: (_t: FakeTab, tag: string) => {
     imported.push(tag);
   },
 }));

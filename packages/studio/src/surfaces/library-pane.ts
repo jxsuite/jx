@@ -149,6 +149,8 @@ export interface LibraryView {
   searchLabel: string;
   /** The create button's label: "New post". */
   newLabel: string;
+  /** Whether **New <item>** is drawn: a file-backed collection (one CSV) gains rows in its file. */
+  newState: "hidden" | "shown";
   /**
    * Whether **Fields** and **Edit in grid** are drawn: a declared collection has fields and a grid
    * of its own, Pages does not.
@@ -234,6 +236,7 @@ function project(scope: LibraryScope, view: LibraryView): void {
   scope.subtitle = view.subtitle;
   scope.searchLabel = view.searchLabel;
   scope.newLabel = view.newLabel;
+  scope.newState = view.newState;
   scope.fieldsState = view.fieldsState;
   scope.page = view.page;
   scope.layouts = view.layouts;
@@ -303,6 +306,7 @@ export function mountLibrarySurface(
     localeState: "hidden",
     localeValue: "",
     newLabel: "",
+    newState: "hidden",
     openFields: actions.openFields,
     openGrid: actions.openGrid,
     openFile: actions.openFile,

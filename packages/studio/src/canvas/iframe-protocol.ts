@@ -377,10 +377,14 @@ export type DropInstructionType = "reorder-above" | "reorder-below" | "make-chil
 
 /**
  * The kind of thing being dragged. `tree-node` carries the source's existing document path (a
- * move); `block` carries nothing on the wire — its full `fragment` (a {@link JxMutableNode}) is
- * retained PARENT-SIDE keyed by `dragSeq` and never crosses the boundary.
+ * move); `block` carries only its fragment's tag on the wire — its full `fragment` (a
+ * {@link JxMutableNode}) is retained PARENT-SIDE keyed by `dragSeq` and never crosses the boundary.
+ * The tag is what lets the iframe keep a block out of a paragraph (`iframe-drop.ts`); an OS file
+ * drag has none, and is placed as a block.
  */
-export type DragSrcKind = { type: "tree-node"; path: (string | number)[] } | { type: "block" };
+export type DragSrcKind =
+  | { type: "tree-node"; path: (string | number)[] }
+  | { type: "block"; tag?: string };
 
 /**
  * A display-only drop preview the iframe posts on `dragOver`: where the drop indicator should draw

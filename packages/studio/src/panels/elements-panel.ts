@@ -23,7 +23,7 @@
 import { isString } from "@jxsuite/schema/guards";
 import { nothing } from "lit-html";
 import { buildComponentInstance, componentRegistry } from "../files/components";
-import { importComponentInto } from "../editor/insert-component";
+import { mutateImportComponent } from "../editor/insert-component";
 import { childList, getNodeAtPath } from "../store";
 import { getEffectiveElements } from "../site-context";
 import { mountElementsSurface } from "../surfaces/panel-elements";
@@ -177,8 +177,10 @@ function insertAtSelection(def: JxMutableNode): void {
   const parentPath = primarySelection(tab.session.selection) ?? [];
   const parent = getNodeAtPath(tab.doc.document, parentPath);
   const index = childList(parent).length;
-  transactDoc(tab, (tr) => mutateInsertNode(tr, parentPath, index, structuredClone(def)));
-  importComponentInto(tab, def.tagName);
+  transactDoc(tab, (tr) => {
+    mutateInsertNode(tr, parentPath, index, structuredClone(def));
+    mutateImportComponent(tr, def.tagName);
+  });
 }
 
 /**

@@ -36,7 +36,16 @@ const STATUS_LETTERS = new Map<string, string>([
  */
 export function parsePorcelainV1(out: string): GitFileStatus[] {
   const files: GitFileStatus[] = [];
-  for (const line of out.split("\n")) {
+  /*
+   * `gitStatus` asks for `-z`: without it git C-quotes any path holding a byte outside printable
+   * ASCII (`"72\342\200\235 Grapple.md"`), which no file on disk is called. With `-z` records end
+   * in NUL, paths are verbatim, and a rename is `XY new` followed by the original path as its own
+   * record. Newline output is still read, for callers and tests that hand it plain text.
+   */
+  const nulTerminated = out.includes("\0");
+  const records = out.split(nulTerminated ? "\0" : "\n");
+  for (let index = 0; index < records.length; index += 1) {
+    const line = records[index]!;
     if (line.length < 4) {
       continue;
     }
@@ -49,8 +58,15 @@ export function parsePorcelainV1(out: string): GitFileStatus[] {
       files.push({ path: rest, staged: false, status: "U" });
       continue;
     }
-    const arrow = rest.indexOf(" -> ");
-    const path = arrow === -1 ? rest : rest.slice(arrow + " -> ".length);
+    let path = rest;
+    if (nulTerminated) {
+      if (xy.includes("R") || xy.includes("C")) {
+        index += 1;
+      }
+    } else {
+      const arrow = rest.indexOf(" -> ");
+      path = arrow === -1 ? rest : rest.slice(arrow + " -> ".length);
+    }
     const [x = " ", y = " "] = xy;
     if (x !== " ") {
       files.push({ path, staged: true, status: STATUS_LETTERS.get(x) ?? x });
@@ -136,7 +152,7 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
 
     const branchRaw = await git("branch", "--show-current");
     const branch = branchRaw.trim();
-    const files = parsePorcelainV1(await git("status", "--porcelain=v1"));
+    const files = parsePorcelainV1(await git("status", "--porcelain=v1", "-z"));
 
     let ahead = 0;
     let behind = 0;

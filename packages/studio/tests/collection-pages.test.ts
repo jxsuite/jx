@@ -96,7 +96,7 @@ describe("pageFactsOf", () => {
         { $layout: "./layouts/a.json", $paths: { contentType: "posts", param: "slug" } },
         null,
       ),
-    ).toEqual({ contentType: "posts", layout: "./layouts/a.json", param: "slug" });
+    ).toEqual({ contentType: "posts", field: null, layout: "./layouts/a.json", param: "slug" });
   });
 
   test("a format page states both in its frontmatter", () => {
@@ -105,18 +105,20 @@ describe("pageFactsOf", () => {
         { tagName: "div" },
         { $layout: false, $paths: { contentType: "notes", param: "id" } },
       ),
-    ).toEqual({ contentType: "notes", layout: false, param: "id" });
+    ).toEqual({ contentType: "notes", field: null, layout: false, param: "id" });
   });
 
   test("a page of its own, an enumerated $paths and an empty contentType state no collection", () => {
     expect(pageFactsOf({ tagName: "div" }, null)).toEqual({
       contentType: null,
+      field: null,
       layout: undefined,
       param: null,
     });
     expect(pageFactsOf({ $paths: [{ slug: "a" }] }, null).contentType).toBeNull();
     expect(pageFactsOf({ $paths: { contentType: "", param: "" } }, null)).toEqual({
       contentType: null,
+      field: null,
       layout: undefined,
       param: null,
     });
@@ -129,6 +131,7 @@ describe("readPageFacts", () => {
     expect(json.contentType).toBe("posts");
     expect(await readPageFacts("pages/n/[id].md")).toEqual({
       contentType: "notes",
+      field: null,
       layout: false,
       param: "id",
     });
@@ -137,6 +140,7 @@ describe("readPageFacts", () => {
   test("a file that cannot be read or parsed states nothing", async () => {
     expect(await readPageFacts("pages/missing.json")).toEqual({
       contentType: null,
+      field: null,
       layout: undefined,
       param: null,
     });
@@ -151,6 +155,7 @@ describe("the index", () => {
     const index = await collectionPages();
     expect(index.get("posts")).toEqual([
       {
+        field: null,
         layout: "./layouts/post.json",
         locale: null,
         param: "slug",
@@ -274,6 +279,7 @@ describe("one template page per language", () => {
 
   test("with no page in the default language, an unlocalized page, then the first", () => {
     const at = (path: string, locale: string | null) => ({
+      field: null,
       layout: undefined,
       locale,
       param: "slug",
@@ -289,6 +295,7 @@ describe("one template page per language", () => {
 
 describe("entryUrl", () => {
   const page = {
+    field: null,
     layout: undefined,
     param: "slug",
     path: "pages/blog/[slug].json",
@@ -307,10 +314,33 @@ describe("entryUrl", () => {
   test("a collection with no page has no URL", () => {
     expect(entryUrl(null, "content/posts/hello.md")).toBeNull();
   });
+
+  test("a page that names a field fills its parameter from the entry's field, as the build does", () => {
+    const products = { ...page, field: "sku", param: "sku", pattern: "/products/:sku" };
+    const path = "content/products/Kubota Trackloader SVL75-3 Heat & AC.md";
+    expect(entryUrl(products, path, { sku: "kubota-SVL75" })).toBe("/products/kubota-SVL75");
+    expect(entryUrl(products, path, { sku: 75 })).toBe("/products/75");
+    // A missing field falls back to the id, as `Content.resolvePaths` does.
+    expect(entryUrl(products, "content/products/mower.md", {})).toBe("/products/mower");
+  });
+
+  test("a JSON entry's own id names it; a Markdown entry's frontmatter id does not", () => {
+    expect(entryUrl(page, "content/posts/a.json", { id: "first" })).toBe("/blog/first");
+    expect(entryUrl(page, "content/posts/a.md", { id: "first" })).toBe("/blog/a");
+  });
+});
+
+describe("pageFactsOf field", () => {
+  test("names the field a $paths fills its parameter from, and not the default id", () => {
+    const paths = { contentType: "product", field: "sku", param: "sku" };
+    expect(pageFactsOf({ $paths: paths }, null).field).toBe("sku");
+    expect(pageFactsOf({ $paths: { ...paths, field: "id" } }, null).field).toBeNull();
+  });
 });
 
 describe("entryLayoutPath", () => {
   const page = {
+    field: null,
     layout: "./layouts/post.json",
     param: "slug",
     path: "p",

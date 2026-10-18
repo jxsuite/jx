@@ -83,6 +83,24 @@ describe("parseGitStatus", () => {
     expect(result.files).toEqual([{ path: "new.js", staged: true, status: "R" }]);
   });
 
+  test("reads NUL-terminated records: verbatim non-ASCII paths, rename origin skipped", () => {
+    const out = [
+      "# branch.head main",
+      "1 .M N... 100644 100644 100644 abc123 def456 content/products/72” Grapple.md",
+      "2 R. N... 100644 100644 100644 abc123 def456 R100 pages/new name.md",
+      "pages/old.md",
+      "? content/products/Extra Augers 12”,16”.md",
+      "",
+    ].join("\0");
+    const result = parseGitStatus(out);
+    expect(result.branch).toBe("main");
+    expect(result.files).toEqual([
+      { path: "content/products/72” Grapple.md", staged: false, status: "M" },
+      { path: "pages/new name.md", staged: true, status: "R" },
+      { path: "content/products/Extra Augers 12”,16”.md", staged: false, status: "U" },
+    ]);
+  });
+
   test("parses file paths with spaces", () => {
     const out = "1 M. N... 100644 100644 100644 abc123 def456 path with spaces/file name.js\n";
     const result = parseGitStatus(out);
@@ -207,6 +225,15 @@ describe("git endpoints", () => {
     expect(untracked).toBeTruthy();
     expect(untracked?.status).toBe("U");
     expect(untracked?.staged).toBe(false);
+  });
+
+  test("GET status names a non-ASCII path as it is on disk", async () => {
+    const name = "72” Grapple.md";
+    writeFileSync(join(GIT_FIXTURE, name), "# Grapple");
+    const res = await studioGitReq("/__studio/git/status");
+    const data: GitStatusResult = await res.json();
+    expect(data.files.map((f) => f.path)).toContain(name);
+    rmSync(join(GIT_FIXTURE, name));
   });
 
   test("POST stage adds file to index", async () => {

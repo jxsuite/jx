@@ -181,8 +181,15 @@ describe("registerCanvasDndBridge — coordinator", () => {
     monitors[0]!.onDragStart({ location: loc(300, 250), source: { data: src } });
     const begin = callOf("begin");
     expect(begin).toBeTruthy();
-    expect(begin!.src).toEqual({ type: "block" });
+    // Only the tag crosses: the iframe needs it to keep a block out of a paragraph.
+    expect(begin!.src).toEqual({ tag: "hr", type: "block" });
     expect(begin!.srcData).toBe(src); // The full fragment is retained (never crosses the wire).
+  });
+
+  test("a block whose fragment names no string tag crosses as a plain block", () => {
+    const src = { fragment: { tagName: { $expression: "x" } }, type: "block" };
+    monitors[0]!.onDragStart({ location: loc(300, 250), source: { data: src } });
+    expect(callOf("begin")!.src).toEqual({ type: "block" });
   });
 
   test("onDragStart begins a session for a tree-node source, retaining its path", () => {

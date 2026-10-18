@@ -95,6 +95,9 @@ describe("what an entry is called, and what its fields say", () => {
     expect(titleFieldOf({ properties: { name: {}, title: {} } })).toBe("title");
     expect(titleFieldOf({ properties: { course: {}, name: {} } })).toBe("name");
     expect(titleFieldOf(null, { label: "Hi" })).toBe("label");
+    // A CSV header's `Title` is the title, and the key is answered as the record spells it.
+    expect(titleFieldOf({ properties: { Title: {}, sku: {} } })).toBe("Title");
+    expect(titleFieldOf(null, { Name: "Ex", sku: "x" })).toBe("Name");
     expect(titleFieldOf(null, { label: 3 })).toBeNull();
     expect(titleFieldOf({})).toBeNull();
   });

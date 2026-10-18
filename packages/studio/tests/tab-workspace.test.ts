@@ -64,8 +64,8 @@ describe("workspaceOfTab", () => {
     expect(workspaceOfNew("content/posts/2026/deep.md", { mode: "edit" })).toBe("content");
   });
 
-  test("a file-backed collection's catalogue is not an entry, so it stays in Design", () => {
-    expect(workspaceOfNew("content/catalogue.csv")).toBe("design");
+  test("a file-backed collection's file is Content's: its grid is where its records are written", () => {
+    expect(workspaceOfNew("content/catalogue.csv")).toBe("content");
   });
 
   test("the Content home, the page grid and a collection grid are Content's; a data grid is Design's", () => {

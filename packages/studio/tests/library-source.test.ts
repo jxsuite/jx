@@ -8,6 +8,7 @@ import { installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   LIBRARY_READ_ONLY,
+  expandFileRecords,
   createLibrarySource,
   libraryColumns,
   libraryRow,
@@ -260,5 +261,65 @@ describe("createLibrarySource", () => {
     const source = createLibrarySource();
     const result = await source.rows();
     expect(result).toEqual({ rows: [], total: 0 });
+  });
+});
+
+describe("a file-backed collection", () => {
+  const CSV = "Title,sku\nTilt Trailer,tilt\nMini Trencher,trencher\n";
+
+  function installPricing(files: Record<string, string>) {
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          path === "content"
+            ? Promise.resolve([{ name: "pricing", path: "content/pricing", type: "directory" }])
+            : path === "content/pricing"
+              ? Promise.resolve([
+                  { name: "prices.csv", path: "content/pricing/prices.csv", type: "file" },
+                ])
+              : Promise.reject(new Error(`ENOENT: ${path}`)),
+      },
+      files,
+    );
+    resetStudioState({
+      projectConfig: {
+        content: { pricing: { format: "Csv", source: "./content/pricing/prices.csv" } },
+      },
+      projectDirs: ["content"],
+    });
+  }
+
+  test("is listed as its records, each keyed by its place in the file it opens", async () => {
+    installPricing({ "content/pricing/prices.csv": CSV });
+    const source = createLibrarySource();
+    await source.rows();
+    const records = source.files().filter((file) => file.collection === "pricing");
+    expect(records.map((file) => [file.path, file.name, file.record?.source])).toEqual([
+      ["content/pricing/prices.csv#1", "Tilt Trailer", "content/pricing/prices.csv"],
+      ["content/pricing/prices.csv#2", "Mini Trencher", "content/pricing/prices.csv"],
+    ]);
+    expect(records[1]?.record?.fields).toEqual({ Title: "Mini Trencher", sku: "trencher" });
+  });
+
+  test("a file that cannot be read stays listed as the file it is", async () => {
+    installPricing({});
+    const source = createLibrarySource();
+    await source.rows();
+    expect(source.files().map((file) => file.path)).toEqual(["content/pricing/prices.csv"]);
+  });
+
+  test("a collection file whose kind holds no records is the file it is", async () => {
+    const file = {
+      collection: "notes",
+      ext: ".yaml",
+      media: false,
+      name: "notes.yaml",
+      path: "content/notes.yaml",
+      type: ".yaml",
+    };
+    resetStudioState({
+      projectConfig: { content: { notes: { source: "./content/notes.yaml" } } },
+    });
+    expect(await expandFileRecords([file], () => Promise.resolve("- a"))).toEqual([file]);
   });
 });

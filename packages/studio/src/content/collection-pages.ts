@@ -17,7 +17,7 @@
  * @docs studio/projects/browse
  */
 
-import { isString } from "@jxsuite/schema/guards";
+import { isNumber, isString } from "@jxsuite/schema/guards";
 import { fileToRoute, isRoutedPageFile } from "@jxsuite/site/routes";
 import {
   canonicalizeLocale,
@@ -29,7 +29,8 @@ import { getPlatform, hasPlatform } from "../platform";
 import { projectState } from "../store";
 import { pagePathsDef } from "../page-params";
 import type { FormatFrontmatter } from "../format/format-host";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+import type { EntryFields } from "./entry-fields";
 import type { DirEntry } from "../types";
 
 /** What a page under `pages/` says about collections and layouts. */
@@ -38,6 +39,8 @@ export interface PageFacts {
   contentType: string | null;
   /** The route parameter an entry fills (`slug`), when `$paths` names one. */
   param: string | null;
+  /** The entry field that fills it (`sku`), when `$paths` names one other than `id`. */
+  field: string | null;
   /** Its `$layout`: a path, `false` (no layout), or `undefined` (the project's default). */
   layout: string | false | undefined;
 }
@@ -50,6 +53,8 @@ export interface CollectionPage {
   pattern: string;
   /** The parameter an entry's id fills, or `null` when the page names none. */
   param: string | null;
+  /** The entry field the parameter is read from, as {@link PageFacts.field}. */
+  field: string | null;
   /** The page's `$layout`, as {@link PageFacts.layout}. */
   layout: string | false | undefined;
   /**
@@ -67,15 +72,18 @@ export function pageFactsOf(
   const paths = pagePathsDef({ document, frontmatter });
   let contentType: string | null = null;
   let param: string | null = null;
+  let field: string | null = null;
   if (paths && !Array.isArray(paths) && "contentType" in paths) {
     const type = paths.contentType;
     contentType = isString(type) && type !== "" ? type : null;
     const named = "param" in paths ? paths.param : undefined;
     param = isString(named) && named !== "" ? named : null;
+    const from = "field" in paths ? paths.field : undefined;
+    field = isString(from) && from !== "" && from !== "id" ? from : null;
   }
   const own = document?.$layout ?? frontmatter?.$layout;
   const layout = isString(own) || own === false ? own : undefined;
-  return { contentType, layout, param };
+  return { contentType, field, layout, param };
 }
 
 /**
@@ -84,7 +92,7 @@ export function pageFactsOf(
  * @param path - Project-relative page path.
  */
 export async function readPageFacts(path: string): Promise<PageFacts> {
-  const none: PageFacts = { contentType: null, layout: undefined, param: null };
+  const none: PageFacts = { contentType: null, field: null, layout: undefined, param: null };
   try {
     const source = await getPlatform().readFile(path);
     if (path.endsWith(".json")) {
@@ -148,6 +156,7 @@ async function readIndex(): Promise<CollectionPageIndex> {
   for (const [path, fact] of facts) {
     if (fact.contentType) {
       const page: CollectionPage = {
+        field: fact.field,
         layout: fact.layout,
         locale: servedLocaleOfPath(path, i18n),
         param: fact.param,
@@ -265,17 +274,38 @@ export function onCollectionPagesRead(listener: () => void): () => void {
   };
 }
 
+/** A field value as a route segment: text or a number, else nothing. */
+function segmentOf(value: JxDocumentValue | undefined): string | null {
+  if (isString(value) && value !== "") {
+    return value;
+  }
+  return isNumber(value) && Number.isFinite(value) ? String(value) : null;
+}
+
 /**
- * The URL one entry opens at, from its collection's page pattern: `/blog/:slug` with the entry's id
- * (its file stem) for the parameter. `null` when the collection has no page.
+ * The URL one entry opens at, from its collection's page pattern, filled as the build fills it
+ * (`Content.resolvePaths`): the page's `$paths.field` read from the entry's fields when it names
+ * one (`/products/:sku` with the entry's `sku`), else the entry's id (a JSON entry's `id` field,
+ * else its file stem). `null` when the collection has no page.
+ *
+ * @param fields - The entry's fields (frontmatter, or a JSON entry's root), when the caller has
+ *   them.
  */
-export function entryUrl(page: CollectionPage | null, entryPath: string): string | null {
+export function entryUrl(
+  page: CollectionPage | null,
+  entryPath: string,
+  fields?: Readonly<EntryFields> | null,
+): string | null {
   if (!page) {
     return null;
   }
   const base = entryPath.split("/").pop() ?? entryPath;
   const dot = base.lastIndexOf(".");
-  const id = dot > 0 ? base.slice(0, dot) : base;
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const own = page.field === null ? null : segmentOf(fields?.[page.field]);
+  // Only a JSON entry's own `id` names it (the loader's `jsonEntry`); a Markdown entry is its file.
+  const named = entryPath.endsWith(".json") ? segmentOf(fields?.id) : null;
+  const id = own ?? named ?? stem;
   if (page.param) {
     return page.pattern.replace(`:${page.param}`, id);
   }

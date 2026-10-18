@@ -22,7 +22,10 @@ import { fileToRoute } from "@jxsuite/site/routes";
 import { libraryScanDirs, scanLibrary } from "./library-model";
 import { DRAFT_FIELD } from "../content/draft-state";
 import { isString } from "@jxsuite/schema/guards";
+import { collectionForFile } from "../content/collection-match";
+import { fileRecords, recordKey } from "../content/file-records";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
+import type { FileRecord } from "../content/file-records";
 import type { LibraryFile, LibraryScan, ScanFailure } from "./library-model";
 import type {
   CommitResult,
@@ -222,6 +225,55 @@ export function libraryRow(file: LibraryFile): GridRow {
 }
 
 /**
+ * A file-backed collection's file, replaced by its records (`content/file-records.ts`): a CSV of
+ * fifteen prices is fifteen entries of its collection, which is what the counts and the Content
+ * home list. The file is read once per scan. One that cannot be read, or whose kind holds no
+ * records Studio reads, stays listed as the file it is.
+ */
+export async function expandFileRecords(
+  files: readonly LibraryFile[],
+  readFile: (path: string) => Promise<string>,
+): Promise<LibraryFile[]> {
+  const expanded = await Promise.all(
+    files.map(async (file): Promise<LibraryFile[]> => {
+      const match = file.collection === null ? null : collectionForFile(file.path);
+      if (!match?.fileBacked) {
+        return [file];
+      }
+      let text: string;
+      try {
+        text = await readFile(file.path);
+      } catch {
+        return [file];
+      }
+      const records = fileRecords(file.path, text, match.def.schema);
+      if (records === null) {
+        return [file];
+      }
+      return records.map((record) => recordRow(file, record));
+    }),
+  );
+  return expanded.flat();
+}
+
+/** One record of `file`, listed as a row of its own. */
+function recordRow(file: LibraryFile, record: FileRecord): LibraryFile {
+  return {
+    ...file,
+    name: record.title,
+    path: recordKey(file.path, record.index),
+    record: { fields: record.fields, source: file.path },
+  };
+}
+
+/** {@link expandFileRecords} over a whole scan, reading through the platform. */
+async function withRecords(scan: LibraryScan): Promise<LibraryScan> {
+  const platform = getPlatform();
+  const files = await expandFileRecords(scan.files, (path) => platform.readFile(path));
+  return { ...scan, files };
+}
+
+/**
  * The scan's source, plus the two questions a grid source cannot ask but the Content home must
  * answer: what the scan could not read, and the files behind the rows (the non-table layouts want
  * the typed record, not a cell bag).
@@ -271,12 +323,14 @@ export function createLibrarySource(dirs?: () => readonly string[]): LibrarySour
        declared before its first entry): its absence is an empty collection, never a failure. */
     const conventional = new Set(dirs ? walked : (projectState?.projectDirs ?? []));
     const optional = new Set(walked.filter((dir) => !conventional.has(dir)));
-    inFlight ??= scanLibrary(walked, getPlatform(), optional).then((result) => {
-      scan = result;
-      scannedKey = walked.join("\n");
-      inFlight = null;
-      return result;
-    });
+    inFlight ??= scanLibrary(walked, getPlatform(), optional)
+      .then(withRecords)
+      .then((result) => {
+        scan = result;
+        scannedKey = walked.join("\n");
+        inFlight = null;
+        return result;
+      });
     return inFlight;
   }
 

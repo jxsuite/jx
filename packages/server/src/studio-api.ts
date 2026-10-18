@@ -230,6 +230,13 @@ export async function projectHasRepository(dir: string): Promise<boolean> {
 /**
  * Parse raw `git status --porcelain=v2 --branch` output into structured data.
  *
+ * The route runs it with `-z`, and that is the form that matters: without `-z` git C-quotes every
+ * path holding a byte outside printable ASCII (`72” Grapple.md` arrives as `"72\342\200\235
+ * Grapple.md"`), so Studio listed octal escapes inside stray quotes and asked git to stage a file
+ * that does not exist. With `-z` each record ends in NUL and every path is verbatim; a rename's
+ * original path is the record after it, which is skipped. Newline-separated output is still read,
+ * for callers and tests that hand it plain text.
+ *
  * @param {string} out
  * @returns {{
  *   branch: string;
@@ -247,7 +254,10 @@ export function parseGitStatus(out: string) {
   /** @type {{ path: string; status: string; staged: boolean }[]} */
   const files = [];
 
-  for (const line of out.split("\n")) {
+  const nulTerminated = out.includes("\0");
+  const records = out.split(nulTerminated ? "\0" : "\n");
+  for (let index = 0; index < records.length; index += 1) {
+    const line = records[index]!;
     if (!line) {
       continue;
     }
@@ -266,7 +276,11 @@ export function parseGitStatus(out: string) {
       const stagedCode = xy[0]!;
       const unstagedCode = xy[1]!;
       let filePath;
-      if (line.startsWith("2 ")) {
+      if (line.startsWith("2 ") && nulTerminated) {
+        // `2 XY sub mH mI mW hH hI Xscore path`, then the original path as its own record.
+        filePath = parts.slice(9).join(" ");
+        index += 1;
+      } else if (line.startsWith("2 ")) {
         const tabIdx = line.indexOf("\t");
         const pathPart = line.slice(tabIdx + 1);
         filePath = pathPart.split("\t").pop() || "";
@@ -1852,7 +1866,7 @@ export async function handleStudioApi(
         }
 
         const [out, remotesOut] = await Promise.all([
-          runGit(["status", "--porcelain=v2", "--branch"]),
+          runGit(["status", "--porcelain=v2", "--branch", "-z"]),
           runGit(["remote"]),
         ]);
         const status = parseGitStatus(out);

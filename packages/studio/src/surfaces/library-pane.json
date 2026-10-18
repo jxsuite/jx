@@ -17,7 +17,7 @@
     "fontFamily": "var(--jx-font-sans)",
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
-    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"fields-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
+    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"fields-slot\"], & [part=\"new-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
       "$description": "A `$switch` renders its own container, and none of these six is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
       "display": "contents"
     },
@@ -580,40 +580,52 @@
               }
             },
             {
-              "tagName": "jx-button",
+              "tagName": "div",
               "attributes": {
-                "part": "new"
+                "part": "new-slot",
+                "role": "none"
               },
-              "$props": {
-                "size": "sm",
-                "variant": "accent"
+              "$switch": {
+                "$ref": "#/state/newState"
               },
-              "onclick": {
-                "$prototype": "Function",
-                "body": [
-                  {
-                    "operator": "call",
-                    "target": {
-                      "$ref": "#/state/openNew"
-                    },
-                    "value": []
-                  }
-                ],
-                "description": "Creation is somebody else's flow: `file.new` opens Add new on this collection's kind, a page for Pages and an entry for a collection."
-              },
-              "children": [
-                {
-                  "tagName": "span",
-                  "textContent": "${state.newLabel}"
+              "cases": {
+                "shown": {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "new"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "variant": "accent"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/openNew"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Creation is somebody else's flow: `file.new` opens Add new on this collection's kind, a page for Pages and an entry for a collection."
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.newLabel}"
+                    }
+                  ]
                 }
-              ]
+              }
             }
           ]
         }
       ]
     },
     {
-      "$description": "The header line: where this collection's entries are published, derived from the page whose `$paths.contentType` names it. Pages and a file-backed collection draw nothing here.",
+      "$description": "The header line: where this collection's entries are published, derived from the page whose `$paths.contentType` names it. Pages draw nothing here.",
       "tagName": "div",
       "attributes": {
         "part": "page-slot",

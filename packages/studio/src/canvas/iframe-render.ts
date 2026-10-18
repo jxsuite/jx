@@ -631,6 +631,10 @@ export const STYLEBOOK_CSS = `
 .element-card-preview > * {
   max-width: 100%;
   margin: 0;
+}
+/* A list keeps its inline-start padding: its markers are drawn in it, and with none they are
+   clipped by the card ("1." shows as "."). Every other specimen sits flush in its card. */
+.element-card-preview > :not(ol, ul, menu) {
   padding: 0;
 }
 .element-card-preview > hr {

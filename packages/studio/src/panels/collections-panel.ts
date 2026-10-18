@@ -68,11 +68,21 @@ export function collectionGridId(key: string): string {
 
 /**
  * The declared collection an entry tab is writing, or `null`: the focused document is a file a
- * declared collection owns. Pages are Design's, so a page tab lists the collections.
+ * declared collection owns. Pages are Design's, so a page tab lists the collections. A file-backed
+ * collection's file is no entry either: its grid lists its records, so the panel lists the
+ * collections with that one selected.
  */
 export function writingCollection(tab: Tab | null): string | null {
   const key = collectionKeyOfPath(tab?.documentPath);
-  return key !== null && key !== PAGES_COLLECTION ? key : null;
+  return key !== null && key !== PAGES_COLLECTION && !contentCollection(key)?.fileBacked
+    ? key
+    : null;
+}
+
+/** The file-backed collection whose file a tab holds, or `null`. */
+function fileCollectionOf(tab: Tab): string | null {
+  const key = collectionKeyOfPath(tab.documentPath);
+  return key !== null && contentCollection(key)?.fileBacked === true ? key : null;
 }
 
 /** The collection the focused pane is showing, for the list's selected row, or `null`. */
@@ -87,7 +97,7 @@ function shownKey(tab: Tab | null): string | null {
   if (grid?.kind === "pages") {
     return PAGES_COLLECTION;
   }
-  return grid?.kind === "collection" ? grid.name : null;
+  return grid?.kind === "collection" ? grid.name : fileCollectionOf(tab);
 }
 
 /** The collection list. */

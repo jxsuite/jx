@@ -13,7 +13,7 @@
  */
 
 import { showSlashMenu } from "./slash-menu";
-import { componentInstance, importComponentInto } from "./insert-component";
+import { componentInstance, mutateImportComponent } from "./insert-component";
 import { defaultDef } from "../panels/shared";
 import { mutateInsertNode, transactDoc } from "../tabs/transact";
 import { activeTab } from "../workspace/workspace";
@@ -33,11 +33,11 @@ export function runInsertZoneAction(btn: HTMLElement, zone: InsertZone): void {
       const tab = activeTab.value;
       transactDoc(tab, (t) => {
         mutateInsertNode(t, insertPath, idx, def);
+        if (instance) {
+          mutateImportComponent(t, instance.tagName);
+        }
         t.session.selection = [newPath];
       });
-      if (tab && instance) {
-        importComponentInto(tab, instance.tagName);
-      }
     },
     showFilter: true,
   });

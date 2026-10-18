@@ -19,6 +19,7 @@ import { projectState } from "../store";
 import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-types";
 import { collectionForFile } from "./collection-match";
 import type { ContentSectionEntry } from "../types";
+import type { ContentTypeSchema } from "@jxsuite/schema/types";
 
 /**
  * Collection names whose singular is the word itself. The suffix rules below would make `news` a
@@ -119,6 +120,20 @@ export function contentCollections(): ContentCollection[] {
 /** Every collection key, for a command's `enum`: `pages` first, then the declared names. */
 export function contentCollectionKeys(): string[] {
   return contentCollections().map((collection) => collection.key);
+}
+
+/**
+ * The project-relative file a file-backed collection's entries are rows of (`./content/p.csv` →
+ * `content/p.csv`), or `null` for a collection whose source is a directory, or none at all.
+ */
+export function collectionSourceFile(key: string): string | null {
+  const source = contentSection()[key]?.source;
+  return source !== undefined && namesFile(source) ? source.replace(/^\.\//, "") : null;
+}
+
+/** The schema a collection declares, file-backed or not, or `null` for none. */
+export function declaredCollectionSchema(key: string): ContentTypeSchema | null {
+  return contentSection()[key]?.schema ?? null;
 }
 
 /** The collection with this key, or `null` when the project declares none by that name. */

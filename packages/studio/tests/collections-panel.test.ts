@@ -206,6 +206,30 @@ describe("the collection list", () => {
     expect(values.collections.map((row) => row.selected)).toEqual(["true", "false"]);
   });
 
+  test("a file-backed collection's file lists the collections, with that one marked", async () => {
+    const store = await import("../src/store");
+    const config = store.projectState!.projectConfig!;
+    config.content = {
+      posts: { format: "markdown", source: "./content" },
+      pricing: { format: "Csv", source: "./content/pricing.csv" },
+    };
+    const tab = openTab({
+      capabilities: { modes: ["grid", "source"] },
+      document: { tagName: "div" },
+      documentPath: "content/pricing.csv",
+      id: "content/pricing.csv",
+    });
+    // Its grid lists its records, so the panel is no entry list over them.
+    expect(writingCollection(tab)).toBeNull();
+    const values = collectionsPanelValues();
+    expect(values.body).toBe("list");
+    expect(values.collections.map((row) => [row.key, row.selected])).toEqual([
+      ["pages", "false"],
+      ["posts", "false"],
+      ["pricing", "true"],
+    ]);
+  });
+
   test("a row runs content.showCollection, and New collection runs Add new", async () => {
     await paint();
     parts("collection-row")[1]!.click();

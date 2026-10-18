@@ -60,11 +60,9 @@ export function workspaceOfTab(tab: Tab): WorkspaceId {
   if (tab.documentPath === PROJECT_CONFIG_PATH) {
     return "styles";
   }
-  const collection = collectionForFile(tab.documentPath);
-  if (collection && !collection.fileBacked) {
-    return "content";
-  }
-  return "design";
+  /* A file-backed collection's file too: its grid is where its records are written, and the
+     Content home opens it for any of them, so it must not carry the author off to Design. */
+  return collectionForFile(tab.documentPath) ? "content" : "design";
 }
 
 /** The editors in which a document is written on the canvas, where the Inspector applies. */
