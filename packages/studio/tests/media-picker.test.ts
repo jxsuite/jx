@@ -103,7 +103,19 @@ const defaultTree = {
 } satisfies Record<string, DirEntry[]>;
 
 /** The default tree's listing of one directory, empty for a directory it does not hold. */
+/**
+ * The project root's listing a tree implies: a folder for every top-level segment it names. The
+ * scan lists the root first and walks only the scan roots it finds there.
+ */
+function rootListing(tree: Record<string, DirEntry[]>): DirEntry[] {
+  const top = new Set(Object.keys(tree).map((dir) => dir.split("/")[0]!));
+  return [...top].map((name) => ({ name, path: name, type: "directory" }));
+}
+
 function defaultListing(dir: string): DirEntry[] {
+  if (dir === ".") {
+    return rootListing(defaultTree);
+  }
   return new Map<string, DirEntry[]>(Object.entries(defaultTree)).get(dir) ?? [];
 }
 
@@ -111,7 +123,7 @@ function installTree(tree: Record<string, DirEntry[]>, canvasUrl?: string) {
   installMockPlatform({
     ...(canvasUrl != null && { canvasUrl }),
     listDirectory: async (dir: string) => {
-      const entries = tree[dir];
+      const entries = dir === "." && !tree[dir] ? rootListing(tree) : tree[dir];
       if (!entries) {
         throw new Error(`ENOENT: ${dir}`);
       }
@@ -525,7 +537,13 @@ describe("the media browser", () => {
         x: 0,
         y: 0,
       },
-      { browseAll: () => {}, measure: () => {}, pick: () => {}, setFilter: () => {} },
+      {
+        browseAll: () => {},
+        measure: () => {},
+        pick: () => {},
+        setFilter: () => {},
+        showMore: () => {},
+      },
       null,
     );
     handle.close();
@@ -534,7 +552,28 @@ describe("the media browser", () => {
     expect(panel()).toBeNull();
   });
 
-  test("more than 50 entries are listed to the cap and the rest are counted", async () => {
+  test("more than 50 entries are listed to the cap, and the count is the control that lists the rest", async () => {
+    invalidateMediaCache();
+    const many: DirEntry[] = [];
+    for (let i = 0; i < 120; i++) {
+      many.push({ name: `pic-${i}.png`, path: `public/pic-${i}.png`, type: "file" });
+    }
+    installTree({ public: many });
+    await openBrowser();
+    expect(rows()).toHaveLength(50);
+    expect(moreLine()).toBe("Show 50 more");
+    panel()!.querySelector<HTMLElement>('[part="more"]')!.click();
+    await flush();
+    expect(rows()).toHaveLength(100);
+    expect(moreLine()).toBe("Show 20 more");
+    panel()!.querySelector<HTMLElement>('[part="more"]')!.click();
+    await flush();
+    // Every file the Media workspace lists, and no marker left over.
+    expect(rows()).toHaveLength(120);
+    expect(moreLine()).toBeNull();
+  });
+
+  test("a fresh panel starts at the cap again", async () => {
     invalidateMediaCache();
     const many: DirEntry[] = [];
     for (let i = 0; i < 60; i++) {
@@ -542,8 +581,14 @@ describe("the media browser", () => {
     }
     installTree({ public: many });
     await openBrowser();
+    panel()!.querySelector<HTMLElement>('[part="more"]')!.click();
+    await flush();
+    expect(rows()).toHaveLength(60);
+    closeFromPlatform();
+    await flush();
+    await openBrowser();
     expect(rows()).toHaveLength(50);
-    expect(moreLine()).toBe("…10 more");
+    expect(moreLine()).toBe("Show 10 more");
   });
 });
 
@@ -694,6 +739,23 @@ describe("browse list metadata", () => {
     expect(rafQueue).toHaveLength(afterFirst);
   });
 
+  test("an SVG's caption takes the size the file declares, not the decode's", async () => {
+    const { state } = installMockPlatform({
+      listDirectory: async (dir: string) =>
+        dir === "public"
+          ? [{ name: "mark.svg", path: "public/mark.svg", size: 400, type: "file" }]
+          : [{ name: "public", path: "public", type: "directory" }],
+    });
+    state.files.set(
+      "public/mark.svg",
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"></svg>',
+    );
+    await openBrowser();
+    loadThumb(firstThumb(), 150, 150);
+    await flush();
+    expect(captions()).toEqual(["64 × 64 · 400 B"]);
+  });
+
   test("a broken thumbnail reports 0 and is not written down as a measurement", async () => {
     await openBrowser();
     loadThumb(firstThumb(), 0, 0);
@@ -765,6 +827,9 @@ describe("what counts as the project's media", () => {
         if (dir === "content/notes") {
           return [{ name: "a.md", path: "content/notes/a.md", type: "file" }];
         }
+        if (dir === ".") {
+          return [{ name: "content", path: "content", type: "directory" }];
+        }
         return [];
       },
     });
@@ -774,12 +839,46 @@ describe("what counts as the project's media", () => {
     expect(asked).not.toContain("content/notes/images");
   });
 
-  test("a project with no content/ folder lists public/ alone", async () => {
-    installTree({ public: [{ name: "a.png", path: "public/a.png", type: "file" }] });
+  test("a project with no content/ folder lists public/ alone, and never asks for content/", async () => {
+    const asked: string[] = [];
+    const tree = new Map<string, DirEntry[]>([
+      [
+        ".",
+        [
+          { name: "pages", path: "pages", type: "directory" },
+          { name: "public", path: "public", type: "directory" },
+        ],
+      ],
+      ["public", [{ name: "a.png", path: "public/a.png", type: "file" }]],
+    ]);
+    installMockPlatform({
+      listDirectory: async (dir: string) => {
+        asked.push(dir);
+        return tree.get(dir) ?? [];
+      },
+    });
     projectMediaFiles();
     await flush();
     const listed = projectMediaFiles() ?? [];
     expect(listed.map((file) => file.file)).toEqual(["public/a.png"]);
+    expect(asked).not.toContain("content");
+  });
+
+  test("an unreadable project root still walks both scan roots", async () => {
+    const asked: string[] = [];
+    installMockPlatform({
+      listDirectory: async (dir: string) => {
+        asked.push(dir);
+        if (dir === "public") {
+          return [{ name: "a.png", path: "public/a.png", type: "file" }];
+        }
+        throw new Error(`ENOENT: ${dir}`);
+      },
+    });
+    projectMediaFiles();
+    await flush();
+    expect((projectMediaFiles() ?? []).map((file) => file.file)).toEqual(["public/a.png"]);
+    expect(asked).toEqual(expect.arrayContaining([".", "public", "content"]));
   });
 
   test("isMediaScanPath names exactly the two trees the scan walks", () => {

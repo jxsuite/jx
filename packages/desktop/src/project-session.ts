@@ -8,7 +8,7 @@
  * functions (used by the chromium/ dev launcher and the test suite) by delegating to it.
  */
 
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { handleResolve, handleServerFunction } from "@jxsuite/server/resolve";
@@ -1011,7 +1011,13 @@ export function createProjectSession(initialRoot: string | null) {
     const root = requireRoot();
     const abs = resolve(root, params.path);
     assertReachable(abs, root);
-    await rm(abs, { force: true, maxRetries: 3, retryDelay: 100 });
+    /* A directory is removed only when it is EMPTY, never recursively, as the dev server's route
+       does (`server.md` §4.1): a folder of files is a decision about every file in it. A missing
+       path stays a no-op, which is what `force` gave a file. */
+    const entry = await stat(abs).catch(() => null);
+    await (entry?.isDirectory()
+      ? rmdir(abs)
+      : rm(abs, { force: true, maxRetries: 3, retryDelay: 100 }));
   }
 
   async function renameFile(params: { from: string; to: string }): Promise<RenameReport> {

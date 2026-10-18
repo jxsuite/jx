@@ -211,7 +211,17 @@ describe("the words", () => {
     );
     expect(
       usageHeadline(result({ files: [{ count: 1, path: "components/b.json", refs: [] }] })),
-    ).toBe("Used on 1 other file");
+    ).toBe("Used in 1 file");
+    expect(
+      usageHeadline(
+        result({
+          files: [
+            { count: 1, path: "components/b.json", refs: [] },
+            { count: 2, path: "layouts/base.json", refs: [] },
+          ],
+        }),
+      ),
+    ).toBe("Used in 2 files");
   });
 
   test("delete and rename say different things about the same count", () => {

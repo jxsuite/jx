@@ -533,6 +533,23 @@ describe("the detail pane", () => {
     expect(text("usage-count")).toBe("2");
   });
 
+  test("follows the grid: a search that hides the selection hides its detail, and clearing it brings both back", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    expect(text("detail-name")).toBe("hero.jpg");
+    const search = part<HTMLInputElement>("input", part("search"));
+    search.value = "zzz";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    expect(tiles()).toHaveLength(0);
+    expect(text("detail-hint")).toBe("Select a file to see its details.");
+    search.value = "";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    expect(text("detail-name")).toBe("hero.jpg");
+  });
+
   test("a usage link opens the document that uses the file", async () => {
     const opened = spyOn(files, "openFileInTab").mockImplementation(async () => {});
     try {
@@ -690,6 +707,29 @@ describe("uploads", () => {
     expect(state.calls).toContainEqual(["uploadFile", "public/media/logo.png", expect.anything()]);
     expect(input.value).toBe("");
     expect(selectedFile()).toBe("public/media/logo.png");
+    // And described: the detail pane resolves the selection against the re-read listing.
+    expect(text("detail-name")).toBe("logo.png");
+  });
+
+  test("the uploaded file's tile is scrolled into view, wherever the sort puts it", async () => {
+    const scrolled: (string | undefined)[] = [];
+    const scroll = spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      function recordScroll(this: HTMLElement) {
+        scrolled.push(this.dataset.file);
+      },
+    );
+    try {
+      await mountHome();
+      choose(part<HTMLInputElement>("upload-input", part("upload")), [testFile("logo.png")]);
+      await settle(10);
+      expect(scrolled).toEqual(["public/media/logo.png"]);
+      // Once: a later repaint does not drag the grid back to it.
+      pointer(tileOf("public/hero.jpg"), "click");
+      await settle();
+      expect(scrolled).toEqual(["public/media/logo.png"]);
+    } finally {
+      scroll.mockRestore();
+    }
   });
 
   test("a file dropped anywhere on the library uploads, and the affordance is a state", async () => {
@@ -760,6 +800,25 @@ describe("uploads", () => {
     choose(part<HTMLInputElement>("upload-input", part("upload")), []);
     await settle();
     expect(state.calls.filter(([name]) => name === "uploadFile")).toEqual([]);
+  });
+});
+
+describe("an SVG's size", () => {
+  test("is read from the file when its tile loads, not taken from the decode", async () => {
+    tree = treeOf({
+      public: [{ name: "mark.svg", path: "public/mark.svg", size: 400, type: "file" }],
+    });
+    state.files.set(
+      "public/mark.svg",
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"></svg>',
+    );
+    invalidateMediaCache();
+    await mountHome();
+    expect(text("tile-caption", tileOf("public/mark.svg"))).toBe("400 B");
+    // The thumbnail decodes at the browser's default object size: not a fact about the file.
+    part("thumb-img", tileOf("public/mark.svg")).dispatchEvent(new Event("load"));
+    await settle();
+    expect(text("tile-caption", tileOf("public/mark.svg"))).toBe("64 × 64 · 400 B");
   });
 });
 
@@ -847,6 +906,84 @@ describe("Delete", () => {
     topDialog()!.dispatchEvent(new Event("confirm"));
     expect(await pending).toBe(true);
     expect(workspace.tabs.has("public/media/menu.pdf")).toBe(false);
+  });
+
+  /** A backend whose delete really removes the entry, so a re-read sees the folder emptied. */
+  function installRemovingDelete(refuseFolders = false): void {
+    ({ state } = installMockPlatform({
+      deleteFile: async (path: string) => {
+        if (refuseFolders && tree.has(path)) {
+          throw new Error("folders are not deleted here");
+        }
+        state.calls.push(["deleted", path]);
+        const dir = path.slice(0, path.lastIndexOf("/"));
+        tree.set(
+          dir,
+          (tree.get(dir) ?? []).filter((entry) => entry.path !== path),
+        );
+        tree.delete(path);
+      },
+      listDirectory: async (dir: string) => {
+        const entries = tree.get(dir);
+        if (!entries) {
+          throw new Error(`ENOENT: ${dir}`);
+        }
+        return entries;
+      },
+    }));
+  }
+
+  test("deleting the last file of public/media/ takes the folder the upload made", async () => {
+    tree = treeOf({
+      public: [{ name: "media", path: "public/media", type: "directory" }],
+      "public/media": [{ name: "only.png", path: "public/media/only.png", type: "file" }],
+    });
+    installRemovingDelete();
+    const pending = deleteMediaFile("public/media/only.png");
+    await settle();
+    topDialog()!.dispatchEvent(new Event("confirm"));
+    expect(await pending).toBe(true);
+    expect(state.calls.filter(([name]) => name === "deleted")).toEqual([
+      ["deleted", "public/media/only.png"],
+      ["deleted", "public/media"],
+    ]);
+  });
+
+  test("a backend that keeps the emptied folder still reports the file deleted", async () => {
+    tree = treeOf({
+      "public/media": [{ name: "only.png", path: "public/media/only.png", type: "file" }],
+    });
+    installRemovingDelete(true);
+    const pending = deleteMediaFile("public/media/only.png");
+    await settle();
+    topDialog()!.dispatchEvent(new Event("confirm"));
+    expect(await pending).toBe(true);
+    expect(state.calls.filter(([name]) => name === "deleted")).toEqual([
+      ["deleted", "public/media/only.png"],
+    ]);
+    expect(toasts.map((toast) => toast.message)).toContain("Deleted only.png");
+  });
+
+  test("a folder that still holds files, or one the author made, is left standing", async () => {
+    tree = treeOf({
+      public: [{ name: "brand", path: "public/brand", type: "directory" }],
+      "public/brand": [{ name: "logo.png", path: "public/brand/logo.png", type: "file" }],
+      "public/media": [
+        { name: "a.png", path: "public/media/a.png", type: "file" },
+        { name: "b.png", path: "public/media/b.png", type: "file" },
+      ],
+    });
+    installRemovingDelete();
+    for (const path of ["public/brand/logo.png", "public/media/a.png"]) {
+      const pending = deleteMediaFile(path);
+      await settle();
+      topDialog()!.dispatchEvent(new Event("confirm"));
+      expect(await pending).toBe(true);
+    }
+    expect(state.calls.filter(([name]) => name === "deleted")).toEqual([
+      ["deleted", "public/brand/logo.png"],
+      ["deleted", "public/media/a.png"],
+    ]);
   });
 
   test("a backend that refuses the delete is reported and nothing moves", async () => {
@@ -1195,7 +1332,8 @@ describe("pick mode", () => {
     choose(part<HTMLInputElement>("upload-input", dialog()), [testFile("new.png")]);
     await settle();
     expect(state.calls).toContainEqual(["uploadFile", "public/media/new.png", expect.anything()]);
-    expect(useButton(dialog()).textContent.trim()).toBe("Use image");
+    // The footer follows the re-read listing: the upload is selected before the listing holds it.
+    expect(useButton(dialog()).textContent.trim()).toBe("Use new.png");
   });
 
   test("opening a second picker replaces the first, and closing twice is harmless", async () => {

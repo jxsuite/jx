@@ -92,14 +92,14 @@ export function passesFilter(
   }
 }
 
-/** Whether a file matches a search: its name or its path, case-insensitively. */
+/**
+ * Whether a file matches a search: its NAME, case-insensitively, as the field's "Search by name…"
+ * says. Not its path: every path starts `public/` or `content/`, so a one-letter search for "b" or
+ * "c" kept the whole library and looked broken.
+ */
 export function matchesQuery(file: LibraryMediaFile, query: string): boolean {
   const needle = query.trim().toLowerCase();
-  return (
-    needle === "" ||
-    file.name.toLowerCase().includes(needle) ||
-    file.file.toLowerCase().includes(needle)
-  );
+  return needle === "" || file.name.toLowerCase().includes(needle);
 }
 
 /**

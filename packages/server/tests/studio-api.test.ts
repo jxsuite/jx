@@ -751,9 +751,33 @@ describe("file — upload", () => {
   // Upload creates directories that are not part of the committed fixture tree; drop them so a test
   // Run leaves the working copy clean.
   afterAll(() => {
-    for (const dir of ["public", "content"]) {
+    for (const dir of ["public", "content", "nested-project"]) {
       rmSync(join(FIXTURES, dir), { force: true, recursive: true });
     }
+  });
+
+  /* §4.1's path space: parameters are server-root-relative, every reported path is relative to
+     the ACTIVE PROJECT. The upload, write and delete replies reported the server-root path, so a
+     project opened below the served folder got `<project>/public/media/a.png` back, a path that is
+     not in its own listing: the Media library could not select what it had just uploaded. */
+  test("upload, write and delete report the path in the active project's space", async () => {
+    const project = join(FIXTURES, "nested-project");
+    const target = "nested-project/public/media/a.png";
+    const send = async (method: string, route: string): Promise<string | undefined> => {
+      const url = new URL(`http://localhost/__studio/${route}?path=${encodeURIComponent(target)}`);
+      const init: RequestInit = { method };
+      if (method !== "DELETE") {
+        init.body = new Uint8Array([1]);
+      }
+      const res = await callApi(new Request(url, init), url, FIXTURES, project);
+      expect(res.status).toBe(200);
+      const body: { path?: string } = await res.json();
+      return body.path;
+    };
+    expect(await send("POST", "file/upload")).toBe("public/media/a.png");
+    expect(await send("PUT", "file")).toBe("public/media/a.png");
+    expect(await send("DELETE", "file")).toBe("public/media/a.png");
+    expect(existsSync(join(project, "public/media/a.png"))).toBe(false);
   });
 
   test("writes raw binary bytes, not a text transcode", async () => {
@@ -807,6 +831,25 @@ describe("file — delete", () => {
     const res = await callApi(req, url, FIXTURES);
     const data = await res.json();
     expect(data.ok).toBe(true);
+  });
+
+  test("removes an empty folder, and refuses a folder that still holds files", async () => {
+    const dir = join(FIXTURES, "emptied-folder");
+    mkdirSync(join(dir, "inner"), { recursive: true });
+    writeFileSync(join(dir, "kept.txt"), "kept", "utf8");
+    const remove = async (path: string): Promise<number> => {
+      const url = new URL(`http://localhost/__studio/file?path=${encodeURIComponent(path)}`);
+      const res = await callApi(new Request(url, { method: "DELETE" }), url, FIXTURES);
+      return res.status;
+    };
+    try {
+      expect(await remove("emptied-folder/inner")).toBe(200);
+      expect(existsSync(join(dir, "inner"))).toBe(false);
+      expect(await remove("emptied-folder")).toBe(409);
+      expect(existsSync(join(dir, "kept.txt"))).toBe(true);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
   });
 
   test("returns 404 for nonexistent file", async () => {

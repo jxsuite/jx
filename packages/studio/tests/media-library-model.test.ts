@@ -83,10 +83,11 @@ describe("the filters", () => {
 });
 
 describe("the search", () => {
-  test("matches the name or the path, ignoring case and surrounding space", () => {
+  test("matches the name alone, ignoring case and surrounding space", () => {
     const [hero] = FILES;
     expect(matchesQuery(hero!, "  HERO ")).toBe(true);
-    expect(matchesQuery(hero!, "public/")).toBe(true);
+    expect(matchesQuery(hero!, "public/")).toBe(false);
+    expect(matchesQuery(hero!, "b")).toBe(false);
     expect(matchesQuery(hero!, "")).toBe(true);
     expect(matchesQuery(hero!, "clip")).toBe(false);
   });

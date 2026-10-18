@@ -31,7 +31,13 @@ import { effect, effectScope } from "../reactivity";
 import { paneRegion } from "../ui/regions";
 import { localDay } from "../utils/local-day";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
-import { formatBytes, loadMediaMeta, peekMediaMeta, recordImageSize } from "../files/media-meta";
+import {
+  formatBytes,
+  loadMediaMeta,
+  mediaMetaSettled,
+  peekMediaMeta,
+  recordImageSize,
+} from "../files/media-meta";
 import { FONT_EXTENSIONS, extensionOf, mediaKind } from "../files/media-upload";
 import { loadMediaUsages, mediaUsageHeadline, peekMediaUsages } from "../files/media-usage";
 import { mountMediaSurface } from "../surfaces/media-pane";
@@ -219,7 +225,7 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
     const usage = peekMediaUsages(path);
     /* Asked on the first paint that finds it missing, never on every paint: both loaders cache and
        de-duplicate in flight, and both repaint through `redraw` when they land. */
-    if (meta === null) {
+    if (!mediaMetaSettled(path)) {
       void loadMediaMeta(path).then(redraw);
     }
     if (usage === null || usage.status === "pending") {

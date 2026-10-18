@@ -87,9 +87,7 @@
           "fontSize": "var(--jx-text-xs)"
         },
         "& [part=\"more\"]": {
-          "margin": "0",
-          "color": "var(--fg-dim)",
-          "fontSize": "var(--jx-text-xs)"
+          "justifyContent": "flex-start"
         },
         "& [part=\"browse-all\"]": {
           "$description": "The last row, set apart by a rule: it does not pick a file, it opens the picker that shows all of them.",
@@ -295,12 +293,34 @@
           },
           "cases": {
             "shown": {
-              "$description": "A truncated list says so. Fifty rows is the cap the list has always had; the sentence is what keeps the cap from reading as \"that is all there is\".",
-              "tagName": "p",
+              "$description": "A truncated list says so, and the marker is a control (the rule studio.md §5.6 states for every truncation marker): it raises the cap by fifty, so every file the Media workspace lists can be reached from here without a search. Inert \"…21 more\" text was the panel holding the answer and not showing it.",
+              "tagName": "jx-button",
               "attributes": {
                 "part": "more"
               },
-              "textContent": "${state.moreLabel}"
+              "$props": {
+                "variant": "secondary",
+                "size": "sm",
+                "quiet": true
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/showMore"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "${state.moreLabel}"
+                }
+              ]
             }
           }
         },

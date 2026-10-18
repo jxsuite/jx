@@ -49,6 +49,8 @@ import {
 } from "../files/media-upload";
 import {
   invalidateMediaMeta,
+  loadMediaMeta,
+  mediaMetaSettled,
   mediaMetaSummary,
   peekMediaMeta,
   recordImageSize,
@@ -175,6 +177,25 @@ async function collectCollectionImages(
   return results;
 }
 
+/**
+ * Which of the two scan roots, `public` and `content`, the project root holds as folders. A root
+ * listing that fails says nothing either way, so both are then walked, each tolerating its own
+ * absence as it always has.
+ */
+async function projectScanRoots(platform: ReturnType<typeof getPlatform>): Promise<Set<string>> {
+  try {
+    const entries = await platform.listDirectory(".");
+    return new Set(
+      entries
+        .filter((entry) => entry.type === "directory")
+        .map((entry) => entry.name)
+        .filter((name) => name === "public" || name === "content"),
+    );
+  } catch {
+    return new Set(["public", "content"]);
+  }
+}
+
 /** The walk in flight, so every caller that asks while it runs shares it instead of starting one. */
 let _mediaLoading: Promise<void> | null = null;
 /** Bumped by {@link invalidateMediaCache}, so a walk that started before it cannot land after it. */
@@ -218,9 +239,13 @@ function loadMediaCache(): Promise<void> {
   const epoch = _mediaEpoch;
   const walk = (async () => {
     const platform = getPlatform();
+    /* Descend only into the scan roots the project actually has: a project with no `content/` (a
+       site of pages alone) or no `public/` would otherwise ask the backend to list a folder that
+       does not exist, which is a 404 in the console on every visit to Media. */
+    const roots = await projectScanRoots(platform);
     const [published, collections] = await Promise.all([
-      collectMedia("public", platform),
-      collectCollectionImages(platform),
+      roots.has("public") ? collectMedia("public", platform) : [],
+      roots.has("content") ? collectCollectionImages(platform) : [],
     ]);
     if (epoch !== _mediaEpoch) {
       // Superseded: this listing is older than the invalidation, and a newer walk owns the cache.
@@ -302,13 +327,19 @@ export async function openFullMediaPicker(
 
 // ─── The browser ─────────────────────────────────────────────────────────────
 
-/** The most rows the panel lists. Everything past it is counted rather than drawn. */
+/**
+ * How many rows the panel lists at first, and how many more each **Show N more** adds. Past the cap
+ * the rows are counted, and the count is the control that lists them, so every file the Media
+ * workspace has can be reached from here: the cap bounds the first paint, never the answer.
+ */
 const BROWSE_LIMIT = 50;
 
 /** The open panel, and what a pick in it commits. One at a time. */
 let _browser: MediaBrowserSurfaceHandle | null = null;
 let _browserCommit: ((value: string) => void) | null = null;
 let _browserFilter = "";
+/** How many rows the open panel lists; raised by Show more, and never lowered while it is open. */
+let _browserLimit = BROWSE_LIMIT;
 let _browserOptions: MediaPickOptions = {};
 /** Where the panel was opened, kept so a filter keystroke does not move it. */
 let _browserOrigin = { x: 0, y: 0 };
@@ -322,7 +353,7 @@ function browserView(): MediaBrowserView {
         (m) => m.ref.toLowerCase().includes(query) || m.name.toLowerCase().includes(query),
       )
     : offered;
-  const listed = filtered.slice(0, BROWSE_LIMIT);
+  const listed = filtered.slice(0, _browserLimit);
   const rows: MediaBrowserRow[] = listed.map((m) => {
     const caption = mediaMetaSummary(peekMediaMeta(m.file));
     return {
@@ -347,8 +378,8 @@ function browserView(): MediaBrowserView {
           ? "No images in this project yet"
           : "No media in this project yet",
     filter: _browserFilter,
-    moreLabel: `…${filtered.length - BROWSE_LIMIT} more`,
-    moreState: filtered.length > BROWSE_LIMIT ? "shown" : "hidden",
+    moreLabel: `Show ${Math.min(filtered.length - _browserLimit, BROWSE_LIMIT)} more`,
+    moreState: filtered.length > _browserLimit ? "shown" : "hidden",
     rows,
     rowsState: rows.length > 0 ? "listed" : "empty",
     x: _browserOrigin.x,
@@ -362,6 +393,7 @@ function dismissMediaPickerPopover() {
   _browser = null;
   _browserCommit = null;
   _browserFilter = "";
+  _browserLimit = BROWSE_LIMIT;
   open?.close();
 }
 
@@ -378,7 +410,14 @@ let _sizeRepaint = 0;
  * because the measurement has not changed.
  */
 function noteImageSize(file: string, width: number, height: number) {
-  if (!recordImageSize(file, width, height) || _sizeRepaint !== 0) {
+  if (!recordImageSize(file, width, height)) {
+    if (!mediaMetaSettled(file)) {
+      // An SVG's decode is not its size: the file says what it is, read once.
+      void loadMediaMeta(file).then(() => _browser?.update(browserView()));
+    }
+    return;
+  }
+  if (_sizeRepaint !== 0) {
     return;
   }
   _sizeRepaint = requestAnimationFrame(() => {
@@ -429,12 +468,17 @@ export function showMediaPickerPopover(
         _browser = null;
         _browserCommit = null;
         _browserFilter = "";
+        _browserLimit = BROWSE_LIMIT;
       },
       measure: noteImageSize,
       pick: (path: string) => {
         const commit = _browserCommit;
         dismissMediaPickerPopover();
         commit?.(path);
+      },
+      showMore: () => {
+        _browserLimit += BROWSE_LIMIT;
+        _browser?.update(browserView());
       },
       setFilter: (value: string) => {
         _browserFilter = value;

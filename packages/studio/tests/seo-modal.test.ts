@@ -321,7 +321,8 @@ describe("the favicon row", () => {
       listDirectory: async (dir: string) =>
         dir === "public"
           ? [{ name: "hero.jpg", path: "public/hero.jpg", size: 12, type: "file" }]
-          : [],
+          : // The project root, which the media scan reads first to find its scan roots.
+            [{ name: "public", path: "public", type: "directory" }],
     });
     invalidateMediaCache();
     await mountAndFlush();

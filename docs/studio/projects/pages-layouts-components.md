@@ -75,7 +75,7 @@ Once a component is placed on a few pages, the useful question stops being "what
 The same answer is reachable by name: **Find Usages** in the command palette, or in the right-click menu on a component.
 
 :::doc-tip
-The count separates **pages** from **other files** on purpose. A component used only inside another component has not been placed on your site yet; a component used on seven pages is load-bearing.
+The count separates **pages** from **other files** on purpose. A component used only inside another component has not been placed on your site yet, and its line says so plainly: **Used in 1 file**, with no page in it. A component used on seven pages is load-bearing.
 :::
 
 ### Before you delete, rename or convert

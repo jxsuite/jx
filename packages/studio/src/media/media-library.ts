@@ -25,10 +25,11 @@
  * uploads where that document's own uploads go (`uploadDirFor`: a collection entry keeps its media
  * in `content/<c>/images/`). Either way the destination is named on the Upload label before the
  * drop, only files the listing will show are uploaded, and the first upload is selected at once, so
- * the detail pane describes it the moment the re-read listing has it. **Replace** is the one
- * overwrite (`replaceAsset`), offered only files of the replaced one's own type; **Delete** goes
- * through the same confirmation as every delete, which states the usage line
- * (`files/file-ops.ts`).
+ * the detail pane describes it, and its tile scrolls into view, the moment the re-read listing has
+ * it. **Replace** is the one overwrite (`replaceAsset`), offered only files of the replaced one's
+ * own type; **Delete** goes through the same confirmation as every delete, which states the usage
+ * line (`files/file-ops.ts`), and a delete that empties an upload destination (`public/media/`, a
+ * collection's `images/`) takes the folder the upload created with it.
  *
  * **This module is the flow; `surfaces/media-library.json` is the markup.** Every decision is made
  * here and handed to the document as strings and discriminants.
@@ -48,6 +49,7 @@ import { createPreviewObserver } from "../browse/library-preview";
 import {
   DEFAULT_MEDIA_DIR,
   announceMediaChanged,
+  isUploadDestination,
   replaceAccept,
   replaceAsset,
   uploadAccept,
@@ -56,6 +58,7 @@ import {
 } from "../files/media-upload";
 import {
   loadMediaMeta,
+  mediaMetaSettled,
   mediaMetaSummary,
   peekMediaMeta,
   recordImageSize,
@@ -74,7 +77,9 @@ import {
   gridStep,
   isMediaFilterKey,
   isMediaSortKey,
+  matchesQuery,
   mediaFilterLabel,
+  passesFilter,
   visibleMedia,
 } from "./media-library-model";
 import { mountMediaLibrarySurface } from "../surfaces/media-library";
@@ -235,6 +240,11 @@ interface LibraryMount {
   onPick: ((file: ProjectMediaFile) => void) | null;
   /** Pick mode: tell the dialog the selection moved, so its footer can say what Use will use. */
   onSelect: (() => void) | null;
+  /**
+   * A file to scroll into view once its tile is drawn: an upload, which the re-read listing may not
+   * hold yet when it is selected, and which a sort can place anywhere in the grid.
+   */
+  reveal: string | null;
   disposed: boolean;
 }
 
@@ -278,7 +288,23 @@ function unlistenIfIdle(): void {
 function redraw(mount: LibraryMount): void {
   if (!mount.disposed) {
     mount.handle?.update(libraryView(mount));
+    // A pick dialog's footer names what Use will use, which a search or a filter can take away.
+    mount.onSelect?.();
+    revealPending(mount);
     scheduleSweep(mount);
+  }
+}
+
+/**
+ * Scroll the pending {@link LibraryMount.reveal} file's tile into view, once it is in the document.
+ * Like the focus move, it reaches only for the tile the surface announced.
+ */
+function revealPending(mount: LibraryMount): void {
+  const file = mount.reveal;
+  const tile = file === null ? undefined : mount.tiles.get(file);
+  if (tile?.isConnected) {
+    mount.reveal = null;
+    tile.scrollIntoView({ block: "nearest" });
   }
 }
 
@@ -373,17 +399,34 @@ function offeredFilters(mount: LibraryMount): typeof MEDIA_FILTERS {
   );
 }
 
-/** The selected file, when it is one the listing still has. */
+/**
+ * The selected file, when the grid shows it: the listing still has it, the mount offers it, and the
+ * filter and the search keep it.
+ *
+ * The selection itself is kept (clearing the search brings the file back, still selected), but the
+ * detail pane and a pick's **Use** follow the grid: describing, or committing, a file the reader's
+ * own search has just hidden is acting on something no longer on screen.
+ */
 export function selectedEntry(mount: {
   choice: LibraryChoice;
   images: boolean;
 }): ProjectMediaFile | null {
-  const { selected } = mount.choice;
+  const { filter, query, selected } = mount.choice;
   if (selected === null) {
     return null;
   }
   const entry = projectMediaFiles()?.find((file) => file.file === selected) ?? null;
-  return entry && (!mount.images || entry.isImage) ? entry : null;
+  if (entry === null || (mount.images && !entry.isImage)) {
+    return null;
+  }
+  const modelled: LibraryMediaFile = {
+    bytes: null,
+    file: entry.file,
+    kind: entry.kind,
+    modified: null,
+    name: entry.name,
+  };
+  return passesFilter(modelled, filter, _unused) && matchesQuery(modelled, query) ? entry : null;
 }
 
 /** What the grid says in place of tiles. */
@@ -550,7 +593,7 @@ function detailView(
   const usage = peekMediaUsages(entry.file);
   /* Asked on the first paint that finds them missing: both loaders cache and de-duplicate in
      flight, and both repaint when they land. */
-  if (meta === null) {
+  if (!mediaMetaSettled(entry.file)) {
     void loadMediaMeta(entry.file).then(redrawAll);
   }
   if (usage === null || usage.status === "pending") {
@@ -618,11 +661,10 @@ function openPicker(input: HTMLInputElement): void {
   }
 }
 
-/** Select `file` in a mount, and say so to a pick dialog's footer. */
+/** Select `file` in a mount; the repaint says so to a pick dialog's footer. */
 function select(mount: LibraryMount, file: string | null): void {
   mount.choice.selected = file;
   redraw(mount);
-  mount.onSelect?.();
 }
 
 async function uploadInto(mount: LibraryMount, files: FileList | File[]): Promise<void> {
@@ -642,6 +684,7 @@ async function uploadInto(mount: LibraryMount, files: FileList | File[]): Promis
     mount.choice.filter = mount.images ? "image" : "all";
   }
   mount.choice.query = "";
+  mount.reveal = first.path;
   select(mount, first.path);
 }
 
@@ -657,8 +700,8 @@ export async function deleteMediaFile(path: string): Promise<boolean> {
   if (!(await confirmFileDelete({ name, path }))) {
     return false;
   }
+  const { markLocalMutation } = await import("../files/fs-events");
   try {
-    const { markLocalMutation } = await import("../files/fs-events");
     markLocalMutation(path);
     await getPlatform().deleteFile(path);
   } catch (error) {
@@ -683,9 +726,42 @@ export async function deleteMediaFile(path: string): Promise<boolean> {
   if (homeChoice.selected === path) {
     homeChoice.selected = null;
   }
-  await announceMediaChanged(dirName(path));
+  const dir = dirName(path);
+  const pruned = await pruneEmptiedDestination(dir, markLocalMutation);
+  // A pruned folder is gone, so the Files tree re-reads the folder that held it.
+  await announceMediaChanged(pruned ? dirName(dir) : dir);
   notify.success(`Deleted ${name}`);
   return true;
+}
+
+/**
+ * Take away a folder an upload created once a delete has emptied it, and say whether it went.
+ *
+ * Only an upload destination (`public/media`, a collection's `images`): those exist because a
+ * Studio upload made them, and an author who uploads one file and deletes it again should not be
+ * left a folder nobody asked for. A folder the author made is theirs, emptied or not. A backend
+ * that refuses (a dotfile the listing does not show, a host with no folder delete) leaves it, which
+ * costs nothing a reader can see: an empty folder lists no media.
+ */
+async function pruneEmptiedDestination(
+  dir: string,
+  markLocalMutation: (path: string) => void,
+): Promise<boolean> {
+  if (!isUploadDestination(dir)) {
+    return false;
+  }
+  const platform = getPlatform();
+  try {
+    const left = await platform.listDirectory(dir);
+    if (left.length > 0) {
+      return false;
+    }
+    markLocalMutation(dir);
+    await platform.deleteFile(dir);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function actionsFor(mount: LibraryMount) {
@@ -753,6 +829,9 @@ function actionsFor(mount: LibraryMount) {
     measure: (file: string, width: number, height: number) => {
       if (recordImageSize(file, width, height)) {
         redrawAll();
+      } else if (!mediaMetaSettled(file)) {
+        // An SVG's decode is not its size: the file says what it is, read once.
+        void loadMediaMeta(file).then(redrawAll);
       }
     },
     openDocument: (path: string) => {
@@ -893,6 +972,7 @@ function createMount(
     onPick: null,
     onSelect: null,
     paneId,
+    reveal: null,
     region,
     sweepTimer: null,
     tiles: new Map(),

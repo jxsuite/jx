@@ -171,6 +171,16 @@ export function uploadDirFor(documentPath: string | null): string {
 }
 
 /**
+ * Whether `dir` is a folder {@link uploadDirFor} answers: `public/media`, or a collection's
+ * `content/<collection>/images`. An upload creates these on its own, so they are the folders a
+ * media delete takes away again once it has emptied them (`media/media-library.ts`).
+ */
+export function isUploadDestination(dir: string): boolean {
+  const normalized = dir.replaceAll("\\", "/");
+  return normalized === DEFAULT_MEDIA_DIR || /^content\/[^/]+\/images$/.test(normalized);
+}
+
+/**
  * The reference to write into a document for a file at `destPath`.
  *
  * `public/` is served from the site root, so its contents get a root-relative `/name`. A content

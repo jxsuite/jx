@@ -1069,8 +1069,17 @@ describe("file endpoints — error paths", () => {
     expect(res.status).toBe(400);
   });
 
-  test("DELETE returns 500 for a directory", async () => {
-    const url = new URL(`http://localhost/__studio/file?path=a-directory`);
+  test("DELETE removes an empty directory (server.md §4.1)", async () => {
+    mkdirSync(join(ROOT, "an-empty-directory"), { recursive: true });
+    const url = new URL(`http://localhost/__studio/file?path=an-empty-directory`);
+    const req = new Request(url, { method: "DELETE" });
+    const res = await callApi(req, url);
+    expect(res.status).toBe(200);
+    expect(existsSync(join(ROOT, "an-empty-directory"))).toBe(false);
+  });
+
+  test("DELETE returns 500 for a path through a file", async () => {
+    const url = new URL(`http://localhost/__studio/file?path=blocker.txt/child`);
     const req = new Request(url, { method: "DELETE" });
     const res = await callApi(req, url);
     expect(res.status).toBe(500);

@@ -419,6 +419,39 @@ describe("a workspace with no Navigator keeps its home within reach", () => {
     expect(activeTab.value?.id).toBe(workspaceHomeTabId("media"));
   });
 
+  test("closing the home itself falls back to the home, so the stage is never a dead end", () => {
+    followPlacingHomes();
+    switchWorkspace("media", deps);
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("media"));
+    closeTab(workspaceHomeTabId("media"));
+    expect(shell.workspace).toBe("media");
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("media"));
+  });
+
+  test("closing the viewer after the home was closed still lands on the home", () => {
+    followPlacingHomes();
+    tab("public/logo.png", { mode: "media" });
+    closeTab(workspaceHomeTabId("media"));
+    expect(activeTab.value?.id).toBe("public/logo.png");
+    closeTab("public/logo.png");
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("media"));
+  });
+
+  test("a project switch's close-all plants no home", () => {
+    followPlacingHomes();
+    switchWorkspace("publish", deps);
+    closeAllTabs();
+    expect(workspace.tabs.size).toBe(0);
+  });
+
+  test("closing Content's last tab leaves its stage to the Collections panel", () => {
+    followPlacingHomes();
+    tab("content/posts/one.md");
+    closeTab("content/posts/one.md");
+    expect(activeTab.value).toBeNull();
+    expect(workspace.tabs.has(workspaceHomeTabId("content"))).toBe(false);
+  });
+
   test("a workspace with a Navigator is left to it: an entry is not given the Content home", () => {
     followPlacingHomes();
     tab("content/posts/one.md");

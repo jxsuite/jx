@@ -38,7 +38,7 @@ The Media workspace shows every media file in the project in three columns: filt
 ![The Media workspace, with a file being dragged onto it to upload](../../images/media-upload.png)
 
 - **Filters**: **All media**, **Images**, **Video**, **Audio**, **Documents** and **Fonts**, each with its count, and **Unused**, the files no page, component or entry refers to. Unused has no number until you choose it: Studio then asks the reference search about every file, one at a time, and the count appears when the last answer is in. The search reads the project once and answers every file from what it read, so even a library of hundreds of images is counted in seconds. Choosing another filter stops the count, and the answers already in are kept for the next time you choose Unused. A file whose search failed is never counted as unused. Saving, renaming or deleting a document asks again, so a picture you have just placed on a page leaves Unused.
-- **Search and sort**: the search field matches a file's name or path. Sort by **Newest**, **Name** or **Size** (largest first).
+- **Search and sort**: the search field matches a file's name, so typing `b` finds the files with a `b` in their name rather than every file under `public/`. Sort by **Newest**, **Name** or **Size** (largest first). The details pane follows what the grid shows: a search or a filter that hides the selected file hides its details too, and clearing it brings both back.
 - **The grid**: thumbnails load as their tiles scroll into view. Click a tile to select it, or :kbd[Tab] onto the grid, which selects the tile it lands on. Use the arrow keys to move the selection (:kbd[Home] and :kbd[End] go to the ends of a row, with :kbd[Ctrl] to the ends of the grid), and press :kbd[Enter] or double-click to open the file in its viewer.
 
 The **Unused** filter appears only when your project's host can search references. A host that cannot is never shown a filter that would always answer "nothing".
@@ -52,18 +52,18 @@ There is no **Missing alt text** filter and no tags yet. Alt text is written on 
 Select a file and the right-hand pane describes it:
 
 - **A preview**: the picture, a player for video and audio, or a font set in its own face.
-- **What it is**: its kind, its pixel dimensions once the picture has loaded, its size on disk, and when it was last modified. Anything Studio hasn't been told is left out rather than shown as a zero.
+- **What it is**: its kind, its pixel dimensions once the picture has loaded, its size on disk, and when it was last modified. An SVG's dimensions are the ones the file declares (its `width` and `height`, or its `viewBox`), and an SVG that declares no size shows none. Anything Studio hasn't been told is left out rather than shown as a zero.
 - **Site URL**: the address a document writes for this file, with a **Copy** button. A file at `public/media/hero.jpg` is referenced `/media/hero.jpg`, a string that is not its path, and writing the path instead is the commonest way an image goes missing from a page.
-- **Used on**: every document that refers to the file, with a count each. Click one to open it.
+- **Used on**: every document that refers to the file, with a count each, headed by a line such as _Used on 2 pages and 1 other file_ or, when no page uses it directly, _Used in 1 file_ (a layout or component, say). Click one to open it.
 - **Replace**, **Open in viewer** and **Delete**.
 
 **Replace** swaps a file's contents and keeps its name. Pick the new file and Studio writes it over the old one at the same path, so every page, component and entry that uses it shows the new picture straight away, with nothing to re-link. It is the one way Studio ever writes over an existing file. The new file has to be the same type as the old one (a JPEG for a JPEG, an SVG for an SVG), because the address stays the same and a page asking for `hero.jpg` cannot show a PNG. To swap in a different type, upload it as a new file and point the pages at it.
 
-**Delete** asks first, and says what it would break (see [Deleting media](#deleting-media) below).
+**Delete** asks first, and says what it would break (see [Deleting media](#deleting-media) below). Deleting the last file in `public/media/`, or in a collection's `images/` folder, removes that folder too: Studio made it for your uploads, so it does not leave it behind empty. A folder you made yourself stays.
 
 ## Upload into the Media workspace
 
-Click **Upload** in the Media workspace's toolbar, or drop files anywhere on it. Uploads land in `public/media/`; the Upload button's tooltip names that folder before you press it, and there is no folder to choose. The first file you upload is selected once it arrives, so the details pane shows what you added. **Add new › Media** (:kbd[⌘N]) uploads to the same place and then shows you the Media workspace with the upload selected.
+Click **Upload** in the Media workspace's toolbar, or drop files anywhere on it. Uploads land in `public/media/`; the Upload button's tooltip names that folder before you press it, and there is no folder to choose. The first file you upload is selected once it arrives and scrolled into view, wherever the sort puts it, so the details pane shows what you added. **Add new › Media** (:kbd[⌘N]) uploads to the same place and then shows you the Media workspace with the upload selected.
 
 Only the kinds of file the workspace lists are uploaded: images, video, audio, PDFs and fonts. Drop a text file or a spreadsheet along with your pictures and Studio skips it and says which files it left out, rather than adding something you would never see here.
 
@@ -88,7 +88,7 @@ Dropping onto a component that takes a single image (a card with a cover picture
 
 Studio asks for an image or file in several places: an image's **Content** tab, a frontmatter field, and the Icon and social-image fields in **[Search appearance](/docs/studio/editing/frontmatter)**. Every one of them has a browse button and an **Upload** button.
 
-The browse button opens a compact list: a search box over the project's media, matched on name or path, with a thumbnail for every image. A field that holds a picture lists only images. It opens above whatever surface it was called from, so it works the same in a panel and in a window like Search appearance.
+The browse button opens a compact list: a search box over the project's media, matched on name or path, with a thumbnail for every image. It lists the first 50 files, and **Show N more** at the foot of the list lists the next 50, so every file the Media workspace has can be reached from here. A field that holds a picture lists only images. It opens above whatever surface it was called from, so it works the same in a panel and in a window like Search appearance.
 
 ![The media picker popover open over an image field, showing the search field and thumbnail list](../../images/media-picker.png)
 
@@ -143,7 +143,7 @@ This is the fastest way to check what an [imported site](/docs/studio/projects/c
 
 ## What Studio knows about a file
 
-A tile in the Media workspace and a row in the media picker carry a one-line caption as soon as Studio knows the numbers: `1200 × 800 · 84 KB`. Both halves are read from work already done, so a caption never costs a second download: the size comes from the directory listing that built the list, and the pixel dimensions from the thumbnail once the browser has decoded it.
+A tile in the Media workspace and a row in the media picker carry a one-line caption as soon as Studio knows the numbers: `1200 × 800 · 84 KB`. Both halves are read from work already done, so a caption never costs a second download: the size comes from the directory listing that built the list, and the pixel dimensions from the thumbnail once the browser has decoded it. An SVG is the exception: a browser draws a vector with no declared size at a default box (150 × 150), which says nothing about the file, so Studio reads the SVG's own `width`, `height` and `viewBox` instead.
 
 A fact Studio doesn't have is left out of that line rather than filled in with a placeholder. A file whose size the listing didn't report shows only its dimensions; an image whose thumbnail hasn't loaded yet shows only its size. `0 × 0` is something a real file can nearly be, so it is never used to mean "we didn't find out".
 

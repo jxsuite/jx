@@ -638,6 +638,22 @@ export function setTabScope(scope: ((tabId: string) => boolean) | null): void {
   _tabScope = scope ?? (() => true);
 }
 
+/**
+ * What a pane shows when a close leaves it no tab in scope, or nothing (the stage stays empty).
+ *
+ * Injected by `workspace/workspace-switch.ts` for the same reason {@link setTabScope} is: the answer
+ * (a Navigator-less workspace falls back to its home) is a workspace rule, and this module sits
+ * below the workspaces. Only {@link closeTab} asks, because only a close is the author emptying a
+ * pane; a project switch's {@link closeAllTabs} empties every pane on its way to a new project and
+ * must not plant a home in it.
+ */
+let _emptyFallback: ((paneId: string) => void) | null = null;
+
+/** Install the empty-pane fallback. `workspace/workspace-switch.ts` calls it once at boot. */
+export function setEmptyPaneFallback(fallback: ((paneId: string) => void) | null): void {
+  _emptyFallback = fallback;
+}
+
 /** The rightmost tab of a pane that is in scope: the safe default when its active tab leaves. */
 function rightmostInScope(pane: Pane): string | null {
   return pane.tabOrder.findLast((id) => _tabScope(id)) ?? null;
@@ -1122,6 +1138,8 @@ export function closeTab(tabId: string) {
     rightmostInScope(survivor);
   if (next) {
     setActiveTab(next);
+  } else {
+    _emptyFallback?.(survivor.id);
   }
 }
 

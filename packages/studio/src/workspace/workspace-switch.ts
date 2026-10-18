@@ -42,10 +42,11 @@ import {
   clearPaneActiveTab,
   paneById,
   paneOfTab,
+  setEmptyPaneFallback,
   setTabScope,
   workspace,
 } from "./workspace";
-import { homeWorkspaceOfTabId, isHomeWorkspace } from "./workspace-ids";
+import { homeWorkspaceOfTabId, isHomeWorkspace, workspaceHomeTabId } from "./workspace-ids";
 import {
   isTabInWorkspace,
   lastTabOfWorkspace,
@@ -211,13 +212,15 @@ let _scope: EffectScope | null = null;
  * fallback scope, which a window never needs and a test does.
  *
  * It also scopes the panes' fallback (`workspace.ts`'s `setTabScope`), so closing a workspace's
- * last tab leaves the pane empty rather than switching the workspace under the author.
+ * last tab never switches the workspace under the author: the pane is left empty, or, in a
+ * workspace with no Navigator, shows its home (`setEmptyPaneFallback`, {@link fallBackToHome}).
  */
 export function installWorkspaceFollow(deps: WorkspaceFollowDeps): () => void {
   if (_scope) {
     return stopWorkspaceFollow;
   }
   setTabScope((tabId) => isTabInWorkspace(tabId));
+  setEmptyPaneFallback((paneId) => fallBackToHome(paneId, deps));
   const scope = effectScope();
   _scope = scope;
   const withTab = frameDeps(deps);
@@ -281,9 +284,30 @@ export function installWorkspaceFollow(deps: WorkspaceFollowDeps): () => void {
   return stopWorkspaceFollow;
 }
 
+/**
+ * A close left `paneId` with no tab of the workspace on screen: in a workspace with no Navigator,
+ * show its home there. Media and Publish have no other way back to their home than its tab, so an
+ * empty stage there is a dead end (closing the home itself, or the viewer beside a home closed
+ * earlier), where Design's empty stage is its home and Content's Collections panel is the way
+ * back.
+ */
+function fallBackToHome(paneId: string, deps: WorkspaceFollowDeps): void {
+  const id = shell.workspace;
+  const pane = paneById(paneId);
+  if (!deps.placeHome || !pane || pane.derived || !isHomeWorkspace(id)) {
+    return;
+  }
+  if (WORKSPACE_PRESETS[id].navigator.open) {
+    return;
+  }
+  deps.placeHome(id, paneId);
+  activateTab(workspaceHomeTabId(id));
+}
+
 /** Stop the follow and drop the fallback scope. */
 function stopWorkspaceFollow(): void {
   _scope?.stop();
   _scope = null;
   setTabScope(null);
+  setEmptyPaneFallback(null);
 }

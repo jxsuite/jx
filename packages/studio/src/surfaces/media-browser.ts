@@ -64,7 +64,7 @@ export interface MediaBrowserView {
   /** What stands in for the list when nothing matches. */
   emptyLabel: string;
   moreState: "hidden" | "shown";
-  /** "…10 more" — the cap is fifty and a truncated list says so. */
+  /** "Show 10 more": a truncated list says so, and the marker raises the cap. */
   moreLabel: string;
   /** The last row: "Browse all media…", or "Browse all images…" for a field that holds a picture. */
   browseAllLabel: string;
@@ -76,6 +76,8 @@ export interface MediaBrowserActions {
   pick: (path: string) => void;
   /** A thumbnail finished decoding at that size. The flow decides whether it is news. */
   measure: (file: string, width: number, height: number) => void;
+  /** Raise the cap on listed rows: the truncation marker is a control, not a sentence. */
+  showMore: () => void;
   /** Open the full-size picker: the Media workspace's surface, in a dialog (studio.md §9.3). */
   browseAll: () => void;
   /** The platform closed the panel: clicked outside, Escape, or a second press on the invoker. */
@@ -126,6 +128,7 @@ export function openMediaBrowserSurface(
     rows: view.rows,
     rowsState: view.rowsState,
     setFilter: actions.setFilter,
+    showMore: actions.showMore,
     x: view.x,
     y: view.y,
   });

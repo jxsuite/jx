@@ -10,7 +10,7 @@
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
@@ -1397,7 +1397,7 @@ export async function handleStudioApi(
     try {
       await mkdir(dirname(abs), { recursive: true });
       await writeFile(abs, await req.text(), "utf8");
-      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
+      return Response.json({ ok: true, path: fwd(relative(activeProjectRoot ?? root, abs)) });
     } catch (error) {
       return problem("internalError", errorMessage(error));
     }
@@ -1419,7 +1419,7 @@ export async function handleStudioApi(
       await mkdir(dirname(abs), { recursive: true });
       const buffer = await req.arrayBuffer();
       await Bun.write(abs, new Uint8Array(buffer));
-      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
+      return Response.json({ ok: true, path: fwd(relative(activeProjectRoot ?? root, abs)) });
     } catch (error) {
       return problem("internalError", errorMessage(error));
     }
@@ -1438,11 +1438,17 @@ export async function handleStudioApi(
       return new Response(errorMessage(error), { status: 400 });
     }
     try {
-      await unlink(abs);
-      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
+      /* A directory is removed only when it is EMPTY (`rmdir`), never recursively: a folder of
+         files is a decision about every file in it, which the client makes one file at a time. */
+      const entry = await stat(abs);
+      await (entry.isDirectory() ? rmdir(abs) : unlink(abs));
+      return Response.json({ ok: true, path: fwd(relative(activeProjectRoot ?? root, abs)) });
     } catch (error) {
-      return isNotFound(error)
-        ? problem("notFound", "Not found")
+      if (isNotFound(error)) {
+        return problem("notFound", "Not found");
+      }
+      return isNonNullObject(error) && "code" in error && error.code === "ENOTEMPTY"
+        ? problem("conflict", "The folder is not empty.")
         : problem("internalError", errorMessage(error));
     }
   }

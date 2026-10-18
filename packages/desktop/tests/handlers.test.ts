@@ -334,6 +334,21 @@ describe("handleDeleteFile", () => {
       cleanup();
     }
   });
+
+  test("removes an empty folder, refuses one that holds files, and ignores a missing path", async () => {
+    setup();
+    try {
+      mkdirSync(join(FIXTURES, "emptied/inner"), { recursive: true });
+      writeFileSync(join(FIXTURES, "emptied/kept.txt"), "kept");
+      await handleDeleteFile({ path: "emptied/inner" });
+      expect(existsSync(join(FIXTURES, "emptied/inner"))).toBe(false);
+      await expect(handleDeleteFile({ path: "emptied" })).rejects.toThrow();
+      expect(existsSync(join(FIXTURES, "emptied/kept.txt"))).toBe(true);
+      await handleDeleteFile({ path: "never-there.txt" });
+    } finally {
+      cleanup();
+    }
+  });
 });
 
 // ─── handleRenameFile ───────────────────────────────────────────────────────
