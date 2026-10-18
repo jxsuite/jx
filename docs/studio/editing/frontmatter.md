@@ -35,7 +35,7 @@ For a content page that belongs to a collection (a blog post, a product, a listi
 - On/off checkboxes
 - A dropdown for fields with a fixed set of choices
 - A media picker for image fields
-- Comma-separated entry for list fields
+- A list editor for list fields: one row per item, with **Add** below and a remove button beside each (a list of pictures gets the media picker on every row)
 - An entry picker for a field that points at another collection, so you choose an existing entry instead of typing its id from memory
 
 Any extra field already present in the file appears too, even if the collection doesn't define it. Clearing a field removes it from the file entirely. Collections and their fields are defined in **[Content types](/docs/studio/projects/content-types)**.

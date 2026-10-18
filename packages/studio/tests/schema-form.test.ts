@@ -859,6 +859,83 @@ describe("array-of-objects fields", () => {
   });
 });
 
+// ─── Arrays of single values ─────────────────────────────────────────────────
+
+describe("arrays of single values", () => {
+  const tagsSchema: JsonSchema = {
+    properties: { tags: { items: { type: "string" }, type: "array" } },
+  };
+
+  test("a list of text is a row per item, named by its place, not a JSON box", async () => {
+    const m = await mountForm(tagsSchema, { tags: ["Patios", "Walls"] });
+    expect(row(m, "tags").querySelector('[part="json"]')).toBeNull();
+    const cells = [
+      ...row(m, "tags").querySelectorAll<HTMLInputElement>('[part="cell-text"] [part="input"]'),
+    ];
+    expect(cells.map((cell) => cell.value)).toEqual(["Patios", "Walls"]);
+    type(cells[1]!, "Steps");
+    expect(m.patches).toEqual([{ tags: ["Patios", "Steps"] }]);
+  });
+
+  test("clearing an item keeps its row; add appends one; remove takes one out", async () => {
+    const m = await mountForm(tagsSchema, { tags: ["a", "b"] }, { withRerender: true });
+    type(row(m, "tags").querySelector('[part="cell-text"] [part="input"]')!, "");
+    expect(m.patches.at(-1)).toEqual({ tags: ["", "b"] });
+    pointer(part(m, "tags", "row-add").querySelector('[part="control"]')!, "click");
+    expect(m.patches.at(-1)).toEqual({ tags: ["a", "b", ""] });
+    pointer(row(m, "tags").querySelector('[part="row-remove"] [part="control"]')!, "click");
+    expect(m.patches.at(-1)).toEqual({ tags: ["b"] });
+
+    const one = await mountForm(tagsSchema, { tags: ["only"] });
+    pointer(row(one, "tags").querySelector('[part="row-remove"] [part="control"]')!, "click");
+    expect(one.patches).toEqual([{ tags: undefined }]);
+  });
+
+  test("a value that is not a list yet is shown as its one item", async () => {
+    const m = await mountForm(tagsSchema, { tags: "Patios" });
+    const cell = row(m, "tags").querySelector<HTMLInputElement>(
+      '[part="cell-text"] [part="input"]',
+    )!;
+    expect(cell.value).toBe("Patios");
+    const empty = await mountForm(tagsSchema, { tags: "" });
+    expect(row(empty, "tags").querySelector('[part="row"]')).toBeNull();
+  });
+
+  test("numbers and enums draw their own cells; a JSON-schema item stays JSON", async () => {
+    const m = await mountForm(
+      {
+        properties: {
+          kinds: { items: { enum: ["a", "b"] }, type: "array" },
+          sizes: { items: { type: "integer" }, type: "array" },
+          schemas: { items: { format: "json-schema", type: "string" }, type: "array" },
+        },
+      },
+      { kinds: ["a"], schemas: [], sizes: [3] },
+    );
+    expect(row(m, "sizes").querySelector('[part="cell-number"]')).not.toBeNull();
+    expect(row(m, "kinds").querySelector('[part="cell-select"]')).not.toBeNull();
+    expect(row(m, "schemas").querySelector('[part="row"]')).toBeNull();
+  });
+
+  test("a picture item is the registered media control, writing the list back", async () => {
+    const seen: SchemaFormControlArgs[] = [];
+    registerFormControl(
+      "media",
+      stubControl("media-cell", (args) => {
+        seen.push(args);
+        return String(args.value);
+      }),
+    );
+    const m = await mountForm(
+      { properties: { gallery: { items: { format: "image", type: "string" }, type: "array" } } },
+      { gallery: ["/a.jpg", "/b.jpg"] },
+    );
+    expect(stub(row(m, "gallery"), "media-cell")?.textContent).toBe("/a.jpg");
+    seen.find((args) => args.value === "/b.jpg")!.onChange("/c.jpg");
+    expect(m.patches).toEqual([{ gallery: ["/a.jpg", "/c.jpg"] }]);
+  });
+});
+
 // ─── Inline errors (§16.5) ───────────────────────────────────────────────────
 
 describe("inline errors", () => {

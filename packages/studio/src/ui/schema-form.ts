@@ -3,11 +3,11 @@
  * Schema-form — the reusable JSON-Schema → form engine, and the FLOW half of it.
  *
  * Maps schema property types to controls (enum → select, boolean → checkbox, number/integer →
- * number field, `json-schema` format → JSON editor, array-of-objects → a row per item, other
- * array/object → JSON text, default → text field); hosts commit edits through a single
- * `onChange(patch)` callback; dynamic enum choices resolve through a {@link SchemaFormContext}.
- * Custom controls register by name via {@link registerFormControl} and are consulted first for `ui`
- * overrides.
+ * number field, `json-schema` format → JSON editor, array-of-objects → a row per item, an array of
+ * single values (text, numbers, pictures, entries) → a row per item too, other array/object → JSON
+ * text, default → text field); hosts commit edits through a single `onChange(patch)` callback;
+ * dynamic enum choices resolve through a {@link SchemaFormContext}. Custom controls register by
+ * name via {@link registerFormControl} and are consulted first for `ui` overrides.
  *
  * **This module decides; `surfaces/schema-form.json` draws.** Every question with an answer — which
  * control a property gets, what its choices are, which rungs of the value ladder the position
@@ -417,6 +417,12 @@ interface FieldPlan {
   itemProps?: Record<string, JsonSchema> | undefined;
   /** The rows currently held, so a cell edit can rebuild the array. */
   rows?: JsonObject[] | undefined;
+  /**
+   * The field is an array of single values (`string[]`, a gallery of pictures), drawn as rows of
+   * one cell each: every row is `{ [SCALAR_CELL]: item }` here, and a commit writes the bare items
+   * back. One row editor for both shapes, rather than a list control beside the row control.
+   */
+  scalarItems?: boolean | undefined;
   /** The ladder, when this position offers one. */
   ladder?: { fieldKey: string; mode: SlotMode; offered: SlotMode[]; sources: SurfaceOption[] };
   /** A registered control owns the whole field; args are rebuilt for it on every repaint. */
@@ -431,8 +437,8 @@ interface FieldPlan {
    * Registered controls owning one cell, keyed by the cell's host id.
    *
    * The same kind of entry a field's own control is, and reached by the same dispatch: a cell host
-   * is a host like any other. The one control a cell is ever given is `reference` (see
-   * {@link deriveCell}).
+   * is a host like any other. A cell is given `reference` for an entry of another collection and
+   * `media` for a picture (see {@link deriveCell}).
    */
   cellControls?: Map<
     string,
@@ -598,6 +604,20 @@ function createController(): FormController {
     }
   };
 
+  /**
+   * Write a row field's rows back as the array the document holds: the rows themselves for an array
+   * of objects, each row's one value for an array of single values. A row whose value was cleared
+   * stays as an empty string, so clearing the text of an item does not delete its row under the
+   * caret; Remove is how an item goes.
+   */
+  const patchRows = (plan: FieldPlan, rows: JsonObject[]): void => {
+    let next: JsonValue | undefined;
+    if (rows.length > 0) {
+      next = plan.scalarItems ? rows.map((row) => row[SCALAR_CELL] ?? "") : rows;
+    }
+    patch(plan.prop, next);
+  };
+
   /** The field's items, each shallow-copied so a cell edit never writes through to the document. */
   const cellRows = (plan: FieldPlan): JsonObject[] => {
     const copies: JsonObject[] = [];
@@ -621,7 +641,7 @@ function createController(): FormController {
           seed[k] = v.default as JsonValue;
         }
       }
-      patch(field, [...cellRows(plan), seed]);
+      patchRows(plan, [...cellRows(plan), seed]);
       opts.rerender?.();
     },
     commit: (key: string, raw: string) => {
@@ -663,8 +683,10 @@ function createController(): FormController {
         return;
       }
       const idx = Number(row);
-      const kept = cellRows(plan).filter((_, i) => i !== idx);
-      patch(field, kept.length > 0 ? kept : undefined);
+      patchRows(
+        plan,
+        cellRows(plan).filter((_, i) => i !== idx),
+      );
       opts.rerender?.();
     },
   };
@@ -688,7 +710,7 @@ function createController(): FormController {
       ...target,
       [cell]: coerceCell(cellSchema, next, plan.refCells?.has(`${field}/${row}/${cell}`) ?? false),
     } as JsonObject;
-    patch(field, rows);
+    patchRows(plan, rows);
   }
 
   /** A cell's committed string, as the item property's declared type. */
@@ -1199,6 +1221,9 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
   if (ps.type === "array" && ps.items?.type === "object" && ps.items.properties) {
     return arrayOfObjects(prop, ps.items.properties, args, plan, row);
   }
+  if (ps.type === "array" && isSingleValueSchema(ps.items)) {
+    return arrayOfSingleValues(prop, ps.items, args, plan, row);
+  }
   /* A union with an object or a list in it (`alerts` is an object of types or `false`) is JSON too:
      a text box would store what is typed as a string, which is none of the members. */
   const types = Array.isArray(ps.type) ? ps.type : [ps.type];
@@ -1273,6 +1298,69 @@ function arrayOfObjects(
   return row;
 }
 
+/** The one cell key a row of an array of single values is drawn under. */
+const SCALAR_CELL = "value";
+
+/**
+ * Whether an array's items are single values a cell can edit: text, a number, a yes/no, one of an
+ * enum, or an entry of another collection. A picture is text with `format: "image"`, so it is one.
+ */
+function isSingleValueSchema(items: JsonSchema | undefined): items is JsonSchema {
+  if (items === undefined || items.format === "json-schema") {
+    return false;
+  }
+  if (referenceTarget(items) !== null || Array.isArray(items.enum)) {
+    return true;
+  }
+  return (
+    items.type === "string" ||
+    items.type === "number" ||
+    items.type === "integer" ||
+    items.type === "boolean"
+  );
+}
+
+/**
+ * An array of single values (`categories: string[]`, a gallery's picture paths): one row per item,
+ * each a single cell drawn by the item schema, with the same remove and add an array of objects
+ * gets. A value that is not yet a list (a CSV cell holding one category) is shown as its one item,
+ * and becomes a list the moment it is edited; the field's own check still says it is not one.
+ */
+function arrayOfSingleValues(
+  prop: string,
+  items: JsonSchema,
+  args: DeriveArgs,
+  plan: FieldPlan,
+  row: SchemaFormFieldView,
+): SchemaFormFieldView {
+  const held = args.value[prop];
+  let list: JsonValue[] = [];
+  if (Array.isArray(held)) {
+    list = held;
+  } else if (held !== undefined && held !== null && held !== "") {
+    list = [held];
+  }
+  const rows: JsonObject[] = list.map((item) => ({ [SCALAR_CELL]: item }));
+  const itemProps = { [SCALAR_CELL]: items };
+  const label = args.opts.ui?.[prop]?.label ?? prop;
+  plan.commit = "none";
+  plan.itemProps = itemProps;
+  plan.rows = rows;
+  plan.scalarItems = true;
+  plan.cellControls = new Map();
+  plan.refCells = new Set();
+  row.kind = "rows";
+  row.rows = rows.map((item, idx) => {
+    const drawn = deriveRow(prop, String(idx), item, itemProps, args, plan);
+    // A row has one cell, so the cell is named by its place in the list rather than by `value`.
+    for (const cell of drawn.cells) {
+      cell.label = `${label} ${idx + 1}`;
+    }
+    return drawn;
+  });
+  return row;
+}
+
 function deriveRow(
   prop: string,
   key: string,
@@ -1318,10 +1406,10 @@ function deriveCell(
     return cell;
   }
   if (referenceTarget(cellSchema) !== null) {
-    /* A CELL's control is mounted into a host of the cell's own, exactly as a field's is: the one
-       control a cell is ever given is the reference picker, and that is a document now
-       (`surfaces/reference-field.json`). What the cell host must never become is a second writer of
-       a node the document already owns. */
+    /* A CELL's control is mounted into a host of the cell's own, exactly as a field's is: the
+       reference picker is a document now (`surfaces/reference-field.json`), as the media field
+       below is. What the cell host must never become is a second writer of a node the document
+       already owns. */
     const reference = controlRegistry.get("reference");
     if (reference) {
       cell.kind = "control";
@@ -1333,6 +1421,14 @@ function deriveCell(
       });
       return cell;
     }
+  }
+  /* A picture cell (`format: "image"`, a gallery's item) is the media control a picture FIELD
+     gets, mounted into the cell's host by the same dispatch. */
+  const media = cellSchema.format === "image" ? controlRegistry.get("media") : undefined;
+  if (media) {
+    cell.kind = "control";
+    plan.cellControls?.set(id, { control: media, key: cellKey, row: rowKey, schema: cellSchema });
+    return cell;
   }
   // SAFETY: an item property's schema is read from JSON, so its `enum` is a JSON value.
   const enumValues = resolveFormEnum(

@@ -61,6 +61,8 @@ Review changes lists two checks above the destination, and the quick publish dia
 - **The next deploy step**, from the checklist below, with the button that fixes it.
 - **Does the site build**, where your host can build it. **Check build** runs a build of the changes as they stand and reports the page count or the first error. A check run before you changed something else is shown as not run, rather than as passed.
 
+Each check starts with an icon for its state: a tick when it passed, a warning when there is something to do, a question mark when it has not been checked yet, and a cross when it failed. A screen reader reads the state out in words. The steps of the deploy checklist are marked the same way.
+
 ## What's missing, before you start
 
 Publishing is a chain: the project is tracked by git, it has a remote and the remote is current, a provider is connected, and something has actually deployed. Each link is a different action, so Studio keeps the whole chain in one place: the **Deploy checklist**, in **Publish › Hosting**, and also in the **Activity** tab of the Bottom dock (:kbd[⌘J] / :kbd[Ctrl+J]), beside the long operations, because a deploy is one.

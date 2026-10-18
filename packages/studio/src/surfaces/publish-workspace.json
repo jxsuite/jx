@@ -237,10 +237,16 @@
       "lineHeight": "1.4"
     },
     "& [part=\"check-icon\"], & [part=\"step-icon\"]": {
+      "$description": "A kit icon for a check or a checklist link, sized by the kit's own property so it stays square; the activity feed's steps still draw a one-character glyph, which `minWidth` keeps on the same column.",
       "flex": "none",
-      "width": "1em",
+      "minWidth": "1em",
       "textAlign": "center",
+      "--jx-icon-size": "1em",
       "color": "var(--fg-dim)"
+    },
+    "& [part=\"checklist-step\"] > [part=\"step-icon\"]": {
+      "$description": "A baseline-aligned row places a kit icon's bottom edge on the text baseline, which draws it high; the negative end margin lowers it onto the line's middle.",
+      "marginBlockEnd": "-0.15em"
     },
     "& [data-state=\"done\"] > [part=\"check-icon\"], & [data-state=\"done\"] > [part=\"step-icon\"]": {
       "color": "var(--success)"
@@ -1301,12 +1307,18 @@
                                     },
                                     "children": [
                                       {
-                                        "tagName": "span",
+                                        "tagName": "jx-icon",
                                         "attributes": {
-                                          "part": "check-icon",
-                                          "aria-hidden": "true"
+                                          "part": "check-icon"
                                         },
-                                        "textContent": "${$map.item.icon}"
+                                        "$props": {
+                                          "name": {
+                                            "$ref": "$map/item/icon"
+                                          },
+                                          "label": {
+                                            "$ref": "$map/item/iconLabel"
+                                          }
+                                        }
                                       },
                                       {
                                         "tagName": "span",
@@ -2797,12 +2809,18 @@
                             },
                             "children": [
                               {
-                                "tagName": "span",
+                                "tagName": "jx-icon",
                                 "attributes": {
-                                  "part": "step-icon",
-                                  "aria-hidden": "true"
+                                  "part": "step-icon"
                                 },
-                                "textContent": "${$map.item.icon}"
+                                "$props": {
+                                  "name": {
+                                    "$ref": "$map/item/icon"
+                                  },
+                                  "label": {
+                                    "$ref": "$map/item/iconLabel"
+                                  }
+                                }
                               },
                               {
                                 "tagName": "span",

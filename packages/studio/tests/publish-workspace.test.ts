@@ -349,6 +349,14 @@ describe("Review changes", () => {
     // One commit is not on the remote yet, so the next link of the chain is the push.
     expect(deploy.dataset.state).toBe("todo");
     expect(deploy.querySelector('[part="check-text"]')?.textContent).toMatch(/^Push to a remote: /);
+    // The state is a kit icon named in words, never a text glyph.
+    const icon = deploy.querySelector<HTMLElement & { name: string; label: string }>(
+      '[part="check-icon"]',
+    )!;
+    expect(icon.tagName.toLowerCase()).toBe("jx-icon");
+    expect(icon.name).toBe("warning-circle");
+    expect(icon.label).toBe("To do");
+    expect(icon.textContent.trim()).toBe("");
     deploy.querySelector<HTMLElement>('[part="check-action"]')!.click();
     await flush(2);
     expect(ran.map((entry) => entry.id)).toEqual(["git.push"]);
@@ -364,6 +372,22 @@ describe("Review changes", () => {
     expect(
       host.querySelector('[part="check"][data-check="build"] [part="check-text"]')?.textContent,
     ).toBe("Site builds: 3 page(s).");
+  });
+
+  test("every check state has a kit icon and a state in words", async () => {
+    const { checkStateMark } = await import("../src/publish/publish-workspace");
+    const { iconPath } = await import("@jxsuite/ui/icons");
+    for (const state of ["done", "failed", "running", "todo", "unknown"] as const) {
+      const mark = checkStateMark(state);
+      expect(iconPath(mark.icon, "regular")).not.toBe("");
+      expect(mark.label).not.toBe("");
+    }
+    expect(checkStateMark("done")).toEqual({ icon: "check", label: "Passed" });
+    // SAFETY: a state outside the union, as a stale record could carry, to prove the fallback.
+    expect(checkStateMark("bogus" as "done")).toEqual({
+      icon: "question",
+      label: "Not checked yet",
+    });
   });
 
   test("the recent commits are read the first time Review changes is shown", async () => {

@@ -184,17 +184,23 @@ export function showPublishTab(tab: PublishTab): void {
 
 // ─── The projection ──────────────────────────────────────────────────────────
 
-/** Which glyph a check or a step wears. One character, so it fits the row it labels. */
-const STATE_ICON = new Map([
-  ["done", "✓"],
-  ["failed", "✕"],
-  ["running", "⋯"],
-  ["todo", "·"],
-  ["unknown", "?"],
+/**
+ * The kit icon a check wears, and the words that say its state to a reader who cannot see the
+ * icon's shape or colour. Names from the kit's glyph manifest (`@jxsuite/ui/icons`), not text
+ * glyphs: a `·` or a `?` beside a sentence read as punctuation, and said nothing to a screen
+ * reader.
+ */
+const CHECK_STATE: ReadonlyMap<PublishCheck["state"], { icon: string; label: string }> = new Map([
+  ["done", { icon: "check", label: "Passed" }],
+  ["failed", { icon: "x", label: "Failed" }],
+  ["running", { icon: "spinner", label: "Running" }],
+  ["todo", { icon: "warning-circle", label: "To do" }],
+  ["unknown", { icon: "question", label: "Not checked yet" }],
 ]);
 
-function iconFor(state: string): string {
-  return STATE_ICON.get(state) ?? "·";
+/** The icon and state words for a check's state; an unknown state reads as not checked. */
+export function checkStateMark(state: PublishCheck["state"]): { icon: string; label: string } {
+  return CHECK_STATE.get(state) ?? { icon: "question", label: "Not checked yet" };
 }
 
 /** "1 change", "3 changes". */
@@ -298,7 +304,8 @@ function checkRow(check: PublishCheck): PublishCheckRow {
     actionLabel: "",
     actionTitle: "",
     hasAction: false,
-    icon: iconFor(check.state),
+    icon: checkStateMark(check.state).icon,
+    iconLabel: checkStateMark(check.state).label,
     key: check.key,
     state: check.state,
     text: check.text,

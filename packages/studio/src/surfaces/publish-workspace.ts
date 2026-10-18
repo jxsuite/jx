@@ -58,7 +58,10 @@ export interface ReviewGroupRow {
 export interface PublishCheckRow {
   key: string;
   state: string;
+  /** A kit icon name (`check`, `x`, `spinner`, `warning-circle`, `question`). */
   icon: string;
+  /** The state in words, the icon's accessible name: "Passed", "To do", "Not checked yet". */
+  iconLabel: string;
   text: string;
   hasAction: boolean;
   actionLabel: string;

@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.2.30\
-**Status:** Implemented\
-**Updated:** 2026-10-11\
+**Version:** 0.2.33-draft\
+**Status:** Partial\
+**Updated:** 2026-10-18\
 **License:** MIT
 
 ---
@@ -69,7 +69,7 @@ The request path is matched in this order (`src/server.ts`), after a leading **d
 4. `/_jx/*` — extension server mounts
 5. `/__studio/*` — Studio API (collab WebSocket/probe, activate, AI proxy, site import, code services, then the main studio handler)
 6. Custom `middleware`
-7. Static files — the active project's extension asset mounts ([extensions.md §8.5](./extensions.md)), then the server root, then the active project's `public/`, then the active project root, then npm bare specifiers resolved through the active project's `node_modules` first and the server root's after it (a project pins its own versions, and one outside the root has no other way to reach its packages), honouring each package's `exports`, and bundled on demand with `Bun.build`. Served HTML gets the live-reload client injected (except the Studio shell, which manages its own state); all responses carry `Cache-Control: no-cache`. Content types come from `Bun.file`'s own inference, corrected only where a registration disagrees with it — `.md` carries the `variant` that names its dialect and `.yaml` is `application/yaml` rather than the retired `text/yaml` (`MEDIA_TYPE_BY_EXTENSION` in `@jxsuite/schema/media-type`, shared with `jx preview`); every other extension keeps the inferred type.
+7. Static files (answered from the active project, not the request's: §3.5) — the active project's extension asset mounts ([extensions.md §8.5](./extensions.md)), then the server root, then the active project's `public/`, then the active project root, then npm bare specifiers resolved through the active project's `node_modules` first and the server root's after it (a project pins its own versions, and one outside the root has no other way to reach its packages), honouring each package's `exports`, and bundled on demand with `Bun.build`. Served HTML gets the live-reload client injected (except the Studio shell, which manages its own state); all responses carry `Cache-Control: no-cache`. Content types come from `Bun.file`'s own inference, corrected only where a registration disagrees with it — `.md` carries the `variant` that names its dialect and `.yaml` is `application/yaml` rather than the retired `text/yaml` (`MEDIA_TYPE_BY_EXTENSION` in `@jxsuite/schema/media-type`, shared with `jx preview`); every other extension keeps the inferred type.
 
 **`public/` precedes the project root, and the project root is a compatibility lane.** The order above is the order a BUILD resolves in ([site-architecture.md §9.3](./site-architecture.md)): a site-absolute `/x` names `public/x` and nothing else. This server also serves the PROJECT TREE's own URL space at the same paths — that is how a Studio canvas fetches a component `$ref` — so the project root still answers, and the two spaces collide wherever a file exists in both.
 
@@ -165,6 +165,14 @@ Every response carries `Cache-Control: private, no-store` (a composed page is a 
 **The resolver runs here, behind a credential of its own.** `/__jx_resolve__` and `/__jx_server__` are mounted and gated exactly as §4.2 gates them — token, Origin, Host, Fetch Metadata — against a token minted per preview origin, so compromising an editing server's does not hand this one over. The page's own POST is same-origin, which the strict policy admits. Without them a content collection renders as an empty list, because `ContentEntry` always needs a server: that is the difference between previewing a site and previewing its chrome. The exposure this widens is stated rather than implied — third-party script inside a previewed page reaches two routes that `import()` project code — and it is a change of venue rather than of kind, since the cross-origin canvas iframe already holds a token for the same two routes and renders the same documents.
 
 **No Content-Security-Policy is sent, and the reason is not oversight.** Template strings need `'unsafe-eval'` and the shell inlines a module script and a JSON block, so any policy this could send today would contain `'unsafe-eval'` plus `'unsafe-inline'` or a hash. A permissive policy that protects nothing is worse than none, because it reads like a control.
+
+### 3.5 Static Files per Session
+
+> **Status: Pending.** The static lanes (§3, step 7) answer from the server's one `activeProjectRoot`, which is whichever project was activated last. Two Studio tabs on one dev server, each with its own project, therefore read each other's media: the tab that activated first gets the other project's `/images/hero.jpg`, or a 404 for a file only its own project has. The git routes had the same defect and are scoped per request now (§4.1, `?dir=`); the static lanes are not, and cannot be by that mechanism.
+
+**Why `?dir=` does not carry over.** A git call is a URL Studio builds, so Studio can name its project on it. A static request mostly is not. The canvas iframe on this server is same-origin with the Studio shell (`/packages/studio/canvas.html`), and what it loads is what the author wrote: a site-absolute `/images/hero.jpg` in a page, a `url()` inside a project stylesheet, a font that stylesheet names, a module a component imports. The browser resolves each of those against the one origin, with nothing Studio can add to it, and a `url()` inside a stylesheet is requested with the stylesheet as its referrer, not the page. A `Referer`-keyed lookup would scope the first request and lose the chain behind it; a cookie is per origin, so it is shared by both tabs. Scoping only the URLs Studio does build (media thumbnails, picker tiles) would make a tab's Media grid right and its canvas wrong about the same file, which is worse than consistently wrong.
+
+**What closes it is an origin per project.** One origin per project root is a URL space that means one project, which is what every authored URL needs. Two pieces already work that way: the live preview (§3.4) keys an origin by normalized project root, and the desktop shells load the canvas from a loopback project server (`project-server.ts`) rather than from the shell's own origin. The dev server would hand each activated project such an origin and serve the canvas, and the project's static lanes, from it; the shell's own origin keeps the Studio bundle and the `/__studio/*` API, whose routes already name their project. Until then, one dev server serves one project at a time to the canvas, and a second tab on another project re-binds it.
 
 ---
 
@@ -345,6 +353,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.33-draft** (2026-10-18) — §3.5 records that the static file lanes answer from the server's one active project root, so two Studio tabs on different projects read each other's media; the git routes' per-request dir parameter cannot carry over to authored site-absolute URLs, and an origin per project is what closes it (Pending). The spec returns to Partial.
 - **0.2.30** (2026-10-11) — §3.3: the server-function proxy is the only interpreted call path, its env merges the project .dev.vars as the mounts do, it resolves a relative $src against the absolute-path base Studio's canvas sends or a file: URL while a single-slash path stays a site URL.
 - **0.2.29** (2026-10-04) — §4.1 the files listing may carry an optional opaque content version per entry; the dev server sets none.
 - **0.2.28** (2026-10-01) — §4.1 the AI proxy derives a prompt-cache affinity from the client's X-Jx-Ai-Session header under the local scope (ai.md §2.5).
@@ -389,4 +398,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.2.30_
+_`@jxsuite/server` Specification v0.2.33-draft_

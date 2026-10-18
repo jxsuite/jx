@@ -319,17 +319,22 @@ export function deployStatusItem(): DeployStatusItem | null {
 
 // ─── The surface ──────────────────────────────────────────────────────────────
 
-/** Which glyph a link's state wears. One character, so it fits the row it labels. */
-const STEP_ICON: Readonly<Record<DeployStepState, string>> = {
-  done: "✓",
-  todo: "·",
-  unknown: "?",
+/**
+ * The kit icon a link's state wears, and the state in words for a reader who cannot see it. Names
+ * from the kit's glyph manifest rather than text glyphs: a `·` or a `?` beside a sentence read as
+ * punctuation and said nothing to a screen reader.
+ */
+const STEP_ICON: Readonly<Record<DeployStepState, { icon: string; label: string }>> = {
+  done: { icon: "check", label: "Done" },
+  todo: { icon: "warning-circle", label: "To do" },
+  unknown: { icon: "question", label: "Not checked yet" },
 };
 
-/** One prerequisite, flattened for the document: a key, a state, a glyph and a sentence. */
+/** One prerequisite, flattened for the document: a key, a state, an icon and a sentence. */
 function stepView(step: DeployStep): DeployStepRowView {
   return {
-    icon: STEP_ICON[step.state],
+    icon: STEP_ICON[step.state].icon,
+    iconLabel: STEP_ICON[step.state].label,
     id: step.id,
     state: step.state,
     /* The detail is dropped once the link is forged: what a done step buys you is not news, and
