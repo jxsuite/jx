@@ -62,7 +62,8 @@ parts:
     organize:
       "*": app/
     # What Electron links against that neither the gnome runtime nor Chromium's staged libraries
-    # carry.
+    # carry. Everything else `ldd` reports missing on a bare Ubuntu 24.04 (glib, GTK, cairo, pango,
+    # atk, the X11 and xkbcommon libraries, cups) is the GTK stack the gnome extension provides.
     stage-packages:
       - libasound2t64
       - libgbm1

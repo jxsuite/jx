@@ -740,7 +740,7 @@ Installed ElectroBun builds cannot update into this application: their updater a
 
 ### 7.6 Signing and Release
 
-> **Status: Partial.** The lanes are written, and what can run without a signing identity was run on macOS: the staged backend, the unpacked application, the DMG and update zip, and `latest-mac.yml`. Not yet run anywhere: macOS signing and notarization, the Windows lane (the NSIS installer, the appx, and its smoke test) and the Linux arm64 AppImage.
+> **Status: Partial.** The lanes are written, and what can run without a signing identity was run on macOS: the staged backend, the unpacked application, the DMG and update zip, and `latest-mac.yml`. Not yet run anywhere: macOS signing and notarization, the Windows lane (the NSIS installer, the appx, and its smoke test) and the Linux AppImages. The unpacked Linux arm64 application was also built and run on Ubuntu 24.04 under Xvfb, with its staged backend passing the smoke test.
 
 `bundle-desktop-macos.yml`, `bundle-desktop-windows.yml` and `bundle-desktop-linux.yml` each build natively for their platform with `bun run package --target <os> --arch <arch> -- --publish never`, smoke-test the packaged backend, upload the installers and their update metadata, and attach them to the desktop release. They run only from `release-please.yml` at a release tag, so nothing else exercises them before one.
 
