@@ -733,7 +733,13 @@ describe("what counts as the project's media", () => {
         { name: "blog", path: "content/blog", type: "directory" },
         { name: "notes.md", path: "content/notes.md", type: "file" },
         { name: "drafts", path: "content/drafts", type: "directory" },
+        { name: "locked", path: "content/locked", type: "directory" },
       ],
+      "content/blog": [
+        { name: "post.md", path: "content/blog/post.md", type: "file" },
+        { name: "images", path: "content/blog/images", type: "directory" },
+      ],
+      "content/drafts": [{ name: "draft.md", path: "content/drafts/draft.md", type: "file" }],
       "content/blog/images": [
         { name: "cover.png", path: "content/blog/images/cover.png", type: "file" },
       ],
@@ -746,6 +752,26 @@ describe("what counts as the project's media", () => {
       ["public/intro.mp4", "video"],
       ["content/blog/images/cover.png", "image"],
     ]);
+  });
+
+  test("a collection without an images/ folder is never asked for one", async () => {
+    const asked: string[] = [];
+    installMockPlatform({
+      listDirectory: async (dir: string) => {
+        asked.push(dir);
+        if (dir === "content") {
+          return [{ name: "notes", path: "content/notes", type: "directory" }];
+        }
+        if (dir === "content/notes") {
+          return [{ name: "a.md", path: "content/notes/a.md", type: "file" }];
+        }
+        return [];
+      },
+    });
+    projectMediaFiles();
+    await flush();
+    expect(asked).toContain("content/notes");
+    expect(asked).not.toContain("content/notes/images");
   });
 
   test("a project with no content/ folder lists public/ alone", async () => {

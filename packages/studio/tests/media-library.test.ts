@@ -53,6 +53,7 @@ import type { MockPlatformState } from "./harness";
 
 const TREE = {
   content: [{ name: "blog", path: "content/blog", type: "directory" }],
+  "content/blog": [{ name: "images", path: "content/blog/images", type: "directory" }],
   "content/blog/images": [
     {
       modified: "2026-03-01T00:00:00Z",

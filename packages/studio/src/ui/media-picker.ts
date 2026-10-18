@@ -157,7 +157,20 @@ async function collectCollectionImages(
   }
   const results: ProjectMediaFile[] = [];
   for (const dir of collections) {
-    results.push(...(await collectMedia(`${dir}/${COLLECTION_IMAGES}`, platform)));
+    /* Descend only into an `images/` the collection actually holds: most collections have none,
+       and asking the backend to list a directory that does not exist is a 404 in the console. */
+    let holdsImages = false;
+    try {
+      const entries = await platform.listDirectory(dir);
+      holdsImages = entries.some(
+        (entry) => entry.type === "directory" && entry.name === COLLECTION_IMAGES,
+      );
+    } catch {
+      // An unreadable collection folder has no images to offer.
+    }
+    if (holdsImages) {
+      results.push(...(await collectMedia(`${dir}/${COLLECTION_IMAGES}`, platform)));
+    }
   }
   return results;
 }
