@@ -275,6 +275,27 @@ describe("Templates", () => {
     await flush(4);
     expect(openFileInTab).toHaveBeenCalledWith("layouts/base.json");
   });
+
+  test("a page created elsewhere moves the count without the panel being touched", async () => {
+    let pages = ["pages/index.json"];
+    const findReferences = mock(async (): Promise<ReferencesResult> => ({
+      errors: [],
+      files: pages.map((path) => ({ count: 1, path, refs: [] })),
+      filesReferencing: pages.length,
+      path: "layouts/base.json",
+      refsTotal: pages.length,
+      tagName: null,
+    }));
+    await project({ findReferences });
+    await paint();
+    const detail = () => section("templates").querySelector('[part="row-detail"]')?.textContent;
+    expect(detail()).toBe("used by 1 page");
+    // Add new writes a second page; the write drops the usage answers, and the panel asks again.
+    pages = ["pages/index.json", "pages/fr-ca/index.json"];
+    invalidateUsages();
+    await flush(10);
+    expect(detail()).toBe("used by 2 pages");
+  });
 });
 
 describe("Components", () => {

@@ -13,6 +13,7 @@ import {
   contentCollectionKeys,
   contentCollections,
   capitalise,
+  humanName,
   itemNoun,
   templateDisplayName,
   writesEntryOnCanvas,
@@ -83,8 +84,35 @@ describe("itemNoun", () => {
     ["glass", "glass"],
     ["data", "data"],
     ["team", "team"],
+    // A compound name is said in words, its last word singular.
+    ["post_tags", "post tag"],
+    ["service-type", "service type"],
+    ["docsNav", "docs nav"],
+    // A collection named for the whole holds items of it.
+    ["menu", "menu item"],
+    ["Gallery", "Gallery item"],
+    ["drinks_menu", "drinks menu item"],
   ])("%s → %s", (plural, singular) => {
     expect(itemNoun(plural)).toBe(singular);
+  });
+});
+
+describe("collection names in words", () => {
+  test("a storage name is said in lower-case words, and a collection is titled with it", () => {
+    expect(humanName("project_tag")).toBe("project tag");
+    expect(humanName("service-type")).toBe("service type");
+    expect(humanName("docsNav")).toBe("docs nav");
+    expect(humanName("  a__b  ")).toBe("a b");
+    resetStudioState({
+      projectConfig: {
+        content: { project_tag: { source: "./content/t" }, menu: { source: "./m" } },
+      },
+    });
+    expect(contentCollections().map((each) => [each.title, each.item])).toEqual([
+      ["Pages", "page"],
+      ["Project tag", "project tag"],
+      ["Menu", "menu item"],
+    ]);
   });
 });
 

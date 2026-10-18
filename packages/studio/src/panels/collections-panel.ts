@@ -36,7 +36,8 @@ import {
   collectionView,
   shownCollectionKey,
 } from "../browse/library-pane";
-import { localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
+import { localeLabel, localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
+import { entryLocale } from "../content/collection-pages";
 import { onEntrySummariesRead, peekEntrySummaries } from "../content/entry-summaries";
 import { openEntry } from "../content/entry-open";
 import { workspaceHomeTabId } from "../workspace/workspace-ids";
@@ -134,14 +135,28 @@ export function collectionsPanelValues(): CollectionsPanelValues {
   const counts = collectionCounts();
   const paths = collectionEntryPaths(writing);
   const summaries = counts === null ? null : peekEntrySummaries(writing, paths);
-  const entries: CollectionEntryRow[] = (summaries ?? []).map((entry) => ({
-    art: entry.thumb === "" ? "glyph" : "image",
-    path: entry.path,
-    selected: entry.path === tab?.documentPath ? "true" : "false",
-    status: entry.status,
-    thumb: entry.thumb,
-    title: entry.title,
-  }));
+  /* A multilingual collection's entries say which language each is in, and the list keeps to the
+     language the collection's view is filtered to: three translations of one exhibition are three
+     rows, and an unlabelled list of them reads as one entry listed thrice. */
+  const filter = collectionView(writing).locale;
+  const entries: CollectionEntryRow[] = (summaries ?? []).flatMap((entry) => {
+    const locale = entryLocale(entry.path) ?? "";
+    if (filter !== "" && locale !== filter) {
+      return [];
+    }
+    return [
+      {
+        art: entry.thumb === "" ? "glyph" : "image",
+        lang: locale,
+        locale: locale === "" ? "" : localeLabel(locale),
+        path: entry.path,
+        selected: entry.path === tab?.documentPath ? "true" : "false",
+        status: entry.status,
+        thumb: entry.thumb,
+        title: entry.title,
+      },
+    ];
+  });
   return {
     ...values,
     backTitle: collection?.title ?? writing,

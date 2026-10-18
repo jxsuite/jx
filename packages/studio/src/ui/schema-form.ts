@@ -422,6 +422,12 @@ interface FieldPlan {
   /** A registered control owns the whole field; args are rebuilt for it on every repaint. */
   control?: SchemaFormMountedControl | undefined;
   /**
+   * The member of the property's OBJECT this row edits, when the row is one part of an object
+   * field: an image object's `alt` is a text row of its own, and its commit writes the whole object
+   * back with that one member changed.
+   */
+  member?: string | undefined;
+  /**
    * Registered controls owning one cell, keyed by the cell's host id.
    *
    * The same kind of entry a field's own control is, and reached by the same dispatch: a cell host
@@ -575,6 +581,18 @@ function createController(): FormController {
         return;
       }
       default: {
+        if (plan.member !== undefined) {
+          // One member of an object: the object goes back whole, with that member set or removed.
+          const held = value[plan.prop];
+          const base: JsonObject = isJsonObject(held) ? { ...held } : {};
+          if (raw) {
+            base[plan.member] = raw;
+          } else {
+            delete base[plan.member];
+          }
+          patch(plan.prop, Object.keys(base).length > 0 ? base : undefined);
+          return;
+        }
         patch(plan.prop, raw || undefined);
       }
     }
@@ -888,16 +906,91 @@ function deriveFields(
 ): SchemaFormFieldView[] {
   const required = new Set(schema.required);
   const sources = refSourcesFor(ctx);
-  return Object.entries(schema.properties ?? {}).map(([prop, ps]) =>
-    deriveField(prop, ps, {
-      ctx,
-      opts,
-      plans,
-      required: required.has(prop),
-      sources,
-      value,
-    }),
+  return Object.entries(schema.properties ?? {}).flatMap(([prop, ps]) => {
+    const args = { ctx, opts, plans, required: required.has(prop), sources, value };
+    const field = deriveField(prop, ps, args);
+    // An image object's alt text is a row of its own, under the picture it describes.
+    return field.kind === "control" && isImageObjectSchema(ps) && ps.properties?.["alt"]
+      ? [field, imageAltRow(prop, args)]
+      : [field];
+  });
+}
+
+/** The members an image object may have beside its `src`: what an `<img>` says about itself. */
+const IMAGE_OBJECT_MEMBERS: ReadonlySet<string> = new Set([
+  "src",
+  "alt",
+  "width",
+  "height",
+  "title",
+]);
+
+/**
+ * Whether a property is an image OBJECT: `{ src, alt?, width?, height?, title? }`, the shape a site
+ * imported from a CMS keeps a picture in (`featuredImage: { src, width, height, alt }`). Such a
+ * field is a picture to pick, not a record to type JSON into.
+ */
+export function isImageObjectSchema(ps: JsonSchema): boolean {
+  const properties = ps.properties ?? {};
+  return (
+    ps.type === "object" &&
+    properties["src"]?.type === "string" &&
+    Object.keys(properties).every((name) => IMAGE_OBJECT_MEMBERS.has(name))
   );
+}
+
+/** The media control over an image object's `src`, writing the object back around it. */
+function imageObjectControl(media: SchemaFormMountedControl): SchemaFormMountedControl {
+  /** The args the media control sees: the `src`, and a commit that rebuilds the object. */
+  const srcArgs = (args: SchemaFormControlArgs): SchemaFormControlArgs => {
+    const held = isJsonObject(args.value) ? args.value : {};
+    const { src } = held;
+    return {
+      ...args,
+      onChange: (next) => {
+        if (next === src) {
+          return;
+        }
+        /* A different picture: its alt text and title still describe what the author meant, but the
+           old picture's width and height would be a lie about the new one, so they go. A cleared
+           field clears the whole object: an image with no picture is no image. */
+        const { height: _height, width: _width, ...kept } = held;
+        let rebuilt: JsonValue | undefined;
+        if (next !== undefined && next !== "") {
+          rebuilt = { ...kept, src: next };
+        }
+        args.onChange(rebuilt);
+      },
+      value: isString(src) ? src : undefined,
+    };
+  };
+  return {
+    mount(host, args) {
+      const handle = media.mount(host, srcArgs(args));
+      return {
+        dispose: () => handle.dispose(),
+        update: (next) => handle.update(srcArgs(next)),
+      };
+    },
+  };
+}
+
+/** The text row an image object's `alt` is edited in. */
+function imageAltRow(prop: string, args: DeriveArgs): SchemaFormFieldView {
+  const key = `${prop}/alt`;
+  const held = args.value[prop];
+  const alt = isJsonObject(held) ? held["alt"] : undefined;
+  const row = deriveField(key, { type: "string" }, { ...args, required: false });
+  const plan = args.plans.get(key);
+  if (plan) {
+    plan.prop = prop;
+    plan.member = "alt";
+  }
+  return {
+    ...row,
+    label: `${args.opts.ui?.[prop]?.label ?? prop} alt text`,
+    value: isString(alt) ? alt : "",
+  };
 }
 
 interface DeriveArgs {
@@ -1046,6 +1139,15 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
       row.kind = "control";
       return row;
     }
+  }
+  /* An image OBJECT (`{ src, alt, width, height }`) is the same media field over its `src`; its
+     `alt` is a text row of its own (`deriveFields`). Unregistered, it falls through to JSON. */
+  const imageMedia = isImageObjectSchema(ps) ? controlRegistry.get("media") : undefined;
+  if (imageMedia) {
+    plan.commit = "none";
+    plan.control = imageObjectControl(imageMedia);
+    row.kind = "control";
+    return row;
   }
 
   /* SAFETY: both sources are read from JSON — the descriptor's `$studio.settings.entry.ui` and the

@@ -358,6 +358,56 @@ describe("while an entry is being written", () => {
     expect(newEntryLocale("ex")).toEqual({ locale: "ar" });
   });
 
+  test("a multilingual collection's entries say their language, and keep to the view's", async () => {
+    const dir = (name: string, path: string): DirEntry => ({ name, path, type: "directory" });
+    const tree = {
+      content: [dir("ex", "content/ex")],
+      "content/ex": [dir("en", "content/ex/en"), dir("fr-CA", "content/ex/fr-CA")],
+      "content/ex/en": [file("clay.md", "content/ex/en/clay.md")],
+      "content/ex/fr-CA": [file("argile.md", "content/ex/fr-CA/argile.md")],
+    } satisfies Record<string, DirEntry[]>;
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          Promise.resolve(Object.entries(tree).find(([key]) => key === path)?.[1] ?? []),
+      },
+      {
+        "content/ex/en/clay.md": JSON.stringify({ title: "Clay" }),
+        "content/ex/fr-CA/argile.md": JSON.stringify({ title: "Argile" }),
+      },
+    );
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: {
+        content: {
+          ex: {
+            format: "markdown",
+            schema: { properties: { title: { type: "string" } } },
+            source: "./content/ex/{locale}/",
+          },
+        },
+        i18n: { defaultLocale: "en", locales: ["en", "fr-CA"] },
+      },
+      projectDirs: ["content"],
+      projectRoot: ".",
+    });
+    invalidateLibrary();
+    writeEntry("content/ex/en/clay.md");
+    await paint();
+    await flush(10);
+    await paint();
+    expect(texts("entry-title")).toEqual(["Clay", "Argile"]);
+    expect(texts("entry-locale")).toEqual(["English", "français canadien"]);
+    expect(parts("entry-locale").map((label) => label.getAttribute("lang"))).toEqual([
+      "en",
+      "fr-CA",
+    ]);
+    // Filtered to one language in the Content home, the list keeps to it.
+    setLibraryLocale("fr-CA", "ex");
+    await paint();
+    expect(texts("entry-title")).toEqual(["Argile"]);
+  });
+
   test("a page is Design's, so a page tab lists the collections", () => {
     writeEntry("pages/index.json");
     expect(collectionsPanelValues().body).toBe("list");

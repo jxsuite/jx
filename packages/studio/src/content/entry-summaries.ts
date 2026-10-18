@@ -15,7 +15,13 @@
  * @docs studio/projects/browse
  */
 
-import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import {
+  isBoolean,
+  isJsonObject,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
 import { getPlatform, hasPlatform } from "../platform";
 import { isImage } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
@@ -23,7 +29,7 @@ import { hasDraftAxis, isDraftEntry } from "./draft-state";
 import { entryCollection } from "./entry-model";
 import { PAGES_COLLECTION, collectionKeyOfPath } from "./content-collections";
 import type { EntryFields } from "./entry-fields";
-import type { ContentTypeSchema } from "@jxsuite/schema/types";
+import type { ContentTypeSchema, ContentTypeSchemaField } from "@jxsuite/schema/types";
 
 /** One entry, as the Collections panel lists it. */
 export interface EntrySummary {
@@ -126,6 +132,17 @@ export function dateFieldOf(
 }
 
 /**
+ * The field a collection's SCHEMA says its entries are dated by, before any entry is read: the
+ * first property typed `format: date` or `date-time`, else the first conventionally named property
+ * it declares (a `date` with no format is still the date). The Table draws that field in its Date
+ * column, so it is the one field column it must not draw a second time.
+ */
+export function declaredDateField(schema: ContentTypeSchema | null | undefined): string | null {
+  const properties = schema?.properties ?? {};
+  return dateFieldOf(schema, Object.fromEntries(Object.keys(properties).map((name) => [name, ""])));
+}
+
+/**
  * A date value as `YYYY-MM-DD`, or "". A value that already starts with a calendar date is taken as
  * written, so a date is never shifted a day by a time zone; anything else must parse.
  */
@@ -185,10 +202,70 @@ export function imageFieldPath(entryPath: string, value: string): string {
   return out.join("/");
 }
 
-/** The first field whose value is an image file, as a preview URL, or "". */
-function thumbOf(entryPath: string, fields: EntryFields): string {
+/** A URL with a scheme (`https://…`, `data:…`): a picture somewhere else, shown as it is. */
+const ABSOLUTE_URL = /^[a-z][\d+.a-z-]*:/i;
+
+/** An image field's value as the URL a thumbnail is drawn from, or "" for no picture. */
+function thumbSrc(entryPath: string, value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return "";
+  }
+  return ABSOLUTE_URL.test(trimmed) ? trimmed : previewFileSrc(imageFieldPath(entryPath, trimmed));
+}
+
+/**
+ * The picture a field holds, when it is one: an image path, an image object's `src`
+ * (`featuredImage: { src, alt }`), or a list of them (its first).
+ */
+function pictureIn(value: EntryFields[string]): string {
+  if (isString(value)) {
+    // A CSV keeps a gallery as one cell, its URLs separated by commas.
+    return value.split(",")[0]?.trim() ?? "";
+  }
+  if (Array.isArray(value)) {
+    const [first] = value;
+    return first === undefined ? "" : pictureIn(first);
+  }
+  if (isJsonObject(value)) {
+    const { src } = value;
+    return isString(src) ? src : "";
+  }
+  return "";
+}
+
+/** Whether a schema property holds a picture: `format: image`, an image object, or a list of either. */
+function isPictureField(field: ContentTypeSchemaField): boolean {
+  if (field.format === "image") {
+    return true;
+  }
+  const src = field.properties?.["src"];
+  if (field.type === "object" && src?.type === "string") {
+    return true;
+  }
+  return field.type === "array" && field.items !== undefined && isPictureField(field.items);
+}
+
+/**
+ * An entry's thumbnail: the first field its SCHEMA declares as a picture that holds one, so a post
+ * is shown by its `cover` and not by whatever image path happens to come first; else the first
+ * field whose value is an image file. A preview URL, or "" for none.
+ */
+export function entryThumb(
+  entryPath: string,
+  fields: EntryFields,
+  schema: ContentTypeSchema | null | undefined,
+): string {
+  for (const [name, field] of Object.entries(schema?.properties ?? {})) {
+    if (isPictureField(field)) {
+      const src = thumbSrc(entryPath, pictureIn(fields[name]));
+      if (src !== "") {
+        return src;
+      }
+    }
+  }
   for (const value of Object.values(fields)) {
-    if (!isString(value) || /^[a-z][\d+.a-z-]*:/i.test(value)) {
+    if (!isString(value) || ABSOLUTE_URL.test(value)) {
       continue;
     }
     const dot = value.lastIndexOf(".");
@@ -211,7 +288,7 @@ export function summarize(path: string, collection: string, fields: EntryFields)
     fields: fieldTexts(schema, fields),
     path,
     status: hasDraftAxis(schema, fields) ? (draft ? "Draft" : "Published") : "",
-    thumb: thumbOf(path, fields),
+    thumb: entryThumb(path, fields, schema),
     title: isString(title) && title.trim() !== "" ? title : entryStem(path),
   };
 }

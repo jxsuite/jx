@@ -36,7 +36,11 @@ function csvIds(text: string, idField: string | undefined): string[] {
     });
 }
 
-/** The ids the JSON loader gives each object of an array, or `[]` for any other JSON. */
+/**
+ * The ids the JSON loader gives: each object of an array, `<stem>-<n>` where it names none; a file
+ * that is ONE object (`docs/nav.json`) is one entry, its own `id` else the file's stem
+ * (`loadJSONEntries`). `[]` for text that is not JSON.
+ */
 function jsonIds(text: string, stem: string): string[] {
   let parsed: JsonValue;
   try {
@@ -45,13 +49,14 @@ function jsonIds(text: string, stem: string): string[] {
   } catch {
     return [];
   }
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-  return parsed.map((item, index) => {
+  const idOf = (item: JsonValue, fallback: string): string => {
     const id = isNonNullObject(item) && !Array.isArray(item) ? item.id : undefined;
-    return isString(id) || isNumber(id) ? String(id) : `${stem}-${index}`;
-  });
+    return isString(id) || isNumber(id) ? String(id) : fallback;
+  };
+  if (!Array.isArray(parsed)) {
+    return [idOf(parsed, stem)];
+  }
+  return parsed.map((item, index) => idOf(item, `${stem}-${index}`));
 }
 
 /**

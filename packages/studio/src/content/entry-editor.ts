@@ -52,7 +52,10 @@ import { activateTab, workspace } from "../workspace/workspace";
 import { commitEntryFields, entryFields, mutateEntryField } from "./entry-fields";
 import type { EntryFields } from "./entry-fields";
 import { DRAFT_FIELD, DRAFT_MEANING, hasDraftAxis, isDraftEntry } from "./draft-state";
-import { collectionOfPath, missingRequired } from "./entry-model";
+import { collectionOfPath, missingRequired, recordCollectionOfPath } from "./entry-model";
+import { ENTRY_MODE, isRecordTab, recordPlace, showRecord } from "./record-entry";
+import { requestGridReveal } from "../grid/grid-reveal";
+import { titleFieldOf } from "./entry-summaries";
 import type { EntryCollection } from "./entry-model";
 import type { EntryEditorSurfaceHandle, EntryEditorView } from "../surfaces/entry-editor";
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
@@ -62,8 +65,8 @@ import type { ContentTypeSchema, JsonObject } from "@jxsuite/schema/types";
 import { isString } from "@jxsuite/schema/guards";
 import { fieldTitle } from "../browse/library-source";
 
-/** The `canvasMode` the entry form draws under. */
-export const ENTRY_MODE = "entry";
+/** The `canvasMode` the entry form draws under (defined with the record a form may be over). */
+export { ENTRY_MODE } from "./record-entry";
 
 /** What an entry tab's mode list becomes when the Entry editor opens it: the form leads. */
 const ENTRY_TAB_MODES = [ENTRY_MODE];
@@ -151,7 +154,7 @@ export interface DraftPill {
  * chip's `status` slot, and `.entry-pill`'s rules in `styles/overlays.css` are dead with it.
  */
 export function entryDraftPill(tab: Tab): DraftPill | null {
-  const collection = collectionOfPath(tab.documentPath);
+  const collection = entryCollectionOf(tab);
   const fields = entryFields(tab);
   if (!collection || !hasDraftAxis(collection.schema, fields)) {
     return null;
@@ -214,6 +217,32 @@ export function absentRequiredErrors(
   );
 }
 
+/** The collection an entry tab's form is typed by: its file's, or for a record its file's records'. */
+function entryCollectionOf(tab: Tab): EntryCollection | null {
+  return isRecordTab(tab)
+    ? recordCollectionOfPath(tab.documentPath)
+    : collectionOfPath(tab.documentPath);
+}
+
+/**
+ * The schema with the entry's title field moved to the top: what an entry is called is the first
+ * thing an author looks for, and a schema imported from a CMS lists its properties alphabetically,
+ * which put `title` after forty other fields.
+ */
+export function titleFirst(
+  form: JsonSchema,
+  schema: ContentTypeSchema | null,
+  fields: EntryFields,
+): JsonSchema {
+  const title = titleFieldOf(schema, fields);
+  const properties = form.properties ?? {};
+  const held = title === null ? undefined : properties[title];
+  if (title === null || held === undefined) {
+    return form;
+  }
+  return { ...form, properties: { [title]: held, ...properties } };
+}
+
 /** What the document says when the file belongs to no collection: the reason, then the fix. */
 function emptyLine(tab: Tab): string {
   return `${tab.documentPath ?? "This document"} is not an entry of any content collection, so there is no schema to draw a form from.`;
@@ -232,14 +261,20 @@ function entryView(paneId: string, tab: Tab, collection: EntryCollection | null)
       emptyLine: emptyLine(tab),
       fieldsRegion,
       name: "",
+      nextDisabled: true,
       note: "",
       noteState: "hidden",
+      place: "",
+      previousDisabled: true,
+      recordNav: "hidden",
       region,
       stage: "empty",
     };
   }
   const fields = entryFields(tab);
   const draft = isDraftEntry(fields);
+  const record = isRecordTab(tab);
+  const place = recordPlace(tab);
   return {
     collection: collection.name,
     draft,
@@ -247,12 +282,29 @@ function entryView(paneId: string, tab: Tab, collection: EntryCollection | null)
     draftHint: DRAFT_MEANING,
     emptyLine: "",
     fieldsRegion,
-    name: tab.documentPath?.split("/").pop() ?? "Untitled",
+    // A record is called what the Content home calls it: its title field, else its row.
+    name: record
+      ? recordName(collection, fields, place.index)
+      : (tab.documentPath?.split("/").pop() ?? "Untitled"),
+    nextDisabled: place.next === null,
     note: DRAFT_MEANING,
     noteState: draft ? "shown" : "hidden",
+    place: place.index === -1 ? "" : `${place.index + 1} of ${place.total}`,
+    previousDisabled: place.previous === null,
+    recordNav: record ? "shown" : "hidden",
     region,
     stage: "entry",
   };
+}
+
+/** A record's heading: its title field's text, else its first text, else "Row n". */
+function recordName(collection: EntryCollection, fields: EntryFields, index: number): string {
+  const field = titleFieldOf(collection.schema, fields);
+  const named = field === null ? undefined : fields[field];
+  if (isString(named) && named.trim() !== "") {
+    return named.trim();
+  }
+  return index === -1 ? "Record" : `Row ${index + 1}`;
 }
 
 /**
@@ -307,7 +359,7 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
        JSON text, so every value is JSON; a key an editor cleared reads as absent either way. */
     const form = mountSchemaForm(
       `entry:${paneId}`,
-      collection.schema as JsonSchema,
+      titleFirst(collection.schema as JsonSchema, collection.schema, fields),
       fields as JsonObject,
       {
         context: formContext(tab),
@@ -323,7 +375,7 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
   };
 
   const draw = () => {
-    const collection = collectionOfPath(tab.documentPath);
+    const collection = entryCollectionOf(tab);
     if (!collection) {
       /* The `fields` node goes with the case that held it, so the handle is dropped here rather
          than left pointing at a node the reconciler is about to remove. */
@@ -336,17 +388,37 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
   const scope = effectScope();
   const mounted = mountEntryEditorSurface(
     canvasWrap,
-    entryView(paneId, tab, collectionOfPath(tab.documentPath)),
+    entryView(paneId, tab, entryCollectionOf(tab)),
     {
       openContentTypes: () => {
         void activeRegistry()?.run("settings.open", { section: "content" });
       },
+      openGrid: () => {
+        // The grid lands on the row this form was showing (`grid/grid-reveal.ts`).
+        const { index } = recordPlace(tab);
+        if (index !== -1 && tab.documentPath) {
+          requestGridReveal(tab.documentPath, index);
+        }
+        tab.session.ui.canvasMode = "grid";
+      },
       setDraft: (draft) => setEntryDraft(tab, draft),
+      showNext: () => {
+        const { next } = recordPlace(tab);
+        if (next !== null) {
+          showRecord(tab, next);
+        }
+      },
+      showPrevious: () => {
+        const { previous } = recordPlace(tab);
+        if (previous !== null) {
+          showRecord(tab, previous);
+        }
+      },
     },
     {
       fieldsSlot: (host) => {
         formHost = host;
-        paintForm(collectionOfPath(tab.documentPath));
+        paintForm(entryCollectionOf(tab));
       },
     },
   );
@@ -365,6 +437,8 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
       void tab.doc.document;
       void tab.doc.content.frontmatter;
       void projectState?.projectConfig?.content;
+      // A record's fields are its grid's rows and pending cells, read through `entryFields`, which
+      // Tracks them. Which record is shown is tracked by `recordOf` the same way.
       draw();
     });
   });

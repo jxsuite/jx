@@ -39,17 +39,20 @@ function recordTitle(
   schema: ContentTypeSchema | null | undefined,
   fields: Readonly<Record<string, string>>,
   index: number,
+  fallback: string,
 ): string {
   const field = titleFieldOf(schema, fields);
   const named = field === null ? "" : (fields[field] ?? "");
   const first = Object.values(fields).find((value) => value.trim() !== "");
-  return (named || first || `Row ${index + 1}`).trim();
+  return (named || first || fallback || `Row ${index + 1}`).trim();
 }
 
 /** One record's fields, and the data row it was read from. */
 interface RecordFields {
   fields: Record<string, string>;
   row: number;
+  /** The file is this one record, so it is called what the file is called when it says nothing. */
+  single?: boolean;
 }
 
 /** The records of a CSV text: one per data row under the header, blank rows skipped. */
@@ -62,7 +65,11 @@ function csvFields(text: string): RecordFields[] {
   );
 }
 
-/** The records of a JSON text that is an array of objects, or null for any other JSON. */
+/**
+ * The records of a JSON text: one per object of an array, or ONE for a file that is a single object
+ * (`docs/nav.json`), which the loader reads as one entry named by the file. Null for text that is
+ * not JSON, which is then listed as the file it is.
+ */
 function jsonFields(text: string): RecordFields[] | null {
   let parsed: JsonValue;
   try {
@@ -71,16 +78,14 @@ function jsonFields(text: string): RecordFields[] | null {
   } catch {
     return null;
   }
+  const fieldsOf = (item: JsonValue): Record<string, string> =>
+    isNonNullObject(item) && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item).map(([key, value]) => [key, fieldText(value)]))
+      : {};
   if (!Array.isArray(parsed)) {
-    return null;
+    return [{ fields: fieldsOf(parsed), row: 0, single: true }];
   }
-  return parsed.map((item, row) => ({
-    fields:
-      isNonNullObject(item) && !Array.isArray(item)
-        ? Object.fromEntries(Object.entries(item).map(([key, value]) => [key, fieldText(value)]))
-        : {},
-    row,
-  }));
+  return parsed.map((item, row) => ({ fields: fieldsOf(item), row }));
 }
 
 /**
@@ -105,11 +110,12 @@ export function fileRecords(
   if (rows === null) {
     return null;
   }
-  return rows.map(({ fields, row }, index) => ({
+  const stem = (path.split("/").pop() ?? path).replace(/\.[^.]+$/, "");
+  return rows.map(({ fields, row, single }, index) => ({
     fields,
     index,
     row,
-    title: recordTitle(schema, fields, index),
+    title: recordTitle(schema, fields, index, single ? stem : ""),
   }));
 }
 

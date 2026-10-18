@@ -151,6 +151,25 @@ describe("the view", () => {
     expect(entryInspectorView(tab).urlState).toBe("none");
   });
 
+  test("an entry its page does not list is not published, and says so", async () => {
+    const tab = await openPost();
+    project({
+      "pages/[slug].json": JSON.stringify({
+        $paths: { param: "slug", values: ["another-post"] },
+        state: {
+          entry: {
+            $prototype: "ContentEntry",
+            contentType: "posts",
+            id: { $ref: "#/$params/slug" },
+          },
+        },
+        tagName: "article",
+      }),
+    });
+    await collectionPages();
+    expect(entryInspectorView(tab)).toMatchObject({ url: "", urlState: "unlisted" });
+  });
+
   test("a JSON entry of a collection with no fields says so", () => {
     project({});
     const tab = openTab({

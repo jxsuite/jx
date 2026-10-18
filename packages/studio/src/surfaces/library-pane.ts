@@ -167,6 +167,10 @@ export interface LibraryView {
   localeState: "hidden" | "shown";
   localeOptions: SurfaceOption[];
   localeValue: string;
+  /** The Filter: drawn when something groups the entries (their status, or the Board's field). */
+  filterState: "hidden" | "shown";
+  filterOptions: SurfaceOption[];
+  filterValue: string;
   query: string;
   bannerState: "hidden" | "shown";
   bannerText: string;
@@ -190,6 +194,7 @@ export interface LibraryView {
 export interface LibraryActions {
   setLayout: (key: string) => void;
   setLocale: (value: string) => void;
+  setFilter: (value: string) => void;
   search: (value: string) => void;
   openFile: (path: string) => void;
   /** Right-click on a row, at the pointer. */
@@ -240,6 +245,9 @@ function project(scope: LibraryScope, view: LibraryView): void {
   scope.fieldsState = view.fieldsState;
   scope.page = view.page;
   scope.layouts = view.layouts;
+  scope.filterState = view.filterState;
+  scope.filterOptions = view.filterOptions;
+  scope.filterValue = view.filterValue;
   scope.localeState = view.localeState;
   scope.localeOptions = view.localeOptions;
   scope.localeValue = view.localeValue;
@@ -302,6 +310,9 @@ export function mountLibrarySurface(
     fieldsState: "hidden",
     groups: [],
     layouts: [],
+    filterOptions: [],
+    filterState: "hidden",
+    filterValue: "",
     localeOptions: [],
     localeState: "hidden",
     localeValue: "",
@@ -326,6 +337,7 @@ export function mountLibrarySurface(
     search: actions.search,
     searchLabel: "",
     setLayout: actions.setLayout,
+    setFilter: actions.setFilter,
     setLocale: actions.setLocale,
     subtitle: "",
     title: "",

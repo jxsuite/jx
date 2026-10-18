@@ -47,8 +47,12 @@ describe("fileRecords", () => {
     expect(records?.[0]?.fields.n).toBe("2");
   });
 
-  test("JSON that is no array, JSON that does not parse, and other kinds hold no records", () => {
-    expect(fileRecords("a.json", '{"title":"x"}')).toBeNull();
+  test("a single JSON object is one record, called by its title, else by its file", () => {
+    expect(fileRecords("a.json", '{"title":"x"}')?.map((record) => record.title)).toEqual(["x"]);
+    expect(fileRecords("docs/nav.json", '{"sections":[{"a":1}]}')?.[0]?.title).toBe("nav");
+  });
+
+  test("JSON that does not parse, and other kinds hold no records", () => {
     expect(fileRecords("a.json", "{")).toBeNull();
     expect(fileRecords("a.yaml", "- a")).toBeNull();
   });

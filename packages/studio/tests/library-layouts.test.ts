@@ -21,6 +21,7 @@ import {
   columnsAt,
   entryFactsFrom,
   formatModified,
+  fieldValues,
   formatSize,
   libraryRow,
 } from "../src/browse/library-layouts";
@@ -41,7 +42,7 @@ function page(index: number): LibraryFile {
     collection: "pages",
     ext: ".json",
     media: false,
-    modified: "2024-06-07T00:00:00.000Z",
+    modified: "2024-06-07T12:00:00.000Z",
     name: `page-${index}.json`,
     path: `pages/page-${index}.json`,
     size: 1024,
@@ -288,7 +289,7 @@ function post(slug: string): LibraryFile {
     collection: "posts",
     ext: ".md",
     media: false,
-    modified: "2024-06-07T00:00:00.000Z",
+    modified: "2024-06-07T12:00:00.000Z",
     name: `${slug}.md`,
     path: `content/posts/${slug}.md`,
     type: ".md",
@@ -394,16 +395,22 @@ describe("a collection's own fields", () => {
           meta: { type: "object" },
           name: { type: "string" },
           pairings: { items: { type: "object" }, type: "array" },
+          gallery: { items: { format: "image", type: "string" }, type: "array" },
+          opens: { format: "date-time", type: "string" },
           publishedAt: { type: "string" },
+          seats: { type: "integer" },
           tags: { items: { type: "string" }, type: "array" },
         },
       },
       new Set(["name", "date"]),
     );
+    // A gallery is pictures, not row text; a list says so; a number or a date is a measure.
     expect(columns).toEqual([
       { name: "course", title: "Course" },
+      { measure: true, name: "opens", title: "Opens" },
       { name: "publishedAt", title: "Published at" },
-      { name: "tags", title: "Tags" },
+      { measure: true, name: "seats", title: "Seats" },
+      { list: true, name: "tags", title: "Tags" },
     ]);
     expect(entryFieldColumns(null, new Set())).toEqual([]);
     expect(fieldTitle("main_course")).toBe("Main course");
@@ -415,7 +422,6 @@ describe("a collection's own fields", () => {
       "Title",
       "Course",
       "Price",
-      "Locale",
       "Modified",
       "Path",
     ]);
@@ -462,5 +468,78 @@ describe("a collection's own fields", () => {
       ),
     ).toBeNull();
     expect(boardView(two, unique, null).map((group) => group.title)).toEqual(["content/menu"]);
+  });
+});
+
+describe("a Board over a list field, and entry pictures", () => {
+  const TAGS = [{ list: true, name: "tags", title: "Tags" }];
+  const tagged = entryFactsFrom(
+    new Map<string, EntryFacts>([
+      ["content/p/a.md", { date: "", fields: { tags: "Patios, Stone" }, status: "", title: "A" }],
+      ["content/p/b.md", { date: "", fields: { tags: "Patios" }, status: "", title: "B" }],
+      ["content/p/c.md", { date: "", fields: { tags: "Stone" }, status: "", title: "C" }],
+      ["content/p/d.md", { date: "", fields: {}, status: "", title: "D" }],
+    ]),
+  );
+  const file = (slug: string): LibraryFile => ({
+    collection: "projects",
+    ext: ".md",
+    media: false,
+    name: `${slug}.md`,
+    path: `content/p/${slug}.md`,
+    type: "Markdown",
+  });
+  const files = ["a", "b", "c", "d"].map((slug) => file(slug));
+
+  test("each value of a list field is a column, and an entry stands under each of its values", () => {
+    const field = boardFieldOf(
+      TAGS,
+      new Map(),
+      files.map((each) => tagged(each)),
+    );
+    expect(field).toEqual({ list: true, name: "tags", order: [], title: "Tags" });
+    const groups = boardView(files, tagged, field);
+    expect(groups.map((group) => [group.title, group.files.map((row) => row.name)])).toEqual([
+      ["Patios", ["A", "B"]],
+      ["Stone", ["A", "C"]],
+      ["No tags", ["D"]],
+    ]);
+  });
+
+  test("a list's text splits into its values; any other field's text is one value", () => {
+    expect(fieldValues("Patios, Stone ,", true)).toEqual(["Patios", "Stone"]);
+    expect(fieldValues("Patios, Stone", false)).toEqual(["Patios, Stone"]);
+    expect(fieldValues("  ", true)).toEqual([]);
+    expect(fieldValues(undefined, false)).toEqual([]);
+  });
+
+  test("a measure (a number or a date) never groups a Board, however its values repeat", () => {
+    const facts = entryFactsFrom(
+      new Map<string, EntryFacts>([
+        ["content/p/a.md", { date: "", fields: { until: "2026" }, status: "", title: "A" }],
+        ["content/p/b.md", { date: "", fields: { until: "2026" }, status: "", title: "B" }],
+        ["content/p/c.md", { date: "", fields: { until: "2027" }, status: "", title: "C" }],
+      ]),
+    );
+    const until = [{ measure: true, name: "until", title: "Until" }];
+    expect(
+      boardFieldOf(
+        until,
+        new Map(),
+        files.map((each) => facts(each)),
+      ),
+    ).toBeNull();
+  });
+
+  test("an entry with a picture is drawn by it, not by a render of its body", () => {
+    const row = libraryRow(file("a"), [], true, {
+      date: "",
+      status: "",
+      thumb: "/content/p/cover.jpg",
+      title: "A",
+    });
+    expect([row.art, row.src]).toEqual(["image", "/content/p/cover.jpg"]);
+    const plain = libraryRow(file("b"), [], true, { date: "", status: "", title: "B" });
+    expect([plain.art, plain.src]).toEqual(["doc", ""]);
   });
 });

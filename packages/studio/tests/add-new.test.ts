@@ -1096,6 +1096,21 @@ describe("a multilingual site (site-architecture.md §13)", () => {
     expect(saved()).toBe("Saved as pages/fr-ca/opening-hours.json · opens at /fr-ca/opening-hours");
   });
 
+  test("a page is framed in its language's own template until a template is chosen", async () => {
+    const framed = {
+      ...FILES,
+      "layouts/base.json": '{"tagName":"div"}',
+      "layouts/fr-ca.json": '{"tagName":"div"}',
+    };
+    setup(framed, { ...I18N, defaults: { layout: "./layouts/base.json" } });
+    const { done } = await open({ kind: "page" });
+    await typeName("Hours");
+    await pickLocale("fr-CA");
+    await confirm();
+    await done;
+    expect(fileJson("pages/fr-ca/hours.json").$layout).toBe("./layouts/fr-ca.json");
+  });
+
   test("a collection is localized by default, and can opt out", async () => {
     setup(FILES, I18N);
     const { done } = await open({ kind: "collection" });

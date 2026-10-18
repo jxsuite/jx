@@ -20,6 +20,7 @@
 
 import { isImage } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
+import { localDay } from "../utils/local-day";
 import { localeLabel } from "@jxsuite/schema/locale";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { PAGES_COLLECTION } from "../content/content-collections";
@@ -42,6 +43,11 @@ export interface EntryFacts {
   fields?: EntryFieldTexts | undefined;
   /** A page's template, by name ("Base", "None"), once the page has been read. */
   template?: string | undefined;
+  /**
+   * The entry's picture, as a preview URL: the field its schema declares an image (a post's
+   * `cover`), from `content/entry-summaries.ts`'s `entryThumb`. "" or absent for none.
+   */
+  thumb?: string | undefined;
 }
 
 /** The field a Board groups a collection by when it has no draft workflow, and its heading. */
@@ -50,6 +56,25 @@ export interface BoardField {
   title: string;
   /** The schema's `enum`, when it declares one: the order the columns stand in. */
   order: readonly string[];
+  /** The field holds a list: an entry stands in the column of each of its values. */
+  list?: boolean | undefined;
+}
+
+/**
+ * The values one field's list text holds: each item of a list field (its text joins them with
+ * commas, as a CSV cell does), or the one value of any other field. Blank values are none.
+ */
+export function fieldValues(text: string | undefined, list: boolean | undefined): string[] {
+  if (text === undefined || text.trim() === "") {
+    return [];
+  }
+  if (!list) {
+    return [text];
+  }
+  return text
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value !== "");
 }
 
 /** A Board with more columns than this is a list of singletons, not a grouping. */
@@ -76,10 +101,11 @@ export function boardFieldOf(
     return { ...declared, order: enums.get(declared.name)! };
   }
   for (const field of fields) {
-    const values = facts.flatMap((entry) => {
-      const value = entry?.fields?.[field.name] ?? "";
-      return value === "" ? [] : [value];
-    });
+    if (field.measure) {
+      continue;
+    }
+    // A list field's every item is a value: `Patios, Stone` is two, not one string.
+    const values = facts.flatMap((entry) => fieldValues(entry?.fields?.[field.name], field.list));
     const distinct = new Set(values).size;
     if (distinct >= 2 && distinct < values.length && distinct <= BOARD_FIELD_MAX_GROUPS) {
       return { ...field, order: [] };
@@ -158,13 +184,12 @@ export function formatSize(size: number | undefined): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }
 
-/** An ISO timestamp as `YYYY-MM-DD`, or "" when there is none. Never invents "just now". */
+/**
+ * An ISO timestamp as the local `YYYY-MM-DD` it fell on, or "" when there is none. Never invents
+ * "just now".
+ */
 export function formatModified(modified: string | undefined): string {
-  if (!modified) {
-    return "";
-  }
-  const parsed = new Date(modified);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+  return modified ? localDay(new Date(modified)) : "";
 }
 
 /** The text one table cell shows for a file, and for an entry what it says about itself. */
@@ -241,9 +266,16 @@ export function libraryRow(
   entry?: EntryFacts,
 ): LibraryRow {
   const image = isImage(file.ext);
+  // An entry is shown by its own picture (its `cover`), not by a render of its body text.
+  const thumb = entry?.thumb ?? "";
   return {
     // A record is a row of a file, not a document the runtime can render.
-    art: image ? "image" : live && file.collection !== null && !file.record ? "doc" : "glyph",
+    art:
+      image || thumb !== ""
+        ? "image"
+        : live && file.collection !== null && !file.record
+          ? "doc"
+          : "glyph",
     cells: columns.map((column) => ({
       field: column.field,
       text: cellText(file, column.field, entry),
@@ -251,7 +283,7 @@ export function libraryRow(
     meta: file.type,
     name: entry?.title ?? file.name,
     path: file.path,
-    src: image ? previewFileSrc(file.path) : "",
+    src: image ? previewFileSrc(file.path) : thumb,
   };
 }
 
@@ -365,12 +397,15 @@ function groupByField(
   const none = `No ${field.title.toLowerCase()}`;
   const byValue = new Map<string, LibraryFile[]>();
   for (const file of files) {
-    const value = factsOf(file)?.fields?.[field.name] || none;
-    const bucket = byValue.get(value);
-    if (bucket) {
-      bucket.push(file);
-    } else {
-      byValue.set(value, [file]);
+    const values = fieldValues(factsOf(file)?.fields?.[field.name], field.list);
+    // An entry tagged twice stands in both columns: each is the set of entries with that tag.
+    for (const value of values.length === 0 ? [none] : new Set(values)) {
+      const bucket = byValue.get(value);
+      if (bucket) {
+        bucket.push(file);
+      } else {
+        byValue.set(value, [file]);
+      }
     }
   }
   const rank = (value: string) => {

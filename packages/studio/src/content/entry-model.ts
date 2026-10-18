@@ -99,6 +99,20 @@ export function collectionOfPath(path: string | null): EntryCollection | null {
   return matched ? entryCollection(matched.name) : null;
 }
 
+/**
+ * The collection a file-backed collection's FILE holds the records of (`content/projects.csv`), or
+ * null. {@link entryCollection} refuses one, rightly, for everything that makes a new entry FILE; a
+ * record's form only reads its schema and its name, and `dir` is the file itself.
+ */
+export function recordCollectionOfPath(path: string | null): EntryCollection | null {
+  const matched = findContentTypeSchema(path ?? null, projectState?.projectConfig);
+  const info = matched ? collectionInfo(matched.name) : null;
+  if (!matched || !info) {
+    return null;
+  }
+  return { def: info.def, dir: info.dir, ext: info.ext, name: info.name, schema: matched.schema };
+}
+
 // ─── Seeding a new entry ─────────────────────────────────────────────────────
 
 /** Deep copy of a schema `default`, so two entries seeded from one schema never share an object. */

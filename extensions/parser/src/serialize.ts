@@ -30,12 +30,15 @@ import {
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
+import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
 import remarkDirective from "remark-directive";
 import remarkGfm from "remark-gfm";
 import { stringify } from "yaml";
 import { htmlToJx } from "@jxsuite/markup/html-to-jx";
 import { expandDotPaths } from "./transpile.ts";
+import { bodyText, frontmatterText, markdownMarkers, spliceFrontmatter } from "./source-style.ts";
+import type { MarkdownMarkers } from "./source-style.ts";
 import type {
   JsonObject,
   JsonValue,
@@ -256,6 +259,12 @@ export interface SerializeOptions<ScopeValue = JxDocumentValue> {
   allowlist?: ReadonlySet<string> | string[];
   /** Roundtrip mode: emit YAML frontmatter from non-children doc keys (default true). */
   frontmatter?: boolean;
+  /**
+   * Roundtrip mode: the text the document was read from. Every frontmatter key whose value is
+   * unchanged keeps its own spelling (quotes, wrapping, block style, comments), and the body is
+   * written with the emphasis, strong and bullet markers the source used (`source-style.ts`).
+   */
+  source?: string;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1835,6 +1844,10 @@ export function serializeJxMarkdown<ScopeValue>(
    `declare module`, so the type-aware linter sees this import as an error type, not that Plugin. */
 const remarkStringifyPlugin = remarkStringify as UnifiedPlugin;
 
+/* SAFETY: remark-parse is a shorthand `declare module` in the root types.d.ts (its default import is
+   `any`); it default-exports a unified attacher taking no settings, the UnifiedPlugin shape. */
+const remarkParsePlugin = remarkParse as UnifiedPlugin;
+
 /** A fresh unified processor, seen through the surface this module drives. */
 function createProcessor(): UnifiedProcessor {
   /* SAFETY: unified() returns a Processor, which has the use/parse/runSync/stringify members
@@ -1859,16 +1872,25 @@ function serializeRoundtrip<ScopeValue>(
     }
 
     if (Object.keys(frontmatter).length > 0) {
-      lines.push("---", stringifyFrontmatter(frontmatter), "---", "");
+      const sourceYaml = opts.source === undefined ? null : frontmatterText(opts.source);
+      const spliced =
+        sourceYaml === null
+          ? null
+          : spliceFrontmatter(frontmatter, sourceYaml, (values) => stringifyFrontmatter(values));
+      lines.push("---", spliced ?? stringifyFrontmatter(frontmatter), "---", "");
     }
   }
 
   if (Array.isArray(doc.children) && doc.children.length > 0) {
     const mdast = jxToMdast(doc, opts);
+    const markers =
+      opts.source === undefined
+        ? { bullet: "-", emphasis: "*", strong: "*" }
+        : sourceMarkers(opts.source);
     const processor = createProcessor()
       .use(remarkGfm)
       .use(remarkDirective)
-      .use(remarkStringifyPlugin, { bullet: "-", emphasis: "*", strong: "*" });
+      .use(remarkStringifyPlugin, { ...markers });
     // Runs of blank lines are squeezed in the body only: inside the frontmatter they are a block
     // Scalar's own text (a `|-` excerpt's paragraph breaks), and squeezing them edits a value.
     lines.push(processor.stringify(mdast).replaceAll(/\n{3,}/g, "\n\n"));
@@ -1888,6 +1910,17 @@ function serializeRoundtrip<ScopeValue>(
  *   them strings unquoted, but the loaders a site's other tools use (js-yaml, gray-matter) do not,
  *   and a date that was a string must not become a `Date` because Studio saved the file.
  */
+/** The markers the body of `source` was written with (`source-style.ts`). */
+function sourceMarkers(source: string): MarkdownMarkers {
+  const body = bodyText(source);
+  const tree = createProcessor()
+    .use(remarkParsePlugin)
+    .use(remarkGfm)
+    .use(remarkDirective)
+    .parse(body);
+  return markdownMarkers(tree, body);
+}
+
 function stringifyFrontmatter(frontmatter: DirectiveProps): string {
   return stringify(frontmatter, { lineWidth: 0, version: "1.1" }).trim();
 }

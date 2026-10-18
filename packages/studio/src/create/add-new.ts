@@ -346,6 +346,29 @@ export function defaultTemplateChoice(ctx: CreationContext): string {
   return ctx.layouts[0]?.ref ?? START_BLANK;
 }
 
+/**
+ * The template a page in `locale` starts in: the layout named for that language
+ * (`layouts/fr-ca.json`, or one in `layouts/fr-ca/`), as a multilingual site keeps one frame per
+ * language with its own navigation and direction; else the project's default ({@link
+ * defaultTemplateChoice}). The default language usually has no layout of its own name, and is drawn
+ * in the default.
+ */
+export function templateForLocale(ctx: CreationContext, locale: string | null | undefined): string {
+  const wanted = canonicalizeLocale(locale ?? "");
+  if (wanted !== null) {
+    const named = ctx.layouts.find((layout) => {
+      const parts = normalizeLayoutPath(layout.ref)
+        .replace(/\.json$/i, "")
+        .split("/");
+      return parts.some((part) => canonicalizeLocale(part) === wanted);
+    });
+    if (named) {
+      return named.ref;
+    }
+  }
+  return defaultTemplateChoice(ctx);
+}
+
 /** A collection's item, said in the singular. Defined with the collections it names. */
 export { itemNoun } from "../content/content-collections";
 
@@ -590,7 +613,8 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
   const format = ctx.contentFormat;
   const ext = format?.ext ?? ".json";
   const item = itemNoun(slug);
-  const fileName = slug === "" ? "" : `first-${item}${ext}`;
+  // The noun in words (`menu item`) is a file name in a slug's spelling (`first-menu-item.md`).
+  const fileName = slug === "" ? "" : `first-${item.replaceAll(" ", "-")}${ext}`;
   const schema = presetSchema(fields);
   // The schema as the JSON `project.json` stores: a copy the guard proves is a JSON object.
   const stored: unknown = structuredClone(schema);
@@ -604,21 +628,37 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
   let route: string | undefined;
   let pageNote = "";
   if (options.ownPage !== false && slug !== "") {
-    const template = options.pageTemplate ?? defaultTemplateChoice(ctx);
-    const pagePath = inLocale(
-      `pages/${slug}/[slug].json`,
-      localized ? i18n.defaultLocale : null,
-      ctx,
-    );
-    route = fileToRoute(pagePath).urlPattern;
-    extraWrites.push({
-      body: {
-        doc: collectionPageBody(slug, fields, layoutValueFor(template, ctx), ctx),
-        format: null,
-      },
-      path: pagePath,
-    });
-    pageNote = `, and ${pagePath} at ${route}`;
+    const chosen = options.pageTemplate ?? defaultTemplateChoice(ctx);
+    /* A localized collection is served in every language, so it gets a template page in each, the
+       way a multilingual site keeps one per language (`pages/fr-ca/<slug>/[slug].json`): one page
+       in the default language alone published every other language's entries at no URL. The
+       default language's page is first, and names the route the summary states. A language with a
+       frame of its own (`layouts/fr-ca.json`) is drawn in it unless a template other than the
+       default was chosen, which is then every language's. */
+    const locales = localized
+      ? [i18n.defaultLocale, ...i18n.locales.filter((tag) => tag !== i18n.defaultLocale)]
+      : [null];
+    const written: string[] = [];
+    for (const locale of locales) {
+      const pagePath = inLocale(`pages/${slug}/[slug].json`, locale, ctx);
+      const template =
+        locale === null || chosen !== defaultTemplateChoice(ctx)
+          ? chosen
+          : templateForLocale(ctx, locale);
+      route ??= fileToRoute(pagePath).urlPattern;
+      extraWrites.push({
+        body: {
+          doc: collectionPageBody(slug, fields, layoutValueFor(template, ctx), ctx),
+          format: null,
+        },
+        path: pagePath,
+      });
+      written.push(pagePath);
+    }
+    pageNote =
+      written.length === 1
+        ? `, and ${written[0]} at ${route}`
+        : `, and a page in each language (${written.join(", ")})`;
   }
   const result: Creation = {
     config: { entry, name: slug },

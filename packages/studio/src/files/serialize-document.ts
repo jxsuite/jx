@@ -44,7 +44,11 @@ export async function serializeDocument(tab: Tab): Promise<string> {
     const fm = tab.doc.content.frontmatter;
     const doc = tab.doc.document;
     const fullDoc = { ...fm, ...doc, children: doc.children ?? [] };
-    return formatSerialize(sourceFormat.name, fullDoc, { mode: "roundtrip" });
+    // The text the file was read as, so what the author did not edit keeps its own spelling.
+    return formatSerialize(sourceFormat.name, fullDoc, {
+      mode: "roundtrip",
+      ...(tab.doc.source !== null && { source: tab.doc.source }),
+    });
   }
   if (tab.doc.mode === "content") {
     const format = defaultContentFormat();

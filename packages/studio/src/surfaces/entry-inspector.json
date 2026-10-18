@@ -285,6 +285,14 @@
               },
               "textContent": "Entries of this collection have no page of their own."
             },
+            "unlisted": {
+              "$description": "The collection has a page, but the page lists the ids it publishes (`$paths.values`) and this entry is not one of them: naming a URL the build never writes would be a link to nothing.",
+              "tagName": "p",
+              "attributes": {
+                "part": "note"
+              },
+              "textContent": "Not published: this collection's page lists the entries it publishes, and this is not one of them."
+            },
             "loading": {
               "tagName": "p",
               "attributes": {

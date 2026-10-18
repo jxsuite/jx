@@ -488,7 +488,11 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
     }
     const doc = entry.document;
     const fullDoc = { ...frontmatter, ...doc, children: doc.children ?? [] };
-    const text = await formatSerialize(entry.formatName, fullDoc, { mode: "roundtrip" });
+    // The entry's own text, so only the patched keys are re-spelled.
+    const text = await formatSerialize(entry.formatName, fullDoc, {
+      mode: "roundtrip",
+      source: entry.rawText,
+    });
     markLocalMutation(path);
     await platform.writeFile(path, text);
     entries.set(path, { ...entry, frontmatter, rawText: text });

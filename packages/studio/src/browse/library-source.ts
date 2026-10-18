@@ -17,7 +17,7 @@
 import { getPlatform } from "../platform";
 import { projectState } from "../store";
 import { workspaceHomeTabId } from "../workspace/workspace-ids";
-import { PAGES_COLLECTION } from "../content/content-collections";
+import { PAGES_COLLECTION, capitalise, humanName } from "../content/content-collections";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { libraryScanDirs, scanLibrary } from "./library-model";
 import { routedPageExtensions } from "../format/format-host";
@@ -60,6 +60,17 @@ export interface EntryFieldColumn {
   name: string;
   /** The column heading. */
   title: string;
+  /**
+   * The field holds a list (`tags: [Patios, Stone]`), which its list text joins with commas. A
+   * Board grouped by it puts an entry under each value, and the Filter matches any one of them.
+   */
+  list?: boolean;
+  /**
+   * A field whose values are measures, not categories: a number (`works: 90`) or a date (`until`).
+   * Translations of one entry repeat them, which is not a grouping, so a Board never groups by
+   * one.
+   */
+  measure?: boolean;
 }
 
 /** The grid field a schema field's column is keyed by, kept apart from the file facts' names. */
@@ -80,12 +91,7 @@ const UNLISTED_FORMATS = new Set(["image", "markdown", "html", "richtext"]);
 
 /** "publishedAt" → "Published at", "course" → "Course". */
 export function fieldTitle(name: string): string {
-  const words = name
-    .replaceAll(/[_-]+/g, " ")
-    .replaceAll(/([a-z\d])([A-Z])/g, "$1 $2")
-    .trim()
-    .toLowerCase();
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  return capitalise(humanName(name));
 }
 
 /**
@@ -111,10 +117,30 @@ export function entryFieldColumns(
       ) {
         return false;
       }
-      return field.type !== "array" || field.items?.type === "string";
+      // A list of images is a gallery, which no more reads as row text than one image does.
+      const itemFormat = field.items?.format;
+      return (
+        field.type !== "array" ||
+        (field.items?.type === "string" &&
+          !(isString(itemFormat) && UNLISTED_FORMATS.has(itemFormat)))
+      );
     })
     .slice(0, ENTRY_FIELD_COLUMN_LIMIT)
-    .map(([name]) => ({ name, title: fieldTitle(name) }));
+    .map(([name, field]): EntryFieldColumn => {
+      const column: EntryFieldColumn = { name, title: fieldTitle(name) };
+      if (field.type === "array") {
+        column.list = true;
+      }
+      if (
+        field.type === "number" ||
+        field.type === "integer" ||
+        field.format === "date" ||
+        field.format === "date-time"
+      ) {
+        column.measure = true;
+      }
+      return column;
+    });
 }
 
 /**
@@ -170,8 +196,20 @@ export function libraryColumns(
   collection: string = PAGES_COLLECTION,
   facts?: EntryColumnFacts,
 ): GridColumn[] {
+  // The Locale column only when the entries are in more than one language: a column that is empty
+  // On every row of a one-language project is width taken from the Title for nothing.
   const fileFacts: GridColumn[] = [
-    { editable: false, field: "locale", kind: "string", title: "Locale", widthHint: 90 },
+    ...(facts?.locale
+      ? [
+          {
+            editable: false,
+            field: "locale",
+            kind: "string",
+            title: "Locale",
+            widthHint: 90,
+          } as const,
+        ]
+      : []),
     { editable: false, field: "modified", kind: "date", title: "Modified", widthHint: 160 },
     { editable: false, field: "path", kind: "readonly", title: "Path", widthHint: 320 },
   ];

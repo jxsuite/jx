@@ -33,8 +33,11 @@ export interface EntryInspectorView {
   draftHint: string;
   /** `form` draws the field form's host; `none` says the collection declares no fields. */
   fieldsState: "form" | "none";
-  /** `shown` draws the URL; `none` says the collection has no page; `loading` while it is read. */
-  urlState: "shown" | "none" | "loading";
+  /**
+   * `shown` draws the URL; `none` says the collection has no page; `unlisted` that its page lists
+   * the entries it publishes and this is not one; `loading` while the pages are read.
+   */
+  urlState: "shown" | "none" | "unlisted" | "loading";
   url: string;
   /** The file the entry is stored in. */
   path: string;

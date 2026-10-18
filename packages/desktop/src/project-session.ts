@@ -61,7 +61,7 @@ import type {
 } from "@jxsuite/server/refactor";
 import { openExternal } from "./utils.ts";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
-import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
+import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type {
   JsonObject,
   JsonPrimitive,
@@ -263,35 +263,89 @@ function deepestExisting(absPath: string): string {
 }
 
 function assertUnderRoot(absPath: string, root: string) {
-  // (1) Lexical guard — the raw separator is irrelevant to the "../" and "/" escape checks.
-  const rel = relative(root, absPath);
-  if (rel.startsWith("..") || rel.startsWith("/")) {
+  if (!containedIn(absPath, root)) {
     throw new Error("Path outside project root");
   }
+}
+
+/**
+ * The places outside the project root its declared content lives: each collection `source` that
+ * resolves beside the project (`sites/jxsuite.com` declares `content.docs.source: "../../docs"`). A
+ * `{locale}` source is reached from the directory above its first `{locale}` segment, and a
+ * single-file source is that file alone. Read from `project.json` on each call, so a collection
+ * declared a moment ago is reachable at once; a project with no readable `project.json` has none.
+ */
+function collectionSourceRoots(root: string): string[] {
+  let config: unknown;
+  try {
+    config = JSON.parse(readFileSync(join(root, "project.json"), "utf8"));
+  } catch {
+    return [];
+  }
+  const content = isNonNullObject(config) && "content" in config ? config.content : null;
+  if (!isNonNullObject(content)) {
+    return [];
+  }
+  const roots: string[] = [];
+  for (const def of Object.values(content)) {
+    const source = isNonNullObject(def) && "source" in def ? def.source : null;
+    if (!isString(source) || source.trim() === "") {
+      continue;
+    }
+    const cut = source.indexOf("{locale}");
+    const fixed = cut === -1 ? source : source.slice(0, cut);
+    const abs = resolve(root, fixed === "" ? "." : fixed);
+    if (!containedIn(abs, root)) {
+      roots.push(abs);
+    }
+  }
+  return roots;
+}
+
+/**
+ * Throw unless `absPath` is inside the project root or inside one of its declared collection
+ * sources ({@link collectionSourceRoots}). The file operations a collection's entries need (list,
+ * read, write, upload, rename, delete) take this guard, so a collection outside the project is the
+ * same collection in the desktop app as on the dev server, whose project-relative paths reach it as
+ * `../../docs/…`. Everything else stays inside the root.
+ */
+function assertReachable(absPath: string, root: string) {
+  if (containedIn(absPath, root)) {
+    return;
+  }
+  if (collectionSourceRoots(root).some((base) => containedIn(absPath, base))) {
+    return;
+  }
+  throw new Error("Path outside project root");
+}
+
+/** Whether `absPath` is `base` or inside it, lexically and once symlinks are resolved. */
+function containedIn(absPath: string, base: string): boolean {
+  // (1) Lexical guard — the raw separator is irrelevant to the "../" and "/" escape checks.
+  const rel = relative(base, absPath);
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    return false;
+  }
   // (2) Symlink containment (mirrors the project server's containedFile read-path hardening):
-  // Realpath the project root and the deepest existing ancestor of the target, then re-check the
-  // Resolved target is still under the resolved root. A symlink INSIDE the project that points
-  // Outside would otherwise let the file mutators escape root.
+  // Realpath the base and the deepest existing ancestor of the target, then re-check the resolved
+  // Target is still under the resolved base. A symlink INSIDE the project that points outside
+  // Would otherwise let the file mutators escape it.
   let realRoot: string;
   try {
-    realRoot = realpathSync(root);
+    realRoot = realpathSync(base);
   } catch {
     // Root itself is unresolvable — the lexical guard already passed; do not block.
-    return;
+    return true;
   }
   let realTarget: string;
   try {
     realTarget = realpathSync(deepestExisting(absPath));
   } catch {
-    return;
+    return true;
   }
   const nRoot = normalizeForCompare(realRoot);
   const nTarget = normalizeForCompare(realTarget);
-  const contained =
-    nTarget === nRoot || nTarget.startsWith(nRoot.endsWith("/") ? nRoot : `${nRoot}/`);
-  if (!contained) {
-    throw new Error("Path outside project root");
-  }
+  return nTarget === nRoot || nTarget.startsWith(nRoot.endsWith("/") ? nRoot : `${nRoot}/`);
 }
 
 function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): StudioSchema {
@@ -898,7 +952,7 @@ export function createProjectSession(initialRoot: string | null) {
   async function listDirectory(params: { dir: string }): Promise<DirEntry[]> {
     const root = requireRoot();
     const absDir = resolve(root, params.dir);
-    assertUnderRoot(absDir, root);
+    assertReachable(absDir, root);
 
     const entries = await readdir(absDir, { withFileTypes: true });
     const result: DirEntry[] = [];
@@ -926,7 +980,7 @@ export function createProjectSession(initialRoot: string | null) {
   async function readFileHandler(params: { path: string }): Promise<string> {
     const root = requireRoot();
     const abs = resolve(root, params.path);
-    assertUnderRoot(abs, root);
+    assertReachable(abs, root);
     return readFile(abs, "utf8");
   }
 
@@ -941,14 +995,14 @@ export function createProjectSession(initialRoot: string | null) {
   async function readFileBytesHandler(params: { path: string }): Promise<{ data: string }> {
     const root = requireRoot();
     const abs = resolve(root, params.path);
-    assertUnderRoot(abs, root);
+    assertReachable(abs, root);
     return { data: Buffer.from(await Bun.file(abs).arrayBuffer()).toString("base64") };
   }
 
   async function writeFileHandler(params: { path: string; content: string }): Promise<void> {
     const root = requireRoot();
     const abs = resolve(root, params.path);
-    assertUnderRoot(abs, root);
+    assertReachable(abs, root);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, params.content, "utf8");
   }
@@ -956,7 +1010,7 @@ export function createProjectSession(initialRoot: string | null) {
   async function deleteFile(params: { path: string }): Promise<void> {
     const root = requireRoot();
     const abs = resolve(root, params.path);
-    assertUnderRoot(abs, root);
+    assertReachable(abs, root);
     await rm(abs, { force: true, maxRetries: 3, retryDelay: 100 });
   }
 
@@ -964,8 +1018,8 @@ export function createProjectSession(initialRoot: string | null) {
     const root = requireRoot();
     const absFrom = resolve(root, params.from);
     const absTo = resolve(root, params.to);
-    assertUnderRoot(absFrom, root);
-    assertUnderRoot(absTo, root);
+    assertReachable(absFrom, root);
+    assertReachable(absTo, root);
     await mkdir(dirname(absTo), { recursive: true });
     await rename(absFrom, absTo);
     // Refactor pass: rewrite references project-wide and auto-rename a component's tag (Pillar B/C).
@@ -1011,7 +1065,7 @@ export function createProjectSession(initialRoot: string | null) {
   async function createDirectory(params: { path: string }): Promise<void> {
     const root = requireRoot();
     const abs = resolve(root, params.path);
-    assertUnderRoot(abs, root);
+    assertReachable(abs, root);
     await mkdir(abs, { recursive: true });
   }
 
@@ -1021,7 +1075,7 @@ export function createProjectSession(initialRoot: string | null) {
   }): Promise<{ path: string; size: number }> {
     const root = requireRoot();
     const abs = resolve(root, params.path);
-    assertUnderRoot(abs, root);
+    assertReachable(abs, root);
     await mkdir(dirname(abs), { recursive: true });
     const buffer = Buffer.from(params.data, "base64");
     await Bun.write(abs, buffer);

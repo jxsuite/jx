@@ -19,6 +19,8 @@ void mock.module("../src/files/file-ops.js", () => ({
 const {
   SUMMARY_READ_LIMIT,
   dateFieldOf,
+  declaredDateField,
+  entryThumb,
   entryDay,
   fieldText,
   titleFieldOf,
@@ -152,7 +154,54 @@ describe("summarize", () => {
   });
 });
 
+describe("an entry's picture", () => {
+  const schema = {
+    properties: {
+      cover: { format: "image", type: "string" },
+      featuredImage: {
+        properties: { alt: { type: "string" }, src: { type: "string" } },
+        type: "object",
+      },
+      gallery: { items: { format: "image", type: "string" }, type: "array" },
+      logo: { type: "string" },
+    },
+  };
+
+  test("is the field its schema declares a picture, before any other image path", () => {
+    expect(
+      entryThumb("content/posts/a.md", { cover: "./c.jpg", logo: "./l.png" }, schema),
+    ).toContain("content/posts/c.jpg");
+    // An image object is pictured by its `src`; a remote picture is shown as it is.
+    expect(
+      entryThumb("content/posts/a.md", { featuredImage: { src: "https://cdn.x/f.jpg" } }, schema),
+    ).toBe("https://cdn.x/f.jpg");
+    // A gallery by its first picture, whether a list or a CSV cell of comma-separated URLs.
+    expect(entryThumb("c.csv", { gallery: ["https://x/1.jpg", "https://x/2.jpg"] }, schema)).toBe(
+      "https://x/1.jpg",
+    );
+    expect(entryThumb("c.csv", { gallery: "https://x/1.jpg, https://x/2.jpg" }, schema)).toBe(
+      "https://x/1.jpg",
+    );
+  });
+
+  test("falls back to the first image path, and is none when nothing holds a picture", () => {
+    expect(entryThumb("content/posts/a.md", { logo: "./l.png" }, schema)).toContain(
+      "content/posts/l.png",
+    );
+    expect(entryThumb("content/posts/a.md", { cover: " ", gallery: [] }, schema)).toBe("");
+    expect(entryThumb("content/posts/a.md", { featuredImage: { alt: "x" } }, schema)).toBe("");
+    expect(entryThumb("content/posts/a.md", { cover: 3 }, null)).toBe("");
+  });
+});
+
 describe("an entry's date", () => {
+  test("a schema declares its date field by format, else by a conventional name", () => {
+    expect(declaredDateField({ properties: { date: { type: "string" } } })).toBe("date");
+    expect(declaredDateField({ properties: { at: { format: "date-time" } } })).toBe("at");
+    expect(declaredDateField({ properties: { title: { type: "string" } } })).toBeNull();
+    expect(declaredDateField(null)).toBeNull();
+  });
+
   test("is the schema's date field, else a conventionally named one, else none", () => {
     const schema = { properties: { title: { type: "string" }, when: { format: "date" } } };
     expect(dateFieldOf(schema, { when: "2026-01-02" })).toBe("when");

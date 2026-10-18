@@ -207,6 +207,15 @@ export interface Tab {
      */
     layout: JsonLayout | null;
     /**
+     * The text a format-class file (Markdown) was read as, or null for a JSON document, a new
+     * document or a stub. The format's serializer is handed it on save
+     * (`files/serialize-document.ts`) so every frontmatter key the author did not edit keeps its
+     * own spelling and the body keeps its markers (`@jxsuite/parser` `source-style.ts`). The
+     * lifetime is `layout`'s: an edit leaves it alone, and a read from disk, a source-view commit,
+     * a peer's text or a save replaces it with the text just read or written.
+     */
+    source: string | null;
+    /**
      * The repeaters the file wrote as a node's whole `children`, which loading rewrote into the
      * member form the editor works in (`tabs/bare-repeaters.ts`); null when it wrote none. A fact
      * about the file with the lifetime `layout` has: a reload or a source-view commit replaces it,
@@ -318,6 +327,7 @@ const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff
  *   openedFrom?: TabOrigin | null;
  *   preview?: boolean;
  *   layout?: JsonLayout | null;
+ *   source?: string | null;
  * }} opts
  * @returns {Tab}
  */
@@ -332,6 +342,7 @@ export function createTab({
   openedFrom = null,
   preview: previewTab = false,
   layout = null,
+  source = null,
   canvasMode,
 }: {
   id: string;
@@ -344,6 +355,8 @@ export function createTab({
   openedFrom?: TabOrigin | null;
   preview?: boolean;
   layout?: JsonLayout | null;
+  /** The text a format-class file was read as (`doc.source`). */
+  source?: string | null;
   /**
    * The mode to open in instead of the first declared one: a comparison opens straight into
    * `git-diff`, so the tab is never active in an edit mode that belongs to another workspace.
@@ -372,6 +385,7 @@ export function createTab({
     handlersSource: null,
     layout,
     mode: inferDocumentMode(documentPath, sourceFormat),
+    source,
     sourceFormat,
   };
   const history: Tab["history"] = {

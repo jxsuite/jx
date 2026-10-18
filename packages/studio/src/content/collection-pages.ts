@@ -45,6 +45,12 @@ export interface PageFacts {
   field: string | null;
   /** Its `$layout`: a path, `false` (no layout), or `undefined` (the project's default). */
   layout: string | false | undefined;
+  /**
+   * The ids a `$paths.values` page enumerates (`["chad-beiler", "kris-bucher"]`): the only entries
+   * it publishes a URL for. `null` for a `$paths.contentType` page, which publishes every entry,
+   * and for a `values` that is not a list of ids written in the page.
+   */
+  values?: readonly string[] | null;
 }
 
 /** A collection's template page. */
@@ -59,6 +65,8 @@ export interface CollectionPage {
   field: string | null;
   /** The page's `$layout`, as {@link PageFacts.layout}. */
   layout: string | false | undefined;
+  /** The only entry ids it publishes, as {@link PageFacts.values}; null or absent for every one. */
+  values?: readonly string[] | null;
   /**
    * The language the page is served in (`pages/ar/exhibitions/[slug].json` → `ar`), or `null` in a
    * project without `i18n` and for a page outside every locale tree.
@@ -101,6 +109,7 @@ export function pageFactsOf(
   let contentType: string | null = null;
   let param: string | null = null;
   let field: string | null = null;
+  let values: string[] | null = null;
   if (paths && !Array.isArray(paths) && "contentType" in paths) {
     const type = paths.contentType;
     contentType = isString(type) && type !== "" ? type : null;
@@ -113,10 +122,19 @@ export function pageFactsOf(
     const enumerated = isString(named) && named !== "" ? named : null;
     contentType = enumerated === null ? null : entryCollectionOf(document, frontmatter, enumerated);
     param = contentType === null ? null : enumerated;
+    // The ids it lists are the entries it publishes; any other entry of the collection has no page.
+    const listed = paths.values;
+    values =
+      contentType !== null && Array.isArray(listed)
+        ? listed.flatMap((value) => {
+            const id = segmentOf(value);
+            return id === null ? [] : [id];
+          })
+        : null;
   }
   const own = document?.$layout ?? frontmatter?.$layout;
   const layout = isString(own) || own === false ? own : undefined;
-  return { contentType, field, layout, param };
+  return { contentType, field, layout, param, ...(values !== null && { values }) };
 }
 
 /**
@@ -195,6 +213,7 @@ async function readIndex(): Promise<CollectionPageIndex> {
         param: fact.param,
         path,
         pattern: fileToRoute(path).urlPattern,
+        ...(fact.values && { values: fact.values }),
       };
       index.set(fact.contentType, [...(index.get(fact.contentType) ?? []), page]);
     }
@@ -283,6 +302,18 @@ export function peekCollectionPage(
   return pageForLocale(_index.get(name), locale);
 }
 
+/**
+ * Every template page of a collection, one per language in a multilingual site, as the index
+ * stands: `[]` for none, `undefined` while the index has not been read (which starts the read).
+ */
+export function peekCollectionPages(name: string): readonly CollectionPage[] | undefined {
+  if (!_index) {
+    void collectionPages();
+    return undefined;
+  }
+  return _index.get(name) ?? [];
+}
+
 /** A collection's template page for a language, reading the index if it has to. */
 export async function collectionPage(
   name: string,
@@ -319,7 +350,8 @@ function segmentOf(value: JxDocumentValue | undefined): string | null {
  * The URL one entry opens at, from its collection's page pattern, filled as the build fills it
  * (`Content.resolvePaths`): the page's `$paths.field` read from the entry's fields when it names
  * one (`/products/:sku` with the entry's `sku`), else the entry's id (a JSON entry's `id` field,
- * else its file stem). `null` when the collection has no page.
+ * else its file stem). `null` when the collection has no page, or when its page enumerates the ids
+ * it publishes (`$paths.values`) and this entry is not among them.
  *
  * @param fields - The entry's fields (frontmatter, or a JSON entry's root), when the caller has
  *   them.
@@ -339,6 +371,10 @@ export function entryUrl(
   // Only a JSON entry's own `id` names it (the loader's `jsonEntry`); a Markdown entry is its file.
   const named = entryPath.endsWith(".json") ? segmentOf(fields?.id) : null;
   const id = own ?? named ?? stem;
+  // A page that lists the ids it publishes has no URL for an entry it does not list.
+  if (page.values && !page.values.includes(id)) {
+    return null;
+  }
   if (page.param) {
     return page.pattern.replace(`:${page.param}`, id);
   }

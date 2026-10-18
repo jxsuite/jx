@@ -53,13 +53,19 @@ import {
   contentCollection,
   templateDisplayName,
 } from "../content/content-collections";
-import { onCollectionPagesRead, peekCollectionPage } from "../content/collection-pages";
+import {
+  onCollectionPagesRead,
+  peekCollectionPage,
+  peekCollectionPages,
+} from "../content/collection-pages";
 import { onPageSummariesRead, peekPageSummaries } from "../content/page-summaries";
 import { localeMarked, pageLabel, singularLabel } from "../panels/site-model";
 import { compareRoutes, fileToRoute } from "@jxsuite/site/routes";
 import {
   dateFieldOf,
+  declaredDateField,
   entryDay,
+  entryThumb,
   onEntrySummariesRead,
   peekEntrySummaries,
   titleFieldOf,
@@ -68,13 +74,14 @@ import { entryCollection } from "../content/entry-model";
 import { isString } from "@jxsuite/schema/guards";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
 import { openEntry } from "../content/entry-open";
-import { requestGridReveal } from "../grid/grid-reveal";
+import { openRecordEntry } from "../content/record-entry";
 import {
   LIBRARY_LAYOUTS,
   LIBRARY_LAYOUT_LABELS,
   PREVIEW_LAYOUTS,
   filterLibrary,
   libraryLocales,
+  projectLocales,
 } from "./library-model";
 import { createLibrarySource, entryFieldColumns, libraryColumns } from "./library-source";
 import { createPreviewCache, createPreviewObserver, previewFor } from "./library-preview";
@@ -88,6 +95,7 @@ import {
   calendarView,
   columnsAt,
   entryFactsFrom,
+  fieldValues,
   libraryRow,
 } from "./library-layouts";
 import { mountLibrarySurface } from "../surfaces/library-pane";
@@ -97,7 +105,7 @@ import type { CollectionPage } from "../content/collection-pages";
 import type { EffectScope } from "@vue/reactivity";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { LibraryFile, LibraryLayout } from "./library-model";
-import type { EntryFacts, EntryFactsOf } from "./library-layouts";
+import type { BoardField, EntryFacts, EntryFactsOf } from "./library-layouts";
 import type { LibrarySource } from "./library-source";
 import type { CommandArgValues } from "../commands/command-args";
 import type {
@@ -124,6 +132,12 @@ export interface CollectionViewState {
    * matches what {@link LibraryFile.locale} carries.
    */
   locale: string;
+  /**
+   * The Filter: one value of the collection's filter field ({@link filterFieldOf}: its status, else
+   * the field its Board groups by), or "" for every entry. A value the field no longer has filters
+   * nothing, rather than hiding every entry behind a choice the picker cannot show.
+   */
+  filter: string;
 }
 
 export interface ContentViewState {
@@ -161,7 +175,12 @@ export function collectionView(key: string = shownCollectionKey()): CollectionVi
   if (existing) {
     return existing;
   }
-  const created: CollectionViewState = { layout: DEFAULT_LAYOUT, locale: "", query: "" };
+  const created: CollectionViewState = {
+    filter: "",
+    layout: DEFAULT_LAYOUT,
+    locale: "",
+    query: "",
+  };
   contentView.views[key] = created;
   // Read back through the reactive record, so a later write to the returned object is tracked.
   return contentView.views[key] ?? created;
@@ -243,6 +262,12 @@ export function setLibraryLayout(layout: LibraryLayout, key: string = shownColle
 
 export function setLibrarySearch(query: string, key: string = shownCollectionKey()): void {
   collectionView(key).query = query;
+  bump();
+}
+
+/** Show the entries with one value of the filter field, or `""` for all of them. A setter. */
+export function setLibraryFilter(value: string, key: string = shownCollectionKey()): void {
+  collectionView(key).filter = value;
   bump();
 }
 
@@ -577,10 +602,9 @@ function scheduleSettle(panel: ActiveLibraryPane): void {
  */
 export function openLibraryFile(file: Pick<LibraryFile, "path" | "collection" | "record">): void {
   if (file.record) {
-    /* A record of a file-backed collection is written in its file's own grid, which lands on the
-       record's row rather than leaving the reader to find it. */
-    requestGridReveal(file.record.source, file.record.row);
-    void openFileInTab(file.record.source);
+    /* A record of a file-backed collection opens in its entry form: that one row's fields, typed
+       by the collection's schema, kept in its file's grid (`content/record-entry.ts`). */
+    void openRecordEntry(file.record.source, file.record.row);
   } else if (file.collection === null || file.collection === PAGES_COLLECTION) {
     void openFileInTab(file.path);
   } else {
@@ -773,6 +797,7 @@ export function pageLineFor(
   collection: ContentCollection,
   page: CollectionPage | null | undefined,
   defaultLayout: string | null,
+  every: readonly CollectionPage[] = [],
 ): LibraryPageLine {
   const hidden: LibraryPageLine = {
     designLabel: "",
@@ -789,6 +814,29 @@ export function pageLineFor(
   }
   if (page === null) {
     return { ...hidden, state: "none", text: "Entries have no page of their own" };
+  }
+  /* Every language, when the view shows every language and the collection has a page in more than
+     one: naming only the default language's page under "All" says the others have none. Each is
+     named by its language, in the order the index holds them; one template clause when they share
+     a template, else each its own. */
+  // In the order the project declares its languages, the default first, as every language list is.
+  const order = projectLocales();
+  const rank = (locale: string | null) => {
+    const at = locale === null ? -1 : order.indexOf(locale);
+    return at === -1 ? order.length : at;
+  };
+  const localized = every
+    .filter((each) => each.locale !== null)
+    .toSorted((a, b) => rank(a.locale) - rank(b.locale));
+  if (localized.length > 1) {
+    const clauses = new Set(localized.map((each) => templateClause(each, defaultLayout)));
+    return {
+      designLabel: `Design the ${collection.item} page`,
+      pattern: localized.map((each) => `${each.pattern} (${each.locale})`).join(", "),
+      state: "page",
+      template: clauses.size === 1 ? [...clauses][0]! : "using a template per language",
+      text: `Each ${collection.item} has a page in each language at`,
+    };
   }
   return {
     designLabel: `Design the ${collection.item} page`,
@@ -823,7 +871,9 @@ function chip(key: string, label: string, active: boolean): LibraryChip {
 
 /** The sentence a filter that matched nothing prints, naming both facets rather than one. */
 function noMatchMessage(collection: ContentCollection, view: CollectionViewState): string {
-  const where = view.locale === "" ? "" : ` in ${localeLabel(view.locale)}`;
+  const where = `${view.locale === "" ? "" : ` in ${localeLabel(view.locale)}`}${
+    view.filter === "" ? "" : ` filtered to ${view.filter}`
+  }`;
   const term = view.query.trim();
   return `No ${collection.kind === "pages" ? "pages" : collection.title.toLowerCase()} match${
     term ? ` “${term}”` : ""
@@ -883,7 +933,9 @@ function entryFactsFor(collection: ContentCollection, layout: LibraryLayout): En
           const { fields } = file.record!;
           const dateField = dateFieldOf(schema, fields);
           const date = dateField === null ? "" : entryDay(fields[dateField] ?? "");
-          return [file.path, { date, fields, status: "", title: file.name }];
+          // A record's picture is its image field, relative to the file that holds it.
+          const thumb = entryThumb(file.record!.source, fields, schema);
+          return [file.path, { date, fields, status: "", thumb, title: file.name }];
         }),
       ),
     );
@@ -895,7 +947,13 @@ function entryFactsFor(collection: ContentCollection, layout: LibraryLayout): En
   const byPath = new Map<string, EntryFacts>(
     (summaries ?? []).map((entry) => [
       entry.path,
-      { date: entry.date, fields: entry.fields, status: entry.status, title: entry.title },
+      {
+        date: entry.date,
+        fields: entry.fields,
+        status: entry.status,
+        thumb: entry.thumb,
+        title: entry.title,
+      },
     ]),
   );
   return entryFactsFrom(byPath);
@@ -958,7 +1016,7 @@ function collectionSchema(key: string): ContentTypeSchema | null {
 function listedElsewhere(schema: ContentTypeSchema | null): ReadonlySet<string> {
   const skip = new Set<string>();
   const title = titleFieldOf(schema);
-  const date = dateFieldOf(schema, {});
+  const date = declaredDateField(schema);
   for (const name of [title, date]) {
     if (name !== null) {
       skip.add(name);
@@ -981,6 +1039,53 @@ function fieldEnums(schema: ContentTypeSchema | null): ReadonlyMap<string, reado
   return enums;
 }
 
+/** The field the Filter narrows a collection by, and the values it offers. */
+export interface FilterField {
+  /** "Status", or the field's own title. */
+  title: string;
+  /** The values offered, in the order the Board stands its columns in. */
+  values: readonly string[];
+  /** Whether an entry with these facts has `value`. */
+  matches: (facts: EntryFacts | undefined, value: string) => boolean;
+}
+
+/**
+ * What the Filter narrows by: an entry's **status** where the collection has a draft workflow, else
+ * the field its Board groups by (`boardFieldOf`: the first field with an `enum`, else the first
+ * whose values repeat; a list field by each of its items). The same choice the Board makes, so the
+ * Filter offers exactly the columns the Board draws. `null` when nothing groups the entries.
+ */
+export function filterFieldOf(
+  facts: readonly (EntryFacts | undefined)[],
+  field: BoardField | null,
+): FilterField | null {
+  const statuses = [...new Set(facts.flatMap((entry) => (entry?.status ? [entry.status] : [])))];
+  if (statuses.length > 0) {
+    return {
+      matches: (entry, value) => (entry?.status ?? "") === value,
+      title: "Status",
+      values: statuses.toSorted((a, b) =>
+        a === "Draft" ? -1 : b === "Draft" ? 1 : a.localeCompare(b),
+      ),
+    };
+  }
+  if (!field) {
+    return null;
+  }
+  const held = new Set(
+    facts.flatMap((entry) => fieldValues(entry?.fields?.[field.name], field.list)),
+  );
+  const values =
+    field.order.length > 0
+      ? [...field.order, ...[...held].filter((value) => !field.order.includes(value)).toSorted()]
+      : [...held].toSorted((a, b) => a.localeCompare(b));
+  return {
+    matches: (entry, value) => fieldValues(entry?.fields?.[field.name], field.list).includes(value),
+    title: field.title,
+    values,
+  };
+}
+
 /** Everything the home draws in a pane, as one value. */
 function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView {
   const current = librarySource();
@@ -988,11 +1093,24 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
   const view = collectionView(collection.key);
   const { layout } = view;
   const all = filterLibrary(current.files(), { collection: collection.key, query: "" });
-  const filtered = filterLibrary(current.files(), {
+  const factsOf = entryFactsFor(collection, layout);
+  const facts = all.map((file) => factsOf(file));
+  const schema = collection.kind === "collection" ? collectionSchema(collection.key) : null;
+  const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema));
+  const boardField = boardFieldOf(fieldColumns, fieldEnums(schema), facts);
+  // Pages are listed by route; the Filter is a collection's, over what its entries say.
+  const filterField = collection.kind === "collection" ? filterFieldOf(facts, boardField) : null;
+  const filterValue =
+    filterField !== null && filterField.values.includes(view.filter) ? view.filter : "";
+  const searched = filterLibrary(current.files(), {
     collection: collection.key,
     locale: view.locale,
     query: view.query,
   });
+  const filtered =
+    filterField === null || filterValue === ""
+      ? searched
+      : searched.filter((file) => filterField.matches(factsOf(file), filterValue));
   const files = collection.kind === "pages" ? inRouteOrder(filtered) : filtered;
   const total = all.length;
   const kind = viewKind(current, layout, files.length, total);
@@ -1000,12 +1118,9 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
   const slice = files.slice(range.start, range.end);
   const failures = current.failures();
   const locales = libraryLocales(all);
-  const factsOf = entryFactsFor(collection, layout);
-  const facts = all.map((file) => factsOf(file));
-  const schema = collection.kind === "collection" ? collectionSchema(collection.key) : null;
-  const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema));
   const columns = libraryColumns(collection.key, {
-    date: facts.some((entry) => (entry?.date ?? "") !== ""),
+    // A date the schema declares is a column even before an entry fills it in.
+    date: declaredDateField(schema) !== null || facts.some((entry) => (entry?.date ?? "") !== ""),
     fields: fieldColumns,
     locale: locales.length > 1,
     status: facts.some((entry) => (entry?.status ?? "") !== ""),
@@ -1042,10 +1157,7 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
           ? `No ${plural} yet.`
           : "",
     fieldsState: collection.kind === "collection" ? "shown" : "hidden",
-    groups:
-      kind === "board"
-        ? boardView(files, factsOf, boardFieldOf(fieldColumns, fieldEnums(schema), facts))
-        : calendar.groups,
+    groups: kind === "board" ? boardView(files, factsOf, boardField) : calendar.groups,
     layouts: LIBRARY_LAYOUTS.map((name) =>
       chip(name, LIBRARY_LAYOUT_LABELS[name], layout === name),
     ),
@@ -1056,18 +1168,31 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
     /* The facet's options come from ALL of the collection's files, never from the filtered ones: a
        picker whose choices collapse to the choice just made cannot be used to make another. One
        locale — or none — means every file already agrees. */
+    filterOptions:
+      filterField === null
+        ? []
+        : [
+            { label: `Any ${filterField.title.toLowerCase()}`, value: "all" },
+            ...filterField.values.map((value) => ({ label: value, value })),
+          ],
+    filterState: filterField !== null && filterField.values.length > 1 ? "shown" : "hidden",
+    filterValue: filterValue === "" ? "all" : filterValue,
     localeState: locales.length < 2 ? "hidden" : "shown",
     localeValue: view.locale === "" ? "all" : view.locale,
     newLabel: `New ${collection.item}`,
     // A file-backed collection's entries are rows of its file, added in the file's grid.
     newState: collection.fileBacked ? "hidden" : "shown",
-    pad: `padding-top:${range.padTop}px;padding-bottom:${range.padBottom}px`,
+    /* ADDED to the grid's own padding rather than replacing it: a bare `padding-top:0px` took the
+       gap under the header away, and the first row of cards sat with its top border under it. */
+    pad: `padding-top:calc(var(--jx-space-4) + ${range.padTop}px);padding-bottom:calc(var(--jx-space-4) + ${range.padBottom}px)`,
     padBottom: `height:${range.padBottom}px`,
     padTop: `height:${range.padTop}px`,
     page: pageLineFor(
       collection,
       pages ? null : peekCollectionPage(collection.key, view.locale),
       defaultLayoutPath(),
+      // Under every language, the page of each; filtered to one, that language's alone.
+      pages || view.locale !== "" ? [] : (peekCollectionPages(collection.key) ?? []),
     ),
     query: view.query,
     region: paneRegion(paneId, "content"),
@@ -1188,6 +1313,7 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     /* SAFETY: the surface's view buttons pass `$map.item.key`, and the `layouts` state they map is
        built from LIBRARY_LAYOUTS in the projection above, so every key is a LibraryLayout. */
     setLayout: (key) => setLibraryLayout(key as LibraryLayout),
+    setFilter: (value) => setLibraryFilter(value === "all" ? "" : value),
     setLocale: (value) => setLibraryLocale(value === "all" ? "" : value),
   });
 

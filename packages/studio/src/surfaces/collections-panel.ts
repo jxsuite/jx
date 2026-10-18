@@ -49,6 +49,10 @@ export interface CollectionEntryRow {
   thumb: string;
   /** `"true"` for the entry being written. */
   selected: "true" | "false";
+  /** The language it is written in, by its autonym ("français"), or "" in a one-language collection. */
+  locale: string;
+  /** That language's tag, for the label's own `lang`; "" with no language. */
+  lang: string;
 }
 
 /** Everything the document draws. */

@@ -46,6 +46,7 @@ import {
 import { setFormats } from "../src/format/format-host";
 import type { CanvasSurface } from "../src/canvas/surface-registry";
 import type { Tab } from "../src/tabs/tab";
+import type { JsonSchema } from "../src/ui/schema-form";
 
 // ─── Controllable mock behavior ───────────────────────────────────────────────
 
@@ -179,6 +180,7 @@ void mock.module("../src/content/entry-editor.js", () => ({
   openEntryEditor: () => Promise.resolve(null),
   renderEntryMode: entry.render,
   setEntryDraft: () => {},
+  titleFirst: (schema: JsonSchema) => schema,
 }));
 
 const { initCanvasRender, renderCanvas } = await import("../src/canvas/canvas-render");

@@ -281,6 +281,24 @@ describe("commit — cell edits", () => {
     expect(rows.find((r) => r.key === "content/posts/hello.md")!.cells.title).toBe("Hey there");
   });
 
+  test("a cell edit re-spells only its own key: the rest of the file is the bytes it was", async () => {
+    const state = setup();
+    state.files.set(
+      "content/posts/hello.md",
+      '---\ntitle: Hello\nphone: "717-669-8739"\nnote: wrapped over\n  two lines\n---\n\nSome _emphasis_.\n',
+    );
+    const source = createCollectionSource("posts");
+    await source.rows();
+    await source.commit({
+      cells: [{ baseline: "Hello", field: "title", rowKey: "content/posts/hello.md", value: "Hi" }],
+      deletes: [],
+      inserts: [],
+    });
+    expect(state.files.get("content/posts/hello.md")).toBe(
+      '---\ntitle: Hi\nphone: "717-669-8739"\nnote: wrapped over\n  two lines\n---\n\nSome _emphasis_.\n',
+    );
+  });
+
   test("clearing a cell removes the frontmatter key", async () => {
     const state = setup();
     const source = createCollectionSource("posts");

@@ -32,7 +32,13 @@ import {
 import { commitEntryFields, entryFields } from "./entry-fields";
 import { DRAFT_MEANING, hasDraftAxis, isDraftEntry } from "./draft-state";
 import { entryCollection } from "./entry-model";
-import { absentRequiredErrors, fieldLabels, formContext, setEntryDraft } from "./entry-editor";
+import {
+  absentRequiredErrors,
+  fieldLabels,
+  formContext,
+  setEntryDraft,
+  titleFirst,
+} from "./entry-editor";
 import { mountEntryInspectorSurface } from "../surfaces/entry-inspector";
 import type { EntryInspectorHandle, EntryInspectorView } from "../surfaces/entry-inspector";
 import type { JsonSchema } from "../ui/schema-form";
@@ -76,7 +82,7 @@ export function entryInspectorView(tab: Tab): EntryInspectorView {
       ? ". Its fields are the file itself."
       : ". Fields are its frontmatter, and the body is its Markdown.",
     url: url ?? "",
-    urlState: page === undefined ? "loading" : url ? "shown" : "none",
+    urlState: page === undefined ? "loading" : url ? "shown" : page ? "unlisted" : "none",
   };
 }
 
@@ -110,7 +116,7 @@ function paintForm(standing: StandingInspector, tab: Tab): void {
      text, so every value is JSON. The same reading `entry-editor.ts` makes. */
   const form = mountSchemaForm(
     "entry-inspector",
-    collection.schema as JsonSchema,
+    titleFirst(collection.schema as JsonSchema, collection.schema, fields),
     fields as JsonObject,
     {
       context: formContext(tab),

@@ -17,7 +17,7 @@
     "fontFamily": "var(--jx-font-sans)",
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
-    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"fields-slot\"], & [part=\"new-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
+    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"filter-slot\"], & [part=\"fields-slot\"], & [part=\"new-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
       "$description": "A `$switch` renders its own container, and none of these six is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
       "display": "contents"
     },
@@ -67,6 +67,10 @@
       "$description": "Narrow on purpose: it holds one language name, and the toolbar wraps before it grows.",
       "width": "160px"
     },
+    "& [part=\"filter\"]": {
+      "$description": "Narrow like the language facet: it holds one value of one field.",
+      "width": "160px"
+    },
     "& [part=\"spacer\"]": {
       "flex": "1"
     },
@@ -88,7 +92,7 @@
     "& [part=\"body\"]": {
       "flex": "1",
       "minHeight": "0",
-      "overflowY": "auto",
+      "overflow": "auto",
       "position": "relative"
     },
     "& [part=\"empty\"]": {
@@ -175,6 +179,7 @@
       "$description": "A windowed list rather than a table component: the rows have to be sliceable, and every table widget wants the whole set.",
       "display": "flex",
       "flexDirection": "column",
+      "minWidth": "min-content",
       "padding": "0 var(--jx-space-5) var(--jx-space-5)"
     },
     "& [part=\"table-head\"], & [part=\"table-row\"]": {
@@ -199,19 +204,23 @@
       "background": "var(--hover-bg)"
     },
     "& [part=\"cell\"]": {
+      "$description": "Every column keeps a floor: with a collection's six field columns beside the file facts, a cell that may shrink to nothing is a column of ellipses. When the floors outgrow the pane, the table scrolls sideways instead. Each cell's text is kept out of its intrinsic width (`contain: inline-size`), so the table's `min-content` is the sum of those floors rather than of every full title.",
       "flex": "1",
-      "minWidth": "0",
+      "minWidth": "80px",
+      "contain": "inline-size",
       "overflow": "hidden",
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap",
       "fontSize": "var(--jx-text-md)"
     },
-    "& [part=\"cell\"][data-field=\"name\"]": {
+    "& [part=\"cell\"][data-field=\"name\"], & [part=\"cell\"][data-field=\"title\"]": {
+      "$description": "What a row is called keeps a readable width however many field columns stand beside it.",
       "flex": "3",
+      "minWidth": "220px",
       "fontWeight": "500"
     },
     "& [part=\"cell\"][data-field=\"path\"]": {
-      "flex": "3",
+      "flex": "2",
       "color": "var(--fg-dim)",
       "fontFamily": "var(--font-mono)",
       "fontSize": "var(--jx-text-sm)"
@@ -479,6 +488,51 @@
                       }
                     ],
                     "description": "The facet's options come from ALL scanned files, never from the filtered ones: a picker whose choices collapse to the choice just made cannot be used to make another."
+                  }
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "filter-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/filterState"
+              },
+              "cases": {
+                "shown": {
+                  "$description": "The Filter: one value of what groups the entries, their status or the field the Board groups by, so it offers exactly the Board's columns.",
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "filter"
+                  },
+                  "$props": {
+                    "label": "Filter",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/filterOptions"
+                    },
+                    "value": {
+                      "$ref": "#/state/filterValue"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setFilter"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
                   }
                 }
               }

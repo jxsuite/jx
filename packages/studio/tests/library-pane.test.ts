@@ -92,13 +92,14 @@ const {
   resetContentView,
   SCAN_ACTIVITY_DELAY_MS,
   setContentCollection,
+  filterFieldOf,
+  setLibraryFilter,
   setLibraryLayout,
   setLibraryLocale,
   setLibrarySearch,
   shownCollection,
 } = await import("../src/browse/library-pane");
 const { invalidateCollectionPages } = await import("../src/content/collection-pages");
-const { clearGridReveal, pendingGridReveal } = await import("../src/grid/grid-reveal");
 const { templateDisplayName } = await import("../src/content/content-collections");
 const { invalidateEntrySummaries } = await import("../src/content/entry-summaries");
 const { invalidatePageSummaries } = await import("../src/content/page-summaries");
@@ -612,7 +613,12 @@ describe("collections", () => {
     expect(part("board")).toBeNull();
     setContentCollection("pages");
     await flush();
-    expect(collectionView("pages")).toEqual({ layout: "board", locale: "", query: "about" });
+    expect(collectionView("pages")).toEqual({
+      filter: "",
+      layout: "board",
+      locale: "",
+      query: "about",
+    });
     expect(part("board")).not.toBeNull();
   });
 
@@ -630,7 +636,12 @@ describe("collections", () => {
     expect(part("board")).not.toBeNull();
     setLibraryLocale("fr");
     expect(contentView.views["gone"]).toBeUndefined();
-    expect(collectionView("pages")).toEqual({ layout: "board", locale: "fr", query: "about" });
+    expect(collectionView("pages")).toEqual({
+      filter: "",
+      layout: "board",
+      locale: "fr",
+      query: "about",
+    });
     expect(collectionView()).toBe(collectionView("pages"));
   });
 
@@ -664,7 +675,6 @@ describe("collections", () => {
     expect(head.map((cell) => cell.textContent.trim())).toEqual([
       "Title",
       "Status",
-      "Locale",
       "Modified",
       "Path",
     ]);
@@ -787,9 +797,8 @@ describe("collections", () => {
     expect(text()).toContain("Entries have no page of their own");
     rows[1]!.click();
     await flush();
-    // The file's grid is asked to land on the record that was opened, not on its first row.
-    expect(pendingGridReveal(csv)).toBe(1);
-    clearGridReveal(csv);
+    // A record opens in its entry form over its file (`content/record-entry.ts`), so its file opens.
+    expect(opened).toEqual([csv]);
     // A record opens its file, and right-clicking one offers no file verbs that would hit the file.
     rows[1]!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     await flush();
@@ -837,6 +846,112 @@ describe("collections", () => {
     // A record with no date of its own falls back to its file's, as an entry file does.
     expect(shown).toContain("2026-10-06");
     expect(shown.indexOf("Kitchen")).toBeLessThan(shown.indexOf("Patio"));
+  });
+
+  test("a CSV list field is a Board column per value, and the Filter narrows to one value", async () => {
+    const csv = "content/projects.csv";
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          path === "content"
+            ? Promise.resolve([{ name: "projects.csv", path: csv, type: "file" }])
+            : Promise.resolve([]),
+      },
+      {
+        [csv]:
+          'Title,Categories,Date\nKitchen,"Patios, Stone",6/3/2026\nPatio,Patios,\nWall,Stone,\n',
+      },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: {
+          projects: {
+            format: "Csv",
+            schema: {
+              properties: {
+                Categories: { items: { type: "string" }, type: "array" },
+                Date: { format: "date", type: "string" },
+                Title: { type: "string" },
+              },
+            },
+            source: "./content/projects.csv",
+          },
+        },
+      },
+      projectDirs: ["content"],
+      projectRoot: "",
+    });
+    invalidateLibrary();
+    setLibraryLayout("board", "projects");
+    setContentCollection("projects");
+    await mount();
+    const columns = () =>
+      parts("column").map((column) => [
+        column.querySelector('[part="column-title"] span')?.textContent,
+        parts("list-item")
+          .filter((item) => column.contains(item))
+          .map((item) => item.textContent.trim()),
+      ]);
+    expect(columns()).toEqual([
+      ["Patios", ["Kitchen", "Patio"]],
+      ["Stone", ["Kitchen", "Wall"]],
+    ]);
+    // The Filter offers exactly the Board's columns, and narrows every view to one of them.
+    const filter = part("filter")!;
+    /* SAFETY: `$props` writes `options` onto the kit select as a property; it is the one member read. */
+    const options = (filter as HTMLElement & { options?: { value: string }[] }).options ?? [];
+    expect(options.map((option) => option.value)).toEqual(["all", "Patios", "Stone"]);
+    setLibraryFilter("Stone");
+    await flush();
+    expect(columns()).toEqual([
+      ["Patios", ["Kitchen"]],
+      ["Stone", ["Kitchen", "Wall"]],
+    ]);
+    setLibraryLayout("table", "projects");
+    await flush();
+    expect(parts("table-row").map((row) => row.dataset["path"])).toEqual([`${csv}#1`, `${csv}#3`]);
+    // The declared date is one Date column, and with one language there is no Locale column.
+    const heads = parts("cell")
+      .filter((cell) => cell.getAttribute("role") === "columnheader")
+      .map((cell) => cell.textContent.trim());
+    expect(heads.filter((head) => head === "Date")).toEqual(["Date"]);
+    expect(heads).not.toContain("Locale");
+    // A filter matching nothing names itself; a value the field no longer has filters nothing.
+    setLibrarySearch("zzz");
+    await flush();
+    expect(text()).toContain("filtered to Stone");
+    setLibrarySearch("");
+    setLibraryFilter("Gone");
+    await flush();
+    expect(parts("table-row")).toHaveLength(3);
+  });
+
+  test("filterFieldOf filters by status where entries have one, else by the Board's field", () => {
+    expect(
+      filterFieldOf(
+        [
+          { date: "", status: "Published", title: "a" },
+          { date: "", status: "Draft", title: "b" },
+          undefined,
+        ],
+        null,
+      )?.values,
+    ).toEqual(["Draft", "Published"]);
+    expect(filterFieldOf([{ date: "", status: "", title: "a" }], null)).toBeNull();
+    const course = { name: "course", order: ["Mains", "Desserts"], title: "Course" };
+    const field = filterFieldOf(
+      [
+        { date: "", fields: { course: "Sides" }, status: "", title: "a" },
+        { date: "", fields: { course: "Mains" }, status: "", title: "b" },
+      ],
+      course,
+    );
+    // A declared enum leads, in its order; a value it does not name follows.
+    expect(field?.values).toEqual(["Mains", "Desserts", "Sides"]);
+    expect(
+      field?.matches({ date: "", fields: { course: "Mains" }, status: "", title: "b" }, "Mains"),
+    ).toBe(true);
+    expect(field?.matches(undefined, "Mains")).toBe(false);
   });
 
   test("openLibraryFile routes a file in no collection to the ordinary opener", async () => {
@@ -935,6 +1050,23 @@ describe("the header line", () => {
       "with no template",
     );
     expect(templateDisplayName("./layouts/post.json")).toBe("Post");
+    // Under every language, a collection with a page in each names each, in declared order.
+    resetStudioState({
+      projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"] } },
+    });
+    const ar = { ...page, layout: "./layouts/ar.json", locale: "ar", pattern: "/ar/:slug" };
+    const en = { ...page, locale: "en" };
+    const fr = { ...page, locale: "fr-CA", pattern: "/fr-ca/:slug" };
+    const every = pageLineFor(posts, en, "./layouts/base.json", [ar, en, fr]);
+    expect(every).toMatchObject({
+      pattern: "/:slug (en), /fr-ca/:slug (fr-CA), /ar/:slug (ar)",
+      template: "using a template per language",
+      text: "Each post has a page in each language at",
+    });
+    expect(pageLineFor(posts, en, "./layouts/base.json", [en, fr]).template).toBe("using Base");
+    // One page, or pages outside every locale tree, is the single line.
+    expect(pageLineFor(posts, page, null, [page]).pattern).toBe("/:slug");
+    expect(pageLineFor(posts, en, null, [{ ...en, locale: "xx" }, en]).pattern).toContain("(xx)");
   });
 });
 

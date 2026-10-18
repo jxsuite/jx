@@ -30,6 +30,7 @@ const {
   pageFactsOf,
   pageForLocale,
   peekCollectionPage,
+  peekCollectionPages,
   readPageFacts,
   resetCollectionPages,
 } = await import("../src/content/collection-pages");
@@ -146,7 +147,19 @@ describe("pageFactsOf over an enumerated $paths", () => {
       field: null,
       layout: "./layouts/index.json",
       param: "slug",
+      // The ids it lists are the only entries it publishes.
+      values: ["chad-beiler", "kris-bucher"],
     });
+    // Ids written as numbers are ids too; anything else in the list names none.
+    expect(
+      pageFactsOf({ ...page, $paths: { param: "slug", values: [7, "b", null, { x: 1 }] } }, null)
+        .values,
+    ).toEqual(["7", "b"]);
+    // A list that is not written in the page (a binding) limits nothing.
+    expect(
+      pageFactsOf({ ...page, $paths: { param: "slug", values: { $ref: "#/state/ids" } } }, null)
+        .values,
+    ).toBeUndefined();
     // A Markdown page states both in its frontmatter.
     expect(
       pageFactsOf(
@@ -246,10 +259,14 @@ describe("the index", () => {
     const heard: string[] = [];
     const stop = onCollectionPagesRead(() => heard.push("read"));
     expect(peekCollectionPage("posts")).toBeUndefined();
+    expect(peekCollectionPages("posts")).toBeUndefined();
     await collectionPages();
     expect(heard).toEqual(["read"]);
     expect(peekCollectionPage("posts")?.pattern).toBe("/blog/:slug");
     expect(peekCollectionPage("gone")).toBeNull();
+    // Every page of a collection, one per language in a multilingual site; none for no page.
+    expect(peekCollectionPages("posts")?.map((page) => page.pattern)).toEqual(["/blog/:slug"]);
+    expect(peekCollectionPages("gone")).toEqual([]);
     stop();
     invalidateCollectionPages();
     await collectionPages();
@@ -373,6 +390,14 @@ describe("entryUrl", () => {
 
   test("a collection with no page has no URL", () => {
     expect(entryUrl(null, "content/posts/hello.md")).toBeNull();
+  });
+
+  test("a page that lists the ids it publishes has no URL for an entry it does not list", () => {
+    const listed = { ...page, values: ["hello"] };
+    expect(entryUrl(listed, "content/posts/hello.md")).toBe("/blog/hello");
+    expect(entryUrl(listed, "content/posts/other.md")).toBeNull();
+    // A JSON entry is listed by its own `id`.
+    expect(entryUrl(listed, "content/tags/x.json", { id: "hello" })).toBe("/blog/hello");
   });
 
   test("a page that names a field fills its parameter from the entry's field, as the build does", () => {

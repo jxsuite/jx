@@ -123,6 +123,13 @@
     "& [part=\"entry-status\"]:empty": {
       "display": "none"
     },
+    "& [part=\"entry-locale\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"entry-locale\"]:empty": {
+      "display": "none"
+    },
     "& [part=\"entry-status\"][data-status=\"Draft\"]": {
       "color": "var(--warning)"
     },
@@ -540,6 +547,15 @@
                                       "data-status": "${$map.item.status}"
                                     },
                                     "textContent": "${$map.item.status}"
+                                  },
+                                  {
+                                    "$description": "The language an entry of a multilingual collection is written in, by its autonym; empty, and not drawn, in a collection of one language.",
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "entry-locale",
+                                      "lang": "${$map.item.lang}"
+                                    },
+                                    "textContent": "${$map.item.locale}"
                                   }
                                 ]
                               }

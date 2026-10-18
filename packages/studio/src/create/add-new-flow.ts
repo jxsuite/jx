@@ -61,6 +61,7 @@ import {
   collectionPageBody,
   creationProblem,
   defaultTemplateChoice,
+  templateForLocale,
   deriveCreation,
   absentByParent,
   byDepth,
@@ -581,6 +582,11 @@ interface DialogState {
   name: string;
   /** The reader has typed: refusals are said from now on, not before. */
   touched: boolean;
+  /**
+   * The page's template was chosen (by the request or a card), so a later change of language leaves
+   * it alone; until then the language chooses it ({@link templateForLocale}).
+   */
+  templateChosen: boolean;
   url: string;
   editingUrl: boolean;
   pageStart: string;
@@ -881,8 +887,13 @@ async function start(
     kind: initialKind(request, ctx),
     name: request.name ?? "",
     ownPage: true,
-    pageStart: defaultTemplateChoice(ctx),
+    // The frame of the language the page is written in: `layouts/fr-ca.json` for a French page.
+    pageStart: templateForLocale(
+      ctx,
+      declaredLocale(request.locale, ctx) ?? ctx.i18n?.defaultLocale ?? "",
+    ),
     pageTemplate: defaultTemplateChoice(ctx),
+    templateChosen: request.template !== undefined,
     touched: (request.name ?? "") !== "",
     url: "",
     // The site's frame, as the board shows it: a layout nests inside a layout.
@@ -1023,6 +1034,10 @@ async function start(
       pickLocale: (value) => {
         change(() => {
           state.locale = value;
+          // Until a template is chosen, the page is framed in its language's own.
+          if (!state.templateChosen) {
+            state.pageStart = templateForLocale(ctx, value);
+          }
         });
       },
       setLocalized: (checked) => {
@@ -1048,6 +1063,7 @@ async function start(
       pickStart: (value) => {
         change(() => {
           state.pageStart = value;
+          state.templateChosen = true;
         });
       },
       pickWrap: (value) => {

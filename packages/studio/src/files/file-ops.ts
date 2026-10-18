@@ -105,6 +105,8 @@ export async function parseSourceForPath(path: string, source: string) {
 export const parseCollabSource: CollabParser = async (tab, text) => {
   if (tab.documentPath && formatForPath(tab.documentPath)) {
     const parsed = await parseSourceForPath(tab.documentPath, text);
+    // The peer's text is what this client saves against now, as `layout` is for a JSON file.
+    tab.doc.source = text;
     return { document: parsed.document, frontmatter: parsed.frontmatter };
   }
   const parsed = parseJsonDocument(text);
@@ -195,6 +197,7 @@ export async function openFile() {
           fileHandle: handle,
           frontmatter,
           id: name,
+          source: text,
           sourceFormat: format.name,
         });
       } else if (name.endsWith(".json")) {
@@ -399,6 +402,9 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
       const platform = getPlatform();
       await platform.writeFile(tab.documentPath, output);
       tab.doc.dirty = false;
+      if (tab.doc.sourceFormat !== null) {
+        tab.doc.source = output;
+      }
       /* Retract the unsaved bytes NOW rather than a debounce later. The write also reaches the
          backend's filesystem watcher, and a live preview coalesces both into one reload only if
          they arrive together — otherwise a save costs two. */
@@ -419,6 +425,9 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
       await writable.write(output);
       await writable.close();
       tab.doc.dirty = false;
+      if (tab.doc.sourceFormat !== null) {
+        tab.doc.source = output;
+      }
       reportSaved(tab);
       return true;
     }

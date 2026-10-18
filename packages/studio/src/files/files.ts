@@ -2396,6 +2396,7 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
       document,
       ...(frontmatter != null && { frontmatter }),
       layout,
+      source: format ? content : null,
       sourceFormat: format?.name ?? null,
       ...(opts.paneId !== undefined && { paneId: opts.paneId }),
       ...(opts.preview === true && { preview: true }),
@@ -2513,6 +2514,7 @@ export async function reloadFileInTab(path: string, opts: { onlyIfChanged?: bool
           }
           tab.doc.document = document;
           tab.doc.content.frontmatter = frontmatter;
+          tab.doc.source = content;
         } else if (path.endsWith(".json")) {
           // The file changed under the tab, so its layout is whatever the new text says.
           const parsed = parseJsonDocument(content);

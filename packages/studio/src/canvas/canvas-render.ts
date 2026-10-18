@@ -857,6 +857,8 @@ async function mountSourceEditor(
           }
           tab.doc.document = document;
           tab.doc.content.frontmatter = frontmatter;
+          // The buffer is the author's own spelling now, so it is what the next save keeps.
+          tab.doc.source = sourceEditor.getValue();
           tab.doc.dirty = true;
           writes.markSettled();
         } catch {

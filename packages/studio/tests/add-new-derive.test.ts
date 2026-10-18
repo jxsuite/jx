@@ -27,8 +27,10 @@ import {
   START_BLANK,
   START_COPY,
   START_SELECTION,
+  templateForLocale,
   urlSegments,
 } from "../src/create/add-new";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import { validateDocOrNull, validateProjectConfig } from "../src/services/jx-validate";
 import type { CreationContext, TakenLookup } from "../src/create/add-new";
 
@@ -534,8 +536,15 @@ describe("languages (site-architecture.md §13)", () => {
     const events = deriveCreation("collection", "Events", {}, I18N_CTX);
     expect(events.config?.entry.source).toBe("./content/events/{locale}");
     expect(events.path).toBe("content/events/en/first-event.md");
-    expect(events.extraWrites.map((write) => write.path)).toEqual(["pages/events/[slug].json"]);
+    // A template page in every language, the default language's first (it names the route).
+    expect(events.extraWrites.map((write) => write.path)).toEqual([
+      "pages/events/[slug].json",
+      "pages/fr-ca/events/[slug].json",
+      "pages/ar/events/[slug].json",
+    ]);
+    expect(events.route).toBe("/events/:slug");
     expect(events.saved).toContain("one folder per language under content/events/");
+    expect(events.saved).toContain("a page in each language");
     const flat = deriveCreation("collection", "Events", { localized: false }, I18N_CTX);
     expect(flat.config?.entry.source).toBe("./content/events");
     expect(flat.path).toBe("content/events/first-event.md");
@@ -543,6 +552,35 @@ describe("languages (site-architecture.md §13)", () => {
     expect(
       deriveCreation("collection", "Events", { localized: true }, CTX).config?.entry.source,
     ).toBe("./content/events");
+  });
+
+  test("each language's template page is framed in that language's own layout", () => {
+    const framed: CreationContext = {
+      ...I18N_CTX,
+      layouts: [
+        { name: "Base", ref: "./layouts/base.json" },
+        { name: "Fr ca", ref: "./layouts/fr-ca.json" },
+        { name: "Ar", ref: "./layouts/ar/site.json" },
+      ],
+    };
+    const layouts = deriveCreation("collection", "Events", {}, framed).extraWrites.map(
+      (write) => isJsonObject(write.body.doc) && write.body.doc["$layout"],
+    );
+    // The default's page names no $layout: it is drawn in the project's default, as every page is.
+    expect(layouts).toEqual([undefined, "./layouts/fr-ca.json", "./layouts/ar/site.json"]);
+    // A template chosen other than the default is every language's.
+    const chosen = deriveCreation(
+      "collection",
+      "Events",
+      { pageTemplate: "./layouts/fr-ca.json" },
+      framed,
+    ).extraWrites.map((write) => isJsonObject(write.body.doc) && write.body.doc["$layout"]);
+    expect(new Set(chosen)).toEqual(new Set(["./layouts/fr-ca.json"]));
+    // A page is started in its language's frame; a language with none, in the default.
+    expect(templateForLocale(framed, "fr-CA")).toBe("./layouts/fr-ca.json");
+    expect(templateForLocale(framed, "ar")).toBe("./layouts/ar/site.json");
+    expect(templateForLocale(framed, "en")).toBe("./layouts/base.json");
+    expect(templateForLocale(framed, "")).toBe("./layouts/base.json");
   });
 
   test("prefix-always puts even the default language's page under its prefix", () => {

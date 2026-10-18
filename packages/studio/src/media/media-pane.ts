@@ -29,6 +29,7 @@
 
 import { effect, effectScope } from "../reactivity";
 import { paneRegion } from "../ui/regions";
+import { localDay } from "../utils/local-day";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
 import { formatBytes, loadMediaMeta, peekMediaMeta, recordImageSize } from "../files/media-meta";
 import { FONT_EXTENSIONS, extensionOf, mediaKind } from "../files/media-upload";
@@ -120,7 +121,8 @@ export function factsLine(path: string, meta: MediaMeta | null): string {
     facts.push(formatBytes(meta.bytes));
   }
   if (meta?.modified) {
-    facts.push(`modified ${meta.modified.slice(0, 10)}`);
+    // The local day it was modified on (`utils/local-day.ts`), not the UTC one.
+    facts.push(`modified ${localDay(new Date(meta.modified))}`);
   }
   return facts.join(" · ");
 }

@@ -27,6 +27,7 @@ import { collectionForFile } from "../content/collection-match";
 import { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
 import { projectState } from "../store";
 import { notedListing } from "../files/asset-versions";
+import { localDay } from "../utils/local-day";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { isString } from "@jxsuite/schema/guards";
 import { resolveI18n, servedLocaleOfPath } from "@jxsuite/schema/locale";
@@ -347,9 +348,10 @@ export function libraryDate(file: LibraryFile): string | null {
     return prefix[1]!;
   }
   if (file.modified) {
-    const parsed = new Date(file.modified);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString().slice(0, 10);
+    // The day it was modified where the reader is, not in UTC (`utils/local-day.ts`).
+    const day = localDay(new Date(file.modified));
+    if (day) {
+      return day;
     }
   }
   return null;

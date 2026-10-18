@@ -916,6 +916,8 @@ export function openTab(opts: {
   paneId?: string;
   focus?: boolean;
   layout?: JsonLayout | null;
+  /** The text a format-class file was read as (`createTab`'s `source`). */
+  source?: string | null;
   /** The mode it opens in, when not its first declared one (`createTab`). */
   canvasMode?: string;
   /**

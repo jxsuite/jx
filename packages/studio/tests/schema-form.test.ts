@@ -593,6 +593,89 @@ describe("binding a config field", () => {
   });
 });
 
+// ─── Image objects ───────────────────────────────────────────────────────────
+
+describe("an image object field", () => {
+  const IMAGE = {
+    properties: {
+      featuredImage: {
+        properties: {
+          alt: { type: "string" },
+          height: { type: "number" },
+          src: { type: "string" },
+          width: { type: "number" },
+        },
+        type: "object",
+      },
+      seo: { properties: { title: { type: "string" } }, type: "object" },
+    },
+  };
+
+  test("is the media field over its src, and its alt text is a row of its own", async () => {
+    const seen: SchemaFormControlArgs[] = [];
+    registerFormControl("media", {
+      mount(host, args) {
+        let latest = args;
+        seen.push(args);
+        const button = document.createElement("button");
+        button.dataset["stub"] = "media";
+        button.textContent = String(args.value);
+        button.addEventListener("click", () => latest.onChange(button.dataset["next"]));
+        host.replaceChildren(button);
+        return {
+          dispose: () => host.replaceChildren(),
+          update: (next) => {
+            latest = next;
+            seen.push(next);
+          },
+        };
+      },
+    });
+    const value = { featuredImage: { alt: "A barn", height: 5, src: "/a.jpg", width: 10 } };
+    const m = await mountForm(IMAGE, value);
+    const media = stub(m.container, "media")!;
+    // The media field is handed the picture's path, not the object.
+    expect(media.textContent).toBe("/a.jpg");
+    // An object that is no image stays the JSON it is.
+    expect(row(m, "seo").querySelector('[part="json"], textarea')).not.toBeNull();
+
+    // A new picture keeps its alt text and drops the old picture's size.
+    media.dataset["next"] = "/b.jpg";
+    media.click();
+    // The same picture again is no change; clearing the picture clears the image.
+    media.dataset["next"] = "/a.jpg";
+    media.click();
+    delete media.dataset["next"];
+    media.click();
+    expect(m.patches).toEqual([
+      { featuredImage: { alt: "A barn", src: "/b.jpg" } },
+      { featuredImage: undefined },
+    ]);
+
+    // The alt text row writes the object back with that one member changed, or removed.
+    const alt = row(m, "featuredImage/alt");
+    expect(alt.textContent).toContain("featuredImage alt text");
+    commit(control(m, "featuredImage/alt", "text"), "A red barn");
+    commit(control(m, "featuredImage/alt", "text"), "");
+    expect(m.patches.slice(2)).toEqual([
+      { featuredImage: { alt: "A red barn", height: 5, src: "/a.jpg", width: 10 } },
+      { featuredImage: { height: 5, src: "/a.jpg", width: 10 } },
+    ]);
+    expect(seen.length).toBeGreaterThan(0);
+  });
+
+  test("an image object with no alt member draws no alt row", async () => {
+    resetSchemaForms();
+    const bare = {
+      properties: {
+        icon: { properties: { src: { type: "string" } }, type: "object" },
+      },
+    };
+    const m = await mountForm(bare, { icon: { src: "/i.svg" } });
+    expect(m.container.querySelector('[data-prop="icon/alt"]')).toBeNull();
+  });
+});
+
 // ─── The control registry ────────────────────────────────────────────────────
 
 describe("control registry and ui overrides", () => {

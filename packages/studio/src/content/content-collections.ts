@@ -27,8 +27,54 @@ import type { ContentTypeSchema } from "@jxsuite/schema/types";
  */
 const INVARIANT_NOUNS = new Set(["data", "media", "metadata", "news", "series", "species"]);
 
+/**
+ * Collections named for the WHOLE rather than its parts: a `menu` holds dishes, a `gallery`
+ * pictures. Their item is "<name> item", the noun English already uses ("menu item", "catalog
+ * item"); "New menu" would promise a second menu.
+ */
+const COLLECTIVE_NOUNS = new Set([
+  "archive",
+  "catalog",
+  "catalogue",
+  "collection",
+  "directory",
+  "faq",
+  "gallery",
+  "inventory",
+  "library",
+  "menu",
+  "portfolio",
+  "showcase",
+]);
+
+/**
+ * A storage name in words, as a person reads it: `project_tag` → "project tag", `service-type` →
+ * "service type", `docsNav` → "docs nav". Lower case; {@link capitalise} makes a heading of it.
+ */
+export function humanName(name: string): string {
+  return name
+    .replaceAll(/[_-]+/g, " ")
+    .replaceAll(/([a-z\d])([A-Z])/g, "$1 $2")
+    .trim()
+    .replaceAll(/\s+/g, " ")
+    .toLowerCase();
+}
+
 /** A collection's item, said in the singular: `recipes` → `recipe`, `stories` → `story`. */
 export function itemNoun(collection: string): string {
+  // Only the last word is a noun to singularise: `post_tags` is a "post tag".
+  // A one-word name keeps its own spelling (`News`); a compound one is said in lower-case words.
+  const words = /[_-]|[a-z\d][A-Z]/.test(collection) ? humanName(collection) : collection;
+  const at = words.lastIndexOf(" ");
+  const last = words.slice(at + 1);
+  if (COLLECTIVE_NOUNS.has(last.toLowerCase())) {
+    return `${words} item`;
+  }
+  return `${words.slice(0, at + 1)}${singular(last)}`;
+}
+
+/** One word in the singular. */
+function singular(collection: string): string {
   if (INVARIANT_NOUNS.has(collection.toLowerCase())) {
     return collection;
   }
@@ -112,7 +158,8 @@ export function contentCollections(): ContentCollection[] {
     item: itemNoun(name),
     key: name,
     kind: "collection",
-    title: capitalise(name),
+    // In words, as the Table names a field: `project_tag` is "Project tag", not "Project_tag".
+    title: capitalise(humanName(name)),
   }));
   return [PAGES, ...declared];
 }

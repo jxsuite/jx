@@ -23,8 +23,12 @@ describe("fileRecordIds", () => {
     ]);
   });
 
-  test("JSON that is not an array, broken JSON and other kinds hold no records", () => {
-    expect(fileRecordIds("content/one.json", '{"id":"a"}')).toEqual([]);
+  test("a single JSON object is one entry, as the loader reads it: its id, else the file's stem", () => {
+    expect(fileRecordIds("content/one.json", '{"id":"a"}')).toEqual(["a"]);
+    expect(fileRecordIds("docs/nav.json", '{"sections":[]}')).toEqual(["nav"]);
+  });
+
+  test("broken JSON and other kinds hold no records", () => {
     expect(fileRecordIds("content/one.json", "{")).toEqual([]);
     expect(fileRecordIds("content/notes.md", "# hi")).toEqual([]);
   });

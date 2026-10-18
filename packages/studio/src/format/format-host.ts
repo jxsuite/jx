@@ -305,6 +305,11 @@ export interface FormatActionOptions {
   mode?: string;
   /** Whether the serializer writes a frontmatter block. */
   frontmatter?: boolean;
+  /**
+   * The text the document was read from: a roundtrip serializer keeps the spelling of whatever did
+   * not change (`@jxsuite/parser`'s `source` option).
+   */
+  source?: string;
 }
 
 /**

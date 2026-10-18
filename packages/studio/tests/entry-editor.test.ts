@@ -495,12 +495,22 @@ describe("mountEntryEditorSurface — dispose lifecycle", () => {
     emptyLine: "Nothing to edit.",
     fieldsRegion: "",
     name: "",
+    nextDisabled: true,
     note: "",
     noteState: "hidden",
+    place: "",
+    previousDisabled: true,
+    recordNav: "hidden",
     region: "",
     stage: "empty",
   };
-  const actions = { openContentTypes: () => {}, setDraft: () => {} };
+  const actions = {
+    openContentTypes: () => {},
+    openGrid: () => {},
+    setDraft: () => {},
+    showNext: () => {},
+    showPrevious: () => {},
+  };
   const islands = { fieldsSlot: () => {} };
 
   test("attached() is false once disposed, even before the mount has settled", () => {

@@ -674,7 +674,7 @@ export function createDesktopPlatform() {
 
 ### 7.3 Bun-Side Handlers
 
-The Bun process implements the actual operations:
+The Bun process implements the actual operations. Every file operation is contained in the project root (lexically and after resolving symlinks), with one widening the dev server shares: a declared collection whose `source` resolves outside the project (`sites/jxsuite.com`'s `content.docs.source: "../../docs"`) is reachable for listing, reading, writing, uploading, renaming and deleting, its paths reported relative to the project (`../../docs/start/intro.md`). The sources are read from `project.json` on each call, a `{locale}` source is reached from the directory above its first `{locale}` segment, and a single-file source is that file alone; nothing else beside the project is reachable.
 
 ```javascript
 // src/bun/studio-handlers.js (runs in Bun process)
