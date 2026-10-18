@@ -1361,6 +1361,37 @@ describe("git read operations", () => {
   });
 });
 
+describe("git routes name their project", () => {
+  /* The server's active project is whichever one was activated last, so a git call that named
+     none ran in another session's project (studio.md §22.8). */
+  test("with a projectRoot, every git call carries it as dir beside its own query", async () => {
+    route("/__studio/activate", () => json({ ok: true }));
+    route("/__studio/git/init", () => json({ ok: true }), "POST");
+    route("/__studio/git/status", () => json({ files: [] }));
+    route("/__studio/git/log", () => json([]));
+    route("/__studio/git/show", () => json({ content: "" }));
+    const p = createDevServerPlatform();
+    p.projectRoot = "examples/site";
+    await p.gitInit();
+    await p.gitStatus();
+    await p.gitLog(3);
+    await p.gitShow({ path: "a.json" });
+    for (const path of ["/__studio/git/init", "/__studio/git/status", "/__studio/git/log"]) {
+      expect(callsTo(path)[0]!.search.get("dir")).toBe("examples/site");
+    }
+    expect(callsTo("/__studio/git/log")[0]!.search.get("limit")).toBe("3");
+    expect(callsTo("/__studio/git/show")[0]!.search.get("path")).toBe("a.json");
+    expect(callsTo("/__studio/git/show")[0]!.search.get("dir")).toBe("examples/site");
+  });
+
+  test("with no project open, nothing is named", async () => {
+    route("/__studio/git/status", () => json({ files: [] }));
+    const p = createDevServerPlatform();
+    await p.gitStatus();
+    expect(callsTo("/__studio/git/status")[0]!.search.has("dir")).toBe(false);
+  });
+});
+
 describe("git write operations", () => {
   const postCases: [
     string,

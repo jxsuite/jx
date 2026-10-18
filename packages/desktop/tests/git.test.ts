@@ -86,6 +86,16 @@ describe("gitStatus", () => {
     expect(untracked!.staged).toBe(false);
     rmSync(join(FIXTURES, "untracked.txt"));
   });
+
+  test("an untracked folder is listed file by file, not as the folder", async () => {
+    mkdirSync(join(FIXTURES, "fresh", "deep"), { recursive: true });
+    writeFileSync(join(FIXTURES, "fresh", "a.txt"), "a");
+    writeFileSync(join(FIXTURES, "fresh", "deep", "b.txt"), "b");
+    const result = await gitStatus();
+    const paths = result.files.map((f) => f.path).toSorted();
+    expect(paths).toEqual(["fresh/a.txt", "fresh/deep/b.txt"]);
+    rmSync(join(FIXTURES, "fresh"), { force: true, recursive: true });
+  });
 });
 
 // ─── gitBranches ────────────────────────────────────────────────────────────

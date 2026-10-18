@@ -50,6 +50,10 @@ export interface PublishQuickView {
   summary: string;
   /** `done` when every check passed, `open` while any is not. */
   checksState: "done" | "open";
+  /**
+   * The kit icon beside the checks line: `check` when every check passed, `warning-circle` while
+   * any is open.
+   */
   checksIcon: string;
   checksLine: string;
   blocked: boolean;

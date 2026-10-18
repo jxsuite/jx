@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPublishWorkspace",
-  "$description": "The Publish workspace's home (studio.md §22.8): four sub-tabs over one body. Review changes is the change list grouped by component, each file's checkbox including it in the next publish (staging it), its Before and after opening the comparison (§21), then the checks, the destination, the summary and the one primary button. Deploys is the live site, any deploy running now with its steps, the history the host returns and the branch previews. Branches is the branch list with switch and create. Hosting is where the project is saved, where the site is hosted, the build adapter (an island: the Deploy section that moved here from Project Settings) and the address, with the deploy checklist under them. `publish/publish-workspace.ts` keeps every decision and hands this document strings and booleans; nothing here knows what a status letter means, which destination a host allows or what a deployment's stage is called.",
+  "$description": "The Publish workspace's home (studio.md §22.8): four sub-tabs over one body. Review changes is the change list grouped the way the site is organised (Pages, each content collection, Components, Layouts, Styles, Media, Other), each file's checkbox including it in the next publish (staging it), its Before and after opening the comparison (§21), then the checks, the destination, the summary and the one primary button. Deploys is the live site, any deploy running now with its steps, the history the host returns and the branch previews. Branches is the branch list with switch and create. Hosting is where the project is saved, where the site is hosted, the build adapter (an island: the Deploy section that moved here from Project Settings) and the address, with the deploy checklist under them. `publish/publish-workspace.ts` keeps every decision and hands this document strings and booleans; nothing here knows what a status letter means, which destination a host allows or what a deployment's stage is called.",
   "tagName": "div",
   "attributes": {
     "part": "publish",
@@ -76,6 +76,11 @@
       "gap": "var(--jx-space-3)",
       "minWidth": "0"
     },
+    "& [part=\"section-head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)"
+    },
     "& [part=\"section-heading\"]": {
       "margin": "0",
       "fontSize": "var(--jx-text-sm)",
@@ -111,7 +116,7 @@
       "color": "var(--fg-dim)",
       "fontSize": "var(--jx-text-sm)"
     },
-    "& [part=\"changes-bar\"], & [part=\"branch-bar\"]": {
+    "& [part=\"changes-bar\"]": {
       "display": "flex",
       "alignItems": "center",
       "justifyContent": "space-between",
@@ -334,14 +339,6 @@
     },
     "& [part=\"deployment-status\"][data-status=\"failure\"]": {
       "color": "var(--danger)"
-    },
-    "& [part=\"deploy-history\"]": {
-      "position": "relative"
-    },
-    "& [part=\"reload-deploys\"]": {
-      "position": "absolute",
-      "top": "0",
-      "right": "0"
     },
     "& [part=\"branch\"]": {
       "display": "flex",
@@ -1939,39 +1936,47 @@
                   },
                   "children": [
                     {
-                      "tagName": "h3",
+                      "tagName": "div",
                       "attributes": {
-                        "part": "section-heading"
+                        "part": "section-head"
                       },
-                      "textContent": "History"
-                    },
-                    {
-                      "tagName": "jx-action-button",
-                      "attributes": {
-                        "part": "reload-deploys"
-                      },
-                      "$props": {
-                        "icon": "arrows-clockwise",
-                        "size": "sm",
-                        "quiet": true,
-                        "label": "Refresh deployments",
-                        "hint": "Ask the host again",
-                        "disabled": {
-                          "$ref": "#/state/deploysBusy"
-                        }
-                      },
-                      "onclick": {
-                        "$prototype": "Function",
-                        "body": [
-                          {
-                            "operator": "call",
-                            "target": {
-                              "$ref": "#/state/reloadDeployments"
-                            },
-                            "value": []
+                      "children": [
+                        {
+                          "tagName": "h3",
+                          "attributes": {
+                            "part": "section-heading"
+                          },
+                          "textContent": "History"
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "reload-deploys"
+                          },
+                          "$props": {
+                            "icon": "arrows-clockwise",
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Refresh deployments",
+                            "hint": "Ask the host again",
+                            "disabled": {
+                              "$ref": "#/state/deploysBusy"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/reloadDeployments"
+                                },
+                                "value": []
+                              }
+                            ]
                           }
-                        ]
-                      }
+                        }
+                      ]
                     },
                     {
                       "tagName": "div",
@@ -2242,24 +2247,17 @@
                   },
                   "children": [
                     {
-                      "tagName": "h3",
-                      "attributes": {
-                        "part": "section-heading"
-                      },
-                      "textContent": "Branches"
-                    },
-                    {
                       "tagName": "div",
                       "attributes": {
-                        "part": "branch-bar"
+                        "part": "section-head"
                       },
                       "children": [
                         {
-                          "tagName": "span",
+                          "tagName": "h3",
                           "attributes": {
-                            "part": "branch-summary"
+                            "part": "section-heading"
                           },
-                          "textContent": "${state.branchSummary}"
+                          "textContent": "Branches"
                         },
                         {
                           "tagName": "jx-button",
@@ -2298,6 +2296,13 @@
                           ]
                         }
                       ]
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "branch-summary"
+                      },
+                      "textContent": "${state.branchSummary}"
                     },
                     {
                       "tagName": "div",
@@ -2737,15 +2742,15 @@
                               ]
                             }
                           ]
-                        },
-                        "none": {
-                          "tagName": "p",
-                          "attributes": {
-                            "part": "hosting-summary"
-                          },
-                          "textContent": "${state.domainNote}"
                         }
                       }
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "hosting-summary"
+                      },
+                      "textContent": "${state.domainNote}"
                     }
                   ]
                 },

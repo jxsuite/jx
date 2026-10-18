@@ -32,7 +32,12 @@ import { isFunction } from "@jxsuite/schema/guards";
 import type { GitDiffState, GitFileStatus, StudioPlatform } from "../types";
 import { getPlatform, hasPlatform } from "../platform";
 import { now } from "../services/clock";
-import { formatForPath } from "../format/format-host";
+import {
+  PAGES_COLLECTION,
+  collectionKeyOfPath,
+  contentCollections,
+} from "../content/content-collections";
+import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-types";
 import { projectState } from "../store";
 import { comparisonRefusal, openComparisonTab } from "../panels/git-diff-open";
 import type { Tab } from "../tabs/tab";
@@ -49,40 +54,46 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
 // ─── Reading the repository ───────────────────────────────────────────────────
 
 /**
- * Re-read the status and the branch list, then every comparison that depends on them.
+ * Read the status, then the branch list when the status says there is a repository.
  *
- * Settled independently, not `Promise.all`: outside a work tree `git branch` exits non-zero while
- * `git status` answers cleanly with `isRepo: false`. Letting the branch lookup reject the pair
- * discarded that status, so the workspace drew its "no status yet" branch, refreshed again, and
- * span: a request per render for as long as it stayed open.
+ * In that order, not in parallel. Outside a repository of its own the branch route refuses (`409
+ * conflict`, studio.md §22.8), and asked alongside the status it did so on every refresh: a failed
+ * request in the console each time for a project that cannot have branches. A failure of either
+ * read is the workspace's error line; a failed status still leaves the refresh to bump the
+ * revision, because nothing about the tree is known to be unchanged.
  */
+async function readStatusAndBranches(): Promise<void> {
+  const plat = getPlatform();
+  const { git } = shell;
+  let status;
+  try {
+    status = await plat.gitStatus();
+  } catch (error) {
+    git.error = errorMessage(error);
+    return;
+  }
+  git.status = status;
+  if (!status.isRepo) {
+    git.branches = null;
+    return;
+  }
+  try {
+    git.branches = await plat.gitBranches();
+  } catch (error) {
+    git.error = errorMessage(error);
+  }
+}
+
+/** Re-read the status and the branch list, then every comparison that depends on them. */
 export async function refreshGitStatus(): Promise<void> {
   if (!projectState) {
     return;
   }
-  const plat = getPlatform();
   const { git } = shell;
   git.loading = true;
   git.error = null;
   try {
-    const [status, branches] = await Promise.allSettled([plat.gitStatus(), plat.gitBranches()]);
-    if (status.status === "fulfilled") {
-      git.status = status.value;
-    }
-    if (branches.status === "fulfilled") {
-      git.branches = branches.value;
-    }
-    // A branch lookup that fails on a repo-less project is expected, not an error worth showing;
-    // Anything else (including a failed status) surfaces.
-    const failure: unknown =
-      status.status === "rejected"
-        ? status.reason
-        : branches.status === "rejected" && status.value.isRepo
-          ? branches.reason
-          : null;
-    if (failure) {
-      git.error = errorMessage(failure);
-    }
+    await readStatusAndBranches();
     git.lastUpdated = now();
     /* THE COMPARISON FOLLOWS THE TREE. Every git verb that can move the working tree ends here —
        commit, discard, checkout, pull, fetch — and so does the 30s poll that notices a change made
@@ -656,32 +667,58 @@ export function changeRow(file: GitFileStatus): ChangeRow {
   };
 }
 
+/** The project folders a change is filed under by name, after the content collections. */
+const FOLDER_GROUPS: readonly (readonly [folder: string, name: string])[] = [
+  ["components", "Components"],
+  ["layouts", "Layouts"],
+  ["styles", "Styles"],
+];
+
+/** The group key of a change: a collection's key, `folder:<name>`, `media` or `other`. */
+function changeGroupKey(path: string): string {
+  const collection = collectionKeyOfPath(path);
+  if (collection !== null) {
+    return collection;
+  }
+  const [top] = path.split("/");
+  // A page directory's private part (`pages/_partials/…`) is no route, but it is still the pages.
+  if (top === "pages") {
+    return PAGES_COLLECTION;
+  }
+  if (FOLDER_GROUPS.some(([folder]) => folder === top)) {
+    return `folder:${top}`;
+  }
+  return MEDIA_EXTENSIONS.has(extensionOf(path)) ? "media" : "other";
+}
+
 /**
- * Group files by component: the parent directory for anything the app can render, "Other" for the
- * rest.
+ * Group the changed files the way the site is organised: Pages, then each content collection the
+ * project declares (by its title), then Components, Layouts, Styles, Media and Other, in that order
+ * and only when non-empty. Within a group the files keep the order git listed them.
+ *
+ * Not by folder name. The last folder of a path is no unit of a site: `content/events/en` and
+ * `content/exhibitions/en` both ended in `/en` and were filed together, and every file at the root
+ * got a heading of its own (studio.md §22.8).
  */
 export function groupFilesByComponent(files: readonly GitFileStatus[]): ChangeGroup[] {
-  const groups = new Map<string, GitFileStatus[]>();
-  for (const f of files) {
-    const parts = f.path.split("/");
-    let component;
-    if (f.path.endsWith(".json") || formatForPath(f.path)) {
-      component = parts.length > 1 ? `/${parts.at(-2)}` : `/${parts[0]}`;
-    } else {
-      component = "Other";
-    }
-    let group = groups.get(component);
-    if (!group) {
-      group = [];
-      groups.set(component, group);
-    }
-    group.push(f);
+  const order: [key: string, name: string][] = [
+    ...contentCollections().map((collection): [string, string] => [
+      collection.key,
+      collection.title,
+    ]),
+    ...FOLDER_GROUPS.map(([folder, name]): [string, string] => [`folder:${folder}`, name]),
+    ["media", "Media"],
+    ["other", "Other"],
+  ];
+  const grouped = new Map<string, GitFileStatus[]>();
+  for (const file of files) {
+    const key = changeGroupKey(file.path);
+    grouped.set(key, [...(grouped.get(key) ?? []), file]);
   }
-  return [...groups.entries()].map(([name, entries]) => ({
-    files: entries.map((entry) => changeRow(entry)),
-    key: name,
-    name,
-  }));
+  return order.flatMap(([key, name]) => {
+    const entries = grouped.get(key);
+    return entries ? [{ files: entries.map((entry) => changeRow(entry)), key, name }] : [];
+  });
 }
 
 /** One commit, as the log draws it. */

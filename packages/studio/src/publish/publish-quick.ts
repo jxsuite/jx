@@ -58,7 +58,7 @@ export function quickPublishView(): PublishQuickView {
   return {
     blocked: publishBlocker(destination, true) !== "",
     blocker,
-    checksIcon: open ? "·" : "✓",
+    checksIcon: open ? "warning-circle" : "check",
     checksLine: checksLine(checks),
     checksState: open ? "open" : "done",
     countLine:

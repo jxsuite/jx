@@ -196,6 +196,23 @@ export function createDevServerPlatform() {
   }
 
   /**
+   * A `/__studio/git/*` route that names this session's project with `?dir=`.
+   *
+   * The server serves every Studio tab pointed at it, and its active project is whichever one was
+   * activated last; a git call that named no project ran in that one, so Initialize Repository in
+   * one session initialised another's project. With no project open, nothing is named and the
+   * server falls back to its own root (a clone from the welcome screen).
+   */
+  function gitRoute(command: string, params: Record<string, string> = {}): string {
+    const query = new URLSearchParams(params);
+    if (_projectRoot) {
+      query.set("dir", serverPath("."));
+    }
+    const search = query.toString();
+    return `/__studio/git/${command}${search ? `?${search}` : ""}`;
+  }
+
+  /**
    * Strip the project root prefix from a server-root-relative path.
    *
    * @param {string} path
@@ -1067,7 +1084,7 @@ export function createDevServerPlatform() {
     // ─── Git operations ──────────────────────────────────────────────────
 
     async gitStatus() {
-      const res = await fetch("/__studio/git/status");
+      const res = await fetch(gitRoute("status"));
       if (!res.ok) {
         throw new Error(await res.text());
       }
@@ -1075,7 +1092,7 @@ export function createDevServerPlatform() {
     },
 
     async gitBranches() {
-      const res = await fetch("/__studio/git/branches");
+      const res = await fetch(gitRoute("branches"));
       if (!res.ok) {
         throw new Error(await res.text());
       }
@@ -1084,8 +1101,7 @@ export function createDevServerPlatform() {
 
     /** @param {number} [limit] */
     async gitLog(limit?: number) {
-      const q = limit ? `?limit=${limit}` : "";
-      const res = await fetch(`/__studio/git/log${q}`);
+      const res = await fetch(gitRoute("log", limit ? { limit: String(limit) } : {}));
       if (!res.ok) {
         throw new Error(await res.text());
       }
@@ -1094,7 +1110,7 @@ export function createDevServerPlatform() {
 
     /** @param {string[]} files */
     async gitStage(files: string[]) {
-      const res = await fetch("/__studio/git/stage", {
+      const res = await fetch(gitRoute("stage"), {
         body: JSON.stringify({ files }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -1108,7 +1124,7 @@ export function createDevServerPlatform() {
 
     /** @param {string[]} files */
     async gitUnstage(files: string[]) {
-      const res = await fetch("/__studio/git/unstage", {
+      const res = await fetch(gitRoute("unstage"), {
         body: JSON.stringify({ files }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -1122,7 +1138,7 @@ export function createDevServerPlatform() {
 
     /** @param {string} message */
     async gitCommit(message: string) {
-      const res = await fetch("/__studio/git/commit", {
+      const res = await fetch(gitRoute("commit"), {
         body: JSON.stringify({ message }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -1136,7 +1152,7 @@ export function createDevServerPlatform() {
 
     /** @param {{ setUpstream?: boolean }} [opts] */
     async gitPush(opts?: { setUpstream?: boolean }) {
-      const res = await fetch("/__studio/git/push", {
+      const res = await fetch(gitRoute("push"), {
         body: JSON.stringify(opts || {}),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -1149,7 +1165,7 @@ export function createDevServerPlatform() {
     },
 
     async gitPull() {
-      const res = await fetch("/__studio/git/pull", { method: "POST" });
+      const res = await fetch(gitRoute("pull"), { method: "POST" });
       if (!res.ok) {
         const body = await readJson<ErrorBody>(res);
         throw new Error(problemMessage(body));
@@ -1158,7 +1174,7 @@ export function createDevServerPlatform() {
     },
 
     async gitFetch() {
-      const res = await fetch("/__studio/git/fetch", { method: "POST" });
+      const res = await fetch(gitRoute("fetch"), { method: "POST" });
       if (!res.ok) {
         const body = await readJson<ErrorBody>(res);
         throw new Error(problemMessage(body));
@@ -1168,7 +1184,7 @@ export function createDevServerPlatform() {
 
     /** @param {string} branch */
     async gitCheckout(branch: string) {
-      const res = await fetch("/__studio/git/checkout", {
+      const res = await fetch(gitRoute("checkout"), {
         body: JSON.stringify({ branch }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -1182,7 +1198,7 @@ export function createDevServerPlatform() {
 
     /** @param {string} name */
     async gitCreateBranch(name: string) {
-      const res = await fetch("/__studio/git/create-branch", {
+      const res = await fetch(gitRoute("create-branch"), {
         body: JSON.stringify({ name }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -1196,7 +1212,7 @@ export function createDevServerPlatform() {
 
     /** @param {string} [path] */
     async gitDiff(path?: string) {
-      const res = await fetch(`/__studio/git/diff?path=${encodeURIComponent(path ?? "")}`);
+      const res = await fetch(gitRoute("diff", { path: path ?? "" }));
       if (!res.ok) {
         throw new Error(await res.text());
       }
@@ -1205,11 +1221,9 @@ export function createDevServerPlatform() {
 
     /** @param {{ path: string; ref?: string }} opts */
     async gitShow(opts: { path: string; ref?: string }) {
-      const params = new URLSearchParams({ path: opts.path });
-      if (opts.ref) {
-        params.set("ref", opts.ref);
-      }
-      const res = await fetch(`/__studio/git/show?${params}`);
+      const res = await fetch(
+        gitRoute("show", opts.ref ? { path: opts.path, ref: opts.ref } : { path: opts.path }),
+      );
       if (!res.ok) {
         throw new Error(await res.text());
       }
@@ -1219,7 +1233,7 @@ export function createDevServerPlatform() {
 
     /** @param {string[]} files */
     async gitDiscard(files: string[]) {
-      const res = await fetch("/__studio/git/discard", {
+      const res = await fetch(gitRoute("discard"), {
         body: JSON.stringify({ files }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -1233,7 +1247,7 @@ export function createDevServerPlatform() {
 
     /** @param {string} url */
     async gitClone(url: string) {
-      const res = await fetch("/__studio/git/clone", {
+      const res = await fetch(gitRoute("clone"), {
         body: JSON.stringify({ url }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -1246,7 +1260,7 @@ export function createDevServerPlatform() {
     },
 
     async gitInit() {
-      const res = await fetch("/__studio/git/init", { method: "POST" });
+      const res = await fetch(gitRoute("init"), { method: "POST" });
       if (!res.ok) {
         const body = await readJson<ErrorBody>(res);
         throw new Error(problemMessage(body));
@@ -1301,7 +1315,7 @@ export function createDevServerPlatform() {
      * @param {string} url
      */
     async gitAddRemote(name: string, url: string) {
-      const res = await fetch("/__studio/git/add-remote", {
+      const res = await fetch(gitRoute("add-remote"), {
         body: JSON.stringify({ name, url }),
         headers: { "Content-Type": "application/json" },
         method: "POST",

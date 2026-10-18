@@ -152,7 +152,10 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
 
     const branchRaw = await git("branch", "--show-current");
     const branch = branchRaw.trim();
-    const files = parsePorcelainV1(await git("status", "--porcelain=v1", "-z"));
+    // Every untracked FILE, not its collapsed folder: see the dev server's status route.
+    const files = parsePorcelainV1(
+      await git("status", "--porcelain=v1", "-z", "--untracked-files=all"),
+    );
 
     let ahead = 0;
     let behind = 0;

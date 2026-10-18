@@ -242,7 +242,7 @@ describe("Review changes", () => {
 
   test("draws the change list grouped, each row naming its controls after the file", async () => {
     await draw();
-    expect(parts("group-name").map((name) => name.textContent)).toEqual(["/pages"]);
+    expect(parts("group-name").map((name) => name.textContent)).toEqual(["Pages"]);
     expect(parts("file-name").map((name) => name.textContent)).toEqual([
       "index.json",
       "about.json",
@@ -532,14 +532,72 @@ describe("Hosting", () => {
     );
     expect(part("host-name")?.textContent).toBe("Another host");
     const commands = parts("command").map((button) => button.dataset.command);
-    expect(commands).toEqual([
-      "git.push",
-      "git.signInToGithub",
-      "publish.setUp",
-      "publish.openDashboard",
-    ]);
+    // No host is connected, so the dashboard of one is not offered: only connecting one is.
+    expect(commands).toEqual(["git.push", "git.signInToGithub", "publish.setUp"]);
     host.querySelector<HTMLElement>('[part="command"][data-command="publish.setUp"]')!.click();
     expect(ran.at(-1)?.id).toBe("publish.setUp");
+  });
+
+  test("with no host, Deploys and Hosting agree: connect one, and nothing deploys", async () => {
+    install({ cfApi: async () => [] });
+    shell.publish.tab = "deploys";
+    await draw();
+    expect(parts("command").map((button) => button.dataset.command)).toEqual(["publish.setUp"]);
+    pw.detachPublishWorkspace("primary");
+    resetStudioState({ name: "Demo", projectConfig: { build: { deploy: DEPLOY }, name: "Demo" } });
+    await draw();
+    expect(parts("command").map((button) => button.dataset.command)).toEqual([
+      "publish.deploy",
+      "publish.openDashboard",
+    ]);
+    pw.detachPublishWorkspace("primary");
+    shell.publish.tab = "hosting";
+    await draw();
+    expect(parts("command").map((button) => button.dataset.command)).toContain(
+      "publish.openDashboard",
+    );
+  });
+
+  test("the configured Production URL is the site's address before a host is connected", async () => {
+    resetStudioState({
+      name: "Demo",
+      projectConfig: { name: "Demo", url: "https://example.com" },
+    });
+    shell.publish.tab = "hosting";
+    await draw();
+    const address = host.querySelector('[part="address"]')!;
+    expect(address.querySelector('[part="live-url"]')?.textContent).toBe("https://example.com");
+    expect(address.querySelector('[part="hosting-summary"]')?.textContent).toMatch(
+      /^The Production URL in Project Settings › Overview\. No host is connected yet/,
+    );
+    pw.detachPublishWorkspace("primary");
+    shell.publish.tab = "deploys";
+    await draw();
+    expect(part("live-url")?.textContent).toBe("https://example.com");
+    expect(part("live-summary")?.textContent).toMatch(/^No host is connected/);
+  });
+
+  test("with neither a host nor a Production URL, Your address says how to get one", async () => {
+    shell.publish.tab = "hosting";
+    await draw();
+    const address = host.querySelector('[part="address"]')!;
+    expect(address.querySelector('[part="live-url"]')).toBeNull();
+    expect(address.querySelector('[part="hosting-summary"]')?.textContent).toMatch(
+      /^Your site gets an address when a host is connected/,
+    );
+  });
+
+  test("a connected host that has reported no address says so", async () => {
+    install({ cfApi: async () => [] });
+    resetStudioState({
+      name: "Demo",
+      projectConfig: { build: { deploy: { ...DEPLOY, productionUrl: "" } }, name: "Demo" },
+    });
+    shell.publish.tab = "hosting";
+    await draw();
+    expect(host.querySelector('[part="address"] [part="hosting-summary"]')?.textContent).toMatch(
+      /^Cloudflare has not reported an address yet/,
+    );
   });
 
   test("the build adapter is the Deploy section, mounted into its island", async () => {

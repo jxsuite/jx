@@ -185,15 +185,20 @@ describe("refreshGitStatus", () => {
     expect(shell.git.error).toBe("no git");
   });
 
-  test("a branch failure on a project that is not a repository is expected, and silent", async () => {
+  test("a project that is not a repository is never asked for its branches", async () => {
+    let branchReads = 0;
     install({
       gitBranches: async () => {
+        branchReads += 1;
         throw new Error("not a work tree");
       },
       gitStatus: async () => ({ ...repo(), isRepo: false }),
     });
+    shell.git.branches = { branches: ["stale"], current: "stale" };
     await sc.refreshGitStatus();
+    expect(branchReads).toBe(0);
     expect(shell.git.status?.isRepo).toBe(false);
+    expect(shell.git.branches).toBeNull();
     expect(shell.git.error).toBeNull();
   });
 
@@ -609,19 +614,48 @@ describe("comparisons", () => {
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
 describe("rows", () => {
-  test("files group by the folder of what the app can render, the rest under Other", () => {
+  test("files group the way the site is organised, in a fixed order, never by folder name", () => {
+    resetStudioState({
+      name: "Demo",
+      projectConfig: {
+        content: {
+          events: { source: "./content/events/{locale}/" },
+          exhibitions: { source: "./content/exhibitions/{locale}/" },
+        },
+        name: "Demo",
+      },
+      projectRoot: "/p",
+    });
     const groups = sc.groupFilesByComponent([
       { path: "pages/index.json", staged: true, status: "M" },
-      { path: "pages/about.md", staged: false, status: "A" },
       { path: "project.json", staged: false, status: "M" },
+      { path: "content/exhibitions/en/a.md", staged: false, status: "U" },
       { path: "src/app.ts", staged: false, status: "U" },
+      { path: "content/events/en/b.md", staged: false, status: "U" },
+      { path: "public/hero.jpg", staged: false, status: "U" },
+      { path: "components/card.json", staged: false, status: "M" },
+      { path: "package.json", staged: false, status: "M" },
+      { path: "pages/_partials/nav.json", staged: false, status: "M" },
+      { path: "layouts/base.json", staged: false, status: "M" },
     ]);
-    // No format class is loaded here, so a Markdown page is not something the app can render yet
-    // And sits under Other with the TypeScript, in the order the files were listed.
-    expect(groups.map((group) => [group.name, group.files.map((file) => file.name)])).toEqual([
-      ["/pages", ["index.json"]],
-      ["Other", ["about.md", "app.ts"]],
-      ["/project.json", ["project.json"]],
+    /* Two collections whose folders both end in `en` stay apart, the root files share Other, and a
+       page directory's private part is still the pages. */
+    expect(groups.map((group) => [group.name, group.files.map((file) => file.path)])).toEqual([
+      ["Pages", ["pages/index.json", "pages/_partials/nav.json"]],
+      ["Events", ["content/events/en/b.md"]],
+      ["Exhibitions", ["content/exhibitions/en/a.md"]],
+      ["Components", ["components/card.json"]],
+      ["Layouts", ["layouts/base.json"]],
+      ["Media", ["public/hero.jpg"]],
+      ["Other", ["project.json", "src/app.ts", "package.json"]],
+    ]);
+    resetStudioState({ name: "Demo", projectRoot: "/p" });
+  });
+
+  test("a changed file is a row named after its file and folder", () => {
+    const groups = sc.groupFilesByComponent([
+      { path: "pages/index.json", staged: true, status: "M" },
+      { path: "src/app.ts", staged: false, status: "U" },
     ]);
     expect(groups[0]?.files[0]).toEqual({
       cannotDiscard: false,
@@ -635,7 +669,7 @@ describe("rows", () => {
       status: "M",
       statusWord: "modified",
     });
-    expect(groups[1]?.files[1]?.cannotDiscard).toBe(true);
+    expect(groups[1]?.files[0]?.cannotDiscard).toBe(true);
   });
 
   test("a status with no word of its own still says the file changed", () => {

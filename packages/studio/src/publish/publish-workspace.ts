@@ -412,10 +412,35 @@ function deploymentRows(): PagesDeploymentInfo[] {
     : [];
 }
 
+/**
+ * The site's production address: what the connected host reports, else the Production URL the
+ * project configures (`project.json` `url`, Project Settings › Overview), else nothing. One reader,
+ * so Deploys, Hosting and Settings never disagree about where the site lives (studio.md §22.8).
+ */
+function productionAddress(): string {
+  return currentDeploy()?.productionUrl || projectState?.projectConfig?.url || "";
+}
+
+/** The sentence under Your address: where the address came from, or how the site gets one. */
+function domainNote(address: string): string {
+  const deploy = currentDeploy();
+  if (deploy?.productionUrl) {
+    return "Cloudflare Pages serves it. A custom domain is added on the Cloudflare dashboard.";
+  }
+  if (deploy) {
+    return "Cloudflare has not reported an address yet. A custom domain is added on the Cloudflare dashboard.";
+  }
+  return address
+    ? "The Production URL in Project Settings › Overview. No host is connected yet; once one is, point this domain at it on the host's dashboard."
+    : "Your site gets an address when a host is connected, or set its Production URL in Project Settings › Overview.";
+}
+
 /** The live site's line: its latest production deployment, said in words. */
 function liveSummary(rows: readonly PagesDeploymentInfo[]): string {
   if (!currentDeploy()) {
-    return "";
+    return productionAddress()
+      ? "No host is connected, so Studio cannot say what is deployed there. Connect one under Hosting."
+      : "";
   }
   /* The newer of what the list said and what a deploy since then observed: a Publish live that
      deployed is the live site before the list is read again. */
@@ -519,6 +544,7 @@ export function publishWorkspaceView(region: string): PublishWorkspaceView {
   const pr = lastPullRequest();
   const commits = git.logEntries ?? [];
   const deploy = currentDeploy();
+  const address = productionAddress();
   const rows = deploymentRows();
   const previews = rows.filter((row) => row.environment === "preview");
   const liveId = liveDeploymentId(rows);
@@ -559,16 +585,16 @@ export function publishWorkspaceView(region: string): PublishWorkspaceView {
     commitRegion: `${region}/commit`,
     commits: commits.map((entry) => commitRow(entry)),
     commitsState: commits.length > 0 ? "listed" : "empty",
-    deployCommands: commandRows(["publish.deploy", "publish.openDashboard"]),
+    deployCommands: commandRows(
+      deploy ? ["publish.deploy", "publish.openDashboard"] : ["publish.setUp"],
+    ),
     deploysBusy: shell.publish.deploys.state === "loading",
     destination,
     destinationId: `${idBase}-destination`,
     destinations: destinationChoices(chosen),
-    domain: deploy?.productionUrl ?? "",
-    domainNote: deploy
-      ? "Cloudflare has not reported an address yet. A custom domain is added on the Cloudflare dashboard."
-      : "Your site gets an address when a host is connected.",
-    domainState: deploy?.productionUrl ? "set" : "none",
+    domain: address,
+    domainNote: domainNote(address),
+    domainState: address ? "set" : "none",
     error: git.error ?? "",
     filesState: count > 0 ? "listed" : "empty",
     groups: groupFilesByComponent(files).map((group) => reviewGroup(group)),
@@ -576,19 +602,21 @@ export function publishWorkspaceView(region: string): PublishWorkspaceView {
     hasBranchNote: hosted,
     hasError: Boolean(git.error),
     hasLastUpdated: Boolean(git.lastUpdated),
-    hasLiveUrl: Boolean(deploy?.productionUrl),
+    hasLiveUrl: address !== "",
     hasRefusal: refusal !== "",
     headline: headline(mood),
     history: rows.map((row) => deploymentRow(row, liveId)),
     historyState: rows.length > 0 ? "listed" : "empty",
-    hostCommands: commandRows(["publish.setUp", "publish.openDashboard"]),
+    hostCommands: commandRows(
+      deploy ? ["publish.setUp", "publish.openDashboard"] : ["publish.setUp"],
+    ),
     includedLabel: count > 0 ? `${staged} of ${count} included` : "",
     lastUpdated: lastUpdatedLabel(git.lastUpdated),
     liveNone: deploy
       ? "The host has not reported an address for this site yet."
       : "No host is connected. Connect one under Hosting, and every publish ships to it.",
     liveSummary: liveSummary(rows),
-    liveUrl: deploy?.productionUrl ?? "",
+    liveUrl: address,
     mood,
     newBranchDisabled: git.loading || mood !== "repo",
     panelId: `${idBase}-body`,

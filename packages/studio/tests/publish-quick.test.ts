@@ -134,6 +134,10 @@ describe("the dialog", () => {
       "review",
     ]);
     expect(part("checks-text")?.textContent).toMatch(/Connect a deploy provider/);
+    // The open checks are marked by a kit icon, not a stray "·" glyph at the start of the line.
+    expect(part("checks-icon")?.tagName).toBe("JX-ICON");
+    const icon = part("checks-icon");
+    expect(icon && "name" in icon ? icon.name : null).toBe("warning-circle");
     expect(handle.host.dataset.jxRegion).toBe("overlay.dialog:publish-quick");
   });
 

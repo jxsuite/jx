@@ -143,6 +143,7 @@
     },
     "& [part=\"checks-line\"]": {
       "display": "flex",
+      "alignItems": "center",
       "gap": "var(--jx-space-2)",
       "margin": "0",
       "fontSize": "var(--jx-text-sm)",
@@ -380,12 +381,15 @@
           },
           "children": [
             {
-              "tagName": "span",
+              "tagName": "jx-icon",
               "attributes": {
-                "part": "checks-icon",
-                "aria-hidden": "true"
+                "part": "checks-icon"
               },
-              "textContent": "${state.checksIcon}"
+              "$props": {
+                "name": {
+                  "$ref": "#/state/checksIcon"
+                }
+              }
             },
             {
               "tagName": "span",

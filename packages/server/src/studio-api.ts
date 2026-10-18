@@ -1833,7 +1833,24 @@ export async function handleStudioApi(
   // ── Git endpoints ──────────────────────────────────────────────────────────
 
   if (path.startsWith("/__studio/git/")) {
-    const cwd = activeProjectRoot || root;
+    /* THE REPOSITORY IS THE REQUEST'S, NOT THE SERVER'S. One dev server serves every Studio tab
+       pointed at it, and `activeProjectRoot` is whichever project was activated last. Read from it
+       alone, two sessions on two projects ran each other's git: Initialize Repository in one
+       initialised the other. Every git call names its project with `?dir=`, as the file routes do,
+       under the same access rule; the fallback is for a caller that names none (no project open). */
+    const named = url.searchParams.get("dir");
+    const cwd = named
+      ? isAbsolute(named)
+        ? named
+        : resolve(root, named)
+      : activeProjectRoot || root;
+    if (named) {
+      try {
+        assertAccessible(cwd, root, activeProjectRoot);
+      } catch (error) {
+        return problem("invalidRequest", errorMessage(error));
+      }
+    }
     const gitCmd = path.slice("/__studio/git/".length);
 
     const runGit = async (args: string[]) => {
@@ -1880,8 +1897,12 @@ export async function handleStudioApi(
           });
         }
 
+        /* `--untracked-files=all`: every untracked FILE, not its collapsed folder. By default git
+           reports a wholly untracked `content/` as one entry, so a fresh repository listed a
+           handful of folders that no group, comparison or checkbox could treat as a file, and the
+           count jumped to the real one the moment staging expanded them (studio.md §22.8). */
         const [out, remotesOut] = await Promise.all([
-          runGit(["status", "--porcelain=v2", "--branch", "-z"]),
+          runGit(["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"]),
           runGit(["remote"]),
         ]);
         const status = parseGitStatus(out);
