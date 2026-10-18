@@ -1026,17 +1026,18 @@ It is a **warning, never an error**, and reported once per distinct value across
 
 The compiler automatically generates certain tags if not explicitly declared:
 
-| Auto-generated                   | Condition                                                                |
-| -------------------------------- | ------------------------------------------------------------------------ |
-| `<meta charset>`                 | Always (from `defaults.charset`)                                         |
-| `<meta name="viewport">`         | Always, unless the author supplies one                                   |
-| `<title>`                        | Always — page title, falling back to the site `name`                     |
-| `<link rel="canonical">`         | `url` set: `$site.url` + served path (§8.4.1); not the 404 page (§8.4.2) |
-| `<meta property="og:url">`       | With the canonical; an author-supplied value wins                        |
-| `<meta property="og:site_name">` | From `$site.name`; an author-supplied value wins                         |
-| `<html lang>`                    | From the page's `$lang`, else `defaults.lang`                            |
-| `<html dir>`                     | From the page's `$dir`, else `defaults.dir`; omitted when neither is set |
-| `sitemap.xml` entry              | Every indexable page, when `url` is set (§8.4.1)                         |
+| Auto-generated                   | Condition                                                                                                                                                                                     |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<meta charset>`                 | Always (from `defaults.charset`)                                                                                                                                                              |
+| `<meta name="viewport">`         | Always, unless the author supplies one                                                                                                                                                        |
+| `<title>`                        | Always — page title, falling back to the site `name`                                                                                                                                          |
+| `<meta name="description">`      | The page's `description` property (a Markdown page's frontmatter `description`), above the site's and the layout's; a description meta in the page's own `$head` wins (`withPageDescription`) |
+| `<link rel="canonical">`         | `url` set: `$site.url` + served path (§8.4.1); not the 404 page (§8.4.2)                                                                                                                      |
+| `<meta property="og:url">`       | With the canonical; an author-supplied value wins                                                                                                                                             |
+| `<meta property="og:site_name">` | From `$site.name`; an author-supplied value wins                                                                                                                                              |
+| `<html lang>`                    | From the page's `$lang`, else `defaults.lang`                                                                                                                                                 |
+| `<html dir>`                     | From the page's `$dir`, else `defaults.dir`; omitted when neither is set                                                                                                                      |
+| `sitemap.xml` entry              | Every indexable page, when `url` is set (§8.4.1)                                                                                                                                              |
 
 A page that has a Markdown twin also gets a `<link rel="alternate">` to it (§8.4.3).
 

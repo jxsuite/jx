@@ -284,6 +284,16 @@ export function documentExtensions(kind?: string): string[] {
   return [...exts];
 }
 
+/**
+ * The extensions the build routes under `pages/`: `.json`, and every extension a page format claims
+ * (`discoverPages` in `@jxsuite/compiler` walks with the same set). Waits for the registry, so a
+ * Markdown page is never judged unroutable because the formats had not landed yet.
+ */
+export async function routedPageExtensions(): Promise<string[]> {
+  await loadFormats();
+  return [".json", ...documentExtensions("page")];
+}
+
 /** The default format for new content documents (first content-kind serializer). */
 export function defaultContentFormat(): StudioFormat | undefined {
   return _formats.find((f) => f.capabilities.serialize && f.documentKinds.includes("content"));

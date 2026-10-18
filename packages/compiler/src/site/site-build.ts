@@ -69,7 +69,7 @@ import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import { resolveLayout } from "./layout-resolver.ts";
-import { mergeHead, renderHead } from "@jxsuite/site/head-merger";
+import { mergeHead, renderHead, withPageDescription } from "@jxsuite/site/head-merger";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
 import { compile, compileServer, compileSiteServer } from "../compiler.ts";
@@ -1343,7 +1343,10 @@ async function compilePage(
   // Extract head arrays before they get lost in the merge
   /* SAFETY: `_pageHead` is written only by `resolveLayout`, which copies the page's `$head` (a
      JxHeadEntry[]) into it when the page has one. */
-  const pageHead = (pageDoc.$head ?? layoutDoc._pageHead ?? []) as JxHeadEntry[];
+  const pageHead = withPageDescription(
+    (pageDoc.$head ?? layoutDoc._pageHead ?? []) as JxHeadEntry[],
+    pageDoc.description,
+  );
   const layoutHead = layoutDoc.$head ?? [];
   /* SAFETY: `_pageTitle` is written only by `resolveLayout`, which copies the page's `title` (a
      string) into it when the page has one. */

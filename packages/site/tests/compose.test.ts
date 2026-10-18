@@ -220,6 +220,38 @@ describe("composePage", () => {
     expect(page.dir).toBe("rtl");
   });
 
+  test("the page's description property is its description meta, below the page's own $head", async () => {
+    const described = await compose(
+      {
+        "layouts/base.json": JSON.stringify({
+          $head: [{ attributes: { content: "layout", name: "description" }, tagName: "meta" }],
+          children: [{ tagName: "slot" }],
+          tagName: "body",
+        }),
+        "pages/index.json": JSON.stringify({
+          $layout: "./layouts/base.json",
+          description: "The page's own summary",
+          tagName: "main",
+        }),
+      },
+      { $head: [{ attributes: { content: "site", name: "description" }, tagName: "meta" }] },
+    );
+    const descriptions = (head: typeof described.head) =>
+      head.filter((e) => e.attributes?.name === "description").map((e) => e.attributes?.content);
+    // The page's beats the layout's and the site's.
+    expect(descriptions(described.head)).toEqual(["The page's own summary"]);
+
+    const explicit = await compose({
+      "pages/index.json": JSON.stringify({
+        $head: [{ attributes: { content: "from $head", name: "description" }, tagName: "meta" }],
+        description: "property",
+        tagName: "main",
+      }),
+    });
+    // An explicit meta in the page's own head is stated later at the same level, and wins.
+    expect(descriptions(explicit.head)).toEqual(["from $head"]);
+  });
+
   test("the page's title reaches the merged head", async () => {
     const page = await compose({
       "pages/index.json": JSON.stringify({ tagName: "main", title: "Hello" }),

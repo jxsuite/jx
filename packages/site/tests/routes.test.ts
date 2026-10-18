@@ -112,6 +112,20 @@ describe("isRoutedPageFile", () => {
   test("an empty path is not a route", () => {
     expect(isRoutedPageFile("")).toBe(false);
   });
+
+  test("with the routed extensions given, only a file carrying one of them is a route", () => {
+    const routed = [".json", ".md"];
+    expect(isRoutedPageFile("pages/index.json", routed)).toBe(true);
+    expect(isRoutedPageFile("pages/about.MD", routed)).toBe(true);
+    // A backup beside the page is not a page: the build's walk skips it by its extension.
+    expect(isRoutedPageFile("pages/index.json.bak", routed)).toBe(false);
+    expect(isRoutedPageFile("pages/README", routed)).toBe(false);
+    expect(isRoutedPageFile("pages/_draft.md", routed)).toBe(false);
+  });
+
+  test("without them, the extension is not judged", () => {
+    expect(isRoutedPageFile("pages/index.json.bak")).toBe(true);
+  });
 });
 
 describe("compareRoutes", () => {

@@ -147,16 +147,11 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"doc-preview\"]": {
-      "$description": "The island. The document renders this box and nothing inside it; the adapter mounts a real runtime render of the file into it when the card comes into view, and the scale below is what makes a page-sized document readable as a thumbnail without rendering it at thumbnail size.",
+      "$description": "The island. The document renders this box and nothing inside it; the adapter mounts a real runtime render of the file into a shadow root of the island's own when the card comes into view (`mountPreview` in `browse/library-preview.ts`, which keeps the document's ids out of Studio's), and the zoom is what makes a page-sized document readable as a thumbnail without rendering it at thumbnail size: the render is laid out in a box two and a half times as wide and drawn at 0.4. It is `inert`, so a page's own links and buttons are neither focusable nor named inside the card.",
       "width": "100%",
       "height": "100%",
+      "zoom": "0.4",
       "overflow": "hidden"
-    },
-    "& [part=\"doc-preview\"] > *": {
-      "transform": "scale(0.4)",
-      "transformOrigin": "top left",
-      "width": "250%",
-      "height": "250%"
     },
     "& [part=\"thumb\"]": {
       "maxWidth": "100%",
@@ -1107,7 +1102,8 @@
                                 "tagName": "div",
                                 "attributes": {
                                   "part": "doc-preview",
-                                  "data-path": "${$map.item.path}"
+                                  "data-path": "${$map.item.path}",
+                                  "inert": ""
                                 }
                               },
                               "glyph": {

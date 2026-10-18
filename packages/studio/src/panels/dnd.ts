@@ -496,6 +496,10 @@ export function applyDropInstruction(
       transactDoc(tab, (t) => {
         mutateInsertNode(t, slot.parent, slot.index, structuredClone(fragment));
         mutateImportComponent(t, fragment.tagName);
+        /* The inserted node is the selection, as every other insert leaves it (the slash menu, Enter,
+           paste): the Inspector is then on the thing just placed, which is where a dropped image's
+           missing alt text or a component's props are filled in. */
+        t.session.selection = [[...slot.parent, "children", slot.index]];
       });
     }
   }

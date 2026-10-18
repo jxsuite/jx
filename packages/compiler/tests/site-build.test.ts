@@ -95,6 +95,8 @@ beforeAll(() => {
 
   writeJSON("pages/blog/index.json", {
     children: [{ children: ["Blog"], tagName: "h1" }],
+    // A page's description property is its description meta, resolved like the rest of its head.
+    description: "Notes from ${$site.name}",
     title: "Blog",
   });
 
@@ -295,6 +297,13 @@ describe("buildSite", () => {
     expect(html).toContain('name="generator"');
     expect(html).toContain('name="description"');
     expect(html).toContain("<title>About</title>");
+  });
+
+  it("writes a page's description property as its description meta", async () => {
+    await buildSite(TMP, { verbose: false });
+    const html = readFileSync(resolve(TMP, "dist/blog/index.html"), "utf8");
+    expect(html).toContain('content="Notes from Test Site"');
+    expect(html.match(/name="description"/g)).toHaveLength(1);
   });
 
   it("generates redirect files", async () => {

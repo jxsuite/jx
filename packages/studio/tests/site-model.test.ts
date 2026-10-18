@@ -8,6 +8,7 @@ import {
   filterNeedle,
   filterPageRows,
   humanize,
+  localeMarked,
   matchesFilter,
   pageLabel,
   pageRows,
@@ -16,6 +17,7 @@ import {
   usedByLabel,
 } from "../src/panels/site-model";
 import { fileToRoute } from "@jxsuite/site/routes";
+import { resolveI18n } from "@jxsuite/schema/locale";
 import type { SitePageFact } from "../src/panels/site-model";
 
 const page = (path: string, contentType: string | null = null): SitePageFact => ({
@@ -106,6 +108,47 @@ describe("pageRows — routes come from the router", () => {
   test("a count still being read leaves the heading's detail empty", () => {
     const rows = pageRows(pages, new Map([["posts", null]]), null);
     expect(rows.find((row) => row.kind === "collection")?.detail).toBe("");
+  });
+});
+
+describe("pageRows — what the build routes, and which language", () => {
+  test("a file without a routed extension is not a page", () => {
+    const rows = pageRows(
+      [page("pages/index.md"), page("pages/index.json.bak"), page("pages/about.md")],
+      new Map(),
+      null,
+      { extensions: [".json", ".md"] },
+    );
+    expect(rows.map((row) => row.path)).toEqual(["pages/index.md", "pages/about.md"]);
+  });
+
+  test("a page in a locale folder is named for its route without the folder, marked with it", () => {
+    const { i18n } = resolveI18n({
+      i18n: { defaultLocale: "en", locales: ["en", "ar", "fr-CA"] },
+    });
+    const rows = pageRows(
+      [
+        page("pages/index.json"),
+        page("pages/ar/index.json"),
+        page("pages/fr-ca/a-propos.json"),
+        page("pages/exhibitions/[slug].json", "exhibitions"),
+        page("pages/ar/exhibitions/[slug].json", "exhibitions"),
+      ],
+      new Map<string, number | null>([["exhibitions", 3]]),
+      null,
+      { i18n },
+    );
+    const labels = new Map(rows.map((row) => [row.path || row.key, row.label]));
+    expect(labels.get("pages/index.json")).toBe("Home");
+    expect(labels.get("pages/ar/index.json")).toBe("Home (ar)");
+    expect(labels.get("pages/fr-ca/a-propos.json")).toBe("A propos (fr-CA)");
+    expect(labels.get("pages/exhibitions/[slug].json")).toBe("Exhibition page");
+    expect(labels.get("pages/ar/exhibitions/[slug].json")).toBe("Exhibition page (ar)");
+  });
+
+  test("without an i18n, a folder that looks like a language is an ordinary segment", () => {
+    expect(pageLabel(fileToRoute("pages/ar/index.json"), "pages/ar/index.json")).toBe("Ar");
+    expect(localeMarked("Home", "pages/ar/index.json", null)).toBe("Home");
   });
 });
 

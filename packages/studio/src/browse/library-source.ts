@@ -20,6 +20,7 @@ import { workspaceHomeTabId } from "../workspace/workspace-ids";
 import { PAGES_COLLECTION } from "../content/content-collections";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { libraryScanDirs, scanLibrary } from "./library-model";
+import { routedPageExtensions } from "../format/format-host";
 import { DRAFT_FIELD } from "../content/draft-state";
 import { isString } from "@jxsuite/schema/guards";
 import { collectionForFile } from "../content/collection-match";
@@ -323,7 +324,9 @@ export function createLibrarySource(dirs?: () => readonly string[]): LibrarySour
        declared before its first entry): its absence is an empty collection, never a failure. */
     const conventional = new Set(dirs ? walked : (projectState?.projectDirs ?? []));
     const optional = new Set(walked.filter((dir) => !conventional.has(dir)));
-    inFlight ??= scanLibrary(walked, getPlatform(), optional)
+    // The extensions first: a page is the file the build routes, and that is a fact of the formats.
+    inFlight ??= routedPageExtensions()
+      .then((pageExtensions) => scanLibrary(walked, getPlatform(), optional, pageExtensions))
       .then(withRecords)
       .then((result) => {
         scan = result;

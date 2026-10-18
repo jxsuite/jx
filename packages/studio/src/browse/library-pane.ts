@@ -34,7 +34,7 @@
 
 import { effect, effectScope, reactive } from "../reactivity";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { localeLabel } from "@jxsuite/schema/locale";
+import { localeLabel, resolveI18n } from "@jxsuite/schema/locale";
 import { notify } from "../services/notify";
 import { beginActivity } from "../panels/activity-panel";
 import { showPromptDialog } from "../ui/layers";
@@ -55,7 +55,7 @@ import {
 } from "../content/content-collections";
 import { onCollectionPagesRead, peekCollectionPage } from "../content/collection-pages";
 import { onPageSummariesRead, peekPageSummaries } from "../content/page-summaries";
-import { pageLabel, singularLabel } from "../panels/site-model";
+import { localeMarked, pageLabel, singularLabel } from "../panels/site-model";
 import { compareRoutes, fileToRoute } from "@jxsuite/site/routes";
 import {
   dateFieldOf,
@@ -78,6 +78,7 @@ import {
 } from "./library-model";
 import { createLibrarySource, entryFieldColumns, libraryColumns } from "./library-source";
 import { createPreviewCache, createPreviewObserver, previewFor } from "./library-preview";
+import { mountPreview, shownPreview } from "./preview-root";
 import { computeWindow } from "../ui/virtual-window";
 import { paneRegion } from "../ui/regions";
 import {
@@ -494,8 +495,8 @@ async function fillPreview(panel: ActiveLibraryPane, path: string) {
       return;
     }
     const slot = panel.slots.get(path);
-    if (slot?.isConnected && !slot.firstElementChild) {
-      slot.append(rendered);
+    if (slot?.isConnected && !shownPreview(slot)) {
+      mountPreview(slot, rendered);
     }
   } finally {
     panel.pendingPaths.delete(path);
@@ -509,11 +510,11 @@ function tendSlot(panel: ActiveLibraryPane, slot: HTMLElement, path: string): vo
   // Drift to the tail of the LRU, get evicted, get detached, and be re-rendered on the next
   // Repaint: the 300-page measurement showed 560 reads for 300 documents until this line moved.
   const cached = panel.cache.get(path);
-  if (slot.firstElementChild) {
+  if (shownPreview(slot)) {
     return;
   }
   if (cached) {
-    slot.append(cached);
+    mountPreview(slot, cached);
     return;
   }
   if (panel.pendingPaths.has(path)) {
@@ -915,6 +916,7 @@ function pageFactsFor(readPages: boolean): EntryFactsOf {
   const summaries = readPages ? peekPageSummaries(paths) : null;
   const declared = new Set(Object.keys(projectState?.projectConfig?.content ?? {}));
   const fallback = defaultLayoutPath();
+  const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
   const anyDraft = [...(summaries?.values() ?? [])].some((page) => page.draft);
   const byPath = new Map<string, EntryFacts>(
     paths.map((path) => {
@@ -930,8 +932,8 @@ function pageFactsFor(readPages: boolean): EntryFactsOf {
             layout === undefined ? "" : layout === false ? "None" : templateDisplayName(layout),
           title:
             collection !== null && declared.has(collection)
-              ? `${singularLabel(collection)} page`
-              : pageLabel(fileToRoute(path), path),
+              ? localeMarked(`${singularLabel(collection)} page`, path, i18n)
+              : pageLabel(fileToRoute(path), path, i18n),
         },
       ];
     }),

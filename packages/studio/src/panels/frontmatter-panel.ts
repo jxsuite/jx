@@ -77,7 +77,6 @@ import { LIVE_PREVIEW } from "../ui/timing";
 import { mutateUpdateFrontmatter, transact, transactDoc } from "../tabs/transact";
 import { pageRoute } from "./tab-strip";
 import {
-  RESERVED_FM_KEYS,
   applyContentMutation,
   buildHeadDoc,
   entryLabel,
@@ -85,6 +84,9 @@ import {
   isPageDocument,
   isManagedEntry,
   layoutPickerEntries,
+  pageDescription,
+  reservedFmKeys,
+  setPageDescription,
 } from "./head-panel";
 import { isGoogleFontEntry, isGoogleFontPreconnect } from "../utils/google-fonts";
 import { activeRegistry } from "../commands/active-registry";
@@ -395,6 +397,9 @@ function viewFor(tab: Tab, paneId: string, card: HeaderCard): DocHeaderView {
 
   const commits = new Map<string, RowCommit>();
   const rows: DocHeaderRow[] = [titleRow(headDoc, applyMutation, commits)];
+  if (isPageDocument(tab)) {
+    rows.push(descriptionRow(headDoc, applyMutation, commits));
+  }
   const layout = layoutRow(tab, headDoc, applyMutation, commits);
   if (layout) {
     rows.push(layout);
@@ -404,7 +409,7 @@ function viewFor(tab: Tab, paneId: string, card: HeaderCard): DocHeaderView {
   const { collection, fields, requiredFields } = collectFmFields(
     tab,
     projectState?.projectConfig,
-    RESERVED_FM_KEYS,
+    reservedFmKeys(tab),
   );
   for (const f of fields) {
     rows.push(fieldRow(tab, f.field, f.entry, f.value, requiredFields, commits));
@@ -474,6 +479,30 @@ function titleRow(
     isSet: Boolean(title),
     placeholder: "Untitled",
     value: title,
+  };
+}
+
+/**
+ * A page's one Description, beside its Title: the value the build writes as its description meta,
+ * wherever the page keeps it (`pageDescription` in `head-panel.ts`). The frontmatter key it may
+ * live in is reserved from the field list below for a page, so the card never shows it twice.
+ */
+function descriptionRow(
+  headDoc: JxMutableNode,
+  applyMutation: (fn: (doc: JxMutableNode) => void) => void,
+  commits: Map<string, RowCommit>,
+): DocHeaderRow {
+  const value = pageDescription(headDoc);
+  commits.set("description", {
+    clear: () => applyMutation((d) => setPageDescription(d, "")),
+    commit: (raw) => applyMutation((d) => setPageDescription(d, String(raw).trim())),
+  });
+  return {
+    ...blankRow("description", "description", "Description"),
+    clearLabel: "Clear description",
+    isSet: Boolean(value),
+    placeholder: "What search results show under the title",
+    value,
   };
 }
 

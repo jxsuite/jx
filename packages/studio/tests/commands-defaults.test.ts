@@ -374,15 +374,16 @@ describe("the records that settle an existing argument", () => {
     expect(spliceable.isEnabled("selection.duplicate")).toBe(true);
   });
 
-  test("the Command Bar's primary cluster is Save, Undo, Redo and Open in Browser", () => {
+  test("the Command Bar's primary cluster is Save, Undo, Redo and Open in Browser, in that order", () => {
     const registry = createCommandRegistry({ getContext: everythingContext, mac: true });
     registry.registerAll(defaultCommandSet());
-    expect(
-      registry
-        .forPlacement("commandbar/primary")
-        .map((c) => c.id)
-        .toSorted(),
-    ).toEqual(["edit.redo", "edit.undo", "file.save", "view.openInBrowser"]);
+    // Undo before Redo: by title alone "Redo" sorts first, which is how the bar read Redo, Undo.
+    expect(registry.forPlacement("commandbar/primary").map((c) => c.id)).toEqual([
+      "file.save",
+      "edit.undo",
+      "edit.redo",
+      "view.openInBrowser",
+    ]);
   });
 });
 

@@ -50,7 +50,7 @@ The basics every page should have:
 
 - **Title**: the browser-tab and search-result title.
 - **URL**: the address the page is published at, which comes from where its file sits in `pages/`. To change it, rename or move the file.
-- **Description**: the summary search engines show under the title.
+- **Description**: the summary search engines show under the title. A page has one description, and this field edits it wherever the page keeps it: a Markdown page's `description:` frontmatter key, or a description tag in the page's head. Because it is edited here, that frontmatter key is not listed again among the page's other fields, and the Document Header card shows the same Description under the Title.
 - **Viewport**: leave the suggested default unless you have a specific reason not to.
 - **Icon**: the small icon in the browser tab, picked from your media.
 

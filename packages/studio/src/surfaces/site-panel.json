@@ -152,24 +152,15 @@
       }
     },
     "& [part=\"card-preview\"]": {
-      "$description": "A live render on the light document surface the Insert panel's element cards use (`--canvas-*` does not follow the theme, because what is drawn here is a page's part, and a site's dark text on the dark chrome read as an empty black box). It is drawn at half size from its top left corner, so a component laid out for a page shows its face rather than a clipped corner of one oversized glyph.",
+      "$description": "A live render on the light document surface the Insert panel's element cards use (`--canvas-*` does not follow the theme, because what is drawn here is a page's part, and a site's dark text on the dark chrome read as an empty black box). It is drawn at half size, so a component laid out for a page shows its face rather than a clipped corner of one oversized glyph. The render is in the island's own shadow root (`mountPreview` in `browse/library-preview.ts`), so no rule here can reach its elements: the half size is the island's `zoom`, which lays the render out twice as wide and draws it at half, and the 128px height is the 64px box at that zoom. The broken-image rule went into the root with it.",
       "position": "relative",
-      "height": "64px",
+      "height": "128px",
+      "zoom": "0.5",
       "overflow": "hidden",
       "pointerEvents": "none",
       "background": "white",
       "color": "var(--canvas-fg-2)",
       "fontSize": "var(--jx-text-md)"
-    },
-    "& [part=\"card-preview\"] > *": {
-      "transform": "scale(0.5)",
-      "transformOrigin": "top left",
-      "width": "200%",
-      "margin": "0"
-    },
-    "& [part=\"card-preview\"] img:not([src]), & [part=\"card-preview\"] img[src=\"\"]": {
-      "$description": "A component whose image prop defaults to nothing draws an image with no source, which the browser paints as a broken-image icon and its alt text. In a preview that is noise, not the component.",
-      "visibility": "hidden"
     },
     "& [part=\"card-label\"]": {
       "padding": "var(--jx-space-1) var(--jx-space-2)",
@@ -780,11 +771,11 @@
                                 },
                                 "children": [
                                   {
-                                    "$description": "The preview ISLAND: empty here, filled by the flow with the component rendered live from the Library's preview cache as the card scrolls into view (specs/studio-ui-guidelines.md §9.4).",
+                                    "$description": "The preview ISLAND: empty here, filled by the flow with the component rendered live from the Library's preview cache as the card scrolls into view (specs/studio-ui-guidelines.md §9.4). It is `inert`, not merely `aria-hidden`: a component's own links and buttons stay focusable under `aria-hidden`, and Chrome then counts their text into the card's name (\"Contact Us Today Eer cta\", \"◀ ▶ Eer reviews\"). Inert takes the render out of the accessibility tree, the tab order and the pointer at once, so the card is named by its label alone.",
                                     "tagName": "div",
                                     "attributes": {
                                       "part": "card-preview",
-                                      "aria-hidden": "true"
+                                      "inert": ""
                                     }
                                   },
                                   {

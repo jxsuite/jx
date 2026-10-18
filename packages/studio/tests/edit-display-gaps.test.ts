@@ -444,9 +444,35 @@ describe("prepareForEditMode empty placeholders", () => {
     }
   });
 
-  test("identical non-layout empty span still gets text placeholder", () => {
-    const out = prep({ style: { height: "3px" }, tagName: "span" });
+  test("a non-layout empty span gets the text placeholder", () => {
+    const out = prep({ tagName: "span" });
     expect(out.className).toBe("empty-text-placeholder");
+  });
+
+  test("an empty element whose own style sizes it is a shape, and gets no placeholder", () => {
+    // The jxsuite.com home's status dot: the placeholder text drew a one-glyph column over the hero.
+    const dot = {
+      style: { backgroundColor: "#22c55e", borderRadius: "50%", height: "6px", width: "6px" },
+      tagName: "span",
+    };
+    expect(computeEmptyPlaceholderClass(dot)).toBeNull();
+    expect(prep(dot).className).toBeUndefined();
+    expect(
+      computeEmptyPlaceholderClass({ style: { blockSize: "3px" }, tagName: "div" }),
+    ).toBeNull();
+    expect(computeEmptyPlaceholderClass({ style: { width: 12 }, tagName: "p" })).toBeNull();
+  });
+
+  test("an automatic or responsive-only size still leaves the element a text slot", () => {
+    expect(computeEmptyPlaceholderClass({ style: { width: "auto" }, tagName: "p" })).toBe(
+      "empty-text-placeholder",
+    );
+    expect(
+      computeEmptyPlaceholderClass({
+        style: { "@media (min-width: 40rem)": { width: "50%" } },
+        tagName: "section",
+      }),
+    ).toBe("empty-container-placeholder");
   });
 });
 

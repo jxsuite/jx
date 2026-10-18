@@ -66,13 +66,13 @@ export interface FmFieldSet {
  *
  * @param {Tab} tab
  * @param {ProjectConfig | null | undefined} projectConfig
- * @param {Set<string>} reserved — keys managed by dedicated controls elsewhere
+ * @param {ReadonlySet<string>} reserved — keys managed by dedicated controls elsewhere
  * @returns {FmFieldSet}
  */
 export function collectFmFields(
   tab: Tab,
   projectConfig: ProjectConfig | null | undefined,
-  reserved: Set<string>,
+  reserved: ReadonlySet<string>,
 ): FmFieldSet {
   /* SAFETY: `FormatFrontmatter` holds `JxDocumentValue`, which is the JSON value space seen through
      the typed interfaces a document's declared keys use (JxRef, JxStatement, CemEvent, ...). Every

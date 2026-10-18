@@ -557,6 +557,21 @@ describe("the two realms a document can keep its head material in", () => {
     expect("$head" in tab.doc.content.frontmatter).toBe(false);
   });
 
+  test("a Markdown page's frontmatter description is the Description it edits", async () => {
+    // The build writes a page's `description` property as its description meta, so the modal's
+    // Description is that value, written back there rather than into a head meta it would shadow.
+    setupContentTab({ description: "From frontmatter", title: "Hello" });
+    const tab = activeTab.value;
+    if (!tab) {
+      throw new Error("setupContentTab opened no tab");
+    }
+    await mountAndFlush();
+    expect(control("description").value).toBe("From frontmatter");
+    fireChange("description", "Rewritten");
+    expect(tab.doc.content.frontmatter.description).toBe("Rewritten");
+    expect("$head" in tab.doc.content.frontmatter).toBe(false);
+  });
+
   test("a page with neither a title nor a site name is told the BUILD supplies one", async () => {
     // The last rung of the title cascade. Nothing in the project declares it, so the preview shows
     // What the build will actually emit — and names the build as the donor rather than showing a

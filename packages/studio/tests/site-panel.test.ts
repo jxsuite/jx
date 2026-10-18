@@ -57,6 +57,7 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 const { registerRenderer, setProjectState } = await import("../src/store");
 const { getPanel, resetPanels } = await import("../src/panels/panel-registry");
 const { loadComponentRegistry } = await import("../src/files/components");
+const { refreshFormats } = await import("../src/format/format-host");
 const { invalidateMediaCache } = await import("../src/ui/media-picker");
 const { invalidateUsages } = await import("../src/services/references");
 const { closeAllTabs } = await import("../src/workspace/workspace");
@@ -127,6 +128,18 @@ async function project(
   });
   await loadComponentRegistry();
 }
+
+/** A page format that claims `.md` and can parse nothing, as a registry entry states it. */
+const MARKDOWN_PAGES = {
+  capabilities: {},
+  documentKinds: ["page"],
+  exportTarget: false,
+  extensions: [".md"],
+  mediaType: "text/markdown",
+  name: "Markdown",
+  remote: false,
+  studio: null,
+};
 
 /** Paint the panel the way the Navigator does, and repaint whenever the flow asks it to. */
 async function paint(): Promise<void> {
@@ -271,8 +284,11 @@ describe("Components", () => {
     // Only the project component has a definition to render, so only it is previewed.
     expect(previewFor).toHaveBeenCalledTimes(1);
     const previews = part("card-preview");
-    expect(previews[0]?.querySelector("[data-preview]")).not.toBeNull();
-    expect(previews[1]?.firstElementChild).toBeNull();
+    // The render is in the island's own shadow root, so its ids never join the chrome's.
+    expect(previews[0]?.shadowRoot?.querySelector("[data-preview]")).not.toBeNull();
+    expect(previews[0]?.querySelector("[data-preview]")).toBeNull();
+    expect(previews[0]?.hasAttribute("inert")).toBe(true);
+    expect(previews[1]?.shadowRoot ?? null).toBeNull();
     const cards = part("component-card");
     expect(cards[0]?.title).toBe("Open <site-card>, or drag it onto the canvas");
     expect(cards[1]?.title).toBe(
@@ -341,7 +357,7 @@ describe("Media", () => {
   test("a thumbnail drags the element that references the file", async () => {
     await paint();
     expect(mediaDragData("public/hero.png")).toEqual({
-      fragment: { attributes: { alt: "", src: "/hero.png" }, tagName: "img" },
+      fragment: { attributes: { src: "/hero.png" }, tagName: "img" },
       type: "block",
     });
     expect(mediaDragData("public/brochure.pdf")?.fragment.tagName).toBe("a");
@@ -478,8 +494,10 @@ describe("the drag sources", () => {
 
 describe("reading each dynamic page's collection", () => {
   test("a page with no $paths, broken JSON, or a format with no parser nests under nothing", async () => {
+    // Markdown is a page format here, so its page is routed, but the format has no parser.
+    refreshFormats();
     await project(
-      {},
+      { listFormats: () => Promise.resolve([MARKDOWN_PAGES]) },
       {
         "pages/broken/[id].json": "{not json",
         "pages/news/[slug].md": "---\n$paths:\n  contentType: posts\n---\n",
@@ -497,6 +515,24 @@ describe("reading each dynamic page's collection", () => {
     expect(kinds.get("pages/broken/[id].json")).toBe("page");
     expect(kinds.get("pages/news/[slug].md")).toBe("page");
     expect(kinds.get("pages/blog/[slug].json")).toBe("entry-page");
+  });
+
+  test("only the files the build routes are pages: a backup and an unclaimed extension are not", async () => {
+    refreshFormats();
+    await project(
+      { listFormats: () => Promise.resolve([]) },
+      {
+        "pages/index.json.bak": '{"tagName":"main"}',
+        "pages/notes.md": "# Not a page in a project with no Markdown format",
+      },
+    );
+    await paint();
+    const paths = [...section("pages").querySelectorAll<HTMLElement>("[data-path]")].map(
+      (el) => el.dataset.path,
+    );
+    expect(paths).toContain("pages/index.json");
+    expect(paths).not.toContain("pages/index.json.bak");
+    expect(paths).not.toContain("pages/notes.md");
   });
 });
 

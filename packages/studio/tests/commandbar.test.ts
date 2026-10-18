@@ -308,8 +308,9 @@ describe("the primary cluster", () => {
     const labels = [...root.querySelectorAll('[part="primary"] jx-button')].map((b) =>
       control(b).getAttribute("aria-label"),
     );
-    // Sorted by `group` then title, which is the registry's ordering, not the document's.
-    expect(labels).toEqual(["Save", "Redo", "Undo", "Open in Browser"]);
+    // Sorted by `group`, then `order`, then title: the registry's ordering, not the document's.
+    // Undo states `order: 1` and Redo `2`, because by title alone the bar read Redo, Undo.
+    expect(labels).toEqual(["Save", "Undo", "Redo", "Open in Browser"]);
   });
 
   test("a gate flipped from outside the bar reaches the buttons in place", async () => {

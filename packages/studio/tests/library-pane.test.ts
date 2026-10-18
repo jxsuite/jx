@@ -492,7 +492,7 @@ describe("mounting", () => {
     const slot = host.querySelector<HTMLElement>(
       '[part="doc-preview"][data-path="pages/index.json"]',
     );
-    expect(slot?.childElementCount).toBe(1);
+    expect(slot?.shadowRoot?.childElementCount).toBe(1);
     stale.remove();
   });
 
@@ -523,7 +523,7 @@ describe("mounting", () => {
     await mount();
     await flush();
     expect(parts("card").length).toBe(2);
-    expect(part("doc-preview")?.firstElementChild ?? null).toBeNull();
+    expect(part("doc-preview")?.shadowRoot?.firstElementChild ?? null).toBeNull();
   });
 
   test("scans the project once and lists only the shown collection's files", async () => {
@@ -543,7 +543,8 @@ describe("mounting", () => {
       '[part="doc-preview"][data-path="pages/index.json"]',
     );
     expect(slot).not.toBeNull();
-    expect(slot!.childElementCount).toBe(1);
+    expect(slot!.shadowRoot?.childElementCount).toBe(1);
+    expect(slot!.childElementCount).toBe(0);
   });
 });
 

@@ -33,7 +33,10 @@ import { projectState, renderOnly } from "../store";
 import { getPlatform, hasPlatform } from "../platform";
 import { activeTab } from "../workspace/workspace";
 import { scanLibrary } from "../browse/library-model";
+import { routedPageExtensions } from "../format/format-host";
+import { resolveI18n } from "@jxsuite/schema/locale";
 import { createPreviewCache, createPreviewObserver, previewFor } from "../browse/library-preview";
+import { mountPreview, shownPreview } from "../browse/preview-root";
 import {
   _componentRegistryLoaded,
   buildComponentInstance,
@@ -75,6 +78,8 @@ import type { SiteComponentRow, SiteMediaRow, SitePageFact } from "./site-model"
 /** What the panel knows about the project's files, read once per invalidation. */
 interface SiteIndex {
   pages: SitePageFact[];
+  /** The extensions the build routes under `pages/`, read with the formats. */
+  pageExtensions: string[];
   /** Every file under `layouts/`. The model keeps the JSON ones. */
   layouts: string[];
   /** Declared collections → entry counts; a count is `null` until its listing lands. */
@@ -105,7 +110,10 @@ async function contentTypeOf(path: string): Promise<string | null> {
 
 /** Read the index: one walk of `pages/` and `layouts/`, then each dynamic page's `$paths`. */
 async function readIndex(epoch: number): Promise<void> {
-  const scan = await scanLibrary(["pages", "layouts"], getPlatform());
+  const [scan, pageExtensions] = await Promise.all([
+    scanLibrary(["pages", "layouts"], getPlatform()),
+    routedPageExtensions(),
+  ]);
   const pageFiles = scan.files.filter((file) => file.path.startsWith("pages/"));
   const pages = await Promise.all(
     pageFiles.map(async (file): Promise<SitePageFact> => ({
@@ -125,6 +133,7 @@ async function readIndex(epoch: number): Promise<void> {
   _index = {
     collections,
     layouts: scan.files.flatMap((file) => (file.path.startsWith("layouts/") ? [file.path] : [])),
+    pageExtensions,
     pages,
   };
   repaint();
@@ -349,7 +358,12 @@ export function sitePanelValues(): SitePanelValues {
   ensureRegistry();
   const media = projectMediaFiles();
 
-  const allPages = index ? pageRows(index.pages, index.collections, activePath) : [];
+  const allPages = index
+    ? pageRows(index.pages, index.collections, activePath, {
+        extensions: index.pageExtensions,
+        i18n: resolveI18n(projectState.projectConfig ?? {}).i18n,
+      })
+    : [];
   const pages = filterPageRows(allPages, needle);
   const defaultLayout = defaultLayoutPath();
   const allTemplates = index
@@ -446,18 +460,19 @@ interface StandingPanel {
   cache: ReturnType<typeof createPreviewCache>;
   observer: ReturnType<typeof createPreviewObserver>;
   /** Preview boxes waiting to scroll into view, and the component path each one shows. */
-  pending: Map<Element, string>;
+  pending: Map<HTMLElement, string>;
 }
 
 let _standing: StandingPanel | null = null;
 
 /** Fill one preview box from the cache, now or when it has rendered. */
-async function fillPreview(panel: StandingPanel, slot: Element, path: string): Promise<void> {
+async function fillPreview(panel: StandingPanel, slot: HTMLElement, path: string): Promise<void> {
   const rendered = await previewFor(path, panel.cache);
-  if (rendered && _standing === panel && slot.isConnected && !slot.firstElementChild) {
+  if (rendered && _standing === panel && slot.isConnected && !shownPreview(slot)) {
     /* The island: the document drew this box EMPTY so the live render can be moved into it
-       (studio-ui-guidelines.md §9.4), exactly as the Library's cards are filled. */
-    slot.append(rendered);
+       (studio-ui-guidelines.md §9.4), exactly as the Library's cards are filled, inside a shadow
+       root of its own so the component's ids and Studio's never meet. */
+    mountPreview(slot, rendered);
   }
 }
 
@@ -533,14 +548,14 @@ function mountInto(host: HTMLElement): void {
   }
   /* The record first, then the mount: the islands are announced while the document is built, and
      each one is handed straight to the record it belongs to. */
-  const pending = new Map<Element, string>();
+  const pending = new Map<HTMLElement, string>();
   const panel: StandingPanel = {
     cache: createPreviewCache(),
     handle: null,
     host,
     observer: createPreviewObserver((element) => {
-      const path = pending.get(element);
-      if (path !== undefined) {
+      const path = element instanceof HTMLElement ? pending.get(element) : undefined;
+      if (path !== undefined && element instanceof HTMLElement) {
         pending.delete(element);
         void fillPreview(panel, element, path);
       }

@@ -272,6 +272,36 @@ describe("entryCollectionOf", () => {
     expect(entryCollectionOf("notes/b.json")).toBe("notes");
     expect(entryCollectionOf("elsewhere/a.md")).toBeNull();
   });
+
+  test("a page is a file the build routes: a backup beside it is in no collection", () => {
+    resetStudioState({ projectConfig: {} });
+    const routed = [".json", ".md"];
+    expect(entryCollectionOf("pages/index.md", routed)).toBe("pages");
+    expect(entryCollectionOf("pages/index.json.bak", routed)).toBeNull();
+    // With no extensions known, the folder still decides, as it always has.
+    expect(entryCollectionOf("pages/index.json.bak")).toBe("pages");
+  });
+
+  test("the scan hands its extensions to every file it lists, at every depth", async () => {
+    resetStudioState({ projectConfig: {} });
+    const tree = {
+      pages: [
+        file("index.json", "pages/index.json"),
+        file("index.json.bak", "pages/index.json.bak"),
+        { name: "products", path: "pages/products", type: "directory" },
+      ],
+      "pages/products": [
+        file("[sku].md", "pages/products/[sku].md"),
+        file("notes.txt", "pages/products/notes.txt"),
+      ],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(["pages"], { listDirectory: listDirectory(tree) }, new Set(), [
+      ".json",
+      ".md",
+    ]);
+    const pages = scan.files.filter((f) => f.collection === "pages").map((f) => f.path);
+    expect(pages.toSorted()).toEqual(["pages/index.json", "pages/products/[sku].md"]);
+  });
 });
 
 // ─── Filtering ───────────────────────────────────────────────────────────────

@@ -21,7 +21,8 @@
  */
 
 import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-upload";
-import { collectionKeyOfPath } from "../content/content-collections";
+import { PAGES_COLLECTION, collectionKeyOfPath } from "../content/content-collections";
+import { isRoutedPageFile } from "@jxsuite/site/routes";
 import { collectionForFile } from "../content/collection-match";
 import { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
 import { projectState } from "../store";
@@ -165,11 +166,22 @@ export function libraryScanDirs(
  * do), and counting it made the Content home and the Site panel disagree about one collection. So a
  * collection that DECLARES its format lists only the files carrying that format's extension; one
  * that declares none is left to the loader's reading of the source, as before.
+ *
+ * Pages are judged the way the build's walk judges them: with `pageExtensions` given, a file under
+ * `pages/` is a page only when it carries one of them, so `index.json.bak` beside the home page is
+ * a file in the folder rather than a second page (it publishes nothing).
+ *
+ * @param path The project-relative file.
+ * @param pageExtensions The extensions the build routes (`routedPageExtensions`); omitted, a page's
+ *   extension is not judged.
  */
-export function entryCollectionOf(path: string): string | null {
+export function entryCollectionOf(path: string, pageExtensions?: readonly string[]): string | null {
   const key = collectionKeyOfPath(path);
   if (key === null) {
     return null;
+  }
+  if (key === PAGES_COLLECTION) {
+    return pageExtensions === undefined || isRoutedPageFile(path, pageExtensions) ? key : null;
   }
   const match = collectionForFile(path);
   if (!match || match.name !== key || !match.def.format || match.ext === null) {
@@ -199,6 +211,7 @@ async function walk(
   failures: ScanFailure[],
   i18n: ResolvedI18n | null,
   optional = false,
+  pageExtensions?: readonly string[],
 ): Promise<void> {
   let entries: DirEntry[];
   try {
@@ -221,7 +234,7 @@ async function walk(
     }
     const ext = extensionOf(entry.name);
     out.push({
-      collection: entryCollectionOf(entry.path),
+      collection: entryCollectionOf(entry.path, pageExtensions),
       ext,
       locale: servedLocaleOfPath(entry.path, i18n) ?? undefined,
       media: MEDIA_EXTENSIONS.has(ext),
@@ -234,7 +247,9 @@ async function walk(
   }
   // Siblings in parallel, depth serialized per branch: the platform counts every call as in-flight,
   // So `probe.idle()` already knows the scan is running without the Library declaring a source.
-  await Promise.all(subdirectories.map((sub) => walk(sub, platform, out, failures, i18n)));
+  await Promise.all(
+    subdirectories.map((sub) => walk(sub, platform, out, failures, i18n, false, pageExtensions)),
+  );
 }
 
 /**
@@ -247,6 +262,7 @@ export async function scanLibrary(
   dirs: readonly string[],
   platform: Pick<StudioPlatform, "listDirectory">,
   optional: ReadonlySet<string> = new Set(),
+  pageExtensions?: readonly string[],
 ): Promise<LibraryScan> {
   const files: LibraryFile[] = [];
   const failures: ScanFailure[] = [];
@@ -254,7 +270,9 @@ export async function scanLibrary(
   // `Intl.Locale`, and a project with 300 pages would otherwise pay for that per file.
   const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
   await Promise.all(
-    dirs.map((dir) => walk(dir, platform, files, failures, i18n, optional.has(dir))),
+    dirs.map((dir) =>
+      walk(dir, platform, files, failures, i18n, optional.has(dir), pageExtensions),
+    ),
   );
   files.sort((a, b) => a.path.localeCompare(b.path));
   return { failures, files };

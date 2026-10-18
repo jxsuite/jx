@@ -9,13 +9,20 @@
  * **Routes come from the router.** Rows are ordered and labelled with `fileToRoute` and
  * `compareRoutes` from `@jxsuite/site/routes` — the functions the build's page discovery sorts with
  * — so the panel's order is the order the site resolves routes in, and a label is the URL a visitor
- * types. `isRoutedPageFile` drops the `_`-prefixed files and directories the router ignores.
+ * types. `isRoutedPageFile` drops the `_`-prefixed files and directories the router ignores, and,
+ * given the extensions the build routes, the files it would not read as a page.
+ *
+ * **A language folder is not a page's name.** Under a project's `i18n`, `pages/ar/index.json` is
+ * the Arabic Home, so it is labelled "Home (ar)", not "Ar": the name comes from the route with the
+ * locale segment taken out, and the locale is marked after it.
  *
  * @docs studio/interface
  */
 
 import { compareRoutes, fileToRoute, isRoutedPageFile } from "@jxsuite/site/routes";
+import { localeOfPath, translationKeyOfPath } from "@jxsuite/schema/locale";
 import type { FileRoute } from "@jxsuite/site/routes";
+import type { ResolvedI18n } from "@jxsuite/schema/locale";
 
 /** One file under `pages/`, with the collection its `$paths.contentType` names, if any. */
 export interface SitePageFact {
@@ -128,11 +135,37 @@ function stem(path: string): string {
 }
 
 /**
+ * A label with the page's language marked after it, "Home (ar)", when the page sits in a locale
+ * folder of the project's `i18n`. A page in no locale folder is left as it is: under
+ * `prefix-except-default` that is the default language's copy, which needs no mark.
+ */
+export function localeMarked(label: string, path: string, i18n: ResolvedI18n | null): string {
+  const locale = localeOfPath(path, i18n);
+  return locale === null ? label : `${label} (${locale})`;
+}
+
+/**
  * A page's name, from its route rather than its file: `/` is Home, `/about` is About, an index file
  * is named for its directory, and a dynamic page for the last static segment of its URL
  * (`/project_tag/:slug` is Project tag), because that is the name the URL gives it.
+ *
+ * A page in a locale folder is named for the rest of its route and marked with its locale
+ * ({@link localeMarked}): `pages/ar/index.json` is "Home (ar)" and `pages/fr-ca/a-propos.json` is
+ * "A propos (fr-CA)", where the route alone named them "Ar" and "Fr ca"'s page.
+ *
+ * @param route The page's route, `fileToRoute(path)`.
+ * @param path The page file.
+ * @param i18n The project's resolved `i18n`, or null for a project with one language.
  */
-export function pageLabel(route: FileRoute, path: string): string {
+export function pageLabel(
+  route: FileRoute,
+  path: string,
+  i18n: ResolvedI18n | null = null,
+): string {
+  if (localeOfPath(path, i18n) !== null) {
+    const key = translationKeyOfPath(path, i18n);
+    return localeMarked(pageLabel(fileToRoute(key), key), path, i18n);
+  }
   if (route.urlPattern === "/") {
     return "Home";
   }
@@ -146,6 +179,14 @@ export function pageLabel(route: FileRoute, path: string): string {
      a route with no static segment at all falls back to its file's parameter name. */
   const named = segments.findLast((segment) => !isParam(segment));
   return humanize(named ?? stem(path).replaceAll(/[[\].]/g, ""));
+}
+
+/** What {@link pageRows} needs from the router besides the page files themselves. */
+export interface PageRouting {
+  /** The extensions the build routes (`routedPageExtensions`). */
+  extensions?: readonly string[];
+  /** The project's resolved `i18n`, or null for a project in one language. */
+  i18n?: ResolvedI18n | null;
 }
 
 interface RoutedPage {
@@ -166,15 +207,22 @@ interface RoutedPage {
  * @param collections Declared collection names, mapped to their entry counts (`null` while
  *   unknown).
  * @param activePath The focused document's path, which marks its row selected.
+ * @param routing What the router knows besides the paths: the extensions the build routes (a file
+ *   without one, `index.json.bak`, is not a page; omitted, the extension is not judged) and the
+ *   project's `i18n`, which marks a page in a locale folder with its language.
  */
 export function pageRows(
   pages: readonly SitePageFact[],
   collections: ReadonlyMap<string, number | null>,
   activePath: string | null,
+  routing: PageRouting = {},
 ): SitePageRow[] {
+  const i18n = routing.i18n ?? null;
   const routed: RoutedPage[] = pages
     .flatMap((fact) =>
-      isRoutedPageFile(fact.path) ? [{ fact, route: fileToRoute(fact.path) }] : [],
+      isRoutedPageFile(fact.path, routing.extensions)
+        ? [{ fact, route: fileToRoute(fact.path) }]
+        : [],
     )
     .toSorted((a, b) => compareRoutes(a.route, b.route) || a.fact.path.localeCompare(b.fact.path));
   const rows: SitePageRow[] = [];
@@ -205,7 +253,7 @@ export function pageRows(
     const collection = fact.contentType;
     const group = collection === null ? undefined : groups.get(collection);
     if (collection === null || group === undefined) {
-      rows.push(pageRow(fact, route, "page", pageLabel(route, fact.path)));
+      rows.push(pageRow(fact, route, "page", pageLabel(route, fact.path, i18n)));
       continue;
     }
     if (headed.has(collection)) {
@@ -220,10 +268,10 @@ export function pageRows(
       path: "",
       selected: "false",
     });
+    const entryPage = `${singularLabel(collection)} page`;
     for (const member of group) {
-      rows.push(
-        pageRow(member.fact, member.route, "entry-page", `${singularLabel(collection)} page`),
-      );
+      const label = localeMarked(entryPage, member.fact.path, i18n);
+      rows.push(pageRow(member.fact, member.route, "entry-page", label));
     }
   }
   return rows;

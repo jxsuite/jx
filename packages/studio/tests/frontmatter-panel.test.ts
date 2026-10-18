@@ -673,6 +673,21 @@ describe("route and disclosures", () => {
     expect(part("route")).toBeNull();
   });
 
+  test("a page's card has one Description, its frontmatter key, never listed twice", async () => {
+    const tab = setupContentTab(
+      { description: "Rentals in Manheim", title: "Home" },
+      { documentPath: "pages/index.md", isSite: true },
+    );
+    await mountAndFlush();
+    expect(host().querySelectorAll('[data-prop="description"]').length).toBe(1);
+    expect(control("description").value).toBe("Rentals in Manheim");
+    setAndFire("description", "Excavators");
+    expect(tab.doc.content.frontmatter.description).toBe("Excavators");
+    expect(tab.doc.content.frontmatter.$head).toBeUndefined();
+    clearRow("description");
+    expect("description" in tab.doc.content.frontmatter).toBe(false);
+  });
+
   test("Raw head tags is the card's ONE disclosure now, closed by default", async () => {
     setupContentTab({ title: "Hello" });
     await mountAndFlush();

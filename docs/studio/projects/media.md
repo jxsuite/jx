@@ -73,7 +73,7 @@ You can also run **Upload Media…** from the command palette (:kbd[⌘K]), whic
 
 Drag an image from your desktop onto the page:
 
-- **Onto empty space**: Studio uploads it and drops an image in at that spot. You'll see the same insertion line you get when dragging an element from the Insert palette.
+- **Onto empty space**: Studio uploads it and drops an image in at that spot. You'll see the same insertion line you get when dragging an element from the Insert palette. The new image is selected, and it arrives without alt text: Studio cannot know what the picture shows, so the accessibility check lists it as missing until you describe it in the Inspector.
 - **Onto an image that's already there**: the picture is highlighted, and dropping swaps it for the new one. Nothing else about the element changes: its size, alt text, and styling all stay put.
 
 Video, audio, and other files work too. A video becomes a `<video>` player, audio becomes an `<audio>` player, and anything else (a PDF, say) becomes a download link labelled with the filename. Drop several files at once and they land in order.

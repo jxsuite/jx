@@ -87,7 +87,11 @@ const {
   layoutDisplayName,
   layoutHeadEntries,
   bindPageHost,
+  buildHeadDoc,
+  pageDescription,
   pageTabTitle,
+  reservedFmKeys,
+  setPageDescription,
   renderPagePanel,
   renderPageTab,
   resolveMetaField,
@@ -1032,6 +1036,79 @@ describe("the Inspector's Page tab", () => {
     renderPageTab();
     await flush(4);
     expect(body.querySelector('[data-section="page"]')).toBeNull();
+  });
+
+  test("a Markdown page's frontmatter description is its one Description, read and written there", async () => {
+    resetStudioState();
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "Rental",
+      projectConfig: {},
+      projectDirs: [],
+      projectRoot: ".",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/index.md" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { description: "Equipment rental in Manheim", title: "Home" };
+    const body = await paint();
+    // Listed once: not again as a frontmatter field beside the Page section's row.
+    expect(body.querySelectorAll('[data-prop="description"]')).toHaveLength(1);
+    const page = section(body, "page")!;
+    expect(control(page, "description").value).toBe("Equipment rental in Manheim");
+    setAndFire(page, "description", "  Excavators and loaders  ");
+    expect(tab.doc.content.frontmatter.description).toBe("Excavators and loaders");
+    // Written where the build reads it, not into a second store the property would shadow.
+    expect(tab.doc.content.frontmatter.$head).toBeUndefined();
+    // And the search preview judges the page on it: no "no description reaches this page".
+    const preview = seoPreviewFor(tab, buildHeadDoc(tab.doc.document, tab.doc.content.frontmatter));
+    expect(seoField(preview, "description").value).toBe("Excavators and loaders");
+    expect(preview.warnings.map((w) => w.id)).not.toContain("description-missing");
+    setProjectState(null);
+  });
+
+  test("a page whose head states a description keeps editing the head's, which is the one that wins", () => {
+    const doc: JxMutableNode = {
+      $head: [{ attributes: { content: "meta", name: "description" }, tagName: "meta" }],
+      description: "shadowed",
+      tagName: "main",
+    };
+    expect(pageDescription(doc)).toBe("meta");
+    setPageDescription(doc, "new meta");
+    expect(pageDescription(doc)).toBe("new meta");
+    expect(doc.description).toBe("shadowed");
+    // A page with neither gets the meta, as a JSON page always has.
+    const bare: JxMutableNode = { tagName: "main" };
+    setPageDescription(bare, "fresh");
+    expect(bare.description).toBeUndefined();
+    expect(pageDescription(bare)).toBe("fresh");
+    // A property-only page clears by removing the property.
+    const property: JxMutableNode = { description: "x", tagName: "main" };
+    setPageDescription(property, "");
+    expect("description" in property).toBe(false);
+  });
+
+  test("only a page reserves description: a component's is its own field", () => {
+    resetStudioState();
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "Rental",
+      projectConfig: {},
+      projectDirs: [],
+      projectRoot: ".",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    const page = resetWorkspaceWithTab(undefined, { documentPath: "pages/index.md" });
+    expect([...reservedFmKeys(page)].toSorted()).toEqual(["description", "title"]);
+    const layout = resetWorkspaceWithTab(undefined, { documentPath: "layouts/base.md" });
+    expect([...reservedFmKeys(layout)]).toEqual(["title"]);
+    setProjectState(null);
   });
 
   test("a component has no page form: it says so, and its one verb selects the root", async () => {

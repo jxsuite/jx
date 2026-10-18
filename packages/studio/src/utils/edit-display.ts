@@ -6,7 +6,13 @@
  */
 
 import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
-import { displayTagName, isNodeObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import {
+  displayTagName,
+  isNodeObject,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
 import { isDocumentContainer } from "./strip-events";
 import type { RebuiltNode } from "./strip-events";
 
@@ -118,6 +124,31 @@ export const EMPTY_PLACEHOLDER_CLASSES = [
   "empty-container-placeholder",
 ] as const;
 
+/** The style keys that give an element a size of its own: its box, not its content, sets it. */
+const SIZING_KEYS = ["width", "height", "inlineSize", "blockSize"] as const;
+
+/**
+ * Whether the node's own style fixes its width or height — a dot, a bar, a spacer.
+ *
+ * Such an element is drawn as a SHAPE, and an empty one is not missing anything: the jxsuite.com
+ * home's 6px status dot is an empty `<span>` sized in its style, and the text placeholder turned it
+ * into a column of letters one glyph wide over the hero. A placeholder that changes the box the
+ * author sized (the container one sets a `min-height` and a border) misdraws the page it is meant
+ * to explain, so a sized element gets none. Only the top-level declaration counts: a size set under
+ * a media query or a state is a variant of a box whose base the content still sizes.
+ */
+function fixesItsOwnSize(node: JxMutableNode): boolean {
+  const { style } = node;
+  if (!isNonNullObject(style)) {
+    return false;
+  }
+  return SIZING_KEYS.some((key) => {
+    const value = style[key];
+    const text = isNumber(value) ? String(value) : isString(value) ? value.trim() : "";
+    return text !== "" && text !== "auto";
+  });
+}
+
 /**
  * The empty-placeholder class prepareForEditMode would add for this node, or null. Used by the
  * canvas patcher to keep placeholder classes in sync when patching text without a full render.
@@ -134,6 +165,9 @@ export function computeEmptyPlaceholderClass(node: JxMutableNode): string | null
     return null;
   }
   if (Array.isArray(node.children) && node.children.length > 0) {
+    return null;
+  }
+  if (fixesItsOwnSize(node)) {
     return null;
   }
   if (textTags.has(displayTagName(node.tagName))) {

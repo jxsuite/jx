@@ -28,6 +28,7 @@
  */
 
 import { isString } from "@jxsuite/schema/guards";
+import { withPageDescription } from "@jxsuite/site/head-merger";
 import { projectState, renderOnly, updateSession } from "../store";
 import type { DirEntry, JsonValue } from "../types";
 import { activeTab } from "../workspace/workspace";
@@ -171,6 +172,55 @@ const MANAGED_META_KEYS = new Set([...PAGE_FIELDS, ...OG_FIELDS].map((f) => f.ke
  * ONE title, and the surface that gives it a named row is the one that owns the key.
  */
 export const RESERVED_FM_KEYS = new Set(["title"]);
+
+/**
+ * The frontmatter keys a document's head controls own, so its generic field list leaves them out:
+ * {@link RESERVED_FM_KEYS}, plus `description` on a PAGE, whose description the build writes as its
+ * description meta (`withPageDescription` in `@jxsuite/site/head-merger`). Listed as a frontmatter
+ * field as well, a Markdown page showed two Description rows with two values (the frontmatter's and
+ * the head's empty one), and only one of them reaches the browser. A layout's or component's
+ * `description` is data the build does not read, so it stays an ordinary field.
+ *
+ * @param tab The document whose fields are listed.
+ */
+export function reservedFmKeys(tab: Tab | null): ReadonlySet<string> {
+  return isPageDocument(tab) ? new Set([...RESERVED_FM_KEYS, "description"]) : RESERVED_FM_KEYS;
+}
+
+/**
+ * A page's description, from wherever the build reads it: a `<meta name="description">` in its own
+ * `$head` when it has one (stated last, it wins), else its `description` property.
+ *
+ * @param doc The head-bearing view of the document (`buildHeadDoc` for a Markdown page).
+ */
+export function pageDescription(doc: JxMutableNode): string {
+  const meta = findMetaEntry(doc.$head ?? [], "name", "description");
+  if (meta) {
+    return String(meta.attributes?.content ?? "");
+  }
+  return isString(doc.description) ? doc.description : "";
+}
+
+/**
+ * Write a page's description where {@link pageDescription} reads it, so the one field never edits a
+ * value the build then overrules: the `description` property when that is where the page keeps it
+ * and its `$head` states none, else the head's meta (a page with neither gets the meta, as before).
+ * An empty value removes it.
+ *
+ * @param doc The head-bearing view of the document.
+ * @param value The new description, already trimmed.
+ */
+export function setPageDescription(doc: JxMutableNode, value: string): void {
+  if (!findMetaEntry(doc.$head ?? [], "name", "description") && isString(doc.description)) {
+    if (value) {
+      doc.description = value;
+    } else {
+      delete doc.description;
+    }
+    return;
+  }
+  upsertMeta(doc, "name", "description", value);
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -850,7 +900,8 @@ export function seoPreviewFor(tab: Tab | null, doc: JxMutableNode): SeoPreview {
     {
       layout: layout.entries,
       layoutName: layout.name,
-      page: doc.$head ?? [],
+      // The page level as the build merges it: its `description` property leads its own head.
+      page: withPageDescription(doc.$head ?? [], doc.description),
       site: config?.$head ?? [],
     },
     ctx,
@@ -898,6 +949,10 @@ export function buildHeadDoc(
        seoPreviewFor) tests it with isString before using it as text. */
     headDoc.title = fm.title as string;
   }
+  if (isString(fm.description)) {
+    // The page's description property, which the build writes as its description meta.
+    headDoc.description = fm.description;
+  }
   if (fm.$head !== undefined) {
     /* SAFETY: Studio's one writer of the frontmatter `$head` key is applyContentMutation below,
        which stores a JxHeadEntry[] or deletes the key. A hand-written one is trusted exactly as
@@ -941,12 +996,22 @@ export function applyContentMutation(
   if (isString(fmNow.title)) {
     tmp.title = fmNow.title;
   }
+  if (isString(fmNow.description)) {
+    tmp.description = fmNow.description;
+  }
   if (fmHead) {
     tmp.$head = [...fmHead];
   }
   fn(tmp);
   if (tmp.title !== fmNow.title) {
     mutateUpdateFrontmatter(tab, "title", tmp.title);
+  }
+  if (isString(fmNow.description) && tmp.description !== fmNow.description) {
+    mutateUpdateFrontmatter(
+      tab,
+      "description",
+      isString(tmp.description) ? tmp.description : undefined,
+    );
   }
   const newHead = tmp.$head && tmp.$head.length > 0 ? tmp.$head : undefined;
   /* SAFETY: every entry here either came from the frontmatter (JSON, from the format's split) or
@@ -1116,6 +1181,25 @@ function metaRow(
   return row;
 }
 
+/**
+ * The page's one Description: the value the build writes as its description meta, read and written
+ * where it lives ({@link pageDescription}, {@link setPageDescription}).
+ */
+function descriptionRow(doc: JxMutableNode, apply: PagePanelContext["applyMutation"]): PageRow {
+  const value = pageDescription(doc);
+  const key = "meta:name:description";
+  _commits.set(key, {
+    clear: () => apply((d) => setPageDescription(d, "")),
+    commit: (raw) => apply((d) => setPageDescription(d, String(raw).trim())),
+  });
+  const row = blankRow(key, "description", "Description");
+  row.isSet = Boolean(value);
+  row.value = value;
+  row.kind = "text";
+  row.placeholder = "Description…";
+  return row;
+}
+
 /** The favicon, which is a `<link rel="icon">` rather than a `<meta>`. */
 function iconRow(head: JxHeadEntry[], apply: PagePanelContext["applyMutation"]): PageRow {
   const value = String(findLinkEntry(head, "icon")?.attributes?.href ?? "");
@@ -1208,7 +1292,7 @@ function frontmatterSection(tab: Tab | null): PageSection | null {
   const { collection, fields, hasSchema, requiredFields } = collectFmFields(
     tab,
     projectState?.projectConfig,
-    RESERVED_FM_KEYS,
+    reservedFmKeys(tab),
   );
   if (fields.length === 0 && !hasSchema) {
     return null;
@@ -1282,7 +1366,11 @@ function view(ctx: PagePanelContext): PagePanelView {
       rows: [
         titleRow(doc, ctx.applyMutation),
         ...(url ? [url] : []),
-        ...PAGE_FIELDS.map((field) => metaRow(field, head, ctx.applyMutation)),
+        ...PAGE_FIELDS.map((field) =>
+          field.key === "description"
+            ? descriptionRow(doc, ctx.applyMutation)
+            : metaRow(field, head, ctx.applyMutation),
+        ),
         iconRow(head, ctx.applyMutation),
       ],
       title: "Page",

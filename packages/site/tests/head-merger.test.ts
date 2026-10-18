@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mergeHead, renderHead } from "../src/head-merger.ts";
+import { mergeHead, renderHead, withPageDescription } from "../src/head-merger.ts";
 import type { AuthoredHeadEntry } from "../src/head-merger.ts";
 import { parseJxDocument } from "@jxsuite/schema/parse";
 import type { JxHeadEntry } from "@jxsuite/schema/types";
@@ -197,6 +197,34 @@ describe("mergeHead", () => {
  * `rel` + `href` is not identity. These are the four cases where it is not, and the first two are
  * the reason feeds and locale alternates could not be emitted at all.
  */
+describe("withPageDescription", () => {
+  const meta = (content: string) => ({
+    attributes: { content, name: "description" },
+    tagName: "meta",
+  });
+
+  test("a page's description property leads its head as the description meta", () => {
+    const icon = { attributes: { href: "/i.svg", rel: "icon" }, tagName: "link" };
+    expect(withPageDescription([icon], "About the museum")).toEqual([
+      meta("About the museum"),
+      icon,
+    ]);
+  });
+
+  test("an explicit meta in the page's head still wins once merged", () => {
+    const merged = mergeHead([], [], withPageDescription([meta("explicit")], "property"));
+    expect(merged.filter((e) => e.attributes?.name === "description")).toEqual([meta("explicit")]);
+  });
+
+  test("a value that is not a non-empty string states nothing", () => {
+    const head = [meta("kept")];
+    for (const value of [null, 3, "", "   ", { text: "x" }]) {
+      expect(withPageDescription(head, value)).toEqual(head);
+    }
+    expect(withPageDescription(head, null)).not.toBe(head);
+  });
+});
+
 describe("link deduplication", () => {
   const links = (entries: JxHeadEntry[]) =>
     mergeHead([], [], entries).filter((e) => e.tagName === "link");

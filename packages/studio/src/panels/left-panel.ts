@@ -76,7 +76,16 @@ export function mount(deps: NavigatorPanelDeps) {
     { panels: [panelView()] },
     {
       onContent: (panelId, host) => {
+        const switched = _content !== null && _content.panelId !== panelId;
         _content = { host, panelId };
+        /* `#left-panel` is the ONE scroller every panel draws in (the dock's root is `display:
+           contents`), so its offset outlived the panel it belonged to: scrolled down to the Site
+           panel's Components, a click on Outline opened the Outline that far down. A different
+           panel is a different list, and it opens at its top. A repaint of the same panel keeps
+           its place, because the box is keyed on the panel and is not announced again. */
+        if (switched) {
+          requireShellRef(leftPanel, "left-panel").scrollTop = 0;
+        }
         /* A MICROTASK, not this call. `onNodeCreated` fires the moment the element is CONSTRUCTED
            and the runtime applies its attributes on the next line, so a panel's `afterRender` run
            from here would be handed a content box with no `part` on it — and several panels find

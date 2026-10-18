@@ -44,6 +44,8 @@ import { pickAndUpload, showMediaPickerPopover } from "../ui/media-picker";
 import {
   OG_FIELDS,
   PAGE_FIELDS,
+  pageDescription,
+  setPageDescription,
   applyContentMutation,
   buildHeadDoc,
   findLinkEntry,
@@ -221,6 +223,11 @@ function writeField(
     applyMutation((doc: JxMutableNode) => upsertLink(doc, "icon", trimmed));
     return;
   }
+  if (key === "description") {
+    // The page's one description, written where the build reads it.
+    applyMutation((doc: JxMutableNode) => setPageDescription(doc, trimmed));
+    return;
+  }
   const field = META_BY_KEY.get(key);
   if (!field) {
     return;
@@ -325,9 +332,12 @@ function buildView(tab: Tab, headDoc: JxMutableNode, head: JxHeadEntry[]): SeoVi
         note: "",
         rows: [
           ...PAGE_FIELDS.map((field) =>
-            editRow(field.key, field.label, metaValue(head, field.key), {
-              multiline: field.multiline,
-            }),
+            editRow(
+              field.key,
+              field.label,
+              field.key === "description" ? pageDescription(headDoc) : metaValue(head, field.key),
+              { multiline: field.multiline },
+            ),
           ),
           editRow(ICON_KEY, "Icon", iconHref, { media: true }),
         ],

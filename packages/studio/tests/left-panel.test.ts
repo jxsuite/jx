@@ -100,6 +100,24 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("left panel — the shared scroller", () => {
+  test("a different panel opens at its top; a repaint of the same one keeps its place", async () => {
+    shell.leftTab = "layers";
+    await mountWith();
+    const scroller = navigatorHost();
+    scroller.scrollTop = 480;
+    render();
+    await flush(3);
+    // The same panel repainted: the reader's place is theirs.
+    expect(scroller.scrollTop).toBe(480);
+    shell.leftTab = "files";
+    resetStudioState({ dirs: new Map([[".", []]]), searchQuery: "" });
+    render();
+    await flush(4);
+    expect(scroller.scrollTop).toBe(0);
+  });
+});
+
 describe("left panel — project-level tabs", () => {
   /* Files is a Jx document too (`surfaces/files-panel.json`), mounted by the record's own
      `afterRender` — so there is no injected `renderFilesTemplate` left to capture and no DnD pass

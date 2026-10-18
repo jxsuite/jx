@@ -121,10 +121,28 @@ export function dynamicRouteParams(documentPath?: string | null): string[] {
  * An underscore prefix opts a file OUT — that is how a page directory holds a local component
  * beside the pages that use it — and it opts out a whole directory the same way, so
  * `_partials/card.json` is not a route even though `card.json` alone would be.
+ *
+ * The build routes only the files it can read as a page: `.json`, and each extension a page format
+ * claims (`discoverPages` in `@jxsuite/compiler`). A caller that knows the claimed extensions
+ * passes them, so `index.json.bak` or a stray `notes.txt` beside the pages is not listed as one. A
+ * caller that does not know them (no format registry) gets the name rule alone.
+ *
+ * @param relativePath A page path, `pages/…` or relative to `pages/`.
+ * @param pageExtensions The extensions the build routes, lower-case with their dot (`.json`,
+ *   `.md`). Omitted, the extension is not judged.
  */
-export function isRoutedPageFile(relativePath: string): boolean {
+export function isRoutedPageFile(relativePath: string, pageExtensions?: Iterable<string>): boolean {
   const segments = pageRelativePath(relativePath).split("/");
-  return segments.length > 0 && segments.every((segment) => segment !== "" && segment[0] !== "_");
+  if (!segments.every((segment) => segment !== "" && segment[0] !== "_")) {
+    return false;
+  }
+  if (pageExtensions === undefined) {
+    return true;
+  }
+  const name = segments.at(-1) ?? "";
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot).toLowerCase() : "";
+  return ext !== "" && new Set(pageExtensions).has(ext);
 }
 
 /**

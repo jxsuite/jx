@@ -27,6 +27,9 @@
       "display": "flex",
       "flexDirection": "column"
     },
+    "& [part=\"views\"][hidden]": {
+      "display": "none"
+    },
     "& [part=\"collection-row\"], & [part=\"view-row\"], & [part=\"entry-row\"], & [part=\"back\"]": {
       "display": "flex",
       "alignItems": "center",
@@ -226,10 +229,12 @@
                       },
                       {
                         "tagName": "div",
+                        "$description": "Hidden while the collection has no saved views: an empty list is still a list to a screen reader, announced as \"Saved views, list, 0 items\" under every collection.",
                         "attributes": {
                           "part": "views",
                           "role": "list",
-                          "aria-label": "Saved views"
+                          "aria-label": "Saved views",
+                          "hidden": "${$map.item.views.length > 0 ? null : ''}"
                         },
                         "children": [
                           {
@@ -355,7 +360,8 @@
               "attributes": {
                 "part": "back",
                 "type": "button",
-                "title": "Back to the collection"
+                "title": "Back to the collection",
+                "aria-label": "Back to ${state.backTitle}"
               },
               "onclick": {
                 "$prototype": "Function",
