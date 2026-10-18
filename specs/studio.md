@@ -408,22 +408,25 @@ Components are drag-and-drop sources for inserting into the canvas.
 
 ### 5.5 Source Control Panel
 
-> **Status: Partial.** The panel's content ships as described below, as a Navigator panel with a rail button and a badge (`packages/studio/src/panels/git-panel.ts`, `surfaces/git-panel.json`). Where it lives does not: the Publish workspace that hosts it (§22.8) does not exist, so it is still reached from the rail, by `panel.focus.git` from the status bar's branch item and from the GitHub publish notice, and its verbs are still the panel's own `ACTIONS` rather than a flow module the workspace owns.
+> **Status: Implemented.** Source Control is the Publish workspace's Review changes and Branches (`packages/studio/src/publish/publish-workspace.ts` over `src/surfaces/publish-workspace.json`), and its verbs are one flow module the workspace owns (`publish/source-control.ts`). The `git` Navigator panel, its rail button and `panel.focus.git` are deleted, a stored `git` panel id reopens the Navigator on the Site panel, and the status bar's branch item and the GitHub publish notice run `view.setWorkspace { workspace: "publish" }`. Evidence: `packages/studio/tests/source-control.test.ts`, `tests/publish-workspace.test.ts`, `tests/statusbar.test.ts`.
 
-**Source Control is not a Navigator panel; the Publish workspace hosts it** (§22.8). Its change list, commit area and history are Publish › Review changes, its branch picker is Publish › Branches, and its sync verbs run from both. The `git` panel record, its rail button and its `panel.focus.git` command are gone; every caller that revealed the panel (the status bar's branch item, the GitHub publish notice) runs `view.setWorkspace { workspace: "publish" }` instead, and the count the rail badge carried is the Publish tab's badge in the switcher (§22.2). The `git.*` and `publish.*` command ids are unchanged, because the deploy checklist, `runDeploy` and the GitHub flows name them. What the rest of this section specifies is the content, which moves unchanged.
+**Source Control is not a Navigator panel; the Publish workspace hosts it** (§22.8). Its change list, commit area and history are Publish › Review changes, its branch picker is Publish › Branches, and its sync verbs run from both. The `git` panel record, its rail button and its `panel.focus.git` command are gone; every caller that revealed the panel (the status bar's branch item, the GitHub publish notice) runs `view.setWorkspace { workspace: "publish" }` instead, and the count the rail badge carried is the Publish tab's badge in the switcher (§22.2). The `git.*` and `publish.*` command ids are unchanged, because the deploy checklist, `runDeploy` and the GitHub flows name them. What the rest of this section specifies is that content, as the workspace draws it.
 
 Git-integrated source control providing commit, staging, branch management, and sync operations without leaving the studio. All git operations are performed server-side via `Bun.spawn(["git", ...])` and exposed through the PAL.
 
 #### Layout (top to bottom)
 
-1. **Sync bar** — Refresh, the ahead/behind status with the last-updated time, then the Fetch/Pull/Push action group. With no remote it reads "Local only (no remote)" and offers **Create GitHub repository**.
-2. **Active branch row** — the branch icon and name, then the branch picker (`jx-select`), which lists local branches plus "+ New branch...".
-3. **Sub-tabs** — "Local Changes", carrying the changed-file count in its own label, and "History". They select which of the two views below fills the panel's one body; the strip ellipsizes rather than scrolling.
-4. **Local Changes**, top to bottom: the **commit area** (a multi-line message field, `Ctrl+Enter` to commit, then a "Commit and sync" button with a caret menu whose entry is "Commit (don't sync)"); **Staged Changes**, a section with a file list and a per-file Unstage button, with Unstage All in its header; and **Changed Components**, the unstaged and untracked files, with per-file Stage and Discard buttons and Stage All in its header.
-5. **History** — the recent commits (short hash, message, author, how long ago), or the sentence that says what a commit is before the first one exists.
-6. **A busy line and a refusal**, at the foot, each drawn only while there is one. The refusal is `failure`, not `error`, for the reason `studio-ui-guidelines.md` §10 gives.
+Review changes is two columns, the changes on the left and the publish card on the right; below 760px of pane the card drops under the list.
 
-The sync bar and the Active branch row are wrapping rows (`studio-ui-guidelines.md` §4.6). Refresh and the status form one group, and so do the branch icon and name; neither group ever splits. The remote verbs (or Create GitHub repository) and the branch picker drop to a line of their own when the Navigator is too narrow to hold them beside that group, and a wrapped picker spans the row. Where the wrap happens is decided by the content's width (the status text, the clock format, the branch name), never by a breakpoint — so at the Navigator's default 240px the verbs are already on a line of their own under an en-US 12-hour clock, and so is the picker for any branch name of ordinary length. That is the intended reading of the rule rather than an edge of it: the alternative at that width is a status that breaks word by word beside three 20px icons. The panel's labelled buttons wrap their words, and its sub-tabs ellipsize, so nothing scrolls sideways at the Navigator's 160px floor.
+1. **Sync bar** — Refresh, the ahead/behind status with the last-updated time, then the Fetch/Pull/Push action group. With no remote it reads "Local only (no remote)" and offers **Create GitHub repository**.
+2. **Changes** — "N of M included" and an **Include all** checkbox, then the changed files grouped by component, each row a checkbox that includes it in the next publish (stages it) or leaves it out (unstages it), its name and folder, its status badge, **Before and after** (the comparison, §21) and **Discard**.
+3. **Recent commits** — the recent commits (short hash, message, author, how long ago), or the sentence that says what a commit is before the first one exists. They are read the first time Review changes is shown.
+4. **The publish card** — the checks, the destination, the summary that becomes the commit message, and the one primary button (§22.8).
+5. **A busy line and a refusal**, at the foot, each drawn only while there is one. The refusal is `failure`, not `error`, for the reason `studio-ui-guidelines.md` §10 gives.
+
+The branch list and its verbs are Publish › Branches (Branch Management, below). There is no commit split button: committing without syncing is **Publish live** on a repository with no remote, and committing to a branch of its own is **Send for review**.
+
+The sync bar is a wrapping row (`studio-ui-guidelines.md` §4.6). Refresh and the status form one group that never splits, and the remote verbs (or Create GitHub repository) drop to a line of their own when the column is too narrow to hold them beside it; where the wrap happens is decided by the content's width (the status text, the clock format), never by a breakpoint.
 
 #### File Rows
 
@@ -433,10 +436,11 @@ Two refusals remain, and both are stated rather than silent. A **rename** carrie
 
 Each file row displays:
 
+- **Include** — a checkbox named "Include <path>": checked while the index holds the file
 - **File name** — basename of the changed file
 - **Directory** — parent path in subdued text
-- **Action buttons** — hover-revealed Stage (+), Unstage (−), Discard (↩) buttons
-- **Status badge** — single-character badge with color coding:
+- **Status badge** — single-character badge with color coding, its word as the badge's title
+- **Before and after** and **Discard** — named after the file; Discard is refused for an untracked file, which has no committed version to go back to
 
 | Badge | Color  | Meaning   |
 | ----- | ------ | --------- |
@@ -448,7 +452,7 @@ Each file row displays:
 
 #### Branch Management
 
-The branch picker lists all local branches and includes a "+ New branch..." option that opens a New Branch dialog (`showPromptDialog`, studio-ui-guidelines.md §8.7) and creates + checks out the branch on confirm. Cloning a repository asks for its URL through the same dialog.
+Publish › Branches lists every local branch, the current one marked with its ahead/behind, and **Switch** on every other. **New branch** opens a New Branch dialog (`showPromptDialog`, studio-ui-guidelines.md §8.7) and creates and checks out the branch on confirm. On a host where a branch is a session of its own (`StudioPlatform.gitHosted`, the cloud), a checkout reloads the window into that branch's session, so the button reads **Switch and reload** and the switch is confirmed first. Cloning a repository asks for its URL through the same dialog.
 
 #### Server Endpoints
 
@@ -470,9 +474,9 @@ The branch picker lists all local branches and includes a "+ New branch..." opti
 
 #### Auto-refresh
 
-Status is fetched on tab activation and after every git operation. A 30-second polling interval refreshes status while the tab is active.
+Status is fetched when the Publish workspace first mounts, after every git operation and after every save. A 30-second polling interval refreshes it while the Publish workspace is showing.
 
-**An open comparison follows the working tree.** A comparison is two texts read once, so nothing about it notices a save or a commit — invisible while the artboards merely drew two documents, and a lie the moment change marks are drawn on them (§21). Every refresh bumps a revision that re-issues a Diff lens's read and re-reads the panel's own comparison; a save does the same for the file it wrote. A file that is no longer changed loses its comparison rather than keeping a stale one, and a read that fails leaves the last clean comparison on screen rather than blanking a review in progress.
+**An open comparison follows the working tree.** A comparison is two texts read once, so nothing about it notices a save or a commit — invisible while the artboards merely drew two documents, and a lie the moment change marks are drawn on them (§21). Every refresh bumps a revision that re-issues a Diff lens's read and re-reads the comparison Review changes opened; a save does the same for the file it wrote. A file that is no longer changed loses its comparison rather than keeping a stale one, and a read that fails leaves the last clean comparison on screen rather than blanking a review in progress.
 
 #### PAL Methods
 
@@ -1452,7 +1456,7 @@ A host serves the tree and supplies a platform. Both halves are the package's to
 
 ## 13. Command Registry and Context Keys
 
-> **Status: Partial.** The registry, the keymap, the CI checks and nearly every surface ship as renderings of the records (`packages/studio/src/commands/registry.ts`, `surfaces/commandbar.ts`, `surfaces/statusbar.ts`, `editor/context-menu.ts`, `panels/quick-search.ts`, `services/ai-command-tools.ts`). Panel-local verbs remain that are not records, each with its own `run`: the Files tree's row menu (New File, Upload Files, Edit Pages in Grid, Open, Rename and Delete; `fileMenuRows` in `files/files.ts`) and its toolbar (New File, Refresh and Show ignored files; `FILE_ACTIONS` in the same module); the Content home's per-file menu (Open, Rename…, Duplicate and Delete; `showLibraryContextMenu` in `browse/library-pane.ts`); and the Source Control panel's commit, fetch, pull, stage, unstage, discard and branch verbs, which run the git operations themselves (`ACTIONS` in `panels/git-panel.ts`, `studio-ui-guidelines.md` §12.5's gap).
+> **Status: Partial.** The registry, the keymap, the CI checks and nearly every surface ship as renderings of the records (`packages/studio/src/commands/registry.ts`, `surfaces/commandbar.ts`, `surfaces/statusbar.ts`, `editor/context-menu.ts`, `panels/quick-search.ts`, `services/ai-command-tools.ts`). Panel-local verbs remain that are not records, each with its own `run`: the Files tree's row menu (New File, Upload Files, Edit Pages in Grid, Open, Rename and Delete; `fileMenuRows` in `files/files.ts`) and its toolbar (New File, Refresh and Show ignored files; `FILE_ACTIONS` in the same module); the Content home's per-file menu (Open, Rename…, Duplicate and Delete; `showLibraryContextMenu` in `browse/library-pane.ts`); and Publish › Review changes' and Branches' fetch, pull, include, discard and branch verbs, which run the git operations themselves (`actionsFor` in `publish/publish-workspace.ts` over `publish/source-control.ts`, `studio-ui-guidelines.md` §12.5's gap). Initialize, Create GitHub Repository and Push run their records.
 
 Every capability Studio has is one **command record**. The Command Bar, the palette, the Navigator rail, the context menus, the block action bar, the keymap, `__jxAutomation` and the assistant's tool surface are **renderings** of those records. A rendering may choose _whether_ to show a command; it may never decide what it is called, when it is available, or what it does. A second hand-maintained list of actions is a defect.
 
@@ -1530,21 +1534,21 @@ Because `mod` absorbs the platform's primary modifier, a physical **Ctrl+Tab** n
 
 One reactive record (`commands/context.ts`), derived from the reactive `shell` record, `workspace` and `activeTab`. Predicates read it; nothing writes to it from a predicate.
 
-| Group        | Keys                                                                                                                           |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `project`    | `open`, `isSite`, `isRepo`, `isMultilingual`                                                                                   |
-| `git`        | `ahead`, `behind`, `dirtyCount`                                                                                                |
-| `document`   | `open`, `dirty`, `mode`, `canUndo`, `canRedo`                                                                                  |
-| `editor`     | `kind` — `canvas` \| `grid` \| `code` \| `diff` \| `config` \| `tokens` \| `entry` \| `media` \| `home` \| `none`              |
-| `canvas`     | `view` — `edit` \| `design` \| `preview`                                                                                       |
-| `pane`       | `count`, `derived`                                                                                                             |
-| `selection`  | `count`, `kind`, `isRoot`, `isComponentInstance`, `isLayoutNode`                                                               |
-| `caret`      | `active` (§10), `inCanvas`                                                                                                     |
-| `focus`      | `region` — `rail` \| `navigator` \| `pane` \| `inspector` \| `dock` \| `status` \| `palette`                                   |
-| `modal`      | `open`                                                                                                                         |
-| `collab`     | `attached`, `readOnly`, `sourceCanonical`                                                                                      |
-| `ai`         | `configured`, `streaming`                                                                                                      |
-| `capability` | One boolean per PAL member: `gitClone`, `importSite`, `openProjectInNewWindow`, `dataRows`, `windowControls`, `findReferences` |
+| Group        | Keys                                                                                                                                                                 |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project`    | `open`, `isSite`, `isRepo`, `isMultilingual`                                                                                                                         |
+| `git`        | `ahead`, `behind`, `dirtyCount`                                                                                                                                      |
+| `document`   | `open`, `dirty`, `mode`, `canUndo`, `canRedo`                                                                                                                        |
+| `editor`     | `kind` — `canvas` \| `grid` \| `code` \| `diff` \| `config` \| `tokens` \| `entry` \| `media` \| `home` \| `none`                                                    |
+| `canvas`     | `view` — `edit` \| `design` \| `preview`                                                                                                                             |
+| `pane`       | `count`, `derived`                                                                                                                                                   |
+| `selection`  | `count`, `kind`, `isRoot`, `isComponentInstance`, `isLayoutNode`                                                                                                     |
+| `caret`      | `active` (§10), `inCanvas`                                                                                                                                           |
+| `focus`      | `region` — `rail` \| `navigator` \| `pane` \| `inspector` \| `dock` \| `status` \| `palette`                                                                         |
+| `modal`      | `open`                                                                                                                                                               |
+| `collab`     | `attached`, `readOnly`, `sourceCanonical`                                                                                                                            |
+| `ai`         | `configured`, `streaming`                                                                                                                                            |
+| `capability` | One boolean per PAL member: `gitClone`, `importSite`, `openProjectInNewWindow`, `dataRows`, `windowControls`, `findReferences`, `readFileBytes`, `publish` (`cfApi`) |
 
 **`capability.*` replaces scattered platform branching.** A cloud/desktop/dev-server difference becomes one `when` clause on one record instead of an `if (platform.x)` in every template that touches the feature.
 
@@ -1824,7 +1828,7 @@ Project configuration used to be edited through a modal by **29 fire-and-forget 
 
 ### 17.1 Configuration is a document
 
-> **Status: Partial.** Project Settings is the dialog described below: `settings.open` opens it in the dialog layer as `overlay.dialog:settings` (`packages/studio/src/settings/settings-dialog.ts`, `surfaces/settings-dialog.ts`), its nav is the three groups (`settings/section-registry.ts`'s `SETTINGS_GROUPS`, `panels/settings-pane.ts`, `surfaces/settings-pane.json`), `SettingsSection` and the `$studio.settings` block carry `group` (`settings/extension-sections.ts`), the Moved footnote, Raw JSON's **Edit as code** and the gear's grouped submenu ship, and the `settings` editor kind and `shell.settingsTab` are deleted. Evidence: `packages/studio/tests/settings-dialog.test.ts`, `tests/settings-document.test.ts`. The CSS Variables editor has arrived as the Styles workspace's Variables view (§7.1), and the footnote's **Colors and fonts** row opens it. Deploy has left Settings but has not arrived: it is not yet Publish › Hosting (§22.8), so the footnote's **Publish** button opens a workspace that does not host it yet, and until it does `build.adapter` is set as text through Raw JSON's **Edit as code**.
+> **Status: Implemented.** Project Settings is the dialog described below: `settings.open` opens it in the dialog layer as `overlay.dialog:settings` (`packages/studio/src/settings/settings-dialog.ts`, `surfaces/settings-dialog.ts`), its nav is the three groups (`settings/section-registry.ts`'s `SETTINGS_GROUPS`, `panels/settings-pane.ts`, `surfaces/settings-pane.json`), `SettingsSection` and the `$studio.settings` block carry `group` (`settings/extension-sections.ts`), the Moved footnote, Raw JSON's **Edit as code** and the gear's grouped submenu ship, and the `settings` editor kind and `shell.settingsTab` are deleted. Evidence: `packages/studio/tests/settings-dialog.test.ts`, `tests/settings-document.test.ts`. The two sections it moved out have arrived: the CSS Variables editor is the Styles workspace's Variables view (§7.1), which the footnote's **Colors and fonts** row opens, and Deploy is Publish › Hosting's build adapter (§22.8), which the **Hosting and domain** row opens (`publish.open { tab: "hosting" }`).
 
 `project.json` is a **Tab**, which is what makes the rest true rather than aspirational: it gets undo, the dirty flag, ⌘S and the history delegate from the same machinery every document uses. Two surfaces render it — **Project Settings**, a dialog, and **Project Styles** (§7), the Styles workspace's home — and both edit one object.
 
@@ -2028,7 +2032,7 @@ The code half draws no zoom pod. It is one editor filling the stage with no pan/
 
 A changed `.ts`, `.css` or `.gitignore` has no document tree, and the tab model wants one. Such a file opens a real tab keyed by its path with a stub document the stage never reads — the same shape a media file already uses, and set by the opener rather than by `inferModes`, which answers for documents. One path is still one tab, so §14.1 holds unchanged.
 
-**This door is the Source Control panel's alone.** Opening the same file from the file tree still says the Studio has no editor for it, which is the truth about opening it as a document; the panel asks a narrower question and gets a narrower answer.
+**This door is Review changes' alone.** Opening the same file from the file tree still says the Studio has no editor for it, which is the truth about opening it as a document; Review changes asks a narrower question and gets a narrower answer.
 
 ### 21.5 A comparison follows the working tree
 
@@ -2038,13 +2042,13 @@ Two texts read once notice nothing. Every git operation and every save bumps a r
 
 ## 22. Workspaces
 
-> **Status: Partial.** The model, the switcher and the frames ship (§22.1–§22.3, `packages/studio/src/workspace/workspace-ids.ts`, `workspace/tab-workspace.ts`, `workspace/workspace-switch.ts`, `src/shell.ts`), and the named layouts they replace are deleted. Design's frame ships whole (§22.4), and so do Content's (§22.5) and Media's (§22.6). Styles' frame and its three views ship (§22.7). What Publish draws does not ship yet (§22.8): its home is an empty state that names the workspace (`workspace/workspace-home.ts`), and Source Control is a Navigator panel (§5.5).
+> **Status: Partial.** The model, the switcher and the frames ship (§22.1–§22.3, `packages/studio/src/workspace/workspace-ids.ts`, `workspace/tab-workspace.ts`, `workspace/workspace-switch.ts`, `src/shell.ts`), and the named layouts they replace are deleted. Design's frame ships whole (§22.4), and so do Content's (§22.5), Media's (§22.6), Styles' (§22.7) and Publish's (§22.8); the open items are the follow-ups each of §22.5, §22.6 and §22.8 names in its second marker.
 
 **A workspace is the task the window is set up for.** There are five — **Design**, **Content**, **Media**, **Styles** and **Publish** — and the active one decides three things: which tabs the pane strips show, which Navigator panel and Inspector tab the frame draws, and what opens when the author switches to it with nothing of its own open. It decides nothing about what can be done. Every command keeps its record, its chord and its palette row in every workspace, so a workspace is where a task's controls are drawn and never a gate on them.
 
 ### 22.1 The model
 
-> **Status: Partial.** `WORKSPACE_IDS`, `shell.workspace` persisted per project root, `view.setWorkspace` with its five chord records, `ctx.workspace` in all four contexts, `workspaceOfTab` and the strip filter (a second pane included) ship (`packages/studio/src/workspace/workspace-ids.ts`, `workspace/tab-workspace.ts`, `workspace/workspace-switch.ts`, `src/shell.ts`). One home is a stand-in: Publish opens a generic home tab that names the workspace and points at where its work is done today (§22.8). Content's home tab is the collection it shows (§22.5), and Media's is its library (§22.6). Project Settings is a dialog over every workspace (§17.1), so it belongs to none and opening it switches nothing.
+> **Status: Implemented.** `WORKSPACE_IDS`, `shell.workspace` persisted per project root, `view.setWorkspace` with its five chord records, `ctx.workspace` in all four contexts, `workspaceOfTab` and the strip filter (a second pane included) ship (`packages/studio/src/workspace/workspace-ids.ts`, `workspace/tab-workspace.ts`, `workspace/workspace-switch.ts`, `src/shell.ts`). Content's home tab is the collection it shows (§22.5), Media's is its library (§22.6) and Publish's is the Publish workspace (§22.8). Evidence: `packages/studio/tests/workspace-home.test.ts`, `tests/workspace-switch.test.ts`. Project Settings is a dialog over every workspace (§17.1), so it belongs to none and opening it switches nothing.
 
 `WORKSPACE_IDS` is `["design", "content", "media", "styles", "publish"]`, in that order, declared in a module with no DOM import so the bare-Bun checks can load it, and duplicated nowhere else without a test asserting the copies agree (the `NAVIGATOR_PANEL_IDS` pattern). The titles are the ids capitalised; each has a kit-manifest icon.
 
@@ -2076,7 +2080,7 @@ Two texts read once notice nothing. Every git operation and every save bumps a r
 
 ### 22.2 The switcher
 
-> **Status: Partial.** The tablist, the Publish count and the ⚙ Settings menu in the Command Bar ship (`packages/studio/src/surfaces/commandbar.json`, `surfaces/commandbar.ts`). The `publish.quick` chevron does not, because the quick publish dialog does not exist yet (§22.8).
+> **Status: Implemented.** The tablist, the Publish count, the `publish.quick` chevron beside the Publish tab and the ⚙ Settings menu ship in the Command Bar (`packages/studio/src/surfaces/commandbar.json`, `surfaces/commandbar.ts`). Evidence: `packages/studio/tests/commandbar-workspaces.test.ts`.
 
 The workspaces are a **tablist in the Command Bar**, in the slot the named layouts held: one `tab` per workspace in `WORKSPACE_IDS` order, each its icon and its title, `aria-selected` on the active one, arrow keys moving between them and activation running `view.setWorkspace` (the WAI-ARIA tabs pattern, through the kit's `jx-tabs`). It is a placement and not a dock, so it is not counted against a dock's tab cap (`studio-ui-guidelines.md` §12.2), and it adds no `commandbar/primary` command.
 
@@ -2140,21 +2144,21 @@ The Styles workspace is Project Styles (§7) given a frame: `project.json` in it
 
 ### 22.8 Publish
 
-> **Status: Pending.** There is no Publish workspace; changes are reviewed and committed in the Source Control panel (§5.5), the adapter picker (`renderDeploySection` in `settings/project-sections.ts`) has left Project Settings (§17.1) and has no host until Hosting ships, so `build.adapter` is set as text through Raw JSON's **Edit as code**, deploys run from the `publish.*` overflow commands (`publish/publish-commands.ts`), only the latest Cloudflare deployment is read (`latestDeployment` in `publish/pages-service.ts`), and no flow sends a change for review.
+> **Status: Partial.** Everything below ships except what the second marker names. The Publish home is `publish/publish-workspace.ts` over `src/surfaces/publish-workspace.json`, routed through the workspace home (`workspace/workspace-home.ts`); the destinations, the checks and the one publish verb are `publish/publish-changes.ts`; the source-control verbs are `publish/source-control.ts`; the deployment history is `listDeployments` in `publish/pages-service.ts`; Hosting mounts the Deploy section (`renderDeploySection`, `settings/project-sections.ts`) and opens the Cloudflare connect flow through `publish.setUp`; the quick publish dialog is `publish/publish-quick.ts` over `src/surfaces/publish-quick.json`, opened by `publish.quick`; and `publish.open { tab }` shows a sub-tab. The Publish records' host question is `capability.publish` (§13.4); whether Send for review can run is the flow's question (`createPullRequest`), because it is a destination inside the workspace and no record is refused on it; and what a commit and a branch mean is `StudioPlatform.gitHosted`. Evidence: `packages/studio/tests/publish-workspace.test.ts`, `tests/publish-changes.test.ts`, `tests/publish-quick.test.ts`, `tests/source-control.test.ts`, `tests/pages-service.test.ts`, `tests/publish-commands.test.ts`.
 
 **The Publish home** is a surface (`src/surfaces/publish-workspace.json`) with four sub-tabs.
 
-**Review changes** is the change list (the git status, grouped by component), each file's checkbox staging or unstaging it, each row opening its before-and-after comparison (§21), which opens in Publish. Below the list: the checks (the deploy checklist's next step, and a build check where the host can run one), the summary (the commit message), and the destination. **Publish live** commits to the current branch, syncs, and deploys when a deploy is configured. **Send for review** creates a branch named `studio/<slug of the summary>`, commits to it, pushes it and opens a pull request through the platform's `createPullRequest`. The verbs are the Source Control panel's, moved out of the panel into a flow module the workspace owns (§5.5), so there is one list of them (`studio-ui-guidelines.md` §12.5).
+**Review changes** is the change list (the git status, grouped by component), each file's checkbox staging or unstaging it, each row opening its before-and-after comparison (§21), which opens in Publish: the document's tab is put in `git-diff` before it is activated, so it never enters Design on the way. A change is included (staged) the first time Review changes shows it, so a change set nobody has curated opens with every change included, as the quick dialog publishes it; a file the author then leaves out stays out, and a path that leaves the status (committed or discarded) is new again when it next changes. Beside the list: the checks (the deploy checklist's next step, and a build check where the host can run one), the destination, the summary (the commit message), and one primary button whose words say what it will do. **Publish live** commits what is included to the current branch and ships it: through the deploy (`runDeploy`, which pushes and asks Cloudflare what it built) when a provider is connected, else by pushing to the remote, else by committing alone, and its note says which. **Send for review** creates a branch named `studio/<slug of the summary>`, commits to it, pushes it and opens a pull request into the branch the author was on through the platform's `createPullRequest`. Once a summary is written, its note names the branch it will create. On a host where a branch is a session (`gitHosted`), the commit lands on the session's own branch and the pull request is opened from it into the repository's default branch, which the host reports as `defaultBranch` in `gitBranches`; because a commit there is live as it is made, review is refused, with the reason, while the session is on the default branch or the host has not said which branch that is. The verbs are the Source Control panel's, moved out of the panel into a flow module the workspace owns (§5.5), so there is one list of them (`studio-ui-guidelines.md` §12.5).
 
-**Deploys** is the live site (the configured production URL and its latest deployment), any deploy in progress with its activity steps (§16.4), the history of deployments — every row the host returns, not the latest alone — and the branch previews, the deployments whose environment is a preview.
+**Deploys** is the live site (the configured production URL and its latest deployment), any deploy in progress with its activity steps (§16.4), the history of deployments — every row the host returns, not the latest alone — and the branch previews, the deployments whose environment is a preview. Each row's state is a word (Live for the newest successful production deployment, Replaced for an older one, Ready for a finished preview, Building…, Failed or Canceled otherwise), with the stage and status the host reported as its tooltip; the live line names the newer of the listed production deployment and the one the last deploy observed. The list is asked for when Deploys is shown, on its Refresh, and when a deploy has observed a deployment the list does not have, never on a timer; an answer that arrives after a project switch, or about a Pages project the configuration no longer names, is dropped. On a host that cannot reach Cloudflare, or with no provider connected, Deploys says so instead of listing.
 
 **Branches** is the branch list with checkout and create, and ahead/behind for the current branch. On a host where a branch is a session (the cloud), checkout reloads the window, and the action says so and asks first.
 
-**Hosting** is where the site is published from and to: its source (the remote, and the GitHub connection), its host (Jx Cloud or Cloudflare, through the existing connect flows), its build adapter (moved from Project Settings › Deploy, §17.1) and its domain.
+**Hosting** is where the site is published from and to: its source (the remote, and the GitHub connection), its host (Jx Cloud or Cloudflare, through the existing connect flows), its build adapter (moved from Project Settings › Deploy, §17.1, and redrawn when `build.adapter` changes anywhere else), its domain (the production URL; a custom domain is added on the host's dashboard), and the deploy checklist. Each command it offers is drawn from its record, disabled with the record's reason.
 
-**Quick publish.** `publish.quick`, the chevron beside the Publish tab (§22.2), opens a dialog with the change count, a short change list, the destination choice, the checks line, **Publish now** and **Review all**, which switches to Review changes. The `git.*` and `publish.*` command ids keep their names, because the deploy checklist, `runDeploy` and the GitHub flows run them by id.
+**Quick publish.** `publish.quick`, the chevron beside the Publish tab (§22.2), opens a dialog with the change count, a short change list, the destination choice, the summary, the checks line, **Publish now** and **Review all**, which switches to Review changes. Publish now takes every change, not only the included ones, because the dialog lists all of them and offers no checkbox to leave one out. The `git.*` and `publish.*` command ids keep their names, because the deploy checklist, `runDeploy` and the GitHub flows run them by id.
 
-> **Status: Pending.** Not part of the first build: **Rollback** in Deploys, because no host API is wired to it (the dev server's Cloudflare proxy allowlists no rollback route and the cloud broker exposes none); and **Send for review** on a host with no `createPullRequest` (today the dev server and the desktop app), where the choice is drawn disabled with the reason rather than falling back to a branch push that opens nothing.
+> **Status: Pending.** Not part of the first build: **Rollback** in Deploys, because no host API is wired to it (the dev server's Cloudflare proxy allowlists no rollback route and the cloud broker exposes none); and **Send for review** on a host with no `createPullRequest` (today the dev server and the desktop app), where the choice is drawn disabled with the reason rather than falling back to a branch push that opens nothing; and a **source policy** in Hosting (anyone with access can publish live, or every change goes through review), because no project setting stores it yet, so Publish live is offered to everyone and the destination defaults to it.
 
 ---
 

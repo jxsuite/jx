@@ -34,6 +34,7 @@ import {
   reloadTabsIfChanged,
 } from "../src/files/files";
 import { shell } from "../src/shell";
+import { effect, effectScope } from "../src/reactivity";
 import type { DirEntry, GitStatusResult, ProjectState, StudioPlatform } from "../src/types";
 import { uploadAccept } from "../src/files/media-upload";
 import { resetAssetVersions, versionOf } from "../src/files/asset-versions";
@@ -598,6 +599,34 @@ describe("openFileInTab", () => {
     expect(activeTab.value?.id).toBe("tab-a");
     expect(requireProjectState().selectedPath).toBe("pages/a.json");
     expect(state.calls.filter(([name]) => name === "readFile")).toHaveLength(0);
+  });
+
+  /* A comparison opens its document IN Diff: the mode decides the tab's workspace, and activation
+     enters it, so a mode set after activation would visit Design first (studio.md §22.1). */
+  test("a requested canvas mode is the tab's before it is active, new or already open", async () => {
+    installFsPlatform({ "pages/a.json": "{}", "pages/c.json": "{}" });
+    siteState();
+    const modesWhenActive: string[] = [];
+    const scope = effectScope();
+    scope.run(() => {
+      effect(() => {
+        const active = activeTab.value;
+        if (active) {
+          modesWhenActive.push(`${active.id}:${active.session.ui.canvasMode}`);
+        }
+      });
+    });
+    await openFileInTab("pages/c.json", { canvasMode: "git-diff" });
+    openTab({ document: { tagName: "div" }, documentPath: "pages/a.json", id: "tab-a" });
+    openTab({ document: { tagName: "div" }, documentPath: "pages/b.json", id: "tab-b" });
+    await openFileInTab("pages/a.json", { canvasMode: "git-diff" });
+    scope.stop();
+    expect(modesWhenActive.filter((entry) => !entry.startsWith("tab-b"))).toEqual([
+      "pages/c.json:git-diff",
+      "tab-a:edit",
+      "tab-a:git-diff",
+    ]);
+    expect(workspace.tabs.get("tab-a")?.session.ui.canvasMode).toBe("git-diff");
   });
 
   test("opens into a NAMED pane, without the keyboard, as a preview tab", async () => {

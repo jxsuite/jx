@@ -278,6 +278,8 @@ const ISLAND_GUESTS = {
     "ai-managed-connect.json",
     "ai-model-picker.json",
   ],
+  // Publish › Hosting's build adapter is the Deploy section that moved out of Project Settings.
+  "publish-workspace.json": ["settings-deploy.json"],
 } satisfies Readonly<Record<string, readonly string[]>>;
 
 /**

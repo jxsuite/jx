@@ -164,7 +164,7 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *   names an input the app accepts by name. Net input steps for the shot: three to one. The budget
  *   rises by the one `caret` step quarantine was hiding.
  * - `nonDerivedRegions` DISTINCT region ids no registry stamps for free — the hand-stamped leaves the
- *   README's "The gate" budgets for (`navigator/panel:git/commit`, `navigator/statements`, the
+ *   README's "The gate" budgets for (`pane.primary/publish/commit`, `navigator/statements`, the
  *   settings entry rows…). Contract 0 counted 17 CSS selectors here.
  *
  *   **11 → 10 when "resolving with" became a popover**, and `pane.primary/prop:count` is the one that

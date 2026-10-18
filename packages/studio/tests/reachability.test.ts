@@ -88,11 +88,6 @@ const TEST_SEAM = "test/host seam — the app takes the async path beside it";
 /** Module-private state read back through an accessor that only its own tests call. */
 const TEST_OBS = "observability accessor — only its own tests read the private state through it";
 
-/** The Deploy section, the same way: it left Project Settings for the Publish workspace's Hosting. */
-const AWAITING_PUBLISH =
-  "the Deploy section, between hosts: it left Project Settings (§17.1) for the Publish " +
-  "workspace's Hosting view (§22), which mounts it and deletes this line";
-
 /**
  * Functions the app cannot reach, by file — and WHY each one is still here.
  *
@@ -289,13 +284,7 @@ const KNOWN_UNREACHABLE = {
   "surfaces/commandbar.ts": { setMacPlatformForTests: TEST_SEAM },
   "project-list.ts": { resetProjectList: TEST_RESET },
   "publish/deploy-checklist.ts": {
-    forgetDeployment: "test reset, and the project-close half of the memory below",
-    observedDeployment:
-      "the READ half of the deployment memory: `noteDeployment` writes and nothing reads back, so " +
-      "the checklist recomputes its `unknown` branch instead of remembering the deployment it " +
-      "already observed. Nine of this file's eleven entries were that original shape and are wired; " +
-      "these two are the remainder, and what a remembered deployment entitles the checklist to " +
-      "skip is a Publish decision",
+    forgetDeployment: "test reset, and the project-close half of the deployment memory",
   },
   "services/announce.ts": { resetAnnouncer: TEST_RESET },
   "services/bundle-base.ts": { resetBundleBase: TEST_RESET },
@@ -381,16 +370,6 @@ const KNOWN_UNREACHABLE = {
       "nothing asks for it",
   },
   "settings/section-registry.ts": { resetSettingsDocumentState: TEST_RESET },
-  "settings/project-sections.ts": {
-    deployActions: AWAITING_PUBLISH,
-    deployValues: AWAITING_PUBLISH,
-    persist: AWAITING_PUBLISH,
-    renderDeploySection: AWAITING_PUBLISH,
-  },
-  "surfaces/settings-deploy.ts": {
-    mountDeploySurface: AWAITING_PUBLISH,
-    project: AWAITING_PUBLISH,
-  },
   "settings/settings-document.ts": {
     settingsSectionsReady:
       '"the readiness `probe.idle()` and the command both need" — and `services/idle.ts` does ' +

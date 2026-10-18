@@ -1,0 +1,2869 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPublishWorkspace",
+  "$description": "The Publish workspace's home (studio.md §22.8): four sub-tabs over one body. Review changes is the change list grouped by component, each file's checkbox including it in the next publish (staging it), its Before and after opening the comparison (§21), then the checks, the destination, the summary and the one primary button. Deploys is the live site, any deploy running now with its steps, the history the host returns and the branch previews. Branches is the branch list with switch and create. Hosting is where the project is saved, where the site is hosted, the build adapter (an island: the Deploy section that moved here from Project Settings) and the address, with the deploy checklist under them. `publish/publish-workspace.ts` keeps every decision and hands this document strings and booleans; nothing here knows what a status letter means, which destination a host allows or what a deployment's stage is called.",
+  "tagName": "div",
+  "attributes": {
+    "part": "publish",
+    "data-jx-region": "${state.region}",
+    "data-tab": "${state.tab}",
+    "aria-labelledby": "${state.titleId}",
+    "role": "region"
+  },
+  "style": {
+    "$description": "Fills the pane's stage by its own geometry, as the Media home does: the stage is `position: relative`, so the workspace takes the whole of it and scrolls its own body. The status colours are the theme's semantic tokens, so a check, a badge and a deployment's state follow light and dark without a hex anywhere.",
+    "position": "absolute",
+    "inset": "0",
+    "display": "flex",
+    "flexDirection": "column",
+    "boxSizing": "border-box",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "background": "var(--bg)",
+    "& [part=\"head\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-4) var(--jx-space-5) 0"
+    },
+    "& [part=\"heading\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600"
+    },
+    "& [part=\"headline\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"tabs\"]": {
+      "padding": "0 var(--jx-space-5)",
+      "flexShrink": "0"
+    },
+    "& [part=\"body\"]": {
+      "flex": "1",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "padding": "var(--jx-space-4) var(--jx-space-5) var(--jx-space-6)",
+      "containerType": "inline-size",
+      "containerName": "publish-body"
+    },
+    "& [part=\"review\"]": {
+      "$description": "Two columns as the board draws them, the changes on the left and the publish card on the right; below 760px of pane the card drops under the list rather than squeezing it.",
+      "display": "grid",
+      "gridTemplateColumns": "minmax(0, 1fr) minmax(260px, 340px)",
+      "gap": "var(--jx-space-5)",
+      "alignItems": "start"
+    },
+    "@container publish-body (max-width: 760px)": {
+      "& [part=\"review\"]": {
+        "gridTemplateColumns": "minmax(0, 1fr)"
+      }
+    },
+    "& [part=\"changes-column\"], & [part=\"publish-column\"], & [part=\"deploys\"], & [part=\"branches\"], & [part=\"hosting\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-5)",
+      "minWidth": "0"
+    },
+    "& [part=\"deploys\"], & [part=\"branches\"], & [part=\"hosting\"]": {
+      "maxWidth": "760px"
+    },
+    "& section": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "minWidth": "0"
+    },
+    "& [part=\"section-heading\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "600",
+      "color": "var(--fg-dim)",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.04em"
+    },
+    "& [part=\"publish-column\"] > section": {
+      "padding": "var(--jx-space-4)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--bg-panel)"
+    },
+    "& [part=\"sync-bar\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "paddingBottom": "var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"sync-text\"]": {
+      "display": "flex",
+      "flex": "1 1 auto",
+      "flexDirection": "column",
+      "minWidth": "0"
+    },
+    "& [part=\"sync-label\"]": {
+      "fontWeight": "600"
+    },
+    "& [part=\"sync-time\"], & [part=\"included\"], & [part=\"file-dir\"], & [part=\"history-meta\"], & [part=\"choice-note\"], & [part=\"live-summary\"], & [part=\"hosting-summary\"], & [part=\"branch-sync\"], & [part=\"branch-summary\"], & [part=\"deployment-when\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"changes-bar\"], & [part=\"branch-bar\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"groups\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"group-name\"]": {
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)",
+      "fontFamily": "var(--font-mono)"
+    },
+    "& [part=\"file-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "2px var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)"
+    },
+    "& [part=\"file-row\"]:hover, & [part=\"file-row\"]:focus-within": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"file-text\"]": {
+      "display": "flex",
+      "flex": "1",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"file-dir\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"badge\"]": {
+      "$description": "One letter and a colour, which is why the checkbox and the row's buttons carry the status in words as well.",
+      "flex": "none",
+      "width": "16px",
+      "color": "var(--signal)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "fontWeight": "700",
+      "textAlign": "center"
+    },
+    "& [part=\"badge\"][data-status=\"A\"], & [part=\"badge\"][data-status=\"U\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"badge\"][data-status=\"D\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"badge\"][data-status=\"R\"]": {
+      "color": "var(--tag)"
+    },
+    "& [part=\"empty-message\"], & [part=\"status\"], & [part=\"live-none\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-6)",
+      "textAlign": "center"
+    },
+    "& [part=\"empty\"] > [part=\"empty-message\"]": {
+      "maxWidth": "48ch"
+    },
+    "& [part=\"empty-actions\"], & [part=\"command-row\"], & [part=\"publish-actions\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"history-list\"], & [part=\"check-list\"], & [part=\"deployment-list\"], & [part=\"branch-list\"], & [part=\"checklist-steps\"], & [part=\"activity-steps\"]": {
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"history-entry\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)",
+      "alignItems": "baseline"
+    },
+    "& [part=\"history-hash\"]": {
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"history-message\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"checklist-step\"], & [part=\"activity-step\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"check\"]": {
+      "$description": "Centred, not baseline-aligned: the row can hold a small kit button, and a small kit control is layout-contained, so it has no baseline to align on.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"check-text\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "lineHeight": "1.4"
+    },
+    "& [part=\"check-icon\"], & [part=\"step-icon\"]": {
+      "flex": "none",
+      "width": "1em",
+      "textAlign": "center",
+      "color": "var(--fg-dim)"
+    },
+    "& [data-state=\"done\"] > [part=\"check-icon\"], & [data-state=\"done\"] > [part=\"step-icon\"]": {
+      "color": "var(--success)"
+    },
+    "& [data-state=\"failed\"] > [part=\"check-icon\"], & [data-state=\"failed\"] > [part=\"step-icon\"]": {
+      "color": "var(--danger)"
+    },
+    "& [data-state=\"todo\"] > [part=\"check-icon\"]": {
+      "color": "var(--warning)"
+    },
+    "& [part=\"destinations\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"destination-card\"] > [part=\"control\"]": {
+      "$description": "A destination is a card with a name and a sentence saying what it does, inside one radio, as Add new's choice cards are: the reader hears one name and sees both lines.",
+      "width": "100%",
+      "height": "auto",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "textAlign": "start",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "gap": "2px",
+      "whiteSpace": "normal"
+    },
+    "& [part=\"choice-name\"]": {
+      "display": "block",
+      "fontWeight": "600"
+    },
+    "& [part=\"choice-note\"]": {
+      "display": "block"
+    },
+    "& [part=\"refusal\"], & [part=\"blocker\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"review-line\"], & [part=\"live-site\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "margin": "0"
+    },
+    "& [part=\"live-url\"]": {
+      "fontWeight": "600",
+      "wordBreak": "break-all"
+    },
+    "& [part=\"live-summary\"], & [part=\"hosting-summary\"], & [part=\"host-name\"], & [part=\"branch-note\"]": {
+      "margin": "0",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"host-name\"]": {
+      "fontWeight": "600"
+    },
+    "& [part=\"activity\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-md)"
+    },
+    "& [part=\"activity-head\"]": {
+      "display": "flex",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"activity-title\"]": {
+      "fontWeight": "600"
+    },
+    "& [part=\"activity-status\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"deployment\"]": {
+      "display": "grid",
+      "gridTemplateColumns": "minmax(64px, auto) minmax(0, 1fr) auto auto",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-1) 0",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"deployment-label\"]": {
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"deployment-status\"]": {
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"deployment-status\"][data-status=\"success\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"deployment-status\"][data-status=\"failure\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"deploy-history\"]": {
+      "position": "relative"
+    },
+    "& [part=\"reload-deploys\"]": {
+      "position": "absolute",
+      "top": "0",
+      "right": "0"
+    },
+    "& [part=\"branch\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-1) var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "--jx-icon-size": "16px"
+    },
+    "& [part=\"branch\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"branch-icon\"]": {
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"branch-name\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "fontFamily": "var(--font-mono)"
+    },
+    "& [part=\"current\"]": {
+      "display": "inline-flex",
+      "gap": "var(--jx-space-2)",
+      "alignItems": "baseline"
+    },
+    "& [part=\"current-tag\"]": {
+      "padding": "0 6px",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--hover-bg)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"hosting\"] > section": {
+      "padding": "var(--jx-space-4)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-md)"
+    },
+    "& [part=\"busy\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-2) var(--jx-space-5)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"failure\"]": {
+      "$description": "`failure`, not `error`: a kit text field keeps a permanent live region named `error`, and a rule on that name would reach the summary field's (surface-part-names.test.ts).",
+      "margin": "0",
+      "padding": "var(--jx-space-2) var(--jx-space-5)",
+      "color": "var(--danger)",
+      "borderTop": "1px solid var(--border)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "header",
+      "attributes": {
+        "part": "head"
+      },
+      "children": [
+        {
+          "tagName": "h2",
+          "attributes": {
+            "part": "heading",
+            "id": "${state.titleId}"
+          },
+          "textContent": "Publish"
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "headline"
+          },
+          "textContent": "${state.headline}"
+        }
+      ]
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "part": "tabs",
+        "selected": "${state.tab}"
+      },
+      "$props": {
+        "label": "Publish views"
+      },
+      "onchange": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/selectTab"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail"
+              }
+            ]
+          }
+        ]
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/tabs"
+          },
+          "key": {
+            "$ref": "$map/item/value"
+          },
+          "map": {
+            "tagName": "jx-tab",
+            "attributes": {
+              "part": "tab",
+              "value": "${$map.item.value}",
+              "label": "${$map.item.label}",
+              "panel": "${state.panelId}",
+              "data-tab": "${$map.item.value}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body",
+        "id": "${state.panelId}",
+        "role": "tabpanel",
+        "data-tab": "${state.tab}",
+        "aria-label": "${state.tabTitle}"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "tab-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/tab"
+          },
+          "cases": {
+            "review": {
+              "tagName": "div",
+              "attributes": {
+                "part": "review-slot-mood",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/mood"
+              },
+              "cases": {
+                "no-project": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-message"
+                      },
+                      "textContent": "Open a project to publish it. Publishing reviews your saved changes and sends them to your site."
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "clone-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/canClone"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "clone"
+                          },
+                          "$props": {
+                            "size": "sm"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/clone"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-icon",
+                              "$props": {
+                                "name": "download-simple"
+                              }
+                            },
+                            {
+                              "tagName": "span",
+                              "textContent": "Clone Git Repository"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "loading": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "status"
+                  },
+                  "textContent": "Loading…"
+                },
+                "no-repo": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty-message"
+                      },
+                      "textContent": "This project is not tracked by git yet. Publishing starts with a repository, which keeps every version you publish."
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "empty-actions"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "init"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "accent",
+                            "disabled": {
+                              "$ref": "#/state/busy"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/initRepository"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-icon",
+                              "$props": {
+                                "name": "plus"
+                              }
+                            },
+                            {
+                              "tagName": "span",
+                              "textContent": "Initialize Repository"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "repo": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "review"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "changes-column"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "sync-bar"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "refresh"
+                              },
+                              "$props": {
+                                "icon": "arrows-clockwise",
+                                "size": "sm",
+                                "quiet": true,
+                                "label": "Refresh",
+                                "hint": "Refresh source control",
+                                "disabled": {
+                                  "$ref": "#/state/busy"
+                                }
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/refresh"
+                                    },
+                                    "value": []
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "sync-text"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "sync-label"
+                                  },
+                                  "textContent": "${state.syncLabel}"
+                                },
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "updated-slot",
+                                    "role": "none"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "$switch": {
+                                    "$ref": "#/state/hasLastUpdated"
+                                  },
+                                  "cases": {
+                                    "true": {
+                                      "tagName": "span",
+                                      "attributes": {
+                                        "part": "sync-time"
+                                      },
+                                      "textContent": "${state.lastUpdated}"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "remote-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/remoteState"
+                              },
+                              "cases": {
+                                "remote": {
+                                  "tagName": "jx-action-group",
+                                  "attributes": {
+                                    "part": "sync-actions"
+                                  },
+                                  "$props": {
+                                    "label": "Sync with the remote",
+                                    "compact": false
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "jx-action-button",
+                                      "attributes": {
+                                        "part": "fetch"
+                                      },
+                                      "$props": {
+                                        "icon": "download-simple",
+                                        "size": "sm",
+                                        "quiet": true,
+                                        "label": "Fetch",
+                                        "hint": "Fetch from the remote",
+                                        "disabled": {
+                                          "$ref": "#/state/busy"
+                                        }
+                                      },
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/fetch"
+                                            },
+                                            "value": []
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "tagName": "jx-action-button",
+                                      "attributes": {
+                                        "part": "pull"
+                                      },
+                                      "$props": {
+                                        "icon": "arrow-down",
+                                        "size": "sm",
+                                        "quiet": true,
+                                        "label": {
+                                          "$ref": "#/state/pullLabel"
+                                        },
+                                        "hint": {
+                                          "$ref": "#/state/pullLabel"
+                                        },
+                                        "disabled": {
+                                          "$ref": "#/state/busy"
+                                        }
+                                      },
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/pull"
+                                            },
+                                            "value": []
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "tagName": "jx-action-button",
+                                      "attributes": {
+                                        "part": "push"
+                                      },
+                                      "$props": {
+                                        "icon": "arrow-up",
+                                        "size": "sm",
+                                        "quiet": true,
+                                        "label": {
+                                          "$ref": "#/state/pushLabel"
+                                        },
+                                        "hint": {
+                                          "$ref": "#/state/pushLabel"
+                                        },
+                                        "disabled": {
+                                          "$ref": "#/state/busy"
+                                        }
+                                      },
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/push"
+                                            },
+                                            "value": []
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                },
+                                "local": {
+                                  "tagName": "jx-button",
+                                  "attributes": {
+                                    "part": "create-repository"
+                                  },
+                                  "$props": {
+                                    "size": "sm",
+                                    "disabled": {
+                                      "$ref": "#/state/busy"
+                                    }
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/createRepository"
+                                        },
+                                        "value": []
+                                      }
+                                    ]
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "jx-icon",
+                                      "$props": {
+                                        "name": "share-network"
+                                      }
+                                    },
+                                    {
+                                      "tagName": "span",
+                                      "textContent": "Create GitHub repository"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "section",
+                          "attributes": {
+                            "part": "changes"
+                          },
+                          "children": [
+                            {
+                              "tagName": "h3",
+                              "attributes": {
+                                "part": "section-heading"
+                              },
+                              "textContent": "Changes"
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "changes-bar"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "included"
+                                  },
+                                  "textContent": "${state.includedLabel}"
+                                },
+                                {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "include-all-slot",
+                                    "role": "none"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "$switch": {
+                                    "$ref": "#/state/filesState"
+                                  },
+                                  "cases": {
+                                    "listed": {
+                                      "tagName": "jx-checkbox",
+                                      "attributes": {
+                                        "part": "include-all"
+                                      },
+                                      "$props": {
+                                        "checked": {
+                                          "$ref": "#/state/allIncluded"
+                                        },
+                                        "indeterminate": {
+                                          "$ref": "#/state/someIncluded"
+                                        },
+                                        "size": "sm"
+                                      },
+                                      "onchange": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/includeAll"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "event#/target/checked"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "span",
+                                          "textContent": "Include all"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "groups-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/filesState"
+                              },
+                              "cases": {
+                                "listed": {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "groups"
+                                  },
+                                  "children": [
+                                    {
+                                      "$prototype": "Array",
+                                      "items": {
+                                        "$ref": "#/state/groups"
+                                      },
+                                      "key": {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "map": {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "group"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "div",
+                                            "attributes": {
+                                              "part": "group-name"
+                                            },
+                                            "textContent": "${$map.item.name}"
+                                          },
+                                          {
+                                            "$prototype": "Array",
+                                            "items": {
+                                              "$ref": "$map/item/files"
+                                            },
+                                            "key": {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            "map": {
+                                              "tagName": "div",
+                                              "attributes": {
+                                                "part": "file-row",
+                                                "data-path": "${$map.item.path}",
+                                                "data-included": "${$map.item.included}"
+                                              },
+                                              "children": [
+                                                {
+                                                  "tagName": "jx-checkbox",
+                                                  "attributes": {
+                                                    "part": "include",
+                                                    "data-path": "${$map.item.path}"
+                                                  },
+                                                  "$props": {
+                                                    "checked": {
+                                                      "$ref": "$map/item/included"
+                                                    },
+                                                    "label": {
+                                                      "$ref": "$map/item/includeLabel"
+                                                    },
+                                                    "size": "sm"
+                                                  },
+                                                  "onchange": {
+                                                    "$prototype": "Function",
+                                                    "body": [
+                                                      {
+                                                        "operator": "call",
+                                                        "target": {
+                                                          "$ref": "#/state/include"
+                                                        },
+                                                        "value": [
+                                                          {
+                                                            "$ref": "$map/item/path"
+                                                          },
+                                                          {
+                                                            "$ref": "event#/target/checked"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                },
+                                                {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "file-text"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "tagName": "span",
+                                                      "attributes": {
+                                                        "part": "file-name"
+                                                      },
+                                                      "textContent": "${$map.item.name}"
+                                                    },
+                                                    {
+                                                      "tagName": "span",
+                                                      "attributes": {
+                                                        "part": "dir-slot",
+                                                        "role": "none"
+                                                      },
+                                                      "style": {
+                                                        "display": "contents"
+                                                      },
+                                                      "$switch": {
+                                                        "$ref": "$map/item/hasDir"
+                                                      },
+                                                      "cases": {
+                                                        "true": {
+                                                          "tagName": "span",
+                                                          "attributes": {
+                                                            "part": "file-dir"
+                                                          },
+                                                          "textContent": "${$map.item.dir}"
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "badge",
+                                                    "data-status": "${$map.item.status}",
+                                                    "title": "${$map.item.statusWord}"
+                                                  },
+                                                  "textContent": "${$map.item.status}"
+                                                },
+                                                {
+                                                  "tagName": "jx-action-button",
+                                                  "attributes": {
+                                                    "part": "compare",
+                                                    "data-path": "${$map.item.path}"
+                                                  },
+                                                  "$props": {
+                                                    "icon": "columns",
+                                                    "size": "sm",
+                                                    "quiet": true,
+                                                    "label": {
+                                                      "$ref": "$map/item/compareLabel"
+                                                    },
+                                                    "hint": "Before and after"
+                                                  },
+                                                  "onclick": {
+                                                    "$prototype": "Function",
+                                                    "body": [
+                                                      {
+                                                        "operator": "call",
+                                                        "target": {
+                                                          "$ref": "#/state/compare"
+                                                        },
+                                                        "value": [
+                                                          {
+                                                            "$ref": "$map/item/path"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                },
+                                                {
+                                                  "tagName": "jx-action-button",
+                                                  "attributes": {
+                                                    "part": "discard",
+                                                    "data-path": "${$map.item.path}"
+                                                  },
+                                                  "$props": {
+                                                    "icon": "arrow-u-up-left",
+                                                    "size": "sm",
+                                                    "quiet": true,
+                                                    "label": {
+                                                      "$ref": "$map/item/discardLabel"
+                                                    },
+                                                    "hint": {
+                                                      "$ref": "$map/item/discardHint"
+                                                    },
+                                                    "disabled": {
+                                                      "$ref": "$map/item/cannotDiscard"
+                                                    }
+                                                  },
+                                                  "onclick": {
+                                                    "$prototype": "Function",
+                                                    "body": [
+                                                      {
+                                                        "operator": "call",
+                                                        "target": {
+                                                          "$ref": "#/state/discard"
+                                                        },
+                                                        "value": [
+                                                          {
+                                                            "$ref": "$map/item/path"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                },
+                                "empty": {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "empty-message"
+                                  },
+                                  "textContent": "Nothing to publish. Files you edit and save show up here, ready to review."
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "section",
+                          "attributes": {
+                            "part": "history"
+                          },
+                          "children": [
+                            {
+                              "tagName": "h3",
+                              "attributes": {
+                                "part": "section-heading"
+                              },
+                              "textContent": "Recent commits"
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "history-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/commitsState"
+                              },
+                              "cases": {
+                                "listed": {
+                                  "tagName": "ul",
+                                  "attributes": {
+                                    "part": "history-list"
+                                  },
+                                  "children": [
+                                    {
+                                      "$prototype": "Array",
+                                      "items": {
+                                        "$ref": "#/state/commits"
+                                      },
+                                      "key": {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "map": {
+                                        "tagName": "li",
+                                        "attributes": {
+                                          "part": "history-entry"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "attributes": {
+                                              "part": "history-hash"
+                                            },
+                                            "textContent": "${$map.item.hash}"
+                                          },
+                                          {
+                                            "tagName": "span",
+                                            "attributes": {
+                                              "part": "history-message"
+                                            },
+                                            "textContent": "${$map.item.message}"
+                                          },
+                                          {
+                                            "tagName": "span",
+                                            "attributes": {
+                                              "part": "history-meta"
+                                            },
+                                            "textContent": "${$map.item.meta}"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                },
+                                "empty": {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "empty-message"
+                                  },
+                                  "textContent": "No commits yet. Each change set you publish becomes a version you can come back to."
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "publish-column"
+                      },
+                      "children": [
+                        {
+                          "tagName": "section",
+                          "attributes": {
+                            "part": "checks"
+                          },
+                          "children": [
+                            {
+                              "tagName": "h3",
+                              "attributes": {
+                                "part": "section-heading"
+                              },
+                              "textContent": "Checks"
+                            },
+                            {
+                              "tagName": "ul",
+                              "attributes": {
+                                "part": "check-list"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/checks"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/key"
+                                  },
+                                  "map": {
+                                    "tagName": "li",
+                                    "attributes": {
+                                      "part": "check",
+                                      "data-check": "${$map.item.key}",
+                                      "data-state": "${$map.item.state}"
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "check-icon",
+                                          "aria-hidden": "true"
+                                        },
+                                        "textContent": "${$map.item.icon}"
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "check-text"
+                                        },
+                                        "textContent": "${$map.item.text}"
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "check-action-slot",
+                                          "role": "none"
+                                        },
+                                        "style": {
+                                          "display": "contents"
+                                        },
+                                        "$switch": {
+                                          "$ref": "$map/item/hasAction"
+                                        },
+                                        "cases": {
+                                          "true": {
+                                            "tagName": "jx-button",
+                                            "attributes": {
+                                              "part": "check-action",
+                                              "title": "${$map.item.actionTitle}",
+                                              "data-check": "${$map.item.key}"
+                                            },
+                                            "$props": {
+                                              "size": "sm",
+                                              "disabled": {
+                                                "$ref": "$map/item/actionDisabled"
+                                              }
+                                            },
+                                            "onclick": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/runCheck"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "$map/item/key"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            "children": [
+                                              {
+                                                "tagName": "span",
+                                                "textContent": "${$map.item.actionLabel}"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "section",
+                          "attributes": {
+                            "part": "destination",
+                            "data-jx-region": "${state.commitRegion}",
+                            "aria-labelledby": "${state.destinationId}"
+                          },
+                          "children": [
+                            {
+                              "tagName": "h3",
+                              "attributes": {
+                                "part": "section-heading",
+                                "id": "${state.destinationId}"
+                              },
+                              "textContent": "Where should these changes go?"
+                            },
+                            {
+                              "tagName": "jx-action-group",
+                              "attributes": {
+                                "part": "destinations"
+                              },
+                              "$props": {
+                                "selects": "single",
+                                "label": "Destination",
+                                "compact": false,
+                                "orientation": "vertical"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/destinations"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/value"
+                                  },
+                                  "map": {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "destination-card",
+                                      "data-destination": "${$map.item.value}"
+                                    },
+                                    "$props": {
+                                      "label": {
+                                        "$ref": "$map/item/label"
+                                      },
+                                      "checked": {
+                                        "$ref": "$map/item/checked"
+                                      },
+                                      "disabled": {
+                                        "$ref": "$map/item/disabled"
+                                      },
+                                      "hint": {
+                                        "$ref": "$map/item/reason"
+                                      },
+                                      "quiet": false
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/pickDestination"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/value"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "choice-name"
+                                        },
+                                        "textContent": "${$map.item.label}"
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "choice-note"
+                                        },
+                                        "textContent": "${$map.item.note}"
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "refusal-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/hasRefusal"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "refusal"
+                                  },
+                                  "textContent": "${state.refusal}"
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "jx-field",
+                              "attributes": {
+                                "part": "summary-field"
+                              },
+                              "$props": {
+                                "label": "Summary",
+                                "span": true,
+                                "description": "Saved with the change as its commit message."
+                              },
+                              "children": [
+                                {
+                                  "tagName": "jx-textfield",
+                                  "attributes": {
+                                    "part": "summary"
+                                  },
+                                  "$props": {
+                                    "multiline": true,
+                                    "size": "sm",
+                                    "placeholder": "Describe what changed, e.g. Add a pricing page",
+                                    "value": {
+                                      "$ref": "#/state/summary"
+                                    }
+                                  },
+                                  "oninput": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/editSummary"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "publish-actions"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "jx-button",
+                                  "attributes": {
+                                    "part": "publish-button",
+                                    "data-destination": "${state.destination}"
+                                  },
+                                  "$props": {
+                                    "variant": "accent",
+                                    "size": "md",
+                                    "disabled": {
+                                      "$ref": "#/state/primaryDisabled"
+                                    }
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/publish"
+                                        },
+                                        "value": []
+                                      }
+                                    ]
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "textContent": "${state.primaryLabel}"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "blocker-slot",
+                                    "role": "none"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "$switch": {
+                                    "$ref": "#/state/hasBlocker"
+                                  },
+                                  "cases": {
+                                    "true": {
+                                      "tagName": "p",
+                                      "attributes": {
+                                        "part": "blocker"
+                                      },
+                                      "textContent": "${state.blocker}"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "review-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/reviewState"
+                              },
+                              "cases": {
+                                "opened": {
+                                  "tagName": "p",
+                                  "attributes": {
+                                    "part": "review-line"
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "attributes": {
+                                        "part": "review-text"
+                                      },
+                                      "textContent": "${state.reviewLine}"
+                                    },
+                                    {
+                                      "tagName": "jx-button",
+                                      "attributes": {
+                                        "part": "open-review"
+                                      },
+                                      "$props": {
+                                        "size": "sm",
+                                        "quiet": true
+                                      },
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/openUrl"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "#/state/reviewUrl"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "span",
+                                          "textContent": "Open pull request"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "deploys": {
+              "tagName": "div",
+              "attributes": {
+                "part": "deploys"
+              },
+              "children": [
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "live"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "Live"
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "live-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/hasLiveUrl"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "live-site"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "live-url"
+                              },
+                              "textContent": "${state.liveUrl}"
+                            },
+                            {
+                              "tagName": "jx-button",
+                              "attributes": {
+                                "part": "visit"
+                              },
+                              "$props": {
+                                "size": "sm"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/openUrl"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "#/state/liveUrl"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "children": [
+                                {
+                                  "tagName": "jx-icon",
+                                  "$props": {
+                                    "name": "globe"
+                                  }
+                                },
+                                {
+                                  "tagName": "span",
+                                  "textContent": "Visit site"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "false": {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "live-none"
+                          },
+                          "textContent": "${state.liveNone}"
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "live-summary"
+                      },
+                      "textContent": "${state.liveSummary}"
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "command-row"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/deployCommands"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "jx-button",
+                            "attributes": {
+                              "part": "command",
+                              "data-command": "${$map.item.id}",
+                              "title": "${$map.item.title}"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "disabled": {
+                                "$ref": "$map/item/disabled"
+                              },
+                              "quiet": false
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/run"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/id"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "${$map.item.label}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "running-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/runningState"
+                  },
+                  "cases": {
+                    "running": {
+                      "tagName": "section",
+                      "attributes": {
+                        "part": "running"
+                      },
+                      "children": [
+                        {
+                          "tagName": "h3",
+                          "attributes": {
+                            "part": "section-heading"
+                          },
+                          "textContent": "Publishing now"
+                        },
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/running"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "activity"
+                            },
+                            "children": [
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "activity-head"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "activity-title"
+                                    },
+                                    "textContent": "${$map.item.title}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "activity-status"
+                                    },
+                                    "textContent": "${$map.item.status}"
+                                  }
+                                ]
+                              },
+                              {
+                                "tagName": "ol",
+                                "attributes": {
+                                  "part": "activity-steps"
+                                },
+                                "children": [
+                                  {
+                                    "$prototype": "Array",
+                                    "items": {
+                                      "$ref": "$map/item/steps"
+                                    },
+                                    "key": {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    "map": {
+                                      "tagName": "li",
+                                      "attributes": {
+                                        "part": "activity-step",
+                                        "data-state": "${$map.item.state}"
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "span",
+                                          "attributes": {
+                                            "part": "step-icon",
+                                            "aria-hidden": "true"
+                                          },
+                                          "textContent": "${$map.item.icon}"
+                                        },
+                                        {
+                                          "tagName": "span",
+                                          "attributes": {
+                                            "part": "step-label"
+                                          },
+                                          "textContent": "${$map.item.label}"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "deploy-history"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "History"
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "reload-deploys"
+                      },
+                      "$props": {
+                        "icon": "arrows-clockwise",
+                        "size": "sm",
+                        "quiet": true,
+                        "label": "Refresh deployments",
+                        "hint": "Ask the host again",
+                        "disabled": {
+                          "$ref": "#/state/deploysBusy"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/reloadDeployments"
+                            },
+                            "value": []
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "deploys-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/deploysState"
+                      },
+                      "cases": {
+                        "listed": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "history-rows",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/historyState"
+                          },
+                          "cases": {
+                            "listed": {
+                              "tagName": "ol",
+                              "attributes": {
+                                "part": "deployment-list"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/history"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/key"
+                                  },
+                                  "map": {
+                                    "tagName": "li",
+                                    "attributes": {
+                                      "part": "deployment",
+                                      "data-environment": "${$map.item.environment}"
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "deployment-when"
+                                        },
+                                        "textContent": "${$map.item.when}"
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "deployment-label"
+                                        },
+                                        "textContent": "${$map.item.label}"
+                                      },
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "deployment-status",
+                                          "data-status": "${$map.item.statusKey}",
+                                          "title": "${$map.item.statusDetail}"
+                                        },
+                                        "textContent": "${$map.item.status}"
+                                      },
+                                      {
+                                        "tagName": "jx-action-button",
+                                        "attributes": {
+                                          "part": "open-deployment"
+                                        },
+                                        "$props": {
+                                          "icon": "arrow-square-out",
+                                          "size": "sm",
+                                          "quiet": true,
+                                          "label": {
+                                            "$ref": "$map/item/openLabel"
+                                          },
+                                          "hint": {
+                                            "$ref": "$map/item/url"
+                                          }
+                                        },
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/openUrl"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/url"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            },
+                            "empty": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "empty-message"
+                              },
+                              "textContent": "The host reports no deployments of this project yet."
+                            }
+                          }
+                        },
+                        "loading": {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "status"
+                          },
+                          "textContent": "Asking the host for its deployments…"
+                        },
+                        "note": {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "empty-message"
+                          },
+                          "textContent": "${state.deploysNote}"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "previews"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "Branch previews"
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "previews-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/previewsState"
+                      },
+                      "cases": {
+                        "listed": {
+                          "tagName": "ol",
+                          "attributes": {
+                            "part": "deployment-list"
+                          },
+                          "children": [
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/previews"
+                              },
+                              "key": {
+                                "$ref": "$map/item/key"
+                              },
+                              "map": {
+                                "tagName": "li",
+                                "attributes": {
+                                  "part": "deployment",
+                                  "data-environment": "${$map.item.environment}"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "deployment-when"
+                                    },
+                                    "textContent": "${$map.item.when}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "deployment-label"
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "deployment-status",
+                                      "data-status": "${$map.item.statusKey}",
+                                      "title": "${$map.item.statusDetail}"
+                                    },
+                                    "textContent": "${$map.item.status}"
+                                  },
+                                  {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "open-deployment"
+                                    },
+                                    "$props": {
+                                      "icon": "arrow-square-out",
+                                      "size": "sm",
+                                      "quiet": true,
+                                      "label": {
+                                        "$ref": "$map/item/openLabel"
+                                      },
+                                      "hint": {
+                                        "$ref": "$map/item/url"
+                                      }
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/openUrl"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/url"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "empty": {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "empty-message"
+                          },
+                          "textContent": "No previews. A branch pushed to the remote is deployed as a preview of its own, with its own address."
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "branches": {
+              "tagName": "div",
+              "attributes": {
+                "part": "branches"
+              },
+              "children": [
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "branch-list-section"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "Branches"
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "branch-bar"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "branch-summary"
+                          },
+                          "textContent": "${state.branchSummary}"
+                        },
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "new-branch"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "disabled": {
+                              "$ref": "#/state/newBranchDisabled"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/newBranch"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-icon",
+                              "$props": {
+                                "name": "plus"
+                              }
+                            },
+                            {
+                              "tagName": "span",
+                              "textContent": "New branch"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "branch-note-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/hasBranchNote"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "branch-note"
+                          },
+                          "textContent": "${state.branchNote}"
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "branches-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/branchesState"
+                      },
+                      "cases": {
+                        "listed": {
+                          "tagName": "ul",
+                          "attributes": {
+                            "part": "branch-list"
+                          },
+                          "children": [
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/branches"
+                              },
+                              "key": {
+                                "$ref": "$map/item/key"
+                              },
+                              "map": {
+                                "tagName": "li",
+                                "attributes": {
+                                  "part": "branch",
+                                  "data-branch": "${$map.item.name}",
+                                  "data-current": "${$map.item.current}"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "jx-icon",
+                                    "attributes": {
+                                      "part": "branch-icon"
+                                    },
+                                    "$props": {
+                                      "name": "git-branch"
+                                    }
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "branch-name"
+                                    },
+                                    "textContent": "${$map.item.name}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "branch-state",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/current"
+                                    },
+                                    "cases": {
+                                      "true": {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "current"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "attributes": {
+                                              "part": "current-tag"
+                                            },
+                                            "textContent": "Current"
+                                          },
+                                          {
+                                            "tagName": "span",
+                                            "attributes": {
+                                              "part": "branch-sync"
+                                            },
+                                            "textContent": "${$map.item.note}"
+                                          }
+                                        ]
+                                      },
+                                      "false": {
+                                        "tagName": "jx-button",
+                                        "attributes": {
+                                          "part": "switch",
+                                          "data-branch": "${$map.item.name}"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "label": {
+                                            "$ref": "$map/item/switchName"
+                                          },
+                                          "disabled": {
+                                            "$ref": "#/state/busy"
+                                          }
+                                        },
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/checkout"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/name"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "textContent": "${$map.item.switchLabel}"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "empty": {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "empty-message"
+                          },
+                          "textContent": "${state.branchesEmpty}"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "hosting": {
+              "tagName": "div",
+              "attributes": {
+                "part": "hosting"
+              },
+              "children": [
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "source"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "Where your project is saved"
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "hosting-summary"
+                      },
+                      "textContent": "${state.sourceSummary}"
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "command-row"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/sourceCommands"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "jx-button",
+                            "attributes": {
+                              "part": "command",
+                              "data-command": "${$map.item.id}",
+                              "title": "${$map.item.title}"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "disabled": {
+                                "$ref": "$map/item/disabled"
+                              },
+                              "quiet": false
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/run"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/id"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "${$map.item.label}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "host"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "Where your site is hosted"
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "host-name"
+                      },
+                      "textContent": "${state.hostTitle}"
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "hosting-summary"
+                      },
+                      "textContent": "${state.hostSummary}"
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "command-row"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/hostCommands"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "jx-button",
+                            "attributes": {
+                              "part": "command",
+                              "data-command": "${$map.item.id}",
+                              "title": "${$map.item.title}"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "disabled": {
+                                "$ref": "$map/item/disabled"
+                              },
+                              "quiet": false
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/run"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/id"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "${$map.item.label}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "build"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "How it is built"
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "hosting-summary"
+                      },
+                      "textContent": "The build adapter decides what the build produces: static files, or a server for sign-in and data routes."
+                    },
+                    {
+                      "tagName": "div",
+                      "$description": "The mount box for the Deploy section (`settings/project-sections.ts` `renderDeploySection`, `surfaces/settings-deploy.json`), which moved here from Project Settings (studio.md §17.1). The flow is handed this node by `onNodeCreated` and mounts the section into it; nothing in this document styles what lands here.",
+                      "attributes": {
+                        "part": "adapter-island",
+                        "role": "none"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "address"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "Your address"
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "domain-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/domainState"
+                      },
+                      "cases": {
+                        "set": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "live-site"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "live-url"
+                              },
+                              "textContent": "${state.domain}"
+                            },
+                            {
+                              "tagName": "jx-button",
+                              "attributes": {
+                                "part": "visit"
+                              },
+                              "$props": {
+                                "size": "sm"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/openUrl"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "#/state/domain"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "children": [
+                                {
+                                  "tagName": "jx-icon",
+                                  "$props": {
+                                    "name": "globe"
+                                  }
+                                },
+                                {
+                                  "tagName": "span",
+                                  "textContent": "Visit site"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "none": {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "hosting-summary"
+                          },
+                          "textContent": "${state.domainNote}"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "section",
+                  "attributes": {
+                    "part": "checklist"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-heading"
+                      },
+                      "textContent": "Deploy checklist"
+                    },
+                    {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "hosting-summary"
+                      },
+                      "textContent": "${state.checklistSummary}"
+                    },
+                    {
+                      "tagName": "ol",
+                      "attributes": {
+                        "part": "checklist-steps"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/checklistSteps"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "li",
+                            "attributes": {
+                              "part": "checklist-step",
+                              "data-step": "${$map.item.id}",
+                              "data-state": "${$map.item.state}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "step-icon",
+                                  "aria-hidden": "true"
+                                },
+                                "textContent": "${$map.item.icon}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "step-label"
+                                },
+                                "textContent": "${$map.item.text}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "busy-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/busy"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "busy",
+            "role": "status"
+          },
+          "textContent": "Working…"
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "failure-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "failure",
+            "role": "alert"
+          },
+          "textContent": "${state.error}"
+        }
+      }
+    }
+  ]
+}

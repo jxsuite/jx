@@ -19,7 +19,7 @@ If Cwicly's shutdown is what brought you here, welcome. Losing a good tool mid-p
 | Custom post types + custom fields | Content types                     | [Content types](/docs/studio/projects/content-types) |
 | Media library                     | Media                             | [Media](/docs/studio/projects/media)                 |
 | Plugins                           | Extensions and npm packages       | [Extending](/docs/extending)                         |
-| Publish button                    | Commit and sync                   | [Publish](/docs/studio/publish)                      |
+| Publish button                    | Publish live                      | [Publish](/docs/studio/publish)                      |
 
 The rest of this page walks through each row, then gets honest about what's different.
 
@@ -57,7 +57,7 @@ The counterweight: much of what plugins did for you is built in (image optimizat
 
 ## Publishing
 
-There's no Publish button mutating a live server. When you're happy, open **Source Control**, write a message, and **Commit and sync**. Studio pushes your files to your repository, and your host rebuilds the site from them. The result is prebuilt pages served from a CDN. The whole flow is in **[Publish](/docs/studio/publish)**.
+There's no Publish button mutating a live server. When you're happy, open the **Publish** workspace, write a summary, and **Publish live**. Studio pushes your files to your repository, and your host rebuilds the site from them. The result is prebuilt pages served from a CDN. The whole flow is in **[Publish](/docs/studio/publish)**.
 
 ## What's different, in one list
 

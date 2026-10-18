@@ -98,6 +98,23 @@ beforeEach(() => {
     {
       args: {
         additionalProperties: false,
+        properties: { tab: { type: "string" } },
+        required: [],
+        type: "object",
+      },
+      category: "Publish",
+      id: "publish.open",
+      level: "project",
+      menus: ["never"],
+      run: (_ctx, args?: CommandArgValues) => {
+        const tab = args?.tab;
+        switched.push(`publish:${isString(tab) ? tab : ""}`);
+      },
+      title: "Show Publish",
+    },
+    {
+      args: {
+        additionalProperties: false,
         properties: { open: { type: "boolean" } },
         required: ["open"],
         type: "object",
@@ -264,17 +281,16 @@ describe("the Moved footnote", () => {
     expect(followed).toEqual(["dock:true"]);
   });
 
-  test("a row naming no Inspector tab runs only the switch", async () => {
+  test("the Hosting row opens Publish on Hosting, in one record", async () => {
     await openSettingsDialog();
     await flush(2);
-    pointer(
-      dialog()!.querySelector<HTMLElement>(
-        '[part="moved-row"][data-moved="publish"] [part="moved-link"]',
-      )!,
-      "click",
-    );
+    const link = dialog()!.querySelector<HTMLElement>(
+      '[part="moved-row"][data-moved="publish"] [part="moved-link"]',
+    )!;
+    expect(link.textContent).toContain("Publish › Hosting");
+    pointer(link, "click");
     await flush(3);
-    expect(switched).toEqual(["publish"]);
+    expect(switched).toEqual(["publish:hosting"]);
     expect(followed).toEqual([]);
   });
 

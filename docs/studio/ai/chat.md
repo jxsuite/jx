@@ -109,7 +109,7 @@ What the assistant may change, and how you take it back, follows two rules:
 **File-level changes** (new pages, new components, whole-file rewrites) are saved straight to disk and are **not undoable** from Studio's history. Three guards keep this safe. The assistant writes only inside the open project: a path outside it (one starting with `/`, a drive letter or `~`, or one that climbs out with `..`) is refused before anything is written. Jx documents are validated (and test-rendered) before writing. And the assistant refuses to overwrite a file you have open with unsaved changes. When it writes a file you _do_ have open (with no unsaved edits), the tab refreshes to show the new contents.
 
 :::doc-tip
-For disk-level changes, source control is the review tool: the **[Source Control](/docs/studio/publish/source-control)** panel shows every file the assistant touched as a pending change you can diff or discard before committing.
+For disk-level changes, source control is the review tool: **[Review changes](/docs/studio/publish/source-control)** in the Publish workspace shows every file the assistant touched as a pending change you can compare or discard before publishing.
 :::
 
 ## Chats and history

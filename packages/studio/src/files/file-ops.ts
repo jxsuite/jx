@@ -254,8 +254,9 @@ export async function openFile() {
  * **By injection**, the idiom `setSurfaceTeardown` and `setDiffRepaint` already use. The one
  * listener today is source control: a comparison is two texts read once, so it does not notice a
  * save on its own, and the file an author is most likely to save is the one they are reviewing. A
- * direct import would put `panels/git-panel.ts` into this module's graph, which is a load error for
- * every suite that mocks the canvas host out from under it.
+ * direct import would put `publish/source-control.ts` and the comparison opener behind it into this
+ * module's graph, which is a load error for every suite that mocks the canvas host out from under
+ * it.
  *
  * The listener is handed the document as well as the path, for the second listener: the live chrome
  * lane (`services/live-surfaces.ts`) re-mounts a saved surface from the document the tab just wrote

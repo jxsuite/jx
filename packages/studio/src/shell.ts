@@ -49,6 +49,9 @@ import {
   WORKSPACES,
 } from "./workspace/workspace-ids";
 import type { WorkspaceId } from "./workspace/workspace-ids";
+import { DEFAULT_PUBLISH_DESTINATION, DEFAULT_PUBLISH_TAB } from "./publish/publish-ids";
+import type { PublishDestination, PublishTab } from "./publish/publish-ids";
+import type { PagesDeploymentInfo } from "./publish/pages-service";
 
 /**
  * The three resizable docks around the pane grid: two flanking it, one under it.
@@ -97,7 +100,6 @@ export const NAVIGATOR_PANEL_IDS = [
   "collections",
   "files",
   "search",
-  "git",
   "i18n",
   "layers",
   "data",
@@ -123,6 +125,10 @@ const RENAMED_PANEL_IDS = new Map<string, NavigatorPanelId>([
   ["head", "site"],
   ["page", "site"],
   ["imports", "packages"],
+  /* A move out of the Navigator altogether: Source Control is the Publish workspace's Review
+     changes and Branches now (§5.5, §22.8), so the Navigator has no panel of that name. A stored
+     `git` reopens on the Site panel, the Design workspace's own default, rather than on nothing. */
+  ["git", "site"],
   /* Not a rename — a MERGE. The State editor is part of the Data panel now (§5.6), so a
      stored `leftTab: "state"` names a real place and lands on it, rather than returning `null` and
      booting into the default the way `problems` does. Defining a value and watching it resolve are
@@ -292,10 +298,30 @@ export interface ShellGit {
    */
   rev: number;
   logEntries: GitLogEntry[] | null;
-  /** "changes" | "history" — the panel's sub-tab. */
-  subTab: string;
   /** Epoch ms of the last successful refresh, or null when never refreshed. */
   lastUpdated: number | null;
+}
+
+/**
+ * What the Publish workspace is showing (studio.md §22.8): which sub-tab, and which destination its
+ * Review changes and the quick publish dialog offer. Project level, like the repository both
+ * describe, and reset with it, so the next project opens on Review changes rather than on the last
+ * project's Branches.
+ */
+export interface ShellPublish {
+  tab: PublishTab;
+  destination: PublishDestination;
+  /** What the host said about the connected project's deployments, and for which Pages project. */
+  deploys: {
+    state: "idle" | "loading" | "loaded" | "failed";
+    rows: PagesDeploymentInfo[];
+    error: string;
+    project: string;
+  };
+  /** The last build check, and the change set it was run against (`publish/publish-changes.ts`). */
+  build: { state: "idle" | "running" | "passed" | "failed"; text: string; for: string };
+  /** The pull request Send for review last opened; `number` 0 for none. */
+  review: { number: number; url: string };
 }
 
 /** The stylebook catalogue's selection and filters — project level, like the styles they edit. */
@@ -417,6 +443,7 @@ export interface ShellState {
   layoutSelection: LayoutHit | null;
   stylebook: ShellStylebook;
   git: ShellGit;
+  publish: ShellPublish;
 }
 
 export const DOCK_STORAGE_KEY = "jx-studio-panel-widths";
@@ -586,7 +613,16 @@ function freshGit(): ShellGit {
     logEntries: null,
     rev: 0,
     status: null,
-    subTab: "changes",
+  };
+}
+
+function freshPublish(): ShellPublish {
+  return {
+    build: { for: "", state: "idle", text: "" },
+    deploys: { error: "", project: "", rows: [], state: "idle" },
+    destination: DEFAULT_PUBLISH_DESTINATION,
+    review: { number: 0, url: "" },
+    tab: DEFAULT_PUBLISH_TAB,
   };
 }
 
@@ -619,6 +655,7 @@ function createShellState(): ShellState {
     focusRegion: "pane",
     paneSplit: clampPaneSplit(saved.paneSplit),
     git: freshGit(),
+    publish: freshPublish(),
     layoutSelection: null,
     leftTab: migratePanelId(saved.leftTab) ?? DEFAULT_PANEL_ID,
     stylebook: freshStylebook(),
@@ -1171,6 +1208,7 @@ export function setLayoutSelection(selection: LayoutHit | null): void {
  */
 export function resetProjectShell(): void {
   Object.assign(shell.git, freshGit());
+  Object.assign(shell.publish, freshPublish());
   Object.assign(shell.stylebook, freshStylebook());
   shell.layoutSelection = null;
   // …and which project's session may be written, so the one being opened cannot be overwritten

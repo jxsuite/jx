@@ -1,5 +1,5 @@
 /**
- * `Publish:` family tests — the three records' gates, and `runDeploy` as an Activity.
+ * `Publish:` family tests: the five records' gates, and `runDeploy` as an Activity.
  *
  * Two things are asserted that are easy to get wrong and invisible when they are:
  *
@@ -11,7 +11,7 @@
  *   `probe.idle()` and every screenshot after it.
  */
 import { flush, installMockPlatform, resetStudioState, mountOverlayLayers } from "./harness";
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { isString } from "@jxsuite/schema/guards";
 
 const { activities, resetActivities } = await import("../src/panels/activity-panel");
@@ -21,6 +21,8 @@ const { dashboardUrl, publishCommands, registerPublishCommands, runDeploy } =
   await import("../src/publish/publish-commands");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext, makeContext } = await import("../src/commands/context");
+const { setActiveRegistry } = await import("../src/commands/active-registry");
+const { resetProjectShell, shell } = await import("../src/shell");
 
 const DEPLOY = {
   provider: "cloudflare-pages" as const,
@@ -43,9 +45,17 @@ function command(id: string) {
 
 /** Run a Publish record the way the palette does: an empty context and no arguments. */
 function runCommand(id: string): void | Promise<void> {
-  /* SAFETY: a stored record is `AnyCommand`, whose args are erased to `never`. None of the three
-     Publish records declares `args`, so the registry hands each `run` undefined as well. */
+  /* SAFETY: a stored record is `AnyCommand`, whose args are erased to `never`. The records run
+     here declare no `args`, so the registry hands each `run` undefined as well. */
   return command(id).run(emptyContext(), undefined as never);
+}
+
+/** A context whose host can reach Cloudflare (`capability.publish`), with a project in `project`. */
+function canPublish(project: { open?: boolean; isRepo?: boolean }) {
+  return makeContext({
+    capability: { ...emptyContext().capability, publish: true },
+    project: { ...emptyContext().project, ...project },
+  });
 }
 
 function connect() {
@@ -61,18 +71,28 @@ beforeEach(() => {
 });
 
 describe("the records", () => {
-  test("three of them, all Publish, all project-level", () => {
+  test("five of them, all Publish, all project-level", () => {
     const records = publishCommands();
     expect(records.map((record) => record.id)).toEqual([
       "publish.setUp",
       "publish.deploy",
       "publish.openDashboard",
+      "publish.quick",
+      "publish.open",
     ]);
     expect(records.every((record) => record.category === "Publish")).toBe(true);
     expect(records.every((record) => record.level === "project")).toBe(true);
     // Always REACHABLE, never silently absent: the palette shows them and states the requirement.
-    expect(records.every((record) => (record.menus ?? []).includes("palette"))).toBe(true);
+    // `publish.open` is the one scripted door, for the reason `styles.open` is: the palette's way
+    // Into Publish is "Go to Publish".
+    const listed = records.filter((record) => record.id !== "publish.open");
+    expect(listed.every((record) => (record.menus ?? []).includes("palette"))).toBe(true);
+    expect(command("publish.open").menus).toEqual(["never"]);
     expect(records.every((record) => isString(record.requires))).toBe(true);
+    // Publishing is a workspace, never a primary command (studio.md §22.2).
+    expect(records.some((record) => (record.menus ?? []).includes("commandbar/primary"))).toBe(
+      false,
+    );
   });
 
   test("registering them passes the registry's own placement and id checks", () => {
@@ -80,17 +100,19 @@ describe("the records", () => {
     registerPublishCommands(registry);
     expect([...registry.list()].map((record) => record.id).toSorted()).toEqual([
       "publish.deploy",
+      "publish.open",
       "publish.openDashboard",
+      "publish.quick",
       "publish.setUp",
     ]);
   });
 
-  test("all three are hidden with no project, and all three appear with one", () => {
+  test("the gated four are hidden with no project, and appear with one", () => {
     // "Always listed" (docs/studio/publish.md): with a project open the family is VISIBLE even
     // When it cannot run, so the palette states the requirement instead of the row silently not
     // Existing.
     const open = makeContext({ project: { open: true } });
-    for (const record of publishCommands()) {
+    for (const record of publishCommands().filter((entry) => entry.when)) {
       expect(record.when!(emptyContext())).toBe(false);
       expect(record.when!(open)).toBe(true);
     }
@@ -105,20 +127,18 @@ describe("the records", () => {
     expect(setUp.when!(emptyContext())).toBe(false);
     const open = makeContext({ project: { open: true } });
     expect(setUp.when!(open)).toBe(true);
-    // No `cfApi` on the mock platform → enabled is false, and `requires` says why.
+    // No `capability.publish` (no `cfApi` on the host) → enabled is false, and `requires` says why.
     expect(setUp.enablement!(open)).toBe(false);
-    installMockPlatform({ cfApi: async () => ({}) });
-    expect(setUp.enablement!(open)).toBe(true);
+    expect(setUp.enablement!(canPublish({ open: true }))).toBe(true);
   });
 
   test("Deploy needs a repository AND a connected provider AND a host that can reach CF", () => {
     const deploy = command("publish.deploy");
-    const repo = makeContext({ project: { isRepo: true, open: true } });
-    installMockPlatform({ cfApi: async () => ({}) });
+    const repo = canPublish({ isRepo: true, open: true });
     expect(deploy.enablement!(repo)).toBe(false);
     connect();
     expect(deploy.enablement!(repo)).toBe(true);
-    expect(deploy.enablement!(makeContext({ project: { open: true } }))).toBe(false);
+    expect(deploy.enablement!(canPublish({ open: true }))).toBe(false);
   });
 
   /*
@@ -128,7 +148,7 @@ describe("the records", () => {
    * pushing the branch, then failing at `latestDeployment` after the push had gone out.
    */
   test("…and all three refuse on a host with no Cloudflare API, not just Set Up", () => {
-    installMockPlatform(); // No cfApi on this host.
+    // No `capability.publish`: this host has no `cfApi`.
     connect();
     const ctx = makeContext({ project: { isRepo: true, open: true } });
     for (const id of ["publish.setUp", "publish.deploy", "publish.openDashboard"]) {
@@ -138,10 +158,9 @@ describe("the records", () => {
 
   test("Open Dashboard needs only the connection, and builds Cloudflare's own URL", () => {
     const dashboard = command("publish.openDashboard");
-    installMockPlatform({ cfApi: async () => ({}) });
-    expect(dashboard.enablement!(makeContext({ project: { open: true } }))).toBe(false);
+    expect(dashboard.enablement!(canPublish({ open: true }))).toBe(false);
     connect();
-    expect(dashboard.enablement!(makeContext({ project: { open: true } }))).toBe(true);
+    expect(dashboard.enablement!(canPublish({ open: true }))).toBe(true);
     expect(dashboardUrl("acct", "site")).toBe("https://dash.cloudflare.com/acct/pages/view/site");
   });
 
@@ -192,6 +211,54 @@ describe("the records", () => {
     void runCommand("publish.openDashboard");
     window.open = original;
     expect(opened).toEqual([]);
+  });
+});
+
+describe("the workspace doors", () => {
+  afterEach(() => {
+    setActiveRegistry(null);
+  });
+
+  test("Quick Publish needs a repository, and is never a primary command", () => {
+    const quick = command("publish.quick");
+    expect(quick.enablement!(makeContext({ project: { open: true } }))).toBe(false);
+    expect(quick.enablement!(makeContext({ project: { isRepo: true, open: true } }))).toBe(true);
+    expect(quick.menus).toEqual(["commandbar/overflow", "palette"]);
+  });
+
+  test("Show Publish switches to the workspace, then to the sub-tab it names", async () => {
+    const ran: unknown[] = [];
+    const registry = createCommandRegistry({
+      getContext: () => makeContext({ project: { open: true } }),
+    });
+    registry.register({
+      category: "View",
+      id: "view.setWorkspace",
+      level: "application",
+      run: (_ctx, args) => {
+        ran.push(args);
+      },
+      title: "Show Workspace",
+    });
+    registerPublishCommands(registry);
+    setActiveRegistry(registry);
+    resetProjectShell();
+    await registry.run("publish.open", { tab: "deploys" });
+    expect(ran).toEqual([{ workspace: "publish" }]);
+    expect(shell.publish.tab).toBe("deploys");
+    // With no tab named, the workspace keeps the one it was left on.
+    await registry.run("publish.open", {});
+    expect(shell.publish.tab).toBe("deploys");
+    expect(() => registry.run("publish.open", { tab: "history" })).toThrow(/not declared/);
+  });
+
+  test("Show Publish refuses with no registry to switch through", async () => {
+    setActiveRegistry(null);
+    /* SAFETY: a stored record is `AnyCommand`, whose args are erased to `never`; `publish.open`'s
+       schema admits the empty object, which is what the registry would hand it with no tab. */
+    const noArgs = {} as never;
+    const running = Promise.resolve(command("publish.open").run(emptyContext(), noArgs));
+    await expect(running).rejects.toThrow(/needs the window's command registry/);
   });
 });
 

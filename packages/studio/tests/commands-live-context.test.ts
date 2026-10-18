@@ -449,6 +449,7 @@ describe("collab, ai and capabilities", () => {
       gitClone: false,
       importSite: false,
       openProjectInNewWindow: false,
+      publish: false,
       readFileBytes: false,
       windowControls: false,
     });
@@ -469,10 +470,19 @@ describe("collab, ai and capabilities", () => {
       gitClone: true,
       importSite: false,
       openProjectInNewWindow: false,
+      publish: false,
       // On: the harness's mock ships `readFileBytes`, which is what gates the image editor.
       readFileBytes: true,
       windowControls: true,
     });
+  });
+
+  /* The Publish family's host question: whether it can reach Cloudflare. It is the member it is
+     named after, so a host gains the deploy records by gaining `cfApi` and by nothing else. */
+  test("publish follows cfApi", () => {
+    const { platform } = installMockPlatform({ cfApi: async () => null });
+    const ctx = createLiveContext(sources({ platform: () => platform }))();
+    expect(ctx.capability.publish).toBe(true);
   });
 
   test("findReferences follows its own PAL member, not codeService", () => {

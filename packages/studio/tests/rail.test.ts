@@ -15,23 +15,14 @@ import type { GitStatusResult } from "../src/types";
 const { listPanels, registerPanel, unregisterPanel } = await import("../src/panels/panel-registry");
 
 const refreshGitStatus = mock(async () => {});
-// The rail is a rendering of the panel registry, so a mocked git-panel still contributes its
-// Record, as the real one does: off the rail (§5.1), because Source Control belongs to Publish.
-void mock.module("../src/panels/git-panel.js", () => ({
+/* The rail fetches source control's status once, for the Publish workspace tab's count (§22.2), so
+   the fetch is doubled here. Source Control itself contributes no panel: it is the Publish
+   workspace (§5.5). */
+void mock.module("../src/publish/source-control.js", () => ({
   refreshGitStatus,
-  cleanupGitPanel: () => {},
+  cleanupSourceControl: () => {},
   cloneRepository: () => {},
-  registerGitPanel: () => {
-    registerPanel({
-      id: "git",
-      title: "Source Control",
-      level: "project",
-      dock: "navigator",
-      icon: "git-branch",
-      rail: false,
-      render: () => nothing,
-    });
-  },
+  platformSupportsClone: () => false,
 }));
 
 /**
@@ -200,8 +191,8 @@ describe("renderActivityBar", () => {
     await render();
     const ids = railIds();
     expect(ids).toEqual(["site", "layers", "data"]);
-    // Off the rail by default: the developer panels, Source Control and Languages.
-    for (const id of ["files", "packages", "git", "i18n"]) {
+    // Off the rail by default: the developer panels and Languages.
+    for (const id of ["files", "packages", "i18n"]) {
       expect(ids).not.toContain(id);
     }
     // The Bottom dock's FOUR rail-less tabs stay off it.
@@ -492,6 +483,6 @@ describe("mount", () => {
     expect(bar().querySelector("jx-action-button")).toBeNull();
     shell.git.status = gitStatusWith(2);
     await flush();
-    expect(badgeOf("git")).toBeNull();
+    expect(bar().querySelector('[part="badge"]')).toBeNull();
   });
 });

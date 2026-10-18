@@ -18,7 +18,7 @@ import {
 import type { NavigatorPanelDeps, PanelRecord } from "../src/panels/panel-registry";
 import { setProjectState } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
-import { cleanupGitPanel } from "../src/panels/git-panel";
+import { cleanupSourceControl } from "../src/publish/source-control";
 import {
   navigatorPanelSet,
   registerNavigatorPanels,
@@ -181,7 +181,7 @@ describe("panel placement matrix", () => {
 // ─── the composed set ─────────────────────────────────────────────────────────
 
 describe("the Navigator's panel set", () => {
-  test("registers ten records, in registration order — and Problems is not one of them", () => {
+  test("registers nine records, in registration order — and Problems is not one of them", () => {
     expect(navigatorPanelSet().map((p) => p.id)).toEqual([
       // The Site panel leads: the Project group's one button and the Navigator's default (§5.7).
       "site",
@@ -189,7 +189,7 @@ describe("the Navigator's panel set", () => {
       "collections",
       "files",
       "search",
-      "git",
+      // No `git`: Source Control is the Publish workspace's Review changes and Branches (§5.5).
       // Languages is registered with the PROJECT group and draws no rail button, so it sits here
       // Rather than beside Insert at the end — registration order is roster order, and this list
       // Is what `view.setActivity` and the shot manifest address the panel by.
@@ -211,7 +211,7 @@ describe("the Navigator's panel set", () => {
   test("registerNavigatorPanels is idempotent — the app mounts once, a suite mounts per case", () => {
     registerNavigatorPanels();
     registerNavigatorPanels();
-    expect(listPanels("navigator")).toHaveLength(10);
+    expect(listPanels("navigator")).toHaveLength(9);
     // …and it composes the Bottom dock's tabs in the same pass, still exactly once each. There is
     // No `diff` among them: it was a reserved id with no record behind it, so it could only ever
     // Select a hidden tab.
@@ -264,20 +264,16 @@ describe("the Navigator's panel set", () => {
     }
   });
 
-  test("Source Control keeps its title and leaves the rail (§5.1)", () => {
+  test("Source Control is not a Navigator panel: Publish hosts it (§5.5)", () => {
     registerNavigatorPanels();
-    const git = getPanel("git");
-    // The header and the `Show …` command read the title; with no button there is no rail label.
-    expect(git?.title).toBe("Source Control");
-    expect(git?.rail).toBe(false);
-    expect(git?.railLabel).toBeUndefined();
+    expect(getPanel("git")).toBeUndefined();
   });
 
   test("Files and Packages are developer panels; Search, Languages and Insert have no button", () => {
     registerNavigatorPanels();
     expect(getPanel("files")?.rail).toBe("developer");
     expect(getPanel("packages")?.rail).toBe("developer");
-    for (const id of ["search", "git", "i18n", "insert"]) {
+    for (const id of ["search", "i18n", "insert"]) {
       expect(getPanel(id)?.rail).toBe(false);
     }
     expect(getPanel("site")?.rail).toBeUndefined();
@@ -351,14 +347,14 @@ function projectPanelDeps(): NavigatorPanelDeps {
  */
 describe("every project-level panel renders with no document open", () => {
   afterEach(() => {
-    cleanupGitPanel();
+    cleanupSourceControl();
     resetProjectShell();
     setProjectState(null);
     closeAllTabs();
   });
 
   test("no tab, no throw — cold, empty, and with a working tree to draw", async () => {
-    const { platform } = installMockPlatform();
+    installMockPlatform();
     setProjectState({
       dirs: new Map(),
       expanded: new Set(),
@@ -376,7 +372,7 @@ describe("every project-level panel renders with no document open", () => {
     const ctx = panelContext();
     const panels = listPanels().filter((p) => p.level === "project" && isPanelVisible(p, ctx));
     // Search is registered, `when`-hidden and deliberately unbuilt (its render throws), so the
-    // Set under test is the four that DRAW — two Navigator panels and two Bottom-dock tabs, since
+    // Set under test is the five that DRAW — three Navigator panels and two Bottom-dock tabs, since
     // The corollary is about a panel's LEVEL and not about which dock hosts it. Named rather than
     // Counted: a panel that quietly stopped being project-level would otherwise shrink this loop
     // To nothing and still pass.
@@ -384,7 +380,6 @@ describe("every project-level panel renders with no document open", () => {
       "site",
       "collections",
       "files",
-      "git",
       "problems",
       "activity",
     ]);
@@ -424,36 +419,13 @@ describe("every project-level panel renders with no document open", () => {
 
     // Each pass asserts WHICH body it drew, so "renders three times without throwing" cannot
     // Quietly become "renders the same placeholder three times without throwing".
-    /* The first paint is the one that KICKS the read, and Source Control's body is a document now:
-       it settles inside the same paint that mounts it, so the answer is held back to see what the
-       panel draws while the read is still in flight. */
-    const answer = platform.gitStatus;
-    platform.gitStatus = () => new Promise<never>(() => {});
-    const cold = await paint();
-    expect(cold.get("git")?.textContent).toContain("Loading");
-
-    platform.gitStatus = answer;
-    // The held-back read never settled, so nothing ever cleared its flag; the panel's own bootstrap
-    // Guard is `no status, not loading, no error`, which is the state a fresh project is in.
-    shell.git.loading = false;
     const settled = await paint();
-    expect(settled.get("git")?.textContent).toContain("not tracked by git");
     // Addressed by role, because Files is a document too (`surfaces/files-panel.json`).
     expect(settled.get("files")?.querySelector('[role="tree"]')).not.toBeNull();
 
-    shell.git.branches = { branches: ["main"], current: "main" };
-    shell.git.status = {
-      ahead: 1,
-      behind: 0,
-      branch: "main",
-      files: [{ path: "pages/index.json", staged: false, status: "M" }],
-      isRepo: true,
-      remotes: ["origin"],
-    };
-    const tracked = await paint();
-    // Addressed by `part`, because Source Control is a document now (`surfaces/git-panel.json`).
-    expect(tracked.get("git")?.querySelector('[part="branch-name"]')?.textContent).toBe("main");
-    expect(tracked.get("git")?.querySelector('[part="file-name"]')?.textContent).toBe("index.json");
+    // And it draws again, with no document, which is the corollary under test.
+    const again = await paint();
+    expect(again.get("files")?.querySelector('[role="tree"]')).not.toBeNull();
   });
 });
 
@@ -605,7 +577,7 @@ describe("railDeclarations", () => {
 // ─── the panel context ────────────────────────────────────────────────────────
 
 describe("panelContext", () => {
-  test("sources the Source Control badge from the project record, not the focused tab", () => {
+  test("sources the Publish count from the project record, not the focused tab", () => {
     shell.git.status = {
       ahead: 0,
       behind: 0,

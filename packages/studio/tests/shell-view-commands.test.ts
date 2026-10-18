@@ -114,8 +114,8 @@ describe("the records themselves", () => {
 describe("view.setActivity", () => {
   test("shows the panel and opens the Navigator dock", () => {
     shell.docks.left.collapsed = true;
-    void registry.run("view.setActivity", { tab: "git" });
-    expect(shell.leftTab).toBe("git");
+    void registry.run("view.setActivity", { tab: "files" });
+    expect(shell.leftTab).toBe("files");
     expect(shell.docks.left.collapsed).toBe(false);
   });
 
@@ -131,7 +131,7 @@ describe("view.setActivity", () => {
     // Stale script or an older session still carries.
     expect(() => registry.run("view.setActivity", { tab: "head" })).toThrow(
       'command "view.setActivity" argument "tab": "head" is not declared — declared: ' +
-        "site, collections, files, search, git, i18n, layers, data, packages, insert",
+        "site, collections, files, search, i18n, layers, data, packages, insert",
     );
     expect(shell.leftTab).toBe("layers");
   });
@@ -344,7 +344,7 @@ describe("the enums do not drift from what the shell renders", () => {
     // Registry and this enum agree, which is asserted in `tests/panel-registry.test.ts`; here we
     // Only check that the rail really has stopped keeping its own list.
     expect(declaredValues("../src/surfaces/rail.ts")).toEqual([]);
-    expect(NAVIGATOR_PANEL_IDS.length).toBe(10);
+    expect(NAVIGATOR_PANEL_IDS.length).toBe(9);
   });
 
   test("the Inspector renders exactly INSPECTOR_TAB_IDS", () => {

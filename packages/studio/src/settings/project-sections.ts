@@ -150,6 +150,17 @@ export function renderDeploySection(container: HTMLElement): void {
   );
 }
 
+/**
+ * Take the Deploy section out of a container its host is leaving (Publish › Hosting, when its pane
+ * is torn down). Idempotent.
+ *
+ * @param {HTMLElement} container
+ */
+export function disposeDeploySection(container: HTMLElement): void {
+  deployMounts.get(container)?.dispose();
+  deployMounts.delete(container);
+}
+
 // ─── Raw JSON ─────────────────────────────────────────────────────────────────
 
 /** The surface mounted in each Raw JSON container. */

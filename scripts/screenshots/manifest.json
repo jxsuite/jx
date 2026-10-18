@@ -232,27 +232,24 @@
       "steps": [
         {
           "args": {
-            "tab": "git"
+            "tab": "review"
           },
-          "cmd": "view.setActivity"
+          "cmd": "publish.open"
         }
       ],
       "expect": [
         {
-          "region": "navigator/panel:git"
-        },
-        {
-          "region": "navigator/panel:git/commit"
+          "region": "pane.primary/publish/commit"
         }
       ],
       "capture": [
         {
           "image": "git-panel",
-          "of": "navigator"
+          "of": "pane.primary"
         },
         {
           "image": "git-commit",
-          "of": "navigator/panel:git/commit",
+          "of": "pane.primary/publish/commit",
           "padding": 16
         }
       ]

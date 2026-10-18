@@ -11,6 +11,7 @@
  * menu the rail used to hold is here, just before the dock toggles.
  */
 import { flush, installMockPlatform, mountOverlayLayers } from "./harness";
+import { hintOf } from "./kit-readers";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { GitStatusResult } from "../src/types";
 import type { WorkspaceId } from "../src/workspace/workspace-ids";
@@ -211,6 +212,65 @@ describe("the Publish badge", () => {
     expect(badge()).toBeNull();
     expect(tabFor("publish")?.getAttribute("title")).toBe("Publish (⌘5)");
     expect(tabFor("publish")?.hasAttribute("aria-description")).toBe(false);
+  });
+});
+
+describe("the quick-publish chevron", () => {
+  const chevron = () => root.querySelector<HTMLElement>('jx-action-button[part="quick-publish"]');
+  let quickRuns = 0;
+  let repoOpen = false;
+
+  function withQuick() {
+    const registry = installRegistry();
+    registry.register({
+      category: "Publish",
+      enablement: () => repoOpen,
+      id: "publish.quick",
+      level: "project",
+      menus: ["commandbar/overflow", "palette"],
+      requires: "a project tracked by git",
+      run: () => {
+        quickRuns += 1;
+      },
+      title: "Quick Publish",
+    });
+    return registry;
+  }
+
+  beforeEach(() => {
+    quickRuns = 0;
+    repoOpen = false;
+  });
+
+  test("is not drawn while the registry has no publish.quick", async () => {
+    await mounted();
+    expect(chevron()).toBeNull();
+  });
+
+  test("sits after the tablist, its own control, named and announcing a dialog", async () => {
+    withQuick();
+    await mounted();
+    const button = chevron()!;
+    expect(button).not.toBeNull();
+    // Beside the strip, never inside it: a tab that sometimes opened a dialog would mean two things.
+    expect(strip()?.contains(button)).toBe(false);
+    expect(button.previousElementSibling).toBe(strip());
+    const control = button.querySelector('[part="control"]');
+    expect(control?.getAttribute("aria-label")).toBe("Quick publish");
+    expect(control?.getAttribute("aria-haspopup")).toBe("dialog");
+  });
+
+  test("is refused with its reason until the project is a repository, then runs the record", async () => {
+    withQuick();
+    await mounted();
+    expect(hintOf(chevron())).toBe("Quick Publish — requires a project tracked by git");
+    chevron()!.click();
+    expect(quickRuns).toBe(0);
+    repoOpen = true;
+    shell.git.status = gitStatusWith(1);
+    await flush(3);
+    chevron()!.click();
+    expect(quickRuns).toBe(1);
   });
 });
 

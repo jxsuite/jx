@@ -346,7 +346,7 @@ export async function autoSyncProjectOnOpen(): Promise<void> {
   const platform = getPlatform();
   try {
     /* The status is host wire data. A host may leave `remotes` out (as `deploy-checklist.ts` and
-       `git-panel.ts` also allow), which reads as "nothing to sync"; a host that sends no status at
+       `publish-changes.ts` also allow), which reads as "nothing to sync"; a host that sends no status at
        all throws on the first read and is caught below the same way, so a malformed status never
        aborts the project open that awaits this. */
     const status = await platform.gitStatus();

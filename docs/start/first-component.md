@@ -119,7 +119,7 @@ Test values are a preview lens only, and are never saved into the component. Pro
 
 The document's tab shows a **●** dot for unsaved changes. Press :kbd[⌘S] (macOS) or :kbd[Ctrl+S] (Windows/Linux), or click **Save** in the Command Bar, and the dot goes away.
 
-You should see the dot disappear. When you're ready to publish, **Source Control** takes it from here. See **[Source control](/docs/studio/publish/source-control)**.
+You should see the dot disappear. When you're ready to publish, the **Publish** workspace takes it from here. See **[Source control](/docs/studio/publish/source-control)**.
 
 ## What you built
 

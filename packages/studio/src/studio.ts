@@ -177,12 +177,13 @@ import { autoSyncProjectOnOpen } from "./packages/pull-package-sync";
 import webdata from "../data/webdata.json";
 import { registerDataExplorerCommands } from "./panels/data-explorer";
 import {
-  cleanupGitPanel,
+  cleanupSourceControl,
   cloneRepository,
   loadDiffForLens,
   registerSourceControlCommands,
   noteFileSaved,
-} from "./panels/git-panel";
+  setSourceControlDeps,
+} from "./publish/source-control";
 
 import { registerKit } from "./ui/kit";
 import "./ui/panel-resize.js";
@@ -315,8 +316,8 @@ setBundleBase(import.meta.url);
  *
  * `loadDiff` is here rather than in `workspace/pane-derive.ts` because that module owns no I/O —
  * which is what lets its whole decision-making half be tested with no platform. It is the same pair
- * of reads `panels/git-panel.ts` makes for a row click; an added file has no `HEAD` copy, so its
- * "original" is the empty string rather than a `gitShow` that would throw.
+ * of reads `publish/source-control.ts` makes for a Before and after; an added file has no `HEAD`
+ * copy, so its "original" is the empty string rather than a `gitShow` that would throw.
  */
 const derivationDeps: DerivationDeps = {
   /*
@@ -873,8 +874,20 @@ setImportHandoff(revealImportHandoff);
    one — see services/connection.ts for why only the chromium shell can. */
 watchConnection();
 
+/* What source control needs from the bootstrap: the two writes a comparison makes outside
+   `shell.git` (the Publish workspace's Before and after puts the file's own tab into git-diff), and
+   the clone flow, which ends by opening the project it cloned. */
+setSourceControlDeps({
+  cloneRepository: () => {
+    void cloneRepository({ openRecentProject });
+  },
+  setCanvasMode,
+  setGitDiffState: (state: GitDiffState | null) => {
+    shell.git.diffState = state;
+  },
+});
+
 leftPanelMod.mount({
-  cloneRepository: () => cloneRepository({ openRecentProject }),
   defBadgeLabel,
   defCategory,
   defaultDef,
@@ -906,9 +919,6 @@ leftPanelMod.mount({
   },
   mountSignalsPanel,
   setCanvasMode,
-  setGitDiffState: (state: GitDiffState | null) => {
-    shell.git.diffState = state;
-  },
   webdata,
 });
 
@@ -1374,8 +1384,8 @@ async function openRecentProject(root: string) {
     platform.projectRoot = root;
     // Source control, the stylebook selection and the settings tab describe the project being
     // Left behind; carrying them over showed the previous repository's branch and file count
-    // Under the new project's name. The poll timer is re-armed by the panel's next render.
-    cleanupGitPanel();
+    // Under the new project's name. The poll timer is re-armed by the Publish workspace's next mount.
+    cleanupSourceControl();
     resetProjectShell();
     resetProjectCaches();
     // The format registry is cached per project — the previous root's registry (often empty on a
@@ -1583,7 +1593,7 @@ registerCanvasViewCommands(commandRegistry, {
 });
 /* A save moves the working tree under any comparison of that file, and nothing about a
    comparison notices on its own — see `noteFileSaved`. Injected rather than imported: `file-ops`
-   must not pull the Source Control panel into its graph. */
+   must not pull source control into its graph. */
 /* The second listener is the live chrome lane: a saved surface document or kit component re-mounts
    the roots it draws in THIS shell (studio-ui-guidelines.md §9.3). Inert for every project but the
    two the chrome comes from, by the saved path alone. */

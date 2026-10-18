@@ -1437,7 +1437,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
 
   /* A workspace's home: the surface a workspace opens on when none of its own tabs is open
      (`workspace/workspace-home.ts`). Unlike the five above it writes nothing onto the stage: the
-     home's own style block fills it (`surfaces/workspace-home.json`). */
+     home's own style block fills it (`surfaces/publish-workspace.json`, for one). */
   if (isWorkspaceHomeMode(canvasMode)) {
     renderWorkspaceHome(surface, tab);
     return;

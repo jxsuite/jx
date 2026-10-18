@@ -54,7 +54,7 @@ The second screen (**Name your project**) shows which source you picked, then as
 
 Under **Location** and **Directory**, Studio shows exactly where the project will land (`/home/you/Sites/my-site`) before you commit to it.
 
-Nothing else is asked at creation time. The site's production URL, its deployment adapter, its colors and fonts, and its breakpoints are all configuration you can change as often as you like once the project is open: the URL and breakpoints in **[Project settings](/docs/studio/projects/settings)**, colors and fonts in the **Styles** workspace, and the adapter as `build.adapter` in `project.json` (from **Project settings › Advanced › Raw JSON › Edit as code**).
+Nothing else is asked at creation time. The site's production URL, its deployment adapter, its colors and fonts, and its breakpoints are all configuration you can change as often as you like once the project is open: the URL and breakpoints in **[Project settings](/docs/studio/projects/settings)**, colors and fonts in the **Styles** workspace, and the adapter under **How it is built** in **Publish › Hosting**.
 
 ### On Jx Cloud
 

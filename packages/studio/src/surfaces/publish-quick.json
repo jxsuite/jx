@@ -1,0 +1,424 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPublishQuick",
+  "$description": "Quick publish (studio.md §22.8): the dialog the chevron beside the Publish workspace tab opens. The count, a short list of what changed, the destination, the summary that becomes the commit message, and the checks in one line; Publish now takes every change to the destination, and Review all opens the Publish workspace on Review changes instead. One `jx-dialog`, so the platform owns modality, Escape and focus restoration. `publish/publish-quick.ts` keeps every decision, and the words of the destinations and the checks are the same `publish/publish-changes.ts` hands Review changes, so the two cannot disagree about what a button does.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Publish",
+    "confirmLabel": "Publish now",
+    "confirmDisabled": {
+      "$ref": "#/state/blocked"
+    },
+    "secondaryLabel": "Review all",
+    "cancelLabel": "Cancel",
+    "size": "md"
+  },
+  "attributes": {
+    "part": "publish-quick",
+    "data-destination": "${state.destination}"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onsecondary": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/reviewAll"
+        },
+        "value": []
+      }
+    ]
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "& [part=\"sheet\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "minWidth": "0"
+    },
+    "& [part=\"count\"]": {
+      "margin": "0",
+      "fontWeight": "600"
+    },
+    "& [part=\"change-list\"]": {
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"change\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"change-tag\"]": {
+      "$description": "NEW, EDIT, DELETED, as the board draws them: a word rather than git's letter, because this dialog is read by someone who has never seen a status column.",
+      "flex": "none",
+      "minWidth": "52px",
+      "fontSize": "var(--jx-text-xs)",
+      "fontWeight": "700",
+      "letterSpacing": "0.04em",
+      "color": "var(--signal)"
+    },
+    "& [part=\"change\"][data-status=\"A\"] > [part=\"change-tag\"], & [part=\"change\"][data-status=\"U\"] > [part=\"change-tag\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"change\"][data-status=\"D\"] > [part=\"change-tag\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"change-name\"]": {
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"change-dir\"], & [part=\"more\"], & [part=\"choice-note\"], & [part=\"blocker\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"more\"], & [part=\"blocker\"]": {
+      "margin": "0"
+    },
+    "& [part=\"destinations\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"destination-card\"] > [part=\"control\"]": {
+      "$description": "The same card Review changes draws for the same choice: a name and a sentence inside one radio.",
+      "width": "100%",
+      "height": "auto",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "textAlign": "start",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "gap": "2px",
+      "whiteSpace": "normal"
+    },
+    "& [part=\"choice-name\"]": {
+      "display": "block",
+      "fontWeight": "600"
+    },
+    "& [part=\"choice-note\"]": {
+      "display": "block"
+    },
+    "& [part=\"checks-line\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-2)",
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"checks-line\"][data-state=\"done\"] > [part=\"checks-icon\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"checks-line\"][data-state=\"open\"] > [part=\"checks-icon\"]": {
+      "color": "var(--warning)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "sheet"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "count"
+          },
+          "textContent": "${state.countLine}"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "list-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/listState"
+          },
+          "cases": {
+            "listed": {
+              "tagName": "ul",
+              "attributes": {
+                "part": "change-list"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "li",
+                    "attributes": {
+                      "part": "change",
+                      "data-status": "${$map.item.status}",
+                      "title": "${$map.item.path}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "change-tag"
+                        },
+                        "textContent": "${$map.item.tag}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "change-name"
+                        },
+                        "textContent": "${$map.item.name}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "change-dir"
+                        },
+                        "textContent": "${$map.item.dir}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "more-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasMore"
+          },
+          "cases": {
+            "true": {
+              "tagName": "p",
+              "attributes": {
+                "part": "more"
+              },
+              "textContent": "${state.more}"
+            }
+          }
+        },
+        {
+          "tagName": "jx-action-group",
+          "attributes": {
+            "part": "destinations"
+          },
+          "$props": {
+            "selects": "single",
+            "label": "Destination",
+            "compact": false,
+            "orientation": "vertical"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/destinations"
+              },
+              "key": {
+                "$ref": "$map/item/value"
+              },
+              "map": {
+                "tagName": "jx-action-button",
+                "attributes": {
+                  "part": "destination-card",
+                  "data-destination": "${$map.item.value}"
+                },
+                "$props": {
+                  "label": {
+                    "$ref": "$map/item/label"
+                  },
+                  "checked": {
+                    "$ref": "$map/item/checked"
+                  },
+                  "disabled": {
+                    "$ref": "$map/item/disabled"
+                  },
+                  "hint": {
+                    "$ref": "$map/item/reason"
+                  },
+                  "quiet": false
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/pickDestination"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/value"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "choice-name"
+                    },
+                    "textContent": "${$map.item.label}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "choice-note"
+                    },
+                    "textContent": "${$map.item.note}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "attributes": {
+            "part": "summary-field"
+          },
+          "$props": {
+            "label": "Summary",
+            "span": true
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "attributes": {
+                "part": "summary"
+              },
+              "$props": {
+                "size": "sm",
+                "placeholder": "Describe what changed",
+                "value": {
+                  "$ref": "#/state/summary"
+                }
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/editSummary"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "checks-line",
+            "data-state": "${state.checksState}"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "checks-icon",
+                "aria-hidden": "true"
+              },
+              "textContent": "${state.checksIcon}"
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "checks-text"
+              },
+              "textContent": "${state.checksLine}"
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "blocker-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasBlocker"
+          },
+          "cases": {
+            "true": {
+              "tagName": "p",
+              "attributes": {
+                "part": "blocker"
+              },
+              "textContent": "${state.blocker}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -35,7 +35,6 @@ import { activeTab } from "../workspace/workspace";
 import { developerPanelsShown } from "../settings/developer-panels";
 import type { Level } from "../commands/levels";
 import type { CommandContext } from "../commands/context";
-import type { GitDiffState } from "../types";
 import type { JxMutableNode, JxStateDefinition } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab, TabUi } from "../tabs/tab";
@@ -86,8 +85,6 @@ export interface NavigatorPanelDeps {
   registerLayersDnD: () => void;
   registerElementsDnD: () => void;
   registerComponentsDnD: () => void;
-  setGitDiffState: (state: GitDiffState | null) => void;
-  cloneRepository?: () => void;
 }
 
 /**

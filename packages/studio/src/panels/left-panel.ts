@@ -93,14 +93,9 @@ export function mount(deps: NavigatorPanelDeps) {
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
-      // Shell state is tracked with no tab open — which panel is showing, and the project-level
-      // State the project-level panels draw from. A document-less rail tab still repaints.
+      // Shell state is tracked with no tab open: which panel is showing. A document-less rail tab
+      // Still repaints.
       void shell.leftTab;
-      void shell.git.status;
-      void shell.git.loading;
-      void shell.git.error;
-      void shell.git.subTab;
-      void shell.git.logEntries;
       const tab = activeTab.value;
       if (tab) {
         // Track properties the Navigator's panels read

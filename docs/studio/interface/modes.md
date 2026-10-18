@@ -56,7 +56,7 @@ Switching away from Code, to another editor or another view or another document,
 
 ## Diff
 
-Diff compares the open file against your last commit. You reach it from the [Source Control](/docs/studio/publish/source-control) panel by clicking a changed file, or from the **Editor** control on a file that has changes.
+Diff compares the open file against your last commit. You reach it from **[Review changes](/docs/studio/publish/source-control)** in the Publish workspace, with a changed file's **Before and after**, or from the **Editor** control on a file that has changes.
 
 It has two halves and a switch above them. **Visual** draws the page twice, side by side, with added blocks marked in green, removed blocks in red, and edited ones marked on both sides. **Code** shows the file's text with changed lines highlighted instead. A file with no visual form, such as a stylesheet or a script, offers only Code.
 
@@ -89,7 +89,7 @@ Every file opens in its natural editor and view, and the two controls offer only
 | Vector images (`.svg`)             | **Media**         | **Code**                | —                       |
 | The project file (`project.json`)  | **Elements**      | **Variables**, **Code** | —                       |
 
-Any file with uncommitted changes also offers **Diff**, including files that have no other editor at all. Opening one of those from the Files tree still says Studio has no editor for it; Source Control asks the narrower question of what changed, and answers it.
+Any file with uncommitted changes also offers **Diff**, including files that have no other editor at all. Opening one of those from the Files tree still says Studio has no editor for it; Review changes asks the narrower question of what changed, and answers it.
 
 Opening `project.json` from the Files tree lands on **Elements**, and **Go to Styles** (:kbd[⌘4], or from :kbd[⌘K]) switches to the Styles workspace from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
 

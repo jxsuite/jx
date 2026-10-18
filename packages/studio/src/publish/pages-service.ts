@@ -29,6 +29,12 @@ export interface PagesDeploymentInfo {
   stage: string;
   status: string;
   createdOn: string;
+  /**
+   * The branch the deployment was built from, when Cloudflare says (its trigger metadata). A
+   * preview's branch is what names it in Publish › Deploys; a production deployment usually carries
+   * the production branch.
+   */
+  branch?: string;
 }
 
 export interface ConnectOptions {
@@ -146,25 +152,43 @@ interface DeploymentWire {
   environment: string;
   latest_stage?: { name?: string; status?: string };
   created_on: string;
+  deployment_trigger?: { metadata?: { branch?: string } };
+}
+
+/** One wire row as the app reads it: the stage flattened, the branch kept only when it is said. */
+function deploymentInfo(row: DeploymentWire): PagesDeploymentInfo {
+  const info: PagesDeploymentInfo = {
+    id: row.id,
+    url: row.url,
+    environment: row.environment,
+    stage: row.latest_stage?.name ?? "unknown",
+    status: row.latest_stage?.status ?? "unknown",
+    createdOn: row.created_on,
+  };
+  const branch = row.deployment_trigger?.metadata?.branch;
+  if (branch) {
+    info.branch = branch;
+  }
+  return info;
+}
+
+/**
+ * Every deployment of the connected project Cloudflare returns, newest first, as it orders them.
+ *
+ * All of them, not the latest alone: Publish › Deploys draws the history and the branch previews
+ * from this one list (studio.md §22.8), and the latest is simply its first row.
+ */
+export async function listDeployments(deploy: DeployConfig): Promise<PagesDeploymentInfo[]> {
+  const deployments = await cfApi<DeploymentWire[]>(
+    `/accounts/${deploy.accountId}/pages/projects/${deploy.projectName}/deployments`,
+  );
+  return deployments.map((row) => deploymentInfo(row));
 }
 
 /** The most recent deployment of the connected project, or null when none. */
 export async function latestDeployment(deploy: DeployConfig): Promise<PagesDeploymentInfo | null> {
-  const deployments = await cfApi<DeploymentWire[]>(
-    `/accounts/${deploy.accountId}/pages/projects/${deploy.projectName}/deployments`,
-  );
-  const [latest] = deployments;
-  if (!latest) {
-    return null;
-  }
-  return {
-    id: latest.id,
-    url: latest.url,
-    environment: latest.environment,
-    stage: latest.latest_stage?.name ?? "unknown",
-    status: latest.latest_stage?.status ?? "unknown",
-    createdOn: latest.created_on,
-  };
+  const [latest] = await listDeployments(deploy);
+  return latest ?? null;
 }
 
 /**

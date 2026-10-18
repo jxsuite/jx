@@ -42,8 +42,10 @@ function readSurface(path: string): JsonObject {
 }
 
 const dir = resolve(import.meta.dir, "../src/surfaces");
+// Sorted: `readdirSync` answers in the filesystem's order, which moves when a file is rewritten.
 const surfaces = readdirSync(dir)
   .filter((name) => name.endsWith(".json"))
+  .toSorted()
   .map((name) => ({ doc: readSurface(join(dir, name)), name }));
 
 /** A member of a node that is itself an object (`$props`, `attributes`, `style`, `onclick`). */
@@ -251,7 +253,7 @@ describe("Studio's button groups", () => {
       return row && propOf(row, "compact");
     };
     expect(compactOf("files-panel.json", "toolbar-actions")).toBe(false);
-    expect(compactOf("git-panel.json", "sync-actions")).toBe(false);
+    expect(compactOf("publish-workspace.json", "sync-actions")).toBe(false);
   });
 
   test("a group that WRAPS is not compact, and its members frame themselves", () => {
@@ -280,12 +282,12 @@ describe("Studio's button groups", () => {
       }
     }
     expect(wrapping).toEqual([
-      "pane-context.json sizes",
-      "pane-context.json features",
       "add-new.json start-from",
       "add-new.json presets",
       "add-new.json wrap-in",
       "add-new.json component-start",
+      "pane-context.json sizes",
+      "pane-context.json features",
     ]);
   });
 

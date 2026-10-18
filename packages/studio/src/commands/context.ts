@@ -37,6 +37,11 @@ export const CAPABILITIES = [
   /* The image editor's gate. A backend that cannot hand Studio a project file's raw bytes cannot
      decode one, so the Image mode is not offered at all rather than offered and then failing. */
   "readFileBytes",
+  /* The Publish family's host question (studio.md §22.8): the host can reach the Cloudflare API
+     (`cfApi`), so it can connect a provider, deploy and read deployments. Whether it can open a
+     pull request is not a key: no record is refused on it. Send for review is a destination
+     inside the workspace, refused by the flow with its reason (`publish/publish-changes.ts`). */
+  "publish",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -338,6 +343,7 @@ export function emptyContext(): CommandContext {
       windowControls: false,
       findReferences: false,
       readFileBytes: false,
+      publish: false,
     },
   };
 }

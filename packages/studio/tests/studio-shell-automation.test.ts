@@ -166,7 +166,7 @@ describe("run() reaches the implementations", () => {
 
   test("an undeclared panel id refuses through the hook, naming the declared set", async () => {
     expect(await refusal("view.setActivity", { tab: "head" })).toContain(
-      "is not declared — declared: site, collections, files, search, git, i18n, layers, data, packages, insert",
+      "is not declared — declared: site, collections, files, search, i18n, layers, data, packages, insert",
     );
   });
 

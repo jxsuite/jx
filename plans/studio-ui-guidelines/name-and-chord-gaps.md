@@ -19,7 +19,7 @@ size: L
 
 `specs/studio-ui-guidelines.md` §12.3, line 801:
 
-> **Status: Partial.** The Command Bar, the palette, the element menu and the block bar print title, chord and `requires` through `formatBinding` (`packages/studio/src/surfaces/commandbar.ts`, `src/panels/quick-search.ts`, `src/surfaces/menu.ts`). Rail buttons print no chord although `panel.focus.*` binds one (`src/surfaces/rail.ts`); the tab-strip and Files-tree menus build their rows with no `chord`, and `src/files/files.ts` hard-codes `destructive: false`; the Bottom dock's close button carries its own label, prints no ⌘J, and calls the dock setter rather than `view.setBottomDock` (`src/surfaces/bottom-dock.json`, `src/panels/bottom-dock.ts`); and the Source Control panel's "Create GitHub repository" renames `git.createGithubRepository` (`src/surfaces/git-panel.json`).
+> **Status: Partial.** The Command Bar, the palette, the element menu and the block bar print title, chord and `requires` through `formatBinding` (`packages/studio/src/surfaces/commandbar.ts`, `src/panels/quick-search.ts`, `src/surfaces/menu.ts`). Rail buttons print no chord although `panel.focus.*` binds one (`src/surfaces/rail.ts`); the tab-strip and Files-tree menus build their rows with no `chord`, and `src/files/files.ts` hard-codes `destructive: false`; the Bottom dock's close button carries its own label, prints no ⌘J, and calls the dock setter rather than `view.setBottomDock` (`src/surfaces/bottom-dock.json`, `src/panels/bottom-dock.ts`); and Publish › Review changes' "Create GitHub repository" renames `git.createGithubRepository` (`src/surfaces/publish-workspace.json`).
 
 Verified against the tree; paths below are under `packages/studio/src/`.
 

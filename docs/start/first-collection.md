@@ -155,9 +155,9 @@ Pick **Preview** in the **View** control on the context bar.
 
 ![Preview on, the single card expanded into three post cards with real titles, dates, and descriptions](../images/blog-preview.png)
 
-You should see the single card expand into three, newest first, each filled in from its own post. Switch the **View** control back to **Design**, then save your open documents with :kbd[⌘S] / :kbd[Ctrl+S]. When you're ready, commit the lot from **Source Control**. See **[Source control](/docs/studio/publish/source-control)**.
+You should see the single card expand into three, newest first, each filled in from its own post. Switch the **View** control back to **Design**, then save your open documents with :kbd[⌘S] / :kbd[Ctrl+S]. When you're ready, publish the lot from the **Publish** workspace's **Review changes** (:kbd[⌘5]). See **[Source control](/docs/studio/publish/source-control)**.
 
-![Jx Studio commit box: write a message and commit-and-sync straight from the Source Control panel](../images/git-commit.png)
+![The publish card in Review changes: the destination, the summary and the publish button](../images/git-commit.png)
 
 ## Give each post its own page
 

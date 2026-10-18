@@ -161,16 +161,16 @@ describe("the Navigator tab", () => {
   });
 
   test("toggleActivityTab closes the dock when the showing panel is re-picked", () => {
-    setActivityTab("git");
-    toggleActivityTab("git");
+    setActivityTab("data");
+    toggleActivityTab("data");
     expect(shell.docks.left.collapsed).toBe(true);
-    expect(shell.leftTab).toBe("git");
+    expect(shell.leftTab).toBe("data");
   });
 
   test("toggleActivityTab reopens the dock when the showing panel is re-picked while closed", () => {
-    setActivityTab("git");
+    setActivityTab("data");
     setDockCollapsed("left", true);
-    toggleActivityTab("git");
+    toggleActivityTab("data");
     expect(shell.docks.left.collapsed).toBe(false);
   });
 
@@ -301,7 +301,11 @@ describe("resetProjectShell", () => {
     shell.git.error = "boom";
     shell.git.loading = true;
     shell.git.logEntries = [{ author: "a", date: "d", hash: "abc", message: "m" }];
-    shell.git.subTab = "history";
+    Object.assign(shell.publish, {
+      destination: "review",
+      review: { number: 4, url: "https://example.test/pr/4" },
+      tab: "branches",
+    });
     shell.git.lastUpdated = 1;
     shell.stylebook.selection = "h1";
     shell.stylebook.filter = "head";
@@ -314,9 +318,11 @@ describe("resetProjectShell", () => {
     expect(shell.git.error).toBeNull();
     expect(shell.git.loading).toBe(false);
     expect(shell.git.logEntries).toBeNull();
-    // The two module-level leaks the hoist closes: the previous project's History selection and
-    // Its "last updated" stamp used to survive into the next project.
-    expect(shell.git.subTab).toBe("changes");
+    // The previous project's Publish view, its destination and the pull request it opened describe
+    // That repository, and the "last updated" stamp used to survive into the next project.
+    expect(shell.publish.tab).toBe("review");
+    expect(shell.publish.destination).toBe("live");
+    expect(shell.publish.review).toEqual({ number: 0, url: "" });
     expect(shell.git.lastUpdated).toBeNull();
     expect(shell.stylebook.selection).toBeNull();
     expect(shell.stylebook.filter).toBe("");

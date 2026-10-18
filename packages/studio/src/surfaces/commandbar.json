@@ -237,6 +237,17 @@
       "& [part=\"workspace\"] > [part=\"label\"]": {
         "display": "none"
       }
+    },
+    "& [part=\"workspaces-group\"]": {
+      "$description": "The tablist and the quick-publish chevron, as one item of the band, so the chevron never wraps away from the Publish tab it belongs to.",
+      "display": "flex",
+      "alignItems": "center",
+      "flexShrink": "0",
+      "gap": "2px"
+    },
+    "& [part=\"quick-publish\"]": {
+      "--jx-icon-size": "12px",
+      "marginLeft": "-2px"
     }
   },
   "children": [
@@ -422,87 +433,145 @@
       },
       "cases": {
         "true": {
-          "tagName": "jx-tabs",
+          "tagName": "div",
           "attributes": {
-            "part": "workspaces",
-            "selected": "${state.workspace}",
-            "class": "electrobun-webkit-app-region-no-drag"
-          },
-          "$props": {
-            "label": "Workspaces",
-            "activation": "manual"
+            "part": "workspaces-group",
+            "role": "none"
           },
           "children": [
             {
-              "$prototype": "Array",
-              "items": {
-                "$ref": "#/state/workspaces"
+              "tagName": "jx-tabs",
+              "attributes": {
+                "part": "workspaces",
+                "selected": "${state.workspace}",
+                "class": "electrobun-webkit-app-region-no-drag"
               },
-              "key": {
-                "$ref": "$map/item/id"
+              "$props": {
+                "label": "Workspaces",
+                "activation": "manual"
               },
-              "map": {
-                "tagName": "jx-tab",
-                "attributes": {
-                  "part": "workspace",
-                  "value": "${$map.item.id}",
-                  "label": "${$map.item.title}",
-                  "title": "${$map.item.tooltip}",
-                  "aria-description": "${$map.item.description || null}",
-                  "data-workspace": "${$map.item.id}"
-                },
-                "onclick": {
-                  "$prototype": "Function",
-                  "body": [
-                    {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/setWorkspace"
-                      },
-                      "value": [
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/workspaces"
+                  },
+                  "key": {
+                    "$ref": "$map/item/id"
+                  },
+                  "map": {
+                    "tagName": "jx-tab",
+                    "attributes": {
+                      "part": "workspace",
+                      "value": "${$map.item.id}",
+                      "label": "${$map.item.title}",
+                      "title": "${$map.item.tooltip}",
+                      "aria-description": "${$map.item.description || null}",
+                      "data-workspace": "${$map.item.id}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
                         {
-                          "$ref": "$map/item/id"
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/setWorkspace"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/id"
+                            }
+                          ]
                         }
                       ]
-                    }
-                  ]
-                },
-                "children": [
-                  {
-                    "tagName": "jx-icon",
-                    "attributes": {
-                      "slot": "icon"
                     },
-                    "$props": {
-                      "name": {
-                        "$ref": "$map/item/icon"
-                      }
-                    }
-                  },
-                  {
-                    "tagName": "span",
-                    "attributes": {
-                      "slot": "status",
-                      "part": "workspace-badge-slot"
-                    },
-                    "style": {
-                      "display": "contents"
-                    },
-                    "$switch": {
-                      "$ref": "$map/item/hasBadge"
-                    },
-                    "cases": {
-                      "true": {
+                    "children": [
+                      {
+                        "tagName": "jx-icon",
+                        "attributes": {
+                          "slot": "icon"
+                        },
+                        "$props": {
+                          "name": {
+                            "$ref": "$map/item/icon"
+                          }
+                        }
+                      },
+                      {
                         "tagName": "span",
                         "attributes": {
-                          "part": "workspace-badge",
-                          "aria-hidden": "true"
+                          "slot": "status",
+                          "part": "workspace-badge-slot"
                         },
-                        "textContent": "${$map.item.badge}"
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/hasBadge"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "workspace-badge",
+                              "aria-hidden": "true"
+                            },
+                            "textContent": "${$map.item.badge}"
+                          }
+                        }
                       }
-                    }
+                    ]
                   }
-                ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "quick-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/quickVisible"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-action-button",
+                  "$description": "`publish.quick`, drawn beside the Publish tab rather than inside it (studio.md §22.2): a tab that sometimes opened a dialog would be a tab whose activation means two things. It sits after the tablist, which ends on Publish, so it is the control beside that tab.",
+                  "attributes": {
+                    "part": "quick-publish",
+                    "class": "electrobun-webkit-app-region-no-drag",
+                    "data-command": "publish.quick"
+                  },
+                  "$props": {
+                    "icon": "caret-down",
+                    "size": "sm",
+                    "quiet": true,
+                    "label": "Quick publish",
+                    "hint": {
+                      "$ref": "#/state/quickTooltip"
+                    },
+                    "haspopup": "dialog",
+                    "disabled": {
+                      "$ref": "#/state/quickDisabled"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/run"
+                        },
+                        "value": ["publish.quick"]
+                      }
+                    ]
+                  }
+                }
               }
             }
           ]

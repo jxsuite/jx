@@ -9,7 +9,7 @@
 import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { MINUTE, pinClock, unpinClock } from "../src/services/clock";
-import { relativeDate } from "../src/panels/git-panel";
+import { relativeDate } from "../src/publish/source-control";
 import { lastOpenedLabel } from "../src/surfaces/welcome";
 import { relativeTime } from "../src/panels/ai-chat/sessions-view";
 import {
@@ -39,7 +39,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("git-panel relativeDate", () => {
+describe("source-control relativeDate", () => {
   test("walks every unit, and falls back to a locale date past a month", () => {
     expect(relativeDate(ago(30_000))).toBe("just now");
     expect(relativeDate(ago(5 * MINUTE))).toBe("5m ago");

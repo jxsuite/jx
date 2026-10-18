@@ -28,7 +28,7 @@
 import { activityBar } from "../store";
 import { effect, effectScope, reactive } from "../reactivity";
 import { requireNavigatorPanelId, shell, toggleActivityTab } from "../shell";
-import { refreshGitStatus } from "../panels/git-panel";
+import { refreshGitStatus } from "../publish/source-control";
 import { panelContext, railGroups } from "../panels/panel-registry";
 import { registerNavigatorPanels } from "../panels/navigator-panels";
 import { mountSurface, registerSurface } from "../ui/surface";

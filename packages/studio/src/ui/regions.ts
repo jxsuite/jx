@@ -14,8 +14,9 @@
  *
  * ```text
  * navigator                     the Navigator dock
- * navigator/panel:git           the Source Control panel inside it
- * navigator/panel:git/commit    a leaf within that panel
+ * navigator/panel:site          the Site panel inside it
+ * pane.primary/publish          the Publish home in the primary pane
+ * pane.primary/publish/commit   a leaf within it (Review changes' destination card)
  * inspector/tab:style           the Style tab's body
  * inspector/field:href          a field row (the Inspector's documents already emit `data-prop`)
  * pane.primary/tabs             the primary pane's own tab strip
@@ -27,7 +28,7 @@
  * inspector stamps `inspector/tab:${key}` from its own tab records; `getLayerSlot()` stamps
  * `overlay.<kind>:<id>` from the key it already builds. A panel rename then propagates to the
  * region automatically, and a stale id fails the shot contract instead of photographing the wrong
- * box. Only leaves — `navigator/panel:git/commit` — are hand-stamped, and those are counted.
+ * box. Only leaves — `pane.primary/publish/commit` — are hand-stamped, and those are counted.
  *
  * Resolution reads the live DOM rather than a registration table, for the same reason
  * {@link import("./layers").isModalOpen} does: whatever is on screen is the answer, and there is no
@@ -61,7 +62,7 @@ export interface ParsedRegionId {
   surface: RegionSurface;
   /** `primary` in `pane.primary`, `dialog` in `overlay.dialog:settings`. */
   instance?: string;
-  /** Everything after the first `/` — `panel:git/commit` in `navigator/panel:git/commit`. */
+  /** Everything after the first `/` — `publish/commit` in `pane.primary/publish/commit`. */
   part?: string;
 }
 

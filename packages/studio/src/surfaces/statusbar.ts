@@ -185,7 +185,8 @@ function projectField_(registry: CommandRegistry | null): ProjectedField | null 
        checklist's repo step fails there rather than quietly taking the state off the bar. */
     status?.isRepo === true && status.branch
       ? {
-          command: "panel.focus.git",
+          args: { workspace: "publish" },
+          command: "view.setWorkspace",
           label: `⑂ ${status.branch}${aheadBehindLabel(status.ahead, status.behind)}`,
           title: `${status.files.length} changed file(s)`,
         }

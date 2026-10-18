@@ -61,7 +61,7 @@ function buildRegistry(ids?: readonly string[]) {
   const all: AnyCommand[] = [
     stub("project.open", "Open Project…", "project"),
     stub("project.openRecent", "Open Recent…", "project"),
-    stub("panel.focus.git", "Show Source Control", "application"),
+    stub("view.setWorkspace", "Show Workspace", "application"),
     stub("git.init", "Initialize Repository", "project"),
     // `view.setBottomTab`, not `panel.focus.problems` — that record is generated from the rail
     // Roster and Problems is off the rail.
@@ -164,6 +164,26 @@ describe("the PROJECT field", () => {
     };
     await render();
     expect(items()).toContain("⑂ main ↑1 ↓2");
+  });
+
+  /* Source Control is the Publish workspace (studio.md §5.5), so the branch item opens it rather
+     than a Navigator panel that no longer exists. */
+  test("the branch item opens the Publish workspace", async () => {
+    resetStudioState({ name: "My Site", projectRoot: "/p" });
+    shell.git.status = {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: [],
+    };
+    await render();
+    const branch = [...(field("project")?.querySelectorAll("button") ?? [])].find((button) =>
+      button.textContent.includes("⑂ main"),
+    );
+    branch?.click();
+    expect(ran).toEqual([{ args: { workspace: "publish" }, id: "view.setWorkspace" }]);
   });
 
   /*

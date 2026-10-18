@@ -114,7 +114,6 @@ function leftCtx(): NavigatorPanelDeps {
     renderCanvas: mock(() => {}),
     mountSignalsPanel: mock(() => {}),
     setCanvasMode: mock(() => {}),
-    setGitDiffState: mock(() => {}),
     /* SAFETY: the Elements palette is the only reader of `webdata`, and it reads nothing but
        `elements` (category name to `{ tag }` blocks); one category is all the Insert panel needs. */
     webdata: { elements: { Text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"],
@@ -123,7 +122,7 @@ function leftCtx(): NavigatorPanelDeps {
 
 describe("navigator/panel:<id>", () => {
   /** Every panel the left panel routes to — the ids that come free from one stamp. */
-  const PANELS = ["files", "git", "insert", "layers", "packages", "data"];
+  const PANELS = ["site", "files", "insert", "layers", "packages", "data"];
 
   for (const panel of PANELS) {
     test(`"${panel}" is addressable without anyone authoring its id`, async () => {
@@ -156,26 +155,6 @@ describe("navigator/panel:<id>", () => {
     await flush(3);
     const panelRegions = listRegions().filter((id) => id.startsWith("navigator/panel:"));
     expect(panelRegions).toEqual(["navigator/panel:data"]);
-  });
-
-  test("a leaf inside a panel is hand-stamped and nests under the derived one", async () => {
-    /* The leaf is `surfaces/git-panel.json`'s own `data-jx-region`, so the panel has to draw its
-       repository body to have one — and a mounted document needs more turns than a lit render. */
-    resetWorkspaceWithTab();
-    shell.leftTab = "git";
-    shell.git.status = {
-      ahead: 0,
-      behind: 0,
-      branch: "main",
-      files: [],
-      isRepo: true,
-      remotes: [],
-    };
-    leftPanelModule.mount(leftCtx());
-    await flush(6);
-    const commit = resolveRegion("navigator/panel:git/commit");
-    expect(commit).not.toBeNull();
-    expect(resolveRegion("navigator/panel:git")!.contains(commit)).toBe(true);
   });
 });
 

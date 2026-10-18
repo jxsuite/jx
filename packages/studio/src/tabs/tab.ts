@@ -324,6 +324,7 @@ export function createTab({
   openedFrom = null,
   preview: previewTab = false,
   layout = null,
+  canvasMode,
 }: {
   id: string;
   documentPath?: string | null;
@@ -335,6 +336,11 @@ export function createTab({
   openedFrom?: TabOrigin | null;
   preview?: boolean;
   layout?: JsonLayout | null;
+  /**
+   * The mode to open in instead of the first declared one: a comparison opens straight into
+   * `git-diff`, so the tab is never active in an edit mode that belongs to another workspace.
+   */
+  canvasMode?: string | undefined;
 }) {
   const scope = effectScope();
 
@@ -347,7 +353,7 @@ export function createTab({
   // Formats author mode order so the default comes first (edit, stylebook, etc.).
   // "preview" is a per-tab toggle rather than a base mode: a preview-first format opens
   // In its first non-preview mode with the toggle already on.
-  const initialCanvasMode = resolvedModes.find((m) => m !== "preview") ?? "edit";
+  const initialCanvasMode = canvasMode ?? resolvedModes.find((m) => m !== "preview") ?? "edit";
   const initialPreview = resolvedModes[0] === "preview";
 
   const doc: Tab["doc"] = {

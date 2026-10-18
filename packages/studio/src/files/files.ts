@@ -110,7 +110,7 @@ import {
 } from "../shell";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import { restoreSession } from "../workspace/session";
-import { cleanupGitPanel } from "../panels/git-panel";
+import { cleanupSourceControl } from "../publish/source-control";
 import { addRecentProject, trackRecentFile } from "../recent-projects";
 import { listWindow, revealListRow, watchListWindow } from "../ui/virtual-window";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
@@ -331,8 +331,8 @@ export async function openProject({
     await loadComponentRegistry();
 
     // Source control, the stylebook selection and the settings tab describe the project being
-    // Left behind. The poll timer goes with them; the panel re-arms it on its next render.
-    cleanupGitPanel();
+    // Left behind. The poll timer goes with them; the Publish workspace re-arms it on its next mount.
+    cleanupSourceControl();
     resetProjectShell();
     resetProjectCaches?.();
     /* The Navigator's panel is the workspace frame's, applied as the project opened (§22.3): Design
@@ -2211,6 +2211,13 @@ export interface OpenFileOpts {
   preview?: boolean;
   /** False leaves the keyboard where it is. Defaults to true. */
   focus?: boolean;
+  /**
+   * The canvas mode the tab is in when it becomes active, for an open that is not an edit: a
+   * comparison opens straight into `git-diff`. Set BEFORE activation, because a tab's mode decides
+   * which workspace it belongs to (`workspace/tab-workspace.ts`) and activation enters that
+   * workspace; a mode set afterwards would visit the edit mode's workspace on the way.
+   */
+  canvasMode?: string;
 }
 
 /**
@@ -2263,6 +2270,9 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
   const follows = opts.focus !== false;
   for (const [id, tab] of workspace.tabs.entries()) {
     if (tab.documentPath === path) {
+      if (opts.canvasMode !== undefined) {
+        tab.session.ui.canvasMode = opts.canvasMode;
+      }
       revealOpenTab(id, opts);
       // The tree's cursor answers "where is the author", so a side-open that deliberately left the
       // Keyboard behind must not move it.
@@ -2366,6 +2376,7 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
       ...(opts.paneId !== undefined && { paneId: opts.paneId }),
       ...(opts.preview === true && { preview: true }),
       ...(opts.focus === false && { focus: false }),
+      ...(opts.canvasMode !== undefined && { canvasMode: opts.canvasMode }),
     });
     if (follows) {
       requireProjectState().selectedPath = path;
@@ -2577,16 +2588,15 @@ let _lastValues: FilesPanelValues | null = null;
  * Draw the panel — mounting the document the first time, and re-projecting into it every time
  * after.
  *
- * The document goes into `.panel-content`, not into the `.panel-body` this is handed, for the
- * reason `panels/git-panel.ts` states: only one of them is the node lit renders this panel's body
- * into, and appending to the other would leave the panel drawn under whatever the Navigator paints
- * next.
+ * The document goes into `.panel-content`, not into the `.panel-body` this is handed, because only
+ * one of them is the node lit renders this panel's body into, and appending to the other would
+ * leave the panel drawn under whatever the Navigator paints next.
  *
- * The repaint stays the NAVIGATOR'S. Source Control owns an `effect()` because its inputs are the
- * reactive `shell.git` record; the tree's inputs are a `Map` of directory listings, a `Set` of
- * expanded paths and a roaming setting, none of which is reactive — so `ctx.rerender` is what this
- * surface has always been redrawn by, and it stays that way rather than growing a second scheduler
- * that could disagree with it.
+ * The repaint stays the NAVIGATOR'S. The Publish workspace owns an `effect()` because its inputs
+ * are the reactive `shell.git` record; the tree's inputs are a `Map` of directory listings, a `Set`
+ * of expanded paths and a roaming setting, none of which is reactive — so `ctx.rerender` is what
+ * this surface has always been redrawn by, and it stays that way rather than growing a second
+ * scheduler that could disagree with it.
  *
  * @param host - The painted `.panel-body`
  * @param rerender - The Navigator's repaint
@@ -2621,7 +2631,7 @@ export function mountFilesPanel(host: HTMLElement, rerender: () => void): void {
  * Take the panel down: the document, the drag registrations, the scroll watch and the row handles.
  *
  * Exported because a project close has to reach it — the tree it is showing belongs to the project
- * being left behind, exactly as `cleanupGitPanel` is for the working tree.
+ * being left behind, exactly as `cleanupSourceControl` is for the working tree.
  */
 export function unmountFilesPanel(): void {
   dismissFileContextMenu();

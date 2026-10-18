@@ -40,7 +40,7 @@ import { primarySelection } from "../tabs/selection";
 import { shell } from "../shell";
 import { openQuickSearch } from "../panels/quick-search";
 import { getPlatform, hasPlatform } from "../platform";
-import { getPreviewNavigateHandler } from "../canvas/preview-navigate";
+import { openUrlExternally } from "../canvas/preview-navigate";
 import { armPreviewOverlay, flushPreviewOverlay } from "../preview/preview-overlay";
 import { documentUrlPattern, dynamicRouteParams } from "../page-params";
 import { getNodeAtPath, nodeLabel, projectState } from "../store";
@@ -172,6 +172,10 @@ interface CommandBarScope {
   workspaces: WorkspaceTabProjection[];
   /** The selected workspace tab's value: `shell.workspace`. */
   workspace: string;
+  /** The quick-publish chevron beside the Publish tab: `publish.quick`, drawn when registered. */
+  quickVisible: boolean;
+  quickDisabled: boolean;
+  quickTooltip: string;
   settingsVisible: boolean;
   settingsOpen: boolean;
   segments: SegmentProjection[];
@@ -214,6 +218,9 @@ const DOCKS = [
   { dock: "right", icon: "sidebar-simple", id: "view.toggleInspector", mirror: true },
   { dock: "bottom", icon: "rows", id: "view.toggleBottomDock", mirror: false },
 ] as const;
+
+/** The record the chevron beside the Publish tab renders. */
+const QUICK_PUBLISH = "publish.quick";
 
 /** The palette mode each segment of the address opens. */
 const SEGMENT_MODES = { document: "files", project: "projects", selection: "nodes" } as const;
@@ -299,22 +306,6 @@ export function openInBrowserTarget(tab: Tab | null): BrowserTarget {
      fix: the page 200, its CSS 404, its first link 404. */
   const trailingSlash = projectState.projectConfig?.build?.trailingSlash ?? "always";
   return { path: route === "/" ? "/" : trailingSlash === "always" ? `${route}/` : route };
-}
-
-/**
- * Hand a URL to the user's real browser.
- *
- * Reuses the seam the desktop launchers already register for Preview link clicks
- * (`canvas/preview-navigate.ts`), which routes through the OS rather than navigating a webview with
- * no address bar; the browser build falls back to a new tab.
- */
-function openUrlExternally(url: string) {
-  const override = getPreviewNavigateHandler();
-  if (override) {
-    override(url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 /**
@@ -784,6 +775,9 @@ function state(): CommandBarScope {
     windowControl: (action) => {
       windowControls()?.[action]();
     },
+    quickDisabled: true,
+    quickTooltip: "",
+    quickVisible: false,
     workspace: "",
     workspaces: [],
     workspacesVisible: false,
@@ -805,6 +799,14 @@ function project(): void {
   scope.workspaces = projectWorkspaces(registry);
   scope.workspacesVisible = scope.workspaces.length > 0;
   scope.workspace = shell.workspace;
+  /* The chevron is a rendering of `publish.quick`, beside the tablist that ends on Publish
+     (studio.md §22.2): drawn only with the tabs and only while the registry shows the record, and
+     disabled with its own reason rather than hidden when the project is not a repository. */
+  const quick = QUICK_PUBLISH;
+  scope.quickVisible =
+    scope.workspacesVisible && registry?.get(quick) !== undefined && registry.isVisible(quick);
+  scope.quickDisabled = !scope.quickVisible || !registry?.isEnabled(quick);
+  scope.quickTooltip = registry && scope.quickVisible ? commandTooltip(registry, quick) : "";
   scope.settingsVisible =
     registry !== null && registry.forPlacement(SETTINGS_MENU_PLACEMENT).length > 0;
   scope.settingsOpen = isSettingsMenuOpen();

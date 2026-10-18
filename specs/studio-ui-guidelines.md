@@ -835,7 +835,7 @@ Stripping labels is **not** a way to stay under the cap. A container query that 
 
 ### 12.3 Every invoking surface prints the name and the chord
 
-> **Status: Partial.** The Command Bar, the palette, the element menu and the block bar print title, chord and `requires` through `formatBinding` (`packages/studio/src/surfaces/commandbar.ts`, `src/panels/quick-search.ts`, `src/surfaces/menu.ts`). Rail buttons print no chord although `panel.focus.*` binds one (`src/surfaces/rail.ts`); the tab-strip and Files-tree menus build their rows with no `chord`, and `src/files/files.ts` hard-codes `destructive: false`; the Bottom dock's close button carries its own label, prints no ⌘J, and calls the dock setter rather than `view.setBottomDock` (`src/surfaces/bottom-dock.json`, `src/panels/bottom-dock.ts`); and the Source Control panel's "Create GitHub repository" renames `git.createGithubRepository` (`src/surfaces/git-panel.json`).
+> **Status: Partial.** The Command Bar, the palette, the element menu and the block bar print title, chord and `requires` through `formatBinding` (`packages/studio/src/surfaces/commandbar.ts`, `src/panels/quick-search.ts`, `src/surfaces/menu.ts`). Rail buttons print no chord although `panel.focus.*` binds one (`src/surfaces/rail.ts`); the tab-strip and Files-tree menus build their rows with no `chord`, and `src/files/files.ts` hard-codes `destructive: false`; the Bottom dock's close button carries its own label, prints no ⌘J, and calls the dock setter rather than `view.setBottomDock` (`src/surfaces/bottom-dock.json`, `src/panels/bottom-dock.ts`); and Publish › Review changes' "Create GitHub repository" renames `git.createGithubRepository` (`src/surfaces/publish-workspace.json`).
 
 Wherever a command is rendered — Command Bar button, palette row, context-menu item, block-action button, rail entry — the surface prints:
 
@@ -901,7 +901,7 @@ Corollaries:
 
 ### 12.5 A second list of actions is a defect
 
-> **Status: Partial.** The tab strip, the outline, the block bar and the Command Bar draw from placements. `ACTIONS` in `packages/studio/src/panels/git-panel.ts` is a second list: its `createRepository` calls `createGithubRepository()` directly from the no-repository state, where `git.createGithubRepository`'s `enablement` refuses, so the repository is created on GitHub and adding the remote then fails (asserted as behaviour in `tests/git-panel-gaps.test.ts`).
+> **Status: Partial.** The tab strip, the outline, the block bar and the Command Bar draw from placements. The Source Control panel and its `ACTIONS` list are gone: Publish › Review changes runs Initialize, Create GitHub Repository and Push as their records (`actionsFor` in `packages/studio/src/publish/publish-workspace.ts`), its no-repository state offers Initialize alone, and Hosting draws every source and host command from its record with the record's reason. What is left is the verbs that have no record yet, run as functions of `publish/source-control.ts`: fetch, pull, refresh, include and leave out, discard, and branch switch and create.
 
 If a surface maintains its own array of `{ label, action }` records for capabilities that already exist, that array is the bug — not a shortcut around one. The symptom is always the same: two surfaces disagree about one capability. `Cmd+W` refusing to close the last tab while the tab strip's `×` closed it happily is the canonical example, and it is exactly what one record with one chord and one `run` makes impossible.
 

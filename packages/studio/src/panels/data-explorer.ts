@@ -419,7 +419,7 @@ export function registerDataExplorerCommands(
  * **Both halves are documents now** — `surfaces/panel-signals.{json,ts}` for the entry list and its
  * editors, `surfaces/panel-data.{json,ts}` for the value tree under an open row. So lit draws
  * nothing at all here: `render` returns `nothing` and `afterRender` mounts against the painted DOM,
- * which is the seam `panels/git-panel.ts` uses for the same reason. The mount comes through `deps`
+ * which is the seam every document-bodied Navigator panel uses. The mount comes through `deps`
  * rather than an import — this module owns the expansion store that one reads, so importing it back
  * would close a cycle — and it is idempotent, so running on every repaint is what keeps the
  * projection current.

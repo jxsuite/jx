@@ -45,7 +45,7 @@ Auth is an extension package, and it keeps its accounts in a database, so it bui
 1. **Have a connection.** Add one in **[Connections](/docs/studio/data/connections)** if the project has none, because the account tables live on one of them.
 2. **Install the package.** Type `@jxsuite/auth` into _Settings > Dependencies_ and click **Add** (see **[Dependencies and imports](/docs/studio/projects/dependencies)**).
 3. **List it as an extension.** Open `project.json` and add `"@jxsuite/auth"` to its `extensions` array, since that list is what switches the section on. Studio has no field for it yet, so this one edit happens in the **[Code editor](/docs/studio/logic/code)**; the array is described in **[project.json](/docs/framework/site/project-json)**.
-4. **Pick a server-capable adapter.** Set `build.adapter` in `project.json` to `cloudflare-pages`, `cloudflare-workers`, `node`, or `bun`, from **[Project settings](/docs/studio/projects/settings) › Advanced › Raw JSON › Edit as code**. A site with accounts is no longer purely static, and the build says so if you leave it on Static.
+4. **Pick a server-capable adapter.** Set the build adapter to **Cloudflare Pages**, **Cloudflare Workers**, **Node** or **Bun** under **How it is built** in **[Publish](/docs/studio/publish) › Hosting**; it is `build.adapter` in `project.json`. A site with accounts is no longer purely static, and the build says so if you leave it on Static.
 
 Reopen Settings and an **Authentication** section is waiting. Filling it in writes an `auth` section into `project.json`.
 

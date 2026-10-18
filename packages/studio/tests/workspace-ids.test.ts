@@ -46,12 +46,6 @@ describe("the ids", () => {
     expect(new Set(WORKSPACES.map((entry) => entry.icon)).size).toBe(WORKSPACES.length);
   });
 
-  test("every workspace says what it is for, in one sentence", () => {
-    for (const entry of WORKSPACES) {
-      expect(entry.purpose).toMatch(/^[A-Z].*\.$/);
-    }
-  });
-
   test("isWorkspaceId refuses anything undeclared, a stale layout id included", () => {
     expect(isWorkspaceId("styles")).toBe(true);
     for (const value of ["write", "build", "ship", "", "Design", 3, null, undefined]) {

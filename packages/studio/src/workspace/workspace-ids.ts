@@ -34,8 +34,6 @@ export interface WorkspaceInfo {
   title: string;
   /** A key into the kit's glyph manifest (`@jxsuite/ui/icons`), checked by this module's test. */
   icon: string;
-  /** One sentence saying what the workspace is FOR, the way an empty state says it. */
-  purpose: string;
 }
 
 /** Every workspace, in {@link WORKSPACE_IDS} order. */
@@ -43,31 +41,26 @@ export const WORKSPACES: readonly WorkspaceInfo[] = [
   {
     icon: "frame-corners",
     id: "design",
-    purpose: "Design pages, templates and components on the canvas.",
     title: "Design",
   },
   {
     icon: "file-text",
     id: "content",
-    purpose: "Write and organise pages and the entries of every collection.",
     title: "Content",
   },
   {
     icon: "image",
     id: "media",
-    purpose: "Upload, find and reuse the images, video, audio and documents your site uses.",
     title: "Media",
   },
   {
     icon: "paint-brush",
     id: "styles",
-    purpose: "Set the colours, fonts and element defaults every page shares.",
     title: "Styles",
   },
   {
     icon: "paper-plane-tilt",
     id: "publish",
-    purpose: "Review your changes and put them on the live site.",
     title: "Publish",
   },
 ];

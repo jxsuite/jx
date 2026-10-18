@@ -17,8 +17,6 @@ code:
   - packages/studio/src/workspace/tab-workspace.ts
   - packages/studio/src/workspace/workspace-switch.ts
   - packages/studio/src/workspace/workspace-home.ts
-  - packages/studio/src/surfaces/workspace-home.ts
-  - packages/studio/src/surfaces/workspace-home.json
   - packages/studio/src/panels/left-panel.ts
   - packages/studio/src/panels/site-panel.ts
   - packages/studio/src/panels/site-model.ts
@@ -58,7 +56,7 @@ The bar across the top of the window. Everything in it is a command, so what you
 From left to right:
 
 - The **Studio menu** (the ≡ button at the left edge) holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Preferences…**, **Zen Mode**, and the rest.
-- The **workspace tabs** (**Design · Content · Media · Styles · Publish**, :kbd[⌘1] to :kbd[⌘5]) switch what you are working on. See [Workspaces](#workspaces). The **Publish** tab counts the changes you have not published yet.
+- The **workspace tabs** (**Design · Content · Media · Styles · Publish**, :kbd[⌘1] to :kbd[⌘5]) switch what you are working on. See [Workspaces](#workspaces). The **Publish** tab counts the changes you have not published yet, and the small arrow beside it opens **Quick publish**. See [Publish](/docs/studio/publish).
 - The **Command Center pill** sits in the middle: `◈ project › document › selection`, with :kbd[⌘K] at its right end. It names the project you're in, the document you're editing and the element you have selected, and each segment is a button that opens the palette already scoped to that level. Click the pill's empty space to open the palette with nothing pre-picked. The pill is where you go to _search_ for a place; the [jump bar](#the-jump-bar) in the status bar is where you _step_ to one.
 - The **verb cluster** on the right holds the four actions worth a permanent button: **Save**, **Open in Browser**, **Undo** and **Redo**. A greyed-out one tells you in its tooltip what it is waiting for: **Save** stays greyed out until the document has unsaved changes, and lights up with the first keystroke.
 - The **Settings** gear opens a menu rather than a panel. See [The Settings menu](#the-settings-menu).
@@ -86,7 +84,7 @@ Studio has five workspaces, one for each kind of work. Every open tab belongs to
 - **Styles** (:kbd[⌘4]): [Project Styles](/docs/studio/design/stylebook) over `project.json`, in three views: **Elements** (the default look of each element type), **Variables** (your [CSS custom properties](/docs/studio/design/tokens)) and **Code**.
 - **Publish** (:kbd[⌘5]): your unpublished changes and the comparison of each one.
 
-Switching to a workspace takes you back to the tab you were last in there. When it has no tab open it opens its home instead: the Content home on a collection for Content, Project Styles for Styles, the media library for Media, and a home page of its own for Publish. Design with nothing open shows an empty canvas. Closed a workspace's home? Click its tab in the Command Bar again and the home comes back.
+Switching to a workspace takes you back to the tab you were last in there. When it has no tab open it opens its home instead: the Content home on a collection for Content, Project Styles for Styles, the media library for Media, and Review changes for Publish. Design with nothing open shows an empty canvas. Closed a workspace's home? Click its tab in the Command Bar again and the home comes back.
 
 Opening a document switches to its workspace for you, so opening a page from the Content workspace lands you in Design, and opening an entry lands you in Content. The same goes for a second pane: it only ever shows a tab of the workspace you are in, and **Compare With…** on a document from another workspace switches you to that workspace to show it.
 
@@ -118,7 +116,7 @@ Two panels are for working with the project as files and packages, and they stay
 
 With the switch off, both are still one palette row away: **Show Files** and **Show Packages**.
 
-**Insert**, the palette of elements and components you can add to a page, is not on the rail either, because you reach for it at the moment you're placing something, and it is not a view you sit in. Run **Show Insert** from the palette (:kbd[⌘K]) to open it in the Navigator. **Source Control** is off the rail as well: run **Show Source Control** from the palette, and the **Publish** tab in the Command Bar counts your changes. See [Publish](/docs/studio/publish).
+**Insert**, the palette of elements and components you can add to a page, is not on the rail either, because you reach for it at the moment you're placing something, and it is not a view you sit in. Run **Show Insert** from the palette (:kbd[⌘K]) to open it in the Navigator. Source control is not a Navigator panel: it is the **Publish** workspace, whose tab in the Command Bar counts your changes. See [Publish](/docs/studio/publish).
 
 ### The Site panel
 
@@ -209,7 +207,7 @@ A project with no `.gitignore` is unaffected: nothing is hidden, and the toggle 
 
 ## Panes and the canvas
 
-The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a real control rather than a drag handle: Tab reaches it, :kbd[←] and :kbd[→] move it a step at a time (hold :kbd[Shift] for a bigger one), :kbd[Home] and :kbd[End] take it as far as each pane's minimum width allows, and :kbd[Enter] or a double click snaps it back to an even split and then returns it to where you had it. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Media**, **Elements** or **Variables**, or a workspace's **Home** (the Content home, the media library, the Publish home). It carries its own strip of open documents and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline, the keyboard and the [jump bar](#the-jump-bar) at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
+The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a real control rather than a drag handle: Tab reaches it, :kbd[←] and :kbd[→] move it a step at a time (hold :kbd[Shift] for a bigger one), :kbd[Home] and :kbd[End] take it as far as each pane's minimum width allows, and :kbd[Enter] or a double click snaps it back to an even split and then returns it to where you had it. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Media**, **Elements** or **Variables**, or a workspace's **Home** (the Content home, the media library, the Publish workspace). It carries its own strip of open documents and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline, the keyboard and the [jump bar](#the-jump-bar) at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
 
 A Diff pane compares one file against your last commit and carries its own change stepper, so two panes can be reviewing two different files at once. See **[Source control](/docs/studio/publish/source-control#read-a-change)**.
 
@@ -273,7 +271,7 @@ The strip along the bottom carries **ambient state only** (things that are true 
 - **Document** is the [jump bar](#the-jump-bar): the open file, then every element above the one you have selected, each one a button that selects it.
 - **Selection** shows what the trail can't say: **3 selected** when more than one element is picked, or the style rule the Style panel is editing in Project Styles.
 
-Nearly every item is a button that runs the command behind it: the project name opens your recents, the branch reveals Source Control, the problem count opens the Bottom dock, and a crumb selects its element. Whether a document has unsaved changes is shown by the dot on its tab and by the Command Bar's **Save**; which view a pane is in is on its [context bar](/docs/studio/interface/tabs#the-pane-context-bar).
+Nearly every item is a button that runs the command behind it: the project name opens your recents, the branch opens the Publish workspace, the problem count opens the Bottom dock, and a crumb selects its element. Whether a document has unsaved changes is shown by the dot on its tab and by the Command Bar's **Save**; which view a pane is in is on its [context bar](/docs/studio/interface/tabs#the-pane-context-bar).
 
 :::doc-note
 Outcomes don't appear here. Something that happened at a moment and is reversible appears as a **toast** that retires itself; something that must be fixed becomes a **Problem** in the Bottom dock; something wrong with a value you just typed is shown at the field you typed it in.

@@ -63,7 +63,7 @@ Click a section to show it, or reach a group's list with :kbd[⇥] and walk it w
 Press :kbd[Esc] or **Close** to dismiss it. The keyboard goes back to whatever you opened it from.
 
 :::doc-note
-Under the list, **Moved** names what used to be here and where it went: **Colors and fonts** to the **Variables** view of the **Styles** workspace, **Hosting and domain** to **Publish**, and **head and SEO defaults** are also on the **Page tab** in Design (they are still editable under **Advanced › Site head**). Each one's button closes the dialog and takes you there; the Page tab button also opens the Inspector on its Page tab. The hosting editor arrives with a Hosting view in Publish. Until that view is in your build, set the adapter as text: **Advanced › Raw JSON › Edit as code** opens `project.json`, where it is `build.adapter`.
+Under the list, **Moved** names what used to be here and where it went: **Colors and fonts** to the **Variables** view of the **Styles** workspace, **Hosting and domain** to **Publish › Hosting**, and **head and SEO defaults** are also on the **Page tab** in Design (they are still editable under **Advanced › Site head**). Each one's button closes the dialog and takes you there; the Page tab button also opens the Inspector on its Page tab. The build adapter's picker is there, under **How it is built**.
 :::
 
 ## Changes save as you make them

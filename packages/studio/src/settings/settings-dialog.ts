@@ -32,6 +32,7 @@ import type { DialogLayerHandle } from "../ui/surface";
 import type { InspectorTabId } from "../shell";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import type { StylesView } from "../style/project-styles";
+import type { PublishTab } from "../publish/publish-ids";
 
 /** The open dialog, or `null` while none is up. */
 let _dialog: DialogLayerHandle | null = null;
@@ -64,10 +65,16 @@ async function openMoved(
   workspace: WorkspaceId,
   inspector?: InspectorTabId,
   view?: StylesView,
+  publishTab?: PublishTab,
 ): Promise<void> {
   closeSettingsDialog();
   if (view !== undefined) {
     await runActiveReported("styles.open", { view }, "Settings");
+    return;
+  }
+  // Hosting is a Publish sub-tab, not the workspace's first: the button says where it lands.
+  if (publishTab !== undefined) {
+    await runActiveReported("publish.open", { tab: publishTab }, "Settings");
     return;
   }
   await runActiveReported("view.setWorkspace", { workspace }, "Settings");
@@ -97,8 +104,8 @@ export async function openSettingsDialog(): Promise<void> {
   const dialog = openSettingsDialogSurface({
     body: (host) => {
       _pane = mountSettingsPane(host, {
-        openMoved: (workspace, inspector, view) => {
-          void openMoved(workspace, inspector, view);
+        openMoved: (workspace, inspector, view, publishTab) => {
+          void openMoved(workspace, inspector, view, publishTab);
         },
       });
     },

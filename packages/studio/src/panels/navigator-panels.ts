@@ -9,8 +9,8 @@
  *
  * **Registration order is rail order** within a level group: PROJECT (Site, then Files with the
  * developer panels on) above the divider, DOCUMENT (Outline · Data, then Packages with the
- * developer panels on) below it (§5.1). Search, Source Control, Languages and Insert are registered
- * rail-less: reachable by `view.setActivity` and the palette, with no button.
+ * developer panels on) below it (§5.1). Search, Languages and Insert are registered rail-less:
+ * reachable by `view.setActivity` and the palette, with no button.
  *
  * **Every rail button opens the Navigator.** Problems used to hold the fourth PROJECT slot while
  * its body was drawn in the Bottom dock, and paying for that took a per-dock branch in three
@@ -28,7 +28,6 @@
 import { registerFilesPanel } from "../files/files";
 import { registerDataPanel } from "./data-explorer";
 import { registerInsertPanel } from "./elements-panel";
-import { registerGitPanel } from "./git-panel";
 import { registerI18nPanel } from "./i18n-panel";
 import { registerPackagesPanel } from "./imports-panel";
 import { registerBottomPanels } from "./bottom-dock";
@@ -71,7 +70,9 @@ export function registerNavigatorPanels(): void {
     when: NOT_YET_BUILT,
     render: () => nothingYet(),
   });
-  registerGitPanel();
+  /* No Source Control panel: its change list, commit and branch picker are the Publish workspace's
+     Review changes and Branches (§5.5, §22.8), and a Navigator beside that workspace would be a
+     second list of the same things. */
   /* Off the rail, and registered in the PROJECT group anyway: registration order is roster order,
      so this is what puts Languages beside the panels it belongs with in the palette and in
      `panel.focus.*`. Its `when` is `project.isMultilingual` — a project written in one language

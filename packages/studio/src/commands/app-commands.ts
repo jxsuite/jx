@@ -55,7 +55,7 @@ import { assistantCommands } from "../panels/ai-panel";
 import { preferencesCommands } from "../settings/preferences-dialog";
 import { aboutCommands } from "../about/about-modal";
 import { contentViewCommands } from "../browse/library-commands";
-import { sourceControlCommands } from "../panels/git-panel";
+import { sourceControlCommands } from "../publish/source-control";
 import { publishCommands } from "../publish/publish-commands";
 import { gridViewCommands } from "../grid/grid-panel";
 import { redirectsCommands } from "../grid/redirects-grid";

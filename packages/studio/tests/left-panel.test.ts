@@ -18,7 +18,7 @@ import { mountSignalsPanel } from "../src/panels/signals-panel";
 import { registerPanel, resetPanels } from "../src/panels/panel-registry";
 import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
 import { view } from "../src/view";
-import { shell } from "../src/shell";
+import { NAVIGATOR_PANEL_IDS, migratePanelId, shell } from "../src/shell";
 
 /** The shell's Navigator cell, which `initShellRefs()` found in `beforeEach`. */
 function navigatorHost(): HTMLElement {
@@ -32,7 +32,6 @@ function makeCtx(overrides: Partial<NavigatorPanelDeps> = {}): NavigatorPanelDep
      `webdata.elements` alone: category name to `{ tag }[]`, the shape the bundled file has. */
   const webdata = { elements: { Text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"];
   return {
-    cloneRepository: mock(() => {}),
     defaultDef: (tag: string) => ({ tagName: tag }),
     defBadgeLabel: () => "badge",
     defCategory: () => "cat",
@@ -49,7 +48,6 @@ function makeCtx(overrides: Partial<NavigatorPanelDeps> = {}): NavigatorPanelDep
     // Navigator hands it reaches the drawn rows.
     mountSignalsPanel,
     setCanvasMode: mock(() => {}),
-    setGitDiffState: mock(() => {}),
     webdata,
     ...overrides,
   };
@@ -119,70 +117,11 @@ describe("left panel — project-level tabs", () => {
     expect(body?.querySelector('[part="content"] [part="files"]')).not.toBeNull();
   });
 
-  /* Source Control is a Jx document (`surfaces/git-panel.json`) mounted by the record's own
-     `afterRender`, so the panel is no longer drawn through `deps.renderGitPanel` and there is no
-     `#git-rendered` to find. What the Navigator still owes it is the HOST: the `[part="panel-body"]`
-     carrying its region, and the `[part="content"]` box the document goes into. */
-  function seedRepo() {
-    shell.git.branches = { branches: ["main"], current: "main" };
-    shell.git.status = {
-      ahead: 0,
-      behind: 0,
-      branch: "main",
-      files: [],
-      isRepo: true,
-      remotes: ["origin"],
-    };
-  }
-
-  test("git tab mounts the Source Control document", async () => {
-    seedRepo();
-    shell.leftTab = "git";
-    await mountWith();
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="git-panel"]')).not.toBeNull();
-    /* And the box it went into is the one the Navigator's own document drew, addressable as this
-       panel's region — which is the seam, and the thing a stale selector used to photograph. */
-    expect(
-      navigatorHost().querySelector<HTMLElement>('[part="panel-body"]')?.dataset.jxRegion,
-    ).toBe("navigator/panel:git");
-    // The header reads the record's title; "Source" is the rail button's label and only that.
-    expect(navigatorHost().querySelector('[part="header-title"]')?.textContent.trim()).toBe(
-      "Source Control",
-    );
-  });
-
-  test("git tab renders with no active tab — Source Control is project level", async () => {
-    seedRepo();
-    closeAllTabs();
-    shell.leftTab = "git";
-    await mountWith();
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="git-panel"]')).not.toBeNull();
-  });
-
-  test("project-level source-control changes reach the panel with no tab open", async () => {
-    /* The panel used to be repainted by hand from inside git-panel (`renderOnly("leftPanel")` after
-       every write), and then by the Navigator's own repaint. Both are gone: the mounted document
-       owns an effect over the same `shell.git` fields, so the sub-tab moving is enough. */
-    seedRepo();
-    closeAllTabs();
-    shell.leftTab = "git";
-    await mountWith();
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="commit"]')).not.toBeNull();
-
-    shell.git.subTab = "history";
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="commit"]')).toBeNull();
-    expect(navigatorHost().querySelector('[part="history"]')).not.toBeNull();
-
-    shell.git.logEntries = [
-      { author: "a", date: "2024-01-01T00:00:00Z", hash: "abc", message: "m" },
-    ];
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="history-entry"]')).not.toBeNull();
-    shell.git.subTab = "changes";
+  /* Source Control is not a Navigator panel any more: it is the Publish workspace (§5.5, §22.8),
+     so a stored `git` lands on the Site panel rather than on nothing. */
+  test("a stored git panel id reopens the Navigator on the Site panel", () => {
+    expect(NAVIGATOR_PANEL_IDS).not.toContain("git");
+    expect(migratePanelId("git")).toBe("site");
   });
 
   test("insert panel renders the elements palette and registers DnD", async () => {

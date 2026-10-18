@@ -855,6 +855,21 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     return okJson<ProjectInfoWire>(await api("/project-info"), "Failed to load project");
   }
 
+  /* The repository's default branch, asked once per session: it is what Send for review must never
+     commit to here, because a commit on this host lands on GitHub as it is made. A failed ask is
+     forgotten, so the next branch listing asks again. */
+  let defaultBranch: Promise<string> | null = null;
+  function repositoryDefaultBranch(): Promise<string> {
+    defaultBranch ??= projectInfo().then(
+      (info) => info.defaultBranch || "",
+      () => {
+        defaultBranch = null;
+        return "";
+      },
+    );
+    return defaultBranch;
+  }
+
   /** One file the old way: `GET /file`. What a single read, and the batch fallback, goes through. */
   async function readOne(path: string): Promise<string> {
     const data = await okJson<{ content: string }>(
@@ -953,6 +968,10 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
   const platform: StudioPlatform = {
     id: "cloud",
     projectRoot: root,
+    /* Commits land on GitHub as they are made (`gitCommit`), a push is a sync check, and a branch
+       is a sibling session (`gitCheckout`), which is what the Publish workspace says before it
+       switches one (studio.md §22.8). */
+    gitHosted: true,
     canvasUrl: "/canvas.html",
     /* The projectRoot here is the IDENTIFIER "owner/repo@branch", not a served path, so the canvas's
        default base — <origin>/<projectRoot>/ — addressed nothing. Every component $ref fetch landed
@@ -1504,7 +1523,15 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     },
 
     async gitBranches() {
-      return okJson<GitBranchesResult>(await api("/git/branches"), "Failed to list branches");
+      const listed = await okJson<GitBranchesResult>(
+        await api("/git/branches"),
+        "Failed to list branches",
+      );
+      if (listed.defaultBranch) {
+        return listed;
+      }
+      const name = await repositoryDefaultBranch();
+      return name ? { ...listed, defaultBranch: name } : listed;
     },
 
     async gitLog(limit?: number) {

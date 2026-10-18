@@ -29,6 +29,7 @@ import {
   switchWorkspace,
 } from "../src/workspace/workspace-switch";
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
+import { effect, effectScope } from "../src/reactivity";
 import type { InspectorTabId } from "../src/shell";
 import { openStubTab } from "./workspace-fixture";
 
@@ -96,6 +97,29 @@ describe("the follow: activating a tab enters its workspace", () => {
     expect(shell.workspace).toBe("media");
     expect(shell.docks.left.collapsed).toBe(true);
     expect(shell.docks.right.collapsed).toBe(true);
+  });
+
+  /* A comparison belongs to Publish (studio.md §22.1). Opened in its edit mode and moved into Diff
+     afterwards, a document would enter Design, frame and all, for the moment in between. */
+  test("a document opened straight into Diff enters Publish without passing through Design", () => {
+    tab(workspaceHomeTabId("publish"), { mode: "publish-home", path: null });
+    expect(shell.workspace).toBe("publish");
+    const visited: string[] = [];
+    const scope = effectScope();
+    scope.run(() => {
+      effect(() => {
+        visited.push(shell.workspace);
+      });
+    });
+    const opened = openTab({
+      canvasMode: "git-diff",
+      document: { children: [], tagName: "div" },
+      documentPath: "pages/index.json",
+      id: "pages/index.json",
+    });
+    scope.stop();
+    expect(opened.session.ui.canvasMode).toBe("git-diff");
+    expect(visited).toEqual(["publish"]);
   });
 
   test("a tab's editor moving it to another workspace moves the workspace with it", () => {

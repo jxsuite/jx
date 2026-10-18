@@ -916,6 +916,8 @@ export function openTab(opts: {
   paneId?: string;
   focus?: boolean;
   layout?: JsonLayout | null;
+  /** The mode it opens in, when not its first declared one (`createTab`). */
+  canvasMode?: string;
 }) {
   const previous = workspace.tabs.get(opts.id);
   const preview = opts.preview === true && previous?.pinned !== true;

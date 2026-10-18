@@ -1889,6 +1889,41 @@ describe("git surface (full sweep)", () => {
     expect(await p.gitShow({ path: "x" })).toBe("old text");
   });
 
+  /* Send for review must never commit to the repository's default branch here, because a commit on
+     this host lands on GitHub as it is made, so the branch listing says which branch that is. */
+  test("the branch listing carries the repository's default branch, asked once", async () => {
+    const calls = mockFetch({
+      "/git/branches": { body: { current: "pricing", branches: ["main", "pricing"] } },
+      "/project-info": {
+        body: { defaultBranch: "main", name: "my-site", permission: "write", projectConfig: null },
+      },
+    });
+    const p = createCloudPlatform(PROJECT);
+    expect(await p.gitBranches()).toEqual({
+      branches: ["main", "pricing"],
+      current: "pricing",
+      defaultBranch: "main",
+    });
+    await p.gitBranches();
+    expect(calls.filter((call) => call.url.includes("/project-info"))).toHaveLength(1);
+  });
+
+  test("a default branch the route names itself wins, and a failed ask is asked again", async () => {
+    mockFetch({
+      "/git/branches": { body: { current: "a", branches: ["a"], defaultBranch: "trunk" } },
+    });
+    const named = await createCloudPlatform(PROJECT).gitBranches();
+    expect(named.defaultBranch).toBe("trunk");
+    const calls = mockFetch({
+      "/git/branches": { body: { current: "a", branches: ["a"] } },
+      "/project-info": { status: 500, body: { error: "down" } },
+    });
+    const p = createCloudPlatform(PROJECT);
+    const answers = [await p.gitBranches(), await p.gitBranches()];
+    expect(answers.map((answer) => answer.defaultBranch)).toEqual([undefined, undefined]);
+    expect(calls.filter((call) => call.url.includes("/project-info"))).toHaveLength(2);
+  });
+
   test("write endpoints post and surface failures", async () => {
     const calls = mockFetch({ "/git/pull": { status: 409, body: { error: "pull_conflict" } } });
     const p = createCloudPlatform(PROJECT);
