@@ -192,24 +192,20 @@ describe("createLibrarySource", () => {
     const source = createLibrarySource();
     const columns = await source.columns();
     expect(columns.map((c) => c.field)).toEqual(["name", "url", "locale", "modified", "path"]);
-    // A collection leads with what an entry says about itself, and keeps its file after.
+    // A collection leads with what an entry says about itself, and keeps its file (the Path) after.
     expect(libraryColumns("posts").map((c) => c.field)).toEqual([
       "title",
-      "name",
       "locale",
       "modified",
       "path",
     ]);
-    expect(libraryColumns("posts").find((c) => c.field === "name")?.title).toBe("File");
-    expect(libraryColumns("posts", { date: true, status: true }).map((c) => c.field)).toEqual([
-      "title",
-      "status",
-      "date",
-      "name",
-      "locale",
-      "modified",
-      "path",
-    ]);
+    expect(
+      libraryColumns("posts", {
+        date: true,
+        fields: [{ name: "course", title: "Course" }],
+        status: true,
+      }).map((c) => c.field),
+    ).toEqual(["title", "status", "date", "field:course", "locale", "modified", "path"]);
     expect(source.label).toBe("Content");
   });
 

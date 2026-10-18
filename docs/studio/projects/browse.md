@@ -32,7 +32,7 @@ The panel on the left lists **Pages** first, then every collection your project 
 - A collection's **saved grid views** are listed under it. Click one to open the collection's grid with that view applied. You save a view from the grid's **View** menu; see [Data grids](/docs/studio/data/grid).
 - **+ New collection** at the foot opens **Add new** on **Collection**: a name, the fields each entry has, and whether each entry gets a page of its own. See [Content types](/docs/studio/projects/content-types).
 
-While you are writing an entry, the panel lists that collection's entries instead, each with its thumbnail (the entry's first image field), its title and whether it is a draft. **‹ Posts** at the top takes you back to the collection, and **+ New post** at the foot adds another entry to it.
+While you are writing an entry, the panel lists that collection's entries instead, each with its thumbnail (the entry's first image field), its title and whether it is a draft. An entry's title is its `title` field, or its `name`, `label` or `heading` when the collection has no `title`, and its file name only when it has none of these. **‹ Posts** at the top takes you back to the collection, and **+ New post** at the foot adds another entry to it.
 
 ## One collection at a time
 
@@ -66,12 +66,12 @@ Studio reads this from your pages rather than storing it: the template page is t
 
 All four draw the same scan, so switching view repaints. It never re-reads your project.
 
-| View         | What it is good for                                                                                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Table**    | For pages: Name, URL, Locale, Modified and Path. For entries: each entry's **Title**, its **Status** and **Date** when it has them, then its file. The densest way to find one |
-| **Cards**    | A live preview of every page or entry, with its title (or file name) underneath                                                                                                |
-| **Calendar** | Entries grouped by day, newest first: dated posts, in the order you published them                                                                                             |
-| **Board**    | One column per status (**Draft**, **Published**) when the collection has a draft workflow, otherwise one per folder, each with a count                                         |
+| View         | What it is good for                                                                                                                                                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Table**    | For pages: Name, URL, Locale, Modified and Path. For entries: each entry's **Title**, its **Status** and **Date** when it has them, then up to six of the collection's own fields (a menu's Course and Price), then its file. The densest way to find one |
+| **Cards**    | A live preview of every page or entry, with its title (or file name) underneath                                                                                                                                                                           |
+| **Calendar** | Entries grouped by day, newest first: dated posts, in the order you published them                                                                                                                                                                        |
+| **Board**    | One column per status (**Draft**, **Published**) when the collection has a draft workflow, otherwise one per value of a field the entries share (a menu's Course), otherwise one per folder, each with a count                                            |
 
 :::doc-note
 The Table lists files; it does not edit them. Changing a name is a rename, not a cell edit, so renaming, duplicating and deleting live in the right-click menu below, where the confirmation can tell you what else is affected. To edit entries' fields in a spreadsheet, click **Edit in grid** in the toolbar, which opens the collection's [grid](/docs/studio/data/grid).
@@ -79,7 +79,7 @@ The Table lists files; it does not edit them. Changing a name is a rename, not a
 
 **Calendar** places an entry on the date its own date field holds (a field the collection's schema types as a date, or one named `date` or `published`). Otherwise it uses the day the file name starts with (`2026-04-12-spring-menu.md`), and then the file's modification time. A file with neither is listed under **No date** rather than parked on today. It draws the 60 most recent days and says how many older ones it left out.
 
-**Board** caps each column at 25 items and prints how many more there are. Both grouped views draw titles only. For the full list, switch to Table.
+**Board** groups by the first of the collection's fields that declares a fixed list of values, or else by the first field whose values repeat across entries, so a menu becomes Starters, Mains, Desserts and Drinks. Entries with that field empty sit in a last column of their own. Board caps each column at 25 items and prints how many more there are. Both grouped views draw titles only. For the full list, switch to Table.
 
 ## Write an entry
 

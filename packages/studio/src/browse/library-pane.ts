@@ -52,7 +52,15 @@ import {
   templateDisplayName,
 } from "../content/content-collections";
 import { onCollectionPagesRead, peekCollectionPage } from "../content/collection-pages";
-import { onEntrySummariesRead, peekEntrySummaries } from "../content/entry-summaries";
+import {
+  dateFieldOf,
+  onEntrySummariesRead,
+  peekEntrySummaries,
+  titleFieldOf,
+} from "../content/entry-summaries";
+import { entryCollection } from "../content/entry-model";
+import { isString } from "@jxsuite/schema/guards";
+import type { ContentTypeSchema } from "@jxsuite/schema/types";
 import { openEntry } from "../content/entry-open";
 import {
   LIBRARY_LAYOUTS,
@@ -61,12 +69,13 @@ import {
   filterLibrary,
   libraryLocales,
 } from "./library-model";
-import { createLibrarySource, libraryColumns } from "./library-source";
+import { createLibrarySource, entryFieldColumns, libraryColumns } from "./library-source";
 import { createPreviewCache, createPreviewObserver, previewFor } from "./library-preview";
 import { computeWindow } from "../ui/virtual-window";
 import { paneRegion } from "../ui/regions";
 import {
   LAYOUT_METRICS,
+  boardFieldOf,
   boardView,
   calendarView,
   columnsAt,
@@ -837,10 +846,42 @@ function entryFactsFor(collection: ContentCollection): EntryFactsOf {
   const byPath = new Map<string, EntryFacts>(
     (summaries ?? []).map((entry) => [
       entry.path,
-      { date: entry.date, status: entry.status, title: entry.title },
+      { date: entry.date, fields: entry.fields, status: entry.status, title: entry.title },
     ]),
   );
   return entryFactsFrom(byPath);
+}
+
+/** A declared collection's schema, or null for one that declares none. */
+function collectionSchema(key: string): ContentTypeSchema | null {
+  return entryCollection(key)?.schema ?? null;
+}
+
+/** The fields the Table names in a column of their own already: what an entry is called, its date. */
+function listedElsewhere(schema: ContentTypeSchema | null): ReadonlySet<string> {
+  const skip = new Set<string>();
+  const title = titleFieldOf(schema);
+  const date = dateFieldOf(schema, {});
+  for (const name of [title, date]) {
+    if (name !== null) {
+      skip.add(name);
+    }
+  }
+  return skip;
+}
+
+/** Each field's declared string `enum`, the order a Board grouped by it draws its columns in. */
+function fieldEnums(schema: ContentTypeSchema | null): ReadonlyMap<string, readonly string[]> {
+  const enums = new Map<string, readonly string[]>();
+  for (const [name, field] of Object.entries(schema?.properties ?? {})) {
+    if (Array.isArray(field.enum)) {
+      enums.set(
+        name,
+        field.enum.filter((value) => isString(value)),
+      );
+    }
+  }
+  return enums;
 }
 
 /** Everything the home draws in a pane, as one value. */
@@ -863,8 +904,11 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
   const locales = libraryLocales(all);
   const factsOf = entryFactsFor(collection);
   const facts = all.map((file) => factsOf(file));
+  const schema = collection.kind === "collection" ? collectionSchema(collection.key) : null;
+  const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema));
   const columns = libraryColumns(collection.key, {
     date: facts.some((entry) => (entry?.date ?? "") !== ""),
+    fields: fieldColumns,
     status: facts.some((entry) => (entry?.status ?? "") !== ""),
   });
   const live = kind === "cards";
@@ -899,7 +943,10 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
           ? `No ${plural} yet.`
           : "",
     fieldsState: collection.kind === "collection" ? "shown" : "hidden",
-    groups: kind === "board" ? boardView(files, factsOf) : calendar.groups,
+    groups:
+      kind === "board"
+        ? boardView(files, factsOf, boardFieldOf(fieldColumns, fieldEnums(schema), facts))
+        : calendar.groups,
     layouts: LIBRARY_LAYOUTS.map((name) =>
       chip(name, LIBRARY_LAYOUT_LABELS[name], layout === name),
     ),

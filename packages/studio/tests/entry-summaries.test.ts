@@ -20,6 +20,8 @@ const {
   SUMMARY_READ_LIMIT,
   dateFieldOf,
   entryDay,
+  fieldText,
+  titleFieldOf,
   entryStem,
   imageFieldPath,
   invalidateEntrySummaries,
@@ -32,6 +34,20 @@ const POSTS = {
   format: "markdown",
   schema: { properties: { draft: { type: "boolean" }, title: { type: "string" } } },
   source: "./content/posts",
+};
+
+/** A collection with no `title`: what a menu item is called is its `name`. */
+const MENU = {
+  format: "markdown",
+  schema: {
+    properties: {
+      course: { type: "string" },
+      image: { format: "image", type: "string" },
+      name: { type: "string" },
+      order: { type: "number" },
+    },
+  },
+  source: "./content/menu",
 };
 
 let reads: string[] = [];
@@ -53,7 +69,7 @@ beforeEach(() => {
       return text === undefined ? Promise.reject(new Error(path)) : Promise.resolve(text);
     },
   });
-  resetStudioState({ projectConfig: { content: { notes: {}, posts: POSTS } } });
+  resetStudioState({ projectConfig: { content: { menu: MENU, notes: {}, posts: POSTS } } });
 });
 
 describe("the small derivations", () => {
@@ -69,6 +85,37 @@ describe("the small derivations", () => {
     );
     expect(imageFieldPath("content/posts/a.md", "../shared/b.png")).toBe("content/shared/b.png");
     expect(imageFieldPath("a.md", "c.png")).toBe("c.png");
+  });
+});
+
+describe("what an entry is called, and what its fields say", () => {
+  test("the title field is `title`, else a conventional name the schema or the entry has", () => {
+    expect(titleFieldOf({ properties: { name: {}, title: {} } })).toBe("title");
+    expect(titleFieldOf({ properties: { course: {}, name: {} } })).toBe("name");
+    expect(titleFieldOf(null, { label: "Hi" })).toBe("label");
+    expect(titleFieldOf(null, { label: 3 })).toBeNull();
+    expect(titleFieldOf({})).toBeNull();
+  });
+
+  test("a field's text is its scalar, a list of scalars joined, a date as its day", () => {
+    expect(fieldText("Desserts")).toBe("Desserts");
+    expect(fieldText(2)).toBe("2");
+    expect(fieldText(false)).toBe("false");
+    expect(fieldText(["a", 1, { x: 1 }])).toBe("a, 1");
+    expect(fieldText(new Date("2026-03-04T00:00:00Z"))).toBe("2026-03-04");
+    expect(fieldText({ x: 1 })).toBe("");
+    expect(fieldText(null)).toBe("");
+  });
+
+  test("a menu item is titled by its name and carries its declared fields", () => {
+    const summary = summarize("content/menu/tiramisu.md", "menu", {
+      course: "Desserts",
+      extra: "not declared",
+      name: "Espresso Tiramisu",
+      order: 2,
+    });
+    expect(summary.title).toBe("Espresso Tiramisu");
+    expect(summary.fields).toEqual({ course: "Desserts", name: "Espresso Tiramisu", order: "2" });
   });
 });
 

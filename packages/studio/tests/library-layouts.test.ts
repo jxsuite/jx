@@ -13,6 +13,7 @@ import {
   BOARD_COLUMN_LIMIT,
   CALENDAR_DAY_LIMIT,
   LAYOUT_METRICS,
+  boardFieldOf,
   boardView,
   calendarView,
   cellText,
@@ -24,7 +25,12 @@ import {
   libraryRow,
 } from "../src/browse/library-layouts";
 import { LIBRARY_LAYOUTS } from "../src/browse/library-model";
-import { libraryColumns } from "../src/browse/library-source";
+import {
+  entryFieldColumns,
+  entryFieldOfKey,
+  fieldTitle,
+  libraryColumns,
+} from "../src/browse/library-source";
 import type { LibraryFile } from "../src/browse/library-model";
 import type { EntryFacts } from "../src/browse/library-layouts";
 
@@ -289,12 +295,12 @@ describe("entries say what they are", () => {
     const columns = libraryColumns("posts", { date: true, status: true });
     const row = libraryRow(post("a"), columns, false, factsOf(post("a")));
     expect(row.name).toBe("Hello world");
-    expect(row.cells.map((cell) => cell.text).slice(0, 4)).toEqual([
+    expect(row.cells.map((cell) => cell.text).slice(0, 3)).toEqual([
       "Hello world",
       "Published",
       "2026-01-02",
-      "a.md",
     ]);
+    expect(row.cells.at(-1)?.text).toBe("content/posts/a.md");
   });
 
   test("an entry not read yet is titled by its file, with no status or date", () => {
@@ -336,5 +342,112 @@ describe("entries say what they are", () => {
       ["2026-01-02", ["Hello world", "Grid mode rocks"]],
       ["2024-06-07", ["Winter prep"]],
     ]);
+  });
+});
+
+describe("a collection's own fields", () => {
+  const MENU_FIELDS = [
+    { name: "course", title: "Course" },
+    { name: "price", title: "Price" },
+  ];
+  function dish(slug: string): LibraryFile {
+    return { ...post(slug), name: `${slug}.md`, path: `content/menu/${slug}.md` };
+  }
+  const menuFacts = entryFactsFrom(
+    new Map<string, EntryFacts>([
+      [
+        "content/menu/a.md",
+        { date: "", fields: { course: "Mains", price: "$9" }, status: "", title: "A" },
+      ],
+      [
+        "content/menu/b.md",
+        { date: "", fields: { course: "Desserts", price: "$9" }, status: "", title: "B" },
+      ],
+      ["content/menu/c.md", { date: "", fields: { course: "Mains" }, status: "", title: "C" }],
+      ["content/menu/d.md", { date: "", fields: {}, status: "", title: "D" }],
+    ]),
+  );
+  const dishes = ["a", "b", "c", "d"].map((slug) => dish(slug));
+
+  test("the Table draws every listable schema field, titled, except the ones named elsewhere", () => {
+    const columns = entryFieldColumns(
+      {
+        properties: {
+          body: { format: "markdown", type: "string" },
+          course: { type: "string" },
+          date: { format: "date", type: "string" },
+          draft: { type: "boolean" },
+          image: { format: "image", type: "string" },
+          meta: { type: "object" },
+          name: { type: "string" },
+          pairings: { items: { type: "object" }, type: "array" },
+          publishedAt: { type: "string" },
+          tags: { items: { type: "string" }, type: "array" },
+        },
+      },
+      new Set(["name", "date"]),
+    );
+    expect(columns).toEqual([
+      { name: "course", title: "Course" },
+      { name: "publishedAt", title: "Published at" },
+      { name: "tags", title: "Tags" },
+    ]);
+    expect(entryFieldColumns(null, new Set())).toEqual([]);
+    expect(fieldTitle("main_course")).toBe("Main course");
+  });
+
+  test("a field column's cell is the entry's own value, and blank until it is read", () => {
+    const columns = libraryColumns("menu", { date: false, fields: MENU_FIELDS, status: false });
+    expect(columns.map((column) => column.title)).toEqual([
+      "Title",
+      "Course",
+      "Price",
+      "Locale",
+      "Modified",
+      "Path",
+    ]);
+    const row = libraryRow(dish("a"), columns, false, menuFacts(dish("a")));
+    expect(row.cells.map((cell) => cell.text).slice(0, 3)).toEqual(["A", "Mains", "$9"]);
+    expect(cellText(dish("a"), "field:course")).toBe("");
+    expect(cellText(dish("a"), "unknown")).toBe("");
+    expect(entryFieldOfKey("path")).toBeNull();
+  });
+
+  test("Board groups by the first field whose values repeat, with the unset ones last", () => {
+    const facts = dishes.map((file) => menuFacts(file));
+    const field = boardFieldOf(MENU_FIELDS, new Map(), facts);
+    expect(field).toEqual({ name: "course", order: [], title: "Course" });
+    const groups = boardView(dishes, menuFacts, field);
+    expect(groups.map((group) => [group.title, group.count])).toEqual([
+      ["Desserts", "1"],
+      ["Mains", "2"],
+      ["No course", "1"],
+    ]);
+  });
+
+  test("a declared enum is the field to group by, and its order is the columns' order", () => {
+    const enums = new Map([["price", ["$9", "$5"]]]);
+    const field = boardFieldOf(MENU_FIELDS, enums, []);
+    expect(field).toEqual({ name: "price", order: ["$9", "$5"], title: "Price" });
+    const groups = boardView(dishes, menuFacts, field);
+    expect(groups.map((group) => group.title)).toEqual(["$9", "No price"]);
+  });
+
+  test("no field groups entries whose values are all different, so the Board keeps folders", () => {
+    const unique = entryFactsFrom(
+      new Map<string, EntryFacts>([
+        ["content/menu/a.md", { date: "", fields: { course: "x" }, status: "", title: "A" }],
+        ["content/menu/b.md", { date: "", fields: { course: "y" }, status: "", title: "B" }],
+      ]),
+    );
+    const two = [dish("a"), dish("b")];
+    expect(
+      boardFieldOf(
+        MENU_FIELDS,
+        new Map(),
+        two.map((file) => unique(file)),
+      ),
+    ).toBeNull();
+    expect(boardView(two, unique, null).map((group) => group.title)).toEqual(["content/menu"]);
   });
 });

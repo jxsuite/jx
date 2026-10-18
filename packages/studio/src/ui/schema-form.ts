@@ -1032,6 +1032,20 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
     }
   }
 
+  /* An image field (`format: "image"`) is the registered `media` control: the same field, Upload and
+     Browse the page's Icon and OG Image rows draw (`surfaces/media-field.json`), so a collection
+     entry's picture is picked from the project's media rather than typed as a path. Unregistered
+     (a bare-Bun import of this engine), it falls through to the text control below. */
+  if (ps.format === "image") {
+    const media = controlRegistry.get("media");
+    if (media) {
+      plan.commit = "none";
+      plan.control = media;
+      row.kind = "control";
+      return row;
+    }
+  }
+
   /* SAFETY: both sources are read from JSON — the descriptor's `$studio.settings.entry.ui` and the
      field schema — so whichever `enum` is present is a JSON value. */
   const enumSource = (opts.ui?.[prop]?.enum ?? ps.enum) as JsonValue | undefined;

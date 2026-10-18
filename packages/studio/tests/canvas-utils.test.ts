@@ -27,6 +27,8 @@ import {
   PAN_ZOOM_MAX,
   PAN_ZOOM_MIN,
   panToParentRect,
+  revealParentRect,
+  boardsInset,
   requestEditZoom,
   resetFits,
   resetZoom,
@@ -816,6 +818,53 @@ function makeRenderedPanel(opts: { scrollContainer?: HTMLElement | null } = {}) 
   canvasPanels.push(panel);
   return { canvas, panel, target };
 }
+
+describe("revealParentRect (the stylebook's pan-to-card)", () => {
+  function instantFrames() {
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(performance.now() + 1000);
+      return 0;
+    };
+  }
+
+  test("a card already in view does not move the boards", () => {
+    makePanzoomWrap();
+    stubRect(primary().wrap, { height: 600, top: 100 });
+    instantFrames();
+    surfaceForPane("primary").panY = 0;
+    revealParentRect({ height: 40, top: 120 });
+    expect(surfaceForPane("primary").panY).toBe(0);
+  });
+
+  test("a card below the fold is centred", () => {
+    makePanzoomWrap();
+    stubRect(primary().wrap, { height: 600, top: 0 });
+    instantFrames();
+    surfaceForPane("primary").panY = 0;
+    revealParentRect({ height: 0, top: 1000 });
+    expect(surfaceForPane("primary").panY).toBeCloseTo(-700);
+  });
+
+  test("a card above the fold comes back, but the boards' top never drops past where it stood", () => {
+    makePanzoomWrap();
+    stubRect(primary().wrap, { height: 600, top: 0 });
+    instantFrames();
+    surfaceForPane("primary").panY = -100;
+    // Centring would move the boards down by 350; only the 100 above the top is taken back.
+    revealParentRect({ height: 0, top: -50 });
+    expect(surfaceForPane("primary").panY).toBeCloseTo(0);
+    // Already at the top: centring a card cut off above would be an empty band, so nothing moves.
+    revealParentRect({ height: 40, top: -10 });
+    expect(surfaceForPane("primary").panY).toBeCloseTo(0);
+  });
+
+  test("the boards' inset is read from the stage, and is 0 where none is set", () => {
+    const wrap = makePanzoomWrap();
+    expect(boardsInset(wrap)).toBe(0);
+    wrap.style.setProperty("--boards-inset", "40px");
+    expect(boardsInset(wrap)).toBe(40);
+  });
+});
 
 describe("panToParentRect", () => {
   test("pans by the parent-viewport rect (the stylebook pan-to-card entry point)", () => {

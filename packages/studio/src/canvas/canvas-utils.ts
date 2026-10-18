@@ -257,8 +257,10 @@ export function centerCanvas(surface: CanvasSurface) {
   const wrapWidth = surface.wrap.clientWidth;
   const contentWidth = surface.panzoomWrap.scrollWidth;
   const zoom = zoomOf(surface);
-  const scaledWidth = contentWidth * zoom;
-  surface.panX = Math.max(16, (wrapWidth - scaledWidth) / 2);
+  const free = wrapWidth - contentWidth * zoom;
+  /* Content that fits is centred, however little room is left over: a 16px floor on a fitted page
+     pushed its right edge 16px past the pane. Content wider than the pane starts 16px in. */
+  surface.panX = free >= 0 ? free / 2 : 16;
   surface.panY = 0;
 }
 
@@ -483,6 +485,14 @@ export function requestEditZoom(
   );
 }
 
+/** The screen pixels a stage reserves above its boards (`--boards-inset`), or 0 for none. */
+export function boardsInset(panzoomWrap: HTMLElement): number {
+  // The inset is declared in px (`--boards-inset:40px`); unset reads as "", which is no inset.
+  const declared = getComputedStyle(panzoomWrap).getPropertyValue("--boards-inset").trim();
+  const inset = Number(declared.replace(/px$/, ""));
+  return Number.isFinite(inset) ? inset : 0;
+}
+
 /**
  * Compute and apply a geometric fit. Pure arithmetic — it declares nothing.
  *
@@ -495,7 +505,9 @@ function applyGeometricFit(surface: CanvasSurface, axis: "width" | "page", maxZo
     return;
   }
   const wrapWidth = surface.wrap.clientWidth;
-  const wrapHeight = surface.wrap.clientHeight;
+  // The boards' own top clearance (`--boards-inset`, the Project Styles bar) is screen space the
+  // Artboards cannot use, so the page is fitted into what is left below it.
+  const wrapHeight = surface.wrap.clientHeight - boardsInset(surface.panzoomWrap);
   const gap = 24;
   const padding = 32;
   let totalPanelWidth = 0;
@@ -838,6 +850,32 @@ export function panToParentRect(
   surface: CanvasSurface = activeCanvasSurface(),
 ) {
   revealBy(surface, centeringOffset(surface, rect), false);
+}
+
+/**
+ * Bring a PARENT-VIEWPORT rect into view on a pan/zoom stage, moving as little as it must: not at
+ * all when the rect is already wholly in view, and never so far that the boards' top edge comes
+ * down past where it stands now.
+ *
+ * {@link panToParentRect} always centres, which is right for a jump to a diff change or a node the
+ * author asked to see. The stylebook's Outline is a list the author clicks DOWN, and centring its
+ * first rows meant the h1 at the very top of a fitted catalogue pulled every board half a pane
+ * down, leaving an empty band above them and no specimen that had moved into view.
+ */
+export function revealParentRect(
+  rect: { top: number; height: number },
+  surface: CanvasSurface = activeCanvasSurface(),
+) {
+  const viewport = rectOf(surface.wrap);
+  if (rect.top >= viewport.top && rect.top + rect.height <= viewport.top + viewport.height) {
+    return;
+  }
+  const offset = centeringOffset(surface, rect);
+  const ceiling = Math.max(surface.panY, 0) - surface.panY;
+  const step = Math.min(offset, ceiling);
+  if (step !== 0) {
+    animatePanBy(surface, step);
+  }
 }
 
 /** Animate a stage's `panY` by `offsetY` with the shared 250ms ease-out. */

@@ -12,6 +12,7 @@ import { installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   entryLayout,
+  rebaseLayoutElementRefs,
   resolveCanvasDocument,
   resolveCanvasLayout,
 } from "../src/canvas/canvas-live-render";
@@ -20,7 +21,7 @@ import { invalidateLayoutCache } from "../src/site-context";
 import { invalidateCollectionPages } from "../src/content/collection-pages";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { getNodeAtPath } from "../src/store";
-import { isNodeObject } from "@jxsuite/schema/guards";
+import { isJsonObject, isNodeObject, isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "../src/canvas/path-mapping";
 
@@ -277,5 +278,49 @@ describe("writing an entry inside its layout", () => {
     const tab = openEntryTab();
     const result = await resolveCanvasDocument(tab.doc.document, tab);
     expect(result.mapperCtx.layoutWrapped).toBe(false);
+  });
+});
+
+describe("a layout's component imports, around a document in another folder", () => {
+  test("resolve from the layout's file, not the entry's", async () => {
+    setup(
+      {
+        "layouts/base.json": JSON.stringify({
+          ...BASE,
+          $elements: [
+            { $ref: "../components/site-nav.json" },
+            { $ref: "./parts/site-footer.json" },
+            { $ref: "@acme/widgets" },
+            "plain-tag",
+          ],
+        }),
+      },
+      { layout: "./layouts/base.json" },
+    );
+    const tab = openEntryTab();
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    const refs = (result.renderDoc.$elements ?? []).map((el) =>
+      isString(el) ? el : isJsonObject(el) ? el["$ref"] : null,
+    );
+    expect(refs).toContain("../../components/site-nav.json");
+    expect(refs).toContain("../../layouts/parts/site-footer.json");
+    expect(refs).toContain("@acme/widgets");
+    expect(refs).toContain("plain-tag");
+    expect(refs).not.toContain("../components/site-nav.json");
+  });
+
+  test("an import the document declares itself, or a non-list, is left alone", () => {
+    const own = { $ref: "./card.json" };
+    const unmarked = { $__layout: true, $ref: "./x.json" };
+    rebaseLayoutElementRefs([own, null, "plain-tag", unmarked], "a/b.md");
+    expect(own.$ref).toBe("./card.json");
+    expect(unmarked.$ref).toBe("./x.json");
+    expect(() => rebaseLayoutElementRefs(undefined, "a/b.md")).not.toThrow();
+    const page = {
+      $__layout: { file: "layouts/base.json", path: [] },
+      $ref: "../components/n.json",
+    };
+    rebaseLayoutElementRefs([page], "pages/index.json");
+    expect(page.$ref).toBe("../components/n.json");
   });
 });

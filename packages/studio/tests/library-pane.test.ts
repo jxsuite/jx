@@ -638,7 +638,6 @@ describe("collections", () => {
     expect(head.map((cell) => cell.textContent.trim())).toEqual([
       "Title",
       "Status",
-      "File",
       "Locale",
       "Modified",
       "Path",

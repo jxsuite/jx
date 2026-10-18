@@ -10,13 +10,17 @@
     "$description": "`styles/canvas.css`'s `.panzoom-wrap`, `.canvas-panel*`, `.source-*`, `.content-edit-*`, `.edit-width-handle`, `.preview-stage` and `.diff-code-*` rules, keyed on `part`, plus the Document Header card's host. One selector reaches FOREIGN DOM and says so where it stands: `.is-resizing` is written by `canvas/edit-width-drag.ts` onto the column this document draws — the same shape `grid-panel.json` uses for Tabulator's theme. The width handles are `jx-split` elements, which paint their own hover, drag and focus states; this sheet says only where they stand and how wide they are.",
     "display": "contents",
     "& [part=\"panzoom\"]": {
-      "$description": "The transformed surface. `applyTransform` writes `transform` on it imperatively, so only the origin is declared here. `--boards-inset` is the Project Styles bar's clearance: that bar floats over the stage, so the boards start below it.",
+      "$description": "The transformed surface. `applyTransform` writes `transform` on it imperatively, so only the origin is declared here. `--boards-inset` is the Project Styles bar's clearance: that bar floats over the stage, so the boards start below it. It is a MARGIN, not padding: padding sits inside the box the transform scales, so at a 25% fit a 40px clearance drew as 10px and the bar covered the first specimen. A margin is outside the transform and stays 40 screen pixels at every zoom, and `applyGeometricFit` subtracts the same length from the height it fits into.",
       "display": "inline-flex",
       "gap": "24px",
       "alignItems": "flex-start",
       "transformOrigin": "0 0",
       "marginBlock": "auto",
-      "paddingTop": "var(--boards-inset, 0)"
+      "marginTop": "var(--boards-inset, auto)"
+    },
+    "& [part=\"chrome-host\"]": {
+      "$description": "The Project Styles bar's host generates no box. The bar inside it is absolutely positioned over the stage, but an empty host in flow is a flex item of the stage cell, whose `gap` then pushed the artboards 24px right of where the fit arithmetic put them, so the last board ran off the pane's edge.",
+      "display": "contents"
     },
     "& [part=\"panel\"]": {
       "flexShrink": "0"

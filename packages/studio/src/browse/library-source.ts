@@ -20,6 +20,9 @@ import { workspaceHomeTabId } from "../workspace/workspace-ids";
 import { PAGES_COLLECTION } from "../content/content-collections";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { scanLibrary } from "./library-model";
+import { DRAFT_FIELD } from "../content/draft-state";
+import { isString } from "@jxsuite/schema/guards";
+import type { ContentTypeSchema } from "@jxsuite/schema/types";
 import type { LibraryFile, LibraryScan, ScanFailure } from "./library-model";
 import type {
   CommitResult,
@@ -41,6 +44,71 @@ export interface EntryColumnFacts {
   status: boolean;
   /** Some entry is dated by a field of its own. */
   date: boolean;
+  /** The collection's own fields, each drawn as a column after Title, Status and Date. */
+  fields?: readonly EntryFieldColumn[];
+}
+
+/** One schema field the Table draws as a column of its own. */
+export interface EntryFieldColumn {
+  /** The field's name in the entry. */
+  name: string;
+  /** The column heading. */
+  title: string;
+}
+
+/** The grid field a schema field's column is keyed by, kept apart from the file facts' names. */
+export function entryFieldKey(name: string): string {
+  return `field:${name}`;
+}
+
+/** The schema field a column key names, or null for a column that is no schema field. */
+export function entryFieldOfKey(key: string): string | null {
+  return key.startsWith("field:") ? key.slice("field:".length) : null;
+}
+
+/** At most this many schema fields become columns; the rest are one Edit in grid away. */
+export const ENTRY_FIELD_COLUMN_LIMIT = 6;
+
+/** Formats a list cell cannot show as text: an image is the Cards view's, a body is the editor's. */
+const UNLISTED_FORMATS = new Set(["image", "markdown", "html", "richtext"]);
+
+/** "publishedAt" → "Published at", "course" → "Course". */
+export function fieldTitle(name: string): string {
+  const words = name
+    .replaceAll(/[_-]+/g, " ")
+    .replaceAll(/([a-z\d])([A-Z])/g, "$1 $2")
+    .trim()
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * The schema fields a collection's Table draws, in declaration order: every scalar field except the
+ * ones the Table already names some other way (the title, the date, the draft flag) and the ones
+ * whose value is not text to read in a row (an image, a body, an object).
+ *
+ * @param schema The collection's schema.
+ * @param skip Field names drawn already: the title field and the date field.
+ */
+export function entryFieldColumns(
+  schema: ContentTypeSchema | null | undefined,
+  skip: ReadonlySet<string>,
+): EntryFieldColumn[] {
+  return Object.entries(schema?.properties ?? {})
+    .filter(([name, field]) => {
+      if (skip.has(name) || name === DRAFT_FIELD) {
+        return false;
+      }
+      if (
+        field.type === "object" ||
+        (isString(field.format) && UNLISTED_FORMATS.has(field.format))
+      ) {
+        return false;
+      }
+      return field.type !== "array" || field.items?.type === "string";
+    })
+    .slice(0, ENTRY_FIELD_COLUMN_LIMIT)
+    .map(([name]) => ({ name, title: fieldTitle(name) }));
 }
 
 /**
@@ -93,7 +161,17 @@ export function libraryColumns(
   if (facts?.date) {
     entry.push({ editable: false, field: "date", kind: "date", title: "Date", widthHint: 120 });
   }
-  return [...entry, { ...name, title: "File", widthHint: 200 }, ...fileFacts];
+  for (const field of facts?.fields ?? []) {
+    entry.push({
+      editable: false,
+      field: entryFieldKey(field.name),
+      kind: "string",
+      title: field.title,
+      widthHint: 140,
+    });
+  }
+  // The Path names the file, so a File column beside it would say the same thing twice.
+  return [...entry, ...fileFacts];
 }
 
 /** One scanned file as a grid row. */

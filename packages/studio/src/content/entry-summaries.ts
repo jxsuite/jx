@@ -15,7 +15,7 @@
  * @docs studio/projects/browse
  */
 
-import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { getPlatform, hasPlatform } from "../platform";
 import { isImage } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
@@ -35,6 +35,66 @@ export interface EntrySummary {
   thumb: string;
   /** The entry's own date as `YYYY-MM-DD`, from its schema's date field, or "" for none. */
   date: string;
+  /**
+   * Each field the collection's schema declares and the entry holds, as the text a list cell shows.
+   * Absent from a summary the read did not reach.
+   */
+  fields?: EntryFieldTexts;
+}
+
+/** An entry's declared fields as list text, keyed by field name. */
+export type EntryFieldTexts = Readonly<Record<string, string>>;
+
+/** Field names that mean "what this entry is called", in the order they are preferred. */
+const TITLE_FIELD_NAMES = ["title", "name", "label", "heading"];
+
+/**
+ * The field an entry is called by: `title` where there is one, else the first conventionally named
+ * field (`name`, `label`, `heading`) the schema declares or the entry holds. A menu item with a
+ * `name` and no `title` is "Espresso Tiramisu", not `tiramisu`.
+ */
+export function titleFieldOf(
+  schema: ContentTypeSchema | null | undefined,
+  fields: EntryFields = {},
+): string | null {
+  const declared = schema?.properties ?? {};
+  return (
+    TITLE_FIELD_NAMES.find((name) => name in declared) ??
+    TITLE_FIELD_NAMES.find((name) => isString(fields[name])) ??
+    null
+  );
+}
+
+/** A field value as list text: a scalar as written, a list of scalars joined, anything else "". */
+export function fieldText(value: EntryFields[string] | Date | undefined): string {
+  if (value instanceof Date) {
+    return entryDay(value);
+  }
+  if (isString(value)) {
+    return value;
+  }
+  if (isNumber(value) || isBoolean(value)) {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => isString(item) || isNumber(item))
+      .map(String)
+      .join(", ");
+  }
+  return "";
+}
+
+/** The text of every field the schema declares and the entry holds. */
+function fieldTexts(
+  schema: ContentTypeSchema | null | undefined,
+  fields: EntryFields,
+): EntryFieldTexts {
+  return Object.fromEntries(
+    Object.keys(schema?.properties ?? {})
+      .filter((name) => name in fields)
+      .map((name) => [name, fieldText(fields[name])]),
+  );
 }
 
 /** Field names that mean "when this entry is dated" when the schema types no field as a date. */
@@ -124,12 +184,14 @@ function thumbOf(entryPath: string, fields: EntryFields): string {
 
 /** One entry's summary, from its fields. Pure. */
 export function summarize(path: string, collection: string, fields: EntryFields): EntrySummary {
-  const { title } = fields;
   const schema = entryCollection(collection)?.schema ?? null;
+  const titleField = titleFieldOf(schema, fields);
+  const title = titleField === null ? undefined : fields[titleField];
   const draft = isDraftEntry(fields);
   const dateField = dateFieldOf(schema, fields);
   return {
     date: dateField === null ? "" : entryDay(fields[dateField]),
+    fields: fieldTexts(schema, fields),
     path,
     status: hasDraftAxis(schema, fields) ? (draft ? "Draft" : "Published") : "",
     thumb: thumbOf(path, fields),

@@ -23,7 +23,7 @@ import {
 import { canvasRectToParent, createOverlayLayer } from "./iframe-overlay";
 import { serializeJxPath } from "./path-mapping";
 import { getActivePanel, panelMediaToActiveMedia } from "./canvas-helpers";
-import { panToParentRect } from "./canvas-utils";
+import { panToParentRect, revealParentRect } from "./canvas-utils";
 import { clearDragGhost, moveDragGhost } from "../panels/drag-ghost";
 import { applyDropInstruction } from "../panels/dnd";
 import { rectOf } from "../utils/geometry";
@@ -2397,7 +2397,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         const [hit] = msg.hits;
         if (hit) {
           const { rect: ifr, scale } = hostDragGeometry(state);
-          panToParentRect({ height: hit.rect.height * scale, top: hit.rect.y * scale + ifr.top });
+          revealParentRect({ height: hit.rect.height * scale, top: hit.rect.y * scale + ifr.top });
         }
         return;
       }

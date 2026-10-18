@@ -7,7 +7,13 @@
  */
 
 import { projectState, stripEventHandlers } from "../store";
-import { displayTagName, isMappedArray, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import {
+  displayTagName,
+  isJsonObject,
+  isMappedArray,
+  isNonNullObject,
+  isString,
+} from "@jxsuite/schema/guards";
 import { canvasModeOfTab } from "./canvas-surface";
 import { toRaw } from "../reactivity";
 import {
@@ -160,6 +166,38 @@ export async function resolveCanvasLayout(
 }
 
 /**
+ * Re-address a layout's `$elements` imports from the layout's file to the document being drawn.
+ *
+ * A layout's `{ $ref: "../components/site-nav.json" }` is relative to the LAYOUT, but once the
+ * layout is merged around a document the canvas resolves every `$ref` against the document's own
+ * base. A page in `pages/` sits as deep as `layouts/`, so the two answers agreed by coincidence; an
+ * entry in `content/menu/` or a page in `pages/blog/` resolved the same ref to
+ * `content/components/…`, which 404s and leaves the nav and footer unregistered. Each entry is
+ * re-addressed from the file its `$__layout` marker names, which is the file it was authored in at
+ * every level of a layout chain. Bare specifiers and URLs are left alone, and so is an entry with
+ * no marker (the document's own).
+ *
+ * @param {(JxElement | string)[] | undefined} elements - The merged document's `$elements`
+ * @param {string} documentPath - The project-relative path of the document being drawn
+ */
+export function rebaseLayoutElementRefs(
+  elements: readonly (JxElement | string | null)[] | undefined,
+  documentPath: string,
+) {
+  for (const el of elements ?? []) {
+    if (!isNonNullObject(el) || !isString(el.$ref) || !/^\.\.?\//.test(el.$ref)) {
+      continue;
+    }
+    const marker = el["$__layout"];
+    if (!isJsonObject(marker) || !isString(marker.file)) {
+      continue;
+    }
+    const target = new URL(el.$ref, `jx-project:/${marker.file}`).pathname.replace(/^\//, "");
+    el.$ref = computeRelativePath(documentPath, target);
+  }
+}
+
+/**
  * The layout a collection entry is drawn in (studio.md §22.5): the entry's own `$layout` (on its
  * document, or in its frontmatter for a Markdown entry), else its collection's template page's
  * `$layout`, else the project's `defaults.layout`. `null` when none applies.
@@ -267,6 +305,14 @@ export async function resolveCanvasDocument(
         renderDoc =
           canvasMode === "preview" ? merged : prepareForEditMode(stripEventHandlers(merged));
         layoutWrapped = true;
+        if (S.documentPath) {
+          /* SAFETY: a document's `$elements` entries are tag-name strings, `{ $ref }` imports or
+             inline element definitions (a hand-edited null among them is skipped by the walk). */
+          rebaseLayoutElementRefs(
+            renderDoc.$elements as (JxElement | string | null)[] | undefined,
+            S.documentPath,
+          );
+        }
         const pageContent = findPageContentPrefix(merged);
         pageContentPrefix = pageContent?.prefix ?? null;
         pageContentOffset = pageContent?.offset ?? 0;

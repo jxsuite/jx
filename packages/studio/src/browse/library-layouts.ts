@@ -24,6 +24,9 @@ import { localeLabel } from "@jxsuite/schema/locale";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { PAGES_COLLECTION } from "../content/content-collections";
 import { groupByDate, groupByFolder, libraryDate } from "./library-model";
+import { entryFieldOfKey } from "./library-source";
+import type { EntryFieldColumn } from "./library-source";
+import type { EntryFieldTexts } from "../content/entry-summaries";
 import type { LibraryFile, LibraryLayout } from "./library-model";
 import type { GridColumn, GridCellValue } from "../grid/grid-source";
 import type { LibraryGroup, LibraryRow } from "../surfaces/library-pane";
@@ -35,6 +38,52 @@ export interface EntryFacts {
   status: string;
   /** `YYYY-MM-DD`, or "". */
   date: string;
+  /** The schema's fields as list text, keyed by field name, when the entry has been read. */
+  fields?: EntryFieldTexts | undefined;
+}
+
+/** The field a Board groups a collection by when it has no draft workflow, and its heading. */
+export interface BoardField {
+  name: string;
+  title: string;
+  /** The schema's `enum`, when it declares one: the order the columns stand in. */
+  order: readonly string[];
+}
+
+/** A Board with more columns than this is a list of singletons, not a grouping. */
+const BOARD_FIELD_MAX_GROUPS = 12;
+
+/**
+ * The field a Board groups by when the entries have no status: the first listed field the schema
+ * gives an `enum`, else the first whose values actually repeat. A menu grouped by its `course` is a
+ * board; a menu grouped by its one folder is one column, which says nothing. `null` when no field
+ * groups the entries (every value unique, or every value the same), so the Board falls back to
+ * folders.
+ *
+ * @param fields The listed fields, in order ({@link entryFieldColumns}).
+ * @param enums Each field's declared `enum`, where it has one.
+ * @param facts What each entry says, as read so far.
+ */
+export function boardFieldOf(
+  fields: readonly EntryFieldColumn[],
+  enums: ReadonlyMap<string, readonly string[]>,
+  facts: readonly (EntryFacts | undefined)[],
+): BoardField | null {
+  const declared = fields.find((field) => enums.has(field.name));
+  if (declared) {
+    return { ...declared, order: enums.get(declared.name)! };
+  }
+  for (const field of fields) {
+    const values = facts.flatMap((entry) => {
+      const value = entry?.fields?.[field.name] ?? "";
+      return value === "" ? [] : [value];
+    });
+    const distinct = new Set(values).size;
+    if (distinct >= 2 && distinct < values.length && distinct <= BOARD_FIELD_MAX_GROUPS) {
+      return { ...field, order: [] };
+    }
+  }
+  return null;
 }
 
 /** A file's entry facts, or `undefined` for a file that is no entry or has not been read yet. */
@@ -154,7 +203,8 @@ export function cellText(file: LibraryFile, field: string, entry?: EntryFacts): 
       return file.collection === PAGES_COLLECTION ? fileToRoute(file.path).urlPattern : "";
     }
     default: {
-      return "";
+      const own = entryFieldOfKey(field);
+      return own === null ? "" : (entry?.fields?.[own] ?? "");
     }
   }
 }
@@ -299,19 +349,55 @@ function groupByStatus(
     .toSorted((a, b) => rank(a.group) - rank(b.group) || a.group.localeCompare(b.group));
 }
 
+/** Group entries by one field's value, in the schema's `enum` order, then any other value by name. */
+function groupByField(
+  files: readonly LibraryFile[],
+  factsOf: EntryFactsOf,
+  field: BoardField,
+): { group: string; files: LibraryFile[] }[] {
+  const none = `No ${field.title.toLowerCase()}`;
+  const byValue = new Map<string, LibraryFile[]>();
+  for (const file of files) {
+    const value = factsOf(file)?.fields?.[field.name] || none;
+    const bucket = byValue.get(value);
+    if (bucket) {
+      bucket.push(file);
+    } else {
+      byValue.set(value, [file]);
+    }
+  }
+  const rank = (value: string) => {
+    if (value === none) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    const at = field.order.indexOf(value);
+    return at === -1 ? field.order.length : at;
+  };
+  return [...byValue.entries()]
+    .map(([group, grouped]) => ({ files: grouped, group }))
+    .toSorted((a, b) => rank(a.group) - rank(b.group) || a.group.localeCompare(b.group));
+}
+
 /**
  * Board: one column per status when the collection's entries have one (Draft, Published), else one
- * per folder present; each capped and each stating its own total. A flat collection grouped by
- * folder is one column, which says nothing.
+ * per value of the field the collection is grouped by ({@link boardFieldOf}: a menu's `course`),
+ * else one per folder present; each capped and each stating its own total. A flat collection
+ * grouped by folder is one column, which says nothing, so a field is preferred to it.
  *
  * @param factsOf What each entry says about itself.
+ * @param field The field to group by when the entries have no status.
  */
 export function boardView(
   files: readonly LibraryFile[],
   factsOf: EntryFactsOf = NO_FACTS,
+  field: BoardField | null = null,
 ): LibraryGroup[] {
   const byStatus = files.some((file) => (factsOf(file)?.status ?? "") !== "");
-  const groups = byStatus ? groupByStatus(files, factsOf) : groupByFolder(files);
+  const groups = byStatus
+    ? groupByStatus(files, factsOf)
+    : field
+      ? groupByField(files, factsOf, field)
+      : groupByFolder(files);
   return groups.map((group) => {
     const hidden = group.files.length - BOARD_COLUMN_LIMIT;
     return {
