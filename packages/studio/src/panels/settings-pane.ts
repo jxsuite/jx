@@ -139,9 +139,11 @@ function values(failure: string): SettingsPaneValues {
       titleId: `settings-group-${group.id}`,
     })),
     hasSection: settingsSection(active) !== undefined,
+    // The section's own sentence when it has one, its group's otherwise.
     intro:
-      grouped.find((group) => group.sections.some((section) => section.key === active))?.intro ??
-      "",
+      settingsSection(active)?.intro ||
+      (grouped.find((group) => group.sections.some((section) => section.key === active))?.intro ??
+        ""),
     moved: MOVED.map((row) => {
       const { title } = workspaceInfo(row.workspace);
       const place = row.place ?? title;

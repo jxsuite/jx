@@ -427,13 +427,25 @@ export function createDevServerPlatform() {
       return entries;
     },
 
-    /** @param {string} path */
+    /**
+     * Read a file as text. A missing file still rejects, as the PAL says; it is only asked for with
+     * `optional=1` (`specs/server.md` §4.1), so the absence arrives as a `null` body rather than a 404.
+     * Studio probes for files it expects may be missing (a `.gitignore` per listed directory), and
+     * a failed request per probe was console noise that read as a fault.
+     *
+     * @param {string} path
+     */
     async readFile(path: string) {
-      const res = await fetch(`/__studio/file?path=${encodeURIComponent(serverPath(path))}`);
+      const res = await fetch(
+        `/__studio/file?path=${encodeURIComponent(serverPath(path))}&optional=1`,
+      );
       if (!res.ok) {
         throw new Error(`Failed to read file: ${path}`);
       }
-      const data = await readJson<{ content: string }>(res);
+      const data = await readJson<{ content: string | null }>(res);
+      if (data.content === null) {
+        throw new Error(`Failed to read file: ${path} (not found)`);
+      }
       return data.content;
     },
 

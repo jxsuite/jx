@@ -19,7 +19,7 @@ Connections are a section of [Project settings](/docs/studio/projects/settings),
 
 ## Add a connection
 
-1. Click **New Entry** at the bottom of the list.
+1. Click **New connection** at the bottom of the list.
 2. Type a name (`main` is a fine first choice) and click **Create**.
 
 The new connection starts on the **sqlite** provider: a database file inside your project, no installation and no account. If that's where you want to stay, you're done. The file is created the first time the database is touched.

@@ -110,6 +110,28 @@ export const NAVIGATOR_PANEL_IDS = [
 export type NavigatorPanelId = (typeof NAVIGATOR_PANEL_IDS)[number];
 
 /**
+ * The Navigator panels that exist only as one workspace's preset panel: no rail button, and no
+ * frame but that workspace's draws them. Collections is the Content workspace's Navigator (§22.5).
+ *
+ * The dock record is the WINDOW's, so `leftTab` is persisted whatever workspace wrote it; a window
+ * closed in Content stores `collections`. Every workspace's own frame replaces it on entry, but a
+ * window with no project open applies no workspace frame, and drew "Collections · project" over a
+ * rail that has no Collections button. {@link navigatorPanelOutsideWorkspace} is the guard both of
+ * those moments go through. `tests/panel-registry.test.ts` asserts this set is exactly the
+ * rail-less panels a preset pins, so it cannot drift from the records.
+ */
+export const WORKSPACE_ONLY_PANELS: ReadonlySet<NavigatorPanelId> = new Set(["collections"]);
+
+/**
+ * The Navigator panel to show when no workspace frame chooses one (boot, and no project open): the
+ * stored panel, unless it is {@link WORKSPACE_ONLY_PANELS workspace-only}, in which case the
+ * default workspace's own first panel.
+ */
+export function navigatorPanelOutsideWorkspace(stored: NavigatorPanelId | null): NavigatorPanelId {
+  return stored && !WORKSPACE_ONLY_PANELS.has(stored) ? stored : DEFAULT_PANEL_ID;
+}
+
+/**
  * Panel ids a previous build persisted, and what they are called now.
  *
  * Three renames, each fixing a name that described a mechanism rather than a task: `blocks` was an
@@ -657,7 +679,7 @@ function createShellState(): ShellState {
     git: freshGit(),
     publish: freshPublish(),
     layoutSelection: null,
-    leftTab: migratePanelId(saved.leftTab) ?? DEFAULT_PANEL_ID,
+    leftTab: navigatorPanelOutsideWorkspace(migratePanelId(saved.leftTab)),
     stylebook: freshStylebook(),
     theme: readPersistedTheme(),
     workspace: DEFAULT_WORKSPACE,
@@ -857,6 +879,9 @@ export function syncProjectWorkspace(root: string | null): void {
   _panels = {};
   shell.workspace = persistedWorkspace(root);
   if (root === null) {
+    /* No frame to apply, but the Navigator is still on screen beside the rail: a panel only the
+       closed project's workspace drew (Collections, left in Content) is not this window's to show. */
+    shell.leftTab = navigatorPanelOutsideWorkspace(migratePanelId(shell.leftTab));
     return;
   }
   /* Untracked: this runs inside the shell's project-root effect, which must depend on the root

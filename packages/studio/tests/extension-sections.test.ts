@@ -25,6 +25,7 @@ import type { SettingsPaneMount } from "../src/panels/settings-pane";
 import "../src/settings/settings-document";
 import { refreshFormats } from "../src/format/format-host";
 import type { ExtensionContributionInfo, ExtensionsInfo } from "../src/types";
+import contentClass from "@jxsuite/parser/Content.class.json";
 
 // ─── Environment setup ───────────────────────────────────────────────────────
 
@@ -314,5 +315,43 @@ describe("syncExtensionSettingsSections", () => {
     await flush(8);
     expect(body().querySelector('[part="title"]')?.textContent).toBe("Guestbook");
     expect(body().querySelector('[data-prop="moderation"] [part="checkbox"]')).not.toBeNull();
+  });
+
+  test("a section's own intro opens the body in place of its group's sentence", async () => {
+    installMockPlatform({
+      listExtensions: async () =>
+        extensionsWith([
+          guestbookContribution,
+          {
+            ...guestbookContribution,
+            project: { key: "visitors", title: "Visitors" },
+            studio: { settings: { intro: "Who signed the guestbook, one row each." } },
+          },
+        ]),
+    });
+    resetStudioState({ projectConfig: {} });
+    await syncExtensionSettingsSections();
+    const intro = () => host.querySelector('[part="group-intro"]')?.textContent;
+    // No intro of its own: the Integrations sentence stands.
+    setSettingsSection("guestbook");
+    await navLabels();
+    await flush(4);
+    expect(intro()).toBe(
+      "Turn on what your site needs. Each one adds its own options where you use it.",
+    );
+    setSettingsSection("visitors");
+    await flush(4);
+    expect(intro()).toBe("Who signed the guestbook, one row each.");
+  });
+
+  test("the parser's Content Types section speaks of content types, not the Integrations pitch", () => {
+    // Read from the shipped class descriptor: the words are the extension's, not Studio's.
+    const derived = deriveSettingsSection({
+      ...guestbookContribution,
+      project: { key: "content", title: "Content Types" },
+      studio: contentClass.$studio,
+    });
+    expect(derived?.intro).toContain("collection");
+    expect(derived?.contribution.settings.entry?.noun).toBe("content type");
   });
 });

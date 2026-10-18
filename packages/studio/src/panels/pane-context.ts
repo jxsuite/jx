@@ -657,6 +657,15 @@ function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView
   if (editorKindOf(tab) === "canvas") {
     Object.assign(view, viewAxis(tab));
   }
+  /* A workspace home (the Content, Media or Publish home) draws its workspace's own surface over a
+     stub document, so there is no rendering context to choose: "Context: Base" over the Publish
+     workspace was a control that could change nothing on screen. The ⟲ menu goes for the same
+     reason: every projection it offers is of the document, and a home has none to project. */
+  if (editorKindOf(tab) === "home") {
+    view.contextState = "hidden";
+    view.presetState = "hidden";
+    return view;
+  }
   Object.assign(view, contextAxis(tab, paneId, ctx));
   /* THIS tab's effective mode. `ctx.getCanvasMode()` answered for the focused pane, so a document
      opened as Code in either pane put an Export button in the OTHER pane's bar as well — over a

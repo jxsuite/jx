@@ -257,6 +257,7 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
       }
       // Run BEFORE closing: a command reads its target synchronously on entry, and closing the
       // Menu is what clears it.
+      handBackKeyboard(menu, options.opener ?? null);
       if (row.run) {
         row.run();
       } else {
@@ -365,6 +366,23 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
     },
   };
   return handle;
+}
+
+/**
+ * Give the keyboard back to the opener BEFORE a chosen row runs, while the menu still holds it.
+ *
+ * A row that opens a modal dialog (Open Project Settings, a confirmation) calls `showModal()` from
+ * inside its run, and the platform records whatever is focused at that moment as the element to
+ * restore when the dialog closes. Left alone that is the menu ROW, which is gone by the time the
+ * dialog closes, so Escape dropped focus on `<body>` instead of the gear that opened the menu. The
+ * opener is where focus goes when the menu closes anyway ({@link restoreFocus}); doing it first
+ * only makes it the element the dialog remembers. Only when the menu holds focus, for the reason
+ * `restoreFocus` gives.
+ */
+function handBackKeyboard(menu: MenuElement | null, opener: HTMLElement | null): void {
+  if (menu?.contains(document.activeElement) && opener?.isConnected && opener !== document.body) {
+    opener.focus({ preventScroll: true });
+  }
 }
 
 /**

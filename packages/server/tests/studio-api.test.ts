@@ -637,6 +637,25 @@ describe("file — read", () => {
     expect(res.status).toBe(404);
   });
 
+  test("optional=1 answers a missing file as a null body, uncached, instead of a 404", async () => {
+    const url = new URL(
+      `http://localhost/__studio/file?path=${FIXTURES}/nonexistent.txt&optional=1`,
+    );
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(await res.json()).toEqual({ content: null, path: `${FIXTURES}/nonexistent.txt` });
+  });
+
+  test("optional=1 reads a present file exactly as a plain read does", async () => {
+    writeFileSync(join(FIXTURES, "hello.txt"), "world", "utf8");
+    const url = new URL(`http://localhost/__studio/file?path=${FIXTURES}/hello.txt&optional=1`);
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.content).toBe("world");
+  });
+
   test("returns 400 when path param is missing", async () => {
     const url = new URL("http://localhost/__studio/file");
     const req = new Request(url, { method: "GET" });

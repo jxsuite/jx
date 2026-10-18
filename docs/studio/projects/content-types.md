@@ -25,7 +25,7 @@ code:
 
 Content types are your site's CMS schema. Each one describes a collection (blog posts, team members, projects) by naming the folder its entries live in, the file format they use, and the fields every entry carries. Once a type exists, Studio can create entries against it and draw their fields as a form.
 
-The builder is a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations** because the parser extension contributes it. Pick **Open Project Settings › Content Types** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Content Types** from the section list: your types are listed on the left, and selecting one opens its editor on the right. Like every other section, what you change here is written to `project.json` as you make it.
+The builder is a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations** because the parser extension contributes it. Pick **Open Project Settings › Content Types** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Content Types** from the section list: the section opens with one sentence on what a content type is, your types are listed on the left, and selecting one opens its editor on the right. Like every other section, what you change here is written to `project.json` as you make it.
 
 ![The Content Types section with a type selected and its field schema open in the builder](../../images/content-type-builder.png)
 
@@ -40,7 +40,7 @@ The quickest way is **Add new** (:kbd[⌘N], or :kbd[⌘⌥N] in a browser): cho
 
 You can also start a type here, from scratch:
 
-1. Click **New Entry** at the bottom of the type list.
+1. Click **New content type** at the bottom of the type list.
 2. Type a name ("Blog Posts" becomes `blog-posts`) and click **Create**.
 
 The new type starts with a matching source folder (`content/blog-posts/`) and an empty field schema, and is selected ready to edit.

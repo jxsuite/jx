@@ -8,7 +8,7 @@
  * path.
  */
 
-import { isNonNullObject } from "@jxsuite/schema/guards";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { getFormats, loadExtensions, loadFormats } from "../format/format-host";
 import {
   DEFAULT_SETTINGS_GROUP,
@@ -31,6 +31,8 @@ interface StudioSettingsBlock {
   group?: string;
   order?: number;
   layout?: "map" | "form";
+  /** The sentence the section body opens with, in place of its group's (extensions.md §9.1). */
+  intro?: string;
   entry?: SettingsContribution["settings"]["entry"];
 }
 
@@ -40,6 +42,7 @@ export interface DerivedSettingsSection {
   label: string;
   group: SettingsGroupId;
   icon?: string | undefined;
+  intro?: string | undefined;
   order: number;
   contribution: SettingsContribution;
 }
@@ -98,6 +101,7 @@ export function deriveSettingsSection(
        an extension naming a group from a later vocabulary still gets its section listed. */
     group: isSettingsGroupId(settings.group) ? settings.group : DEFAULT_SETTINGS_GROUP,
     icon: settings.icon,
+    intro: isString(settings.intro) ? settings.intro : undefined,
     key,
     label,
     order: settings.order ?? DEFAULT_SECTION_ORDER,
@@ -158,6 +162,7 @@ async function runSync(): Promise<void> {
       registerSettingsSection({
         group: derived.group,
         icon: derived.icon,
+        intro: derived.intro,
         key: derived.key,
         label: derived.label,
         order: derived.order,

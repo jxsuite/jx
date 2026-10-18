@@ -76,6 +76,12 @@ export interface SettingsContribution {
       | {
           ui?: Record<string, { control?: string; enum?: unknown }> | undefined;
           newEntry?: JsonObject | undefined;
+          /**
+           * What ONE entry of a map section is called, singular and lowercase ("content type",
+           * "table"), so the column offers "New content type" rather than "New Entry", a word that
+           * means a collection's item everywhere else in Studio. Defaults to "entry".
+           */
+          noun?: string | undefined;
         }
       | undefined;
   };
@@ -418,6 +424,31 @@ function say(record: SectionMount, value: string): void {
 
 // ─── Projection ───────────────────────────────────────────────────────────────
 
+/** The default name for one entry of a map section, when the contribution names none. */
+const DEFAULT_ENTRY_NOUN = "entry";
+
+/** The map column's words for one entry: the four places a map section names it. */
+export interface EntryWords {
+  newLabel: string;
+  newFieldLabel: string;
+  newPlaceholder: string;
+  emptyText: string;
+}
+
+/** The map column's words, from what the contribution calls one entry. */
+export function entryWords(noun?: string): EntryWords {
+  const word = noun?.trim().toLowerCase() || DEFAULT_ENTRY_NOUN;
+  const capitalised = `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+  // "an entry", "a table": the article English reads before the word's first sound, by its letter.
+  const article = /^[aeiou]/u.test(word) ? "an" : "a";
+  return {
+    emptyText: `Select ${article} ${word} or create one`,
+    newFieldLabel: `${capitalised} name`,
+    newLabel: `New ${word}`,
+    newPlaceholder: `${slugify(word)}-name`,
+  };
+}
+
 /** What the document draws right now, read from the store and this module's own state. */
 function project(record: SectionMount): ContributedView {
   const { contribution, opts } = record;
@@ -425,6 +456,7 @@ function project(record: SectionMount): ContributedView {
   const title = contribution.title ?? sectionKey;
   const actionsState = opts.actions ? "slot" : "none";
   const editorRegion = sectionRegion("editor");
+  const words = entryWords(contribution.settings.entry?.noun);
 
   if ((contribution.settings.layout ?? "form") !== "map") {
     return {
@@ -437,6 +469,7 @@ function project(record: SectionMount): ContributedView {
       newName: "",
       newState: "closed",
       title,
+      ...words,
     };
   }
 
@@ -458,6 +491,7 @@ function project(record: SectionMount): ContributedView {
     newName: newEntryNames.get(sectionKey) ?? "",
     newState: newEntryOpen.has(sectionKey) ? "open" : "closed",
     title,
+    ...words,
   };
 }
 

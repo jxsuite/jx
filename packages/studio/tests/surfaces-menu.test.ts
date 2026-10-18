@@ -162,6 +162,55 @@ describe("openMenu", () => {
     opener.remove();
   });
 
+  test("a chosen row runs with the opener focused, so a dialog it opens restores there", async () => {
+    // Open Project Settings from the gear: `showModal()` remembers what is focused when it is
+    // Called, and a menu row is gone by the time Escape closes the dialog.
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const focusedAtRun: (Element | null)[] = [];
+    open = openMenu({
+      label: "Things",
+      opener,
+      origin: { x: 0, y: 0 },
+      region: "test",
+      rows: ROWS,
+      run: () => focusedAtRun.push(document.activeElement),
+    });
+    await open.ready;
+    await flush();
+    const row = menuIn(open.host)!.querySelector<HTMLElement>('[data-command-id="a"]')!;
+    row.focus();
+    expect(document.activeElement).toBe(row);
+    row.click();
+    await flush();
+    expect(focusedAtRun).toEqual([opener]);
+    opener.remove();
+  });
+
+  test("a row chosen while focus is elsewhere does not steal it for the opener", async () => {
+    const opener = document.createElement("button");
+    const elsewhere = document.createElement("input");
+    document.body.append(opener, elsewhere);
+    const focusedAtRun: (Element | null)[] = [];
+    open = openMenu({
+      label: "Things",
+      opener,
+      origin: { x: 0, y: 0 },
+      region: "test",
+      rows: ROWS,
+      run: () => focusedAtRun.push(document.activeElement),
+    });
+    await open.ready;
+    await flush();
+    elsewhere.focus();
+    menuIn(open.host)!.querySelector<HTMLElement>('[data-command-id="a"]')!.click();
+    await flush();
+    expect(focusedAtRun).toEqual([elsewhere]);
+    opener.remove();
+    elsewhere.remove();
+  });
+
   /*
    * Where a menu hangs (ui.md §5.1): a menu with an opener hangs below it by the platform's anchor
    * positioning, and every other menu — at a pointer, right-aligned by `place`, on a floor — keeps

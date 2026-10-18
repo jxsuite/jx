@@ -235,6 +235,30 @@ describe("persistence per project root", () => {
     expect(shell.docks.left.collapsed).toBe(true);
   });
 
+  test("closing to no project from Content does not leave the Collections panel up", () => {
+    // With no project there is no workspace frame, but the Navigator still draws beside the rail,
+    // Which has no Collections button: the header read "Collections · project" over it.
+    setWorkspaceProject("/a");
+    syncProjectWorkspace("/a");
+    enterWorkspace("content", deps);
+    expect(shell.leftTab).toBe("collections");
+    resetProjectShell();
+    setWorkspaceProject(null);
+    syncProjectWorkspace(null);
+    expect(shell.leftTab).toBe("site");
+  });
+
+  test("closing to no project keeps a panel the rail offers", () => {
+    setWorkspaceProject("/a");
+    syncProjectWorkspace("/a");
+    enterWorkspace("styles", deps);
+    expect(shell.leftTab).toBe("layers");
+    resetProjectShell();
+    setWorkspaceProject(null);
+    syncProjectWorkspace(null);
+    expect(shell.leftTab).toBe("layers");
+  });
+
   test("a project opens in the workspace it was left in, and another project in its own", () => {
     setWorkspaceProject("/acme");
     syncProjectWorkspace("/acme");

@@ -25,6 +25,8 @@ import { runActiveReported } from "../commands/run-reported";
 import { closeSettingsDialog } from "./settings-dialog";
 import { getPlatform } from "../platform";
 import { mountOverviewSurface } from "../surfaces/settings-overview";
+import { previewAssetSrcFor } from "../canvas/asset-refs";
+import { PROJECT_CONFIG_PATH } from "../tabs/tab";
 
 import type {
   OverviewActions,
@@ -92,6 +94,65 @@ function headWithDescription(head: JxHeadEntry[], text: string): JxHeadEntry[] {
   );
 }
 
+// ─── Favicon ($head link) ───────────────────────────────────────────────────
+
+/**
+ * True for a `<link>` whose `rel` names the `icon` relation.
+ *
+ * `rel` is a set of space-separated, ASCII case-insensitive tokens (HTML Standard, link types), so
+ * the legacy `rel="shortcut icon"` every favicon snippet still carries is the same relation as
+ * `rel="icon"`. `apple-touch-icon` is a different token and is not the favicon.
+ */
+function isIconLink(entry: JxHeadEntry): boolean {
+  const rel = entry.attributes?.rel;
+  return (
+    entry.tagName === "link" &&
+    isString(rel) &&
+    rel
+      .toLowerCase()
+      .split(/\s+/u)
+      .some((token) => token === "icon")
+  );
+}
+
+/**
+ * The site favicon. Like the description it is not a top-level `project.json` key (the composed
+ * schema is closed, and no compiler stage reads one): it is the `<link rel="icon">` in `$head`,
+ * which is what every starter and `@jxsuite/create` write and what the browser reads
+ * (`site-architecture.md` §2).
+ */
+function readFavicon(cfg: ProjectConfig): string {
+  const href = (cfg.$head ?? []).find((e) => isIconLink(e))?.attributes?.href;
+  return isString(href) ? href : "";
+}
+
+/**
+ * `$head` with the icon link pointing at `href`.
+ *
+ * The existing link is rewritten in place, so its position among the head entries and any other
+ * attribute an author gave it (`sizes`, a media query) survive. `type` is the one attribute that is
+ * dropped: it describes the file being replaced, and a new upload may be a different format.
+ */
+function headWithFavicon(head: JxHeadEntry[], href: string): JxHeadEntry[] {
+  if (!head.some((e) => isIconLink(e))) {
+    return [...head, { attributes: { href, rel: "icon" }, tagName: "link" }];
+  }
+  return head.map((entry) => {
+    if (!isIconLink(entry)) {
+      return entry;
+    }
+    const { type: _type, ...attributes } = entry.attributes ?? {};
+    return { ...entry, attributes: { ...attributes, href } };
+  });
+}
+
+/** The file name an uploaded favicon is stored under: `favicon` plus the upload's own extension. */
+function faviconFileName(file: File): string {
+  const dot = file.name.lastIndexOf(".");
+  const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : "";
+  return /^[a-z0-9]+$/u.test(ext) ? `favicon.${ext}` : "favicon.ico";
+}
+
 /**
  * The patch that _removes_ `url`. `undefined` survives the object spread inside `updateSiteConfig`
  * and `JSON.stringify` then drops the key, so clearing the field clears the setting instead of
@@ -129,7 +190,9 @@ function values(container: HTMLElement): OverviewValues {
   return {
     description: readDescription(cfg),
     error: errors.get(container) ?? null,
-    favicon: isString(cfg.favicon) ? cfg.favicon : "",
+    favicon: readFavicon(cfg),
+    // `project.json` authored it, whatever tab is in front: the section is project-level.
+    faviconSrc: previewAssetSrcFor(readFavicon(cfg), PROJECT_CONFIG_PATH),
     name: cfg.name ?? "",
     stylesDisabled: command === undefined,
     stylesTitle: command?.title ?? "",
@@ -183,13 +246,15 @@ function actions(container: HTMLElement): OverviewActions {
       if (!file) {
         return;
       }
+      // `public/` is copied to the site root verbatim, so `public/favicon.svg` is `/favicon.svg`.
+      const name = faviconFileName(file);
       try {
-        await getPlatform().uploadFile("public/favicon.ico", file);
+        await getPlatform().uploadFile(`public/${name}`, file);
       } catch (error) {
         reject("favicon", `Could not upload the favicon — ${errorMessage(error)}`);
         return;
       }
-      await persist({ favicon: "/favicon.ico" }, "favicon");
+      await persist({ $head: headWithFavicon(config().$head ?? [], `/${name}`) }, "favicon");
     });
     input.click();
   };

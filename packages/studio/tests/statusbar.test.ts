@@ -12,6 +12,7 @@ import { initShellRefs, requireShellRef, setProjectState, statusbarEl } from "..
 import { closeAllTabs } from "../src/workspace/workspace";
 import {
   aheadBehindLabel,
+  changedFilesLabel,
   mountStatusbar,
   renderStatusbar,
   unmountStatusbar,
@@ -62,6 +63,7 @@ function buildRegistry(ids?: readonly string[]) {
     stub("project.open", "Open Project…", "project"),
     stub("project.openRecent", "Open Recent…", "project"),
     stub("view.setWorkspace", "Show Workspace", "application"),
+    stub("publish.open", "Show Publish", "project"),
     stub("git.init", "Initialize Repository", "project"),
     // `view.setBottomTab`, not `panel.focus.problems` — that record is generated from the rail
     // Roster and Problems is off the rail.
@@ -183,7 +185,15 @@ describe("the PROJECT field", () => {
       button.textContent.includes("⑂ main"),
     );
     branch?.click();
-    expect(ran).toEqual([{ args: { workspace: "publish" }, id: "view.setWorkspace" }]);
+    expect(ran).toEqual([{ args: { tab: "review" }, id: "publish.open" }]);
+    // The tooltip says what the item counts and where it goes, not "Switch Workspace".
+    expect(branch?.getAttribute("title")).toBe("No changes on main · Show Publish");
+  });
+
+  test("changedFilesLabel counts in words", () => {
+    expect(changedFilesLabel(0)).toBe("No changes");
+    expect(changedFilesLabel(1)).toBe("1 changed file");
+    expect(changedFilesLabel(3)).toBe("3 changed files");
   });
 
   /*
@@ -394,13 +404,28 @@ describe("the SELECTION field", () => {
   });
 
   test("the stylebook selector is the field's content when no node is picked", async () => {
-    resetWorkspaceWithTab();
+    const tab = resetWorkspaceWithTab();
+    tab.session.ui.canvasMode = "stylebook";
     shell.stylebook.selection = "ul li";
     await render();
     expect(field("selection")?.textContent.trim()).toBe("ul › li");
   });
 
-  test("a node selection wins over the stylebook selector, even printing nothing", async () => {
+  test("the stylebook selector is not stated once the focused tab leaves the stylebook", async () => {
+    // Styles > pick h1 > switch to Publish or Content: the selection survives for the way back, but
+    // The tab now focused is not editing it.
+    const tab = resetWorkspaceWithTab();
+    tab.session.ui.canvasMode = "stylebook";
+    shell.stylebook.selection = "h1";
+    await render();
+    expect(field("selection")?.textContent.trim()).toBe("h1");
+    tab.session.ui.canvasMode = "design";
+    await render();
+    expect(field("selection")).toBeNull();
+    expect(shell.stylebook.selection).toBe("h1");
+  });
+
+  test("outside the stylebook a node selection is the only answer, even printing nothing", async () => {
     const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
     shell.stylebook.selection = "h1";
     tab.session.selection = [["children", 0]];
@@ -408,6 +433,17 @@ describe("the SELECTION field", () => {
     // Two answers to "what is selected" is the defect; the document's answer wins, and when it has
     // Nothing ambient to add the field is absent rather than falling through to the other one.
     expect(field("selection")).toBeNull();
+  });
+
+  test("in the stylebook the rule wins over the root the tag pick parks the selection on", async () => {
+    // `selectStylebookTag` writes `selection: [[]]` before it moves the rule, so a single-selection
+    // Rule that prints nothing hid `h1` in the one place it is the answer.
+    const tab = resetWorkspaceWithTab();
+    tab.session.ui.canvasMode = "stylebook";
+    tab.session.selection = [[]];
+    shell.stylebook.selection = "h1";
+    await render();
+    expect(field("selection")?.textContent.trim()).toBe("h1");
   });
 });
 

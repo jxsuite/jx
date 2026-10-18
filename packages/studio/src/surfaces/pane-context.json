@@ -236,8 +236,8 @@
                         "size": "sm",
                         "quiet": true,
                         "icon": "arrows-clockwise",
-                        "label": "Show something beside this pane",
-                        "hint": "Show something beside this pane",
+                        "label": "Show code, diff or layout beside",
+                        "hint": "Show this document's code, diff, layout or another breakpoint beside it",
                         "haspopup": "menu"
                       },
                       "onclick": {
@@ -525,43 +525,104 @@
                     {
                       "tagName": "div",
                       "attributes": {
-                        "part": "axis",
-                        "data-axis": "context"
+                        "part": "context-slot",
+                        "role": "none"
                       },
-                      "children": [
-                        {
-                          "tagName": "span",
-                          "attributes": {
-                            "part": "axis-label"
-                          },
-                          "textContent": "Context"
-                        },
-                        {
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/contextState"
+                      },
+                      "cases": {
+                        "shown": {
                           "tagName": "div",
                           "attributes": {
-                            "part": "resolving-slot",
-                            "role": "none"
+                            "part": "axis",
+                            "data-axis": "context"
                           },
-                          "style": {
-                            "display": "contents"
-                          },
-                          "$switch": {
-                            "$ref": "#/state/resolvingState"
-                          },
-                          "cases": {
-                            "shown": {
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "axis-label"
+                              },
+                              "textContent": "Context"
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "resolving-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/resolvingState"
+                              },
+                              "cases": {
+                                "shown": {
+                                  "tagName": "jx-action-button",
+                                  "attributes": {
+                                    "part": "resolving-trigger"
+                                  },
+                                  "$props": {
+                                    "size": "sm",
+                                    "quiet": true,
+                                    "haspopup": "dialog",
+                                    "expanded": {
+                                      "$ref": "#/state/resolvingOpen"
+                                    },
+                                    "hint": "The values this document is being rendered with"
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/openResolving"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "event#/currentTarget"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "textContent": "${state.resolvingLabel}"
+                                    },
+                                    {
+                                      "tagName": "jx-icon",
+                                      "attributes": {
+                                        "part": "resolving-trigger-caret"
+                                      },
+                                      "$props": {
+                                        "name": "caret-down"
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
                               "tagName": "jx-action-button",
                               "attributes": {
-                                "part": "resolving-trigger"
+                                "part": "context-trigger"
                               },
                               "$props": {
                                 "size": "sm",
                                 "quiet": true,
                                 "haspopup": "dialog",
                                 "expanded": {
-                                  "$ref": "#/state/resolvingOpen"
+                                  "$ref": "#/state/contextOpen"
                                 },
-                                "hint": "The values this document is being rendered with"
+                                "hint": "What this document is being rendered with"
                               },
                               "onclick": {
                                 "$prototype": "Function",
@@ -569,7 +630,7 @@
                                   {
                                     "operator": "call",
                                     "target": {
-                                      "$ref": "#/state/openResolving"
+                                      "$ref": "#/state/openContext"
                                     },
                                     "value": [
                                       {
@@ -582,12 +643,12 @@
                               "children": [
                                 {
                                   "tagName": "span",
-                                  "textContent": "${state.resolvingLabel}"
+                                  "textContent": "${state.contextSummary}"
                                 },
                                 {
                                   "tagName": "jx-icon",
                                   "attributes": {
-                                    "part": "resolving-trigger-caret"
+                                    "part": "context-trigger-caret"
                                   },
                                   "$props": {
                                     "name": "caret-down"
@@ -595,55 +656,9 @@
                                 }
                               ]
                             }
-                          }
-                        },
-                        {
-                          "tagName": "jx-action-button",
-                          "attributes": {
-                            "part": "context-trigger"
-                          },
-                          "$props": {
-                            "size": "sm",
-                            "quiet": true,
-                            "haspopup": "dialog",
-                            "expanded": {
-                              "$ref": "#/state/contextOpen"
-                            },
-                            "hint": "What this document is being rendered with"
-                          },
-                          "onclick": {
-                            "$prototype": "Function",
-                            "body": [
-                              {
-                                "operator": "call",
-                                "target": {
-                                  "$ref": "#/state/openContext"
-                                },
-                                "value": [
-                                  {
-                                    "$ref": "event#/currentTarget"
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          "children": [
-                            {
-                              "tagName": "span",
-                              "textContent": "${state.contextSummary}"
-                            },
-                            {
-                              "tagName": "jx-icon",
-                              "attributes": {
-                                "part": "context-trigger-caret"
-                              },
-                              "$props": {
-                                "name": "caret-down"
-                              }
-                            }
                           ]
                         }
-                      ]
+                      }
                     },
                     {
                       "tagName": "div",

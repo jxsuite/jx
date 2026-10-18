@@ -86,7 +86,7 @@ What the site _is_:
 - **Site Name**: what the site is called. This is the name you gave it when [creating the project](/docs/studio/projects/create), and this is where you change it afterwards. It can't be left blank.
 - **Description**: one or two sentences about the site, used by search engines and link previews. Studio stores it as the site-wide `<meta name="description">` tag, so it also shows up in the **Site head** section; clearing it here removes the tag.
 - **Production URL**: where the published site lives, as a full address starting with `http://` or `https://`. Sitemap generation is switched on by having one, and absolute links are built from it. Clearing the field turns the sitemap back off.
-- **Favicon**: click **Upload Favicon** and pick an image; Studio copies it into your project and shows the current one beside the button.
+- **Favicon**: the site-wide `<link rel="icon">` tag, so it also shows up in the **Site head** section. Click **Upload Favicon** and pick an image; Studio saves it in `public/` (as `favicon.svg`, `favicon.png` or whatever its type is) and points the tag at it. The current icon shows beside the button.
 - **Global Styles**: **Go to Styles** closes the dialog and switches to the Styles workspace (:kbd[⌘4]), where the CSS variables and default element styles live with the canvas beside them. See **[Project Styles](/docs/studio/design/stylebook)**.
 
 A value the section refuses (a blank name, an address that isn't a full URL) is reported under the control that caused it, and the stored value stays as it was.

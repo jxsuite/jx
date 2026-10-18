@@ -225,6 +225,7 @@ The last crumb is where you are, in bold, named the way the [Outline](/docs/stud
 - **A crumb with siblings carries a ⌃.** It opens a list of the other children of the same parent, under their Outline names, with the one you're on marked. A step whose parent has only one child shows no chevron: one alternative is not a choice.
 - **A step you can't take stays on the trail as plain text.** An address with a hole in it would be a lie about what contains what.
 - With a formula or a function open in the Bottom dock's **Logic** tab, the trail ends there (`fx total`, `ƒ onSubmit`) because a definition has no element under it.
+- A tab that isn't a file names itself instead: a workspace home reads **Content**, **Media** or **Publish**, and a grid its own name. Only a new document you haven't saved yet reads **Untitled**.
 
 The trail follows the **focused pane**. With two panes open, it names the one you last clicked into, which is also the one the Inspector and the Outline are showing. It names the **primary** selection: select several elements and the count appears at the right of the status bar, while the trail keeps naming the one the Inspector is pointed at.
 
@@ -269,9 +270,9 @@ The strip along the bottom carries **ambient state only** (things that are true 
 
 - **Project** shows the project name, the git branch with its ahead/behind counts, a count of open problems, and who else is in the document with you.
 - **Document** is the [jump bar](#the-jump-bar): the open file, then every element above the one you have selected, each one a button that selects it.
-- **Selection** shows what the trail can't say: **3 selected** when more than one element is picked, or the style rule the Style panel is editing in Project Styles.
+- **Selection** shows what the trail can't say: **3 selected** when more than one element is picked, or the style rule the Style panel is editing, while Project Styles is the tab in front. The rule stays picked when you switch workspaces and shows again when you come back.
 
-Nearly every item is a button that runs the command behind it: the project name opens your recents, the branch opens the Publish workspace, the problem count opens the Bottom dock, and a crumb selects its element. Whether a document has unsaved changes is shown by the dot on its tab and by the Command Bar's **Save**; which view a pane is in is on its [context bar](/docs/studio/interface/tabs#the-pane-context-bar).
+Nearly every item is a button that runs the command behind it: the project name opens your recents, the branch opens the Publish workspace on **Review changes** (its tooltip counts the changed files), the problem count opens the Bottom dock, and a crumb selects its element. Whether a document has unsaved changes is shown by the dot on its tab and by the Command Bar's **Save**; which view a pane is in is on its [context bar](/docs/studio/interface/tabs#the-pane-context-bar).
 
 :::doc-note
 Outcomes don't appear here. Something that happened at a moment and is reversible appears as a **toast** that retires itself; something that must be fixed becomes a **Problem** in the Bottom dock; something wrong with a value you just typed is shown at the field you typed it in.

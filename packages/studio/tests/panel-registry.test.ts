@@ -37,8 +37,11 @@ import {
   DEFAULT_PANEL_ID,
   migratePanelId,
   NAVIGATOR_PANEL_IDS,
+  navigatorPanelOutsideWorkspace,
   resetProjectShell,
   shell,
+  WORKSPACE_ONLY_PANELS,
+  WORKSPACE_PRESETS,
 } from "../src/shell";
 
 function record(over: Partial<PanelRecord> = {}): PanelRecord {
@@ -206,6 +209,27 @@ describe("the Navigator's panel set", () => {
     // Two lists, because `shell.ts` must load in a bare Bun process for the CI checks. This is
     // What stops them drifting.
     expect(navigatorPanelSet().map((p) => p.id)).toEqual([...NAVIGATOR_PANEL_IDS]);
+  });
+
+  test("WORKSPACE_ONLY_PANELS is exactly the rail-less panels a workspace preset pins", () => {
+    // The shell loads in a bare Bun process and cannot read `rail` off the records, so the set is
+    // Written down there; this is what stops it drifting from them.
+    const pinned = new Set<string>(
+      Object.values(WORKSPACE_PRESETS).flatMap((p) =>
+        p.navigator.panel ? [p.navigator.panel] : [],
+      ),
+    );
+    const expected = navigatorPanelSet()
+      .filter((panel) => panel.rail === false && pinned.has(panel.id))
+      .map((panel) => panel.id);
+    const only: string[] = [...WORKSPACE_ONLY_PANELS];
+    expect(only).toEqual(expected);
+  });
+
+  test("outside a workspace frame a workspace-only panel falls back to the default", () => {
+    expect(navigatorPanelOutsideWorkspace("collections")).toBe(DEFAULT_PANEL_ID);
+    expect(navigatorPanelOutsideWorkspace("layers")).toBe("layers");
+    expect(navigatorPanelOutsideWorkspace(null)).toBe(DEFAULT_PANEL_ID);
   });
 
   test("registerNavigatorPanels is idempotent — the app mounts once, a suite mounts per case", () => {

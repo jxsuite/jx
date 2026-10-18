@@ -643,6 +643,16 @@ describe("file operations", () => {
     expect(p.readFile("missing.json")).rejects.toThrow("Failed to read file: missing.json");
   });
 
+  test("readFile asks with optional=1, and a null body is still a rejection", async () => {
+    // A missing file is an ordinary answer on the wire (no 404 in the console), never a value.
+    route("/__studio/file", () => json({ content: null, path: "missing.json" }));
+    const p = createDevServerPlatform();
+    expect(p.readFile("missing.json")).rejects.toThrow(
+      "Failed to read file: missing.json (not found)",
+    );
+    expect(callsTo("/__studio/file")[0]!.search.get("optional")).toBe("1");
+  });
+
   /* The read side of the image editor. It must NOT go through the JSON `/__studio/file` route:
      that one decodes UTF-8, which turns a JPEG into replacement characters. */
   test("readFileBytes returns the raw body from the bytes route", async () => {

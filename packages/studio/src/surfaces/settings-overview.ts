@@ -42,8 +42,10 @@ export interface OverviewValues {
   name: string;
   description: string;
   url: string;
-  /** The configured favicon path, or `""` for none. */
+  /** The configured favicon path, as `$head` names it, or `""` for none. */
   favicon: string;
+  /** The src the parent realm loads to preview {@link favicon}: the authored value, resolved. */
+  faviconSrc: string;
   /** The `workspace.focus.styles` record's own title (Go to Styles), the button's tooltip. */
   stylesTitle: string;
   stylesDisabled: boolean;
@@ -84,6 +86,7 @@ interface OverviewScope {
   urlError: string;
   urlInvalid: boolean;
   favicon: string;
+  faviconSrc: string;
   hasFavicon: boolean;
   faviconError: string;
   hasFaviconError: boolean;
@@ -124,6 +127,9 @@ function project(scope: OverviewScope, patch: Partial<OverviewValues>): void {
     scope.favicon = patch.favicon;
     scope.hasFavicon = patch.favicon !== "";
   }
+  if (patch.faviconSrc !== undefined) {
+    scope.faviconSrc = patch.faviconSrc;
+  }
   if (patch.stylesTitle !== undefined) {
     scope.stylesTitle = patch.stylesTitle;
   }
@@ -162,6 +168,7 @@ export function mountOverviewSurface(
     descriptionValue: "",
     favicon: "",
     faviconError: "",
+    faviconSrc: "",
     hasFavicon: false,
     hasFaviconError: false,
     hasSectionError: false,

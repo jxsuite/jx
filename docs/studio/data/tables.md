@@ -22,7 +22,7 @@ A data table is like a content type for live data: a name, a set of fields, and 
 
 ## Create a table
 
-1. Click **New Entry** at the bottom of the table list.
+1. Click **New table** at the bottom of the table list.
 2. Type a name and click **Create**. "Comments" becomes `comments`.
 
 The new table starts empty, readable by everyone and writable by no one. First pick its **connection**, a dropdown of the entries from **[Connections](/docs/studio/data/connections)**.

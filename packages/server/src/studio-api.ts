@@ -1340,9 +1340,18 @@ export async function handleStudioApi(
         { headers: { "Cache-Control": "public, max-age=5" } },
       );
     } catch (error) {
-      return isNotFound(error)
-        ? problem("notFound", "Not found")
-        : problem("internalError", errorMessage(error));
+      if (!isNotFound(error)) {
+        return problem("internalError", errorMessage(error));
+      }
+      /* `optional=1`: the caller is asking whether the file is there, and "no" is an ordinary
+         answer rather than a failure — the same reasoning that makes a missing directory's listing
+         a 404 instead of a 500, one step further. A per-directory `.gitignore` probe is the case
+         that needs it: a listing hides dotfiles, so the only way to learn a directory has none is
+         to ask, and a 404 per directory lands in the browser console as a failed request. Never
+         cached, so a file created a moment later is read rather than remembered as absent. */
+      return url.searchParams.get("optional") === "1"
+        ? Response.json({ content: null, path: fp }, { headers: { "Cache-Control": "no-store" } })
+        : problem("notFound", "Not found");
     }
   }
 

@@ -497,6 +497,29 @@ describe("editor kind", () => {
   });
 });
 
+describe("a workspace home", () => {
+  test("names its editor and draws no rendering context over the workspace surface", async () => {
+    const tab = resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "", id: "workspace://publish" },
+    );
+    tab.documentPath = null;
+    tab.capabilities.modes = ["publish-home"];
+    tab.session.ui.canvasMode = "publish-home";
+    await mountBar();
+    expect(part("static")?.textContent.trim()).toBe("Home");
+    expect(root.querySelector('[data-axis="context"]')).toBeNull();
+    expect(part("preset")).toBeNull();
+  });
+
+  test("a document still draws its Context axis", async () => {
+    openTestTab();
+    await mountBar();
+    expect(root.querySelector('[data-axis="context"]')).not.toBeNull();
+    expect(part("preset")).not.toBeNull();
+  });
+});
+
 // ─── Axis 2 · Canvas view ─────────────────────────────────────────────────────
 
 describe("canvas view", () => {

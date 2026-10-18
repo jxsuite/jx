@@ -86,6 +86,14 @@ export interface SettingsSection {
   /** Sort position — lower orders render higher in the inner nav. */
   order: number;
   /**
+   * The sentence the body opens with while THIS section shows, in place of its group's `intro`.
+   *
+   * A group's sentence says what the group is for, and a section that is not that (Content Types is
+   * a list of the project's collections, not something to turn on) says what it is instead. Absent
+   * or empty, the group's sentence stands.
+   */
+  intro?: string | undefined;
+  /**
    * Draw the section into `container`. A renderer that returns a promise is awaited, so a section
    * whose first paint needs IO fails where the reader is looking: a rejection, like a throw, is
    * shown in the body in place of the section (`panels/settings-pane.ts`).

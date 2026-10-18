@@ -108,6 +108,11 @@ export interface PaneContextView {
 
   viewState: "shown" | "hidden";
   views: PaneContextChoice[];
+  /**
+   * Whether the Context axis (size, scheme, language, layout) is drawn. Hidden for a tab nothing is
+   * rendered under: a workspace home draws its own surface, not the document at a breakpoint.
+   */
+  contextState: "shown" | "hidden";
   previewState: "shown" | "hidden";
   previewOn: boolean;
   previewHint: string;
@@ -223,6 +228,7 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.editorValue = view.editorValue;
   scope.editorOptions = view.editorOptions;
   scope.viewState = view.viewState;
+  scope.contextState = view.contextState;
   scope.views = view.views;
   scope.previewState = view.previewState;
   scope.previewOn = view.previewOn;
@@ -257,6 +263,7 @@ export function emptyPaneContextView(): PaneContextView {
     bannerState: "hidden",
     barMode: "full",
     contextRegion: "",
+    contextState: "shown",
     contextSummary: "Base",
     editorLabel: "",
     editorMode: "static",

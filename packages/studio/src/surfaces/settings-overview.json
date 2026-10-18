@@ -278,7 +278,7 @@
                   "tagName": "img",
                   "attributes": {
                     "part": "favicon",
-                    "src": "${state.favicon}",
+                    "src": "${state.faviconSrc}",
                     "alt": "Current favicon"
                   }
                 },
