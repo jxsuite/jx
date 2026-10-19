@@ -7,6 +7,9 @@ on:
         description: Tag to build and attach artifacts to.
         required: true
         type: string
+  # A manual run builds, signs, notarizes and verifies from the branch it is started on, then
+  # uploads the installers as a workflow artifact. With no tag it attaches nothing to any release.
+  workflow_dispatch:
 
 jobs:
   build:
@@ -99,7 +102,7 @@ jobs:
         # still reach the release. action-gh-release no-ops on an empty glob
         # (fail_on_unmatched_files defaults false), so a total build failure leaves the job red
         # without adding a spurious error.
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.tag_name != '' }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag_name }}

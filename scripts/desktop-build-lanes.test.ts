@@ -152,7 +152,12 @@ describe("every bundle lane", () => {
     const attach = steps(lane.file).find((step) =>
       step.uses?.startsWith("softprops/action-gh-release"),
     );
-    expect(attach?.if).toBe("${{ !cancelled() }}");
+    // The macOS lane is also manually dispatchable, with no tag, to test signing without publishing.
+    expect(attach?.if).toBe(
+      lane.target === "mac"
+        ? "${{ !cancelled() && inputs.tag_name != '' }}"
+        : "${{ !cancelled() }}",
+    );
   });
 
   test.each(LANES)("$file never mentions the toolchain it replaced", (lane) => {
