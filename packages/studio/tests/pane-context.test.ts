@@ -323,6 +323,59 @@ describe("the bar", () => {
     expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("0px");
   });
 
+  /* A projection runs inside whatever changed the pane, with the rest of that change unwritten, so
+     a height read there paid a style recalculation of the whole half-written document (the perf
+     trace's `topBandHeight`). The band's ResizeObserver writes the offset once layout is done. */
+  test("a re-projection reads no layout; the band's observer moves the offset", async () => {
+    const observed: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
+    const Original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      targets: Element[] = [];
+      constructor(callback: ResizeObserverCallback) {
+        observed.push({ callback, targets: this.targets });
+      }
+      observe(target: Element) {
+        this.targets.push(target);
+      }
+      unobserve(target: Element) {
+        this.targets.splice(this.targets.indexOf(target), 1);
+      }
+      disconnect() {
+        this.targets.length = 0;
+      }
+    };
+    try {
+      openTestTab();
+      await mountBar();
+      const band = part("band")!;
+      expect(observed.at(-1)?.targets).toEqual([band]);
+      let reads = 0;
+      let height = 28;
+      Object.defineProperty(band, "offsetHeight", {
+        configurable: true,
+        get: () => {
+          reads += 1;
+          return height;
+        },
+      });
+      paneContext.render();
+      paneContext.render();
+      expect(reads).toBe(0);
+      // A banner wrapped the band to 64px: the observer, not the projection, reports it.
+      height = 64;
+      const watch = observed.at(-1)!;
+      /* SAFETY: the flow's callback reads neither argument; it re-measures the band it closed
+         over, which is the behaviour under test. */
+      watch.callback([], {} as ResizeObserver);
+      expect(reads).toBe(1);
+      expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("64px");
+      paneContext.unmount();
+      expect(watch.targets).toHaveLength(0);
+    } finally {
+      globalThis.ResizeObserver = Original;
+    }
+  });
+
   test("render() is inert before mount and after unmount", async () => {
     openTestTab();
     paneContext.render();

@@ -231,6 +231,32 @@ describe("overflow chevron", () => {
     expect(host.querySelector('[part="overflow"]:not([hidden])')).toBeNull();
   });
 
+  /* The strip is measured in the FRAME after a paint, never inside it. A paint is one write among
+     many in a tab or workspace change, and a layout read at its tail paid a style recalculation of
+     the whole half-written document every time (the perf trace's `syncOverflow` hot spot). */
+  test("a paint reads no layout; the frame after it reads once however many paints landed", async () => {
+    open("a");
+    await flush();
+    let reads = 0;
+    Object.defineProperty(strip(), "scrollWidth", {
+      configurable: true,
+      get: () => {
+        reads += 1;
+        return 500;
+      },
+    });
+    Object.defineProperty(strip(), "clientWidth", { configurable: true, value: 100 });
+    open("b");
+    open("c");
+    open("d");
+    // Three activations, three paints, and not one read of the strip's geometry among them.
+    expect(reads).toBe(0);
+    expect(host.querySelector('[part="overflow"]:not([hidden])')).toBeNull();
+    await flush();
+    expect(reads).toBe(1);
+    drawn(host.querySelector('[part="overflow"]:not([hidden])'), "the overflow chevron");
+  });
+
   test("appears once the strip overflows, and lists the hidden tabs", async () => {
     open("a");
     open("b");

@@ -113,6 +113,10 @@ describe("left panel — the shared scroller", () => {
     shell.leftTab = "files";
     resetStudioState({ dirs: new Map([[".", []]]), searchQuery: "" });
     render();
+    await Promise.resolve();
+    /* Not yet: the reset waits for the frame, so it does not lay out the panel the dock is still
+       building (a forced style recalculation on every panel switch). */
+    expect(scroller.scrollTop).toBe(480);
     await flush(4);
     expect(scroller.scrollTop).toBe(0);
   });

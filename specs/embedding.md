@@ -50,7 +50,7 @@ The sequence is fixed: the host scope is validated (§3), the document's `$eleme
 
 ### 2.2 Disposal
 
-`dispose()` stops every effect the render created, calls `onUnmount` if the document declares one and the root was ever attached, and removes the root from its parent. Rules the mount adopted into the document's stylesheet (spec.md §9.6) are released by the same scope, so `documentStyleText()` no longer reports them. Calling it twice is a no-op.
+`dispose()` removes the root from its parent, then stops every effect the render created, then calls `onUnmount` if the document declares one and the root was ever attached. The root leaves first so that releasing each element's styles writes to nodes that are no longer in the document, which a browser does not have to re-style; it is also the order a component's own `onUnmount` sees, since that runs from `disconnectedCallback`. A keyed `$map` row and a `$switch` case are taken down in the same order. Rules the mount adopted into the document's stylesheet (spec.md §9.6) are released by the same scope, so `documentStyleText()` no longer reports them. Calling it twice is a no-op.
 
 `signal` ties disposal to an `AbortSignal`. Aborting after the mount disposes it; a signal that is already aborted when `mount()` runs renders and then disposes without attaching, and `onMount` never runs.
 

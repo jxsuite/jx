@@ -16,6 +16,7 @@ import {
   listWindow,
   measuredRowHeight,
   nearestScroller,
+  SCROLLER_ATTR,
   scrollerFor,
   revealListRow,
   sameWindow,
@@ -615,6 +616,33 @@ describe("watchListWindow", () => {
 });
 
 describe("scrollerFor", () => {
+  /* The Files tree and the Outline are new elements each time their panel is shown, so the cache
+     never helped them, and the ancestor walk's first read landed on a document the panel had just
+     dirtied (12 to 32 ms a show in the perf trace). A declared scroller is found by identity. */
+  test("a scroller the host declared is the answer, with no layout read on the way", () => {
+    const declared = document.createElement("div");
+    declared.setAttribute(SCROLLER_ATTR, "");
+    const inner = document.createElement("div");
+    const list = document.createElement("div");
+    const counter = { reads: 0 };
+    const countRead = () => {
+      counter.reads += 1;
+      return 0;
+    };
+    for (const el of [declared, inner, list]) {
+      Object.defineProperty(el, "scrollHeight", { configurable: true, get: countRead });
+    }
+    inner.append(list);
+    declared.append(inner);
+    // Still being built: not inside its scroller yet, so the declaration does not answer.
+    expect(scrollerFor(list)).toBeNull();
+    counter.reads = 0;
+    document.body.append(declared);
+    expect(scrollerFor(list)).toBe(declared);
+    expect(counter.reads).toBe(0);
+    declared.remove();
+  });
+
   test("memoizes the resolved scroller per list, and answers the same element again", () => {
     const scroller = scrollBox({ clientHeight: 200, scrollHeight: 2000 });
     const list = listIn(scroller, 0);

@@ -9,7 +9,11 @@
  */
 import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { closeSettingsDialog, openSettingsDialog } from "../src/settings/settings-dialog";
+import {
+  closeSettingsDialog,
+  disposeSettingsDialog,
+  openSettingsDialog,
+} from "../src/settings/settings-dialog";
 import { openSettingsDialogSurface, SETTINGS_DIALOG_REGION } from "../src/surfaces/settings-dialog";
 import { resetSettingsDocumentState, setSettingsSection } from "../src/settings/section-registry";
 import { initLayers, layerHost } from "../src/ui/layers";
@@ -26,8 +30,14 @@ function dialogs(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('#layer-dialog jx-dialog[part="settings"]')];
 }
 
+/** The settings dialog that is SHOWING, or null: a closed one stays mounted for the next open. */
 function dialog(): HTMLElement | null {
-  return dialogs()[0] ?? null;
+  return dialogs().find((host) => isShowing(host)) ?? null;
+}
+
+/** Whether a `jx-dialog`'s platform dialog is open. */
+function isShowing(host: HTMLElement): boolean {
+  return host.querySelector<HTMLDialogElement>('dialog[part="dialog"]')?.open === true;
 }
 
 /** The section the focused row names, or `""` when the focus is not on a row. */
@@ -48,7 +58,7 @@ let followed: string[];
 let documentOpen: boolean;
 
 beforeEach(() => {
-  closeSettingsDialog();
+  disposeSettingsDialog();
   installMockPlatform();
   resetSettingsDocumentState();
   resetStudioState({ projectConfig: { name: "Field Notes" } });
@@ -151,7 +161,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  closeSettingsDialog();
+  disposeSettingsDialog();
   setActiveRegistry(null);
   await flush();
 });
@@ -198,13 +208,59 @@ describe("opening", () => {
 });
 
 describe("closing", () => {
-  test("Escape's `close` event closes it and takes the editor down", async () => {
+  test("Escape's `close` event closes it and keeps the editor for the next open", async () => {
     await openSettingsDialog();
     await flush(2);
     dialog()!.dispatchEvent(new Event("close", { bubbles: true }));
     await flush(2);
     expect(dialog()).toBeNull();
+    // Closed, not torn down: one frame and one editor stay mounted, out of sight.
+    expect(dialogs()).toHaveLength(1);
+    expect(mountsOf("settings-pane")).toHaveLength(1);
+  });
+
+  /* Mounting the frame and the whole editor on every open, and disposing both inside the
+     dialog's own `cancel` handler, was what an open/close of Settings cost (the perf trace's
+     `showModal` and `teardown` style recalculations). A reopen is one `showModal()` now. */
+  test("reopening shows the same frame and editor, and redraws the section asked for", async () => {
+    await openSettingsDialog();
+    await flush(2);
+    const first = dialog()!;
+    const editor = first.querySelector('[part="doc"]');
+    closeSettingsDialog();
+    await flush(2);
+    // A section asked for while closed is what the reopened dialog shows.
+    setSettingsSection("locales");
+    await openSettingsDialog();
+    await flush(2);
+    expect(dialog()).toBe(first);
+    expect(first.querySelector('[part="doc"]')).toBe(editor);
+    expect(mountsOf("settings-dialog")).toHaveLength(1);
+    expect(mountsOf("settings-pane")).toHaveLength(1);
+    expect(focusedSection()).toBe("locales");
+  });
+
+  test("a frame whose layer was replaced is rebuilt, not shown", async () => {
+    await openSettingsDialog();
+    closeSettingsDialog();
+    document.body.innerHTML = `
+      <div id="layer-popover"></div><div id="layer-modal"></div><div id="layer-dialog"></div>
+    `;
+    initLayers();
+    await openSettingsDialog();
+    await flush(2);
+    expect(dialog()).not.toBeNull();
+    expect(mountsOf("settings-dialog")).toHaveLength(1);
+  });
+
+  test("dispose takes the frame and the editor down", async () => {
+    await openSettingsDialog();
+    await flush(2);
+    disposeSettingsDialog();
+    await flush(2);
+    expect(dialogs()).toHaveLength(0);
     expect(mountsOf("settings-pane")).toHaveLength(0);
+    expect(layerHost("dialog").childElementCount).toBe(0);
   });
 
   test("the Close button's `cancel` closes it too", async () => {
@@ -215,14 +271,14 @@ describe("closing", () => {
     expect(dialog()).toBeNull();
   });
 
-  test("closing is idempotent, and closing before it has shown leaves nothing behind", async () => {
+  test("closing is idempotent, and closing before it has shown never shows it", async () => {
     const opening = openSettingsDialog();
     closeSettingsDialog();
     closeSettingsDialog();
     await opening;
     await flush(3);
     expect(dialog()).toBeNull();
-    expect(layerHost("dialog").childElementCount).toBe(0);
+    expect(layerHost("dialog").childElementCount).toBe(1);
   });
 
   test("it can be opened again after it was closed", async () => {
@@ -311,7 +367,7 @@ describe("the Moved footnote", () => {
 });
 
 describe("the frame", () => {
-  test("a close before the mount lands disposes the document it was building", async () => {
+  test("a dispose before the mount lands disposes the document it was building", async () => {
     let built = 0;
     let closed = 0;
     const handle = openSettingsDialogSurface({
@@ -323,13 +379,40 @@ describe("the frame", () => {
       },
       layer: layerHost("dialog"),
     });
-    handle.close();
-    handle.close();
+    handle.dispose();
+    handle.dispose();
     await handle.ready;
     await flush(2);
     expect(closed).toBe(1);
     expect(built).toBe(0);
     expect(mountsOf("settings-dialog")).toHaveLength(0);
     expect(handle.host.isConnected).toBe(false);
+  });
+
+  test("closed is said once per showing, and a close before the mount lands keeps it shut", async () => {
+    let closed = 0;
+    const handle = openSettingsDialogSurface({
+      body: () => {},
+      closed: () => {
+        closed += 1;
+      },
+      layer: layerHost("dialog"),
+    });
+    handle.close();
+    handle.close();
+    const element = await handle.ready;
+    await flush(2);
+    expect(closed).toBe(1);
+    expect(isShowing(element)).toBeFalse();
+    await handle.show();
+    expect(isShowing(element)).toBeTrue();
+    handle.close();
+    expect(closed).toBe(2);
+    expect(isShowing(element)).toBeFalse();
+    handle.dispose();
+    expect(closed).toBe(2);
+    // A disposed frame is never shown again.
+    await handle.show();
+    expect(isShowing(element)).toBeFalse();
   });
 });

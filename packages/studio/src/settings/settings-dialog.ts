@@ -19,6 +19,14 @@
  * Modality, Escape and focus restoration are the platform's: a `jx-dialog` in the dialog layer,
  * opened with `showModal()`, which puts focus back on whatever opened it when it closes.
  *
+ * **The frame and the editor are built once per session** and kept, closed, in the dialog layer. A
+ * close suspends the editor (it stops following the section registry) and closes the platform's
+ * dialog; an open resumes it, which redraws the current section, and shows the same dialog again.
+ * Rebuilding both on every open was most of what opening Settings cost, and disposing them inside
+ * the dialog's own `cancel` handler removed a subtree that still held focus from the top layer,
+ * which the browser re-styled on the way out. {@link disposeSettingsDialog} is the teardown, and a
+ * frame whose layer was replaced under it is rebuilt rather than shown.
+ *
  * @docs studio/projects/settings
  */
 
@@ -28,17 +36,53 @@ import { mountSettingsPane } from "../panels/settings-pane";
 import { openSettingsDialogSurface } from "../surfaces/settings-dialog";
 import { layerHost } from "../ui/layers";
 import type { SettingsPaneMount } from "../panels/settings-pane";
-import type { DialogLayerHandle } from "../ui/surface";
+import type { SettingsDialogHandle } from "../surfaces/settings-dialog";
 import type { InspectorTabId } from "../shell";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import type { StylesView } from "../style/project-styles";
 import type { PublishTab } from "../publish/publish-ids";
 
-/** The open dialog, or `null` while none is up. */
-let _dialog: DialogLayerHandle | null = null;
+/** The frame, built on the first open and kept across closes; `null` before then. */
+interface SettingsFrame {
+  dialog: SettingsDialogHandle;
+  /** The editor in the frame's body, once the body has been created. */
+  pane: SettingsPaneMount | null;
+}
 
-/** The editor mounted in the open dialog's body. */
-let _pane: SettingsPaneMount | null = null;
+let _frame: SettingsFrame | null = null;
+
+/** Whether the dialog is asked to be up: true from an open until the close that ends it. */
+let _open = false;
+
+/** {@link _open}, read through a call so a check after an `await` is not narrowed to before it. */
+function isOpen(): boolean {
+  return _open;
+}
+
+/** Build the frame (it opens itself once mounted). */
+function buildFrame(): SettingsFrame {
+  const frame: SettingsFrame = {
+    dialog: openSettingsDialogSurface({
+      body: (host) => {
+        frame.pane = mountSettingsPane(host, {
+          openMoved: (workspace, inspector, view, publishTab) => {
+            void openMoved(workspace, inspector, view, publishTab);
+          },
+        });
+      },
+      /* Escape or Close: the platform closed the dialog, so the flow follows. `close()` is
+         idempotent, so the flow's own close running first is fine. */
+      closed: () => {
+        if (_frame === frame) {
+          closeSettingsDialog();
+        }
+      },
+      layer: layerHost("dialog"),
+    }),
+    pane: null,
+  };
+  return frame;
+}
 
 /**
  * Leave Settings for the workspace something moved to: the Moved footnote's buttons.
@@ -97,47 +141,52 @@ async function openMoved(
  *   the keyboard
  */
 export async function openSettingsDialog(): Promise<void> {
-  if (_dialog) {
-    await _dialog.ready;
+  if (_open && _frame) {
+    await _frame.dialog.ready;
     return;
   }
-  const dialog = openSettingsDialogSurface({
-    body: (host) => {
-      _pane = mountSettingsPane(host, {
-        openMoved: (workspace, inspector, view, publishTab) => {
-          void openMoved(workspace, inspector, view, publishTab);
-        },
-      });
-    },
-    /* Escape or Close: the platform closed the dialog, so take the editor and the slot down with
-       it. `close()` is idempotent, so the flow's own close running first is fine. */
-    closed: () => {
-      if (_dialog === dialog) {
-        closeSettingsDialog();
-      }
-    },
-    layer: layerHost("dialog"),
-  });
-  _dialog = dialog;
-  await dialog.ready;
-  /* Read after the wait, from the module: the body is created while the dialog mounts, and a close
-     in between has already taken the editor down and cleared this. */
-  const mounted = _pane;
-  if (mounted === null || _dialog !== dialog) {
+  _open = true;
+  // A frame whose layer went away (a shell remount) is dead weight, not something to show.
+  if (_frame && !_frame.dialog.host.isConnected) {
+    disposeSettingsDialog();
+    _open = true;
+  }
+  let frame = _frame;
+  if (frame) {
+    frame.pane?.resume();
+    await frame.dialog.show();
+  } else {
+    frame = buildFrame();
+    _frame = frame;
+    await frame.dialog.ready;
+  }
+  /* Read after the wait, from the frame: the body is created while the dialog mounts, and a close
+     in between leaves the editor built but not to be focused. */
+  const mounted = frame.pane;
+  if (mounted === null || _frame !== frame || !isOpen()) {
     return;
   }
   await mounted.ready;
-  if (_dialog === dialog) {
+  if (_frame === frame && isOpen()) {
     mounted.focusActive();
   }
 }
 
-/** Close Project Settings if it is open. Idempotent. */
+/** Close Project Settings if it is open. Idempotent. The frame stays built for the next open. */
 export function closeSettingsDialog(): void {
-  const dialog = _dialog;
-  const pane = _pane;
-  _dialog = null;
-  _pane = null;
-  pane?.dispose();
-  dialog?.close();
+  if (!_open) {
+    return;
+  }
+  _open = false;
+  _frame?.pane?.suspend();
+  _frame?.dialog.close();
+}
+
+/** Close Project Settings and take its frame and editor down. Idempotent. */
+export function disposeSettingsDialog(): void {
+  _open = false;
+  const frame = _frame;
+  _frame = null;
+  frame?.pane?.dispose();
+  frame?.dialog.dispose();
 }

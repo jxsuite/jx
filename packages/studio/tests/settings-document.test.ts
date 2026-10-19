@@ -36,7 +36,7 @@ import {
 } from "../src/settings/section-registry";
 import { ICON_NAMES } from "@jxsuite/ui/icons";
 import { mountSettingsPane } from "../src/panels/settings-pane";
-import { closeSettingsDialog } from "../src/settings/settings-dialog";
+import { closeSettingsDialog, disposeSettingsDialog } from "../src/settings/settings-dialog";
 import { resetExtensionSettingsSections } from "../src/settings/extension-sections";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
 import { closeAllTabs, activeTab, workspace } from "../src/workspace/workspace";
@@ -136,8 +136,13 @@ function body(root: ParentNode = host): HTMLElement {
 }
 
 /** The open settings dialog, or null. */
+/** The settings dialog that is SHOWING, or null: a closed one stays mounted for the next open. */
 function dialog(): HTMLElement | null {
-  return document.querySelector<HTMLElement>('#layer-dialog jx-dialog[part="settings"]');
+  return (
+    [...document.querySelectorAll<HTMLElement>('#layer-dialog jx-dialog[part="settings"]')].find(
+      (el) => el.querySelector<HTMLDialogElement>('dialog[part="dialog"]')?.open === true,
+    ) ?? null
+  );
 }
 
 /**
@@ -235,7 +240,7 @@ beforeEach(() => {
 afterEach(async () => {
   pane?.dispose();
   pane = null;
-  closeSettingsDialog();
+  disposeSettingsDialog();
   host.remove();
   closeAllTabs();
   await flush();
@@ -269,6 +274,77 @@ describe("the groups", () => {
       general: ["overview", "locales"],
       integrations: ["extensions"],
     });
+  });
+
+  /* The dialog keeps its editor across closes, so a closed editor must not keep redrawing on every
+     registry change, and a reopened one must catch up on what it missed. */
+  test("a suspended editor ignores the registry, and resuming redraws the section once", async () => {
+    let renders = 0;
+    registerSettingsSection({
+      key: "counted",
+      label: "Counted",
+      order: 1,
+      render: () => {
+        renders += 1;
+      },
+    });
+    try {
+      setSettingsSection("counted");
+      await mount();
+      const drawn = renders;
+      expect(drawn).toBeGreaterThan(0);
+      pane!.suspend();
+      registerSettingsSection({ key: "late", label: "Late", order: 2, render: () => {} });
+      await flush();
+      expect(renders).toBe(drawn);
+      pane!.resume();
+      expect(renders).toBe(drawn + 1);
+      // Already following: a second resume draws nothing more.
+      pane!.resume();
+      expect(renders).toBe(drawn + 1);
+      pane!.dispose();
+      pane!.resume();
+      expect(renders).toBe(drawn + 1);
+    } finally {
+      unregisterSettingsSection("late");
+      unregisterSettingsSection("counted");
+    }
+  });
+
+  /* A section keeps its form state (a failed save's banner, a half-typed entry) in a WeakMap keyed
+     on the host it is given, so a reopen must hand it a new host or the last visit's error comes
+     back, including into another project's Settings. */
+  test("resuming draws into a fresh host, so the last visit's form state does not come back", async () => {
+    const hosts: HTMLElement[] = [];
+    const errors = new WeakMap<HTMLElement, string>();
+    registerSettingsSection({
+      key: "stateful",
+      label: "Stateful",
+      order: 1,
+      render: (target: HTMLElement) => {
+        hosts.push(target);
+        target.textContent = errors.get(target) ?? "clean";
+      },
+    });
+    try {
+      setSettingsSection("stateful");
+      await mount();
+      const first = hosts.at(-1)!;
+      errors.set(first, "Could not save project.json");
+      // A redraw while open (a section registering) keeps the host: the caret stays put.
+      registerSettingsSection({ key: "late", label: "Late", order: 2, render: () => {} });
+      expect(hosts.at(-1)).toBe(first);
+      expect(first.textContent).toBe("Could not save project.json");
+      pane!.suspend();
+      pane!.resume();
+      const reopened = hosts.at(-1)!;
+      expect(reopened).not.toBe(first);
+      expect(reopened.isConnected).toBe(true);
+      expect(reopened.textContent).toBe("clean");
+    } finally {
+      unregisterSettingsSection("late");
+      unregisterSettingsSection("stateful");
+    }
   });
 
   test("a section with no group is an Integration, and an empty group draws no heading", () => {

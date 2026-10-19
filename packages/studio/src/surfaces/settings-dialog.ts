@@ -7,6 +7,12 @@
  * the `onNodeCreated` seam (`studio-ui-guidelines.md` §9.4). The dialog is only the frame and the
  * one answer, Close.
  *
+ * **Mounted once, shown many times.** Every open used to mount this document and the whole editor
+ * into it, and every close disposed both while the dialog was still on the top layer, which made
+ * each close re-style the subtree it was removing. Now a close is the platform's `close()` and the
+ * document stays in the dialog layer, closed (so `display: none`, and inert), until the flow
+ * disposes it; the next open is one `showModal()`.
+ *
  * **Await the ELEMENT, not just the mount.** `mountSurface` resolving means the document rendered;
  * a `jx-dialog`'s own template is one `connectedCallback` later, and `showModal` in between finds
  * no `<dialog>` to open. `whenReady` is shared with `surfaces/dialog.ts`.
@@ -22,7 +28,7 @@ import { mountSurface, registerSurface } from "../ui/surface";
 import { whenReady } from "./dialog";
 import settingsDialogDoc from "./settings-dialog.json";
 import type { JxElement } from "@jxsuite/schema/types";
-import type { DialogLayerHandle, SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle } from "../ui/surface";
 
 registerSurface("settings-dialog", settingsDialogDoc);
 
@@ -32,10 +38,30 @@ export const SETTINGS_DIALOG_REGION = overlayRegion("dialog", "settings");
 export interface SettingsDialogOptions {
   /** The dialog layer host, handed in so this module never reaches back into `layers.ts`. */
   layer: HTMLElement;
-  /** The body slot was created: where the flow mounts the settings editor. */
+  /** The body slot was created: where the flow mounts the settings editor. Called once. */
   body: (host: HTMLElement) => void;
-  /** The dialog closed, for any reason, once. */
+  /** The dialog closed, for any reason: once per time it was shown. */
   closed: () => void;
+}
+
+/**
+ * The settings frame, mounted once and shown as often as it is asked for.
+ *
+ * Closing it closes the platform's `<dialog>` and leaves the document standing in the dialog layer,
+ * so the next open is one `showModal()` on a frame whose editor is already built, not a mount of
+ * the whole editor. Only {@link SettingsDialogHandle.dispose} takes it down.
+ */
+export interface SettingsDialogHandle {
+  /** The slot in the dialog layer that carries the region. */
+  host: HTMLElement;
+  /** Resolves with the `jx-dialog` element once it has rendered (and been opened, if still asked). */
+  ready: Promise<HTMLElement>;
+  /** Show it again after a close. Resolves once it is showing. */
+  show: () => Promise<HTMLElement>;
+  /** Close the dialog (the platform restores focus); the document stays mounted. Idempotent. */
+  close: () => void;
+  /** Close it and take the document and its slot down for good. Idempotent. */
+  dispose: () => void;
 }
 
 interface SettingsDialogScope {
@@ -49,12 +75,12 @@ function partOf(def: JxElement | string): string {
 }
 
 /**
- * Open the dialog. The handle's `ready` resolves once it is showing.
+ * Mount the dialog and open it. The handle's `ready` resolves once it is showing.
  *
  * @param {SettingsDialogOptions} options
- * @returns {DialogLayerHandle}
+ * @returns {SettingsDialogHandle}
  */
-export function openSettingsDialogSurface(options: SettingsDialogOptions): DialogLayerHandle {
+export function openSettingsDialogSurface(options: SettingsDialogOptions): SettingsDialogHandle {
   const slot = document.createElement("div");
   /* The layer is `pointer-events: none` so a click passes through it when nothing is up, and every
      slot in it turns them back on for its own content. `pointer-events` INHERITS, and the top layer
@@ -63,65 +89,81 @@ export function openSettingsDialogSurface(options: SettingsDialogOptions): Dialo
   slot.style.pointerEvents = "auto";
   options.layer.append(slot);
 
-  let closed = false;
-  /** Say it is over, once: the platform's own `close` and `close()` can each be first. */
+  /** Whether the dialog is asked to be showing: true from each open until its close. */
+  let wanted = true;
+  let disposed = false;
+  /** Say this showing is over, once: the platform's own `close` and `close()` can each be first. */
   const finish = (): void => {
-    if (closed) {
+    if (!wanted) {
       return;
     }
-    closed = true;
+    wanted = false;
     options.closed();
   };
-  /** Read through a call, so a check after an `await` is not narrowed to the value before it. */
-  const isClosed = (): boolean => closed;
 
   const scope = reactive<SettingsDialogScope>({ closed: finish });
 
   let mounted: SurfaceHandle | null = null;
+  /** Open the platform's dialog, if it is still asked for. Read through a call after each await. */
+  const open = (element: HTMLElement): HTMLElement => {
+    if (!disposed && wanted) {
+      showModal(element);
+    }
+    return element;
+  };
   const ready = mountSurface("settings-dialog", scope, slot, {
     onNodeCreated: (element, _path, def) => {
-      if (!isClosed() && element instanceof HTMLElement && partOf(def) === "pane-slot") {
+      if (!disposed && element instanceof HTMLElement && partOf(def) === "pane-slot") {
         options.body(element);
       }
     },
   }).then(async (surface) => {
-    mounted = surface;
     /* SAFETY: `settings-dialog.json`'s root definition is a `jx-dialog` element, so the runtime
        mounts an HTMLElement. */
     const element = surface.root as HTMLElement;
-    if (isClosed()) {
+    if (disposed) {
       surface.dispose();
       return element;
     }
+    mounted = surface;
     await whenReady(element);
-    if (isClosed()) {
-      return element;
-    }
     /* The region goes on the platform's own `<dialog>`, the one element here that HAS a box:
        `jx-dialog` is `display: contents`, and the slot wraps a dialog the top layer takes out of
        flow, so both measure 0×0, and a region whose box is empty is refused by the screenshot
        pipeline. The kit's own behaviour sidecar finds that node by exactly this selector. */
     const box = element.querySelector<HTMLElement>('dialog[part="dialog"]') ?? element;
     box.setAttribute(REGION_ATTR, SETTINGS_DIALOG_REGION);
-    showModal(element);
-    return element;
+    return open(element);
   });
 
+  const hide = (): void => {
+    const element = mounted?.root;
+    if (element instanceof HTMLElement) {
+      // The platform's close, so focus goes back where it came from before anything else moves.
+      close(element);
+    }
+    finish();
+  };
+
   return {
-    close() {
-      /* Every line is idempotent, so the platform's `close` having run `finish()` first changes
-         nothing: the document and its slot still come down. */
-      const element = mounted?.root;
-      if (element instanceof HTMLElement) {
-        // The platform's close first, so focus goes back where it came from; then the document.
-        close(element);
+    close: hide,
+    dispose() {
+      if (disposed) {
+        return;
       }
+      hide();
+      disposed = true;
       mounted?.dispose();
       mounted = null;
       slot.remove();
-      finish();
     },
     host: slot,
     ready,
+    show() {
+      if (!disposed) {
+        wanted = true;
+      }
+      return ready.then(open);
+    },
   };
 }

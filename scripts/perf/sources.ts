@@ -89,11 +89,18 @@ export function lookupMapped(byLine: number[][][], sm: SourceMapFile, line0: num
 }
 
 /**
+ * Parsed source maps by bundle URL, kept for the process: an A/B run maps every repetition of every
+ * scenario on two builds, and re-fetching and re-parsing a multi-megabyte map each time cost more
+ * than the tracing did. The two builds are served from different origins, so their URLs never
+ * collide.
+ */
+const maps = new Map<string, { byLine: number[][][]; sm: SourceMapFile }>();
+
+/**
  * Resolve bundled FunctionCall totals to original studio sources via the bundle's source map.
  * `bundled` is per-URL+line aggregated totals produced by analyze().
  */
 export async function mapSources(bundled: { url: string; line: number; totalMs: number }[]) {
-  const maps = new Map<string, { byLine: number[][][]; sm: SourceMapFile }>();
   const ensure = async (url: string) => {
     const cached = maps.get(url);
     if (cached) {

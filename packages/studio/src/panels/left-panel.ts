@@ -82,9 +82,17 @@ export function mount(deps: NavigatorPanelDeps) {
            contents`), so its offset outlived the panel it belonged to: scrolled down to the Site
            panel's Components, a click on Outline opened the Outline that far down. A different
            panel is a different list, and it opens at its top. A repaint of the same panel keeps
-           its place, because the box is keyed on the panel and is not announced again. */
+           its place, because the box is keyed on the panel and is not announced again.
+           In the next FRAME, not here: this runs while the dock is still building the new panel,
+           and a scroll write lays out the half-built document to clamp the offset (a forced
+           recalculation on every Navigator panel switch in the perf trace). The frame lays it out
+           anyway, and resets the offset before anything is painted. */
         if (switched) {
-          requireShellRef(leftPanel, "left-panel").scrollTop = 0;
+          requestAnimationFrame(() => {
+            if (_content?.host === host) {
+              requireShellRef(leftPanel, "left-panel").scrollTop = 0;
+            }
+          });
         }
         /* A MICROTASK, not this call. `onNodeCreated` fires the moment the element is CONSTRUCTED
            and the runtime applies its attributes on the next line, so a panel's `afterRender` run

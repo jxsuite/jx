@@ -289,12 +289,18 @@ export async function mount<S extends JxHostScope<S> = JxScope>(
     }
     disposed = true;
     options.signal?.removeEventListener("abort", dispose);
+    /* The root leaves the document BEFORE its effects stop (embedding.md §2.2). Stopping releases
+       each element's styles, and on a connected subtree every one of those inline-property and
+       `data-jx` writes schedules a style invalidation for a node that is leaving anyway: a
+       Publish tab switch spent 22 ms there, and a dialog's close forced a recalculation of the
+       subtree it was removing. It is also the order a custom element's own `onUnmount` sees,
+       which runs from `disconnectedCallback` (spec.md §16.4). */
+    root.remove();
     stop();
     // Called as a method, so a hook that reads `this` sees the scope, as it always has.
     if (mounted && isScopeHook(scope.onUnmount)) {
       scope.onUnmount(scope);
     }
-    root.remove();
   };
 
   if (options.signal?.aborted) {
@@ -2908,9 +2914,13 @@ function renderMappedArrayInto(
   /** The rows currently rendered, in DOM order. */
   let rows: MappedRow[] = [];
 
+  /* Out of the document FIRST, then stopped: stopping releases every element's styles
+     (`releaseElementStyles`), and on a connected node each of those inline-property and `data-jx`
+     writes schedules a style invalidation for a node that is about to leave. Detached, they are
+     plain writes. See `dispose` in `mount`. */
   const teardown = (row: MappedRow): void => {
-    row.scope.stop();
     row.node.remove();
+    row.scope.stop();
   };
 
   const createRow = (
@@ -3157,8 +3167,9 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
 
   effect(() => {
     if (!isRefValue(def.$switch)) {
-      retire();
+      // Detached before it is stopped, for the reason `teardown` in `renderMappedArray` gives.
       container.replaceChildren();
+      retire();
       generation += 1;
       return;
     }
@@ -3167,12 +3178,13 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
       return;
     }
     renderedKey = key;
-    retire();
     /* `replaceChildren()` rather than `innerHTML = ""`: identical semantics, and it is not a
        Trusted Types injection sink — under `require-trusted-types-for 'script'` an innerHTML write
        needs a policy even when the string is empty. Four sinks that were never injecting anything
-       is four fewer things a policy has to be permissive about. */
+       is four fewer things a policy has to be permissive about. Detached BEFORE the case is
+       stopped, for the reason `teardown` in `renderMappedArray` gives. */
     container.replaceChildren();
+    retire();
     generation += 1;
     const caseDef = def.cases?.[key];
     if (!caseDef) {

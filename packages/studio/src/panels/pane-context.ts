@@ -225,8 +225,49 @@ export function attachPaneChromeHost(paneId: string, host: HTMLElement | null): 
 
 /** Take one pane's document down and forget it. Idempotent. */
 function disposePane(paneId: string): void {
+  _bandWatches.get(paneId)?.observer.disconnect();
+  _bandWatches.delete(paneId);
   _surfaces.get(paneId)?.dispose();
   _surfaces.delete(paneId);
+}
+
+/**
+ * Each pane's band, as the observer that keeps the stage offset in step with it watches it.
+ *
+ * The offset used to be MEASURED on every projection, synchronously, right after the update that
+ * may have changed the band. A projection runs inside whatever changed the pane (a tab activation,
+ * a workspace switch, a mode change) with the rest of that change still to be written, so the read
+ * paid a style recalculation of the whole half-written document every time: 12 to 18 ms per tab
+ * activation in the perf trace, the hottest forced recalculation once the tab strip stopped
+ * reading. A `ResizeObserver` reports the band's height after the frame's own layout, when it is
+ * free to read, and only when it actually changed.
+ */
+const _bandWatches = new Map<string, { band: HTMLElement; observer: ResizeObserver }>();
+
+/**
+ * Keep `paneId`'s stage offset following its band: measure it once now, and again whenever it
+ * resizes. Re-binds when the document has drawn a new band element; a no-op for the one it holds.
+ * Without `ResizeObserver` (a DOM with no layout engine) every call measures, as before.
+ */
+function watchBand(paneId: string, host: HTMLElement, surface: PaneContextSurfaceHandle): void {
+  const band = surface.band();
+  const held = _bandWatches.get(paneId);
+  if (held && held.band === band) {
+    return;
+  }
+  held?.observer.disconnect();
+  _bandWatches.delete(paneId);
+  applyPaneContextOffset(topBandHeight(surface), host);
+  if (!band || typeof ResizeObserver === "undefined") {
+    return;
+  }
+  const observer = new ResizeObserver(() => {
+    if (_surfaces.get(paneId) === surface) {
+      applyPaneContextOffset(topBandHeight(surface), host);
+    }
+  });
+  observer.observe(band);
+  _bandWatches.set(paneId, { band, observer });
 }
 
 /**
@@ -372,13 +413,15 @@ function renderPane(paneId: string, host: HTMLElement) {
       void surface.ready.then(() => {
         const live = _surfaces.get(paneId);
         if (live) {
-          applyPaneContextOffset(topBandHeight(live), host);
+          watchBand(paneId, host, live);
         }
       });
       return;
     }
     surface.update(view);
-    applyPaneContextOffset(topBandHeight(surface), host);
+    /* No read here: the band's observer writes the offset once the frame has laid the band out
+       ({@link watchBand}). Only a band element the update REPLACED is re-measured now. */
+    watchBand(paneId, host, surface);
   } catch (error) {
     console.error("pane-context render error:", error);
   }

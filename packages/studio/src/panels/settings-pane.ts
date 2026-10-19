@@ -98,6 +98,13 @@ export interface SettingsPaneMount {
   ready: Promise<void>;
   /** Put the keyboard on the current section's row. */
   focusActive: () => void;
+  /**
+   * Stop following the section registry while the dialog is closed. The editor stays built; a
+   * section registering or a project closing in the meantime is caught up on by {@link resume}.
+   */
+  suspend: () => void;
+  /** Follow the registry again and redraw the current section: the dialog is being shown again. */
+  resume: () => void;
   /** Take the editor down and unsubscribe. Idempotent. */
   dispose: () => void;
 }
@@ -269,9 +276,12 @@ export function mountSettingsPane(
     }
   }
 
-  const off = onSettingsDocumentChanged(() => {
-    draw(true);
-  });
+  const follow = (): (() => void) =>
+    onSettingsDocumentChanged(() => {
+      draw(true);
+    });
+  /** The registry subscription, or null while the dialog is closed. */
+  let off: (() => void) | null = follow();
   /* The island does not exist until the mount lands, so the first pass that reaches a section
      renderer is this one. */
   const ready = surface.ready.then(() => {
@@ -284,12 +294,32 @@ export function mountSettingsPane(
         return;
       }
       disposed = true;
-      off();
+      off?.();
+      off = null;
       surface.dispose();
     },
     focusActive: () => {
       surface.focusActive();
     },
     ready,
+    resume() {
+      if (disposed || off !== null) {
+        return;
+      }
+      off = follow();
+      /* Redrawn rather than trusted: anything may have moved while it was closed (a section
+         registered, the project closed or changed, the configuration edited in Styles). Into a
+         FRESH host, as every open drew into when each one built its own frame: several sections
+         keep their form state (a half-typed entry, a failed save's error) in a WeakMap keyed on
+         the host they were given, and an open is a new visit, so none of that may come back from
+         the last one, or from another project's. Only a redraw WHILE open keeps the host, which is
+         what keeps the caret in the field being typed in. */
+      sectionHost = null;
+      draw(true);
+    },
+    suspend() {
+      off?.();
+      off = null;
+    },
   };
 }

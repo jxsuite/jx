@@ -272,6 +272,45 @@ describe("renderGridMode", () => {
     ).toEqual([]);
   });
 
+  /* A return to the grid (its workspace left and re-entered) rebuilds the table over the SAME
+     controller, whose order already is the stored one. Re-asking for it parked a refresh the table
+     ran the moment it was built, so every open rendered and measured its rows twice. */
+  test("re-entering a grid builds its rows once: the stored order it already holds is not re-applied", async () => {
+    const source = stubSource();
+    saveGridLayout(source.id, { groupBy: "title", sort: { dir: "desc", field: "title" } });
+    const { controller, tab, wrap } = await mountGrid(source);
+    const first = FakeTabulator.instances.at(-1)!;
+    first.emit("tableBuilt");
+    // The first open restores the stored order onto a controller that had none: one refresh.
+    expect(controller.state.query).toMatchObject({ dir: "desc", orderBy: "title" });
+    expect(controller.state.grouping).toBe("title");
+    expect(first.replaceDataCalls).toHaveLength(1);
+
+    detachGridPanel("primary");
+    renderGridMode(surfaceOf(wrap), tab);
+    await flush(3);
+    const second = FakeTabulator.instances.at(-1)!;
+    expect(second).not.toBe(first);
+    second.emit("tableBuilt");
+    // Built with the rows in order, and nothing re-projected them after the build.
+    expect(second.replaceDataCalls).toHaveLength(0);
+    expect(controller.state.query).toMatchObject({ dir: "desc", orderBy: "title" });
+    clearGridLayout(source.id);
+  });
+
+  test("a stored order that differs from the controller's is still applied on re-entry", async () => {
+    const source = stubSource();
+    const { controller, tab, wrap } = await mountGrid(source);
+    expect(controller.state.query.orderBy).toBeUndefined();
+    saveGridLayout(source.id, { sort: { dir: "asc", field: "title" } });
+    detachGridPanel("primary");
+    renderGridMode(surfaceOf(wrap), tab);
+    await flush(3);
+    expect(controller.state.query).toMatchObject({ dir: "asc", orderBy: "title" });
+    expect(controller.state.grouping).toBeNull();
+    clearGridLayout(source.id);
+  });
+
   test("CSV file tabs lazily provision their controller from any open path", async () => {
     installMockPlatform({}, { "lazy.csv": "a,b\n1,2\n" });
     const wrap = document.createElement("div");

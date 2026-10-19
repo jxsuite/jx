@@ -272,6 +272,7 @@ export function mount(host: HTMLElement) {
 }
 
 export function unmount() {
+  cancelMeasures();
   dismissOverflowMenu();
   dismissTabContextMenu();
   _scope?.stop();
@@ -366,27 +367,81 @@ function paint(pane: Pane, host: HTMLElement): void {
 
   /* The strip is HELD — `surfaces/tab-strip.ts` takes it as the element is created — so this is an
      imperative USE of a node this module owns rather than a re-find of one it renders
-     (studio-ui-guidelines.md §9.4). The chip is asked for by the state the KIT puts on it, which is
-     the accessibility tree's own answer to "which tab is current".
+     (studio-ui-guidelines.md §9.4).
 
      THE REVEAL IS RECORDED ONLY WHEN THERE WAS A STRIP TO REVEAL IT IN. A mount is asynchronous,
      so the first paint into a fresh host has no document yet — and moving `_lastActive` there
      anyway would consume the transition and leave the chip off-screen with nothing left to notice.
      That is exactly the case a derived pane produces: its strip is created the moment its one tab
-     comes back. */
+     comes back.
+
+     The DECISION is taken here, in the paint that saw the transition, and only the scroll waits
+     for the frame: several paints can land in one task (a derivation and its return), and the
+     frame sees only the last of them, which may name the very tab `_lastActive` already held. */
   const strip = _strips.get(host)?.strip();
   if (strip && pane.activeTabId !== _lastActive.get(pane.id)) {
     _lastActive.set(pane.id, pane.activeTabId);
+    _revealPending.add(host);
+  }
+  scheduleMeasure(host);
+}
+
+/**
+ * The frame each host's strip is next read in: one per host, however many paints ask for it.
+ *
+ * Both reads the strip owes after a paint (bringing the active chip into view, and whether the
+ * chevron is needed) need LAYOUT, and both used to run inline at the tail of {@link paint}. A paint
+ * is never the last write of its task: a workspace switch or a tab activation goes on to swap the
+ * stage, the docks and the Inspector, so an inline read paid for a style recalculation of the whole
+ * half-written document (10 to 27 ms each, on every tab or workspace change in the perf trace), and
+ * the frame then paid again once the rest of the task had dirtied it. Read in the next frame, the
+ * strip shares the one layout the frame does anyway. The chevron already tolerated a lag (see
+ * {@link syncOverflow}), and the reveal still lands before that frame paints.
+ */
+const _measureFrames = new Map<HTMLElement, number>();
+
+/** Hosts whose active chip changed since their last frame, so the frame scrolls it into view. */
+const _revealPending = new Set<HTMLElement>();
+
+function scheduleMeasure(host: HTMLElement): void {
+  if (_measureFrames.has(host)) {
+    return;
+  }
+  _measureFrames.set(
+    host,
+    requestAnimationFrame(() => {
+      _measureFrames.delete(host);
+      const pane = drawnPane(host);
+      if (pane) {
+        measureStrip(pane, host);
+      }
+      _revealPending.delete(host);
+    }),
+  );
+}
+
+/** Drop every pending read: the strips they would measure are going away. */
+function cancelMeasures(): void {
+  for (const frame of _measureFrames.values()) {
+    cancelAnimationFrame(frame);
+  }
+  _measureFrames.clear();
+  _revealPending.clear();
+}
+
+/** The reads {@link scheduleMeasure} runs for one host, in a frame of their own. */
+function measureStrip(pane: Pane, host: HTMLElement): void {
+  const strip = _strips.get(host)?.strip();
+  if (strip && _revealPending.has(host)) {
     /* Found by the id the DOCUMENT stamped, not by `aria-selected`. The kit is the single writer
        of a tab's selected state and it writes it on a MutationObserver when the tab SET moved — a
-       microtask later — so a strip whose one tab has just come back has no tab marked current at
-       the instant this runs. The flow already knows which chip it wants; asking the tree instead
-       is asking a question we have the answer to, and getting it one tick early. */
+       microtask later — so a strip whose one tab has just come back may have no tab marked current
+       yet. The flow already knows which chip it wants; asking the tree instead is asking a
+       question we have the answer to. */
     [...strip.children]
       .find((chip) => chip instanceof HTMLElement && chip.dataset.tab === pane.activeTabId)
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
-
   syncOverflow(pane, host);
 }
 
@@ -539,9 +594,9 @@ function project(pane: Pane): TabStripValues {
        no ✕ and no way out, which `paneIsEmpty` will not collapse because the derivation counts as
        a subject. The chip is the pane's name and its exit.
        NO `_lastActive` / `_overflowing` RESET HERE, and both were, until each was shown to be a
-       write nothing can read. `_overflowing` is measured by {@link syncOverflow} at the end of
-       every ordinary render, inside the same synchronous call, so a stale `true` carried through a
-       derivation is corrected before any frame sees it. `_lastActive` cannot survive the round trip
+       write nothing can read. `_overflowing` is measured by {@link syncOverflow} in the frame
+       after every ordinary render, before that frame paints, so a stale `true` carried through a
+       derivation is corrected before anybody sees it. `_lastActive` cannot survive the round trip
        either: a tab can only come back through `insertIntoPane` and then `activateTab`, which are
        two reactive writes and therefore two renders, and the first of them lands here with
        `tabOrder` full and `activeTabId` still `null` — which resets the field anyway. Both were
@@ -774,11 +829,11 @@ function syncDrag(): void {
 /**
  * Re-measure a pane's strip and re-project once if the chevron's presence changed.
  *
- * Measurement can only happen after the document has written the DOM, so this runs at the tail of
- * {@link paint} and guards its own re-entry on the boolean actually flipping — the chevron cannot
- * oscillate. Before the mount resolves there is no strip to measure and nothing to correct: the
- * next repaint measures it, and a strip that overflows on its first frame has no hidden tab a
- * reader could be looking for yet.
+ * Measurement can only happen after the document has written the DOM, so this runs in the frame
+ * after a {@link paint} ({@link scheduleMeasure}) and guards its own re-entry on the boolean
+ * actually flipping — the chevron cannot oscillate. Before the mount resolves there is no strip to
+ * measure and nothing to correct: the next repaint measures it, and a strip that overflows on its
+ * first frame has no hidden tab a reader could be looking for yet.
  */
 function syncOverflow(pane: Pane, host: HTMLElement) {
   const surface = _strips.get(host);

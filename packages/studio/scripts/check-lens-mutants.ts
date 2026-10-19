@@ -964,7 +964,7 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `  if (derived && pane.tabOrder.length === 0) {`,
+        find: `  if (derived && visible.length === 0) {`,
         replace: `  if (derived && derived.kind === "lens") {`,
       },
     ],

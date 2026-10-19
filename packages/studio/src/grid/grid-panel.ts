@@ -616,14 +616,42 @@ export function renderGridMode(surface: CanvasSurface, tab: Tab) {
           }
           restored = true;
           const layout = loadGridLayout(engine.source.id);
-          void engine.setSort(layout?.sort ?? null);
-          engine.setGrouping(layout?.groupBy ?? null);
+          restoreStoredOrder(engine, layout);
           view.setSearch(layout?.filter ?? "");
         });
       }
       revealRequested(engine, panel, tab.documentPath);
     });
   });
+}
+
+/**
+ * Put the stored sort and grouping back on a freshly built engine, asking the controller only for
+ * what differs from the order it already holds.
+ *
+ * The controller outlives the panel: leaving the grid's workspace and coming back rebuilds the
+ * table but keeps the controller, so on every return after the first the stored order IS the
+ * controller's order. Asking for it anyway was not free. Each of `setSort` and `setGrouping`
+ * re-projects the rows into the view, and a view still building parks that as a refresh it runs the
+ * moment it is built, so every open rendered its rows twice (the second time measuring every row's
+ * height again); a remote-sorting source re-queried its backend for the same rows on top. An
+ * explicit change (a saved view applied, a header in the Views popover) still goes straight to the
+ * controller, so re-asking for the order you are looking at keeps its meaning there.
+ */
+export function restoreStoredOrder(engine: GridController, layout: GridLayout | null): void {
+  const sort = layout?.sort ?? null;
+  const { query, grouping } = engine.state;
+  const sortHeld =
+    sort === null
+      ? query.orderBy === undefined
+      : query.orderBy === sort.field && query.dir === sort.dir;
+  if (!sortHeld) {
+    void engine.setSort(sort);
+  }
+  const groupBy = layout?.groupBy ?? null;
+  if (grouping !== groupBy) {
+    engine.setGrouping(groupBy);
+  }
 }
 
 /**

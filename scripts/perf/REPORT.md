@@ -1,8 +1,45 @@
 # Studio performance: interaction tracing and responsiveness plan
 
-**Status:** baseline audit, September 2026.\
+**Status:** baseline audit, September 2026; the CI gate became a same-runner A/B in October 2026 (see The regression gate).\
 **Tooling:** `scripts/perf/trace-studio.ts` (CDP trace driver) + `scripts/perf/sources.ts` (source-map attribution) + `scripts/perf/analysis.ts` (trace analytics).\
 **Subject:** Jx Studio dev build served by the bundling dev server, driven through the app's own automation surface (`window.__jxAutomation`, `?automation=1`), headless Chrome on NixOS (NVMe, dev-machine class).
+
+## The regression gate
+
+##### Why a pull request is judged A/B, not against `baseline.json`
+
+The gate used to compare a pull request's run on a CI runner against `scripts/perf/baseline.json`, a file recorded on a dev machine in September. That measured the machine, not the change. On PR #466 every scenario but one read 37 to 95% FASTER than the baseline (the runner is quieter than the workstation the file came from), while `settings` read `220 → 439 ms (+100%)` and `grid-edit`/`panels` scripting flagged `+271%`/`+367%` on 0.7 → 2.6 ms and 2.1 → 9.8 ms. A real regression and the machine difference sat in the same table with no way to tell them apart, and the tiny-metric rows were noise that a percentage made look like news.
+
+##### How the A/B gate works (`--base-url`)
+
+On a pull request, `.github/workflows/studio-perf.yml` checks out the PR's merge base into a second worktree (`git worktree add` of `git merge-base origin/<target> HEAD`), installs and builds it, and serves base and head from two dev servers (`JX_DEV_PORT` 3001 and 3000). `trace-studio.ts --url <head> --base-url <base>` then:
+
+1. Opens one headless Chrome per side and loads each build's Studio on its own copy of `sites/jxsuite.com`.
+2. Runs every scenario's repetitions **interleaved**: rep 0 is base then head, rep 1 head then base, and so on (`abOrder`). Whatever the runner does during a scenario (a noisy neighbour, a thermal trend, a GC debt) is paid by both builds, and neither always runs right after the other.
+3. Reports, per scenario and metric (wall, app scripting, style recalc, layout), each side's median and `[min–max]` across reps, the head/base ratio, and a one-sided exact Mann-Whitney p-value.
+4. Fails a metric only when ALL of these hold (`compareAB`): base's median is at least 5 ms (the `MIN_BASELINE_MS` floor kept from the absolute gate: below it a ratio is noise, and `wallMs` still guards the scenario); head's median exceeds base's by more than 20%; and by more than 25 ms; and the reps separate at p < 0.05.
+
+Why Mann-Whitney: interaction timings are right-skewed and carry the odd outlier rep. A rank test assumes no distribution, uses every rep rather than two medians, and one wild rep moves its statistic by at most one sample's worth, so a single outlier can neither manufacture a regression nor hide one. The test is exact (the whole U distribution is enumerated), which keeps it honest at the five reps per side a CI budget allows: the smallest p it can produce there is 1/252. At three reps per side the smallest is 1/20 = 0.05, which can never clear the bar, so the A/B mode refuses fewer than four (`MIN_AB_REPS`).
+
+A scenario the base cannot run (its `requires` command is missing, which is how a new feature's scenario looks) is traced on head and held to an absolute ceiling instead: `scripts/perf/budgets.json` (median wall and median longest main-thread task, generous on purpose, per-scenario overrides allowed). The same downgrade applies when base declares the command but cannot reach the state the scenario measures, which a scenario's setup says by throwing `ScenarioUnavailableError`: `grid-edit` requires the `docs` grid to draw rows before it is timed, because on `main` before the workspaces redesign the collection resolver put `"source": "../../docs"` under the site, every listing was a 500 and the grid was an empty table, so an A/B of it compared an empty table with head's sixty rows and read the row rendering as `grid-edit` wall 664 → 851 ms (+28%) and style recalculation 92 → 157 ms. On head that error fails the scenario like any other throw. The downgrade is ONLY for those two. Every other way of not comparing fails the gate, each with its own row and a `::error::` annotation (`classifyScenario`): a scenario that throws on head (`head-failed`), one that throws on a base that declares what it needs (`base-failed`, which is how a broken base build or an unresolvable base project shows up, rather than as a quiet pass against the budget), one whose `requires` command head no longer declares (`head-missing`, so unregistering a command cannot drop the scenarios that drive it), and a run that judged no scenario at all. A `--scen` name that matches no scenario is a usage error before any Chrome starts. For each regressed metric the log prints the hottest original sources of the head rep nearest head's median beside base's, so the failure names code. The Markdown table goes to the job summary (`--summary`), and `ab.json`, with every rep of every metric, is uploaded as the `studio-perf-results` artifact.
+
+Proving it catches a change: an 80 ms busy loop injected into `palette.open` (three opens per rep) read `palette` wall 334 → 588 ms (×1.76) and scripting 40.5 → 282 ms (×6.96), both p = 0.004, with the injected chunk's `run` at the top of head's hot frames, while the untouched `palette-files` beside it read ×1.00 and ×0.97. That run also found a harness gap: the harness ran each command inside `Runtime.evaluate`, which Chrome executes in a `Receive mojo message` task with no scripting slice around it, so a command's whole synchronous part was missing from `scripting` (the same injection first moved wall by 255 ms and scripting by nothing). `runCommand` now dispatches from a timer task (`commandExpression`), where the work lands under `TimerFire` as a user gesture's lands under `EventDispatch`.
+
+##### The nightly trend run, and adopting a baseline
+
+The schedule (and `workflow_dispatch`) keeps the absolute comparison against `scripts/perf/baseline.json` for drift on `main`, and every such run also re-captures a baseline FROM THE RUNNER (`--write-baseline 1 --baseline-out`), uploaded in the same artifact. `baseline.json` is (re)written only from that artifact, never from a dev machine. To adopt one: open a green nightly or a manual `workflow_dispatch` run of Studio Perf on `main`, download `studio-perf-results`, copy its `baseline.json` over `scripts/perf/baseline.json`, and land it in a pull request that names the run. A baseline records the analyzer version it was captured under (`analyzerVersion`, `ANALYZER_VERSION` in `trace-studio.ts`, bumped whenever `analysis.ts` changes what a metric counts), and `--compare` gates only against a baseline of the current version: numbers from two definitions are not the same quantity, so comparing them would red on the definition change and pass on the old definition's slack. The tracked file is still the September dev-machine capture, which predates the field and so reads as version 1 against the main-thread self-time analyzer's version 2, so until a runner capture is adopted the nightly is report-only (a `::warning::`, the table, no exit code), and every scenario without a baseline row is listed as `not in baseline` rather than skipped. The pull-request gate does not read the file at all.
+
+##### Running the A/B locally
+
+Serve both builds on ports other than 3000, so your own dev server stays out of it: `JX_DEV_PORT=3101 bun run dev` in this checkout, and the base in another directory (for example `git archive $(git merge-base HEAD origin/main) | tar -x -C .cache/perf-base`, then `bun install`, `bun run build:studio` and `JX_DEV_PORT=3102 bun run dev` there). Then:
+
+```
+bun scripts/perf/trace-studio.ts \
+  --url "http://127.0.0.1:3101/packages/studio/index.html?project=$PWD/sites/jxsuite.com/project.json&automation=1" \
+  --base-url "http://127.0.0.1:3102/packages/studio/index.html?project=$PWD/.cache/perf-base/sites/jxsuite.com/project.json&automation=1"
+```
+
+The two Chromes take `--port` and `--port + 1` (default 9226 and 9227). Set `CHROME_BIN` where Chrome is not `google-chrome-stable`.
 
 ## How the framework works
 
@@ -12,7 +49,7 @@
 
 ##### Scenarios
 
-Ten canned interaction scenarios ship in `SCENARIOS`: `boot` and `document-boot` (navigation → idle, without and with `?file=pages/index.md`), `assistant`, `canvas-edit` (selection and Inspector-tab cycling on an open document), `palette`, `palette-files`, `grid-edit` (the collection's data grid, via `collection.editInGrid` over the traced site's own `docs` collection — read-only), `regions`, `panels`, and `settings`. Each runs N repetitions (`--reps`; the MEDIAN repetition by active engine time is reported — see Reporting the median in the shipped section), records a DevTools timeline per repetition over the categories that also power the DevTools Performance panel (`devtools.timeline`, `toplevel`, `v8.execute`, CPU profiler, stack + invalidation tracking), fires real palette filters through Chrome input events, and writes results to a `/tmp` trace directory (default; `--out` overrides) so the dev server's tree-watching rebuild lane never sees a trace artifact; the raw event stream for a scenario can be dumped with `--dump 1`. `canvas-edit` requires a document open and navigates to `pages/index.md` itself when none is.
+Canned interaction scenarios ship in `SCENARIOS` (the list below is the September set; the workspaces redesign added `workspaces`, `site-panel`, `content`, `media`, `styles`, `publish`, `add-new`, `quick-publish` and `inspector-page`, each with a `requires` command so a build without workspaces skips it by name): `boot` and `document-boot` (navigation → idle, without and with `?file=pages/index.md`), `assistant`, `canvas-edit` (selection and Inspector-tab cycling on an open document), `palette`, `palette-files`, `grid-edit` (the collection's data grid, via `collection.editInGrid` over the traced site's own `docs` collection — read-only), `regions`, `panels`, and `settings`. Each runs N repetitions (`--reps`; the MEDIAN repetition by active engine time is reported — see Reporting the median in the shipped section), records a DevTools timeline per repetition over the categories that also power the DevTools Performance panel (`devtools.timeline`, `toplevel`, `v8.execute`, CPU profiler, stack + invalidation tracking), fires real palette filters through Chrome input events, and writes results to a `/tmp` trace directory (default; `--out` overrides) so the dev server's tree-watching rebuild lane never sees a trace artifact; the raw event stream for a scenario can be dumped with `--dump 1`. A scenario may declare an untraced `setup` that puts the app in its own starting state before each repetition (`canvas-edit`, `grid-edit` and `panels` open `pages/index.md` there).
 
 ##### Attribution
 
@@ -20,7 +57,7 @@ The analytics in `scripts/perf/analysis.ts` bucket timeline events into scriptin
 
 ##### Known limits
 
-The tracer's own `probe.idle()` wait loop bills ~100–300 ms of scripting to each scenario; `trace-studio.ts` now attributes that cost through the same source-map pass (sources under `src/services/idle.ts` are the harness's rAF poll) and **subtracts it from the scripting bucket before reporting**, so `scripting` means app scripting. Scenarios share one browser session in repo order, so later scenarios can inherit earlier ones' state (the palette scenarios open real overlays). The measurement subject is the dev-server bundle, not the production `bun run build:studio` output, so absolute numbers carry dev-build overhead; relative hot spots are stable across the runs we took. Sub-scenario metrics below ~25 ms are noise (±50% across reps); the regression gate ignores absolute deltas under 25 ms for that reason.
+The tracer's own `probe.idle()` wait loop bills ~100–300 ms of scripting to each scenario; `trace-studio.ts` now attributes that cost through the same source-map pass (sources under `src/services/idle.ts` are the harness's rAF poll) and **subtracts it from the scripting bucket before reporting**, so `scripting` means app scripting. Scenarios share one browser session in repo order; a scenario that needs a starting state sets it in its `setup` rather than inheriting whatever the previous one left. The measurement subject is the dev-server bundle, not the production `bun run build:studio` output, so absolute numbers carry dev-build overhead; relative hot spots are stable across the runs we took. Sub-scenario metrics below ~25 ms are noise (±50% across reps); the regression gate ignores absolute deltas under 25 ms for that reason.
 
 ## Baseline (tracked in `scripts/perf/baseline.json`, worst of 3 reps, Sept 19 2026)
 
@@ -152,15 +189,17 @@ Re-run `perf:studio --scen boot,document-boot,palette --compare scripts/perf/bas
 ## Running it today
 
 ```
-bun run perf:studio --reps 3                                   # all scenarios, 3 reps each, worst reported
+bun run perf:studio --reps 3                                   # all scenarios, 3 reps each, median reported
 bun run perf:studio --scen boot,document-boot                  # subset
-bun run perf:studio --dump 1                                   # raw trace JSON per scenario
-bun run perf:studio --write-baseline 1                         # refresh scripts/perf/baseline.json
-bun run perf:studio --reps 3 --compare scripts/perf/baseline.json  # deltas + regression gate (exit 1)
-bun test scripts/perf --isolate                                # analytics unit tests
+bun run perf:studio --dump 1                                   # raw trace JSON per scenario and rep
+bun run perf:studio --url <head> --base-url <base>             # the A/B gate (5 interleaved reps per side)
+bun run perf:studio --reps 3 --compare scripts/perf/baseline.json  # trend vs the tracked baseline (exit 1)
+bun run perf:studio --write-baseline 1 --baseline-out /tmp/b.json  # capture a baseline (adopt only from CI)
+bun run perf:studio --summary out.md ...                       # append the Markdown table to a file
+bun test scripts/perf --isolate                                # analytics and gate unit tests
 ```
 
-The dev server must be running (`bun run dev`); Chrome must be on the PATH (`google-chrome-stable`).
+The dev server must be running (`bun run dev`, port from `JX_DEV_PORT`); Chrome must be on the PATH (`google-chrome-stable`) or named by `CHROME_BIN`.
 
 ## Out of scope here (noted, not profiled)
 

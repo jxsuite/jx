@@ -92,10 +92,14 @@ export function trackStageScrollbar(surface: CanvasSurface, scroller: HTMLElemen
   const write = () => {
     cell.style.setProperty(STAGE_SCROLLBAR_VAR, `${scrollbarWidthOf(scroller)}px`);
   };
+  /* No measurement here: observing an element delivers its first notification after the frame's
+     layout, so the observer's own first call is the initial write. Reading `offsetWidth` here, on a
+     stage the render has just rebuilt, forced a style recalculation of the whole document (24 ms on
+     each return to Design in the perf trace); the cell keeps the `0px` the release wrote until
+     then, which is what a stage with no scrollbar yet has. */
   const observer = new ResizeObserver(write);
   observer.observe(scroller);
   surface.stageScrollbar = { observer, scroller };
-  write();
 }
 
 /**
