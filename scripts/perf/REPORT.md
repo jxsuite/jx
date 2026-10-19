@@ -202,6 +202,8 @@ bun test scripts/perf --isolate                                # analytics and g
 
 Every command and every idle probe runs against a 30 s deadline (`withDeadline`). The first CI A/B run failed `canvas-edit` and `grid-edit` on head with `{"code":-32000,"message":"Promise was collected"}`: the inspector holds an awaited promise weakly, so a step that never settled was collected and the error named nothing. The deadline's timer holds the race strongly, so a hang is now `command "<id>" did not settle within 30000 ms`, and it is cleared as soon as the step settles.
 
+Both sides enter every scenario from the same state, because every scenario gets a fresh Chrome on each side (a new profile, launched, Studio loaded, then the scenario's own setup). A shared browser could not promise that. The second CI A/B run showed why: base's `grid-edit` setup threw (its grid draws no rows), base was reloaded and skipped the scenario's repetitions while head ran all five, and `regions`, next, read wall 299 → 396 ms (+33%). Locally, after head alone ran `grid-edit`, head's `regions` paid exactly one extra 33 ms frame even with both sides reloaded, while the same scenario A/B'd on its own read 231 against 231 ms. A reload resets the page, not the renderer. `regions` also opens its own page first now, as every other scenario that needs one does. The fresh browsers cost a Studio boot per side per scenario, untraced.
+
 The dev server must be running (`bun run dev`, port from `JX_DEV_PORT`); Chrome must be on the PATH (`google-chrome-stable`) or named by `CHROME_BIN`.
 
 ## Out of scope here (noted, not profiled)

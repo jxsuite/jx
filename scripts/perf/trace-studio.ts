@@ -1140,6 +1140,8 @@ export const SCENARIOS: Scenario[] = [
   {
     name: "regions",
     describe: `Shell region cycling: view.cycleRegion (×6)`,
+    // Its own starting state, not whichever document and focus the scenario before it left.
+    setup: openIndexInDesign,
     interactions: async (cdp) => {
       for (let i = 0; i < 6; i++) {
         await runCommand(cdp, "view.cycleRegion");
@@ -1428,6 +1430,80 @@ async function appendSummary(markdown: string) {
   }
 }
 
+/** One scenario's repetitions on both sides, before {@link classifyScenario} judges them. */
+interface ScenarioOutcome {
+  name: string;
+  requires: string;
+  headHas: boolean;
+  baseHas: boolean;
+  baseUnavailable: string;
+  headError: string;
+  baseError: string;
+  runs: Record<Side["label"], { metrics: RepMetrics; mapped: MappedSource[] }[]>;
+}
+
+/** Run one scenario's interleaved repetitions on two loaded sides. */
+async function runScenarioAB(
+  scenario: Scenario,
+  sides: Record<Side["label"], Side>,
+  reps: number,
+  dumpDir: string | null,
+): Promise<ScenarioOutcome> {
+  const { base, head } = sides;
+  const needs = scenario.requires;
+  const headHas = !needs || (await hasCommand(head.cdp, needs));
+  const baseHas = !needs || (await hasCommand(base.cdp, needs));
+  let baseError = "";
+  let baseUnavailable = "";
+  let headError = "";
+  const runs: ScenarioOutcome["runs"] = { base: [], head: [] };
+  // A scenario head cannot run is not run on either side: it is judged `head-missing`.
+  const sideReps = headHas ? reps : 0;
+  for (let rep = 0; rep < sideReps && !headError && !baseError; rep++) {
+    for (const label of abOrder(rep)) {
+      if ((label === "base" && (!baseHas || baseUnavailable)) || (label === "head" && headError)) {
+        continue;
+      }
+      const side = sides[label];
+      try {
+        const r = await traceRep(side, scenario, rep, dumpDir);
+        const mapped = await mapSources(r.bundled);
+        attributeHarness(r, mapped);
+        /* `bundled` holds only the OUTERMOST `FunctionCall` per task, so work under a timer whose
+           callback is the harness's own (every command's synchronous part) maps to nothing. The
+           CPU profile's self-time frames still name it, bundle-relative. */
+        const evidence =
+          mapped.length > 0
+            ? mapped
+            : r.topFrames.map((f) => ({ file: f.label, totalMs: f.selfMs }));
+        runs[label].push({ metrics: metricsOf(r), mapped: evidence });
+      } catch (error) {
+        // The first line only: a stack would break the Markdown table row it is printed in.
+        const message = firstLine(error instanceof Error ? error.message : String(error));
+        console.error(`[${label} ${scenario.name} rep ${rep}] threw: ${message}`);
+        if (label === "base" && error instanceof ScenarioUnavailableError) {
+          baseUnavailable = message;
+        } else if (label === "base") {
+          baseError = message;
+        } else {
+          headError = message;
+        }
+        await loadStudio(side).catch(() => {});
+      }
+    }
+  }
+  return {
+    name: scenario.name,
+    requires: needs ?? "",
+    headHas,
+    baseHas,
+    baseUnavailable,
+    headError,
+    baseError,
+    runs,
+  };
+}
+
 /**
  * The same-runner A/B gate (`--base-url`). Base and head are each served by their own dev server
  * and driven by their own Chrome; every scenario runs its repetitions interleaved between the two
@@ -1454,87 +1530,40 @@ async function runAB(baseUrl: string, headUrl: string) {
   // Before any Chrome starts: a `--scen` typo is a usage error, not a run that judged nothing.
   const selected = selectScenarios(scenFilter, SCENARIOS);
 
-  const base = await openSide("base", baseUrl, port);
-  const sides = [base];
   const results: ABScenarioResult[] = [];
   const hot: string[] = [];
-  try {
-    const head = await openSide("head", headUrl, port + 1);
-    sides.push(head);
-    await loadStudio(base);
-    await loadStudio(head);
-
-    for (const scenario of selected) {
-      const needs = scenario.requires;
-      const headHas = !needs || (await hasCommand(head.cdp, needs));
-      const baseHas = !needs || (await hasCommand(base.cdp, needs));
-      let baseError = "";
-      let baseUnavailable = "";
-      let headError = "";
-      const runs: Record<Side["label"], { metrics: RepMetrics; mapped: MappedSource[] }[]> = {
-        base: [],
-        head: [],
-      };
-      // A scenario head cannot run is not run on either side: it is judged `head-missing`.
-      const sideReps = headHas ? reps : 0;
-      for (let rep = 0; rep < sideReps && !headError && !baseError; rep++) {
-        for (const label of abOrder(rep)) {
-          if (
-            (label === "base" && (!baseHas || baseUnavailable)) ||
-            (label === "head" && headError)
-          ) {
-            continue;
-          }
-          const side = label === "base" ? base : head;
-          try {
-            const r = await traceRep(side, scenario, rep, dumpDir);
-            const mapped = await mapSources(r.bundled);
-            attributeHarness(r, mapped);
-            /* `bundled` holds only the OUTERMOST `FunctionCall` per task, so work under a timer
-               whose callback is the harness's own (every command's synchronous part) maps to
-               nothing. The CPU profile's self-time frames still name it, bundle-relative. */
-            const evidence =
-              mapped.length > 0
-                ? mapped
-                : r.topFrames.map((f) => ({ file: f.label, totalMs: f.selfMs }));
-            runs[label].push({ metrics: metricsOf(r), mapped: evidence });
-          } catch (error) {
-            // The first line only: a stack would break the Markdown table row it is printed in.
-            const message = firstLine(error instanceof Error ? error.message : String(error));
-            console.error(`[${label} ${scenario.name} rep ${rep}] threw: ${message}`);
-            if (label === "base" && error instanceof ScenarioUnavailableError) {
-              baseUnavailable = message;
-            } else if (label === "base") {
-              baseError = message;
-            } else {
-              headError = message;
-            }
-            await loadStudio(side).catch(() => {});
-          }
-        }
-      }
-
+  for (const scenario of selected) {
+    /* A fresh Chrome per side for EVERY scenario. The two sides must enter each scenario in the
+       same state, and a shared browser cannot promise that: a scenario base cannot run leaves
+       head's renderer five repetitions older than base's, and a side reloaded to recover from a
+       throw is back at a fresh boot while the other carries every document and tab before it.
+       On CI that read `regions` as wall 299 -> 396 ms (+33%) after base's `grid-edit` setup
+       threw, and locally as exactly one extra 33 ms frame after head alone ran `grid-edit`; the
+       same scenario A/B'd on its own reads 231 against 231. */
+    const sides: Side[] = [];
+    try {
+      const base = await openSide("base", baseUrl, port);
+      sides.push(base);
+      const head = await openSide("head", headUrl, port + 1);
+      sides.push(head);
+      await loadStudio(base);
+      await loadStudio(head);
+      const outcome = await runScenarioAB(scenario, { base, head }, reps, dumpDir);
       const result = classifyScenario({
-        name: scenario.name,
-        requires: needs ?? "",
-        headHas,
-        baseHas,
-        baseUnavailable,
-        headError,
-        baseError,
-        base: runs.base.map((run) => run.metrics),
-        head: runs.head.map((run) => run.metrics),
+        ...outcome,
+        base: outcome.runs.base.map((run) => run.metrics),
+        head: outcome.runs.head.map((run) => run.metrics),
         budget: budgetFor(budgets, scenario.name),
       });
       results.push(result);
       if (result.kind === "compared") {
         for (const c of result.comparisons.filter((comparison) => comparison.regressed)) {
-          hot.push(hotSources(scenario.name, c, runs));
+          hot.push(hotSources(scenario.name, c, outcome.runs));
         }
       }
+    } finally {
+      await Promise.all(sides.map((side) => closeSide(side)));
     }
-  } finally {
-    await Promise.all(sides.map((side) => closeSide(side)));
   }
   for (const line of abAnnotations(results)) {
     console.log(line);
