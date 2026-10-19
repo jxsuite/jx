@@ -64,7 +64,11 @@
       "overflow": "hidden"
     },
     "& [part=\"panel\"][hidden]": {
-      "display": "none"
+      "$description": "Out of sight, out of the layout and out of the accessibility tree, but not `display: none`: a panel that left the box tree is restyled whole when it comes back, and the Inspector shows its Page panel on every deselect and on every close of the Assistant (§6), which made each of those a 300-element style recalculation. `content-visibility: hidden` skips the subtree while keeping its computed style, so a return restyles only what changed while it was away; `visibility: hidden` keeps it unfocusable and unexposed, as `hidden` means.",
+      "display": "flex",
+      "flex": "0 0 0",
+      "contentVisibility": "hidden",
+      "visibility": "hidden"
     },
     "& [part=\"panel-body\"]": {
       "display": "flex",
@@ -96,8 +100,10 @@
       "overflow": "hidden"
     },
     "& [part=\"panel-body\"][data-active=\"false\"]": {
-      "$description": "A leaf that is not the one showing stays MOUNTED and is only taken out of the layout: it is a document with its own state, and rebuilding it on every switch would drop whatever it was holding.",
-      "display": "none"
+      "$description": "A leaf that is not the one showing stays MOUNTED and is only taken out of the layout: it is a document with its own state, and rebuilding it on every switch would drop whatever it was holding. Hidden the way a hidden panel is (above), so switching back to it does not restyle it whole.",
+      "flex": "0 0 0",
+      "contentVisibility": "hidden",
+      "visibility": "hidden"
     }
   },
   "children": [

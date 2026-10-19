@@ -17,6 +17,8 @@ import {
   selectScenarios,
   trendReport,
   withDeadline,
+  rootedStep,
+  stepRecordExpression,
   DEFAULT_AB_REPS,
   MIN_AB_REPS,
   SCENARIOS,
@@ -494,6 +496,34 @@ describe("commandExpression", () => {
     const started = performance.now();
     expect(await new Function(`return ${expression};`)()).toBe(7);
     expect(performance.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe("rootedStep", () => {
+  /* What `awaitStep` reads when the inspector reports an awaited promise collected: the page's own
+     record of the step, held from a global until it settles. */
+  test("holds the promise from a global and records how it settled", async () => {
+    Reflect.deleteProperty(globalThis, "__jxPerfSteps");
+    // oxlint-disable-next-line typescript/no-implied-eval -- evaluates the page-side string the harness sends.
+    const evaluate = (source: string) => new Function(`return ${source};`)();
+    let release: (value: string) => void = () => {};
+    const slow = new Promise<string>((settle) => {
+      release = settle;
+    });
+    Reflect.set(globalThis, "__slow", slow);
+    const pending = evaluate(rootedStep("globalThis.__slow", "a"));
+    expect(evaluate(stepRecordExpression("a"))).toEqual({ state: "pending", message: "" });
+    release("x");
+    expect(await pending).toBe("x");
+    expect(evaluate(stepRecordExpression("a"))).toEqual({ state: "done", message: "" });
+    const failing = evaluate(rootedStep('Promise.reject(new Error("refused"))', "b"));
+    expect(failing).rejects.toThrow("refused");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(evaluate(stepRecordExpression("b"))).toEqual({ state: "error", message: "refused" });
+    expect(evaluate(stepRecordExpression("never"))).toEqual({ state: "missing", message: "" });
+    Reflect.deleteProperty(globalThis, "__jxPerfSteps");
+    Reflect.deleteProperty(globalThis, "__slow");
   });
 });
 

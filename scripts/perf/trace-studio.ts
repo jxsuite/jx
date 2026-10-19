@@ -914,10 +914,9 @@ async function waitFor(cdp: Cdp, expression: string, timeoutMs = 90_000) {
 async function idle(cdp: Cdp) {
   /* Awaited, so a step's trace window holds the work it caused. A timeout is reported rather than
      thrown: the scenario's numbers are still real, they just include a busy tail. */
-  const settled = await evalJs(
+  const settled = await awaitStep(
     cdp,
     `${withDeadline("__jxAutomation.probe.idle()", "idle()", COMMAND_DEADLINE_MS)}.then(() => '', (error) => String(error))`,
-    true,
   );
   if (settled) {
     console.error(`[idle] ${String(settled).slice(0, 300)}`);
@@ -962,8 +961,75 @@ export function commandExpression(
 }
 
 async function runCommand(cdp: Cdp, id: string, args: JsonObject = {}) {
-  await evalJs(cdp, commandExpression(id, args), true);
+  await awaitStep(cdp, commandExpression(id, args));
   await idle(cdp);
+}
+
+/** The page global {@link rootedStep} records each awaited step's outcome in. */
+const STEP_RECORDS = "__jxPerfSteps";
+
+/**
+ * A page-side promise expression whose promise is held by a page global until it settles, and whose
+ * outcome is recorded there under `key`.
+ *
+ * The CI A/B failed `grid-edit`, `canvas-edit` and `workspaces` on head, intermittently, with
+ * `{"code":-32000,"message":"Promise was collected"}`: within two seconds of a step starting, with
+ * no navigation and no renderer crash logged beside it, and with the step's own deadline timer
+ * still pending. Holding the promise from a global settles whether anything in the page could have
+ * let it go, and the record is what {@link awaitStep} reads when the inspector reports it lost
+ * anyway, so the step's outcome is known either way.
+ */
+export function rootedStep(expression: string, key: string): string {
+  const k = JSON.stringify(key);
+  return `(() => { const steps = (globalThis.${STEP_RECORDS} ??= new Map()); const record = { state: "pending" }; const p = ${expression}; record.p = p; steps.set(${k}, record); p.then(() => { record.state = "done"; delete record.p; }, (error) => { record.state = "error"; record.message = String((error && error.message) || error); delete record.p; }); return p; })()`;
+}
+
+/** The page-side read of one {@link rootedStep} record: its state, and its message on an error. */
+export function stepRecordExpression(key: string): string {
+  return `(() => { const r = globalThis.${STEP_RECORDS}?.get(${JSON.stringify(key)}); return r ? { state: r.state, message: r.message ?? "" } : { state: "missing", message: "" }; })()`;
+}
+
+let stepSeq = 0;
+
+/**
+ * Evaluate one awaited step, rooted ({@link rootedStep}). When the inspector reports the promise
+ * collected, the step is read back from the page's own record until it settles: the error names
+ * only the protocol's loss, and the record says whether the step itself passed.
+ */
+async function awaitStep(cdp: Cdp, expression: string): Promise<any> {
+  stepSeq += 1;
+  const key = `step-${stepSeq}`;
+  try {
+    return await evalJs(cdp, rootedStep(expression, key), true);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("Promise was collected")) {
+      throw error;
+    }
+    console.error(`[${key}] the inspector lost the step's promise; reading the page's record`);
+    const until = Date.now() + COMMAND_DEADLINE_MS + 5000;
+    while (Date.now() < until) {
+      /* SAFETY: `stepRecordExpression` evaluates to a `{ state, message }` literal of strings, and
+         `evalJs` returns it by value. */
+      const record = (await evalJs(cdp, stepRecordExpression(key))) as {
+        state: string;
+        message: string;
+      };
+      if (record.state === "done") {
+        return undefined;
+      }
+      if (record.state === "error") {
+        throw new Error(record.message, { cause: error });
+      }
+      if (record.state === "missing") {
+        throw new Error(`${message} (and the page holds no record of the step: it was replaced)`, {
+          cause: error,
+        });
+      }
+      await Bun.sleep(25);
+    }
+    throw new Error(`${message} (and the page's record never settled)`, { cause: error });
+  }
 }
 
 // ─── Trace capture ───────────────────────────────────────────────────────────

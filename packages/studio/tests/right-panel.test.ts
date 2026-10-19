@@ -656,3 +656,24 @@ describe("lifecycle", () => {
     expect(inspectorHost().querySelectorAll('[part="panel-body"]')).toHaveLength(5);
   });
 });
+
+/* The Inspector shows its Page panel on every deselect and every close of the Assistant (§6). A
+   panel hidden with `display: none` leaves the box tree and is restyled whole on its way back (300
+   elements per deselect in the perf trace); one hidden with `content-visibility: hidden` keeps its
+   computed style. `visibility: hidden` is what keeps it unfocusable and out of the accessibility
+   tree, which is what `hidden` promises. happy-dom does no layout, so the rules are what is held. */
+describe("how the dock hides what is not showing", () => {
+  test("a hidden tab panel and an inactive leaf keep their style, and stay unfocusable", async () => {
+    // SAFETY: a surface document's `style` is an object of rule objects whose values are strings.
+    const dock = (await Bun.file(
+      new URL("../src/surfaces/inspector-dock.json", import.meta.url),
+    ).json()) as { style: Record<string, Record<string, string>> };
+    for (const rule of ['& [part="panel"][hidden]', '& [part="panel-body"][data-active="false"]']) {
+      const declared = dock.style[rule]!;
+      expect(declared["contentVisibility"]).toBe("hidden");
+      expect(declared["visibility"]).toBe("hidden");
+      expect(declared["flex"]).toBe("0 0 0");
+      expect(declared["display"]).not.toBe("none");
+    }
+  });
+});
