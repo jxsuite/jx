@@ -13,7 +13,12 @@
  * @license MIT
  */
 
-import { buildScope, renderNode, setSkipServerFunctions } from "@jxsuite/runtime";
+import {
+  buildScope,
+  renderNode,
+  setSkipServerFunctions,
+  setTemplateErrorHandler,
+} from "@jxsuite/runtime";
 import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 /** @typedef {{ pass: boolean; errors: string[] }} GradeResult */
@@ -65,6 +70,13 @@ export async function renderCritic(doc: JsonValue): Promise<{ pass: boolean; err
   };
   console.error = collect;
   console.warn = collect;
+  /* A binding that throws renders empty rather than unwinding the render (spec.md §6.1), so its
+     error arrives here — every time, where the runtime's own warning is once per source — and
+     reads as the throw it used to be. */
+  const threw = (error: Error) => {
+    errors.push(asSensorMessage(`Render threw: ${error.message}`));
+  };
+  setTemplateErrorHandler(threw);
 
   // Off-screen container; never attached to the live document.
   const host = document.createElement("div");
@@ -82,10 +94,9 @@ export async function renderCritic(doc: JsonValue): Promise<{ pass: boolean; err
     const el = renderNode(renderDoc, $defs, { _path: [] });
     host.append(el);
   } catch (error) {
-    errors.push(
-      asSensorMessage(`Render threw: ${error instanceof Error ? error.message : String(error)}`),
-    );
+    threw(error instanceof Error ? error : new Error(String(error)));
   } finally {
+    setTemplateErrorHandler(null);
     console.error = origError;
     console.warn = origWarn;
     host.remove();

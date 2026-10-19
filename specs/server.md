@@ -354,6 +354,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 ## Changelog
 
 - **0.2.33-draft** (2026-10-18) — §3.5 records that the static file lanes answer from the server's one active project root, so two Studio tabs on different projects read each other's media; the git routes' per-request dir parameter cannot carry over to authored site-absolute URLs, and an origin per project is what closes it (Pending). The spec returns to Partial.
+- **0.2.32** (2026-10-17) — §3.2: the resolve proxy requests sections on demand and completes them for classes that read them synchronously.
+- **0.2.31** (2026-10-17) — §3: the per-project context cache shares an in-flight load, and serving a file no longer loads the extension sections.
 - **0.2.30** (2026-10-11) — §3.3: the server-function proxy is the only interpreted call path, its env merges the project .dev.vars as the mounts do, it resolves a relative $src against the absolute-path base Studio's canvas sends or a file: URL while a single-slash path stays a site URL.
 - **0.2.29** (2026-10-04) — §4.1 the files listing may carry an optional opaque content version per entry; the dev server sets none.
 - **0.2.28** (2026-10-01) — §4.1 the AI proxy derives a prompt-cache affinity from the client's X-Jx-Ai-Session header under the local scope (ai.md §2.5).

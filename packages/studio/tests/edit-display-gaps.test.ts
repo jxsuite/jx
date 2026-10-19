@@ -184,11 +184,17 @@ describe("prepareForEditMode basics", () => {
     expect(out.textContent).toBe("Hi ❪ user ❫");
   });
 
-  test("blanks template strings in url attributes (href/action)", () => {
-    const a = prep({ href: "${url}", tagName: "a", textContent: "go" });
-    expect(a.href).toBe("");
-    const form = prep({ action: "${ep}", tagName: "form", textContent: "f" });
-    expect(form.action).toBe("");
+  test("bound url properties render live, since the canvas de-links what they point at", () => {
+    const a = prep({ href: "${state.url}", tagName: "a", textContent: "go" });
+    expect(a.href).toBe("${state.url}");
+    const form = prep({ action: "${state.ep}", tagName: "form", textContent: "f" });
+    expect(form.action).toBe("${state.ep}");
+  });
+
+  test("a bound className renders live, and one that reads the repeater row shows its binding", () => {
+    const div = (className: string) => prep({ children: ["x"], className, tagName: "div" });
+    expect(div("${state.cls}").className).toBe("${state.cls}");
+    expect(div("${item.cls}").className).toBe("❪ item.cls ❫");
   });
 
   test("$ref top-level value becomes display label", () => {
@@ -215,17 +221,16 @@ describe("prepareForEditMode $props", () => {
       },
       tagName: "x-card",
     });
-    // Not its display text: the component is handed the value the binding reads.
-    expect(out.$props?.label).not.toContain("❪");
-    expect(out.$props?.label).toStartWith("${");
-    // A url-target prop (href/action) blanks to "". Image-like keys (e.g. `src`) instead become the
-    // Placeholder image — covered separately below.
-    expect(out.$props?.href).toBe("");
-    expect(out.$props?.link).toEqual({ $ref: "#/state/url" });
-    expect(out.$props?.other).toEqual({ $ref: "raw.path" });
-    expect(out.$props?.plain).toBe(5);
-    // A row pointer outside any repeater has no row to read: the component keeps its default.
-    expect(out.$props).not.toHaveProperty("row");
+    /* A component's inputs render live: a header's variant shown as `❪ state.variant ❫` reached the
+       component as that literal text and matched none of its styles. A row pointer outside any
+       repeater has no row to read, so the component keeps its default. */
+    expect(out.$props).toEqual({
+      href: "${s}",
+      label: "${t}",
+      link: { $ref: "#/state/url" },
+      other: { $ref: "raw.path" },
+      plain: 5,
+    });
   });
 
   test("a component in a repeater is drawn with the repeater's first item", () => {
@@ -324,22 +329,26 @@ describe("prepareForEditMode $props", () => {
     expect(liveEditProp("a ${b")).toBe("a ${b");
   });
 
-  test("image-like template props become the neutral gray placeholder image", () => {
+  test("props that read the repeater row keep a display, the perimeter having no row", () => {
     const out = prep({
       $props: {
-        featuredImage: "${x}",
-        heroBg: "${y}",
+        featuredImage: "${state.x}",
+        heroBg: "${item.bg}",
         href: "${item.h}",
         image: "${item.data.featuredImage}",
+        row: { $ref: "$map/item/t" },
         title: "${item.t}",
       },
       tagName: "eer-category",
     });
     // Image-like keys (exact or camelCase suffix) → a data:image/svg+xml gray box, not a ❪ ❫ glyph.
     expect(out.$props?.image).toStartWith("data:image/svg+xml");
-    expect(out.$props?.featuredImage).toStartWith("data:image/svg+xml");
     expect(out.$props?.heroBg).toStartWith("data:image/svg+xml");
-    // A non-image prop stays a binding, evaluated live (see the repeater cases above).
+    // One that reads the page's state is live like any other.
+    expect(out.$props?.featuredImage).toBe("${state.x}");
+    // A row pointer with no row to read is dropped: the component keeps its default.
+    expect(out.$props).not.toHaveProperty("row");
+    // A non-image row-bound prop stays a binding, evaluated live against the sample row.
     expect(out.$props?.title).not.toContain("❪");
     // Link target prop → inert empty string.
     expect(out.$props?.href).toBe("");
@@ -453,16 +462,14 @@ describe("prepareForEditMode media elements", () => {
     expect(out.className).toBe("empty-media-placeholder");
   });
 
-  test("template src gets transparent pixel", () => {
-    const out = prep({ src: "${url}", tagName: "video" });
-    expect(out.src).toBe(TRANSPARENT_PX);
-    expect(out.className).toContain("empty-media-placeholder");
-  });
-
-  test("$ref src gets transparent pixel", () => {
-    const out = prep({ src: { $ref: "#/state/cover" }, tagName: "img" });
-    expect(out.src).toBe(TRANSPARENT_PX);
-    expect(out.className).toContain("empty-media-placeholder");
+  test("a bound src renders live; one that reads the repeater row gets the transparent pixel", () => {
+    expect(prep({ src: "${state.url}", tagName: "video" }).src).toBe("${state.url}");
+    const cover = prep({ src: { $ref: "#/state/cover" }, tagName: "img" });
+    expect(cover.src).toEqual({ $ref: "#/state/cover" });
+    expect(cover.className).toBeUndefined();
+    const row = prep({ src: "${item.src}", tagName: "img" });
+    expect(row.src).toBe(TRANSPARENT_PX);
+    expect(row.className).toContain("empty-media-placeholder");
   });
 
   test("media element with no src at all gets placeholder class", () => {
@@ -482,21 +489,32 @@ describe("prepareForEditMode media elements", () => {
     expect(out.className).toBeUndefined();
   });
 
-  test("attributes: template src replaced, other templates displayed, refs labelled", () => {
+  test("attributes: bindings render live, and row bindings show a display", () => {
     const out = prep({
       attributes: {
         alt: { $ref: "#/state/altText" },
-        "data-cap": "${caption}",
-        href: "${u}",
-        src: "${url}",
+        "data-cap": "${item.caption}",
+        href: "${item.u}",
+        src: "${state.url}",
       },
       tagName: "img",
     });
-    expect(out.attributes?.src).toBe(TRANSPARENT_PX);
-    expect(out.attributes?.["data-cap"]).toBe("❪ caption ❫");
+    expect(out.attributes?.src).toBe("${state.url}");
+    expect(out.attributes?.alt).toEqual({ $ref: "#/state/altText" });
+    expect(out.attributes?.["data-cap"]).toBe("❪ item.caption ❫");
     expect(out.attributes?.href).toBe("");
-    expect(out.attributes?.alt).toBe("{altText}");
-    expect(out.className).toContain("empty-media-placeholder");
+    expect(out.className).toBeUndefined();
+    const row = prep({ attributes: { src: "${item.src}" }, tagName: "img" });
+    expect(row.attributes?.src).toBe(TRANSPARENT_PX);
+    expect(row.className).toContain("empty-media-placeholder");
+  });
+
+  test("a non-media element's attributes are live too, row bindings aside", () => {
+    const out = prep({
+      attributes: { "data-tone": "${state.tone}", "data-row": "${index}" },
+      tagName: "div",
+    });
+    expect(out.attributes).toEqual({ "data-row": "❪ index ❫", "data-tone": "${state.tone}" });
   });
 
   test("attributes: empty src replaced with pixel", () => {
@@ -511,16 +529,15 @@ describe("prepareForEditMode media elements", () => {
 });
 
 describe("prepareForEditMode style handling", () => {
-  test("drops template-valued style declarations, keeps the rest", () => {
-    /* Dropped, not blanked to `""`. A declaration is a RULE now, and `width: ` is a malformed one
-       where the old inline write was a silent no-op. Omitting lets the cascade answer, which is
-       what blanking meant. */
+  test("bound style declarations are live; only one that reads the repeater row is dropped", () => {
+    /* Dropped, not blanked to `""`: `width: ` is a malformed declaration in a rule, and omitting it
+       lets the cascade answer. */
     const out = prep({
-      style: { color: "red", width: "${w}px" },
+      style: { color: "red", height: "${item.h}px", width: "${state.w}px" },
       tagName: "div",
       textContent: "x",
     });
-    expect(out.style).toEqual({ color: "red" });
+    expect(out.style).toEqual({ color: "red", width: "${state.w}px" });
   });
 
   test("non-object style passes through", () => {

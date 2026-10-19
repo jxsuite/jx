@@ -27,7 +27,7 @@
  * **A row says something.** On a real page the tree was a wall of rows all reading "div": only
  * text-bearing nodes got a preview and containers got the tag they already wear as a coloured
  * badge. {@link outlineLabel} derives an identity instead — a title, an `$id`, a class, a landmark
- * name, the first text inside — and returns "" rather than repeat the badge.
+ * name, the text it owns (never a descendant row's) — and returns "" rather than repeat the badge.
  *
  * **It is a tree, and it is reachable.** `role="tree"` / `role="treeitem"` with a roving tabindex
  * and the arrow-key model ARIA specifies: ↑↓ walk the visible rows, → expands then descends, ←
@@ -149,31 +149,32 @@ function truncate(text: string): string {
 }
 
 /**
- * The first text anywhere under `node`, or "".
+ * The text `node` OWNS, or "": its string children, and the text of its inline children.
  *
- * Bounded at three levels and short-circuited on the first hit: a container's identity is usually
- * its heading or its first line, and walking a whole subtree per row would cost the render what the
- * five-buttons-per-row build already cost it.
+ * Inline children (`strong`, `a`, …) never get a row of their own ({@link buildOutlineRows} skips
+ * them), so their words belong to the row that holds them. A block child's text does not: it is
+ * that child's row's to show. Borrowing it — what the bounded "first text under" walk did — made a
+ * `section > div > div > h2` read the heading four times over, one row above the other.
  */
-function firstText(node: JxMutableNode, depth = 0): string {
-  if (isString(node.textContent) && node.textContent.trim()) {
+function ownText(node: JxMutableNode): string {
+  if (isString(node.textContent)) {
     return node.textContent.trim();
   }
-  if (depth >= 3 || !Array.isArray(node.children)) {
+  if (!Array.isArray(node.children)) {
     return "";
   }
+  let text = "";
   for (const child of node.children) {
-    if (isString(child) && child.trim()) {
-      return child.trim();
+    if (isString(child)) {
+      text += child;
+    } else if (isNonNullObject(child) && isInlineElement(child, node)) {
+      text += ownText(child);
     }
-    if (isNonNullObject(child)) {
-      const found = firstText(child, depth + 1);
-      if (found) {
-        return found;
-      }
+    if (text.length > LABEL_MAX * 2) {
+      break;
     }
   }
-  return "";
+  return text.trim();
 }
 
 /** The node's first class name, when it has a plain (unbound) `class` attribute. */
@@ -214,9 +215,9 @@ export function outlineLabel(node: JxMutableNode): string {
   if (landmark) {
     return landmark;
   }
-  const inner = firstText(node);
-  if (inner) {
-    return `“${truncate(inner)}”`;
+  const own = ownText(node);
+  if (own) {
+    return `“${truncate(own)}”`;
   }
   const count = Array.isArray(node.children) ? node.children.length : 0;
   return count > 0 ? `${count} item${count === 1 ? "" : "s"}` : "";

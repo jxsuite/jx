@@ -1,8 +1,8 @@
 # Imports
 
-**Version:** 0.1.11-draft\
+**Version:** 0.1.12-draft\
 **Status:** Partial\
-**Updated:** 2026-09-29\
+**Updated:** 2026-10-17\
 **License:** MIT
 
 ---
@@ -66,7 +66,7 @@ With these imports in place, `.md` files are discoverable as pages/components, c
 
 ### 1.4 Cascading
 
-> **Status: Partial.** The union and dedup ship in `injectContext` (`packages/site/src/context.ts`). `discoverElements` in `packages/site/src/compose.ts` meets the rule: it matches `components/<tag>.json`, walks transitively and dedups by resolved path. `injectComponentScripts` in `packages/compiler/src/site/site-build.ts` scans the rendered HTML for every component the build compiled, and that set is not a superset of the effective one: it is only the files directly in `components/` (any component format, any file name, keyed by `tagName`) plus their own `$elements` dependencies, because `buildSite` lists that directory non-recursively and never reads a page's or layout's `{ "$ref" }` entry, so a declared component anywhere else (`components/nested/deep-card.json`, a co-located `pages/blog/_blog-card.json`) ships as an empty tag with no module and no build error. The studio canvas (`packages/studio/src/canvas/canvas-live-render.ts`) does not meet it: it merges project-level `$elements` without rebasing their `$ref`s onto the document's directory (`getEffectiveElements` in `packages/studio/src/site-context.ts`), discovers only in content mode, for a layout-wrapped page or for a document under `layouts/`, never opens the components it finds, matches tags against the whole component registry rather than `components/<tag>.json`, and dedups declared entries by their raw `$ref` string.
+> **Status: Partial.** The union and dedup ship in `injectContext` (`packages/site/src/context.ts`). `discoverElements` in `packages/site/src/compose.ts` meets the rule: it matches `components/<tag>.json`, walks transitively and dedups by resolved path. `injectComponentScripts` in `packages/compiler/src/site/site-build.ts` scans the rendered HTML for every component the build compiled, and that set is not a superset of the effective one: it is only the files directly in `components/` (any component format, any file name, keyed by `tagName`) plus their own `$elements` dependencies, because `buildSite` lists that directory non-recursively and never reads a page's or layout's `{ "$ref" }` entry, so a declared component anywhere else (`components/nested/deep-card.json`, a co-located `pages/blog/_blog-card.json`) ships as an empty tag with no module and no build error. The studio canvas (`packages/studio/src/canvas/canvas-live-render.ts`) does not meet it: it merges project-level `$elements` without rebasing their `$ref`s onto the document's directory (`getEffectiveElements` in `packages/studio/src/site-context.ts`), discovers only in content mode, for a layout-wrapped page or for a document under `layouts/`, follows a component's own tags transitively only through the registry's `uses` lists (§4.1) rather than by opening the definitions, matches tags against the whole component registry rather than `components/<tag>.json`, and dedups declared entries by their raw `$ref` string.
 
 `$elements` defined in `project.json` apply to every page. Page-level `$elements` merge with site-level via union (deduplicated by `$ref` value or string value). Page entries take precedence on conflict.
 
@@ -124,9 +124,12 @@ Returns the component registry for a project. Each entry includes:
   "tagName": "task-item",
   "path": "components/task-item.class.json",
   "source": "jx",
-  "props": [{ "name": "title", "type": "string" }]
+  "props": [{ "name": "title", "type": "string" }],
+  "uses": ["task-chip", "task-icon"]
 }
 ```
+
+`uses` lists the custom-element tags the component's own tree renders, sorted, through `children`, a repeater's `map` and a `$switch`'s `cases` (`componentMetaFrom` in `packages/schema/src/component-meta.ts`, shared by every backend), and is absent when there are none. Components address one another by bare `tagName` and declare no `$elements`, so it is how the canvas registers a component that appears only inside another one without fetching every definition.
 
 For npm packages with CEM:
 
@@ -213,6 +216,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.12-draft** (2026-10-17) — GET /__studio/components entries carry uses, the custom-element tags a component renders, which the canvas follows transitively (§1.4, §4.1).
 - **0.1.11-draft** (2026-09-29) — Census against the code: §1.1, §1.2, §1.4, §2, §4.2, §4.3, §5, §5.1 and §6 gain Partial markers for the studio canvas's unrebased project imports and elements and its narrower component discovery, the retired imports-based format discovery, Custom Elements Manifest discovery that only the dev server performs, the package route payloads, the Packages and Insert panels, and unenforced collection elements. §1.3 gains a Partial marker and §1.4 is corrected, because the build compiles only the top level of components/ and never reads a page's $ref elements.
 - **0.1.10-draft** (2026-08-27) — Components a project defines are discovered from the tree rather than only declared.
 - **0.1.9-draft** (2026-08-15) — Name where the emitted import map now points (§1).

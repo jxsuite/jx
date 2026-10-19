@@ -26,6 +26,10 @@ A template resolves `state.propertyName` against the current component's reactiv
 }
 ```
 
+:::doc-note
+**A binding that throws waits for its data.** State that loads asynchronously reads `null` first, so `${state.posts.length}` throws until the posts arrive. The binding renders nothing in the meantime, logs one console warning, and fills in on its own once the value it reads is valid.
+:::
+
 ## Reactive style properties
 
 ```json

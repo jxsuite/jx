@@ -2156,6 +2156,11 @@ let _standing: { host: HTMLElement; handle: StylePanelSurface; scope: EffectScop
 export interface StyleHostDeps {
   /** `stylebook` edits a tag catalogue entry; anything else edits the element selection. */
   getCanvasMode: () => string;
+  /**
+   * Whether the tab is the one showing. Read inside the projecting effect, so a hidden tab costs
+   * nothing per selection and re-projects the moment it is opened. Absent means always showing.
+   */
+  isShowing?: () => boolean;
 }
 
 /** The default the tab falls back to when the dock names no mode. */
@@ -2208,9 +2213,16 @@ export function bindStyleHost(el: HTMLElement | null, ctx?: StyleHostDeps): void
   const handle = mountStylePanelSurface(el, first, ACTIONS, {
     target: (element) => attachTargetLine(element ?? undefined),
   });
+  const isShowing = ctx?.isShowing ?? (() => true);
   const scope = effectScope();
   scope.run(() => {
     effect(() => {
+      /* A hidden tab does not project. Its editor is thousands of nodes, and a new selection
+         re-keys every row, so projecting behind the Content tab rebuilt the whole of it on every
+         click — most of what selecting an element cost. */
+      if (!isShowing()) {
+        return;
+      }
       const view = buildView(_canvasMode);
       rememberButtons(view);
       handle.update(view);

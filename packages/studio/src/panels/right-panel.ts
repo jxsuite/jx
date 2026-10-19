@@ -163,7 +163,10 @@ function bindBodyUnguarded(ctx: RightPanelCtx, tabId: string, host: HTMLElement)
       /* The canvas mode is what the tab cannot read for itself — Stylebook edits a tag catalogue
          entry and Edit edits the selection — so it comes in from `studio.ts` the same way the
          Content tab's navigation door does. */
-      bindStyleHost(host, { getCanvasMode: ctx.getCanvasMode });
+      bindStyleHost(host, {
+        getCanvasMode: ctx.getCanvasMode,
+        isShowing: () => inspectorTab() === "style",
+      });
       break;
     }
     default: {

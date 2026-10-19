@@ -182,6 +182,32 @@ describe("Custom Elements", () => {
     el.remove();
   });
 
+  test("a prop named like a native property still reaches state when it arrives late", async () => {
+    /* `title` is HTMLElement's own. It got no forwarding accessor, so a value delivered after
+       connection — a template over data that resolves asynchronously — wrote only the attribute,
+       and a card's title never rendered. */
+    const tag = uniqueTag();
+    await defineElement({
+      children: [{ tagName: "h3", textContent: "${state.title}" }],
+      state: { title: "" },
+      tagName: tag,
+    });
+    const el = document.createElement(tag);
+    document.body.append(el);
+    await new Promise((r) => {
+      setTimeout(r, 50);
+    });
+    expect(el.querySelector("h3")?.textContent).toBe("");
+    Object.assign(el, { title: "Arrived" });
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    expect(el.querySelector("h3")?.textContent).toBe("Arrived");
+    // The native half still runs: the attribute reflects, as it always did.
+    expect(el.getAttribute("title")).toBe("Arrived");
+    el.remove();
+  });
+
   test("instance $props are carried onto a not-yet-registered custom element", () => {
     // Regression for the Studio desktop-canvas bug: a component instance can render BEFORE its async
     // DefineElement finishes. renderNode must carry the instance's $props onto the bare tag as JS

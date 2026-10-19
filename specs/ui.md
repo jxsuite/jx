@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.58-draft\
+**Version:** 0.1.59-draft\
 **Status:** Partial\
-**Updated:** 2026-10-07\
+**Updated:** 2026-10-17\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -415,7 +415,7 @@ The kit is a Jx project (`packages/ui/project.json`): Studio opens it, the Libra
 
 ## 10. Studio Integration
 
-> **Status: Implemented.** The shell's side is done: `packages/studio/src/ui/kit.ts` registers the kit at boot, `styles/tokens.json` aliases Studio's token names to the kit's, and every one of Studio's surfaces is a document mounted by an adapter — Spectrum is removed and banned, and `scripts/check-styles.ts` keeps it so (an `sp-` tag or a `--spectrum-*` property anywhere in the package fails it). What the kit still owes the shell is marked on the section that specifies it (§5.1, §5.2, §5.4, §6). The canvas frame is the kit's second realm, and it holds the kit differently from the shell on purpose: it defines a project's elements from the project's OWN files — which is what makes an edit to a kit component show on the canvas rather than the bundled copy — and answers their `jx-ui:` behaviour specifiers from loaders registered at boot (`@jxsuite/ui/loaders`, one `import()` per module, through embedding.md §6's lazy `preloadModule`), so a page that draws no kit element loads none of them and `stylebook/jx-combobox.json` loads five. Measured before and after: ten elements and no control reached before the loaders, ten controls with a working list after, and the frame fetched exactly `icons`, `combobox`, `textfield`, `listbox` and `popover`. Bound props show as their binding text in Design mode by the canvas's own rule, so a stylebook page is exercised in Preview. A saved kit component reaches both realms: the shell re-mounts every surface that used it, and every live frame is told the new definition at the file's URL under the project and rendered again (studio-ui-guidelines.md §9.3).
+> **Status: Implemented.** The shell's side is done: `packages/studio/src/ui/kit.ts` registers the kit at boot, `styles/tokens.json` aliases Studio's token names to the kit's, and every one of Studio's surfaces is a document mounted by an adapter — Spectrum is removed and banned, and `scripts/check-styles.ts` keeps it so (an `sp-` tag or a `--spectrum-*` property anywhere in the package fails it). What the kit still owes the shell is marked on the section that specifies it (§5.1, §5.2, §5.4, §6). The canvas frame is the kit's second realm, and it holds the kit differently from the shell on purpose: it defines a project's elements from the project's OWN files — which is what makes an edit to a kit component show on the canvas rather than the bundled copy — and answers their `jx-ui:` behaviour specifiers from loaders registered at boot (`@jxsuite/ui/loaders`, one `import()` per module, through embedding.md §6's lazy `preloadModule`), so a page that draws no kit element loads none of them and `stylebook/jx-combobox.json` loads five. Measured before and after: ten elements and no control reached before the loaders, ten controls with a working list after, and the frame fetched exactly `icons`, `combobox`, `textfield`, `listbox` and `popover`. Bound props render live in Design mode as in Preview (studio.md §4.1), except one that reads a repeater row, so a stylebook page's controls are exercised with their real values in either. A saved kit component reaches both realms: the shell re-mounts every surface that used it, and every live frame is told the new definition at the file's URL under the project and rendered again (studio-ui-guidelines.md §9.3).
 
 Studio registers the kit at boot, aliases its own token names to the kit's (§4.1), and re-authors each surface as a document mounted by an adapter that passes host records and functions as scope. The order, the per-surface contract and the gates are `studio-ui-guidelines.md` §6 and §9; this section records only what the kit promises the shell: every element in §5, the overlay model in §6, and one icon key space (§8).
 
@@ -441,6 +441,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.59-draft** (2026-10-17) — Bound kit props render live in Design mode (§10).
 - **0.1.58-draft** (2026-10-07) — jx-dialog gains confirm-disabled and an xl size, and when open is a column whose body scrolls under a pinned header and footer (§5.2).
 - **0.1.57-draft** (2026-09-29) — Census against the code: §3, §5, §5.3, §9 and §10 are marked Implemented (§9 with the compiled distribution as a Future remainder), the overview markers on §1 and §4 are removed, §2, §5.1, §5.2, §5.4, §5.5, §6 and §7 are re-marked to name what is actually short, and §3.1, §3.2, §3.3 and §4.1 gain Partial markers for where the code and the text disagree.
 - **0.1.56-draft** (2026-09-29) — §4.3/§5.4: only `contain: layout` satisfies the outset hit area rule and jx-tab's close button carries it; a compact jx-action-group is one line (a wrapping row is compact=false), dims a disabled segment's ink rather than its share of the frame, fills a vertical group's stretched hosts, and keeps the system selection pair for an emphasized chosen segment.
@@ -503,4 +504,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.58-draft_
+_Jx UI Kit Specification v0.1.59-draft_

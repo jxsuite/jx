@@ -51,7 +51,9 @@ function datedCard(tagName: string, onMount = false): JxDocument {
     children: [
       { tagName: "h3", textContent: "Before" },
       { tagName: "slot" },
-      { tagName: "p", textContent: "${state.opens}" },
+      /* A `$ref` binding, not a `${…}` template: a template binding survives its expression
+         throwing (§6.1) and draws nothing until it can, so it never fails the render. */
+      { tagName: "p", textContent: { $ref: "#/state/opens" } },
       { tagName: "p", textContent: "After" },
     ],
     state,

@@ -548,8 +548,9 @@ describe("jx-action-button", () => {
     // The slot itself leaves no node, so there is nothing between the label and what was slotted.
     expect(el.querySelector("slot")).toBeNull();
     expect(getComputedStyle(el.querySelector('[part="badge-slot"]')!).display).toBe("contents");
-    // The two-line spelling, which is the one a hand-written page produces: the whitespace is a
-    // Slotted child, so it REPLACES the slot rather than sitting inside it.
+    // The two-line spelling, which is the one a hand-written page produces: whitespace-only text is
+    // Not slot content (spec.md §8.5), so the slot unwraps to its empty fallback and the label is
+    // Truly empty rather than holding the line break.
     const spaced = createActionButton();
     spaced.setAttribute("icon", "plus");
     spaced.setAttribute("label", "Add");
@@ -558,7 +559,7 @@ describe("jx-action-button", () => {
     await tick();
     const spacedLabel = spaced.querySelector('[part="label"]')!;
     expect(spacedLabel.querySelector("slot")).toBeNull();
-    expect(spacedLabel.textContent).toBe("\n  ");
+    expect(spacedLabel.textContent).toBe("");
     expect(getComputedStyle(spacedLabel).display).toBe("contents");
     // And the emptiness selectors that CANNOT decide it are confined to `stacked`, which is the
     // One shape that keeps a box at all.

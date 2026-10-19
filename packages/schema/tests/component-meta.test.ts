@@ -10,7 +10,7 @@
  * element — an empty inline box where the component should be.
  */
 import { describe, expect, test } from "bun:test";
-import { collectSlotDefs, componentMetaFrom } from "../src/component-meta";
+import { collectSlotDefs, collectUsedTags, componentMetaFrom } from "../src/component-meta";
 
 describe("componentMetaFrom", () => {
   test("a hyphenated tagName is a component; anything else is not", () => {
@@ -141,6 +141,26 @@ describe("componentMetaFrom", () => {
     expect(componentMetaFrom({ tagName: "a-b" }, "a")?.hasElements).toBe(false);
   });
 
+  test("uses lists the custom-element tags its tree renders, sorted, itself excluded", () => {
+    /* Components address one another by bare tagName and declare no `$elements`, so this is how a
+       live renderer learns that a card needs its panel registered too. */
+    const meta = componentMetaFrom(
+      {
+        children: [
+          { children: [{ tagName: "x-panel" }, { tagName: "span" }], tagName: "div" },
+          { tagName: "a-b" },
+          { tagName: "x-icon" },
+        ],
+        tagName: "a-b",
+      },
+      "a",
+    );
+    expect(meta?.uses).toEqual(["x-icon", "x-panel"]);
+    expect(
+      componentMetaFrom({ children: [{ tagName: "p" }], tagName: "a-b" }, "a"),
+    ).not.toHaveProperty("uses");
+  });
+
   test("$id is null rather than absent or empty", () => {
     expect(componentMetaFrom({ $id: "c-1", tagName: "a-b" }, "a")?.$id).toBe("c-1");
     expect(componentMetaFrom({ $id: "", tagName: "a-b" }, "a")?.$id).toBeNull();
@@ -158,5 +178,24 @@ describe("collectSlotDefs", () => {
   test("a non-object is not walked", () => {
     expect(collectSlotDefs(null)).toEqual([]);
     expect(collectSlotDefs(["slot"])).toEqual([]);
+  });
+});
+
+describe("collectUsedTags", () => {
+  test("walks a repeater's map, a $switch's cases and a whole-slot child, not just children", () => {
+    const tags = collectUsedTags({
+      children: [
+        { $prototype: "Array", map: { tagName: "x-row" } },
+        { $switch: "${state.k}", cases: { a: { tagName: "x-case" } } },
+        { children: { tagName: "x-only" }, tagName: "div" },
+        "text",
+      ],
+      tagName: "x-root",
+    });
+    expect([...tags].toSorted()).toEqual(["x-case", "x-only", "x-row"]);
+  });
+
+  test("a non-object is not walked", () => {
+    expect(collectUsedTags(null).size).toBe(0);
   });
 });

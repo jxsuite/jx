@@ -22,10 +22,12 @@
 import {
   buildScope,
   renderNode,
+  runScoped,
   setCanvasAssetResolver,
   setNpmModuleResolver,
   setResolveToken,
   setSkipServerFunctions,
+  setTemplateErrorHandler,
 } from "@jxsuite/runtime";
 import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canvas/asset-refs";
@@ -245,6 +247,7 @@ export async function rendersWith(
   path: string,
   props: ReadonlyMap<string, JsonValue>,
 ): Promise<boolean> {
+  let stopRender: (() => void) | null = null;
   try {
     setSkipServerFunctions(true);
     setResolveToken(hostResolveToken());
@@ -252,11 +255,22 @@ export async function rendersWith(
     for (const [name, value] of props) {
       scope[name] = value;
     }
+    /* A template binding that throws no longer unwinds the render (spec.md §6.1): it draws nothing
+       and waits for its data. The trial still has to see it, so the throw is collected for the one
+       synchronous render, as the render critic collects it. */
+    let bindingThrew = false;
+    setTemplateErrorHandler(() => {
+      bindingThrew = true;
+    });
     // Its own tag would make an instance, and the instance's render is the one that cannot be caught.
-    renderNode({ ...definition, tagName: "div" }, scope);
-    return true;
+    const { stop } = runScoped(() => renderNode({ ...definition, tagName: "div" }, scope));
+    stopRender = stop;
+    return !bindingThrew;
   } catch {
     return false;
+  } finally {
+    setTemplateErrorHandler(null);
+    stopRender?.();
   }
 }
 

@@ -69,6 +69,8 @@ A prop value is either a plain JSON value (fixed for this instance) or a `$ref` 
 
 Inside `card.json`, `title` and `count` behave like the component's own state entries, typically declared there with defaults and overridden per instance.
 
+A prop may share its name with a built-in element property such as `title`, `lang` or `hidden`. Setting it still updates the component, including a value that arrives after the element is on the page, and the matching HTML attribute is set as well.
+
 ## Signal forwarding
 
 When a `$props` value is a `$ref` to a reactive state entry, the child receives the **same reactive reference**, not a copy. A write in either scope triggers updates in both, so parent and child stay in sync through one shared signal. A plain value, by contrast, is just an initial setting for that instance.

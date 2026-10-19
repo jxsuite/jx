@@ -413,6 +413,45 @@ describe("resolveCanvasDocument", () => {
     expect(asked).toEqual(["/ext/ContentEntry.class.json"]);
     expect(preview.renderDoc.state?.nav).toEqual({ id: "nav" });
   });
+
+  test("registers the components a component uses, transitively", async () => {
+    /* A card renders a panel, which renders an icon: none of the three declares `$elements`, and
+       only the card appears in the page. Its panel used to stay an empty, unregistered tag. */
+    installMockPlatform({
+      discoverComponents: async () => [
+        { path: "components/x-card.json", source: "jx", tagName: "x-card", uses: ["x-panel"] },
+        { path: "components/x-panel.json", source: "jx", tagName: "x-panel", uses: ["x-icon"] },
+        { path: "components/x-icon.json", source: "jx", tagName: "x-icon" },
+        { path: "components/x-unused.json", source: "jx", tagName: "x-unused" },
+      ],
+    });
+    await loadComponentRegistry();
+    const result = await resolve(
+      { children: [{ tagName: "x-card" }], tagName: "div" },
+      { documentPath: "content/home.md", mode: "content" },
+    );
+    const refs = (result.renderDoc.$elements ?? []).map((e) => (isString(e) ? "" : String(e.$ref)));
+    for (const tag of ["x-card", "x-panel", "x-icon"]) {
+      expect(refs.some((r) => r.endsWith(`components/${tag}.json`))).toBe(true);
+    }
+    expect(refs.some((r) => r.includes("x-unused"))).toBe(false);
+  });
+
+  test("injects $site and $page into a page, without touching the source document's state", async () => {
+    // A layout binding `${state.$page.url}` threw on the canvas, and in Preview that blanked it.
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: { name: "Avunu", state: { tagLabels: { ai: "AI" } }, url: "https://x.test" },
+    });
+    const doc: JxMutableNode = { children: [], state: { own: 1 }, tagName: "div", title: "About" };
+    const result = await resolve(doc, { documentPath: "pages/about/index.md" });
+    const state = result.renderDoc.state ?? {};
+    expect(state.$page).toMatchObject({ title: "About", url: "/about" });
+    expect(state.$site).toMatchObject({ name: "Avunu", url: "https://x.test" });
+    expect(state.tagLabels).toEqual({ ai: "AI" });
+    expect(state.own).toBe(1);
+    expect(Object.keys(activeTab.value!.doc.document.state ?? {})).toEqual(["own"]);
+  });
 });
 
 // ─── The render is OF a tab, not of "the active tab" ──────────────────────────

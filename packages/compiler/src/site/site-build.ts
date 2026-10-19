@@ -84,18 +84,22 @@ import {
   collectServerEntries,
   collectStyles,
   colorSchemePrePaintScript,
+  createSlotFill,
+  definitionHasSlot,
   escapeStyleText,
   evaluateStaticTemplate,
   isComponentFullyStatic,
   isSingleExpression,
   liftPropsAttributes,
+  nextSlotId,
   preRenderComponentHtml,
   pureSchemeOf,
   renderStaticNode,
   resolveHostStyle,
   resolveRefValue,
 } from "../shared.ts";
-import type { ComponentPrerenderContext } from "../shared.ts";
+import type { ComponentPrerenderContext, StaticChild } from "../shared.ts";
+import { SLOT_ATTR } from "@jxsuite/runtime";
 import { resolvePrototypes } from "./prototype-resolver.ts";
 import { transformImageNodes } from "./image-transform.ts";
 import { collectCspSources, emptyCspSources } from "./csp.ts";
@@ -1426,7 +1430,9 @@ async function compilePage(
     media: { ...projectConfig.$media, ...layoutDoc.$media },
     rules: [],
   };
-  expandComponents(layoutDoc, componentDefs, slotCss, projectConfig.defaults);
+  // One counter per page, so every `data-jx-slots` id on it is unique (spec.md §8.5).
+  const slotIds = { n: 0 };
+  expandComponents(layoutDoc, componentDefs, slotCss, projectConfig.defaults, slotIds);
 
   // Strip resolved timing: "compiler" state entries — they're now baked into the tree
   // And keeping them would cause isDynamic() to misclassify the page as dynamic.
@@ -2211,19 +2217,21 @@ interface SlotCssCollector {
  * @param {Map<string, JxElement>} componentDefs
  * @param {SlotCssCollector} [slotCss]
  * @param {ProjectConfig["defaults"]} [defaults] - Read for `defaults.shadow` (spec.md §16.6)
+ * @param {{ n: number }} [slotIds] - The page's `data-jx-slots` counter
  */
 function expandComponents(
   node: JxElement | string | (JxElement | string)[],
   componentDefs: Map<string, JxElement>,
   slotCss?: SlotCssCollector,
   defaults?: ProjectConfig["defaults"],
+  slotIds?: { n: number },
 ) {
   if (!isNonNullObject(node)) {
     return;
   }
   if (Array.isArray(node)) {
     for (const n of node) {
-      expandComponents(n, componentDefs, slotCss, defaults);
+      expandComponents(n, componentDefs, slotCss, defaults, slotIds);
     }
     return;
   }
@@ -2231,7 +2239,7 @@ function expandComponents(
   // Recurse into children first (bottom-up expansion)
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      expandComponents(child, componentDefs, slotCss, defaults);
+      expandComponents(child, componentDefs, slotCss, defaults, slotIds);
     }
   }
 
@@ -2259,17 +2267,12 @@ function expandComponents(
      * was given. Instances written inside `def` itself are another matter — those are reached
      * below, through `preRenderComponentHtml`, with `node` as the first frame of the path.
      */
-    const slotContent =
-      Array.isArray(node.children) && node.children.length > 0
-        ? node.children
-            .map((c: JxElement | string) => {
-              if (slotCss && isNonNullObject(c)) {
-                collectStyles(c, slotCss.rules, slotCss.media, "", slotCss.counter, "jxs");
-              }
-              return renderStaticNode(c, {}, null);
-            })
-            .join("\n")
-        : null;
+    const renderSlotted = (c: StaticChild) => {
+      if (slotCss && isNonNullObject(c) && !Array.isArray(c)) {
+        collectStyles(c, slotCss.rules, slotCss.media, "", slotCss.counter, "jxs");
+      }
+      return renderStaticNode(c, {}, null);
+    };
 
     /*
      * In shadow mode the slotted children are NOT substituted into the prerendered markup: they
@@ -2285,9 +2288,28 @@ function expandComponents(
       componentDefs,
       defaults,
       path: [{ key: JSON.stringify(props ?? {}), tag: tagName }],
+      slotIds,
     };
-    const innerHTML = preRenderComponentHtml(def, props, shadow ? null : slotContent, context);
     const isStatic = isComponentFullyStatic(def);
+    const { children } = node;
+    /* Light mode places the children by slot name (spec.md §8.5). A live instance whose definition
+       has a slot is stamped and its groups bracketed, so its element recovers them on upgrade. */
+    const slotId =
+      !shadow && !isStatic && definitionHasSlot(def.children) ? nextSlotId(context) : null;
+    const slotContent = shadow
+      ? (Array.isArray(children) ? children : [])
+          .map((c: StaticChild) => renderSlotted(c))
+          .join("\n")
+      : null;
+    const innerHTML = preRenderComponentHtml(
+      def,
+      props,
+      shadow ? null : createSlotFill(children, {}, renderSlotted, slotId),
+      context,
+    );
+    if (slotId !== null) {
+      node.attributes = { ...node.attributes, [SLOT_ATTR]: String(slotId) };
+    }
 
     /*
      * A declarative shadow root: markup the parser materializes before any script runs, which the

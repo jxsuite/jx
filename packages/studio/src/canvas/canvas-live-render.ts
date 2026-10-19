@@ -28,6 +28,9 @@ import {
 } from "../site-context";
 import { documentBase } from "./canvas-origin";
 import { componentRegistry, computeRelativePath } from "../files/components";
+import { collectUsedTags } from "@jxsuite/schema/component-meta";
+import { injectContext } from "@jxsuite/site/context";
+import { documentUrlPattern } from "@jxsuite/site/routes";
 import { prepareForEditMode } from "../utils/edit-display";
 import {
   paramBoundStateKeys,
@@ -44,7 +47,14 @@ import { loadExtensions } from "../format/format-host";
 import { bakeRepeaterSources, extensionClassKeys, repeaterSourceKeys } from "./repeater-sources";
 
 import type { AssetContext } from "./asset-refs";
-import type { JxElement, JxMutableNode, JxPath, JxStyle } from "@jxsuite/schema/types";
+import type {
+  JsonValue,
+  JxDocument,
+  JxElement,
+  JxMutableNode,
+  JxPath,
+  JxStyle,
+} from "@jxsuite/schema/types";
 import type { ComponentEntry } from "../files/components.js";
 import type { LayoutMarker } from "./path-mapping";
 import type { Tab } from "../tabs/tab";
@@ -324,6 +334,24 @@ export async function resolveCanvasDocument(
     }
   }
 
+  /* `$site` / `$page`, and the project's own state, exactly as the build injects them — a layout
+     that binds `${state.$page.url}` (a header marking its current link) threw on the canvas, and in
+     Preview, where templates are live, that one TypeError blanked the whole page. Onto COPIES of
+     `state` and `imports`: the edit-mode render doc shares both with the tab's source document,
+     which must not gain injected keys it would then save. */
+  const projectConfig = projectState?.projectConfig;
+  if (isPage && projectConfig) {
+    renderDoc = { ...renderDoc, state: { ...renderDoc.state } };
+    if (renderDoc.imports) {
+      renderDoc.imports = { ...renderDoc.imports };
+    }
+    /* SAFETY: a page render document is a JxDocument in all but its declared (mutable) type;
+       `injectContext` writes `state`, `$media` and `imports`, all of which the copy above owns. */
+    injectContext(renderDoc as JxDocument, projectConfig, {
+      urlPattern: documentUrlPattern(S.documentPath),
+    });
+  }
+
   const fileBase = documentBase(projectState?.projectRoot);
   const docBase = S.documentPath ? new URL(S.documentPath, fileBase).href : undefined;
   /*
@@ -354,7 +382,9 @@ export async function resolveCanvasDocument(
   }
 
   // `$site` and `$page`, as the build injects them (canvas-page-context.ts), in every mode: Preview
-  // Draws the page as it ships, and edit mode evaluates a component's bound props live.
+  // Draws the page as it ships, and edit mode evaluates a component's bound props live. For a page
+  // This refines the pair injected above with the chosen route params and the project's i18n, and
+  // It is the only injection a collection entry gets.
   if ((isPage || isEntry) && S.documentPath) {
     const context = await pageContextFor(
       {
@@ -457,47 +487,25 @@ export async function resolveCanvasDocument(
       // A null entry in a document's `$elements` names nothing, so it contributes no ref.
       effectiveElements.map((e: JxElement | string) => (isNonNullObject(e) ? e.$ref : e)),
     );
-    const collectTags = (node: JxMutableNode): Set<string> => {
-      const tags = new Set<string>();
-      // Document JSON can hold a null or scalar where a node belongs; it carries no tag.
-      if (!isNonNullObject(node)) {
-        return tags;
+    /* Every tag the render can reach: the document's own, then — through the registry's `uses` —
+       each component's, transitively. Components address one another by bare `tagName` and declare
+       no `$elements` (the build finds them project-wide), so a tag that only appears INSIDE a
+       component (a card's panel, a header's theme toggle) was never registered here and rendered as
+       an empty, unstyled element. */
+    const byTag = new Map(componentRegistry.map((c: ComponentEntry) => [c.tagName, c]));
+    /* SAFETY: a render document is JSON by construction (it crosses into the canvas realm by
+       `postMessage`); the walk only reads `tagName`, `children`, `map` and `cases` off it. */
+    const reachable = collectUsedTags(renderDoc as JsonValue);
+    if (renderDoc.tagName) {
+      reachable.add(displayTagName(renderDoc.tagName));
+    }
+    for (const tag of reachable) {
+      for (const used of byTag.get(tag)?.uses ?? []) {
+        reachable.add(used);
       }
-      if (node.tagName) {
-        tags.add(displayTagName(node.tagName));
-      }
-      /* Every place a node can hold the nodes it draws: its children, a repeater's row template and
-         a `$switch`'s cases. Preview keeps a repeater as written (`$prototype: "Array"` with the
-         row under `map`), so a walk of `children` alone never reached a component used only in a
-         list, and Preview drew three empty `<mu-exhibition-row>` elements that nothing defined.
-         Edit and Design passed only because their perimeter turns the template into a child. */
-      const kids: JxMutableNode[] = [];
-      if (Array.isArray(node.children)) {
-        for (const child of node.children) {
-          if (!isString(child)) {
-            kids.push(child);
-          }
-        }
-      } else if (isMappedArray(node.children)) {
-        /* SAFETY: the bare mapped-array slot is a repeater node in all but its declared type, and
-           the walk reads only its `map` template, an element definition. */
-        kids.push(node.children as JxMutableNode);
-      }
-      if (isNonNullObject(node.map)) {
-        kids.push(node.map);
-      }
-      if (isNonNullObject(node.cases)) {
-        kids.push(...Object.values(node.cases));
-      }
-      for (const kid of kids) {
-        for (const t of collectTags(kid)) {
-          tags.add(t);
-        }
-      }
-      return tags;
-    };
-    for (const tag of collectTags(renderDoc)) {
-      const comp = componentRegistry.find((c: ComponentEntry) => c.tagName === tag);
+    }
+    for (const tag of reachable) {
+      const comp = byTag.get(tag);
       if (comp && comp.source !== "npm" && comp.path) {
         const relPath = computeRelativePath(S.documentPath ?? null, comp.path);
         if (!existingRefs.has(relPath)) {
