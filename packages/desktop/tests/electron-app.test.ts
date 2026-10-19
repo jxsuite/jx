@@ -2,13 +2,44 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { BackendMessage, ShellMessage } from "../src/hub/protocol";
 import { SHELL_CHANNELS } from "../src/electron-shell/bridge";
-import { parseAppArgs, projectDirOf, projectRootFrom, startApp } from "../src/electron-shell/app";
+import {
+  parseAppArgs as parseAppArgsRaw,
+  projectDirOf,
+  projectRootFrom as projectRootFromRaw,
+  startApp,
+} from "../src/electron-shell/app";
 import type { AppDeps } from "../src/electron-shell/app";
 import type { BackendProcess } from "../src/electron-shell/backend-process";
+import { posix } from "./_posix";
 import { fakeElectron } from "./_fake-electron";
 import { fakeSchedule, fakeUpdater } from "./_fake-updater";
 import { packagedLayout } from "../src/electron-shell/layout";
 import type { FakeElectron } from "./_fake-electron";
+
+/** `projectRootFrom`, answering in POSIX spelling and handing `exists` POSIX paths. */
+function projectRootFrom(
+  ...[args, env, cwd, exists, appPath]: Parameters<typeof projectRootFromRaw>
+) {
+  const root = projectRootFromRaw(args, env, cwd, (path) => exists(posix(path)), appPath);
+  return root === null ? root : posix(root);
+}
+
+/** `parseAppArgs`, answering in POSIX spelling and handing `exists` POSIX paths. */
+function parseAppArgs(
+  ...[argv, env, cwd, exists, appPath, layout]: Parameters<typeof parseAppArgsRaw>
+) {
+  const parsed = parseAppArgsRaw(argv, env, cwd, (path) => exists(posix(path)), appPath, layout);
+  const spelled = (path: string | null) => (path === null ? path : posix(path));
+  return {
+    ...parsed,
+    backend: posix(parsed.backend),
+    bun: posix(parsed.bun),
+    icon: spelled(parsed.icon),
+    preload: posix(parsed.preload),
+    root: spelled(parsed.root),
+    studio: spelled(parsed.studio),
+  };
+}
 
 /** A backend the test drives: what the app sent it, and a way to speak for it. */
 function fakeBackend() {
@@ -26,7 +57,12 @@ function fakeBackend() {
     onMessage: (listener) => {
       toApp = listener;
     },
-    send: (message) => sent.push(message),
+    send: (message) =>
+      sent.push(
+        message.type === "open-project" && message.root !== null
+          ? { ...message, root: posix(message.root) }
+          : message,
+      ),
   };
   return {
     emit: (message: BackendMessage) => toApp(message),
@@ -66,16 +102,25 @@ async function started(
   options.configure?.(fake);
   const backend = fakeBackend();
   const spawned: Started["spawned"] = [];
-  const handle = await startApp(fake.api, options.argv ?? ARGV, {
+  const deps: Partial<AppDeps> = {
     cwd: "/work",
     env: { ELECTRON_RUN_AS_NODE: "1", HOME: "/home/u" },
     exists: () => false,
     platform: "linux",
     spawn: (bin, script, env) => {
-      spawned.push({ bin, env, script });
+      spawned.push({
+        bin: posix(bin),
+        env: env.JX_STUDIO_ASSETS ? { ...env, JX_STUDIO_ASSETS: posix(env.JX_STUDIO_ASSETS) } : env,
+        script: posix(script),
+      });
       return backend.process;
     },
     ...options.deps,
+  };
+  const given = deps.exists ?? (() => false);
+  const handle = await startApp(fake.api, options.argv ?? ARGV, {
+    ...deps,
+    exists: (path) => given(posix(path)),
   });
   if (!handle) {
     throw new Error("the app did not start");
@@ -195,7 +240,7 @@ describe("startApp", () => {
     fake.lock = false;
     await startApp(fake.api, ["/bin/electron"], { spawn: () => fakeBackend().process });
     expect(fake.names).toEqual(["Jx Studio"]);
-    expect(fake.paths.get("userData")).toBe("/appdata/Jx Studio");
+    expect(posix(fake.paths.get("userData") ?? "")).toBe("/appdata/Jx Studio");
   });
 
   test("spawns the backend under Bun, without the variable that would make Electron a Node", async () => {
@@ -610,7 +655,7 @@ describe("startApp when packaged", () => {
     errorsQuiet();
     const { backend, fake } = await packaged();
     backend.emit(openWindow);
-    expect(fake.windows[0]?.options.webPreferences.preload).toBe("/b/preload.js");
+    expect(posix(fake.windows[0]?.options.webPreferences.preload ?? "")).toBe("/b/preload.js");
   });
 
   test("an unpackaged run sets neither, because its launcher says what it is", async () => {

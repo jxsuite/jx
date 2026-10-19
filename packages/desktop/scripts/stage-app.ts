@@ -127,8 +127,10 @@ async function stageBun(platform: string, arch: string): Promise<void> {
   rmSync(extracted, { force: true, recursive: true });
   mkdirSync(extracted, { recursive: true });
   // Windows' own tar reads zip; the Unix runners have unzip.
+  // It is named by path: Git Bash puts GNU tar first, which reads `C:` as a remote host.
+  const windowsTar = join(process.env.SystemRoot ?? String.raw`C:\Windows`, "System32", "tar.exe");
   await (process.platform === "win32"
-    ? $`tar -xf ${archive} -C ${extracted}`
+    ? $`${windowsTar} -xf ${archive} -C ${extracted}`
     : $`unzip -q -o ${archive} -d ${extracted}`);
   const bunDir = join(resourcesDir, "bun");
   mkdirSync(bunDir, { recursive: true });
