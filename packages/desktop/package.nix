@@ -234,6 +234,11 @@ stdenv.mkDerivation {
       packages/desktop/src/electron-shell/preload.ts \
       --target=node --format=cjs --external electron \
       --outdir packages/desktop/assets/electron
+    # Electron loads `app-main.js` as Node does, by the nearest package.json, and the desktop
+    # package's own says `"type": "module"`: without this the CJS bundle is read as ESM and the app
+    # dies on its first `require` before opening a window. electron-builder stages a package.json
+    # into `build/app` for the same reason, and a checkout bundles into a temporary directory.
+    echo '{ "type": "commonjs" }' > packages/desktop/assets/electron/package.json
 
     # The tree above is the WORKSPACE's: every member's dependencies plus the root's dev tooling
     # (release-please, oxlint, typescript, ts-migrate, …), which is what the app used to ship
@@ -343,6 +348,7 @@ stdenv.mkDerivation {
     test -s $app/app-main.js
     test -s $app/preload.js
     grep -q second-instance $app/app-main.js
+    grep -q '"type": "commonjs"' $app/package.json
     bun -e '
       const { builtinModules } = require("node:module");
       const { readFileSync } = require("node:fs");
