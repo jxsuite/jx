@@ -229,7 +229,6 @@ const NOT_YET_CONVERTED = new Set([
   "canvas/iframe-host.ts",
   "content/entry-editor.ts",
   "editor/context-menu.ts",
-  "panels/frontmatter-panel.ts",
   "panels/head-panel.ts",
   "panels/pane-context.ts",
   "panels/properties-panel.ts",

@@ -51,6 +51,8 @@ export interface EntryInspectorActions {
   setDraft: (draft: boolean) => void;
   /** **Edit** opens Project Settings › Content types on this collection. */
   openFields: () => void;
+  /** **Search appearance…** runs `document.openSeo` over this entry, as the Page tab's does. */
+  openSeo: () => void;
 }
 
 /** The node the document renders empty for the flow to fill. */

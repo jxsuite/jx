@@ -256,7 +256,7 @@ function loadMediaCache(): Promise<void> {
     _mediaLoading = null;
     // Re-render the host panels so the browse panel has entries to show once the async listing
     // Resolves. Mirrors loadLayoutEntries()'s renderOnly() in head-panel.
-    renderOnly("leftPanel", "rightPanel", "frontmatterPanel");
+    renderOnly("leftPanel", "rightPanel");
     announce();
   })();
   _mediaLoading = walk;
@@ -431,7 +431,7 @@ function noteImageSize(file: string, width: number, height: number) {
  *
  * Exported because the panel is a SURFACE OF ITS OWN — it renders into the popover layer, not into
  * the field that opened it — so a converted surface can offer the same browser without
- * re-implementing it. `surfaces/doc-header.ts`'s Browse button is the first such caller, and the
+ * re-implementing it. The Inspector's Page tab's Browse button is one such caller, and the
  * search-appearance dialog's image rows another: the panel is a top-layer `jx-popover`, so it
  * paints over the modal that opened it.
  *

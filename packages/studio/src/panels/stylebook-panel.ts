@@ -125,7 +125,7 @@ function chromeBar(surface: CanvasSurface): HTMLElement {
  * a lit template: the hand-over used to be a `TemplateResult` per artboard, which meant the boards
  * could only be drawn by whoever was already rendering with lit. It is a mount seam instead — the
  * catalogue's bar is a node this module owns, placed in the empty box the stage draws for it, the
- * same way the Compare bar and the Document Header card are.
+ * same way the Compare bar and the writing banner are.
  *
  * @param {StylebookCtx} ctx
  * @returns {Promise<void>} Settles once the artboards are in the page

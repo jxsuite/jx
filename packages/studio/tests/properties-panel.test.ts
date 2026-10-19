@@ -14,7 +14,7 @@
  * guard for.
  *
  * Repeater, Switch and the custom-element contract sections moved to the Logic tab (§6)
- * (`tests/events-panel.test.ts`); the Page section moved to the Document Header card
+ * (`tests/events-panel.test.ts`); the Page section moved to the Inspector's Page tab
  * (`tests/head-panel.test.ts`). What is tested here is what Content still draws.
  */
 import {

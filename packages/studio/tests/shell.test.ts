@@ -9,7 +9,9 @@ import {
   DOCK_DEFAULT_SIZES,
   DOCK_IDS,
   DOCK_STORAGE_KEY,
+  RETIRED_STORAGE_KEYS,
   applyDockLayout,
+  forgetRetiredStorage,
   mountShell,
   persistDocks,
   resetProjectShell,
@@ -336,5 +338,36 @@ describe("resetProjectShell", () => {
 
     expect(shell.leftTab).toBe("files");
     expect(shell.docks.right.collapsed).toBe(true);
+  });
+});
+
+describe("retired storage keys", () => {
+  test("the Document Header card's fold preference is one of them", () => {
+    expect(RETIRED_STORAGE_KEYS).toContain("jx-studio-doc-header-expanded");
+  });
+
+  test("a stale stored value is dropped, and nothing else is touched", () => {
+    localStorage.setItem("jx-studio-doc-header-expanded", "false");
+    localStorage.setItem(DOCK_STORAGE_KEY, "{}");
+    forgetRetiredStorage();
+    expect(localStorage.getItem("jx-studio-doc-header-expanded")).toBeNull();
+    expect(localStorage.getItem(DOCK_STORAGE_KEY)).toBe("{}");
+  });
+
+  test("unavailable storage never throws", () => {
+    const real = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("SecurityError: storage is blocked");
+      },
+    });
+    try {
+      expect(() => forgetRetiredStorage()).not.toThrow();
+    } finally {
+      if (real) {
+        Object.defineProperty(globalThis, "localStorage", real);
+      }
+    }
   });
 });

@@ -172,7 +172,7 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *
  *   **12 → 11 with the second pane**, and the media-picker's browse button is the one that left. It
  *   was hand-stamped `inspector/field:<prop>/browse`, and the stamp was a claim about location the
- *   picker cannot make: the Document Header card draws the same control inside every pane's STAGE, so
+ *   picker cannot make: the Document Header card drew the same control inside every pane's STAGE, so
  *   with two panes the id resolved to two elements and `resolveRegion` answered with the side pane's
  *   — an `inspector/…` id on a control that is not in the Inspector. `ui/regions.ts` derives it now,
  *   scoped to the one Inspector, and the number falls the way this file says a number should: because
@@ -183,8 +183,13 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *   otherwise expect is `pane.primary`, which exists whatever the pane shows: a `styles.open` that
  *   landed on Elements, or a view that never mounted, would pass and photograph the wrong surface for
  *   `studio/design/tokens`. The view stamps its root through `paneRegion()`, as
- *   `pane.primary/media-library` and `pane.primary/frontmatter` do, and the id is counted for the
- *   same reason they are: a view authors it, no registry does.
+ *   `pane.primary/media-library` does, and the id is counted for the same reason it is: a view
+ *   authors it, no registry does.
+ *
+ *   **11 → 10 when Edit stopped drawing the Document Header card** (studio.md §4.2), and
+ *   `pane.primary/frontmatter` is the one that left: the card it named is gone, the document's
+ *   settings are the Inspector's Page tab, and `document-panel-shot` photographs that tab through the
+ *   derived `inspector/tab:page`.
  * - `unstable` `{reason, until}` escape hatches. **2** after Project Settings became a document and
  *   retired the five `settings.selectEntry` steps. **2 → 1 when `media.browse` landed as a
  *   record**: `media-picker-shot`'s hatch existed only because the id had none, and its step stays
@@ -200,7 +205,7 @@ export const CONTRACT_BUDGET = {
   clipSelectors: 0,
   argSelectors: 0,
   inputSteps: 14,
-  nonDerivedRegions: 11,
+  nonDerivedRegions: 10,
   unstable: 1,
 } as const;
 
@@ -247,9 +252,9 @@ export const DERIVED_REGION_PATTERNS: readonly RegExp[] = [
   /^inspector\/field:[\w$.-]+$/,
   /* The Browse control of an Inspector field. It WAS hand-stamped — `ui/media-picker.ts` wrote
      `inspector/field:${prop}/browse` onto the button — and that stamp was a claim about location
-     the picker is in no position to make: the same control is drawn by the Document Header card,
-     inside each PANE's stage, where two panes made the id resolve to two elements and neither of
-     them was in the Inspector. `ui/regions.ts` derives it now, by finding `.media-picker-browse`
+     the picker was in no position to make: the same control was drawn by the Document Header card
+     (since removed), inside each PANE's stage, where two panes made the id resolve to two elements
+     and neither of them was in the Inspector. `ui/regions.ts` derives it now, by finding `.media-picker-browse`
      inside the Inspector's own `[data-prop]` row, so it is one of the ids nobody authors. */
   /^inspector\/field:[\w$.-]+\/browse$/,
   // Already in `PLACEMENTS`.

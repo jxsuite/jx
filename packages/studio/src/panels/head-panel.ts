@@ -17,13 +17,13 @@
  * `sync()` — not a dock repaint — is what an echo calls: it assigns into the standing scope in the
  * same turn, where a dock repaint is a frame away and would rebuild far more than one field.
  *
- * **What a frontmatter row looks like is `panels/frontmatter-fields.ts`'s answer.** The Document
- * Header card draws the same field set from the same schemas; the two surfaces deciding
- * independently that a `$ref` is a picker or that an array is a comma-separated line is how they
- * came to disagree about `title` in the first place.
+ * **What a frontmatter row looks like is `panels/frontmatter-fields.ts`'s answer.** The Page tab is
+ * the one surface that edits a page's frontmatter (the Document Header card that once drew the same
+ * field set above the canvas is gone, studio.md §4.2), and keeping the row vocabulary in its own
+ * module is what stopped two surfaces disagreeing about `title`.
  *
  * The other half of this module has no surface at all: the merged-`$head` preview model that
- * `panels/seo-modal.ts` and the Document Header card both read. It is pure, and pinned against
+ * `panels/seo-modal.ts` reads. It is pure, and pinned against
  * `packages/compiler/src/site/head-merger.ts` by `tests/head-panel.test.ts`.
  */
 
@@ -108,7 +108,7 @@ export async function listLayoutEntries(): Promise<{ name: string; path: string 
 
 async function loadLayoutEntries() {
   await listLayoutEntries();
-  renderOnly("rightPanel", "frontmatterPanel", "seoModal");
+  renderOnly("rightPanel", "seoModal");
 }
 
 /**
@@ -124,11 +124,10 @@ export function invalidateLayoutPickerCache() {
 /**
  * The layouts the picker offers, or `null` while the directory is still being listed.
  *
- * The listing BOTH surfaces draw their Layout picker from, handed over as DATA. The Page panel
- * (`src/surfaces/panel-page.json`) and the Document Header card (`src/surfaces/doc-header.json`)
- * are documents and neither can interpolate the other's markup — but a second LISTING would be a
- * second cache with a second lifetime, and {@link invalidateLayoutPickerCache} would then forget
- * only one of them. Asking starts the read; it repaints both surfaces when it lands.
+ * The listing the Page tab's Layout picker is drawn from, handed over as DATA: the Page panel
+ * (`src/surfaces/panel-page.json`) is a document and reads it as a projection. One listing is one
+ * cache with one lifetime, which {@link invalidateLayoutPickerCache} forgets. Asking starts the
+ * read; it repaints the Inspector when it lands.
  *
  * @returns {{ name: string; path: string }[] | null}
  */
@@ -162,14 +161,12 @@ export const OG_FIELDS: MetaField[] = [
 const MANAGED_META_KEYS = new Set([...PAGE_FIELDS, ...OG_FIELDS].map((f) => f.key));
 
 /**
- * Frontmatter keys the Document Header card owns with a dedicated control, so the generic field
- * list must not print them a second time.
+ * Frontmatter keys the Page tab owns with a dedicated control, so the generic field list must not
+ * print them a second time.
  *
- * **The one policy.** `frontmatter-panel.ts` used to pass an EMPTY reserved set while this module
- * passed `{title}`, so the same key rendered as a bare Obsidian-style property above the canvas and
- * as the Page panel's Title field at the same time, with two different commit paths. Merging the
- * two field sets was only safe once one of the two policies won, and it is this one: a document has
- * ONE title, and the surface that gives it a named row is the one that owns the key.
+ * **The one policy.** A document has ONE title, and the surface that gives it a named row is the
+ * one that owns the key: listed as a generic field as well, the same key rendered twice with two
+ * different commit paths.
  */
 export const RESERVED_FM_KEYS = new Set(["title"]);
 
@@ -819,11 +816,10 @@ async function loadLayoutHead(path: string): Promise<void> {
   _layoutHeadPending = null;
   _layoutHeadPath = path;
   _layoutHead = doc?.$head ?? [];
-  // THREE surfaces show the merged head now, and the layout layer arrives asynchronously: the
-  // Document Header card, and Search appearance, which is where the previews went. A modal left
-  // Off this list renders the page's own head with the layout layer missing — which reads as
+  // Search appearance shows the merged head, and the layout layer arrives asynchronously. A modal
+  // Left off this list renders the page's own head with the layout layer missing — which reads as
   // "you have no description" on a page that inherits one.
-  renderOnly("frontmatterPanel", "seoModal");
+  renderOnly("seoModal");
 }
 
 /**
@@ -945,13 +941,17 @@ export function buildHeadDoc(
   const headDoc: JxMutableNode = { ...doc };
   if (fm.title !== undefined) {
     /* SAFETY: deliberately not narrowed — a YAML title can be a number, and it is overlaid as
-       written. Every reader of a head doc's `title` (titleRow here and in frontmatter-panel.ts,
-       seoPreviewFor) tests it with isString before using it as text. */
+       written. Every reader of a head doc's `title` (titleRow here, seoPreviewFor) tests it with
+       isString before using it as text. */
     headDoc.title = fm.title as string;
   }
   if (isString(fm.description)) {
     // The page's description property, which the build writes as its description meta.
     headDoc.description = fm.description;
+  }
+  if (isString(fm.$layout) || fm.$layout === false) {
+    // A Markdown page's layout override is its frontmatter `$layout`, which the build reads.
+    headDoc.$layout = fm.$layout;
   }
   if (fm.$head !== undefined) {
     /* SAFETY: Studio's one writer of the frontmatter `$head` key is applyContentMutation below,
@@ -969,13 +969,10 @@ export function buildHeadDoc(
  * adapts one to the other in the module that owns both, instead of in the Navigator orchestrator
  * that owns neither.
  *
- * **`tab` is a parameter for the same reason every other frontmatter helper's is.** It resolved
- * `activeTab.value` itself, and the Document Header card calls it for the CONTENT branch of every
- * mutation it makes — Title, Clear title, the Layout picker — as does Search appearance, which is
- * where the head fields went and which takes its tab the same way. The card is drawn per pane, so
- * on a markdown page the card in one pane retitled the document in the other. The comment beside
- * the card's JSON branch has claimed since the pane grid landed that this was fixed; the fix
- * reached the JSON branch only, and this is the half that was left.
+ * **`tab` is a parameter for the same reason every other frontmatter helper's is.** Search
+ * appearance commits through it for the tab it was opened over, which need not be the focused
+ * pane's; resolving `activeTab.value` here once let an edit in one pane retitle the document in the
+ * other.
  *
  * @param {Tab | null} tab The document to commit into.
  * @param {() => void} rerender
@@ -1002,22 +999,48 @@ export function applyContentMutation(
   if (fmHead) {
     tmp.$head = [...fmHead];
   }
+  if (isString(fmNow.$layout) || fmNow.$layout === false) {
+    tmp.$layout = fmNow.$layout;
+  }
   fn(tmp);
-  if (tmp.title !== fmNow.title) {
-    mutateUpdateFrontmatter(tab, "title", tmp.title);
-  }
-  if (isString(fmNow.description) && tmp.description !== fmNow.description) {
-    mutateUpdateFrontmatter(
-      tab,
-      "description",
-      isString(tmp.description) ? tmp.description : undefined,
-    );
-  }
   const newHead = tmp.$head && tmp.$head.length > 0 ? tmp.$head : undefined;
-  /* SAFETY: every entry here either came from the frontmatter (JSON, from the format's split) or
-     was built by a head editor out of string attributes; JxHeadEntry is wider than JsonValue only
-     through its open index signature, which no head editor writes. */
-  mutateUpdateFrontmatter(tab, "$head", newHead as JsonValue | undefined);
+  const layoutChanged = tmp.$layout !== fmNow.$layout;
+  const titleChanged = tmp.title !== fmNow.title;
+  const descriptionChanged = isString(fmNow.description) && tmp.description !== fmNow.description;
+  const headChanged = JSON.stringify(newHead) !== JSON.stringify(fmHead);
+  /* The writes go through the transaction log, as every other frontmatter commit does. That is what
+     records them for undo and swaps the document's root reference, which is the signal the canvas
+     redraws on: a Layout pick on a Markdown page that only mutated the frontmatter in place was
+     stored, and the page went on showing its old layout until something unrelated redrew it. A
+     mutation that changed nothing records nothing, since an empty transaction is still an undo step. */
+  if (layoutChanged || titleChanged || descriptionChanged || headChanged) {
+    transactDoc(tab, (t) => {
+      // The Layout picker writes `$layout`, and on a Markdown page that is a frontmatter key.
+      if (layoutChanged) {
+        mutateUpdateFrontmatter(
+          t,
+          "$layout",
+          isString(tmp.$layout) || tmp.$layout === false ? tmp.$layout : undefined,
+        );
+      }
+      if (titleChanged) {
+        mutateUpdateFrontmatter(t, "title", tmp.title);
+      }
+      if (descriptionChanged) {
+        mutateUpdateFrontmatter(
+          t,
+          "description",
+          isString(tmp.description) ? tmp.description : undefined,
+        );
+      }
+      if (headChanged) {
+        /* SAFETY: every entry here either came from the frontmatter (JSON, from the format's split)
+           or was built by a head editor out of string attributes; JxHeadEntry is wider than
+           JsonValue only through its open index signature, which no head editor writes. */
+        mutateUpdateFrontmatter(t, "$head", newHead as JsonValue | undefined);
+      }
+    });
+  }
   rerender();
 }
 
@@ -1029,6 +1052,12 @@ interface RowCommit {
   clear: () => void;
   /** Commit what the control settled on — a string from every kind but the checkbox. */
   commit: (raw: string | boolean) => void;
+  /**
+   * Whether this row's Browse lists only pictures (studio.md §9.3): the social image and the icon
+   * always do, a frontmatter media field only when its schema says `format: "image"` — a video or a
+   * PDF field browsing a picture-only list could never be filled from it.
+   */
+  images: boolean;
 }
 
 /** What the panel is drawn against: the focused document, reduced to what this reads. */
@@ -1127,6 +1156,7 @@ function thumbFor(row: PageRow, value: string): void {
 function titleRow(doc: JxMutableNode, apply: PagePanelContext["applyMutation"]): PageRow {
   const title = isString(doc.title) ? doc.title : "";
   _commits.set("title", {
+    images: false,
     clear: () =>
       apply((d) => {
         delete d.title;
@@ -1159,6 +1189,7 @@ function metaRow(
   const value = String(findMetaEntry(head, field.attr, field.key)?.attributes?.content ?? "");
   const key = `meta:${field.attr}:${field.key}`;
   _commits.set(key, {
+    images: field.media === true,
     clear: () => apply((d) => upsertMeta(d, field.attr, field.key, "")),
     /* A media field is not trimmed: a path is committed exactly as it was chosen, and the browser
        and the upload both hand one back already clean. */
@@ -1189,6 +1220,7 @@ function descriptionRow(doc: JxMutableNode, apply: PagePanelContext["applyMutati
   const value = pageDescription(doc);
   const key = "meta:name:description";
   _commits.set(key, {
+    images: false,
     clear: () => apply((d) => setPageDescription(d, "")),
     commit: (raw) => apply((d) => setPageDescription(d, String(raw).trim())),
   });
@@ -1204,6 +1236,7 @@ function descriptionRow(doc: JxMutableNode, apply: PagePanelContext["applyMutati
 function iconRow(head: JxHeadEntry[], apply: PagePanelContext["applyMutation"]): PageRow {
   const value = String(findLinkEntry(head, "icon")?.attributes?.href ?? "");
   _commits.set("link:icon", {
+    images: true,
     clear: () => apply((d) => upsertLink(d, "icon", "")),
     commit: (raw) => apply((d) => upsertLink(d, "icon", String(raw))),
   });
@@ -1219,8 +1252,7 @@ function iconRow(head: JxHeadEntry[], apply: PagePanelContext["applyMutation"]):
  * The Layout picker, or `null` when this document takes none — a component has no layout, and a
  * page whose layouts directory is still being listed has nothing to offer yet.
  *
- * The listing is {@link layoutPickerEntries}', which the Document Header card reads too: creating a
- * layout invalidates one cache rather than two.
+ * The listing is {@link layoutPickerEntries}', one cache that creating a layout invalidates.
  */
 function layoutSection(
   tab: Tab | null,
@@ -1238,6 +1270,7 @@ function layoutSection(
   const defaultPath = projectState?.projectConfig?.defaults?.layout;
   const defaultLabel = defaultPath ? layoutDisplayName(defaultPath) : "";
   _commits.set("__layout", {
+    images: false,
     clear: () =>
       apply((d) => {
         delete d.$layout;
@@ -1303,6 +1336,7 @@ function frontmatterSection(tab: Tab | null): PageSection | null {
       rerender: sync,
     });
     _commits.set(key, {
+      images: row.kind === "media" && f.entry.format === "image",
       clear: () => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field)),
       commit: (raw) => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field, parse(raw))),
     });
@@ -1514,13 +1548,12 @@ const ACTIONS: PagePanelActions = {
     flushPending(key);
     void mediaPicker().then((m) => {
       if (anchor instanceof HTMLElement) {
-        // Both of the panel's media rows (the social image and the icon) hold a picture.
         m.showMediaPickerPopover(
           anchor,
           (val: string) => {
             _commits.get(key)?.commit(val);
           },
-          { images: true },
+          { images: _commits.get(key)?.images ?? true },
         );
       }
     });
@@ -1554,8 +1587,8 @@ const ACTIONS: PagePanelActions = {
     sync();
   },
   openSeo: () => {
-    /* The COMMAND, not a local open() — the Document Header card offers the same door and neither
-       of them owns it, so the palette has it by name. */
+    /* The COMMAND, not a local open(): no surface owns the capability, so the palette has it by
+       name. */
     void activeRegistry()?.run("document.openSeo");
   },
   removeEntry,

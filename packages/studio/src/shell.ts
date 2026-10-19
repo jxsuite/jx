@@ -696,6 +696,29 @@ function createShellState(): ShellState {
  */
 applyStartupProfile();
 
+/**
+ * Storage keys a retired surface used to write, removed on boot so a stale preference never
+ * outlives the control that set it.
+ *
+ * `jx-studio-doc-header-expanded` was the Document Header card's fold-to-bar preference. Edit draws
+ * no card any more (studio.md §4.2), so nothing reads the key and nothing should be left holding
+ * it.
+ */
+export const RETIRED_STORAGE_KEYS: readonly string[] = ["jx-studio-doc-header-expanded"];
+
+/** Drop every {@link RETIRED_STORAGE_KEYS} entry, tolerating unavailable storage. Never throws. */
+export function forgetRetiredStorage(): void {
+  try {
+    for (const key of RETIRED_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage blocked or unavailable: there is nothing stored to forget.
+  }
+}
+
+forgetRetiredStorage();
+
 /*
  * SAFETY: `reactive()` returns a deep proxy carrying its target's own members, and ShellState holds
  * no refs for `UnwrapNestedRefs` to unwrap, so the proxy IS a ShellState. The type argument is

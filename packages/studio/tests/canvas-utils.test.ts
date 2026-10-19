@@ -932,8 +932,8 @@ describe("panToParentRect", () => {
   });
 
   /*
-   * Edit docks the Document Header card ABOVE its scroller, inside the same stage cell. The live
-   * geometry: a 859px stage, a 176.5px band and the stage's 24px gap, which leaves the scroller
+   * Over a collection entry Edit stands the writing banner ABOVE its scroller, inside the same stage
+   * cell. The geometry: a 859px stage, a 176.5px band and the stage's 24px gap, which leaves the scroller
    * 642px tall from y=217. A node centred at y=538 is dead centre in what the author can see — and
    * 108.5px below the centre of the STAGE, which is what this measured before, so a reveal "centred"
    * it by scrolling it up under the band's lower half.

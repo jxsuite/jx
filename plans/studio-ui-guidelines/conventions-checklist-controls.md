@@ -10,6 +10,8 @@ size: L
 
 # Every Studio control has one accessible name, says whether its popup is open and why it is disabled, and every emitted class has a rule
 
+> **The Document Header card is gone.** Edit no longer draws a card above the page (`studio.md` §4.2), so `src/surfaces/doc-header.{ts,json}`, `src/panels/frontmatter-panel.ts` and `tests/frontmatter-panel.test.ts` were deleted. Every finding, step and test below that names them is void; the Inspector's Page tab (`src/panels/head-panel.ts` over `src/surfaces/panel-page.json`, tested by `tests/head-panel.test.ts`) is the one surface left for that work.
+
 ## Context
 
 `specs/studio-ui-guidelines.md` §10 (line 669) is Partial for five items that inherit other sections' open items. Detailing `plan:studio-ui-guidelines/conventions-checklist` verified the other twenty against the code and found four more false. Each is a rule that no numbered section except §10 states, so no section owner will fix it; §14's Accessible Name row (**Adopted**, binding §10) rests on the first. This plan fixes the four, closes one hole in the focus-ring gate, and holds them mechanically. It claims nothing: §10 keeps one owner, which requires this plan.

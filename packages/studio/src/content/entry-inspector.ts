@@ -189,6 +189,11 @@ export function renderEntryInspector(host: HTMLElement, tab: Tab): void {
             "Entry",
           );
         },
+        /* The command, not a local open(): Search appearance has one definition site, and an
+           entry's search title, description and image are frontmatter it commits into. */
+        openSeo: () => {
+          void runActiveReported("document.openSeo", undefined, "Entry");
+        },
         setDraft: (draft) => setEntryDraft(tab, draft),
       },
       {

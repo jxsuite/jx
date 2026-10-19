@@ -95,7 +95,7 @@ Seeded means:
 
 Open an entry from the [Content workspace](/docs/studio/projects/browse), or right-click it in the Files tree and choose **Open Entry** (the row is offered only for a file that belongs to a collection). Where its fields appear depends on whether it has a body:
 
-- **An entry with a body** (a Markdown post) is written on the canvas inside its template, and its fields are the Inspector's **Entry** tab, beside its status, the URL its page publishes it at, and the file it is stored in. A page that lists the entries it publishes (`$paths.values`, as a taxonomy page does) gives a URL only to those; the Entry tab of any other entry says it is not published. See **[Write an entry](/docs/studio/projects/browse#write-an-entry)**.
+- **An entry with a body** (a Markdown post) is written on the canvas inside its template, and its fields are the Inspector's **Entry** tab, beside its status, the URL its page publishes it at (with a **Search appearance** button beside it), and the file it is stored in. A page that lists the entries it publishes (`$paths.values`, as a taxonomy page does) gives a URL only to those; the Entry tab of any other entry says it is not published. See **[Write an entry](/docs/studio/projects/browse#write-an-entry)**.
 - **An entry that is only fields** (a JSON entry) opens in the **entry form**, on the same tab, so :kbd[⌘Z] and :kbd[⌘S] behave as they do anywhere else.
 - **A record of a CSV collection** (one row of its file) opens in the same entry form, headed by its place in the file with **Previous** and **Next**. Its fields are written into the file's own grid, so :kbd[⌘S] saves the file and only the cells you changed are rewritten. See **[A collection stored in one file](/docs/studio/projects/browse#a-collection-stored-in-one-file)**.
 
@@ -111,7 +111,7 @@ Both are the same form: your schema, drawn as one control per field, the title f
 
 Open a file that belongs to no collection and the form says exactly that, and offers a button through to the Content Types section rather than drawing an empty form.
 
-A Markdown entry's frontmatter is reachable while you write it on the canvas, too, from the Inspector's **Entry** tab, the one place an entry's fields are edited (the canvas shows the writing banner in place of the Document Header card). See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
+A Markdown entry's frontmatter is reachable while you write it on the canvas, too, from the Inspector's **Entry** tab, the one place an entry's fields are edited (the canvas shows only the writing banner above the entry). See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
 
 ## Drafts
 

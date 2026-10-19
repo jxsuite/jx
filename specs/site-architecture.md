@@ -1115,13 +1115,13 @@ The compiler serializes the `textContent` object to a JSON string within the `<s
 
 > **Status: Partial.** The `Search appearance` modal ships the merged-`$head` previews with provenance, the counters, the warnings and the grouped live fields (`packages/studio/src/panels/seo-modal.ts`, `packages/studio/src/panels/head-panel.ts`). The Schema.org editor does not exist anywhere in `packages/studio`, and `document.openSeo` deliberately declares no `aiTool` (`studio-ui-guidelines.md` §12.4), where this section says it has one.
 >
-> The previews live in a **modal**, `Search appearance`, rather than an inspector tab: they describe the document rather than a selection, and a rendered SERP row is a picture you study at width, not a field you fill in beside four others. They began as a disclosure inside the Document Header card and outgrew it — the card's job is the handful of values you type while writing.
+> The previews live in a **modal**, `Search appearance`, rather than an inspector tab: they describe the document rather than a selection, and a rendered SERP row is a picture you study at width, not a field you fill in beside four others. They began as a disclosure inside the Document Header card, which Edit no longer draws (`studio.md` §4.2), and outgrew it: a card's job is the handful of values you type while writing, and those are the Inspector's Page tab now.
 
 **The preview shows the MERGED `$head`** (§8.3), not the page's own entries — a page appends to the site's head rather than replacing it, so a preview of the page's half would misreport every title that inherits. Values the page did not author are marked as inherited, naming the donor, in the same provenance vocabulary the inspector uses for style and props.
 
 **There is no score.** Counters and named warnings only. A number out of 100 invites optimising the number, and the number is not the thing.
 
-**Two doors and a command.** The surface is opened by `document.openSeo` — a document-level command in the palette, with an `aiTool` projection — and projected onto two buttons: one at the foot of the Document Header card, one beside the Page panel's `Page` heading. Neither surface owns it. Two buttons because they are two moments: while writing the page, and while working on its head material.
+**One door and a command.** The surface is opened by `document.openSeo` — a document-level command in the palette, with an `aiTool` projection — and projected onto one button in the Inspector's Page tab, beside its `Page` heading, whether the tab is drawing a page's settings or a collection entry's (`studio.md` §6). The tab does not own it, so the palette reaches it by name. (A second button stood at the foot of the Document Header card until Edit stopped drawing that card, `studio.md` §4.2.)
 
 For any page or content entry it shows:
 

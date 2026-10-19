@@ -8,14 +8,14 @@
  * writing. A previewed SERP result is not a field; it is a picture you study, and studying it in a
  * strip above the canvas meant the card grew taller than the thing it describes.
  *
- * So it opens as a modal, from two places — the Document Header card and the Inspector's Page tab.
- * Two doors because the two are different moments: one while writing the page, one while working on
- * its head material. Both run `document.openSeo`, so there is a third door in the palette and no
- * surface owns the capability (one definition site per action, §13).
+ * So it opens as a modal, from the Inspector's Page tab (and, once, from the Document Header card
+ * Edit used to dock above the page, studio.md §4.2). The tab's button runs `document.openSeo`, so
+ * there is a second door in the palette and no surface owns the capability (one definition site per
+ * action, §13).
  *
- * **The card keeps the fields; the modal keeps the picture.** Title still lives on the card,
- * because it is the one head value you type while writing. Everything the modal holds is either a
- * rendering of what the build will emit or a field you set once and leave.
+ * **The Page tab keeps the fields; the modal keeps the picture.** Title lives on the tab, because
+ * it is the one head value you type while writing. Everything the modal holds is either a rendering
+ * of what the build will emit or a field you set once and leave.
  *
  * **This module is the flow; `surfaces/seo.json` is the markup.** What lives here is every
  * judgement the picture rests on: which realm a commit is written into, what each previewed line
@@ -24,9 +24,9 @@
  * decision — it holds the parts, the ARIA and the styling, and it branches on flags this module
  * hands it.
  *
- * The mutation path is the card's, unchanged: a markdown page commits through
- * `applyContentMutation` and a JSON one through `transact`, both taking the tab so the modal edits
- * the document it was opened over rather than whichever pane has focus.
+ * The mutation path is the Page tab's: a markdown page commits through `applyContentMutation` and a
+ * JSON one through `transact`, both taking the tab so the modal edits the document it was opened
+ * over rather than whichever pane has focus.
  *
  * @docs studio/editing/frontmatter
  */
@@ -462,10 +462,10 @@ export function closeSeoModal(): void {
 /**
  * `document.openSeo` — the one capability behind both buttons.
  *
- * The Document Header card and the Page panel each render a control that runs this, so neither owns
- * it and the palette has it by name. A record rather than two click handlers, for the reason the
- * rendering-context axes became records: a surface that IS the capability is a capability the
- * palette, the assistant and `__jxAutomation` cannot reach.
+ * The Page tab renders a control that runs this, so it does not own it and the palette has it by
+ * name. A record rather than two click handlers, for the reason the rendering-context axes became
+ * records: a surface that IS the capability is a capability the palette, the assistant and
+ * `__jxAutomation` cannot reach.
  *
  * @returns {AnyCommand[]}
  */

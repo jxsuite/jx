@@ -750,21 +750,6 @@
       "shot": "new-project",
       "width": 1152
     },
-    "docs/images/properties-bar.png": {
-      "bytes": 38831,
-      "capturedAt": "2026-10-19T01:56:18Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "7b0f1a445a87d68e57ee37df3f911c53c179fa236b31aa89255877e5def46d33",
-      "height": 484,
-      "runtime": {
-        "chromium": "151",
-        "fontset": "fc:cac8f480b341",
-        "os": "debian-12"
-      },
-      "sha256": "c7c749acf904e23bc56da0004cf0732fa52aaa3e8ea5ea6cd7316e6cc6beeeee",
-      "shot": "properties-bar",
-      "width": 2720
-    },
     "docs/images/properties-panel.png": {
       "bytes": 56843,
       "capturedAt": "2026-10-19T01:54:59Z",

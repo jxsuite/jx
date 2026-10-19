@@ -37,10 +37,10 @@ registerSurface("panel-page", pagePanelDoc);
  * `$switch` chooses on one: a row that omitted `options` would leave the picker case reading an
  * absent path.
  *
- * {@link PageRow.key} and {@link PageRow.prop} are two fields for the reason the Document Header
- * card gives: `key` is the identity the repeater and every action use, `prop` is the name a reader,
- * a screenshot region and `ui/regions.ts`'s `field:<prop>` grammar see. A collection whose schema
- * declares a `layout` property would otherwise share an identity with the Layout picker.
+ * {@link PageRow.key} and {@link PageRow.prop} are two fields: `key` is the identity the repeater
+ * and every action use, `prop` is the name a reader, a screenshot region and `ui/regions.ts`'s
+ * `field:<prop>` grammar see. A collection whose schema declares a `layout` property would
+ * otherwise share an identity with the Layout picker.
  */
 export interface PageRow {
   /** The row's identity: the repeater's key, and the argument every action is given. */

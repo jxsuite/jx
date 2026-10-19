@@ -1015,15 +1015,14 @@ const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
 /**
  * Can a box between `target` and the stage still answer this wheel itself?
  *
- * Edit forwards every wheel to the page's scroller (see the branch below), which was the whole
- * story while the stage cell held nothing but the page. It also holds the Document Header band now,
- * a capped scroll container standing beside the scroller — and a `preventDefault` from an ANCESTOR
- * listener cancels the native scroll of whatever the pointer is over, so a form taller than the cap
- * could not be wheeled at all while the page scrolled underneath it instead. So the stage takes the
- * wheel only when nothing inside it wants one: the walk stops at the stage cell, and it steps over
- * the page's scroller because that box is what the forwarding is FOR — a wheel forwarded out of the
- * cross-origin frame is dispatched on the cell itself and reaches no scrollable element on the way,
- * and letting the browser scroll the page natively would chain out of it into the shell.
+ * Edit forwards every wheel to the page's scroller (see the branch below). A `preventDefault` from
+ * an ANCESTOR listener cancels the native scroll of whatever the pointer is over, so any box in the
+ * stage cell that scrolls itself (a sideways strip, a capped list) would otherwise be unwheelable
+ * while the page scrolled underneath it instead. So the stage takes the wheel only when nothing
+ * inside it wants one: the walk stops at the stage cell, and it steps over the page's scroller
+ * because that box is what the forwarding is FOR — a wheel forwarded out of the cross-origin frame
+ * is dispatched on the cell itself and reaches no scrollable element on the way, and letting the
+ * browser scroll the page natively would chain out of it into the shell.
  *
  * @param {WheelEvent} e
  * @param {HTMLElement} stage The cell the listener is on — the walk's upper bound, exclusive.
@@ -1148,8 +1147,8 @@ export function installStageGestures(surface: CanvasSurface): () => void {
         /* The stage's own scroller, by the `part` the stage document draws it with — the same
            attribute every other consumer of the canvas's chrome now addresses it by. */
         const sc = canvasWrap.querySelector<HTMLElement>('[part="edit-canvas"]');
-        /* …unless the pointer is over a box in this cell that scrolls itself — the Document Header
-           band, which Edit docks beside the scroller. See {@link wheelBelongsInside}. */
+        /* …unless the pointer is over a box in this cell that scrolls itself. See
+           {@link wheelBelongsInside}. */
         if (sc && !wheelBelongsInside(e, canvasWrap, sc)) {
           e.preventDefault();
           sc.scrollTop += e.deltaY;

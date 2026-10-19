@@ -12,6 +12,7 @@ import { installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   entryLayout,
+  pageLayout,
   rebaseLayoutElementRefs,
   resolveCanvasDocument,
   resolveCanvasLayout,
@@ -110,6 +111,25 @@ beforeEach(() => {
 
 afterEach(() => {
   closeAllTabs();
+});
+
+describe("a page's own layout override", () => {
+  /* A Markdown page keeps its `$layout` in frontmatter, where the Page tab's Layout picker writes
+     it and the build reads it; the canvas reads it there too, so the picker's choice is drawn. */
+  test("is the document's $layout first, then a Markdown page's frontmatter $layout", () => {
+    const tab = openEntryTab(entryBody(), { $layout: "./layouts/post.json" });
+    expect(pageLayout(tab.doc.document, tab)).toBe("./layouts/post.json");
+    expect(pageLayout({ $layout: false, tagName: "div" }, tab)).toBe(false);
+  });
+
+  test("a frontmatter `$layout: false` is honoured, and a non-string is not a layout", () => {
+    const tab = openEntryTab();
+    tab.doc.content.frontmatter.$layout = false;
+    expect(pageLayout(tab.doc.document, tab)).toBe(false);
+    tab.doc.content.frontmatter.$layout = 3;
+    expect(pageLayout(tab.doc.document, tab)).toBeUndefined();
+    expect(pageLayout({ tagName: "div" }, null)).toBeUndefined();
+  });
 });
 
 describe("the layout an entry is drawn in", () => {

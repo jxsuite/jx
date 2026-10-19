@@ -1,14 +1,14 @@
 ---
 title: "Frontmatter and page metadata"
-description: "Fill in titles, descriptions, social cards, and content-type fields with the Inspector's Page tab and the Document Header card, then preview the head."
+description: "Fill in titles, descriptions, social cards, and content-type fields on the Inspector's Page tab, then preview the head in Search appearance."
 spec:
   - site-architecture.md#8.6
 code:
   - packages/studio/src/panels/head-panel.ts
   - packages/studio/src/surfaces/panel-page.ts
   - packages/studio/src/panels/right-panel.ts
-  - packages/studio/src/panels/frontmatter-panel.ts
   - packages/studio/src/panels/seo-modal.ts
+  - packages/studio/src/surfaces/seo.ts
   - packages/studio/src/panels/frontmatter-fields.ts
   - packages/studio/src/panels/provenance.ts
 ---
@@ -17,13 +17,13 @@ code:
 
 Every page carries information that isn't part of its visible text: a title, a description for search engines, an image for social shares. Content like a blog post adds fields such as a date, an author, or tags. This is the page's _frontmatter_, and Studio edits all of it as plain forms.
 
-Two surfaces show these fields: the **Page** tab of the Inspector, and the **Document Header** card docked at the top of the canvas in Edit view.
+All of it lives in one place: the **Page** tab of the Inspector. The canvas shows only the page itself, so in Edit view a page opens at the top with nothing docked above it, and its settings are a click away in the Inspector whichever view you are in.
 
 ## The Page panel
 
 The Page panel is the Inspector's first tab. Click it, press :kbd[⌘⇧1] (:kbd[Ctrl+Shift+1] on Windows/Linux), or select nothing on the canvas: the Inspector switches to Page on its own when the selection goes away, and back to the element you select next. The tab is named for what the open file is (**Page**, **Template**, **Component**, **Entry**, or **Document**), and its sections, top to bottom, depend on the file you have open:
 
-![The Page panel showing Frontmatter, Page, and OpenGraph sections for a blog post](../../images/document-panel.png)
+![The Inspector's Page tab for a page, showing its Layout, Page, and OpenGraph sections](../../images/document-panel.png)
 
 A component has no page settings of its own, because its title, search and social details come from the page it is placed on. Its **Component** tab says so, and **Edit tag and props** selects the component's root, where Element › Content edits its tag name and the defaults of the props it takes.
 
@@ -42,7 +42,7 @@ Any extra field already present in the file appears too, even if the collection 
 
 ### Layout
 
-Site pages also get a **Layout** picker: keep the project default, choose a specific layout, or pick **None**; see **[Pages, layouts, components](/docs/studio/projects/pages-layouts-components)**. **Edit template** under it opens the layout the page is drawn in, so you can change the header or footer every page shares.
+Site pages also get a **Layout** picker: keep the project default, choose a specific layout, or pick **None**; see **[Pages, layouts, components](/docs/studio/projects/pages-layouts-components)**. **Edit template** under it opens the layout the page is drawn in, so you can change the header or footer every page shares. A Markdown page keeps its choice as a `$layout` key in its frontmatter, and a JSON page on its root.
 
 ### Page
 
@@ -50,7 +50,7 @@ The basics every page should have:
 
 - **Title**: the browser-tab and search-result title.
 - **URL**: the address the page is published at, which comes from where its file sits in `pages/`. To change it, rename or move the file.
-- **Description**: the summary search engines show under the title. A page has one description, and this field edits it wherever the page keeps it: a Markdown page's `description:` frontmatter key, or a description tag in the page's head. Because it is edited here, that frontmatter key is not listed again among the page's other fields, and the Document Header card shows the same Description under the Title.
+- **Description**: the summary search engines show under the title. A page has one description, and this field edits it wherever the page keeps it: a Markdown page's `description:` frontmatter key, or a description tag in the page's head. Because it is edited here, that frontmatter key is not listed again among the page's other fields.
 - **Viewport**: leave the suggested default unless you have a specific reason not to.
 - **Icon**: the small icon in the browser tab, picked from your media.
 
@@ -62,19 +62,9 @@ The card shown when the page is shared on social platforms: **Title**, **Descrip
 
 The escape hatch for everything else that can live in a page's head: analytics, a verification token, a webfont. Pick a tag (`meta`, `link`, or `script`), type its attribute and value, and click the add button or press :kbd[Enter] in either field. Existing custom entries are listed with a remove button each; before you add the first one the section says what it's for, with the add form right beneath. Most sites never need this section.
 
-## The Document Header card
-
-Every page with frontmatter or head tags carries a **Document Header** card in Edit view. It's docked across the top of the canvas pane, as wide as the pane rather than the page, and it stays in place while you scroll the page beneath it; a long form scrolls inside the card, under the wheel as well as by its scrollbar, instead of pushing the page down. The card never takes more than half the pane, so there's always a page to work on under it. Design view leaves it out so the artboards get the whole pane, and the same fields stay on the Inspector's **Page** tab. A collection entry written on the canvas has no card either: the writing banner stands in its place, and the entry's fields are on the Inspector's **Entry** tab, so they are never edited in two places at once.
-
-Its bar names what the document is: the collection it belongs to, or **Document** when it belongs to none. For a page it also prints the route it will be published at. Underneath sit the **Title** field, the layout picker for site pages, and the collection's own fields: the same set as the Page panel's Frontmatter section. Click the bar to fold the card down to that one line, and click it again to open it. Studio remembers your last choice: every document you open afterwards starts with its card open or folded to match, even after a restart, while documents that are already open keep the state you left them in. A document that has a header always shows its bar in Edit view.
-
-![The Document Header card above a page open in Edit view](../../images/properties-bar.png)
-
-Closing the card are a **Search appearance…** button and one disclosure, **Raw head tags**: every head entry no form owns, listed read-only, so a tag you can't see can't surprise you. The Page panel remains the place to add and remove those.
-
 ## Search appearance
 
-**Search appearance** is a window of its own, and there are three ways in: the button at the foot of the Document Header card, the one beside the Page panel's **Page** heading, and the command palette. All three open the same thing over the document you're working on.
+**Search appearance** is a window of its own, and there are two ways in: the button beside the Page tab's **Page** heading (on a collection entry too, where the tab is titled **Entry**), and the command palette. Both open the same thing over the document you're working on.
 
 The first thing it shows is not a form but two pictures of the finished page: a **Search result** preview (breadcrumb, title, description) and a **Social card** preview with its image, domain, headline and summary. Below them is the resolved-field list, then the warnings, and only then the controls that change any of it.
 
@@ -135,5 +125,3 @@ On disk, all of this lives at the top of the page's own file, in a small labeled
 - Edit a whole collection's frontmatter at once in **[Grid mode](/docs/studio/editing/grid)**
 - Define collections and their fields in **[Content types](/docs/studio/projects/content-types)**
 - How the three layers merge, and what the build adds, in **[SEO and metadata](/docs/framework/site/seo)**
-  - packages/studio/src/surfaces/doc-header.ts
-  - packages/studio/src/surfaces/seo.ts

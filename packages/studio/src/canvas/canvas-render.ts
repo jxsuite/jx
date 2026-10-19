@@ -76,7 +76,6 @@ import { normalizeDocument } from "../tabs/bare-repeaters";
 import { diffModelUrisFor, modelUriFor, monacoLangForPath } from "../services/model-uri";
 import { renderWelcome } from "../surfaces/welcome";
 import { emptyState } from "../surfaces/empty-state";
-import { attachDocumentHeaderHost, hasDocumentHeader } from "../panels/frontmatter-panel";
 import {
   attachWritingBanner,
   detachWritingBanner,
@@ -251,7 +250,7 @@ function hardClearCanvasWrap(canvasWrap: HTMLElement) {
  * the two width handles apart: `data-side`, the one part the stage document draws twice).
  *
  * Per STAGE rather than per module, for the reason every other field on `CanvasSurface` is: two
- * panes each have a Monaco host and a card slot, and one slot would hand the second pane's stage
+ * panes each have a Monaco host and a banner slot, and one slot would hand the second pane's stage
  * the first pane's editor.
  */
 const _stageHosts = new WeakMap<CanvasSurface, Map<string, HTMLElement>>();
@@ -295,8 +294,6 @@ function stageActions(surface: CanvasSurface): CanvasStageActions {
       stageHosts(surface).set(detail ? `${part}:${detail}` : part, element);
       if (part === "panzoom") {
         surface.panzoomWrap = element;
-      } else if (part === "doc-header") {
-        attachDocumentHeaderHost(surface.paneId, element);
       } else if (part === "writing-banner") {
         attachWritingBanner(surface.paneId, element);
       } else if (part === "diff-toolbar") {
@@ -334,8 +331,8 @@ function drawStage(
   entries: CanvasPanelEntry[],
 ): Promise<CanvasStageHandle | null> {
   _stageEntries.set(surface, entries);
-  /* There is no card-host release here, and there must not be one: `renderCanvasImpl` already
-     releases it for EVERY mode that draws no header, one branch above this one. A second answer to
+  /* There is no banner-host release here, and there must not be one: `renderCanvasImpl` already
+     releases it for EVERY mode that draws no banner, one branch above this one. A second answer to
      the same question is how the two drift — and this one would answer only for the frames that
      reach a stage, leaving grid, the homes, entry and media to the first. */
   const standing = surface.stage;
@@ -379,9 +376,8 @@ function editorStageView(frame: "source" | "code"): CanvasStageView {
  * Release this pane's stage document.
  *
  * Called on a real mode transition and on a full reset — the two moments the structure standing on
- * the stage stops being the stage's. The two hosts that are handed to another module go WITH it: a
- * card slot or a Compare bar pointing at a detached node is a surface that draws into nothing and
- * never says so.
+ * the stage stops being the stage's. The host handed to another module goes WITH it: a Compare bar
+ * pointing at a detached node is a surface that draws into nothing and never says so.
  *
  * @param {CanvasSurface} surface
  */
@@ -393,7 +389,6 @@ function detachCanvasStage(surface: CanvasSurface): void {
   surface.stage = null;
   _stageHosts.delete(surface);
   _stageEntries.delete(surface);
-  attachDocumentHeaderHost(surface.paneId, null);
   setDiffToolbarHost(surface.paneId, null);
 }
 
@@ -1000,7 +995,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
     // No active tab — reset every piece of canvas view state so reopening a file can never inherit
     // A stale Lit part, a dead Monaco editor, or a mismatched prevCanvasMode (the toxic states that
     // Previously left the canvas unrenderable until a full reload).
-    attachDocumentHeaderHost(surface.paneId, null);
     resetCanvasView(surface);
     /* A DERIVED pane with nothing to draw explains itself. It is not the welcome screen and it is
        not a blank stage: it is a standing rule that has not resolved — "Select an element inside a
@@ -1030,7 +1024,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
      follow has run and a stage that blanked on that would flicker on every retarget. */
   const staleDerivation = derivationOfPane(surface.paneId);
   if (staleDerivation?.status === "unavailable" && staleDerivation.reason) {
-    attachDocumentHeaderHost(surface.paneId, null);
     resetCanvasView(surface);
     /* …and for a COMPANION, what it is still holding. `tab` here is the pane's OWN document for a
        companion and the SOURCE pane's for a lens — the hop `tabOfPane` takes — so the kind decides
@@ -1056,26 +1049,12 @@ function renderCanvasImpl(surface: CanvasSurface) {
   // Re-rendering the previous mode's panels in place.
   const canvasMode = canvasModeOfPane(surface.paneId);
 
-  /* The Document Header card is drawn by the STAGE, and only by Edit's. It is docked
-     above the page's scroller, a band across the pane at 1:1: its width is the PANE's rather than
-     the breakpoint's, and the page scrolls under it rather than taking it along. It used to go
-     INSIDE Edit's column, where it was exactly as wide as whatever breakpoint or dragged width the
-     column had and scrolled off with the first screen of the page, and it was pinned above Design's
-     artboards as well. Design omits it now, so the artboards get the whole pane, and nothing is
-     lost by that: the Inspector's Page tab carries the same fields in every mode.
-     `hasDocumentHeader` is the other predicate, and it is a fact about the DOCUMENT. It used to
-     carry two more clauses, suppressing the card while a function body or a formula was open on
-     the grounds that those sub-editors took the whole stage. They open in the dock's Logic tab now
-     (§16.3) and the page is still on screen behind it, so those clauses only DETACHED the visible
-     card: it stopped re-rendering and quietly showed frontmatter from before the edit. */
-  /* …and NOT in a lens. The Document Header is an editing surface — Title, Route, SEO, the raw
-     frontmatter — over a document this pane does not own, and two cards editing one document's
-     frontmatter side by side is two writers for one field. A lens is a view; the card belongs to
-     the pane that owns the tab. */
-  /* A collection entry written in Edit carries the writing-mode banner INSTEAD of the card
-     (§22.5): the canvas wraps it in its template's layout, and the banner says the layout is
-     locked. Not in a lens, for the card's reason: the banner's door belongs to the pane that owns
-     the tab. */
+  /* Edit draws the page and nothing above it (§4.2): a document's settings — title, URL, layout,
+     frontmatter, description, Search appearance — are the Inspector's Page tab's (§6), in every
+     mode, so the stage carries no card of its own and the page starts at the top of the pane.
+     A collection entry written in Edit carries the writing-mode banner (§22.5): the canvas wraps it
+     in its template's layout, and the banner says the layout is locked. Not in a lens: the
+     banner's door belongs to the pane that owns the tab, and a lens is a view. */
   const wantsWritingBanner =
     canvasMode === "edit" &&
     derivationOfPane(surface.paneId)?.kind !== "lens" &&
@@ -1083,16 +1062,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
     writesEntryOnCanvas(tab.documentPath);
   if (!wantsWritingBanner) {
     detachWritingBanner(surface.paneId);
-  }
-  /* An entry's fields are the Inspector's Entry tab's (§6), and nowhere else: the card over an
-     entry drew the same title and date a second time, each copy committing its own way. */
-  const wantsDocHeader =
-    canvasMode === "edit" &&
-    !wantsWritingBanner &&
-    derivationOfPane(surface.paneId)?.kind !== "lens" &&
-    hasDocumentHeader(tab);
-  if (!wantsDocHeader) {
-    attachDocumentHeaderHost(surface.paneId, null);
   }
 
   /* Advance THIS stage's render generation so stale async renders from its previous pass bail out.
@@ -1692,29 +1661,23 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const rootTag = S.document.tagName;
     const isComponentDoc = isString(rootTag) && rootTag.includes("-");
     const { featureToggles: editToggles } = S.ui;
-    /* The stage stacks when it carries the card: the band first, the page's scroller below it.
-       Set on every render rather than on the transition, because whether a document HAS a header
-       changes with the tab and not with the mode. `editors.ts` and `formula-workspace.ts` already
-       claim the column this way — `#canvas-wrap` is a row by default and each surface states its
-       own axis. Stretched, because the band is as wide as the PANE: that is the whole difference
-       between docking the card here and drawing it in the column, whose width is the breakpoint's
-       or the drag's.
-       And FLUSH: the cell's own 24px gap (`pane-grid.json`) between two side-by-side surfaces is
-       dead space between a docked band and the box below it. The scroller clips its content at its
-       top edge, so the gap put that edge 24px below the band's border with nothing drawn in
-       between — the page ended at an invisible line and the band read as a hairline over one
-       continuous surface. At 0 the clip happens AT the border, which is what makes the border read
-       as the band's edge; the scroller's own 32px of top padding is the breathing room. */
-    const stacks = wantsDocHeader || wantsWritingBanner;
+    /* The stage stacks when it carries the writing banner: the band first, the page's scroller
+       below it. Set on every render rather than on the transition, because whether a document is
+       a collection entry changes with the tab and not with the mode. `editors.ts` and
+       `formula-workspace.ts` already claim the column this way — `#canvas-wrap` is a row by
+       default and each surface states its own axis. Stretched, because the band is as wide as the
+       PANE rather than the breakpoint's column. And FLUSH: the cell's own 24px gap
+       (`pane-grid.json`) between two side-by-side surfaces would be dead space between the band and
+       the scroller below it, whose own 32px of top padding is the breathing room. */
+    const stacks = wantsWritingBanner;
     canvasWrap.style.flexDirection = stacks ? "column" : "";
     canvasWrap.style.alignItems = stacks ? "stretch" : "";
     canvasWrap.style.gap = stacks ? "0px" : "";
     void drawStage(
       surface,
       {
-        /* The card LEADS the frame (`tests/canvas-render.test.ts`, "Edit docks it above the page's
-           scroller"): a sibling of the scroller rather than a block of the column, so the page
-           scrolls under it and the breakpoint does not size it. The two handles are not in the
+        /* The banner LEADS the frame: a sibling of the scroller rather than a block of the column,
+           so the page scrolls under it and the breakpoint does not size it. The two handles are not in the
            column either: they are `jx-split`s standing beside it in the canvas's row, because the
            canvas is the track a splitter has to measure and the column is the thing being
            resized. */
@@ -1724,7 +1687,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
         handles: "shown",
         hug: isComponentDoc,
         innerPart: "edit-column",
-        lead: wantsWritingBanner ? "banner" : wantsDocHeader ? "header" : "none",
+        lead: wantsWritingBanner ? "banner" : "none",
         panels: [entry.item],
       },
       [entry],
@@ -1776,9 +1739,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
     canvasWrap.style.padding = "0";
     canvasWrap.style.overflow = "hidden";
   }
-  /* No Document Header here, so the stage cell stays the row it is by default: the card is Edit's
-     alone (see `wantsDocHeader`), and the transition into this mode has already cleared the two
-     inline writes Edit makes to stack it. */
+  /* Nothing leads Design's frame, so the stage cell stays the row it is by default: the writing
+     banner is Edit's alone (see `wantsWritingBanner`), and the transition into this mode has
+     already cleared the inline writes Edit makes to stack it. */
 
   const {
     sizeBreakpoints,
@@ -2042,7 +2005,6 @@ setSurfaceTeardown((surface) => {
   detachMediaPane(surface.paneId);
   detachVariablesView(surface.paneId);
   detachWorkspaceHome(surface.paneId);
-  attachDocumentHeaderHost(surface.paneId, null);
   detachWritingBanner(surface.paneId);
   disposeSourceCollab(surface);
   disposeSourceEditor(surface);

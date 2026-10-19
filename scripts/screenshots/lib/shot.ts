@@ -633,7 +633,7 @@ async function runInput(page: Page, step: InputStep, at: string): Promise<void> 
     // Anything below the fold — and a click at an off-viewport point silently selects nothing, so
     // The shot fails later and somewhere else. `revealPath` scrolls/pans the node into view and
     // Returns the settled point, which is what makes a caret step survive a layout change: the
-    // Document Header card landing in-column moved this very node 203px down the page.
+    // Document Header card (since removed) landing in-column once moved this node 203px down.
     const point = await page.evaluate(
       (path) => window.__jxAutomation.probe.revealPath(path),
       step.path,

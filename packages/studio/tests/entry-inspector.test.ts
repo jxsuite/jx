@@ -47,6 +47,15 @@ registry.register({
   },
   title: "Project Settings",
 });
+registry.register({
+  category: "Document",
+  id: "document.openSeo",
+  level: "document",
+  run: () => {
+    runs.push("document.openSeo");
+  },
+  title: "Search appearance",
+});
 setActiveRegistry(registry);
 
 function project(files: Record<string, string>, withPage = true): void {
@@ -223,6 +232,19 @@ describe("the mounted tab", () => {
     part("edit-fields")!.click();
     await flush(2);
     expect(runs).toEqual([{ entry: "posts", section: "content" }]);
+  });
+
+  /* An entry's search title, description and social image are frontmatter like a page's, so the
+     door the Page tab has stands here too: before it did, the docs pointed an author writing a post
+     at a button their tab never drew, and only the palette reached it. */
+  test("Search appearance runs document.openSeo", async () => {
+    const tab = await openPost();
+    await mount(tab);
+    const button = part("seo-button")!;
+    expect(button.textContent).toContain("Search appearance");
+    button.click();
+    await flush(2);
+    expect(runs).toEqual(["document.openSeo"]);
   });
 
   test("a second draw for the same tab updates in place; another tab remounts", async () => {

@@ -843,13 +843,13 @@ function entryIdsFor(collection: string): Promise<string[]> {
  * `null` means the read is still in flight, and `onSettled` is called when it lands — which is the
  * second frame a document has to be GIVEN, since nothing repaints it on the read's behalf.
  *
- * Exported because two surfaces draw the choices and neither is this control: the Document Header
- * card and the Inspector's Page tab project a `$ref` field as a picker row of their own
- * (`panels/frontmatter-fields.ts`), and what they need is not the widget but the answer behind it.
- * Taking it from here rather than calling `listCollectionEntryIds` directly is what keeps ONE cache
- * and ONE invalidation: a collection listed for the Document Header card is not listed again for
- * the entry editor, and {@link invalidateReferenceEntries} after an entry is created is still the
- * single event that forgets it.
+ * Exported because a surface draws the choices and is not this control: the Inspector's Page tab
+ * projects a `$ref` field as a picker row of its own (`panels/frontmatter-fields.ts`), and what it
+ * needs is not the widget but the answer behind it. Taking it from here rather than calling
+ * `listCollectionEntryIds` directly is what keeps ONE cache and ONE invalidation: a collection
+ * listed for the Page tab is not listed again for the entry editor, and
+ * {@link invalidateReferenceEntries} after an entry is created is still the single event that
+ * forgets it.
  *
  * @param {string} collection
  * @param {() => void} [onSettled]

@@ -12,8 +12,8 @@
  * picture.
  *
  * What CAN fail here is the set of controls: a lens must not offer the two axes that WRITE
- * (`ctx.setCanvasMode(tab, …)` on a tab the pane beside it owns), must not draw the Document Header
- * card (an editing surface over the same frontmatter), must keep the zoom pod (zoom is the one view
+ * (`ctx.setCanvasMode(tab, …)` on a tab the pane beside it owns), must not draw the writing banner
+ * (its door belongs to the pane that owns the entry), must keep the zoom pod (zoom is the one view
  * fact a lens owns), and must draw a derivation chip where an ordinary pane draws tab chips.
  */
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
@@ -38,7 +38,6 @@ const {
 } = await import("../src/workspace/workspace");
 const { setPaneDerivation, applyDerivation, derivationOfPane, noopDerivationDeps } =
   await import("../src/workspace/pane-derive");
-const { hasDocumentHeader } = await import("../src/panels/frontmatter-panel");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 const { activeRegistry, setActiveRegistry } = await import("../src/commands/active-registry");
@@ -1174,14 +1173,6 @@ describe("the derivation chip's box", () => {
 });
 
 describe("what a lens does NOT draw", () => {
-  test("no Document Header card — it is an editing surface over a document this pane does not own", () => {
-    const page = lensGrid();
-    /* The gate is `derivationOfPane(paneId)?.kind !== "lens"` inside `renderCanvasImpl`, so the
-       test states the two halves it composes: the document HAS a header, and the pane is a lens. */
-    expect(hasDocumentHeader(page)).toBe(true);
-    expect(derivationOfPane(SECONDARY_PANE)?.kind).toBe("lens");
-  });
-
   test("the jump bar's leading verb becomes Keep, and a lens refuses it", () => {
     const page = lensGrid();
     const derived = derivationOfPane(SECONDARY_PANE);

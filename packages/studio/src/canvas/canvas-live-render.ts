@@ -212,9 +212,22 @@ export function rebaseLayoutElementRefs(
 }
 
 /**
+ * A document's own layout override: its root's `$layout`, or a Markdown document's frontmatter
+ * `$layout` (which the build reads, and which the Inspector's Page tab writes); `undefined` when it
+ * names none.
+ */
+export function pageLayout(doc: JxMutableNode, tab: Tab | null): string | false | undefined {
+  if (doc.$layout !== undefined) {
+    return doc.$layout;
+  }
+  const fromFrontmatter = tab?.doc.content.frontmatter.$layout;
+  return isString(fromFrontmatter) || fromFrontmatter === false ? fromFrontmatter : undefined;
+}
+
+/**
  * The layout a collection entry is drawn in (studio.md §22.5): the entry's own `$layout` (on its
- * document, or in its frontmatter for a Markdown entry), else its collection's template page's
- * `$layout`, else the project's `defaults.layout`. `null` when none applies.
+ * document, or in its frontmatter for a Markdown entry, {@link pageLayout}), else its collection's
+ * template page's `$layout`, else the project's `defaults.layout`. `null` when none applies.
  *
  * The template PAGE's own body is not spliced around the entry: a page that binds the entry into a
  * wrapper of its own shows that wrapper only in Preview of the page itself, because the edit
@@ -225,10 +238,7 @@ export async function entryLayout(
   tab: Tab | null,
   path: string | null | undefined,
 ): Promise<string | null> {
-  const fromFrontmatter = tab?.doc.content.frontmatter.$layout;
-  const own =
-    doc.$layout ??
-    (isString(fromFrontmatter) || fromFrontmatter === false ? fromFrontmatter : undefined);
+  const own = pageLayout(doc, tab);
   const match = path ? collectionForFile(path) : null;
   const page = match ? await collectionPage(match.name, entryLocale(path)) : null;
   return entryLayoutPath(own, page);
@@ -310,7 +320,7 @@ export async function resolveCanvasDocument(
   if ((isPage || isEntry) && tab?.session.ui.showLayout !== false) {
     const layoutPath = isEntry
       ? await entryLayout(doc, tab, S.documentPath)
-      : getEffectiveLayoutPath(doc.$layout);
+      : getEffectiveLayoutPath(pageLayout(doc, tab));
     if (layoutPath) {
       const layoutDoc = await resolveCanvasLayout(layoutPath);
       if (layoutDoc) {

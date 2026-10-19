@@ -240,7 +240,6 @@ const KNOWN_UNREACHABLE = {
       "a one-line re-export of `dataSurfaceAvailable()`; callers ask the underlying predicate",
     resetDataGridState: TEST_RESET,
   },
-  "panels/frontmatter-panel.ts": { unmount: PANEL_TEARDOWN },
   "panels/left-panel.ts": { unmount: PANEL_TEARDOWN },
   "panels/navigator-panels.ts": { resetNavigatorPanels: TEST_RESET },
   "panels/overlays.ts": { unmount: PANEL_TEARDOWN },

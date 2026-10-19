@@ -251,12 +251,52 @@
       },
       "children": [
         {
-          "tagName": "h3",
+          "tagName": "div",
           "attributes": {
-            "part": "section-title",
-            "id": "entry-inspector-page"
+            "part": "fields-head"
           },
-          "textContent": "Page"
+          "children": [
+            {
+              "tagName": "h3",
+              "attributes": {
+                "part": "section-title",
+                "id": "entry-inspector-page"
+              },
+              "textContent": "Page"
+            },
+            {
+              "$description": "The door to Search appearance, the same `document.openSeo` the Page tab's button runs: an entry's search title, description and social image are its frontmatter too (studio.md §4.2).",
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "seo-button"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "label": "Search appearance",
+                "hint": "Preview how this entry appears in search and when shared",
+                "haspopup": "dialog"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/openSeo"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Search appearance…"
+                }
+              ]
+            }
+          ]
         },
         {
           "tagName": "div",

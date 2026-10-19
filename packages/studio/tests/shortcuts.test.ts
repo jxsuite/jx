@@ -445,15 +445,13 @@ describe("wheel handler", () => {
     expect(() => wheel(wrapEl(), { deltaY: 50 })).not.toThrow();
   });
 
-  /* The Document Header band stands in the same stage cell as the page's scroller and scrolls
-     ITSELF, capped. Forwarding its wheel to the page cancelled the band's own native scroll — a form
-     longer than the cap could not be wheeled at all, and the page moved underneath it instead. */
-  test("a wheel over the docked Document Header band is left to the band", () => {
+  /* A box standing in the same stage cell as the page's scroller that scrolls ITSELF keeps its own
+     wheel: forwarding it to the page would cancel the box's native scroll, and the page would move
+     underneath it instead. The guard reads whether the box can scroll, not which part it is. */
+  test("a wheel over a self-scrolling box beside the page's scroller is left to the box", () => {
     canvasMode = "edit";
     const sc = editScroller();
-    // Drawn with its own part, as the stage draws it — though the guard reads whether the box can
-    // Scroll, not which part it is.
-    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 0 }, "doc-header");
+    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 0 });
     const field = document.createElement("input");
     band.append(field);
     wrapEl().append(band, sc);
@@ -464,20 +462,20 @@ describe("wheel handler", () => {
     sc.remove();
   });
 
-  /* …and only while it has room. At the end of its range the band answers nothing, so the page takes
+  /* …and only while it has room. At the end of its range the box answers nothing, so the page takes
      the wheel — which is the chaining the browser would do, and the reason the stage keeps claiming
      the event at all (native chaining out of the scroller reaches the shell). */
-  test("a band at the end of its range hands the wheel back to the page", () => {
+  test("a box at the end of its range hands the wheel back to the page", () => {
     canvasMode = "edit";
     const sc = editScroller();
-    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 500 }, "doc-header");
+    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 500 });
     const field = document.createElement("input");
     band.append(field);
     wrapEl().append(band, sc);
     const e = wheel(field, { deltaY: 120 });
     expect(e.defaultPrevented).toBe(true);
     expect(sc.scrollTop).toBe(120);
-    // Back UP is still the band's, from the same position.
+    // Back UP is still the box's, from the same position.
     sc.scrollTop = 0;
     const up = wheel(field, { deltaY: -120 });
     expect(up.defaultPrevented).toBe(false);

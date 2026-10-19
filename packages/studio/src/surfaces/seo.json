@@ -244,7 +244,7 @@
       "color": "var(--warning)"
     },
     "& [part=\"empty\"]": {
-      "$description": "A fully-described page says so rather than printing an empty list. It borrowed `.doc-header-empty` from the card this block used to live in; the card still writes that class, so the rule stays where it is and this surface stops reaching across for it.",
+      "$description": "A fully-described page says so rather than printing an empty list.",
       "margin": "0",
       "padding": "0 0 var(--jx-space-3)",
       "fontSize": "var(--jx-text-md)",

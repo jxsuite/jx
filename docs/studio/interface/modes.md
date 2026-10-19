@@ -24,7 +24,7 @@ Those seven names come from one list in Studio, which is why the pane's context 
 
 ## Edit
 
-Edit is for writing. The canvas becomes the page itself: click any text and type, press `/` for blocks, fill in the page's metadata alongside. It reads like the finished page because it is the finished page. The context bar's **Size** control works here too: pick a [breakpoint](/docs/studio/design/breakpoints) and the column narrows to it, so you can write against the width your readers will have. Or drag the handle on either side of the column, and the width becomes anything you like with the breakpoint following it. Full guide: **[Edit mode](/docs/studio/editing)**.
+Edit is for writing. The canvas becomes the page itself: click any text and type, press `/` for blocks, and fill in the page's metadata on the Inspector's **Page** tab beside it. Nothing is docked above the page, so it opens at its first line. It reads like the finished page because it is the finished page. The context bar's **Size** control works here too: pick a [breakpoint](/docs/studio/design/breakpoints) and the column narrows to it, so you can write against the width your readers will have. Or drag the handle on either side of the column, and the width becomes anything you like with the breakpoint following it. Full guide: **[Edit mode](/docs/studio/editing)**.
 
 ![Jx Studio editing markdown content inline with a WYSIWYG editor](../../images/mode-edit.png)
 
@@ -34,7 +34,7 @@ Edit is for writing. The canvas becomes the page itself: click any text and type
 
 ## Design
 
-Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** tab of the Inspector becomes a full visual inspector for the selected element. Design doesn't show the Document Header card, so the artboards get the whole pane; a page's title, layout and frontmatter are in Edit view or on the Navigator's **Page** panel. Full guide: **[Design mode](/docs/studio/design)**.
+Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** tab of the Inspector becomes a full visual inspector for the selected element. A page's title, layout and frontmatter are on the Inspector's **Page** tab, in Design as in Edit. Full guide: **[Design mode](/docs/studio/design)**.
 
 ![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../../images/mode-design.png)
 

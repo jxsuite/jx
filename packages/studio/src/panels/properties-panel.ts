@@ -8,7 +8,7 @@
  *
  * - **Repeater · Switch · Observed Attributes · CSS Properties · CSS Parts → the Logic tab.** Wiring
  *   a `$switch` and wiring a click handler are the same task (`panels/events-panel.ts`).
- * - **The Page section → the Document Header card.** `panels/head-panel.ts` owns the one layout
+ * - **The Page section → the Inspector's Page tab.** `panels/head-panel.ts` owns the one layout
  *   picker; this panel drew a second one that could disagree with it.
  * - **Media breakpoint DEFINITIONS → Project Settings › Contexts** (§17.1). Nothing remains here: the
  *   only reason adding a breakpoint used to cost you your element selection.

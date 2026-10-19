@@ -312,12 +312,12 @@ function attachDropZone(paneId: string, element: HTMLElement): () => void {
  * One of a cell's five boxes has been created. Fill the record in, and wire what belongs to it.
  *
  * The context bar is HANDED its host rather than resolving a region, the same way
- * `panels/frontmatter-panel.ts` is handed the stage. It cannot resolve one the way the tab strip
- * does: the strip's host carries `pane.<id>/tabs` and nothing inside it re-stamps that id, while
- * the context bar stamps `pane.<id>/context` on markup it renders INSIDE its box — so a region on
- * the wrapper as well would put the same id on two nested elements, and `resolveRegion` takes the
- * LAST match. Sixty shots crop `pane.primary/context`; a second, larger element carrying it is a
- * silently widened crop.
+ * `content/writing-banner.ts` is handed its host on the stage. It cannot resolve one the way the
+ * tab strip does: the strip's host carries `pane.<id>/tabs` and nothing inside it re-stamps that
+ * id, while the context bar stamps `pane.<id>/context` on markup it renders INSIDE its box — so a
+ * region on the wrapper as well would put the same id on two nested elements, and `resolveRegion`
+ * takes the LAST match. Sixty shots crop `pane.primary/context`; a second, larger element carrying
+ * it is a silently widened crop.
  */
 function cellPart(paneId: string, part: PaneCellPart, element: HTMLElement): void {
   const cell = cellState(paneId);

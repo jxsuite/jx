@@ -160,8 +160,8 @@ const DERIVED_RESOLVERS: readonly {
    * external hook it has (`ui.md` §3.1), which is exactly what a derived region wants.
    *
    * `ui/media-picker.ts` used to STAMP this id on the button itself, and the id was a lie about
-   * where the button is: the same picker draws the Document Header card's Icon and og:image fields,
-   * and that card is rendered inside a PANE's stage. So `inspector/field:icon/browse` resolved to
+   * where the button is: the same picker drew the Document Header card's Icon and og:image fields,
+   * and that card (since removed, studio.md §4.2) was rendered inside a PANE's stage. So `inspector/field:icon/browse` resolved to
    * two elements the moment the grid split — one per pane, neither of them in the Inspector — and
    * `resolveRegion` takes the LAST, which is the side pane's. `paneRegion` could never have reached
    * it: an `inspector/…` id on an element outside the Inspector is not a pane-scoping problem, it

@@ -4,9 +4,9 @@
  * A pane is the unit of split, focus, zoom and RENDER (§18), so everything a stage owns — its
  * pan/zoom wrap, its centering observer, its pan offsets, its source-view Monaco, its render
  * generation — is a field of one pane's `CanvasSurface`, and everything drawn INTO a stage — the
- * grid engine, the Library, the entry form, the Project Settings editor, the Document Header card —
- * is one instance per pane. Both were app-level singletons, and both are the same defect: a fact
- * about one pane stored where only one pane can have it.
+ * grid engine, the Library, the entry form, the Project Settings editor, the writing banner — is
+ * one instance per pane. Both were app-level singletons, and both are the same defect: a fact about
+ * one pane stored where only one pane can have it.
  *
  * **Neither can be caught by the type system, which is the whole reason this file exists.**
  * `ViewState` carries `[key: string]: unknown`, so `view.panX` is not an error — it is a silently
@@ -166,7 +166,6 @@ const INSTANCE_SCAN = [
   "src/grid/grid-panel.ts",
   "src/content/entry-editor.ts",
   "src/browse/library-pane.ts",
-  "src/panels/frontmatter-panel.ts",
   "src/canvas/canvas-render.ts",
 ];
 

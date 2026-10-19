@@ -51,8 +51,8 @@ export interface Verdict {
 /**
  * How much of a child's output to keep.
  *
- * Not a tuning knob — a bound on a stream that has none of its own. Measured on `canvas-render.ts ·
- * no Document Header in a lens`, whose kill is
+ * Not a tuning knob — a bound on a stream that has none of its own. Measured on the lens mutant
+ * that guarded the Document Header card (since removed), whose kill was
  * `expect(lensWrap.querySelector(".doc-header-host")).toBeNull()` receiving an `HTMLDivElement`:
  * ONE failed assertion produced 67 MB in 288 seconds and was still going, `--bail=1` included.
  * There is no buffer size that holds that, so holding it is not this buffer's job — holding the

@@ -168,7 +168,7 @@ The listing links nowhere yet, and that's deliberate: one page per post is the j
 A complete content pipeline, end to end:
 
 - A **content type** (`posts`) gives you schema-backed entries with one-click creation from **New post** in the Content workspace.
-- **Three entries**, edited both one at a time (the Document Header card) and in bulk (**Grid mode**).
+- **Three entries**, edited both one at a time (the Inspector's **Entry** tab) and in bulk (**Grid mode**).
 - A **ContentCollection** state entry is the collection as live, sorted data on a page.
 - A **repeater** whose template binds `item.data` fields is one designed card, rendered per post.
 

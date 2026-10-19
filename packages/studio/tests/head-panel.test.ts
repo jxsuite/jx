@@ -46,6 +46,8 @@ import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 const mediaCalls: string[] = [];
 let browseAnchor: HTMLElement | null = null;
 let browseCommit: ((val: string) => void) | null = null;
+/** The options of the last Browse: whether it listed pictures only. */
+let browseOptions: { images?: boolean } | undefined;
 let uploadCommit: ((val: string) => void) | null = null;
 void mock.module("../src/ui/media-picker.js", () => ({
   invalidateMediaCache: () => {},
@@ -53,10 +55,15 @@ void mock.module("../src/ui/media-picker.js", () => ({
     mediaCalls.push("upload");
     uploadCommit = onCommit;
   },
-  showMediaPickerPopover: (anchor: HTMLElement, onCommit: (val: string) => void) => {
+  showMediaPickerPopover: (
+    anchor: HTMLElement,
+    onCommit: (val: string) => void,
+    pickOptions?: { images?: boolean },
+  ) => {
     mediaCalls.push("browse");
     browseAnchor = anchor;
     browseCommit = onCommit;
+    browseOptions = pickOptions;
   },
   uploadAndAssign: () => Promise.resolve(null),
   // Reached through the form controls the panel's graph now loads; never driven here.
@@ -80,6 +87,7 @@ void mock.module("../src/files/files.js", () => ({
 
 const {
   BUILD_FALLBACK_TITLE,
+  applyContentMutation,
   COMPONENT_TAB_MESSAGE,
   buildSeoPreview,
   invalidateLayoutHeadCache,
@@ -265,6 +273,7 @@ beforeEach(() => {
   mediaCalls.length = 0;
   browseAnchor = null;
   browseCommit = null;
+  browseOptions = undefined;
   uploadCommit = null;
   for (const stale of document.querySelectorAll("body > div:not([id])")) {
     stale.remove();
@@ -392,8 +401,52 @@ describe("media rows reach the shared picker rather than drawing one", () => {
     await flush(2);
     expect(mediaCalls).toEqual(["browse"]);
     expect(browseAnchor).toBe(browse);
+    // The icon holds a picture, so its browser lists pictures only.
+    expect(browseOptions).toEqual({ images: true });
     browseCommit!("/from-browser.png");
     expect(drawn.doc.$head?.[0]?.attributes?.href).toBe("/from-browser.png");
+  });
+
+  /* A frontmatter media field lists pictures only when its schema says so (studio.md §9.3): the
+     Document Header card drew these rows with that rule, and the Page tab, which carries them now,
+     must not widen a video or document field into a picture-only list it could never be filled
+     from. */
+  test("a frontmatter media field browses pictures only when its schema says `format: image`", async () => {
+    installMockPlatform();
+    resetStudioState({
+      projectConfig: {
+        content: {
+          posts: {
+            format: "json",
+            schema: {
+              properties: {
+                clip: { format: "uri-reference", type: "string" },
+                hero: { format: "image", type: "string" },
+              },
+            },
+            source: "./posts",
+          },
+        },
+      },
+    });
+    closeAllTabs();
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/hello.json" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = {};
+    const drawn = await draw({ tagName: "div" });
+    const fm = section(drawn.host, "frontmatter")!;
+
+    pointer(row(fm, "hero").querySelector<HTMLElement>('[part="browse"]')!, "click");
+    await flush(2);
+    expect(browseOptions).toEqual({ images: true });
+    browseCommit!("/media/cover.png");
+    expect(tab.doc.content.frontmatter.hero).toBe("/media/cover.png");
+
+    pointer(row(fm, "clip").querySelector<HTMLElement>('[part="browse"]')!, "click");
+    await flush(2);
+    expect(browseOptions).toEqual({ images: false });
+    browseCommit!("/media/talk.mp4");
+    expect(tab.doc.content.frontmatter.clip).toBe("/media/talk.mp4");
   });
 
   test("Upload opens the OS picker and assigns what comes back", async () => {
@@ -753,6 +806,93 @@ describe("layout section", () => {
     expect(drawn.doc.$layout).toBe(false);
     setAndFire(layout, "layout", "__default__");
     expect("$layout" in drawn.doc).toBe(false);
+  });
+
+  /* A Markdown page's layout override is a frontmatter key. The mutation path used to rebuild only
+     title, description and `$head` on its scratch object, so the picker's `$layout` landed nowhere
+     and the page kept its old layout. */
+  test("on a Markdown page the picker writes and reads frontmatter $layout", () => {
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.md" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { title: "About" };
+    let rerenders = 0;
+    const rerender = () => {
+      rerenders += 1;
+    };
+
+    applyContentMutation(tab, rerender, (d) => {
+      d.$layout = "./layouts/blog.json";
+    });
+    expect(tab.doc.content.frontmatter.$layout).toBe("./layouts/blog.json");
+    expect(buildHeadDoc(tab.doc.document, tab.doc.content.frontmatter).$layout).toBe(
+      "./layouts/blog.json",
+    );
+
+    applyContentMutation(tab, rerender, (d) => {
+      d.$layout = false;
+    });
+    expect(tab.doc.content.frontmatter.$layout).toBe(false);
+
+    applyContentMutation(tab, rerender, (d) => {
+      delete d.$layout;
+    });
+    expect("$layout" in tab.doc.content.frontmatter).toBe(false);
+    // A title edit leaves the layout alone.
+    applyContentMutation(tab, rerender, (d) => {
+      d.title = "About us";
+    });
+    expect(tab.doc.content.frontmatter).toEqual({ title: "About us" });
+    expect(rerenders).toBe(4);
+  });
+
+  /* Storing the key was not enough: the canvas redraws when the document's root reference moves,
+     and an in-place frontmatter write moved nothing, so the page kept drawing its old layout. The
+     commit is a transaction now, which also makes it one undo step. */
+  test("on a Markdown page a layout pick redraws the canvas and undoes as one step", async () => {
+    const { undo } = await import("../src/tabs/transact");
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.md" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { title: "About" };
+    tab.doc.dirty = false;
+    const rootBefore = tab.doc.document;
+
+    applyContentMutation(
+      tab,
+      () => {},
+      (d) => {
+        d.$layout = "./layouts/blog.json";
+      },
+    );
+    expect(tab.doc.document).not.toBe(rootBefore);
+    expect(tab.doc.dirty).toBe(true);
+
+    undo(tab);
+    expect("$layout" in tab.doc.content.frontmatter).toBe(false);
+    expect(tab.doc.content.frontmatter.title).toBe("About");
+  });
+
+  test("a content mutation that changes nothing records nothing and leaves the page clean", () => {
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.md" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { $layout: false, title: "About" };
+    tab.doc.dirty = false;
+    const rootBefore = tab.doc.document;
+    const historyBefore = tab.history.snapshots.length;
+    let rerenders = 0;
+
+    applyContentMutation(
+      tab,
+      () => {
+        rerenders += 1;
+      },
+      (d) => {
+        d.title = "About";
+      },
+    );
+    expect(tab.doc.document).toBe(rootBefore);
+    expect(tab.doc.dirty).toBe(false);
+    expect(tab.history.snapshots.length).toBe(historyBefore);
+    expect(rerenders).toBe(1);
   });
 
   test("Edit template opens the layout the page is drawn in, and is absent with none", async () => {

@@ -1277,7 +1277,7 @@ describe("scroll tracking", () => {
  * The reported defect, in the author's words: the bar "persists, potentially blocking a part of the
  * interface that the user needs to utilize" — they were working in the Inspector's Logic tab while
  * the bar sat over the canvas, and it is `position: fixed` and clamped into the window, so it can
- * overlap the Document Header card, the pane context bar and the docks.
+ * overlap the writing banner, the pane context bar and the docks.
  *
  * What these tests are really about is why a dismiss is not the fix. The bar is re-rendered from
  * the `toolbarRefresh` seam on every selection snapshot and from `renderOnly("overlays")` on

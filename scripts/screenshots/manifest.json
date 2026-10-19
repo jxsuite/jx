@@ -563,7 +563,7 @@
       "docs": ["studio/editing/frontmatter"],
       "open": {
         "project": "packages/starters/sites/blog",
-        "file": "content/posts/designing-for-slowness.md",
+        "file": "pages/about.md",
         "view": "edit"
       },
       "steps": [
@@ -2333,31 +2333,6 @@
         {
           "image": "media-upload",
           "of": "pane.primary/media-library"
-        }
-      ]
-    },
-    {
-      "name": "properties-bar",
-      "docs": ["studio/editing/frontmatter"],
-      "open": {
-        "project": "packages/starters/sites/blog",
-        "file": "pages/about.md",
-        "view": "edit",
-        "viewport": {
-          "width": 1920,
-          "height": 1400
-        }
-      },
-      "expect": [
-        {
-          "region": "pane.primary/frontmatter"
-        }
-      ],
-      "capture": [
-        {
-          "image": "properties-bar",
-          "of": "pane.primary/frontmatter",
-          "padding": 8
         }
       ]
     }

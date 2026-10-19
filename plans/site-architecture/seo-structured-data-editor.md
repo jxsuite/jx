@@ -14,6 +14,8 @@ size: M
 
 # Search appearance edits a page's Schema.org structured data as a form, and §8.6 states the command and the counters that ship
 
+> **The Document Header card is gone.** Edit no longer draws a card above the page (`studio.md` §4.2), so `src/surfaces/doc-header.{ts,json}`, `src/panels/frontmatter-panel.ts` and `tests/frontmatter-panel.test.ts` were deleted. Every finding, step and test below that names them is void; the Inspector's Page tab (`src/panels/head-panel.ts` over `src/surfaces/panel-page.json`, tested by `tests/head-panel.test.ts`) is the one surface left for that work.
+
 ## Context
 
 `specs/site-architecture.md` §8.6, line 1071:

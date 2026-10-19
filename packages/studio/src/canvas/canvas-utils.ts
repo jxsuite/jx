@@ -775,11 +775,12 @@ export function resetZoom(surface: CanvasSurface = activeCanvasSurface()) {
  * hands a rect back), so one arithmetic serves a rect measured from a parent DOM element and a rect
  * measured inside a canvas iframe alike.
  *
- * **The viewport is the box that SCROLLS, not the stage.** Edit docks the Document Header card
- * above its scroller, inside the same stage cell, so there the stage is the band plus the page and
- * its centre is half a band too high: a reveal would land the node that far above the middle of
- * what the author can actually see. {@link revealScroller} is that box wherever there is one, and
- * where there is none (Design, Stylebook, a comparison) the stage is still the viewport.
+ * **The viewport is the box that SCROLLS, not the stage.** Over a collection entry Edit stands the
+ * writing banner above its scroller, inside the same stage cell, so there the stage is the banner
+ * plus the page and its centre is half a banner too high: a reveal would land the node that far
+ * above the middle of what the author can actually see. {@link revealScroller} is that box wherever
+ * there is one, and where there is none (Design, Stylebook, a comparison) the stage is still the
+ * viewport.
  */
 function centeringOffset(surface: CanvasSurface, rect: { top: number; height: number }): number {
   const viewport = rectOf(revealScroller(surface) ?? surface.wrap);

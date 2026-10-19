@@ -16,6 +16,8 @@ size: L
 
 # Studio authors to-one and to-many references into any referenceable section, and every surface that edits a reference value picks it from the target's entries
 
+> **The Document Header card is gone.** Edit no longer draws a card above the page (`studio.md` §4.2), so `src/surfaces/doc-header.{ts,json}`, `src/panels/frontmatter-panel.ts` and `tests/frontmatter-panel.test.ts` were deleted. Every finding, step and test below that names them is void; the Inspector's Page tab (`src/panels/head-panel.ts` over `src/surfaces/panel-page.json`, tested by `tests/head-panel.test.ts`) is the one surface left for that work.
+
 ## Context
 
 `specs/relationships.md` §5, line 76:

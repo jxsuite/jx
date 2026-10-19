@@ -204,7 +204,6 @@ import { hasAiCredentials } from "./services/ai-models";
 import { mount } from "./surfaces/rail";
 import * as toolbarPanel from "./surfaces/commandbar";
 import * as overlaysPanel from "./panels/overlays";
-import * as frontmatterPanelMod from "./panels/frontmatter-panel";
 import * as rightPanelMod from "./panels/right-panel";
 import * as chatPanelMod from "./panels/chat-panel";
 import { setProjectAdopter } from "./services/project-adoption";
@@ -607,7 +606,7 @@ setStylebookHitHandler((tag, media) => {
    1. Commit-on-parent-click: it ends the live inline-edit session, which the iframe cannot observe
       itself (layers panel, tab strip, right panel…).
    2. The block action bar goes with it. The bar is `position: fixed` and clamped into the window,
-      so it can sit over the Document Header card, the pane context bar and the docks; an author
+      so it can sit over the pane context bar, the Inspector and the docks; an author
       working in the Inspector's Logic tab reported it "blocking a part of the interface that the
       user needs to utilize". It is SUPPRESSED, not dismissed — a plain dismiss flashes back on the
       next snapshot or overlay repaint — and it comes back the moment the canvas takes a pointer or
@@ -868,10 +867,6 @@ rightPanelMod.mount({
   renderCanvas: () => renderCanvas(),
 });
 
-// The Document Header card — every document with frontmatter or `$head`. It has no host of its own:
-// The stage hands one over (`canvas-render.ts`), and this only starts the reactive subscription.
-frontmatterPanelMod.mount();
-
 // The assistant's create_project tool adopts freshly scaffolded projects through the same
 // Flow as the recent-projects list.
 setProjectAdopter(openRecentProject);
@@ -934,7 +929,6 @@ leftPanelMod.mount({
 registerRenderer("leftPanel", () => leftPanelMod.render());
 registerRenderer("canvas", () => renderCanvas());
 registerRenderer("rightPanel", () => rightPanelMod.render());
-registerRenderer("frontmatterPanel", () => frontmatterPanelMod.render());
 registerRenderer("seoModal", renderSeoModal);
 registerRenderer("chatPanel", () => chatPanelMod.render());
 registerRenderer("overlays", () => overlaysPanel.render());
@@ -1642,8 +1636,8 @@ commandRegistry.registerAll(diffCommands());
 ensurePopoverRevealWatch();
 registerSelectionSetCommand(commandRegistry);
 registerInspectorCommands(commandRegistry);
-/* Search appearance, behind one record with two buttons: the Document Header card's and the Page
-   panel's. A surface that IS the capability is one the palette cannot reach. */
+/* Search appearance, behind one record the Page tab's button runs: a surface that IS the capability
+   is one the palette cannot reach. */
 registerSeoCommands(commandRegistry);
 registerA11yCommands(commandRegistry);
 registerPopoverCommands(commandRegistry);

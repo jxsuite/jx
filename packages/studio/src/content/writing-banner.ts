@@ -11,8 +11,9 @@
  * and activating a page or a layout enters Design (§22.1).
  *
  * One banner per pane, mounted into the host the canvas stage draws above Edit's column
- * (`surfaces/canvas-stage.json`'s `writing-banner`), exactly as the Document Header card is mounted
- * into its own; `canvas/canvas-render.ts` hands the host over and repaints it.
+ * (`surfaces/canvas-stage.json`'s `writing-banner`); `canvas/canvas-render.ts` hands the host over
+ * and repaints it. It is the one band Edit draws over a document: an ordinary page opens at the top
+ * with nothing above it (studio.md §4.2).
  *
  * @docs studio/projects/content-types
  */

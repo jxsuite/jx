@@ -283,7 +283,7 @@ The hybrid row is the one worth reading twice. It was `jx-value-selector`, a `Li
 
 ### 4.4 Debounce Pattern
 
-> **Status: Partial.** `INPUT_DEBOUNCE` (400) and `CODE_DEBOUNCE` (500) are in `packages/studio/src/ui/timing.ts`, and `debouncedStyleCommit()` is in `store.ts`. Much text entry commits through a provisional preview instead, `LIVE_PREVIEW` at 350ms and then again on blur or Enter: the draft layer (`src/ui/field-input.ts`) in the properties panel, and the same semantics on their own `LIVE_PREVIEW` timers in `panels/head-panel.ts` and `panels/frontmatter-panel.ts`. `panels/seo-modal.ts` and `surfaces/settings-head.ts` share `HEAD_EDIT_DEBOUNCE` (300ms) from `ui/timing.ts`, and the lit `@input` examples predate the document surfaces.
+> **Status: Partial.** `INPUT_DEBOUNCE` (400) and `CODE_DEBOUNCE` (500) are in `packages/studio/src/ui/timing.ts`, and `debouncedStyleCommit()` is in `store.ts`. Much text entry commits through a provisional preview instead, `LIVE_PREVIEW` at 350ms and then again on blur or Enter: the draft layer (`src/ui/field-input.ts`) in the properties panel, and the same semantics on its own `LIVE_PREVIEW` timer in `panels/head-panel.ts`. `panels/seo-modal.ts` and `surfaces/settings-head.ts` share `HEAD_EDIT_DEBOUNCE` (300ms) from `ui/timing.ts`, and the lit `@input` examples predate the document surfaces.
 
 All text input handlers must debounce before committing to state. Standard delay: **400ms** (500ms for code/expression textareas).
 
@@ -533,7 +533,7 @@ Fixed-position toolbar that follows the selected element:
 
 - Shows element tag name, drag handle, and context actions
 - ONE shape: the bar does not rearrange itself when the author starts typing. Controls that cannot act are disabled, not removed — a toolbar whose buttons move under the cursor is worse than one with a greyed button
-- **It steps aside when the author leaves the canvas.** A pointerdown in parent chrome outside the canvas hides the bar; a selection change or a pointerdown back in the canvas brings it back. The bar is `position: fixed` and clamped into the window, so a bar that outlived the author's attention sat over the Document Header, the pane context bar and the docks — chrome the author was reaching for. Hiding it never clears the SELECTION: the Inspector's whole job is editing what is selected
+- **It steps aside when the author leaves the canvas.** A pointerdown in parent chrome outside the canvas hides the bar; a selection change or a pointerdown back in the canvas brings it back. The bar is `position: fixed` and clamped into the window, so a bar that outlived the author's attention sat over the pane context bar, the Inspector and the docks — chrome the author was reaching for. Hiding it never clears the SELECTION: the Inspector's whole job is editing what is selected
 - Z-index: 100
 - Shadow: standard elevation shadow
 

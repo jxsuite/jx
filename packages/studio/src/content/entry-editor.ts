@@ -3,11 +3,11 @@
  * The **Entry editor** (site-architecture.md §7.4): a content entry's fields, as a form, in a pane.
  *
  * Until now a markdown entry could be edited two ways and neither was its schema: the canvas edited
- * its BODY, and the Document Header card drew a field list from `panels/frontmatter-fields.ts`'s
- * own type→widget ladder, which is a second implementation of `ui/schema-form.ts` with no reference
- * branch, no validation and no value-source ladder. A JSON entry (`authors/ada.json`) had no field
- * editor at all — it opened as a component tree, so `bio` was a node's property and `links` was a
- * child array.
+ * its BODY, and the Document Header card (since removed) drew a field list from
+ * `panels/frontmatter-fields.ts`'s own type→widget ladder, which is a second implementation of
+ * `ui/schema-form.ts` with no reference branch, no validation and no value-source ladder. A JSON
+ * entry (`authors/ada.json`) had no field editor at all — it opened as a component tree, so `bio`
+ * was a node's property and `links` was a child array.
  *
  * This is one editor over the schema form, so every improvement to the engine reaches content
  * entries, settings and the inspector at once — and the `reference` control in particular arrives
@@ -25,7 +25,7 @@
  * it unshifts its mode onto the tab the file already has, so ⌘S, the dirty flag, the transaction
  * log and undo are the ordinary document verbs. Every field commits through
  * {@link mutateEntryField}, so an edit made here is undone by ⌘Z and replayed by a collaborator
- * exactly as one made in the Document Header card.
+ * exactly as one made in the Inspector's Page tab.
  *
  * **One editor, two storage shapes.** A markdown entry keeps its fields in frontmatter; a JSON
  * entry IS its fields. `content/entry-fields.ts` owns that single question, and this file never
