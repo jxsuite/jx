@@ -23,6 +23,8 @@ code:
   - packages/studio/src/studio.ts
   - packages/studio/src/panels/tab-drop.ts
   - packages/studio/src/panels/pane-grid.ts
+  - packages/studio/src/workspace/workspace-back.ts
+  - packages/studio/src/workspace/workspace-switch.ts
 ---
 
 # Documents and panes
@@ -35,9 +37,11 @@ Every document you open in Jx Studio belongs to a **pane**. A pane is one editor
 
 Open documents from the **Site** panel, the **[Content workspace](/docs/studio/projects/browse)**, or the Command Center (:kbd[⌘K], or :kbd[⌘P] straight into file search). Click a document in the strip to switch to it; the Files tree follows along, so the strip and the tree never disagree about where you are.
 
-**The strip shows the workspace you are in.** Every document belongs to one of the five [workspaces](/docs/studio/interface#workspaces): a page to Design, an entry to Content, an image to Media, Project Styles to Styles, a comparison to Publish. Each pane's strip shows only the current workspace's documents, and :kbd[⌃Tab] moves only between them. The others stay open in their places and come back when you switch back. Opening a document from another workspace switches to it, and closing a workspace's last document leaves the pane empty rather than switching you somewhere else. Media and Publish, which have no Navigator to find their home from, show their home instead of an empty pane, even when the document you closed was the home itself.
+**The strip shows the workspace you are in.** Every document belongs to one of the five [workspaces](/docs/studio/interface#workspaces): a page to Design, an entry to Content, an image to Media, Project Styles to Styles, a comparison to Publish. Each pane's strip shows only the current workspace's documents, and :kbd[⌃Tab] moves only between them. The others stay open in their places and come back when you switch back. Opening a document from another workspace switches to it, and closing a workspace's last document leaves the pane empty rather than switching you somewhere else.
 
-Media files open too. An image, a video, a font or a PDF gets a document of its own, with the same strip, the same label rules and the same :kbd[⌘W], showing the file in the [Media viewer](/docs/studio/projects/media#open-a-media-file) rather than an editor.
+**Only Design and Content show a strip.** They are where you keep several documents open and move between them. Media, Styles and Publish each show their own home (the media library, your project's styles, Review changes) without one. When something opens beside that home, such as a picture in the media viewer, a before-and-after comparison, or your project file as **Code**, the pane's context bar starts with a **Back** button that names where it leads: **Back to Media**, **Back to Publish**, **Back to Variables**. Press it to return to the home; a viewer or a comparison closes on the way, and the keyboard lands back on the picture or the change you opened. :kbd[Esc] does the same from a viewer or a comparison. In the **Code** view :kbd[Esc] belongs to the code editor, so leave Code with the Back button. Closing a viewer or a comparison with :kbd[⌘W] lands on the home too. These workspaces keep one view beside the home: opening another picture replaces the viewer you had open, unless you pinned it or it holds unsaved changes, and :kbd[⌃Tab] moves between the home and that view. These workspaces never leave you on an empty pane: closing the home itself shows it again. A side pane you opened in Design (a lens such as **Layout**, say) keeps its own row in every workspace, naming what it shows, with the ✕ that closes it.
+
+Media files open too. An image, a video, a font or a PDF gets a document of its own, in the Media workspace, with the same :kbd[⌘W], showing the file in the [Media viewer](/docs/studio/projects/media#open-a-media-file) rather than an editor. **Back to Media** returns you to the library.
 
 - Switch back and forth with :kbd[⌃Tab] / :kbd[⌃⇧Tab], which walk your documents in most-recently-used order.
 - Close one with its **×**, by middle-clicking it, or with :kbd[⌘W].
@@ -84,10 +88,10 @@ A document keeps its own view state while it's open. Switch from a Markdown page
 - its canvas position, and the zoom, but only once you have set one yourself; until then Design keeps fitting the canvas to the pane,
 - its selected element and active Inspector tab.
 
-New documents open in their natural editor: Markdown in **Edit**, spreadsheets in **Grid**, the project file in **Elements**, the first of the Styles workspace's views.
+New documents open in their natural editor: Markdown in **Edit**, spreadsheets in **Grid**, the project file in **Variables** the first time, and after that in whichever of **Variables** and **Elements** you were last in.
 
 :::doc-note
-**Your project's configuration is one of these documents.** `project.json` opens in the strip like any file, in the Styles workspace, with **Elements**, **Variables** and **Code** as its editors: an unsaved dot, :kbd[⌘Z] to take a change back, :kbd[⌘S] to write it. **Open Project Settings** is a dialog that writes the same file as you change it, through the same document, so while the tab is open a settings change is a step in its history too.
+**Your project's configuration is one of these documents.** `project.json` opens like any file, in the Styles workspace, with **Elements**, **Variables** and **Code** as its editors: an unsaved dot, :kbd[⌘Z] to take a change back, :kbd[⌘S] to write it. **Open Project Settings** is a dialog that writes the same file as you change it, through the same document, so while the tab is open a settings change is a step in its history too.
 :::
 
 ## Reopening a project
@@ -141,7 +145,7 @@ In the middle of the status bar, along the foot of the window, a breadcrumb trai
 
 ## The pane context bar
 
-Under the strip, a labelled row states three things about the document in that pane, and only those three:
+Under the strip (at the top of the pane, in a workspace without one), a labelled row states three things about the document in that pane, and only those three:
 
 - **Editor** is which editor is open on it: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Home**, **Elements** or **Variables**. It offers only the editors this file actually supports, so it never holds an entry that cannot be picked, and a document with one editor prints its name as text, with no dropdown to open. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
 - **View**, for the Canvas editor, offers **Edit │ Design** with a **Preview** toggle beside them. See [Modes and views](/docs/studio/interface/modes).

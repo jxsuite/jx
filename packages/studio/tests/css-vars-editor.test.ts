@@ -22,8 +22,12 @@ import {
 import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { projectState } from "../src/store";
-import { focusCssVar, renderCssVarsEditor } from "../src/settings/css-vars-editor";
-import { revealCssVarsToken } from "../src/surfaces/settings-css-vars";
+import {
+  focusCssVar,
+  focusCssVarGroup,
+  renderCssVarsEditor,
+} from "../src/settings/css-vars-editor";
+import { revealCssVarsGroup, revealCssVarsToken } from "../src/surfaces/settings-css-vars";
 import { getNestedStyle, isJsonObject } from "@jxsuite/schema/guards";
 
 import type { JsonObject, JsonValue, JxStyle } from "@jxsuite/schema/types";
@@ -802,6 +806,52 @@ describe("revealing a token row (the surface's half)", () => {
       row.scrollIntoView = markScrolled(row.dataset["token"] ?? "");
     }
     revealCssVarsToken(container, "--color-accent");
+    container.remove();
+    await flush(4);
+    expect(scrolled).toEqual([]);
+  });
+});
+
+describe("pointing the editor at a group (the Styles panel's headings and Add variable)", () => {
+  /** Record which group headings were scrolled to. */
+  function watchGroups(container: HTMLElement): string[] {
+    const scrolled: string[] = [];
+    for (const group of container.querySelectorAll<HTMLElement>("[data-group]")) {
+      group.scrollIntoView = () => {
+        scrolled.push(group.dataset["group"] ?? "");
+      };
+    }
+    return scrolled;
+  }
+
+  test("a group is scrolled to, and with add its Add row's name field takes the keyboard", async () => {
+    const { container } = await setup(baseStyle());
+    const scrolled = watchGroups(container);
+    focusCssVarGroup(container, "size");
+    await flush(4);
+    expect(scrolled).toEqual(["size"]);
+    expect(document.activeElement?.closest('[part="add-name"]')).toBeNull();
+    focusCssVarGroup(container, "font", { add: true });
+    await flush(4);
+    expect(scrolled).toEqual(["size", "font"]);
+    expect(document.activeElement).toBe(
+      container.querySelector('[data-group="font"] [part="add-name"] input'),
+    );
+  });
+
+  test("a group the section does not draw, a host with no surface and a detached one move nothing", async () => {
+    const { container } = await setup({ "--color-accent": "tomato" });
+    const scrolled = watchGroups(container);
+    // Other is drawn only when something is in it.
+    focusCssVarGroup(container, "other", { add: true });
+    await flush(4);
+    expect(scrolled).toEqual([]);
+    const stray = document.createElement("div");
+    document.body.append(stray);
+    expect(() => {
+      revealCssVarsGroup(stray, "color", true);
+    }).not.toThrow();
+    revealCssVarsGroup(container, "color", true);
     container.remove();
     await flush(4);
     expect(scrolled).toEqual([]);

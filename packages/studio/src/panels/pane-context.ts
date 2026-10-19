@@ -69,6 +69,8 @@ import { openMenu } from "../surfaces/menu";
 import { emptyPaneContextView, mountPaneContextSurface } from "../surfaces/pane-context";
 import { PANE_SELECTOR } from "../surfaces/pane-grid";
 import { diffShowsCode } from "../canvas/diff-view";
+import { backTargetOf, goBack } from "../workspace/workspace-back";
+import type { WorkspaceId } from "../workspace/workspace-ids";
 import { canRenderComparison } from "./git-diff-open";
 import { shell } from "../shell";
 import { paneRegion } from "../ui/regions";
@@ -149,6 +151,14 @@ export interface PaneContextCtx {
    * Editor picker a control over the primary's document.
    */
   setCanvasMode: (tab: Tab, mode: string) => void;
+  /**
+   * Close a tab through the strip's guarded close (`panels/tab-strip.ts` `requestClose`): what the
+   * Back control does to a media viewer or a comparison. Absent (a test's partial bootstrap), the
+   * control runs `pane.backToHome` instead, whose bootstrap deps carry the same close.
+   */
+  closeTab?: (tabId: string) => void | Promise<void>;
+  /** Give the keyboard to the home a Back landed on (`WorkspaceBackDeps.focusHome`). */
+  focusHome?: (paneId: string, id: WorkspaceId) => void;
   parseMediaEntries: (media: Record<string, string> | null | undefined) => {
     sizeBreakpoints: {
       name: string;
@@ -696,6 +706,14 @@ function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView
     view.summary = lensSummary(paneId);
     return view;
   }
+  /* The way out of a view in a workspace with no tab strip: named for where it leads. Never in a
+     lens, whose tab is the source pane's, and whose own exit is the derivation's. */
+  const back = backTargetOf(tab);
+  if (back) {
+    view.backState = "shown";
+    view.backLabel = back.label;
+    view.backHint = back.hint;
+  }
   Object.assign(view, editorAxis(tab));
   if (editorKindOf(tab) === "canvas") {
     Object.assign(view, viewAxis(tab));
@@ -1146,6 +1164,22 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       }
     },
     exportFile: ctx.exportFile,
+    /* The flow directly rather than `pane.backToHome`: the command's `when` keeps Escape away from
+       a text field and the code editor, and the CONTROL must work in both (Back from Code is the
+       Styles case). The pane is focused first, because the view going back is this pane's. */
+    goBack: () => {
+      focusPane(paneId);
+      const { closeTab } = ctx;
+      if (!closeTab) {
+        runContextCommand(paneId, "pane.backToHome", {});
+        return;
+      }
+      void goBack(paneId, {
+        closeTab,
+        setCanvasMode: ctx.setCanvasMode,
+        ...(ctx.focusHome && { focusHome: ctx.focusHome }),
+      });
+    },
     manageContexts: () => {
       void activeRegistry()?.run("settings.open", { section: "contexts" });
     },

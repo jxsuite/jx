@@ -69,6 +69,7 @@ import { formatCommands, registerSelectionCommands } from "../panels/block-actio
 import { fileFormatCommands } from "../format/convert-file";
 import { registerTabCommands } from "../workspace/workspace";
 import { derivationCommands, noopDerivationDeps } from "../workspace/pane-derive";
+import { workspaceBackCommands } from "../workspace/workspace-back";
 import type { AnyCommand } from "./registry";
 
 /** A verb set that does nothing — the checks read declarations, never behaviour. */
@@ -120,6 +121,8 @@ export function appCommandSet(): AnyCommand[] {
     ...viaRegistration(),
     ...derivationCommands(noopDerivationDeps()),
     ...shellViewCommands({ inspectorTab: () => DEFAULT_INSPECTOR_TAB, setInspectorTab: NO_OP }),
+    // Back to a strip-less workspace's home: the pane context bar's Back control, and Escape.
+    ...workspaceBackCommands({ closeTab: NO_OP, setCanvasMode: NO_OP }),
     ...canvasViewCommands({
       getCanvasMode: () => "design",
       renderPane: NO_OP,

@@ -15,9 +15,11 @@ import { html, render } from "lit-html";
 import {
   openProjectSettings,
   settingsCommands,
+  rememberStylesView,
   settingsSectionsReady,
   showSettingsDocument,
 } from "../src/settings/settings-document";
+import { DEFAULT_STYLES_HOME_VIEW, shell } from "../src/shell";
 import {
   DEFAULT_SETTINGS_GROUP,
   DEFAULT_SETTINGS_SECTION,
@@ -218,6 +220,8 @@ beforeEach(() => {
   setExtensionCatalog([]);
   installMockPlatform();
   closeAllTabs();
+  // The Styles home view is session state, and a case that picks Elements must not pick it for the next.
+  shell.stylebook.view = DEFAULT_STYLES_HOME_VIEW;
   resetSettingsDocumentState();
   resetStudioState({
     projectConfig: {
@@ -682,11 +686,11 @@ describe("deep links", () => {
 // ─── The tab ─────────────────────────────────────────────────────────────────
 
 describe("the configuration tab", () => {
-  test("showSettingsDocument opens project.json in Project Styles by default", () => {
+  test("showSettingsDocument opens project.json in the Variables view by default", () => {
     const tab = showSettingsDocument();
     expect(tab?.documentPath).toBe("project.json");
     expect(tab?.id).toBe("project.json");
-    expect(tab?.session.ui.canvasMode).toBe("stylebook");
+    expect(tab?.session.ui.canvasMode).toBe("tokens");
     // The Styles workspace's three views (Elements, Variables, Code). Project Settings is a
     // Dialog, not a mode of this tab.
     expect(tab?.capabilities.modes).toEqual(["stylebook", "tokens", "source"]);
@@ -704,7 +708,21 @@ describe("the configuration tab", () => {
     const second = showSettingsDocument()!;
     expect(second.id).toBe(first.id);
     expect(second.doc.dirty).toBe(true);
-    expect(second.session.ui.canvasMode).toBe("stylebook");
+    expect(second.session.ui.canvasMode).toBe("tokens");
+  });
+
+  test("the Styles home view is remembered: the last of Variables and Elements, never Code", () => {
+    expect(shell.stylebook.view).toBe("tokens");
+    showSettingsDocument("stylebook");
+    expect(shell.stylebook.view).toBe("stylebook");
+    showSettingsDocument("source");
+    expect(shell.stylebook.view).toBe("stylebook");
+    closeAllTabs();
+    expect(showSettingsDocument()?.session.ui.canvasMode).toBe("stylebook");
+    rememberStylesView("tokens");
+    expect(shell.stylebook.view).toBe("tokens");
+    rememberStylesView("edit");
+    expect(shell.stylebook.view).toBe("tokens");
   });
 
   test("a mode opens a FRESH tab in that editor, not in the first declared one", () => {
@@ -969,12 +987,12 @@ describe("styles.open", () => {
     setActiveRegistry(null);
   });
 
-  test("it is an alias: it switches to the Styles workspace, whose home is Elements", async () => {
+  test("it is an alias: it switches to the Styles workspace, whose home is Variables", async () => {
     const ran = installWorkspaceRegistry();
     await runRecord(stylesCommand());
     expect(ran).toEqual([{ workspace: "styles" }]);
     const tab = workspace.tabs.get("project.json");
-    expect(tab?.session.ui.canvasMode).toBe("stylebook");
+    expect(tab?.session.ui.canvasMode).toBe("tokens");
     expect(activeTab.value?.id).toBe("project.json");
   });
 

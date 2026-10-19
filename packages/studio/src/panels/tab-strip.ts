@@ -56,7 +56,7 @@ import {
 import { gridTabLabel } from "../grid/grid-source";
 import { workspaceTabOrder } from "../workspace/tab-workspace";
 import { workspaceHomeLabel } from "../workspace/workspace-ids";
-import { shell } from "../shell";
+import { shell, workspaceDrawsTabStrip } from "../shell";
 import { entryDraftPill } from "../content/entry-editor";
 import { DRAFT_FIELD, isDraftEntry } from "../content/draft-state";
 import { entryFields } from "../content/entry-fields";
@@ -309,6 +309,14 @@ function releaseHostDnD(host: HTMLElement): void {
 }
 
 function render() {
+  /* A workspace that draws no strip (Media, Styles, Publish) has its strips out of the grid
+     (`TAB_STRIP_HIDDEN_CLASS`), so painting them would be work nobody sees, and measuring a strip
+     that is not laid out reads zeros that flip the overflow chevron on every switch. They are left
+     standing as they were and repainted on the way back: this effect tracks `shell.workspace`.
+     A DERIVED pane is the exception. It follows the author into every workspace, and its row is
+     its derivation chip there (no tab of its own is the workspace's), which the frame keeps drawn
+     because it names the pane and holds the ✕ that closes it. So it is painted everywhere. */
+  const strips = workspaceDrawsTabStrip();
   /* One host draws ONE pane. While the shell has a single strip, both panes resolve to the same
      div — and the one whose tabs are on screen is the focused one, so it wins the tie. Without
      that rule the answer was render order, which is how the strip came to mark a tab active in a
@@ -322,7 +330,10 @@ function render() {
   }
   const drawn = new Set<string>();
   for (const [host, pane] of claims) {
-    paint(pane, host);
+    if (strips || pane.derived) {
+      paint(pane, host);
+    }
+    // Counted as drawn either way: a strip left standing is kept, not taken down below.
     _hosts.set(pane.id, host);
     drawn.add(pane.id);
   }
@@ -412,7 +423,7 @@ function scheduleMeasure(host: HTMLElement): void {
     requestAnimationFrame(() => {
       _measureFrames.delete(host);
       const pane = drawnPane(host);
-      if (pane) {
+      if (pane && workspaceDrawsTabStrip()) {
         measureStrip(pane, host);
       }
       _revealPending.delete(host);

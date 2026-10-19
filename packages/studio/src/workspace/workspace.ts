@@ -578,9 +578,15 @@ export function closePane(paneId: string) {
      for the side pane's: focused=primary showing=a became focused=primary showing=b, and the only
      way back was the tab strip. Nothing is lost either way, because the closing pane's tabs have
      just been moved into the survivor above; this only decides which of them is on screen. */
+  /* …unless it belongs to another workspace than the one on screen. A derived pane follows the
+     author into every workspace, still showing its source's document, so Close Side Pane run from
+     its own menu in Media would hand the survivor a Design document and carry the author off to
+     Design. The survivor's own tab of the workspace stays in front instead. */
+  const closingShows =
+    pane.activeTabId !== null && _tabScope(pane.activeTabId) ? pane.activeTabId : null;
   survivor.activeTabId =
     workspace.activePaneId === pane.id
-      ? (pane.activeTabId ?? survivor.activeTabId)
+      ? (closingShows ?? survivor.activeTabId ?? pane.activeTabId)
       : (survivor.activeTabId ?? pane.activeTabId);
   workspace.activePaneId = survivor.id;
   /* Invariant D4, and it goes HERE — after the survivor has inherited the tabs and the focus, and
@@ -652,6 +658,34 @@ let _emptyFallback: ((paneId: string) => void) | null = null;
 /** Install the empty-pane fallback. `workspace/workspace-switch.ts` calls it once at boot. */
 export function setEmptyPaneFallback(fallback: ((paneId: string) => void) | null): void {
   _emptyFallback = fallback;
+}
+
+/**
+ * Where a close of the ACTIVE tab lands in a pane, ahead of the most recently used tab: a tab id,
+ * or `null` for no preference.
+ *
+ * Injected by `workspace/workspace-switch.ts`, for the reason {@link setTabScope} is. A workspace
+ * that draws no tab strip (Media, Publish) shows its home and one view opened beside it, and
+ * closing that view is the author going back to the home: the most recently used tab could be
+ * another view the strip-less pane is not drawing, which would put the author somewhere they did
+ * not ask to go and cannot see the way out of.
+ */
+let _closeLanding: ((paneId: string) => string | null) | null = null;
+
+/** Install the close landing. `workspace/workspace-switch.ts` calls it once at boot. */
+export function setCloseLanding(landing: ((paneId: string) => string | null) | null): void {
+  _closeLanding = landing;
+}
+
+/** How many open tabs are in scope: the workspace on screen's, which is what ⌃Tab walks. */
+export function scopedTabCount(): number {
+  let count = 0;
+  for (const id of workspace.tabs.keys()) {
+    if (_tabScope(id)) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 /** The rightmost tab of a pane that is in scope: the safe default when its active tab leaves. */
@@ -1133,7 +1167,9 @@ export function closeTab(tabId: string) {
   // It, which is almost never the rightmost tab in the strip. `detachTab` has already put the
   // Rightmost there as the safe default, so this only ever improves on it.
   const survivor = activePane();
+  const landing = _closeLanding?.(survivor.id) ?? null;
   const next =
+    (landing !== null && survivor.tabOrder.includes(landing) ? landing : null) ??
     workspace.mruOrder.find((id) => survivor.tabOrder.includes(id) && _tabScope(id)) ??
     rightmostInScope(survivor);
   if (next) {
@@ -1421,9 +1457,10 @@ export function registerTabCommands(registry: CommandRegistry, deps: TabCommandD
  * @returns {AnyCommand[]}
  */
 export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
-  // The MRU list is workspace-wide, so cycling is available whenever a second document is open —
-  // In either pane, not just the focused one's strip.
-  const twoOrMoreTabs = () => workspace.tabs.size > 1;
+  /* Cycling walks the workspace on screen's tabs, in either pane, not just the focused one's strip
+     (`cycleTab`), so it is available when that workspace has a second tab open. In a workspace
+     with no strip that is its home and a view opened beside it: ⌃Tab moves between the two. */
+  const twoOrMoreTabs = () => scopedTabCount() > 1;
   return [
     {
       id: "document.nextTab",
@@ -1435,7 +1472,7 @@ export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
       group: "2_navigate",
       when: (ctx) => ctx.document.open,
       enablement: twoOrMoreTabs,
-      requires: "a second open document",
+      requires: "a second open document in this workspace",
       run: () => {
         cycleTab(1);
       },
@@ -1450,7 +1487,7 @@ export function tabCommands(deps: TabCommandDeps): AnyCommand[] {
       group: "2_navigate",
       when: (ctx) => ctx.document.open,
       enablement: twoOrMoreTabs,
-      requires: "a second open document",
+      requires: "a second open document in this workspace",
       run: () => {
         cycleTab(-1);
       },

@@ -280,6 +280,31 @@ describe("Review changes", () => {
     ]);
   });
 
+  /* Back from a comparison (`workspace/workspace-back.ts`) asks for this: the keyboard lands on
+     the change that was compared rather than on the page body. */
+  test("focusPublishHome gives the keyboard back to the change last compared", async () => {
+    await draw();
+    const compare = () =>
+      host.querySelector<HTMLElement>('[part="compare"][data-path="pages/index.json"]')!;
+    // The kit button's own control takes the focus, as a roving group's does.
+    const control = () => compare().querySelector<HTMLElement>('[part="control"]');
+    compare().click();
+    await flush(4);
+    document.body.focus();
+    pw.focusPublishHome("primary");
+    await flush(4);
+    expect(control()).not.toBeNull();
+    expect(document.activeElement).toBe(control());
+
+    // With the home not drawn yet, its next mount serves the request.
+    pw.detachPublishWorkspace("primary");
+    host.remove();
+    document.body.focus();
+    pw.focusPublishHome("primary");
+    await draw();
+    expect(document.activeElement).toBe(control());
+  });
+
   test("Before and after opens the comparison; Discard asks and discards", async () => {
     await draw();
     host.querySelector<HTMLElement>('[part="compare"][data-path="pages/index.json"]')!.click();

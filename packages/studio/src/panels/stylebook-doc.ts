@@ -149,6 +149,67 @@ export function hasTagStyle(rootStyle: JxStyle, tagPath: string): boolean {
   return false;
 }
 
+/** One catalogue tag as a list of element defaults draws it: the Styles panel's, and the Outline's. */
+export interface CatalogueRow {
+  /** The catalogue entry the row stands for. */
+  entry: StylebookEntry;
+  tag: string;
+  /** The compound path (`ul li`): the row's key, and what selecting the row selects. */
+  path: string;
+  /** How deep in its specimen the tag sits: 0 for a section's own entries. */
+  depth: number;
+  /** Whether the selection's leaf is this tag ({@link selectionLeaf}). */
+  selected: boolean;
+}
+
+/**
+ * The leaf of a stylebook selection.
+ *
+ * A selection is a compound path (`"ul li"`) and the catalogue draws one row per TAG, so the row
+ * that is marked is the one whose tag is the path's last segment. That is what the tree has always
+ * done; it is written down here because "selected" meaning something other than "equal" is exactly
+ * the kind of thing a reader assumes is a bug.
+ */
+export function selectionLeaf(selection: string | null): string | null {
+  if (!selection) {
+    return null;
+  }
+  return selection.split(" ").pop() ?? null;
+}
+
+/**
+ * Flatten catalogue entries and everything under them into rows, in document order.
+ *
+ * Children are deduplicated by tag: a `<ul>` specimen carries several `<li>`s and they are one row,
+ * because the row selects a TAG and there is one rule per tag path to write. The ONE walk both
+ * lists draw from, so the two cannot drift; what each says about a row (its dot, its label) is the
+ * caller's.
+ *
+ * @param entries A section's entries, or several sections' in order
+ * @param selection The stylebook selection (`shell.stylebook.selection`)
+ */
+export function catalogueRows(
+  entries: readonly StylebookEntry[],
+  selection: string | null,
+): CatalogueRow[] {
+  const leaf = selectionLeaf(selection);
+  const out: CatalogueRow[] = [];
+  const walk = (entry: StylebookEntry, depth: number, parentPath: string): void => {
+    const path = parentPath ? `${parentPath} ${entry.tag}` : entry.tag;
+    out.push({ depth, entry, path, selected: entry.tag === leaf, tag: entry.tag });
+    const children = entry.children
+      ? [...new Map(entry.children.map((child) => [child.tag, child])).values()]
+      : [];
+    for (const child of children) {
+      walk(child, depth + 1, path);
+    }
+  };
+  for (const entry of entries) {
+    walk(entry, 0, "");
+  }
+  return out;
+}
+
 /**
  * A card's specimen for a component drawn as the first row of a list
  * (`style/stylebook-specimens.ts`): the list's repeater, reading its row from `rootState[key]` so

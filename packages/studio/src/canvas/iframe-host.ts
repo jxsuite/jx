@@ -2906,6 +2906,7 @@ function onDomUpdated(state: HostState, gen: number): void {
   requestSelection(state, state.selectionPaths);
   requestPresence(state);
   hideInsertZoneNow(state);
+  servePendingStylebookPan(state);
   if (state.pendingEnterEdit && gen >= state.pendingEnterEdit.minGen) {
     const { offset, path, prop } = state.pendingEnterEdit;
     state.pendingEnterEdit = null;
@@ -3545,22 +3546,56 @@ export function postStyleUpdateToStylebookHosts(style: JxStyle): number {
 }
 
 /**
- * Pan the canvas so the selected tag's card is centered (layers-panel "locate" affordance). The
- * card lives inside the iframe, so it is measured over the bridge and the reply pans by the
- * converted parent-viewport rect (see the `geometry` handler's panReqId branch).
+ * A pan asked for before any stylebook canvas could serve it: the tag, served by the next stylebook
+ * render that draws its card while it is still the selection ({@link servePendingStylebookPan}).
  */
-export function panToStylebookTag(tag: string): void {
-  const host = hostForActivePanel();
+let pendingStylebookPan: string | null = null;
+
+/** Post the measure that pans `host` to `tag`'s card. `false` when the host cannot serve it yet. */
+function postStylebookPan(host: HostState | null, tag: string): boolean {
   if (!host?.stylebook || !host.ready) {
-    return;
+    return false;
   }
   const cardPath = host.stylebook.tagToCardPath.get(tag);
   if (!cardPath) {
-    return;
+    return false;
   }
   host.measureSeq += 1;
   host.panReqId = host.measureSeq;
   host.channel.post({ kind: "measure", paths: [[...cardPath]], reqId: host.panReqId });
+  return true;
+}
+
+/**
+ * Pan the canvas so the selected tag's card is centered (layers-panel "locate" affordance). The
+ * card lives inside the iframe, so it is measured over the bridge and the reply pans by the
+ * converted parent-viewport rect (see the `geometry` handler's panReqId branch).
+ *
+ * A pan the canvas cannot serve yet is KEPT, not dropped. The Styles panel switches the pane to the
+ * Elements view and selects a tag in one tick, from the Variables view, where no stylebook frame
+ * exists: the frame that will draw the card has not been mounted. The request waits for it.
+ */
+export function panToStylebookTag(tag: string): void {
+  pendingStylebookPan = postStylebookPan(hostForActivePanel(), tag) ? null : tag;
+}
+
+/**
+ * Serve a kept pan on a stylebook render that has just landed: on the canvas the author is in, and
+ * only while its tag is still the selection, so a request the author has since moved past is
+ * forgotten rather than served late.
+ */
+function servePendingStylebookPan(state: HostState): void {
+  const tag = pendingStylebookPan;
+  if (tag === null || !state.stylebook) {
+    return;
+  }
+  if (shell.stylebook.selection !== tag) {
+    pendingStylebookPan = null;
+    return;
+  }
+  if (state === hostForActivePanel() && postStylebookPan(state, tag)) {
+    pendingStylebookPan = null;
+  }
 }
 
 // ─── Format-toolbar bridge (Phase 4b-2) ─────────────────────────────────────────

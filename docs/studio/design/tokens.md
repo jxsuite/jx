@@ -3,6 +3,7 @@ title: "Design tokens"
 description: "Design tokens in Jx Studio: define colors, fonts, and sizes once for the whole site and reuse them from every picker."
 spec:
   - studio.md#7.1
+  - studio.md#7.3
 code:
   - packages/studio/src/style/variables-view.ts
   - packages/studio/src/surfaces/styles-variables.ts
@@ -13,6 +14,9 @@ code:
   - packages/studio/src/style/live-preview.ts
   - packages/studio/src/ui/color-selector.ts
   - packages/studio/src/services/token-lint.ts
+  - packages/studio/src/panels/styles-panel.ts
+  - packages/studio/src/surfaces/styles-panel.ts
+  - packages/studio/src/style/variables-focus.ts
 ---
 
 # Design tokens
@@ -23,7 +27,9 @@ A design token is a named value: **Primary Blue** instead of `#3b82f6`, **Body S
 
 ## Define tokens
 
-Tokens are your site's CSS custom properties: the `--` keys of the `style` block in `project.json`. You edit them in the **Variables** view of the **Styles** workspace. Click **Styles** in the Command Bar (:kbd[⌘4], or **Go to Styles** from :kbd[⌘K]) and choose **Variables** in the pane's **Editor** control. In [Project settings](/docs/studio/projects/settings), the **Moved** footnote's **Colors and fonts** button opens the same view. The **Outline** beside it lists every token the project defines; click one to jump to its row.
+Tokens are your site's CSS custom properties: the `--` keys of the `style` block in `project.json`. You edit them in the **Variables** view of the **Styles** workspace, which is where the workspace opens: click **Styles** in the Command Bar (:kbd[⌘4], or **Go to Styles** from :kbd[⌘K]). In [Project settings](/docs/studio/projects/settings), the **Moved** footnote's **Colors and fonts** button opens the same view.
+
+The **Styles** panel beside it lists every token the project defines, by its name and grouped as the view groups them, with a count on each group and a swatch on each color. Click a token to jump to its row with the value ready to edit, or a group to jump to that group. **Add variable** jumps to the add row, so a new token is named and stored the same way as one added in the view. From the **Elements** view, any of these switches you back to Variables first. See **[Project Styles](/docs/studio/design/stylebook#the-styles-panel)**.
 
 :::doc-note
 A change in the Variables view is saved to `project.json` as you make it, so there is nothing to save afterwards. Because tokens and element defaults live in the same file, the write also saves any element default from the **Elements** view that was still waiting for **Save**, and the view says so at its top. Undo is the exception: :kbd[⌘Z] takes a change back in the open file, which then shows its unsaved dot until you **Save** (:kbd[⌘S]).

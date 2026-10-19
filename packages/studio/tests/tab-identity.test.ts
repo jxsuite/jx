@@ -325,7 +325,9 @@ describe("tab commands", () => {
     const { registry } = build();
     open("a");
     expect(registry.isEnabled("document.nextTab")).toBe(false);
-    expect(registry.disabledReason("document.nextTab")).toBe("a second open document");
+    expect(registry.disabledReason("document.nextTab")).toBe(
+      "a second open document in this workspace",
+    );
     open("b");
     open("c");
     expect(registry.isEnabled("document.nextTab")).toBe(true);

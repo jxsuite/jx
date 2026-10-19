@@ -720,7 +720,16 @@ function actionsFor(paneId: string): PublishWorkspaceActions {
       runCloneRepository();
     },
     compare: (path) => {
+      _lastCompared = path;
       void openFileComparison(path);
+    },
+    compareHost: (element, path) => {
+      let buttons = _compareButtons.get(paneId);
+      if (!buttons) {
+        buttons = new Map();
+        _compareButtons.set(paneId, buttons);
+      }
+      buttons.set(path, element);
     },
     /* The three verbs that are records run AS records, so a refusal (Create GitHub Repository on a
        project git does not track) is the record's, and no button here reaches past it
@@ -798,6 +807,42 @@ interface PaneMount {
 /** The workspace mounted in each pane, keyed by pane id. */
 const _panes = new Map<string, PaneMount>();
 
+/** Each pane's Compare buttons, by the file each compares, as the surface announced them. */
+const _compareButtons = new Map<string, Map<string, HTMLElement>>();
+
+/** The file the last comparison was opened for: where the keyboard goes back to. */
+let _lastCompared: string | null = null;
+
+/** Panes whose next mount gives the keyboard to that file's Compare button. */
+const _focusOnMount = new Set<string>();
+
+/** Put the keyboard on the Compare button of the last file compared, once the home is drawn. */
+async function focusLastCompared(paneId: string, pane: PaneMount): Promise<void> {
+  await pane.handle.ready;
+  const button =
+    _lastCompared === null ? undefined : _compareButtons.get(paneId)?.get(_lastCompared);
+  if (button?.isConnected) {
+    // The focusable node of a kit button is the control inside it, never the host (ui.md §5).
+    (button.querySelector<HTMLElement>('[part="control"]') ?? button).focus();
+  }
+}
+
+/**
+ * Give the keyboard back to the Publish home in `paneId`: what leaving a comparison with Back does
+ * (`workspace/workspace-back.ts`), so the author lands on the change they compared rather than on
+ * the page body. Served now when the home is standing in the pane, or by its next mount there.
+ *
+ * @param {string} paneId
+ */
+export function focusPublishHome(paneId: string): void {
+  const pane = _panes.get(paneId);
+  if (pane?.wrap.isConnected && pane.handle.attached()) {
+    void focusLastCompared(paneId, pane);
+    return;
+  }
+  _focusOnMount.add(paneId);
+}
+
 /** Whether this tab's workspace is already mounted in this pane and still in the document. */
 export function publishWorkspaceMounted(paneId: string, tab: Tab): boolean {
   const pane = _panes.get(paneId);
@@ -820,6 +865,7 @@ export function detachPublishWorkspace(paneId: string): void {
   pane.handle.dispose();
   _panes.delete(paneId);
   _adapterHosts.delete(paneId);
+  _compareButtons.delete(paneId);
 }
 
 /**
@@ -872,5 +918,9 @@ export function renderPublishWorkspace(surface: CanvasSurface, tab: Tab): void {
       }
     });
   });
-  _panes.set(paneId, { handle, scope, tabId: tab.id, wrap });
+  const pane: PaneMount = { handle, scope, tabId: tab.id, wrap };
+  _panes.set(paneId, pane);
+  if (_focusOnMount.delete(paneId)) {
+    void focusLastCompared(paneId, pane);
+  }
 }

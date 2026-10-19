@@ -166,7 +166,7 @@ describe("run() reaches the implementations", () => {
 
   test("an undeclared panel id refuses through the hook, naming the declared set", async () => {
     expect(await refusal("view.setActivity", { tab: "head" })).toContain(
-      "is not declared — declared: site, collections, files, search, i18n, layers, data, packages, insert",
+      "is not declared — declared: site, collections, styles, files, search, i18n, layers, data, packages, insert",
     );
   });
 
@@ -226,12 +226,12 @@ describe("view.setWorkspace reaches the bootstrap's homes", () => {
     expect(shell.workspace).toBe("content");
     expect(activeTab.value?.id).toBe(workspaceHomeTabId("content"));
 
-    // Styles' home is `project.json` in its stylebook editor, and its preset selects the
-    // Inspector's Style tab ON that document, through the bootstrap's `setInspectorTab`.
+    // Styles' home is `project.json` in its Variables view on a first visit, and its preset
+    // Selects the Inspector's Style tab ON that document, through the bootstrap's `setInspectorTab`.
     await api().run("view.setWorkspace", { workspace: "styles" });
     expect(shell.workspace).toBe("styles");
     expect(activeTab.value?.id).toBe(PROJECT_CONFIG_PATH);
-    expect(activeTab.value?.session.ui.canvasMode).toBe("stylebook");
+    expect(activeTab.value?.session.ui.canvasMode).toBe("tokens");
     expect(activeTab.value?.session.ui.rightTab).toBe("style");
 
     await api().run("view.setWorkspace", { workspace: "design" });

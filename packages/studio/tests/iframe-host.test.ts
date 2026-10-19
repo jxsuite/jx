@@ -3368,6 +3368,70 @@ describe("stylebook host capability", () => {
     expect(channel.posts).toHaveLength(0);
   });
 
+  test("a pan asked for before the stylebook canvas exists is served by its first render", async () => {
+    /* The Styles panel's element row, clicked from the Variables view: the pane is switched to
+       Elements and the tag selected and panned to in one tick, before the frame that draws its card
+       has been mounted. The pan waits for that frame instead of being dropped. */
+    const wrap = document.createElement("div");
+    wrap.id = "canvas-wrap";
+    document.body.append(wrap);
+    initShellRefs();
+    registerPrimaryStage();
+
+    shell.stylebook.selection = "p";
+    panToStylebookTag("p");
+
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: null }));
+    mountStylebookCanvas(9, makeGenerated(), canvasEl, 480);
+    const channel = channels.at(-1)!;
+    channel.deliver({ kind: "ready" });
+    channel.posts.length = 0;
+    channel.deliver({ gen: 9, kind: "renderComplete" });
+    await flush();
+    const measures = channel.posts.filter(ofKind("measure"));
+    // The selection's own measure, and the kept pan's, under its own id.
+    expect(measures.map((m) => m.paths)).toEqual([[CARD_PATH], [CARD_PATH]]);
+    expect(measures[1]!.reqId).not.toBe(measures[0]!.reqId);
+
+    // Served once: the next render pans nowhere.
+    channel.posts.length = 0;
+    channel.deliver({ gen: 10, kind: "renderComplete" });
+    await flush();
+    expect(channel.posts.filter(ofKind("measure"))).toHaveLength(1);
+  });
+
+  test("a kept pan the author has moved past is forgotten, not served late", async () => {
+    const wrap = document.createElement("div");
+    wrap.id = "canvas-wrap";
+    document.body.append(wrap);
+    initShellRefs();
+    registerPrimaryStage();
+
+    shell.stylebook.selection = "p";
+    panToStylebookTag("p");
+    shell.stylebook.selection = "h1";
+
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: null }));
+    mountStylebookCanvas(9, makeGenerated(), canvasEl, 480);
+    const channel = channels.at(-1)!;
+    channel.deliver({ kind: "ready" });
+    channel.posts.length = 0;
+    channel.deliver({ gen: 9, kind: "renderComplete" });
+    await flush();
+    // `h1` has no card in this catalogue, so the selection measures nothing, and nothing pans.
+    expect(channel.posts.filter(ofKind("measure"))).toHaveLength(0);
+    shell.stylebook.selection = "p";
+    channel.posts.length = 0;
+    channel.deliver({ gen: 10, kind: "renderComplete" });
+    await flush();
+    // `p` is selected again, but the old request was dropped: one measure, the selection's.
+    expect(channel.posts.filter(ofKind("measure"))).toHaveLength(1);
+  });
+
   test("a pan posted while the selection measure is in flight leaves the selection reply current", async () => {
     // The Styles Outline's row click: `selectStylebookTag(tag, …, { panCanvas: true })` moves the
     // Selection (the watcher posts a measure) and pans in the SAME tick. The pan's id must not

@@ -51,12 +51,12 @@ import { closeSettingsDialog, openSettingsDialog } from "./settings-dialog";
 // The NAME and the wire value, kept apart by that module on purpose — see its docstring.
 import {
   PROJECT_STYLES_TITLE,
-  PROJECT_STYLES_VIEW,
   STYLES_TAB_MODES,
   STYLES_VIEWS,
   STYLES_VIEW_MODES,
 } from "../style/project-styles";
 import { activeRegistry } from "../commands/active-registry";
+import { shell } from "../shell";
 import type { Tab } from "../tabs/tab";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandArgValues } from "../commands/command-args";
@@ -179,6 +179,20 @@ registerSettingsSection({
 // ─── The document ─────────────────────────────────────────────────────────────
 
 /**
+ * Remember the view the Styles workspace's home is in, when `mode` is one of the two home views
+ * (Variables or Elements). Code is a view beside the home, never the home, so it is not remembered:
+ * Back from Code and the next visit both return to the view recorded here
+ * (`shell.stylebook.view`).
+ *
+ * @param {string} mode The canvas mode `project.json` was just shown in
+ */
+export function rememberStylesView(mode: string): void {
+  if (mode === STYLES_VIEW_MODES.variables || mode === STYLES_VIEW_MODES.elements) {
+    shell.stylebook.view = mode;
+  }
+}
+
+/**
  * Open (or reveal) the configuration document in one of its editors.
  *
  * The tab is keyed by `project.json` on purpose: opening the file from the Files tree, opening
@@ -186,15 +200,17 @@ registerSettingsSection({
  * flag. When it is already open this only switches the editor, so an author who was reading the raw
  * JSON keeps their undo stack.
  *
- * @param {string} [mode] The editor: Elements (`stylebook`, the default), Variables (`tokens`) or
- *   Code (`source`)
+ * @param {string} [mode] The editor: Variables (`tokens`), Elements (`stylebook`) or Code
+ *   (`source`). Defaults to the Styles home view the author was last in, Variables on a first
+ *   visit.
  * @returns {Tab | null} The tab, or null when no project is open
  */
-export function showSettingsDocument(mode: string = PROJECT_STYLES_VIEW): Tab | null {
+export function showSettingsDocument(mode: string = shell.stylebook.view): Tab | null {
   const state = projectState;
   if (!state) {
     return null;
   }
+  rememberStylesView(mode);
   const existing = workspace.tabs.get(PROJECT_CONFIG_PATH);
   if (existing) {
     for (const candidate of PROJECT_TAB_MODES.toReversed()) {
@@ -376,8 +392,8 @@ export function settingsCommands(): AnyCommand[] {
     },
     /*
      * Project Styles by name: an ALIAS of `view.setWorkspace { workspace: "styles" }`, which shows
-     * the Styles workspace's last tab or opens its home (`project.json` in its Elements view). The
-     * id is kept because it is how deep links, the docs and older scripts name the place; the
+     * the Styles workspace's last tab or opens its home (`project.json` in its Variables view on a
+     * first visit, else in the view it was left in). The id is kept because it is how deep links, the docs and older scripts name the place; the
      * switch itself has one implementation, the workspace's, so the two doors cannot disagree about
      * what "open Project Styles" means. `view` then picks one of the tab's three views, which is
      * how a deep link (Project Settings' Moved footnote, a screenshot) reaches the Variables view

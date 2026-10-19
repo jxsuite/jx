@@ -98,6 +98,7 @@ export type DockId = "left" | "right" | "bottom";
 export const NAVIGATOR_PANEL_IDS = [
   "site",
   "collections",
+  "styles",
   "files",
   "search",
   "i18n",
@@ -111,7 +112,8 @@ export type NavigatorPanelId = (typeof NAVIGATOR_PANEL_IDS)[number];
 
 /**
  * The Navigator panels that exist only as one workspace's preset panel: no rail button, and no
- * frame but that workspace's draws them. Collections is the Content workspace's Navigator (§22.5).
+ * frame but that workspace's draws them. Collections is the Content workspace's Navigator (§22.5),
+ * and Styles the Styles workspace's (§7.1).
  *
  * The dock record is the WINDOW's, so `leftTab` is persisted whatever workspace wrote it; a window
  * closed in Content stores `collections`. Every workspace's own frame replaces it on entry, but a
@@ -120,7 +122,10 @@ export type NavigatorPanelId = (typeof NAVIGATOR_PANEL_IDS)[number];
  * those moments go through. `tests/panel-registry.test.ts` asserts this set is exactly the
  * rail-less panels a preset pins, so it cannot drift from the records.
  */
-export const WORKSPACE_ONLY_PANELS: ReadonlySet<NavigatorPanelId> = new Set(["collections"]);
+export const WORKSPACE_ONLY_PANELS: ReadonlySet<NavigatorPanelId> = new Set([
+  "collections",
+  "styles",
+]);
 
 /**
  * The Navigator panel to show when no workspace frame chooses one (boot, and no project open): the
@@ -355,6 +360,13 @@ export interface ShellStylebook {
    * the pane is in (Elements or Variables), so the two can never disagree.
    */
   variable: string | null;
+  /**
+   * The view the Styles workspace's home is in: Variables (`tokens`, the first visit's view, which
+   * is the most common reason to come here) or Elements (`stylebook`). Written whenever
+   * `project.json` is shown in one of the two, so the next visit, and Back from Code, return to the
+   * view the author was last in. Code is never the home: it is a view opened beside it.
+   */
+  view: "stylebook" | "tokens";
   filter: string;
   customizedOnly: boolean;
 }
@@ -389,9 +401,18 @@ export interface WorkspacePreset {
    *
    * `whileWriting` draws it over a collapsed `open` while the active tab is a document written on
    * the canvas ({@link WorkspaceDeps.writingOnCanvas}): Content's entries are edited on the canvas,
-   * where element selection and the Inspector apply, and its Library and forms are not.
+   * where element selection and the Inspector apply, and its Library and forms are not; Styles'
+   * Elements view selects element defaults on its canvas, and its Variables and Code views do not.
    */
   inspector: { open: boolean; tab?: InspectorTabId; whileWriting?: boolean };
+  /**
+   * Whether each pane draws its document tab strip. Design and Content do: they are where several
+   * documents are open at once. Media, Styles and Publish draw their home surface alone, and what
+   * they open beside it (a media file, a comparison, `project.json` as Code) is left through the
+   * pane context bar's Back control (`workspace/workspace-back.ts`), so no strip is needed to get
+   * back. Projected as {@link TAB_STRIP_HIDDEN_CLASS} on `#app`.
+   */
+  tabStrip: boolean;
 }
 
 /**
@@ -402,8 +423,12 @@ export interface WorkspacePreset {
  *   while an entry is being written on the canvas.
  * - **Media** and **Publish** collapse both side docks: each one's home is a surface that lays itself
  *   out (the media grid, the change list).
- * - **Styles** opens the Outline, which draws the stylebook's element list while the project's styles
- *   are on the canvas, and the Inspector on its Style tab.
+ * - **Styles** opens the Navigator on the Styles panel (variables, element defaults and color
+ *   schemes), and the Inspector on its Style tab only while the Elements view is on screen: that
+ *   view selects an element default on a canvas, and the Inspector is where it is styled. Variables
+ *   is edited in the view itself, and Code has no canvas, so both leave the pane its width.
+ *
+ * Only Design and Content draw a tab strip; the other three draw their home surface alone.
  */
 export const WORKSPACE_PRESETS: Readonly<Record<WorkspaceId, WorkspacePreset>> = {
   content: {
@@ -411,20 +436,35 @@ export const WORKSPACE_PRESETS: Readonly<Record<WorkspaceId, WorkspacePreset>> =
     inspector: { open: false, whileWriting: true },
     navigator: { open: true, panel: "collections" },
     rail: false,
+    tabStrip: true,
   },
   design: {
     id: "design",
     inspector: { open: true },
     navigator: { initial: "site", open: true },
     rail: true,
+    tabStrip: true,
   },
-  media: { id: "media", inspector: { open: false }, navigator: { open: false }, rail: false },
-  publish: { id: "publish", inspector: { open: false }, navigator: { open: false }, rail: false },
+  media: {
+    id: "media",
+    inspector: { open: false },
+    navigator: { open: false },
+    rail: false,
+    tabStrip: false,
+  },
+  publish: {
+    id: "publish",
+    inspector: { open: false },
+    navigator: { open: false },
+    rail: false,
+    tabStrip: false,
+  },
   styles: {
     id: "styles",
-    inspector: { open: true, tab: "style" },
-    navigator: { open: true, panel: "layers" },
+    inspector: { open: false, tab: "style", whileWriting: true },
+    navigator: { open: true, panel: "styles" },
     rail: false,
+    tabStrip: false,
   },
 };
 
@@ -648,8 +688,17 @@ function freshPublish(): ShellPublish {
   };
 }
 
+/** The view the Styles workspace opens on until the author picks another: Variables. */
+export const DEFAULT_STYLES_HOME_VIEW: ShellStylebook["view"] = "tokens";
+
 function freshStylebook(): ShellStylebook {
-  return { customizedOnly: false, filter: "", selection: null, variable: null };
+  return {
+    customizedOnly: false,
+    filter: "",
+    selection: null,
+    variable: null,
+    view: DEFAULT_STYLES_HOME_VIEW,
+  };
 }
 
 /**
@@ -1025,8 +1074,20 @@ export function applyChromeTheme(): void {
 export const RAIL_HIDDEN_CLASS = "rail-hidden";
 
 /**
+ * The `#app` class that takes every pane's tab strip out of the grid, in a workspace whose preset
+ * draws none ({@link WorkspacePreset.tabStrip}). `styles/shell-frame.json` owns what it means; the
+ * strips stay mounted underneath, so returning to Design repaints nothing.
+ */
+export const TAB_STRIP_HIDDEN_CLASS = "tabs-hidden";
+
+/** Whether the workspace on screen draws pane tab strips. */
+export function workspaceDrawsTabStrip(id: WorkspaceId = shell.workspace): boolean {
+  return WORKSPACE_PRESETS[id].tabStrip;
+}
+
+/**
  * Project the dock record onto the shell grid: collapse classes on #app, sizes as CSS vars, and the
- * active workspace's rail.
+ * active workspace's rail and tab strips.
  */
 export function applyDockLayout(): void {
   const root = document.documentElement;
@@ -1041,6 +1102,7 @@ export function applyDockLayout(): void {
     app.classList.toggle(DOCK_CLASS[id], shell.docks[id].collapsed);
   }
   app.classList.toggle(RAIL_HIDDEN_CLASS, !WORKSPACE_PRESETS[shell.workspace].rail);
+  app.classList.toggle(TAB_STRIP_HIDDEN_CLASS, !WORKSPACE_PRESETS[shell.workspace].tabStrip);
 }
 
 let _scope: EffectScope | null = null;

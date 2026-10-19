@@ -38,6 +38,7 @@ import {
   closeMediaPickDialog,
   deleteMediaFile,
   detachMediaLibrary,
+  focusMediaHome,
   mediaLibraryMounted,
   openMediaPickDialog,
   renderMediaLibrary,
@@ -685,6 +686,31 @@ describe("the keyboard", () => {
     tileOf("public/media/clip.mp4").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     await settle();
     expect(workspace.tabs.has("public/media/clip.mp4")).toBe(true);
+  });
+
+  /* Back from a viewer (`workspace/workspace-back.ts`) asks for this: the keyboard lands on the
+     tile that was opened rather than on the page body. */
+  test("focusMediaHome gives the keyboard to the selected tile of the home standing in the pane", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    document.body.focus();
+    focusMediaHome("primary");
+    await settle();
+    expect(document.activeElement).toBe(tileOf("public/hero.jpg"));
+  });
+
+  test("focusMediaHome before the home is drawn is served by its mount, on the grid's tab stop", async () => {
+    focusMediaHome("primary");
+    await mountHome();
+    const first = tiles()[0]!;
+    expect(first.getAttribute("tabindex")).toBe("0");
+    expect(document.activeElement).toBe(first);
+    // Served once: a later mount in the pane leaves the focus where it is.
+    document.body.focus();
+    detachMediaLibrary("primary");
+    await mountHome();
+    expect(document.activeElement).not.toBe(tiles()[0]);
   });
 
   test("Open in viewer opens the selected file's viewer tab", async () => {

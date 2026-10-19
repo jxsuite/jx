@@ -21,7 +21,7 @@ Everything in Jx Studio happens in one window. This page is your map: what each 
 
 ## The Command Bar
 
-The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **workspace tabs** (**Design · Content · Media · Styles · Publish**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), the **Settings** gear, and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Each workspace tab sets the window up for one job: **Styles**, for example, is where the default look of every element and your site's CSS variables live, in its **Elements** and **Variables** views (see **[Project Styles](/docs/studio/design/stylebook)**). Read more in **[The workspace](/docs/studio/interface)**.
+The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **workspace tabs** (**Design · Content · Media · Styles · Publish**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), the **Settings** gear, and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Each workspace tab sets the window up for one job: **Styles**, for example, is where your site's CSS variables and the default look of every element live, in its **Variables** and **Elements** views, with the **Styles** panel listing both (see **[Project Styles](/docs/studio/design/stylebook)**). Read more in **[The workspace](/docs/studio/interface)**.
 
 ## The Command Center
 
@@ -35,7 +35,7 @@ The labelled rail on the far left, and the panel it opens beside it. The rail be
 
 The center of the window holds one editor pane, or two side by side when :kbd[⌘\] gives the open document a pane of its own, so you can keep a page on screen while you work on its source, its layout or the same page at another size. A pane renders your page or component live, exactly as it will look in production, and you select, edit and rearrange elements directly on it. See **[The canvas](/docs/studio/interface/canvas)**, **[Edit mode](/docs/studio/editing)** and **[Design mode](/docs/studio/design)**.
 
-Above the pane sits its strip of open documents. Under that, a context bar states which **Editor** is open on the file, which **View** of the canvas is showing (**Edit**, **Design** or **Preview**), and the **Context** it's being rendered in. Details in **[Documents and panes](/docs/studio/interface/tabs)** and **[Editors and views](/docs/studio/interface/modes)**.
+In Design and Content, the pane has a strip of open documents along its top; Media, Styles and Publish show their own page without one, and a **Back** button on the context bar returns you to it from anything opened beside it. Under the strip, a context bar states which **Editor** is open on the file, which **View** of the canvas is showing (**Edit**, **Design** or **Preview**), and the **Context** it's being rendered in. Details in **[Documents and panes](/docs/studio/interface/tabs)** and **[Editors and views](/docs/studio/interface/modes)**.
 
 ## The Inspector
 

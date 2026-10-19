@@ -4,6 +4,7 @@ description: "Project Styles in Jx Studio: set the default look of every heading
 spec:
   - studio.md#7.1
   - studio.md#7.2
+  - studio.md#7.3
   - studio.md#7.4
   - studio.md#22.7
 code:
@@ -21,11 +22,13 @@ code:
   - packages/studio/src/surfaces/stylebook-chrome.ts
   - packages/studio/src/style/tag-inheritance.ts
   - packages/studio/src/style/stylebook-specimens.ts
+  - packages/studio/src/panels/styles-panel.ts
+  - packages/studio/src/surfaces/styles-panel.ts
 ---
 
 # Project Styles
 
-Project Styles catalogs your elements: every heading, paragraph, button, list, table, and form control, plus your components, rendered as specimen cards with their current default styles. Instead of styling one `h2` on one page, you style what _every_ `h2` looks like, in one place. Project Styles is the **Styles** workspace: click **Styles** in the Command Bar (:kbd[⌘4]), or run **Go to Styles** from :kbd[⌘K], whether or not the project file is already open. It shows your project file in three views, chosen with the **Editor** control on the pane's context bar: **Elements**, the catalog this page describes; **Variables**, your site's CSS custom properties (see **[Design tokens](/docs/studio/design/tokens)**); and **Code**, the file as text. See **[Modes and views](/docs/studio/interface/modes)**.
+Project Styles catalogs your elements: every heading, paragraph, button, list, table, and form control, plus your components, rendered as specimen cards with their current default styles. Instead of styling one `h2` on one page, you style what _every_ `h2` looks like, in one place. Project Styles is the **Styles** workspace: click **Styles** in the Command Bar (:kbd[⌘4]), or run **Go to Styles** from :kbd[⌘K], whether or not the project file is already open. It shows your project file in three views: **Variables**, your site's CSS custom properties (see **[Design tokens](/docs/studio/design/tokens)**), where the workspace opens the first time; **Elements**, the catalog this page describes; and **Code**, the file as text. After the first visit it opens on whichever of Variables and Elements you were last in. The **Styles** panel on the left takes you to each one, and the **Editor** control on the pane's context bar switches between them too. See **[Modes and views](/docs/studio/interface/modes)**.
 
 ![Jx Studio Project Styles showing element defaults across breakpoints](../../images/stylebook.png)
 
@@ -37,11 +40,23 @@ Project Styles shows the catalog at one breakpoint at a time, the one the contex
 
 Each component card shows the component with real content, the same sample its preview in the Site panel uses: the example values its definition declares, or the values a page passes it. A component you only use as a row of a list is shown as that list's first row, with its data. A component that can't be drawn from any of these shows a plain box with its tag name instead of an empty card.
 
-Two controls sit above the canvas: a **Filter** box to narrow the catalog by name, and a **Customized** toggle to show only the elements you've already styled. The **Outline** panel mirrors the catalog as a tree and marks customized entries with a dot: elements with their nested parts (a table with its rows and cells), then your components. Switch the pane to **Variables** and the Outline lists your CSS custom properties instead; click one to jump to it in the Variables view.
+Two controls sit above the canvas: a **Filter** box to narrow the catalog by name, and a **Customized** toggle to show only the elements you've already styled.
+
+## The Styles panel
+
+The **Styles** panel is the Navigator of the Styles workspace, and it lists everything the workspace edits, in three sections:
+
+- **Variables**: every CSS custom property in your project, by its name (`--color-accent`), grouped into Colors, Fonts, Sizes & Spacing and Other, with a count on each group and a swatch beside each color. Click a group or a variable to edit it in the Variables view, which scrolls to it. **Add variable** opens the Variables view on the group's add row.
+- **Elements**: the element defaults by tag name (`h1`, `a`, `button`), with the nested parts of an element one step in (a list's `li`, a table's rows and cells), then your components. A dot marks every tag your project file already styles, and the heading counts them (**3 styled**). Click one to select it on the Elements view's canvas, brought into view, with the Inspector on its **Style**. The Inspector is shown only beside the Elements view; the Variables view is edited in place and gets the full width.
+- **Color schemes**: the light and dark schemes your project declares, each with the media query that selects it. **Manage color schemes…** opens **Project settings › Advanced › Contexts**, where schemes are declared.
+
+The Styles panel only takes you places; every change is made in the view it opens, and saves the way that view does (below).
+
+A page or a component has an **Elements** view of its own, in the Design workspace; there the **Outline** panel lists the same catalog for that file.
 
 ## Style an element type
 
-1. Click a specimen card on the canvas, or its row in **Outline**. The specimen is outlined on the canvas, the Inspector switches to the **Style** tab on its own, and the Command Bar's path and the Inspector header both name the tag you picked (`project.json › h1`, **Element · h1**).
+1. Click a specimen card on the canvas, or its row in the **Styles** panel. The specimen is outlined on the canvas, the Inspector switches to the **Style** tab on its own, and the Command Bar's path and the Inspector header both name the tag you picked (`project.json › h1`, **Element · h1**).
 2. Read the Target Line before you type. Its scope chip reads **all `<h1>` in this document**. You are editing the element type, not one element. See **[Style inspector](/docs/studio/design/style-inspector)**.
 3. Edit styles with the full inspector: sections, provenance chips, and all.
 4. Watch every panel update: you're styling the element type, so every specimen of it changes at once, and so does every matching element the chip named.

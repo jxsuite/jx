@@ -794,6 +794,20 @@ describe("the tab strip in a derived pane", () => {
     shell.workspace = "design";
   });
 
+  /* Media draws no tab strip, and the frame's rule hiding strips must not take this row with it:
+     the chip names the side pane and its ✕ is a lens's only visible exit. happy-dom applies no
+     stylesheet, so the rule is read from the frame sheet's source. */
+  test("a workspace with no tab strip still draws a derived pane's chip row", async () => {
+    const source = await Bun.file(new URL("../styles/shell-frame.json", import.meta.url)).text();
+    const frame: { style: object } = JSON.parse(source);
+    const hiding = Object.keys(frame.style).filter((selector) =>
+      selector.startsWith("#app.tabs-hidden"),
+    );
+    expect(hiding).toEqual([
+      '#app.tabs-hidden #pane-grid [data-pane-id] > [part="strip"]:not(:has([part="derivation"]))',
+    ]);
+  });
+
   test("draws ONE derivation chip and no tab chips", async () => {
     lensGrid();
     /* `hostFor` falls back to the primary's host for a pane with no stamped region, and `render`

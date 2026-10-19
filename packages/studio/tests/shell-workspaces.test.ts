@@ -16,16 +16,19 @@ import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
 import {
   applyDockLayout,
+  DEFAULT_PANEL_ID,
   enterWorkspace,
   persistedWorkspace,
   persistProjectShell,
   presetInspectorOpen,
   RAIL_HIDDEN_CLASS,
+  TAB_STRIP_HIDDEN_CLASS,
   registerShellViewCommands,
   resetProjectShell,
   shell,
   syncProjectWorkspace,
   WORKSPACE_PRESETS,
+  workspaceDrawsTabStrip,
 } from "../src/shell";
 import { setWorkspaceProject } from "../src/workspace/workspace";
 import { WORKSPACE_IDS } from "../src/workspace/workspace-ids";
@@ -74,7 +77,7 @@ describe("the presets", () => {
     }
   });
 
-  test("Media and Publish collapse both side docks; Content opens Collections; Design and Styles open both", () => {
+  test("Media and Publish collapse both side docks; Content opens Collections; Design opens both", () => {
     for (const id of ["media", "publish"] as const) {
       expect(WORKSPACE_PRESETS[id].navigator.open).toBe(false);
       expect(WORKSPACE_PRESETS[id].inspector.open).toBe(false);
@@ -83,10 +86,23 @@ describe("the presets", () => {
     expect(WORKSPACE_PRESETS.content.inspector.open).toBe(false);
     for (const id of ["design", "styles"] as const) {
       expect(WORKSPACE_PRESETS[id].navigator.open).toBe(true);
-      expect(WORKSPACE_PRESETS[id].inspector.open).toBe(true);
     }
-    expect(WORKSPACE_PRESETS.styles.navigator.panel).toBe("layers");
-    expect(WORKSPACE_PRESETS.styles.inspector.tab).toBe("style");
+    expect(WORKSPACE_PRESETS.design.inspector.open).toBe(true);
+    expect(WORKSPACE_PRESETS.styles.navigator.panel).toBe("styles");
+    /* Styles opens on Variables, which is edited in the view itself: its Inspector is drawn only
+       while the Elements view selects element defaults on a canvas, on its Style tab. */
+    expect(WORKSPACE_PRESETS.styles.inspector).toEqual({
+      open: false,
+      tab: "style",
+      whileWriting: true,
+    });
+  });
+
+  test("only Design and Content draw a tab strip", () => {
+    for (const id of WORKSPACE_IDS) {
+      expect(WORKSPACE_PRESETS[id].tabStrip).toBe(id === "design" || id === "content");
+      expect(workspaceDrawsTabStrip(id)).toBe(id === "design" || id === "content");
+    }
   });
 });
 
@@ -102,13 +118,17 @@ describe("enterWorkspace", () => {
     expect(setInspectorTab).not.toHaveBeenCalled();
   });
 
-  test("Styles opens the Outline and the Style tab", () => {
+  test("Styles opens the Styles panel and the Style tab, drawn only over the Elements view", () => {
     shell.leftTab = "files";
     enterWorkspace("styles", deps);
-    expect(shell.leftTab).toBe("layers");
+    expect(shell.leftTab).toBe("styles");
     expect(shell.docks.left.collapsed).toBe(false);
-    expect(shell.docks.right.collapsed).toBe(false);
+    // Entered on Variables (no canvas being written), so the Inspector leaves the pane its width.
+    expect(shell.docks.right.collapsed).toBe(true);
     expect(setInspectorTab).toHaveBeenCalledWith("style");
+    enterWorkspace("design", deps);
+    enterWorkspace("styles", { ...deps, writingOnCanvas: () => true });
+    expect(shell.docks.right.collapsed).toBe(false);
   });
 
   test("re-entering the workspace on screen changes nothing — the verb is idempotent", () => {
@@ -145,7 +165,7 @@ describe("enterWorkspace", () => {
   test("a workspace that names its panel is not where Design's panel is remembered from", () => {
     shell.leftTab = "files";
     enterWorkspace("styles", deps);
-    expect(shell.leftTab).toBe("layers");
+    expect(shell.leftTab).toBe("styles");
     enterWorkspace("design", deps);
     expect(shell.leftTab).toBe("files");
   });
@@ -192,6 +212,22 @@ describe("the rail", () => {
     enterWorkspace("design", deps);
     applyDockLayout();
     expect(app.classList.contains(RAIL_HIDDEN_CLASS)).toBe(false);
+  });
+});
+
+describe("the tab strips", () => {
+  test("are drawn in Design and Content, and taken out of every pane in the other three", () => {
+    const app = document.querySelector("#app")!;
+    applyDockLayout();
+    expect(app.classList.contains(TAB_STRIP_HIDDEN_CLASS)).toBe(false);
+    for (const id of ["media", "styles", "publish"] as const) {
+      enterWorkspace(id, deps);
+      applyDockLayout();
+      expect(app.classList.contains(TAB_STRIP_HIDDEN_CLASS)).toBe(true);
+    }
+    enterWorkspace("content", deps);
+    applyDockLayout();
+    expect(app.classList.contains(TAB_STRIP_HIDDEN_CLASS)).toBe(false);
   });
 });
 
@@ -251,12 +287,24 @@ describe("persistence per project root", () => {
   test("closing to no project keeps a panel the rail offers", () => {
     setWorkspaceProject("/a");
     syncProjectWorkspace("/a");
-    enterWorkspace("styles", deps);
-    expect(shell.leftTab).toBe("layers");
+    enterWorkspace("design", deps);
+    shell.leftTab = "layers";
+    enterWorkspace("media", deps);
     resetProjectShell();
     setWorkspaceProject(null);
     syncProjectWorkspace(null);
     expect(shell.leftTab).toBe("layers");
+  });
+
+  test("closing to no project from Styles drops its workspace-only panel", () => {
+    setWorkspaceProject("/a");
+    syncProjectWorkspace("/a");
+    enterWorkspace("styles", deps);
+    expect(shell.leftTab).toBe("styles");
+    resetProjectShell();
+    setWorkspaceProject(null);
+    syncProjectWorkspace(null);
+    expect(shell.leftTab).toBe(DEFAULT_PANEL_ID);
   });
 
   test("a project opens in the workspace it was left in, and another project in its own", () => {

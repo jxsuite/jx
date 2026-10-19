@@ -184,12 +184,14 @@ describe("panel placement matrix", () => {
 // ─── the composed set ─────────────────────────────────────────────────────────
 
 describe("the Navigator's panel set", () => {
-  test("registers nine records, in registration order — and Problems is not one of them", () => {
+  test("registers ten records, in registration order — and Problems is not one of them", () => {
     expect(navigatorPanelSet().map((p) => p.id)).toEqual([
       // The Site panel leads: the Project group's one button and the Navigator's default (§5.7).
       "site",
       // The Content workspace's Navigator (§22.5): no rail button, opened by that workspace's frame.
       "collections",
+      // The Styles workspace's Navigator (§7.1), the same way.
+      "styles",
       "files",
       "search",
       // No `git`: Source Control is the Publish workspace's Review changes and Branches (§5.5).
@@ -235,7 +237,7 @@ describe("the Navigator's panel set", () => {
   test("registerNavigatorPanels is idempotent — the app mounts once, a suite mounts per case", () => {
     registerNavigatorPanels();
     registerNavigatorPanels();
-    expect(listPanels("navigator")).toHaveLength(9);
+    expect(listPanels("navigator")).toHaveLength(10);
     // …and it composes the Bottom dock's tabs in the same pass, still exactly once each. There is
     // No `diff` among them: it was a reserved id with no record behind it, so it could only ever
     // Select a hidden tab.
@@ -396,13 +398,14 @@ describe("every project-level panel renders with no document open", () => {
     const ctx = panelContext();
     const panels = listPanels().filter((p) => p.level === "project" && isPanelVisible(p, ctx));
     // Search is registered, `when`-hidden and deliberately unbuilt (its render throws), so the
-    // Set under test is the five that DRAW — three Navigator panels and two Bottom-dock tabs, since
+    // Set under test is the six that DRAW — four Navigator panels and two Bottom-dock tabs, since
     // The corollary is about a panel's LEVEL and not about which dock hosts it. Named rather than
     // Counted: a panel that quietly stopped being project-level would otherwise shrink this loop
     // To nothing and still pass.
     expect(panels.map((p) => p.id)).toEqual([
       "site",
       "collections",
+      "styles",
       "files",
       "problems",
       "activity",

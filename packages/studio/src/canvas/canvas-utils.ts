@@ -875,6 +875,11 @@ export function revealParentRect(
   const ceiling = Math.max(surface.panY, 0) - surface.panY;
   const step = Math.min(offset, ceiling);
   if (step !== 0) {
+    /* A reveal is a pan somebody asked for, so the entry's centring stands down as a user's pan
+       makes it: a frame still growing to its height would otherwise re-centre the stage (top
+       aligned) under the card just brought on screen, which is what a reveal on a fresh stylebook
+       canvas did. */
+    surface.needsCenter = false;
     animatePanBy(surface, step);
   }
 }

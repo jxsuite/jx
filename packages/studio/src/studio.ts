@@ -150,6 +150,8 @@ import { entryFields } from "./content/entry-fields";
 import { contentCacheDrops } from "./content/content-collections";
 import { resetWritingBanners } from "./content/writing-banner";
 import { resetCollectionsPanel } from "./panels/collections-panel";
+import { resetStylesPanel } from "./panels/styles-panel";
+import { resetVariablesFocus } from "./style/variables-focus";
 import { invalidateMediaCache, isMediaScanPath } from "./ui/media-picker";
 import { invalidateSiteIndex, resetSitePanel } from "./panels/site-panel";
 import { setMediaChangedHandler } from "./files/media-upload";
@@ -198,7 +200,7 @@ import { initShortcuts, registerStudioCommands } from "./editor/shortcuts";
 import type { ProjectOpenOutcome, ProjectOpenTarget } from "./editor/shortcuts";
 import { createCommandRegistry } from "./commands/registry";
 import { chordsInScopes } from "./commands/keymap";
-import { FRAME_KEY_SCOPES } from "./canvas/iframe-keys";
+import { FRAME_KEY_SCOPES, HOST_ONLY_COMMANDS } from "./canvas/iframe-keys";
 import { createLiveContext } from "./commands/live-context";
 import { hasAiCredentials } from "./services/ai-models";
 import { mount } from "./surfaces/rail";
@@ -263,13 +265,17 @@ import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
 import { registerGridCommands } from "./grid/grid-open";
 import { registerExtensionCommands } from "./settings/extension-commands";
-import { registerSettingsCommands, showSettingsDocument } from "./settings/settings-document";
-import { PROJECT_STYLES_VIEW } from "./style/project-styles";
+import {
+  registerSettingsCommands,
+  rememberStylesView,
+  showSettingsDocument,
+} from "./settings/settings-document";
 import {
   installWorkspaceFollow,
   revealInPane,
   switchWorkspace,
 } from "./workspace/workspace-switch";
+import { workspaceBackCommands } from "./workspace/workspace-back";
 import type { HomeWorkspaceId, WorkspaceId } from "./workspace/workspace-ids";
 import { openWorkspaceHome, placeWorkspaceHome } from "./workspace/workspace-home";
 import { registerPreferencesCommands } from "./settings/preferences-dialog";
@@ -283,10 +289,12 @@ import { registerRedirectsCommands } from "./grid/redirects-grid";
 import { registerContentCommands } from "./content/entry-commands";
 import { registerAddNewCommands } from "./create/add-new-commands";
 import { registerMediaCommands } from "./media/media-commands";
-import { resetMediaLibrary } from "./media/media-library";
+import { focusMediaHome, resetMediaLibrary } from "./media/media-library";
+import { focusPublishHome } from "./publish/publish-workspace";
 import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
+import { PROJECT_CONFIG_PATH } from "./tabs/tab";
 import type { Tab } from "./tabs/tab";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
@@ -393,6 +401,10 @@ function setCanvasMode(tab: Tab | null, mode: string) {
     shell.git.diffState = null;
   }
   tab.session.ui.canvasMode = mode;
+  // The Styles home view follows the author's own switches between Variables and Elements.
+  if (tab.documentPath === PROJECT_CONFIG_PATH) {
+    rememberStylesView(mode);
+  }
 }
 
 // ─── Component registry ───────────────────────────────────────────────────────
@@ -547,11 +559,26 @@ const primaryCell = cellForPane(PRIMARY_PANE);
 
 tabStrip.mount(primaryCell?.strip ?? document.createElement("div"));
 
+/**
+ * Give the keyboard to the home a Back landed on (`workspace/workspace-back.ts`): the media tile
+ * that was opened, the change whose comparison it was. One function for the Back control and for
+ * Escape, so the two land in the same place.
+ */
+function focusWorkspaceHome(paneId: string, id: WorkspaceId): void {
+  if (id === "media") {
+    focusMediaHome(paneId);
+  } else if (id === "publish") {
+    focusPublishHome(paneId);
+  }
+}
+
 paneContext.mount(primaryCell?.chrome ?? document.createElement("div"), {
   exportFile,
   // No `getCanvasMode`: the bar is drawn once per pane and asks its own pane. See `PaneContextCtx`.
   parseMediaEntries,
   setCanvasMode,
+  closeTab: tabStrip.requestClose,
+  focusHome: focusWorkspaceHome,
 });
 /* The diff's Visual/Code switch decides whether the zoom pod is drawn, and the half it writes is
    not reactive — so the switch repaints the chrome as well as the stage. See `setDiffChromeRepaint`. */
@@ -1327,6 +1354,8 @@ function resetProjectCaches(): void {
   invalidateEntrySummaries();
   invalidateRepeaterSources();
   resetCollectionsPanel();
+  resetStylesPanel();
+  resetVariablesFocus();
   resetWritingBanners();
   invalidateMediaCache();
   resetMediaLibrary();
@@ -1565,8 +1594,9 @@ const workspaceDeps = {
   openHome: (id: HomeWorkspaceId) => {
     openWorkspaceHome(id);
   },
+  // The Styles home: the view it was left in, Variables on a first visit (§7.1).
   openStyles: () => {
-    showSettingsDocument(PROJECT_STYLES_VIEW);
+    showSettingsDocument();
   },
   placeHome: placeWorkspaceHome,
   setInspectorTab: (tab: InspectorTabId) => rightPanelMod.setInspectorTab(tab),
@@ -1589,6 +1619,16 @@ registerShellViewCommands(commandRegistry, {
   setInspectorTab: (tab) => rightPanelMod.setInspectorTab(tab),
   showWorkspace: showWorkspaceWithHomes,
 });
+/* Back to a strip-less workspace's home (Media, Styles, Publish): the pane context bar's Back
+   control and Escape. The close goes through the strip's guarded close, so a view with unsaved
+   work still asks first. */
+commandRegistry.registerAll(
+  workspaceBackCommands({
+    closeTab: tabStrip.requestClose,
+    focusHome: focusWorkspaceHome,
+    setCanvasMode,
+  }),
+);
 registerCanvasViewCommands(commandRegistry, {
   getCanvasMode,
   renderPane: renderCanvas,
@@ -1706,7 +1746,7 @@ initShortcuts(commandRegistry, stageContext);
    which is what makes Preferences › Keyboard reach inside the page. */
 setKeymapSource(
   () => ({
-    chords: chordsInScopes(commandRegistry.keymap, FRAME_KEY_SCOPES),
+    chords: chordsInScopes(commandRegistry.keymap, FRAME_KEY_SCOPES, HOST_ONLY_COMMANDS),
     mac: commandRegistry.keymap.mac,
   }),
   (listener) => commandRegistry.keymap.onChange(listener),

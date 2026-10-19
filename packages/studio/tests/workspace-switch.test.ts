@@ -26,7 +26,9 @@ import {
 import {
   installWorkspaceFollow,
   revealInPane,
+  stripLessLanding,
   switchWorkspace,
+  viewsReplacedBy,
   wantsHomeBeside,
 } from "../src/workspace/workspace-switch";
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
@@ -353,6 +355,52 @@ describe("Content's Inspector follows what is being written", () => {
   });
 });
 
+describe("a strip-less pane holds its home and one view", () => {
+  test("a second media viewer replaces the first; a pinned or unsaved one stays", () => {
+    tab(workspaceHomeTabId("media"), { mode: "media-home", path: null });
+    tab("public/a.png", { mode: "media" });
+    tab("public/b.png", { mode: "media" });
+    expect(workspace.tabs.has("public/a.png")).toBe(false);
+    expect(workspace.tabs.has(workspaceHomeTabId("media"))).toBe(true);
+
+    workspace.tabs.get("public/b.png")!.pinned = true;
+    const svg = tab("public/c.svg", { mode: "media" });
+    expect(workspace.tabs.has("public/b.png")).toBe(true);
+    svg.doc.dirty = true;
+    tab("public/d.png", { mode: "media" });
+    expect(workspace.tabs.has("public/c.svg")).toBe(true);
+    expect(activeTab.value?.id).toBe("public/d.png");
+  });
+
+  test("a workspace with a strip, and the home itself, replace nothing", () => {
+    tab("pages/a.json");
+    tab("pages/b.json");
+    expect(viewsReplacedBy("primary", "pages/b.json", "design")).toEqual([]);
+    tab(workspaceHomeTabId("media"), { mode: "media-home", path: null });
+    tab("public/a.png", { mode: "media" });
+    expect(viewsReplacedBy("primary", workspaceHomeTabId("media"), "media")).toEqual([]);
+    expect(viewsReplacedBy("nowhere", "public/a.png", "media")).toEqual([]);
+    // Design's documents are another workspace's, and a view never replaces them.
+    expect(workspace.tabs.has("pages/a.json")).toBe(true);
+  });
+});
+
+describe("Styles' Inspector follows the view", () => {
+  test("Variables leaves the pane its width, and Elements draws the Inspector on its Style tab", () => {
+    tab("pages/index.json");
+    tab("project.json", { mode: "tokens" });
+    expect(shell.workspace).toBe("styles");
+    expect(shell.docks.right.collapsed).toBe(true);
+    expect(inspectorWrites.at(-1)).toEqual({ tab: "project.json", value: "style" });
+    const config = workspace.tabs.get("project.json")!;
+    config.session.ui.canvasMode = "stylebook";
+    expect(shell.docks.right.collapsed).toBe(false);
+    // Code has no canvas either.
+    config.session.ui.canvasMode = "source";
+    expect(shell.docks.right.collapsed).toBe(true);
+  });
+});
+
 describe("the fallback is scoped to the workspace", () => {
   test("closing a workspace's last tab stays in the workspace and shows nothing", () => {
     tab("pages/index.json");
@@ -383,7 +431,7 @@ describe("the fallback is scoped to the workspace", () => {
   });
 });
 
-describe("a workspace with no Navigator keeps its home within reach", () => {
+describe("a workspace with no tab strip keeps its home within reach", () => {
   /** The follow, restarted with a writer that places a home the way the bootstrap's does. */
   function followPlacingHomes(): void {
     stopFollow();
@@ -457,6 +505,39 @@ describe("a workspace with no Navigator keeps its home within reach", () => {
     tab("content/posts/one.md");
     expect(shell.workspace).toBe("content");
     expect(workspace.tabs.has(workspaceHomeTabId("content"))).toBe(false);
+  });
+
+  test("closing a view lands on the home, not on another view the pane is not drawing", () => {
+    followPlacingHomes();
+    tab("public/logo.png", { mode: "media" });
+    tab("public/hero.png", { mode: "media" });
+    activateTab(workspaceHomeTabId("media"));
+    activateTab("public/logo.png");
+    activateTab("public/hero.png");
+    // The most recent tab before hero is logo; without the landing the close would show it.
+    closeTab("public/hero.png");
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("media"));
+  });
+
+  test("the landing is the home only where there is no strip and the home is in the pane", () => {
+    followPlacingHomes();
+    tab("public/logo.png", { mode: "media" });
+    expect(stripLessLanding("primary", "media")).toBe(workspaceHomeTabId("media"));
+    expect(stripLessLanding("primary", "publish")).toBeNull();
+    expect(stripLessLanding("primary", "content")).toBeNull();
+    expect(stripLessLanding("primary", "styles")).toBeNull();
+    expect(stripLessLanding("nowhere", "media")).toBeNull();
+  });
+
+  test("closing project.json in Styles reopens it in the Styles home rather than an empty stage", () => {
+    followPlacingHomes();
+    switchWorkspace("styles", deps);
+    expect(activeTab.value?.id).toBe("project.json");
+    deps.openStyles.mockClear();
+    closeTab("project.json");
+    expect(deps.openStyles).toHaveBeenCalledTimes(1);
+    expect(shell.workspace).toBe("styles");
+    expect(activeTab.value?.id).toBe("project.json");
   });
 
   test("wantsHomeBeside names only the navigator-less workspaces, and never the home itself", () => {

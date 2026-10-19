@@ -32,6 +32,10 @@
       "alignItems": "center",
       "minWidth": "0"
     },
+    "& [part=\"back\"]": {
+      "flexShrink": "0",
+      "marginInlineEnd": "var(--jx-space-2)"
+    },
     "& [part=\"axis\"]": {
       "display": "flex",
       "alignItems": "center",
@@ -214,6 +218,54 @@
                 "part": "spacer"
               },
               "children": [
+                {
+                  "$description": "Back to the workspace home, in a workspace that draws no tab strip (Media, Styles, Publish): the way out of a view opened beside the home — a media file, a comparison, `project.json` as Code — with the destination named, because there is no chip to click and no close button to press. It leads the bar so it sits where the strip's chips would have been. Escape runs the same command (`pane.backToHome`) wherever no text field or code editor owns the key.",
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "back-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/backState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "back"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "arrow-left",
+                        "hint": {
+                          "$ref": "#/state/backHint"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/goBack"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "${state.backLabel}"
+                        }
+                      ]
+                    }
+                  }
+                },
                 {
                   "tagName": "div",
                   "attributes": {

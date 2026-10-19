@@ -160,7 +160,7 @@ Adding packages and choosing which of their components your site uses is covered
 
 ## Raw JSON
 
-The whole of `project.json` exactly as it is saved. **Edit as code** closes the dialog and opens that same file in the Code editor, in the Styles workspace, where it has one undo history and one unsaved-changes flag like any document.
+The whole of `project.json` exactly as it is saved. **Edit as code** closes the dialog and opens that same file in the Code editor, in the Styles workspace, where it has one undo history and one unsaved-changes flag like any document. **Back to Variables** (or **Back to Elements**) at the top of the pane returns you to the view you were last in.
 
 :::doc-note
 Every section edits `project.json` at the root of your project, the same file the New Project modal first wrote. The full shape is documented in [Site architecture](/docs/framework/site).

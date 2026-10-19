@@ -845,6 +845,20 @@ describe("revealParentRect (the stylebook's pan-to-card)", () => {
     expect(surfaceForPane("primary").panY).toBeCloseTo(-700);
   });
 
+  test("a reveal that pans stands the entry's centring down, and one that does not leaves it", () => {
+    makePanzoomWrap();
+    stubRect(primary().wrap, { height: 600, top: 0 });
+    instantFrames();
+    const surface = surfaceForPane("primary");
+    surface.panY = 0;
+    surface.needsCenter = true;
+    revealParentRect({ height: 40, top: 120 });
+    expect(surface.needsCenter).toBe(true);
+    // A frame still growing would otherwise re-centre the stage under the card just revealed.
+    revealParentRect({ height: 0, top: 1000 });
+    expect(surface.needsCenter).toBe(false);
+  });
+
   test("a card above the fold comes back, but the boards' top never drops past where it stood", () => {
     makePanzoomWrap();
     stubRect(primary().wrap, { height: 600, top: 0 });

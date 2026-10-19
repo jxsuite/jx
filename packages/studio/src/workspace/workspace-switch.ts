@@ -40,8 +40,10 @@ import {
   activateTab,
   activeTab,
   clearPaneActiveTab,
+  closeTab,
   paneById,
   paneOfTab,
+  setCloseLanding,
   setEmptyPaneFallback,
   setTabScope,
   workspace,
@@ -70,23 +72,68 @@ export interface WorkspaceSwitchDeps extends WorkspaceDeps {
   openHome: (id: HomeWorkspaceId) => void;
 }
 
-/** What the follow needs: the frame's deps, and the writer that keeps a home within reach. */
+/** What the follow needs: the frame's deps, and the writers that keep a home within reach. */
 export interface WorkspaceFollowDeps extends WorkspaceDeps {
   /** Put a home in a pane's strip without showing it (`workspace-home.ts` `placeWorkspaceHome`). */
   placeHome?: (id: HomeWorkspaceId, paneId: string) => void;
+  /** Reopen `project.json` in the Styles home view, when a close left Styles with nothing open. */
+  openStyles?: () => void;
 }
 
 /**
  * Whether entering `id` on `tab` should put the workspace's home beside it: a workspace with a home
- * and no Navigator, entered on a tab that is not that home. Such a workspace has no other route
- * back to its home, so a document of it never sits in the strip alone.
+ * and no tab strip, entered on a tab that is not that home. The pane context bar's Back control
+ * (`workspace/workspace-back.ts`) closes the view and lands on the home, so the home has to be
+ * there to land on: a view of such a workspace never stands in its pane alone.
  */
 export function wantsHomeBeside(id: WorkspaceId, tabId: string): id is HomeWorkspaceId {
   return (
-    isHomeWorkspace(id) &&
-    !WORKSPACE_PRESETS[id].navigator.open &&
-    homeWorkspaceOfTabId(tabId) !== id
+    isHomeWorkspace(id) && !WORKSPACE_PRESETS[id].tabStrip && homeWorkspaceOfTabId(tabId) !== id
   );
+}
+
+/**
+ * The views a newly shown view replaces in `paneId`: in a workspace with a home and no tab strip,
+ * every other view of that workspace in the pane that can go without losing anything (not its home,
+ * not pinned, nothing unsaved in it).
+ *
+ * A strip-less pane holds its home and ONE view beside it (`workspace/workspace-back.ts`). With no
+ * strip, a second viewer opened from the Site panel, or a viewer left by a workspace switch rather
+ * than by Back, would otherwise stay open where nothing draws it: reachable only by ⌃Tab, and the
+ * tab the next visit to the workspace landed on instead of its home.
+ */
+export function viewsReplacedBy(
+  paneId: string,
+  tabId: string,
+  id: WorkspaceId = shell.workspace,
+): string[] {
+  const pane = paneById(paneId);
+  if (!pane || !wantsHomeBeside(id, tabId)) {
+    return [];
+  }
+  return pane.tabOrder.filter((other) => {
+    const tab = workspace.tabs.get(other);
+    return (
+      other !== tabId &&
+      tab !== undefined &&
+      homeWorkspaceOfTabId(other) !== id &&
+      workspaceOfTab(tab) === id &&
+      !tab.pinned &&
+      !tab.doc.dirty
+    );
+  });
+}
+
+/**
+ * Where closing a pane's active tab lands in a workspace with no tab strip: its home, when the home
+ * is in that pane. `null` everywhere else, which leaves the most recently used tab in charge.
+ */
+export function stripLessLanding(paneId: string, id: WorkspaceId = shell.workspace): string | null {
+  if (!isHomeWorkspace(id) || WORKSPACE_PRESETS[id].tabStrip) {
+    return null;
+  }
+  const home = workspaceHomeTabId(id);
+  return paneById(paneId)?.tabOrder.includes(home) === true ? home : null;
 }
 
 /**
@@ -213,7 +260,7 @@ let _scope: EffectScope | null = null;
  *
  * It also scopes the panes' fallback (`workspace.ts`'s `setTabScope`), so closing a workspace's
  * last tab never switches the workspace under the author: the pane is left empty, or, in a
- * workspace with no Navigator, shows its home (`setEmptyPaneFallback`, {@link fallBackToHome}).
+ * workspace with no tab strip, shows its home (`setEmptyPaneFallback`, {@link fallBackToHome}).
  */
 export function installWorkspaceFollow(deps: WorkspaceFollowDeps): () => void {
   if (_scope) {
@@ -221,6 +268,7 @@ export function installWorkspaceFollow(deps: WorkspaceFollowDeps): () => void {
   }
   setTabScope((tabId) => isTabInWorkspace(tabId));
   setEmptyPaneFallback((paneId) => fallBackToHome(paneId, deps));
+  setCloseLanding((paneId) => stripLessLanding(paneId));
   const scope = effectScope();
   _scope = scope;
   const withTab = frameDeps(deps);
@@ -243,8 +291,14 @@ export function installWorkspaceFollow(deps: WorkspaceFollowDeps): () => void {
          the OLD tab still active for one more statement, enter the old workspace straight back. */
       pauseTracking();
       try {
+        const paneId = paneOfTab(tab.id)?.id ?? null;
+        // The view on screen replaces the ones beside it nobody can see (a strip-less pane only).
+        if (paneId !== null) {
+          for (const replaced of viewsReplacedBy(paneId, tab.id, id)) {
+            closeTab(replaced);
+          }
+        }
         if (enterWorkspace(id, withTab)) {
-          const paneId = paneOfTab(tab.id)?.id ?? null;
           alignPanes(id, paneId);
           if (paneId !== null && wantsHomeBeside(id, tab.id)) {
             deps.placeHome?.(id, paneId);
@@ -285,19 +339,23 @@ export function installWorkspaceFollow(deps: WorkspaceFollowDeps): () => void {
 }
 
 /**
- * A close left `paneId` with no tab of the workspace on screen: in a workspace with no Navigator,
- * show its home there. Media and Publish have no other way back to their home than its tab, so an
+ * A close left `paneId` with no tab of the workspace on screen: in a workspace with no tab strip,
+ * show its home there. Media, Styles and Publish have no strip to reach another tab from, so an
  * empty stage there is a dead end (closing the home itself, or the viewer beside a home closed
- * earlier), where Design's empty stage is its home and Content's Collections panel is the way
- * back.
+ * earlier), where Design's empty stage is its home and Content's strip and Collections panel are
+ * the way back. Styles' home is `project.json` itself, reopened in the view it was left in.
  */
 function fallBackToHome(paneId: string, deps: WorkspaceFollowDeps): void {
   const id = shell.workspace;
   const pane = paneById(paneId);
-  if (!deps.placeHome || !pane || pane.derived || !isHomeWorkspace(id)) {
+  if (!pane || pane.derived || WORKSPACE_PRESETS[id].tabStrip) {
     return;
   }
-  if (WORKSPACE_PRESETS[id].navigator.open) {
+  if (id === "styles") {
+    deps.openStyles?.();
+    return;
+  }
+  if (!deps.placeHome || !isHomeWorkspace(id)) {
     return;
   }
   deps.placeHome(id, paneId);
@@ -310,4 +368,5 @@ function stopWorkspaceFollow(): void {
   _scope = null;
   setTabScope(null);
   setEmptyPaneFallback(null);
+  setCloseLanding(null);
 }

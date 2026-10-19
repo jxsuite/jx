@@ -210,6 +210,18 @@
 #app.rail-hidden #activity-bar {
   display: none;
 }
+/* Every pane's document tab strip, out of the cell. `src/shell.ts`'s applyDockLayout() stamps the
+   class from the active workspace's preset (`tabStrip`): Design and Content draw strips, and
+   Media, Styles and Publish draw their home surface alone, with the pane context bar's Back
+   control leading out of anything opened beside it. The strip stays mounted underneath, so
+   returning to a workspace with strips repaints nothing. A DERIVED pane's strip is the exception,
+   whenever it draws the derivation chip: the chip says what the side pane is a projection of, and
+   its trailing ✕ (Close Side Pane) is a lens's only visible exit, since a lens's context bar draws
+   neither the preset menu nor a Back control. Derived panes follow the author into every
+   workspace, so hiding that row would leave a pane nobody can name or close. */
+#app.tabs-hidden #pane-grid [data-pane-id] > [part="strip"]:not(:has([part="derivation"])) {
+  display: none;
+}
 /* ⑫ Status bar Three fields in the shell's own level order, separated by a rule rather than by a
    run of "|" characters: the boundary between PROJECT, DOCUMENT and SELECTION is structural, and
    the eye should be able to find it without reading. */

@@ -65,13 +65,18 @@ export function workspaceOfTab(tab: Tab): WorkspaceId {
   return collectionForFile(tab.documentPath) ? "content" : "design";
 }
 
-/** The editors in which a document is written on the canvas, where the Inspector applies. */
-const CANVAS_WRITING_MODES: ReadonlySet<string> = new Set(["edit", "design"]);
+/**
+ * The editors in which a document is written on the canvas, where the Inspector applies: a page's
+ * canvas, and the Elements view (`stylebook`), whose canvas selects the element default the
+ * Inspector's Style tab edits.
+ */
+const CANVAS_WRITING_MODES: ReadonlySet<string> = new Set(["edit", "design", "stylebook"]);
 
 /**
  * Whether a tab is a document being written on the canvas: a file-backed tab in an editing canvas
- * mode. A grid, an entry's form, a home and a code view are not. Content's preset reads it to draw
- * the Inspector while an entry is written (`shell.ts`'s `WORKSPACE_PRESETS`).
+ * mode. A grid, an entry's form, a home, the Variables view and a code view are not. Content's and
+ * Styles' presets read it to draw the Inspector while the canvas is being written (`shell.ts`'s
+ * `WORKSPACE_PRESETS`).
  */
 export function writesOnCanvas(tab: Tab): boolean {
   return (

@@ -20,7 +20,7 @@ import {
   variablesView,
   variablesViewMounted,
 } from "../src/style/variables-view";
-import { selectStylebookVariable } from "../src/panels/stylebook-layers-panel";
+import { requestVariablesFocus, resetVariablesFocus } from "../src/style/variables-focus";
 import { resetProjectConfigDocument } from "../src/tabs/project-config";
 import { transactDoc } from "../src/tabs/transact";
 import { createCommandRegistry } from "../src/commands/registry";
@@ -108,6 +108,7 @@ function writtenStyle(): JsonObject {
 beforeEach(() => {
   resetProjectShell();
   resetProjectConfigDocument();
+  resetVariablesFocus();
   closeAllTabs();
 });
 
@@ -230,17 +231,50 @@ describe("following the document", () => {
     expect(token(host, "--radius")).toBeTruthy();
   });
 
-  test("choosing a variable in the Outline points the editor at it", async () => {
+  test("choosing a variable in the Styles panel points the editor at it", async () => {
     const tab = openVariables({ "--accent": "#2448c9", "--gap": "8px" });
     const host = await draw(tab);
-    selectStylebookVariable("--gap");
+    requestVariablesFocus({ kind: "variable", name: "--gap" });
     await flush(4);
     expect(token(host, "--gap").getAttribute("aria-current")).toBe("true");
     expect(token(host, "--accent").getAttribute("aria-current")).toBeNull();
     expect(shell.stylebook.variable).toBe("--gap");
   });
 
-  test("arriving at the view marks the variable the Outline last chose", async () => {
+  test("a request made before the view mounted is served when it does, once", async () => {
+    const tab = openVariables({ "--accent": "#2448c9", "--gap": "8px" });
+    requestVariablesFocus({ kind: "variable", name: "--gap" });
+    const host = await draw(tab);
+    await flush(4);
+    expect(token(host, "--gap").getAttribute("aria-current")).toBe("true");
+    // Drawn again: the request was served, so the second view only marks what is current.
+    detachVariablesView("primary");
+    shell.stylebook.variable = "--accent";
+    const again = await draw(tab);
+    expect(token(again, "--accent").getAttribute("aria-current")).toBe("true");
+  });
+
+  test("a group request scrolls to the group and focuses its add row", async () => {
+    const tab = openVariables({ "--color-accent": "#2448c9", "--gap": "8px" });
+    const host = await draw(tab);
+    const scrolled: string[] = [];
+    for (const group of host.querySelectorAll<HTMLElement>("[data-group]")) {
+      group.scrollIntoView = () => {
+        scrolled.push(group.dataset["group"] ?? "");
+      };
+    }
+    requestVariablesFocus({ add: true, group: "color", kind: "group" });
+    await flush(4);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5);
+    });
+    expect(scrolled).toEqual(["color"]);
+    const add = host.querySelector('[data-group="color"] [part="add-name"] input');
+    expect(add).toBeInstanceOf(HTMLInputElement);
+    expect(document.activeElement).toBe(add);
+  });
+
+  test("arriving at the view marks the variable the Styles panel last chose", async () => {
     shell.stylebook.variable = "--accent";
     const host = await draw(openVariables({ "--accent": "#2448c9", "--gap": "8px" }));
     expect(token(host, "--accent").getAttribute("aria-current")).toBe("true");

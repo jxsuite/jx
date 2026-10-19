@@ -8,8 +8,10 @@ import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 import {
   buildStylebookDoc,
+  catalogueRows,
   hasTagStyle,
   sampleRowSpecimen,
+  selectionLeaf,
   transposeStylebookStyle,
 } from "../src/panels/stylebook-doc";
 import type { BuildStylebookDocOpts } from "../src/panels/stylebook-doc";
@@ -349,5 +351,37 @@ describe("hasTagStyle", () => {
     expect(hasTagStyle(style, "p")).toBe(true);
     expect(hasTagStyle(style, "ul")).toBe(false);
     expect(hasTagStyle(style, "h1")).toBe(false);
+  });
+});
+
+describe("catalogueRows (the one walk both element lists draw from)", () => {
+  const entries = [
+    { tag: "h1" },
+    {
+      children: [{ tag: "li" }, { tag: "li" }, { children: [{ tag: "a" }], tag: "ol" }],
+      tag: "ul",
+    },
+  ];
+
+  test("flattens in document order, with compound paths and depths, one row per child tag", () => {
+    const rows = catalogueRows(entries, null);
+    expect(rows.map((row) => [row.path, row.depth])).toEqual([
+      ["h1", 0],
+      ["ul", 0],
+      ["ul li", 1],
+      ["ul ol", 1],
+      ["ul ol a", 2],
+    ]);
+    expect(rows.every((row) => !row.selected)).toBe(true);
+    // The duplicate tags are one row, in the first one's place (a Map keeps the last entry's value).
+    expect(rows[2]!.entry).toBe(entries[1]!.children![1]!);
+  });
+
+  test("marks the row whose tag is the selection's leaf", () => {
+    expect(selectionLeaf(null)).toBeNull();
+    expect(selectionLeaf("h1")).toBe("h1");
+    expect(selectionLeaf("ul ol a")).toBe("a");
+    const marked = catalogueRows(entries, "ul ol a").filter((row) => row.selected);
+    expect(marked.map((row) => row.path)).toEqual(["ul ol a"]);
   });
 });

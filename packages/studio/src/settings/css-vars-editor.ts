@@ -49,7 +49,11 @@ import {
 } from "../style/project-styles";
 import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
 import { pushProjectStylesToCanvas } from "../style/live-preview";
-import { renderCssVarsSurface, revealCssVarsToken } from "../surfaces/settings-css-vars";
+import {
+  renderCssVarsSurface,
+  revealCssVarsGroup,
+  revealCssVarsToken,
+} from "../surfaces/settings-css-vars";
 import { friendlyNameToVar } from "../utils/studio-utils";
 
 import type { JxStyle, ProjectConfig } from "@jxsuite/schema/types";
@@ -497,4 +501,21 @@ export function focusCssVar(
     return;
   }
   revealCssVarsToken(container, name);
+}
+
+/**
+ * Point the editor at one group: bring its heading on screen, and with `add` put the keyboard on
+ * its Add row, the editor's own way of adding a variable. What a group heading and "Add variable"
+ * in the Styles workspace's Styles panel ask for.
+ *
+ * @param {HTMLElement} container
+ * @param {TokenGroupId} group
+ * @param {{ add?: boolean }} [options] `add: true` focuses the Add row's name field
+ */
+export function focusCssVarGroup(
+  container: HTMLElement,
+  group: TokenGroupId,
+  options: { add?: boolean } = {},
+): void {
+  revealCssVarsGroup(container, group, options.add === true);
 }

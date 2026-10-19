@@ -107,6 +107,9 @@ describe("writesOnCanvas", () => {
     expect(writesOnCanvas(tab("pages/b.json", { mode: "design" }))).toBe(true);
     expect(writesOnCanvas(tab("content/posts/c.md", { mode: "entry" }))).toBe(false);
     expect(writesOnCanvas(tab("pages/d.json", { mode: "source" }))).toBe(false);
+    // The Elements view selects element defaults on its canvas; Variables is edited in the view.
+    expect(writesOnCanvas(tab("project.json", { mode: "stylebook" }))).toBe(true);
+    expect(writesOnCanvas(tab("pages/e.json", { mode: "tokens" }))).toBe(false);
     const content = workspaceHomeTabId("content");
     expect(writesOnCanvas(openVirtualTab(content, "content-home"))).toBe(false);
     const home = workspaceHomeTabId("media");

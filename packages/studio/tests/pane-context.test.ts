@@ -36,8 +36,16 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { CommandArgValues } from "../src/commands/command-args";
 
 const paneContext = await import("../src/panels/pane-context");
-const { PRIMARY_PANE, SECONDARY_PANE, closeAllTabs, focusPane, openTab, splitRight, workspace } =
-  await import("../src/workspace/workspace");
+const {
+  PRIMARY_PANE,
+  SECONDARY_PANE,
+  closeAllTabs,
+  closeTab: closeWorkspaceTab,
+  focusPane,
+  openTab,
+  splitRight,
+  workspace,
+} = await import("../src/workspace/workspace");
 const { getFit, hasDeclaredFit, resetFits } = await import("../src/canvas/canvas-utils");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
@@ -570,6 +578,103 @@ describe("a workspace home", () => {
     await mountBar();
     expect(root.querySelector('[data-axis="context"]')).not.toBeNull();
     expect(part("preset")).not.toBeNull();
+  });
+});
+
+// ─── Back to the workspace home ───────────────────────────────────────────────
+
+describe("back to the workspace home", () => {
+  afterEach(() => {
+    shell.workspace = "design";
+  });
+
+  /** The media home with a viewer beside it, the viewer on screen, in Media. */
+  function mediaViewer(): Tab {
+    const home = resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "", id: "workspace://media" },
+    );
+    home.documentPath = null;
+    home.capabilities.modes = ["media-home"];
+    home.session.ui.canvasMode = "media-home";
+    const viewer = openTab({
+      capabilities: { modes: ["media"] },
+      document: { children: [], tagName: "div" },
+      documentPath: "public/logo.png",
+      id: "public/logo.png",
+    });
+    viewer.session.ui.canvasMode = "media";
+    shell.workspace = "media";
+    return viewer;
+  }
+
+  test("a media viewer draws a Back control naming Media, and pressing it closes the viewer", async () => {
+    const viewer = mediaViewer();
+    const closeTab = mock((_id: string) => {});
+    await mountBar(makeCtx({ closeTab }));
+    expect(part("back")).not.toBeNull();
+    expect(nameOf(part("back")!)).toBe("Back to Media");
+    expect(hintOf(part("back")!)).toBe("Close this view and return to Media");
+    pointer(part("back")!, "click");
+    await flush();
+    expect(closeTab).toHaveBeenCalledWith(viewer.id);
+  });
+
+  test("Back hands the keyboard to the home it lands on, as Escape does", async () => {
+    const viewer = mediaViewer();
+    const closeTab = mock((id: string) => {
+      closeWorkspaceTab(id);
+    });
+    const focusHome = mock((_pane: string, _id: string) => {});
+    await mountBar(makeCtx({ closeTab, focusHome }));
+    pointer(part("back")!, "click");
+    await flush();
+    expect(closeTab).toHaveBeenCalledWith(viewer.id);
+    expect(focusHome).toHaveBeenCalledWith(PRIMARY_PANE, "media");
+  });
+
+  test("Styles' Code view goes back to the home view without closing anything", async () => {
+    const config = resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "project.json", id: "project.json" },
+    );
+    config.capabilities.modes = ["stylebook", "tokens", "source"];
+    config.session.ui.canvasMode = "source";
+    shell.workspace = "styles";
+    const ctx = makeCtx({ closeTab: mock(() => {}) });
+    await mountBar(ctx);
+    expect(nameOf(part("back")!)).toBe("Back to Variables");
+    pointer(part("back")!, "click");
+    await flush(4);
+    expect(ctx.setCanvasMode).toHaveBeenCalledWith(config, "tokens");
+    expect(ctx.closeTab).not.toHaveBeenCalled();
+    expect(part("back")).toBeNull();
+  });
+
+  test("without a close to hand the control runs pane.backToHome for its pane", async () => {
+    mediaViewer();
+    const ran: CommandArgValues[] = [];
+    activeRegistry()!.register({
+      args: { additionalProperties: true, properties: {}, required: [], type: "object" },
+      category: "View",
+      id: "pane.backToHome",
+      level: "document",
+      run: (_ctx, args: CommandArgValues) => {
+        ran.push(args);
+      },
+      title: "Back",
+    });
+    await mountBar();
+    pointer(part("back")!, "click");
+    await flush();
+    expect(ran).toEqual([{ pane: PRIMARY_PANE }]);
+  });
+
+  test("a workspace with a strip draws no Back: its strip is the way between documents", async () => {
+    mediaViewer();
+    shell.workspace = "design";
+    await mountBar();
+    expect(part("back")).toBeNull();
   });
 });
 

@@ -90,10 +90,25 @@ describe("the strip follows the workspace", () => {
   });
 
   test("a pane whose every tab is another workspace's draws no strip", async () => {
-    open("content/posts/hello.md");
-    shell.workspace = "media";
+    open("pages/index.json");
+    shell.workspace = "content";
     await flush();
     expect(host.querySelector('[part="tabs"]')).toBeNull();
+  });
+
+  test("a workspace with no strip leaves the strip unpainted, and the way back repaints it", async () => {
+    open("pages/index.json");
+    await flush();
+    expect(labels()).toEqual(["/"]);
+    open(workspaceHomeTabId("media"), null, "media-home");
+    shell.workspace = "media";
+    await flush();
+    // Out of the grid (`tabs-hidden`), so not repainted: it still says what Design had.
+    expect(labels()).toEqual(["/"]);
+    open("pages/about.json");
+    shell.workspace = "design";
+    await flush();
+    expect(labels()).toEqual(["/", "/about"]);
   });
 
   test("a tab whose editor moves it to another workspace leaves this strip", async () => {
@@ -109,10 +124,10 @@ describe("the strip follows the workspace", () => {
   });
 
   test("a workspace home's chip reads the workspace's title", async () => {
-    open(workspaceHomeTabId("media"), null, "media-home");
-    shell.workspace = "media";
+    open(workspaceHomeTabId("content"), null, "content-home");
+    shell.workspace = "content";
     await flush();
-    expect(labels()).toEqual(["Media"]);
+    expect(labels()).toEqual(["Content"]);
   });
 
   test("the overflow list and the hidden-tab read stay inside the workspace", async () => {

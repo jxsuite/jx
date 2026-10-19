@@ -97,6 +97,15 @@ export interface PaneContextView {
   /** `full` draws the three axes; `lens` draws the rendering context as a read-only summary. */
   barMode: "full" | "lens";
   presetState: "shown" | "hidden";
+  /**
+   * The Back control, in a workspace that draws no tab strip (Media, Styles, Publish): shown over a
+   * view opened beside the workspace's home, naming where it leads
+   * (`workspace/workspace-back.ts`).
+   */
+  backState: "shown" | "hidden";
+  /** "Back to Media", "Back to Variables". */
+  backLabel: string;
+  backHint: string;
   bannerState: "shown" | "hidden";
   /** The lens's stated rendering context — "Tablet · français". */
   summary: string;
@@ -150,6 +159,8 @@ export interface PaneContextView {
 /** What a control can ask the pane to do. Every one of them is a decision the flow owns. */
 export interface PaneContextActions {
   openPresetMenu: (anchor: HTMLElement) => void;
+  /** Leave the view for the workspace home (`pane.backToHome`). */
+  goBack: () => void;
   chooseEditor: (kind: string) => void;
   chooseView: (view: string) => void;
   togglePreview: () => void;
@@ -221,6 +232,9 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.zoomRegion = view.zoomRegion;
   scope.barMode = view.barMode;
   scope.presetState = view.presetState;
+  scope.backState = view.backState;
+  scope.backLabel = view.backLabel;
+  scope.backHint = view.backHint;
   scope.bannerState = view.bannerState;
   scope.summary = view.summary;
   scope.editorMode = view.editorMode;
@@ -260,6 +274,9 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
 /** The projection a pane's chrome starts from — a bar with nothing in it yet. */
 export function emptyPaneContextView(): PaneContextView {
   return {
+    backHint: "",
+    backLabel: "",
+    backState: "hidden",
     bannerState: "hidden",
     barMode: "full",
     contextRegion: "",

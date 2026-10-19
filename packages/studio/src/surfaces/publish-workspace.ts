@@ -19,11 +19,12 @@
  * @docs studio/publish
  */
 
-import { isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import publishWorkspaceDoc from "./publish-workspace.json";
 import type { JxElement } from "@jxsuite/schema/types";
+import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 import type { ChangeRow, CommitRow } from "../publish/source-control";
 import type { DestinationChoice } from "../publish/publish-changes";
@@ -215,6 +216,11 @@ export interface PublishWorkspaceActions {
   newBranch: () => void;
   /** The build adapter's mount box was created. */
   adapterHost: (element: HTMLElement) => void;
+  /**
+   * A change row's Compare button was created, for the file at `path`: the control the keyboard
+   * goes back to when the comparison it opened is left.
+   */
+  compareHost: (element: HTMLElement, path: string) => void;
 }
 
 export interface PublishWorkspaceSurfaceHandle {
@@ -226,7 +232,8 @@ export interface PublishWorkspaceSurfaceHandle {
 }
 
 /** The scope the document reads: the view, and every action but the node callback. */
-type PublishWorkspaceScope = PublishWorkspaceView & Omit<PublishWorkspaceActions, "adapterHost">;
+type PublishWorkspaceScope = PublishWorkspaceView &
+  Omit<PublishWorkspaceActions, "adapterHost" | "compareHost">;
 
 /** An empty view: what a scope holds before the first projection. */
 export function emptyPublishWorkspaceView(): PublishWorkspaceView {
@@ -305,6 +312,14 @@ export function emptyPublishWorkspaceView(): PublishWorkspaceView {
   };
 }
 
+/** The file a change row stands for, read from the row scope the runtime renders it with. */
+function rowPathOf(state: JxScope | undefined): string {
+  const map = state?.["$map"];
+  const row = isJsonObject(map) ? map["item"] : undefined;
+  const path = isJsonObject(row) ? row["path"] : undefined;
+  return isString(path) ? path : "";
+}
+
 /** The `part` a definition declares, or `""`. */
 function partOf(def: JxElement | string): string {
   const part = isString(def) ? undefined : def.attributes?.["part"];
@@ -325,17 +340,23 @@ export function mountPublishWorkspaceSurface(
   actions: PublishWorkspaceActions,
 ): PublishWorkspaceSurfaceHandle {
   host.replaceChildren();
-  const { adapterHost, ...controls } = actions;
+  const { adapterHost, compareHost, ...controls } = actions;
   const scope = reactive<PublishWorkspaceScope>({ ...emptyPublishWorkspaceView(), ...controls });
   Object.assign(scope, view);
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   const ready = mountSurface("publish-workspace", scope, host, {
-    onNodeCreated: (element, _path, def) => {
+    onNodeCreated: (element, _path, def, state) => {
       // `disposed` first: nodes are still created while a mount that was taken down runs out.
-      if (!disposed && element instanceof HTMLElement && partOf(def) === "adapter-island") {
+      if (disposed || !(element instanceof HTMLElement)) {
+        return;
+      }
+      const part = partOf(def);
+      if (part === "adapter-island") {
         adapterHost(element);
+      } else if (part === "compare") {
+        compareHost(element, rowPathOf(state));
       }
     },
   }).then((surface) => {

@@ -137,6 +137,8 @@ Beside the file, the same three things the Media workspace's details pane shows:
 
 The viewer is read-only. Replacing and deleting a file are in the Media workspace's details pane; renaming and revealing one belong to the Files panel, where you already do them for everything else.
 
+The Media workspace shows no tab strip, so the viewer's context bar starts with **Back to Media**. Press it, or :kbd[Esc], to close the viewer and return to the library, with the keyboard back on the tile you opened; :kbd[⌘W] does the same. Opening another file replaces the viewer, so the library always has one viewer beside it.
+
 :::doc-tip
 This is the fastest way to check what an [imported site](/docs/studio/projects/create) actually brought in. Open the Media workspace and click through the grid (or open `public/assets/images/` in the Files panel): you'll see the real dimensions of every asset the crawl downloaded, and which of your new pages uses each one.
 :::

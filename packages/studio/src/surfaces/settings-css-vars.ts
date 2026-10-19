@@ -228,3 +228,38 @@ export function revealCssVarsToken(host: HTMLElement, name: string): void {
     row.querySelector<HTMLElement>('[part="value"] input')?.focus();
   }, 0);
 }
+
+/**
+ * Bring one group's heading on screen, and with `add` put the keyboard on its Add row's name field.
+ *
+ * The Styles panel's group headings and its "Add variable" land here. It waits a turn for the
+ * reason {@link revealCssVarsToken} does. A host with no surface, or a group the section does not
+ * draw (an empty Other), moves nothing.
+ *
+ * @param {HTMLElement} host The section container the editor was rendered into.
+ * @param {string} group A token group id: `color`, `font`, `size` or `other`.
+ * @param {boolean} add Whether to focus the group's Add row.
+ */
+export function revealCssVarsGroup(host: HTMLElement, group: string, add: boolean): void {
+  const record = mounts.get(host);
+  if (!record) {
+    return;
+  }
+  setTimeout(() => {
+    const root = record.handle?.root;
+    if (!(root instanceof HTMLElement) || !root.isConnected) {
+      return;
+    }
+    const section = [...root.querySelectorAll<HTMLElement>("[data-group]")].find(
+      (candidate) => candidate.dataset["group"] === group,
+    );
+    if (!section) {
+      return;
+    }
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (add) {
+      // The NATIVE input, for the reason `revealCssVarsToken` gives.
+      section.querySelector<HTMLElement>('[part="add-name"] input')?.focus();
+    }
+  }, 0);
+}

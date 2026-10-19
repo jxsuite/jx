@@ -245,6 +245,11 @@ interface LibraryMount {
    * hold yet when it is selected, and which a sort can place anywhere in the grid.
    */
   reveal: string | null;
+  /**
+   * Whether the keyboard is owed to this library's tab stop ({@link focusMediaHome}) and no tile
+   * has been drawn to take it yet: a home mounted before its listing has arrived has no tiles.
+   */
+  focusOwed: boolean;
   disposed: boolean;
 }
 
@@ -253,6 +258,9 @@ const _mounts = new Set<LibraryMount>();
 
 /** The library mounted in each pane, keyed by pane id, as `media/media-pane.ts` keys its viewers. */
 const _panes = new Map<string, { tabId: string; wrap: HTMLElement; mount: LibraryMount }>();
+
+/** Panes whose next library takes the keyboard on its tab stop ({@link focusMediaHome}). */
+const _focusOnMount = new Set<string>();
 
 let _unsubscribe: (() => void) | null = null;
 
@@ -291,6 +299,10 @@ function redraw(mount: LibraryMount): void {
     // A pick dialog's footer names what Use will use, which a search or a filter can take away.
     mount.onSelect?.();
     revealPending(mount);
+    // On the frame's next turn: the projection just assigned is what draws the tiles.
+    if (mount.focusOwed) {
+      queueMicrotask(() => serveOwedFocus(mount));
+    }
     scheduleSweep(mount);
   }
 }
@@ -973,6 +985,7 @@ function createMount(
     onSelect: null,
     paneId,
     reveal: null,
+    focusOwed: false,
     region,
     sweepTimer: null,
     tiles: new Map(),
@@ -1047,6 +1060,53 @@ export function renderMediaLibrary(surface: CanvasSurface, tab: Tab): void {
     clear: true,
   });
   _panes.set(paneId, { mount, tabId: tab.id, wrap });
+  if (_focusOnMount.delete(paneId)) {
+    void focusTabStop(mount);
+  }
+}
+
+/**
+ * Put the keyboard on a library's tab stop once it is drawn: the selected tile, or the tile the
+ * roving tabindex leaves reachable when nothing is selected. Like the arrow keys' focus move, it
+ * reaches only for a tile the surface announced. With no such tile in the document yet (the listing
+ * is still being read), the focus stays owed and the next repaint serves it.
+ */
+async function focusTabStop(mount: LibraryMount): Promise<void> {
+  await mount.handle?.ready;
+  serveOwedFocus(mount, true);
+}
+
+/** Serve an owed focus, when {@link focusTabStop} is owed one and a tab-stop tile is drawn. */
+function serveOwedFocus(mount: LibraryMount, owe = mount.focusOwed): void {
+  if (!owe || mount.disposed) {
+    return;
+  }
+  const { selected } = mount.choice;
+  const target =
+    (selected === null ? undefined : mount.tiles.get(selected)) ??
+    [...mount.tiles.values()].find((tile) => tile.getAttribute("tabindex") === "0");
+  if (target?.isConnected) {
+    mount.focusOwed = false;
+    target.focus();
+    return;
+  }
+  mount.focusOwed = true;
+}
+
+/**
+ * Give the keyboard back to the Media home in `paneId`: what leaving a viewer with Back does
+ * (`workspace/workspace-back.ts`), so a keyboard user lands on the tile they opened rather than on
+ * the page body. Served now when the home is standing in the pane, or by its next mount there.
+ *
+ * @param {string} paneId
+ */
+export function focusMediaHome(paneId: string): void {
+  const pane = _panes.get(paneId);
+  if (pane?.wrap.isConnected && pane.mount.handle?.attached() === true) {
+    void focusTabStop(pane.mount);
+    return;
+  }
+  _focusOnMount.add(paneId);
 }
 
 /** A request for the Media home: what `media.browse` passes. */
@@ -1218,5 +1278,6 @@ export function resetMediaLibrary(): void {
   homeChoice.selected = null;
   homeChoice.sort = "newest";
   _pendingPicker = null;
+  _focusOnMount.clear();
   resetUnused();
 }

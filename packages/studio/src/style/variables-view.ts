@@ -23,7 +23,7 @@
  *
  * **It follows the document.** An edit that reaches the tab another way (an undo, the Code view, an
  * element style edit that wrote a custom property) re-projects the editor, and choosing a variable
- * in the Outline (`selectStylebookVariable`) points the editor at it.
+ * or a group in the Styles panel (`style/variables-focus.ts`) points the editor at it.
  *
  * Mounted per pane, keyed by pane id, for the reason `media/media-pane.ts` gives: two panes can
  * each show a view at once.
@@ -38,8 +38,9 @@ import { runActiveReported } from "../commands/run-reported";
 import { projectConfigDocument } from "../tabs/project-config";
 import { PROJECT_CONFIG_PATH } from "../tabs/tab";
 import { paneRegion } from "../ui/regions";
-import { focusCssVar, renderCssVarsEditor } from "../settings/css-vars-editor";
-import { variableRequests } from "../panels/stylebook-layers-panel";
+import { focusCssVar, focusCssVarGroup, renderCssVarsEditor } from "../settings/css-vars-editor";
+import { variablesFocus } from "./variables-focus";
+import type { VariablesFocus } from "./variables-focus";
 import { mountVariablesSurface } from "../surfaces/styles-variables";
 import type { VariablesSurfaceHandle, VariablesView } from "../surfaces/styles-variables";
 import type { Tab } from "../tabs/tab";
@@ -130,6 +131,26 @@ function bindConfiguration(tab: Tab): void {
   }
 }
 
+/** Bring what a request names on screen in `host`, the editor island. */
+function serve(host: HTMLElement, focus: VariablesFocus | null): void {
+  if (focus?.kind === "group") {
+    focusCssVarGroup(host, focus.group, { add: focus.add });
+    return;
+  }
+  focusCssVar(host, focus?.name ?? shell.stylebook.variable);
+}
+
+/** Serve the latest request in `host` if no view has served it yet. Whether it did. */
+function serveLatest(host: HTMLElement): boolean {
+  const request = variablesFocus.value;
+  if (request.served) {
+    return false;
+  }
+  request.served = true;
+  serve(host, request.focus);
+  return true;
+}
+
 /** Run `fn` without the calling effect tracking what it reads. */
 function untracked(fn: () => void): void {
   pauseTracking();
@@ -165,8 +186,10 @@ export function renderVariablesMode(surface: CanvasSurface, tab: Tab): void {
       editorSlot: (host) => {
         editorHost = host;
         renderCssVarsEditor(host);
-        // Marked, not revealed: arriving at the view is not a request to move the keyboard.
-        if (shell.stylebook.variable !== null) {
+        /* A request the Styles panel made while the pane was in another view (a variable or a
+           group chosen from Elements) is served now, once. Otherwise the marked property is only
+           MARKED: arriving at the view is not a request to move the keyboard. */
+        if (!serveLatest(host) && shell.stylebook.variable !== null) {
           focusCssVar(host, shell.stylebook.variable, { reveal: false });
         }
       },
@@ -196,18 +219,15 @@ export function renderVariablesMode(surface: CanvasSurface, tab: Tab): void {
         });
       }
     });
-    /* The Outline's variable rows. The request count is read beside the name so choosing the
-       same property again, after scrolling away from it, brings it back again. */
-    let requests: number | null = null;
+    /* The Styles panel's variable rows, group headings and "Add variable". Every request is a new
+       value, so choosing the same property again, after scrolling away from it, brings it back
+       again. */
     effect(() => {
-      const name = shell.stylebook.variable;
-      const count = variableRequests.value;
-      const first = requests === null;
-      requests = count;
+      void variablesFocus.value;
       const host = editorHost;
-      if (!first && host) {
+      if (host) {
         untracked(() => {
-          focusCssVar(host, name);
+          serveLatest(host);
         });
       }
     });
