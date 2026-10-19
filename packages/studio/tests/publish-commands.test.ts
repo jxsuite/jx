@@ -258,6 +258,7 @@ describe("the workspace doors", () => {
        schema admits the empty object, which is what the registry would hand it with no tab. */
     const noArgs = {} as never;
     const running = Promise.resolve(command("publish.open").run(emptyContext(), noArgs));
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
     await expect(running).rejects.toThrow(/needs the window's command registry/);
   });
 });
