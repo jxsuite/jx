@@ -241,19 +241,38 @@ export function compareScenario(
 // ─── Same-runner A/B gate ────────────────────────────────────────────────────
 
 /**
- * The four metrics both gates judge, in the order every table prints them. `wallMs` is the
- * interaction's wall clock; the other three are main-thread self time (`analysis.ts`).
+ * Every metric the A/B compares, in the order its table prints them. `wallMs` is the interaction's
+ * wall clock; `mainThreadMs` is the main-thread work it cost, the sum of the three components after
+ * it, each main-thread self time (`analysis.ts`).
  */
-export const GATED_METRICS = ["wallMs", "scriptingMs", "styleRecalcMs", "layoutMs"] as const;
-export type GatedMetric = (typeof GATED_METRICS)[number];
+export const AB_METRICS = [
+  "wallMs",
+  "mainThreadMs",
+  "scriptingMs",
+  "styleRecalcMs",
+  "layoutMs",
+] as const;
+export type ABMetric = (typeof AB_METRICS)[number];
 
-/** One repetition's gated metrics, plus its longest main-thread task (budgeted, never compared). */
-export type RepMetrics = Record<GatedMetric, number> & { longTaskMs: number };
+/**
+ * The metrics that FAIL the A/B gate: what an interaction costs the person using it, as time and as
+ * main-thread work. The components are compared and printed beside them as diagnostics, and do not
+ * fail on their own, because they trade against each other: `canvas-edit` on the workspaces
+ * redesign read wall x0.98 and scripting -28 ms while style recalculation rose +34 ms (x1.78),
+ * which gated per component was a red X on a change that made the interaction faster. Four gated
+ * metrics per scenario was also four chances per scenario at a p < 0.05 false positive. A component
+ * that grows enough to matter grows `mainThreadMs`, or `wallMs`, and fails there.
+ */
+export const GATED_METRICS: readonly ABMetric[] = ["wallMs", "mainThreadMs"];
+
+/** One repetition's compared metrics, plus its longest main-thread task (budgeted, never compared). */
+export type RepMetrics = Record<ABMetric, number> & { longTaskMs: number };
 
 /** The numbers a repetition contributes, read off an analysis {@link attributeHarness} has seen. */
 export function metricsOf(r: Analysis): RepMetrics {
   return {
     wallMs: r.wallMs,
+    mainThreadMs: Number((r.breakdown.scripting + r.styleRecalc.time + r.layout.time).toFixed(1)),
     scriptingMs: r.breakdown.scripting,
     styleRecalcMs: r.styleRecalc.time,
     layoutMs: r.layout.time,
@@ -355,14 +374,23 @@ function sideStats(reps: readonly number[]): SideStats {
   };
 }
 
-/** One metric's A/B verdict. `ratio` is null where base's median is zero. */
+/**
+ * One metric's A/B verdict. `ratio` is null where base's median is zero. `regressed` says the
+ * metric crossed every bar; it fails the gate only where `gated` ({@link GATED_METRICS}).
+ */
 export interface ABComparison {
-  metric: GatedMetric;
+  metric: ABMetric;
   base: SideStats;
   head: SideStats;
   ratio: number | null;
   p: number;
   regressed: boolean;
+  gated: boolean;
+}
+
+/** Whether a comparison fails the gate: it regressed, on a metric the gate judges. */
+export function failsGate(c: Pick<ABComparison, "regressed" | "gated">): boolean {
+  return c.regressed && c.gated;
 }
 
 /**
@@ -389,7 +417,7 @@ export interface ABComparison {
  * statistical.
  */
 export function compareAB(
-  metric: GatedMetric,
+  metric: ABMetric,
   baseReps: readonly number[],
   headReps: readonly number[],
 ): ABComparison {
@@ -402,7 +430,7 @@ export function compareAB(
     head.median > base.median * AB_RATIO &&
     head.median - base.median > AB_FLOOR_MS &&
     p < AB_ALPHA;
-  return { metric, base, head, ratio, p, regressed };
+  return { metric, base, head, ratio, p, regressed, gated: GATED_METRICS.includes(metric) };
 }
 
 /**
@@ -546,7 +574,7 @@ export function classifyScenario(run: ScenarioRun): ABScenarioResult {
   return {
     name,
     kind: "compared",
-    comparisons: GATED_METRICS.map((metric) =>
+    comparisons: AB_METRICS.map((metric) =>
       compareAB(
         metric,
         run.base.map((m) => m[metric]),
@@ -590,7 +618,7 @@ export function abFailed(results: readonly ABScenarioResult[]): boolean {
     results.length === 0 ||
     results.some((r) =>
       r.kind === "compared"
-        ? r.comparisons.some((c) => c.regressed)
+        ? r.comparisons.some((c) => failsGate(c))
         : r.kind === "head-only"
           ? r.violations.length > 0
           : true,
@@ -626,7 +654,7 @@ export function abMarkdown(
   const lines = [
     `### Studio perf: same-runner A/B (${meta.reps} interleaved reps per side)`,
     "",
-    `Regression = head median > base median × ${AB_RATIO} AND > base + ${AB_FLOOR_MS} ms AND one-sided Mann-Whitney p < ${AB_ALPHA} (base median ≥ ${MIN_BASELINE_MS} ms). Cells are median [min–max] in ms.`,
+    `Regression = head median > base median × ${AB_RATIO} AND > base + ${AB_FLOOR_MS} ms AND one-sided Mann-Whitney p < ${AB_ALPHA} (base median ≥ ${MIN_BASELINE_MS} ms). Gated: ${GATED_METRICS.join(", ")} (mainThreadMs = scripting + style + layout); the components are diagnostics, marked "up" when they cross the same bars. Cells are median [min–max] in ms.`,
     "",
     "| scenario | metric | base | head | head/base | p | verdict |",
     "| --- | --- | --- | --- | --- | --- | --- |",
@@ -636,11 +664,13 @@ export function abMarkdown(
       continue;
     }
     for (const c of r.comparisons) {
-      const verdict = c.regressed
+      const verdict = failsGate(c)
         ? "**REGRESSED**"
-        : c.base.median < MIN_BASELINE_MS
-          ? "below floor"
-          : "ok";
+        : c.regressed
+          ? "up (diagnostic)"
+          : c.base.median < MIN_BASELINE_MS
+            ? "below floor"
+            : "ok";
       lines.push(
         `| ${r.name} | ${c.metric} | ${statsCell(c.base)} | ${statsCell(c.head)} | ${c.ratio ?? "n/a"} | ${c.p} | ${verdict} |`,
       );
@@ -1021,6 +1051,49 @@ async function requireGridRows(cdp: Cdp) {
   }
 }
 
+/**
+ * A setup that also runs the scenario's steps once, untraced, so every repetition starts from the
+ * state the steps leave rather than from whatever the build shows first.
+ *
+ * Without it the first traced step paid for a starting state the two builds do not share, which is
+ * not the interaction under test: head's Design workspace opens the Navigator on Site and base's on
+ * Layers, so `panels`' first `view.setActivity { tab: "layers" }` drew the whole Outline on head
+ * (2,511 elements restyled, 44 ms) and nothing on base; `canvas-edit`'s first selection moved
+ * head's Inspector off the Page tab (603 elements) where base was already on Properties.
+ */
+function warmed(
+  setup: (cdp: Cdp) => Promise<void>,
+  steps: (cdp: Cdp) => Promise<void>,
+): (cdp: Cdp) => Promise<void> {
+  return async (cdp) => {
+    await setup(cdp);
+    await steps(cdp);
+  };
+}
+
+/** One `canvas-edit` cycle: select the root, cycle the Inspector, deselect, cycle again. */
+async function canvasEditCycle(cdp: Cdp) {
+  await runCommand(cdp, "selection.set", { path: [] });
+  await runCommand(cdp, "view.setRightTab", { tab: "style" });
+  await runCommand(cdp, "view.setRightTab", { tab: "properties" });
+  await runCommand(cdp, "selection.set", { path: null });
+  await runCommand(cdp, "view.setRightTab", { tab: "events" });
+  await runCommand(cdp, "view.setRightTab", { tab: "properties" });
+}
+
+/** One `panels` pass: Navigator panels, the Inspector dock, then the Bottom dock's tabs. */
+async function panelsPass(cdp: Cdp) {
+  await runCommand(cdp, "view.setActivity", { tab: "layers" });
+  await runCommand(cdp, "view.setActivity", { tab: "data" });
+  await runCommand(cdp, "view.setActivity", { tab: "files" });
+  await runCommand(cdp, "view.setRightPanel", { open: false });
+  await runCommand(cdp, "view.setRightPanel", { open: true });
+  await runCommand(cdp, "view.setNavigator", { open: true });
+  await runCommand(cdp, "view.setBottomTab", { tab: "activity" });
+  await runCommand(cdp, "view.setBottomTab", { tab: "problems" });
+  await runCommand(cdp, "view.setBottomTab", { tab: "activity" });
+}
+
 async function pressEscape(cdp: Cdp) {
   for (const type of ["keyDown", "keyUp"]) {
     await cdp.send("Input.dispatchKeyEvent", {
@@ -1110,15 +1183,10 @@ export const SCENARIOS: Scenario[] = [
     name: "canvas-edit",
     describe:
       "Selection + inspector tab cycling on pages/index.md (×3). The document is opened in setup, untraced: this measures the editing path, not the open.",
-    setup: openIndexInDesign,
+    setup: warmed(openIndexInDesign, canvasEditCycle),
     interactions: async (cdp) => {
       for (let i = 0; i < 3; i++) {
-        await runCommand(cdp, "selection.set", { path: [] });
-        await runCommand(cdp, "view.setRightTab", { tab: "style" });
-        await runCommand(cdp, "view.setRightTab", { tab: "properties" });
-        await runCommand(cdp, "selection.set", { path: null });
-        await runCommand(cdp, "view.setRightTab", { tab: "events" });
-        await runCommand(cdp, "view.setRightTab", { tab: "properties" });
+        await canvasEditCycle(cdp);
       }
     },
   },
@@ -1155,18 +1223,8 @@ export const SCENARIOS: Scenario[] = [
        scenario used to pass `view.setNavigator { panel }`, `view.setRightPanel { panel }` and
        `view.setBottomTab { tab: "events" }`, none of which the registry accepts; every step threw,
        and the un-awaited harness reported the throws as a 40ms scenario. */
-    setup: openIndexInDesign,
-    interactions: async (cdp) => {
-      await runCommand(cdp, "view.setActivity", { tab: "layers" });
-      await runCommand(cdp, "view.setActivity", { tab: "data" });
-      await runCommand(cdp, "view.setActivity", { tab: "files" });
-      await runCommand(cdp, "view.setRightPanel", { open: false });
-      await runCommand(cdp, "view.setRightPanel", { open: true });
-      await runCommand(cdp, "view.setNavigator", { open: true });
-      await runCommand(cdp, "view.setBottomTab", { tab: "activity" });
-      await runCommand(cdp, "view.setBottomTab", { tab: "problems" });
-      await runCommand(cdp, "view.setBottomTab", { tab: "activity" });
-    },
+    setup: warmed(openIndexInDesign, panelsPass),
+    interactions: panelsPass,
   },
   {
     name: "settings",
@@ -1367,6 +1425,16 @@ async function openSide(label: Side["label"], url: string, port: number): Promis
     if (throttle > 1) {
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: throttle });
     }
+    /* Said on stderr as it happens: an awaited step whose page navigated or whose renderer died
+       under it fails as `Promise was collected`, which names neither, so the log beside it must. */
+    cdp.on("Page.frameNavigated", (params: { frame?: { parentId?: string; url?: string } }) => {
+      if (params.frame && params.frame.parentId === undefined) {
+        console.error(`[${label}] main frame navigated: ${String(params.frame.url).slice(0, 160)}`);
+      }
+    });
+    cdp.on("Inspector.targetCrashed", () => {
+      console.error(`[${label}] renderer crashed`);
+    });
     return { label, url, cdp, chrome, profileDir };
   } catch (error) {
     chrome?.kill(9);
@@ -1557,7 +1625,7 @@ async function runAB(baseUrl: string, headUrl: string) {
       });
       results.push(result);
       if (result.kind === "compared") {
-        for (const c of result.comparisons.filter((comparison) => comparison.regressed)) {
+        for (const c of result.comparisons.filter((comparison) => failsGate(comparison))) {
           hot.push(hotSources(scenario.name, c, outcome.runs));
         }
       }

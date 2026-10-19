@@ -8,7 +8,9 @@ import type { Analysis } from "./analysis.ts";
 import {
   AB_ALPHA,
   ANALYZER_VERSION,
+  AB_METRICS,
   GATED_METRICS,
+  failsGate,
   abAnnotations,
   ScenarioUnavailableError,
   classifyScenario,
@@ -336,6 +338,7 @@ describe("budgets", () => {
     const rep = (wallMs: number, longTaskMs: number) => ({
       wallMs,
       longTaskMs,
+      mainThreadMs: 0,
       scriptingMs: 0,
       styleRecalcMs: 0,
       layoutMs: 0,
@@ -359,6 +362,7 @@ describe("metricsOf", () => {
     r.longTasks = [60, 120, 80];
     expect(metricsOf(r)).toEqual({
       wallMs: 300,
+      mainThreadMs: 35,
       scriptingMs: 20,
       styleRecalcMs: 10,
       layoutMs: 5,
@@ -404,6 +408,32 @@ describe("abFailed and abMarkdown", () => {
     expect(md).toContain("**REGRESSED**");
     expect(md).toContain("**FAILED**: no such command");
     expect(md).toContain("**Result: FAIL**");
+  });
+
+  /* `canvas-edit` on the workspaces redesign, as CI measured it: faster overall, with work moved
+     from scripting into style recalculation. Gated per component, that was a red X. */
+  test("a component that grows while the interaction does not is a diagnostic, not a failure", () => {
+    const style = compareAB(
+      "styleRecalcMs",
+      [44.2, 39.7, 54.8, 41, 45],
+      [78.5, 73.1, 85.4, 76, 80],
+    );
+    const wall = compareAB("wallMs", [862, 830, 1019, 850, 870], [845, 828, 985, 840, 850]);
+    expect(style.regressed).toBe(true);
+    expect(style.gated).toBe(false);
+    expect(failsGate(style)).toBe(false);
+    const results = [
+      { name: "canvas-edit", kind: "compared" as const, comparisons: [wall, style] },
+    ];
+    expect(abFailed(results)).toBe(false);
+    const md = abMarkdown(results, meta);
+    expect(md).toContain("| canvas-edit | styleRecalcMs |");
+    expect(md).toContain("up (diagnostic)");
+    expect(md).toContain("**Result: pass**");
+    // The same growth on a gated metric fails.
+    const main = compareAB("mainThreadMs", [100, 101, 102, 103, 104], [300, 301, 302, 303, 304]);
+    expect(main.gated).toBe(true);
+    expect(abFailed([{ name: "x", kind: "compared", comparisons: [main] }])).toBe(true);
   });
 
   test("labels a metric under the floor rather than calling it ok", () => {
@@ -478,6 +508,7 @@ describe("classifyScenario", () => {
   const budget = { wallMs: 8000, longTaskMs: 500 };
   const rep = (wallMs: number) => ({
     wallMs,
+    mainThreadMs: 0,
     scriptingMs: 0,
     styleRecalcMs: 0,
     layoutMs: 0,
@@ -498,12 +529,13 @@ describe("classifyScenario", () => {
     budget,
   };
 
-  test("a scenario both builds ran is compared on every gated metric", () => {
+  test("a scenario both builds ran is compared on every metric, and gated on two", () => {
     const result = classifyScenario(run);
     expect(result.kind).toBe("compared");
-    expect(result.kind === "compared" && result.comparisons.map((c) => c.metric)).toEqual([
-      ...GATED_METRICS,
-    ]);
+    const comparisons = result.kind === "compared" ? result.comparisons : [];
+    expect(comparisons.map((c) => c.metric)).toEqual([...AB_METRICS]);
+    expect(comparisons.filter((c) => c.gated).map((c) => c.metric)).toEqual([...GATED_METRICS]);
+    expect(GATED_METRICS).toEqual(["wallMs", "mainThreadMs"]);
   });
 
   test("base throwing on a scenario both builds declare FAILS, it is not downgraded to a budget", () => {

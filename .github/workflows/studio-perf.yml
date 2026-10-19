@@ -5,7 +5,9 @@
 # - PULL REQUEST: did THIS change make Studio slower? The job builds the PR's merge base beside the
 #   PR, serves both, and runs `trace-studio.ts --base-url`: a same-runner A/B in which every
 #   scenario's repetitions are interleaved between the two builds, so whatever the runner is doing
-#   is paid by both. A metric regresses only when head's median beats base's by more than 20% AND
+#   is paid by both, with a fresh Chrome per side for every scenario. The gate judges wall time and
+#   main-thread work (scripting + style + layout; the components are printed as diagnostics), and
+#   a metric regresses only when head's median beats base's by more than 20% AND
 #   25 ms AND the repetitions separate (one-sided exact Mann-Whitney, p < 0.05). A scenario base
 #   does not have (a new feature) is traced and held to the absolute ceilings in
 #   scripts/perf/budgets.json instead; one that throws on either side, or whose command head no
@@ -112,14 +114,16 @@ jobs:
           "$bin" --version
 
       # Head on :3000, base (pull requests only) on :3001. Each dev server serves its own tree, so
-      # each build is traced against its own copy of the jxsuite.com fixture.
+      # each build is traced against its own copy of the jxsuite.com fixture. `JX_DEV_WATCH=0`:
+      # served as built, because a watcher that sees any write under the root rebuilds a bundle and
+      # live-reloads the page a scenario is driving (a base older than the flag ignores it).
       - name: Start the dev servers
         shell: bash
         run: |
           set -euo pipefail
           start() {
             local dir=$1 port=$2
-            (cd "$dir" && JX_DEV_PORT=$port nohup bun run dev > "/tmp/jx-dev-$port.log" 2>&1 &)
+            (cd "$dir" && JX_DEV_PORT=$port JX_DEV_WATCH=0 nohup bun run dev > "/tmp/jx-dev-$port.log" 2>&1 &)
             for i in $(seq 1 120); do
               if curl -sf -o /dev/null "http://127.0.0.1:$port/packages/studio/index.html"; then
                 echo ":$port up after ${i} probe(s)"
@@ -165,6 +169,15 @@ jobs:
             --write-baseline 1 --baseline-out "$PERF_OUT/baseline.json" \
             --out "$PERF_OUT" \
             --summary "$GITHUB_STEP_SUMMARY"
+
+      # The dev servers' own logs go with the results: a file change or a failed request under a
+      # scenario is said there and nowhere else.
+      - name: Keep the dev server logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$PERF_OUT"
+          cp /tmp/jx-dev-*.log "$PERF_OUT/" 2>/dev/null || true
 
       - name: Upload the results
         if: always()
