@@ -1,5 +1,31 @@
 # Changelog
 
+## [6.0.0](https://github.com/jxsuite/jx/compare/compiler-v5.1.3...compiler-v6.0.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio,runtime,compiler:** Whitespace-only text is no longer slotted, the first slot of a duplicated name takes the group, and built output now distributes slotted children by name instead of writing every child into every slot. Self-target reactive style declarations now read var(--jx-s0) and similar instead of a per-element --jx-r variable. Studio's Edit and Design views render bound values live instead of showing binding text for component props, attributes and styles.
+* a single-expression Shape 3 entry is no longer always a string; "${state.count}" is now the number, not its text.
+
+### Bug Fixes
+
+* cold-open component timeouts, shell-preview 403s, and typed single-expression state templates ([#460](https://github.com/jxsuite/jx/issues/460)) ([882a537](https://github.com/jxsuite/jx/commit/882a53770e0acd6b007319d3dcc258cc5255345b))
+* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([d0ba17e](https://github.com/jxsuite/jx/commit/d0ba17e841520645749df384d3bb3f8e2cffa338))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.15
+    * @jxsuite/runtime bumped to 5.0.0
+    * @jxsuite/schema bumped to 4.0.0
+    * @jxsuite/site bumped to 2.0.5
+  * devDependencies
+    * @jxsuite/connector bumped to 0.6.3
+    * @jxsuite/parser bumped to 3.0.0
+
 ## [5.1.3](https://github.com/jxsuite/jx/compare/compiler-v5.1.2...compiler-v5.1.3) (2026-10-16)
 
 
