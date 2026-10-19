@@ -886,12 +886,29 @@ async function idle(cdp: Cdp) {
      thrown: the scenario's numbers are still real, they just include a busy tail. */
   const settled = await evalJs(
     cdp,
-    "__jxAutomation.probe.idle().then(() => '', (error) => String(error))",
+    `${withDeadline("__jxAutomation.probe.idle()", "idle()", COMMAND_DEADLINE_MS)}.then(() => '', (error) => String(error))`,
     true,
   );
   if (settled) {
     console.error(`[idle] ${String(settled).slice(0, 300)}`);
   }
+}
+
+/** How long one command (or one idle probe) may stay pending before the harness calls it hung. */
+export const COMMAND_DEADLINE_MS = 30_000;
+
+/**
+ * A page-side promise expression raced against a deadline that rejects naming what hung.
+ *
+ * Without it a promise that never settles was reported as `{"code":-32000,"message":"Promise was
+ * collected"}`: the inspector holds an awaited promise WEAKLY, so once nothing in the page can
+ * settle it, V8 collects it and the evaluate fails with no word on which step it was. The deadline
+ * timer holds the race strongly, so a hang is now an error that says which command it was and how
+ * long it waited, and the timer is cleared the moment the promise settles.
+ */
+export function withDeadline(expression: string, label: string, deadlineMs: number): string {
+  const message = JSON.stringify(`${label} did not settle within ${deadlineMs} ms`);
+  return `((t) => Promise.race([Promise.resolve().then(() => ${expression}), new Promise((_, reject) => { t = setTimeout(() => reject(new Error(${message})), ${deadlineMs}); })]).finally(() => clearTimeout(t)))()`;
 }
 
 /**
@@ -902,10 +919,16 @@ async function idle(cdp: Cdp) {
  * whole synchronous part (everything before its first `await`) was invisible to `scripting`. An 80
  * ms busy loop injected into `palette.open` moved the scenario's wall clock by 255 ms and its
  * scripting by nothing. Scheduling the call on a timer puts it under `TimerFire`, which is how work
- * a user's gesture causes arrives too (under an input task's `EventDispatch`).
+ * a user's gesture causes arrives too (under an input task's `EventDispatch`). The whole chain runs
+ * under {@link withDeadline}, so a command that never settles fails naming itself.
  */
-export function commandExpression(id: string, args: JsonObject): string {
-  return `new Promise((resolve) => setTimeout(resolve, 0)).then(() => __jxAutomation.run(${JSON.stringify(id)}, ${JSON.stringify(args)}))`;
+export function commandExpression(
+  id: string,
+  args: JsonObject,
+  deadlineMs = COMMAND_DEADLINE_MS,
+): string {
+  const run = `new Promise((resolve) => setTimeout(resolve, 0)).then(() => __jxAutomation.run(${JSON.stringify(id)}, ${JSON.stringify(args)}))`;
+  return withDeadline(run, `command "${id}"`, deadlineMs);
 }
 
 async function runCommand(cdp: Cdp, id: string, args: JsonObject = {}) {
@@ -1336,6 +1359,12 @@ async function openSide(label: Side["label"], url: string, port: number): Promis
     chrome = await launchChrome(profileDir, port);
     await Bun.sleep(400);
     const cdp = await Cdp.connect(port);
+    /* `--cpu-throttle N` slows the renderer N times, to reproduce locally what only a CI runner's
+       timing shows (a race between a command and the canvas it waits on, say). Never in CI. */
+    const throttle = Number(flag("cpu-throttle", "1"));
+    if (throttle > 1) {
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: throttle });
+    }
     return { label, url, cdp, chrome, profileDir };
   } catch (error) {
     chrome?.kill(9);

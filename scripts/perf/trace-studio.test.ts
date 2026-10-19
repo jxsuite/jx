@@ -14,6 +14,7 @@ import {
   classifyScenario,
   selectScenarios,
   trendReport,
+  withDeadline,
   DEFAULT_AB_REPS,
   MIN_AB_REPS,
   SCENARIOS,
@@ -444,6 +445,25 @@ describe("commandExpression", () => {
       },
     };
     expect(evaluate(failing)).rejects.toThrow("unavailable");
+  });
+
+  /* On CI a hung command surfaced as `Promise was collected`, which names nothing: the inspector
+     holds an awaited promise weakly. The deadline holds it strongly and names the step. */
+  test("a command that never settles rejects naming itself, after the deadline", async () => {
+    const expression = commandExpression("view.setRightTab", { tab: "style" }, 20);
+    const evaluate = new Function("__jxAutomation", `return ${expression};`);
+    const hung = { run: () => new Promise(() => {}) };
+    expect(evaluate(hung)).rejects.toThrow(
+      'command "view.setRightTab" did not settle within 20 ms',
+    );
+  });
+
+  test("a settled command clears its deadline", async () => {
+    const expression = withDeadline("Promise.resolve(7)", "x", 60_000);
+    // oxlint-disable-next-line typescript/no-implied-eval -- evaluates the page-side string the harness sends.
+    const started = performance.now();
+    expect(await new Function(`return ${expression};`)()).toBe(7);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 

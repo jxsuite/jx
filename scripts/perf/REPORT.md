@@ -196,8 +196,11 @@ bun run perf:studio --url <head> --base-url <base>             # the A/B gate (5
 bun run perf:studio --reps 3 --compare scripts/perf/baseline.json  # trend vs the tracked baseline (exit 1)
 bun run perf:studio --write-baseline 1 --baseline-out /tmp/b.json  # capture a baseline (adopt only from CI)
 bun run perf:studio --summary out.md ...                       # append the Markdown table to a file
+bun run perf:studio --cpu-throttle 3 ...                       # slow the renderer to reproduce runner timing locally
 bun test scripts/perf --isolate                                # analytics and gate unit tests
 ```
+
+Every command and every idle probe runs against a 30 s deadline (`withDeadline`). The first CI A/B run failed `canvas-edit` and `grid-edit` on head with `{"code":-32000,"message":"Promise was collected"}`: the inspector holds an awaited promise weakly, so a step that never settled was collected and the error named nothing. The deadline's timer holds the race strongly, so a hang is now `command "<id>" did not settle within 30000 ms`, and it is cleared as soon as the step settles.
 
 The dev server must be running (`bun run dev`, port from `JX_DEV_PORT`); Chrome must be on the PATH (`google-chrome-stable`) or named by `CHROME_BIN`.
 
