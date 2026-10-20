@@ -74,49 +74,37 @@ describe("startBackend", () => {
   });
 });
 
-/** `main.ts` under a query string: Bun evaluates each as a module of its own, as a test needs. */
-function entry(tag: string): string {
-  return `../src/hub/main.ts?${tag}`;
-}
-
 /** Stop `process.exit` ending the test process; the entry under test carries on past it. */
 function mockExit() {
   // SAFETY: `exit` never returns in real use. The stand-in does, which is the point of it.
   return spyOn(process, "exit").mockImplementation(() => undefined as never);
 }
 
+/*
+ * ONE evaluation of `main.ts` drives every line of it. Evaluating it twice under two query strings
+ * gives Bun two modules, but Bun 1.4.2 (the repository's pin, `.bun-version`) keeps one coverage
+ * record per path, so the lines only the first evaluation ran (the no-channel branch) were
+ * reported uncovered and failed this workspace's per-file gate. The entry reads `process.send` at
+ * load and again at every send, so a channel that appears after a load without one reaches the
+ * same code a channel present from the start does; `startBackend`'s own tests hold "ready".
+ */
 describe("main.ts", () => {
-  const sent: BackendMessage[] = [];
-
-  test("with no IPC channel it says so and ends", async () => {
+  test("with no IPC channel it says so and ends; a channel serves the shell, and closing it ends the backend", async () => {
+    const sent: BackendMessage[] = [];
     const exit = mockExit();
     const error = spyOn(console, "error").mockImplementation(() => {});
     const original = process.send;
     process.send = undefined;
     try {
-      await import(entry("no-channel"));
+      await import("../src/hub/main.ts");
       expect(error.mock.calls[0]?.[0]).toContain("No IPC channel");
       expect(exit).toHaveBeenCalledWith(1);
-      // The entry carried on past the (mocked) exit; ending the channel stops what it started.
-      process.emit("disconnect");
-    } finally {
-      process.send = original;
-      exit.mockRestore();
-      error.mockRestore();
-    }
-  });
-
-  test("with a channel it starts the backend, and the channel closing ends it", async () => {
-    const exit = mockExit();
-    const original = process.send;
-    // SAFETY: the entry calls `process.send(message)` and reads nothing back but truthiness.
-    process.send = ((message: BackendMessage) => {
-      sent.push(message);
-      return true;
-    }) as typeof process.send;
-    try {
-      await import(entry("channel"));
-      expect(sent).toContainEqual({ type: "ready" });
+      // The entry carried on past the (mocked) exit. Give it a channel and it answers the shell.
+      // SAFETY: the entry calls `process.send(message)` and reads nothing back but truthiness.
+      process.send = ((message: BackendMessage) => {
+        sent.push(message);
+        return true;
+      }) as typeof process.send;
       process.emit("message", { root, type: "open-project" }, null);
       expect(sent.at(-1)).toMatchObject({ title: "site — Jx Studio", type: "open-window" });
       // A frame that is not one of the shell's messages is dropped at the channel.
@@ -130,6 +118,7 @@ describe("main.ts", () => {
     } finally {
       process.send = original;
       exit.mockRestore();
+      error.mockRestore();
       rmSync(scratch, { force: true, recursive: true });
     }
   });
