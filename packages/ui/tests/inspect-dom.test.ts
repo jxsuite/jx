@@ -94,8 +94,9 @@ describe("a failing toBe between two live kit elements", () => {
     expect(code).toBe(1);
     expect(output).toContain("(fail) two live strips are not the same element");
     expect(output.length).toBeLessThan(4000);
-    const markers = [...output.matchAll(/<jx-tabs [^\n]*#(\d+)/gu)].map((match) => match[1]);
-    expect(markers).toHaveLength(2);
-    expect(markers[0]).not.toBe(markers[1]);
+    /* Distinct markers, not occurrences: under GitHub Actions the child also repeats the message
+       as a one-line `::error` annotation, so the same two elements are printed more than once. */
+    const markers = new Set(output.matchAll(/<jx-tabs [^\n%]*?#(\d+)/gu).map((match) => match[1]));
+    expect(markers.size).toBe(2);
   }, 30_000);
 });
