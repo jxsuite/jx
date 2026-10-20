@@ -66,7 +66,23 @@ jobs:
           APPLE_API_KEY: /Users/runner/.apple/keys/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
-        run: bun run --cwd packages/desktop package --target mac --arch arm64 -- --publish never
+        # Apple's stapler downloads the ticket from CloudKit after notarization has already been
+        # accepted, and that fetch drops now and then (NSURLErrorDomain -1005, stapler error 68).
+        # A rerun re-notarizes and staples, so only that failure shape is retried: a signing or
+        # notarization error is real and fails on the first attempt.
+        run: |
+          set -o pipefail
+          for attempt in 1 2 3; do
+            if bun run --cwd packages/desktop package --target mac --arch arm64 -- --publish never 2>&1 | tee "$RUNNER_TEMP/package.log"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ] && grep -q -E "Failed to staple|staple and validate action failed|NSURLErrorDomain" "$RUNNER_TEMP/package.log"; then
+              echo "::warning::Stapling failed on a network error; retrying (attempt $((attempt + 1)) of 3)"
+              sleep 30
+            else
+              exit 1
+            fi
+          done
 
       # What was packaged, not the sources: the backend starts under the Bun that ships beside it
       # and does the things a bundle can lose (packages/desktop/scripts/smoke-backend.ts).
