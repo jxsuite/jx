@@ -80,7 +80,14 @@ jobs:
           security create-keychain -p tmp "$RUNNER_TEMP/diag.keychain-db"
           security import "$RUNNER_TEMP/diag.p12" -k "$RUNNER_TEMP/diag.keychain-db" -P "$CERT_PW" -T /usr/bin/codesign 2>&1 | sed 's/^/security: /'
           security find-identity -p codesigning "$RUNNER_TEMP/diag.keychain-db" | sed 's/[0-9A-F]\{40\}/<hash>/'
-          rm -f "$RUNNER_TEMP/diag.p12"
+          openssl version
+          openssl pkcs12 -info -in "$RUNNER_TEMP/diag.p12" -nokeys -nocerts -passin env:CERT_PW 2>&1 | grep -i -E "mac:|PKCS7|iteration|Encrypted|PBE" | sed 's/^/p12: /'
+          export CERT_PW
+          openssl pkcs12 -in "$RUNNER_TEMP/diag.p12" -nodes -passin env:CERT_PW 2>/dev/null \
+            | openssl pkcs12 -export -passout env:CERT_PW -out "$RUNNER_TEMP/diag2.p12" 2>&1 | sed 's/^/reexport: /'
+          security import "$RUNNER_TEMP/diag2.p12" -k "$RUNNER_TEMP/diag.keychain-db" -P "$CERT_PW" -T /usr/bin/codesign 2>&1 | sed 's/^/security (re-encoded): /'
+          security find-identity -p codesigning "$RUNNER_TEMP/diag.keychain-db" | sed 's/[0-9A-F]\{40\}/<hash>/'
+          rm -f "$RUNNER_TEMP/diag.p12" "$RUNNER_TEMP/diag2.p12"
           security delete-keychain "$RUNNER_TEMP/diag.keychain-db" || true
 
       # electron-builder imports CSC_LINK (a base64 .p12) into a keychain of its own, signs the
