@@ -47,6 +47,8 @@ import { attachJumpBarHost, mountJumpBar, unmountJumpBar } from "../panels/jump-
 import { shell } from "../shell";
 import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
+import { PROJECT_STYLES_VIEW } from "../style/project-styles";
+import { stylebookTarget } from "../style/stylebook-target";
 import { activeRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
 import { deployStatusItem } from "../publish/deploy-checklist";
@@ -164,6 +166,14 @@ export function aheadBehindLabel(ahead: number, behind: number): string {
   return `${ahead > 0 ? ` ↑${ahead}` : ""}${behind > 0 ? ` ↓${behind}` : ""}`;
 }
 
+/** "No changes", "1 changed file", "3 changed files": what the branch item's tooltip states. */
+export function changedFilesLabel(count: number): string {
+  if (count === 0) {
+    return "No changes";
+  }
+  return count === 1 ? "1 changed file" : `${count} changed files`;
+}
+
 function projectField_(registry: CommandRegistry | null): ProjectedField | null {
   const project = projectState;
   const { status } = shell.git;
@@ -183,11 +193,16 @@ function projectField_(registry: CommandRegistry | null): ProjectedField | null 
        — and adjacent duplicate chrome is what the chrome budget (studio-ui-guidelines.md §12.2)
        forbids. `tests/statusbar.test.ts` pins the pairing from both ends, so deleting the
        checklist's repo step fails there rather than quietly taking the state off the bar. */
+    /* `publish.open { tab: "review" }` rather than the bare workspace setter: the setter's title
+       is "Switch Workspace", which says nothing about where a branch item goes, and the Publish
+       workspace remembers its last sub-tab, so a click from a count of changes could land on
+       Hosting. Review changes is the tab that count is a count of. */
     status?.isRepo === true && status.branch
       ? {
-          command: "panel.focus.git",
+          args: { tab: "review" },
+          command: "publish.open",
           label: `⑂ ${status.branch}${aheadBehindLabel(status.ahead, status.behind)}`,
-          title: `${status.files.length} changed file(s)`,
+          title: `${changedFilesLabel(status.files.length)} on ${status.branch}`,
         }
       : null,
     // Where the project stands with shipping — ambient state, so it belongs beside the branch and
@@ -203,7 +218,7 @@ function projectField_(registry: CommandRegistry | null): ProjectedField | null 
           args: { tab: "problems" },
           command: "view.setBottomTab",
           label: `⚠ ${count}`,
-          title: `${count} problem(s)`,
+          title: count === 1 ? "1 problem" : `${count} problems`,
         }
       : null,
     /* `collab.showStatus` — "what is happening in this document?" — because that is the question a
@@ -233,28 +248,36 @@ function projectField_(registry: CommandRegistry | null): ProjectedField | null 
  * states it permanently, with its ancestors, one field to the left.
  */
 function selectionField(registry: CommandRegistry | null): ProjectedField | null {
-  const paths = activeTab.value?.session.selection ?? [];
-  if (paths.length > 0) {
-    // A document selection owns the field even when it prints nothing: the Stylebook's selector
-    // Below would otherwise appear while an element is picked, which is two answers to one question.
-    return paths.length > 1
+  const tab = activeTab.value;
+  /* The Stylebook's selection is what the Style panel is editing, and it is a selection OF the
+     Stylebook canvas, so it is the field's content exactly while the focused tab draws that canvas,
+     and never elsewhere. It outlives a workspace switch (coming back to Styles finds `h1` still
+     picked), but a Content page or the Publish home is not editing `h1`, and the field used to say
+     it was there. The Style panel gates on the same mode (`panels/style-panel.ts`).
+
+     It also wins over the document selection here, because in that mode the document selection is
+     not the author's: picking a tag clears it (`selectStylebookTag`), so the "a single selection
+     prints nothing" rule below hid the rule being edited in the one place it applied. The command
+     bar and the Inspector header ask the same question through `stylebookTarget`. */
+  if (tab?.session.ui.canvasMode === PROJECT_STYLES_VIEW) {
+    const target = stylebookTarget(tab);
+    return target
       ? projectField(registry, "selection", [
           {
             command: null,
-            label: `${paths.length} selected`,
-            title: `${paths.length} elements are selected; the trail names the primary`,
+            label: target.replaceAll(" ", " › "),
+            title: "The style rule being edited",
           },
         ])
       : null;
   }
-  // The stylebook's own selection is a selection: it is what the Style panel is editing, and it is
-  // The only thing in this field when no document node is picked.
-  return shell.stylebook.selection
+  const paths = tab?.session.selection ?? [];
+  return paths.length > 1
     ? projectField(registry, "selection", [
         {
           command: null,
-          label: shell.stylebook.selection.replaceAll(" ", " › "),
-          title: "The style rule being edited",
+          label: `${paths.length} selected`,
+          title: `${paths.length} elements are selected; the trail names the primary`,
         },
       ])
     : null;
@@ -352,6 +375,7 @@ export function mountStatusbar(): void {
       // Reading it here is what repaints the bar from a skeleton into the real thing.
       void activeRegistry();
       void shell.stylebook.selection;
+      void activeTab.value?.session.ui.canvasMode;
       void shell.git.status;
       void problems.length;
       const tab = activeTab.value;

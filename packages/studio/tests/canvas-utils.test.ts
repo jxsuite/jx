@@ -6,6 +6,7 @@ import {
   stubRect,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import {
   activateCanvasPanel,
   applyEditZoom,
@@ -27,6 +28,8 @@ import {
   PAN_ZOOM_MAX,
   PAN_ZOOM_MIN,
   panToParentRect,
+  revealParentRect,
+  boardsInset,
   requestEditZoom,
   resetFits,
   resetZoom,
@@ -770,7 +773,7 @@ describe("observeCenterUntilStable", () => {
     observeCenterUntilStable(primary());
     expect(surfaceForPane("primary").needsCenter).toBe(true);
     const ro = FakeResizeObserver.instances[0]!;
-    expect(ro.observed).toEqual([wrap]);
+    expect(identities(ro.observed)).toEqual(identities([wrap]));
     expect(surfaceForPane("primary").panX).toBe(200);
 
     surfaceForPane("primary").panX = 0;
@@ -816,6 +819,67 @@ function makeRenderedPanel(opts: { scrollContainer?: HTMLElement | null } = {}) 
   canvasPanels.push(panel);
   return { canvas, panel, target };
 }
+
+describe("revealParentRect (the stylebook's pan-to-card)", () => {
+  function instantFrames() {
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(performance.now() + 1000);
+      return 0;
+    };
+  }
+
+  test("a card already in view does not move the boards", () => {
+    makePanzoomWrap();
+    stubRect(primary().wrap, { height: 600, top: 100 });
+    instantFrames();
+    surfaceForPane("primary").panY = 0;
+    revealParentRect({ height: 40, top: 120 });
+    expect(surfaceForPane("primary").panY).toBe(0);
+  });
+
+  test("a card below the fold is centred", () => {
+    makePanzoomWrap();
+    stubRect(primary().wrap, { height: 600, top: 0 });
+    instantFrames();
+    surfaceForPane("primary").panY = 0;
+    revealParentRect({ height: 0, top: 1000 });
+    expect(surfaceForPane("primary").panY).toBeCloseTo(-700);
+  });
+
+  test("a reveal that pans stands the entry's centring down, and one that does not leaves it", () => {
+    makePanzoomWrap();
+    stubRect(primary().wrap, { height: 600, top: 0 });
+    instantFrames();
+    const surface = surfaceForPane("primary");
+    surface.panY = 0;
+    surface.needsCenter = true;
+    revealParentRect({ height: 40, top: 120 });
+    expect(surface.needsCenter).toBe(true);
+    // A frame still growing would otherwise re-centre the stage under the card just revealed.
+    revealParentRect({ height: 0, top: 1000 });
+    expect(surface.needsCenter).toBe(false);
+  });
+
+  test("a card above the fold comes back, but the boards' top never drops past where it stood", () => {
+    makePanzoomWrap();
+    stubRect(primary().wrap, { height: 600, top: 0 });
+    instantFrames();
+    surfaceForPane("primary").panY = -100;
+    // Centring would move the boards down by 350; only the 100 above the top is taken back.
+    revealParentRect({ height: 0, top: -50 });
+    expect(surfaceForPane("primary").panY).toBeCloseTo(0);
+    // Already at the top: centring a card cut off above would be an empty band, so nothing moves.
+    revealParentRect({ height: 40, top: -10 });
+    expect(surfaceForPane("primary").panY).toBeCloseTo(0);
+  });
+
+  test("the boards' inset is read from the stage, and is 0 where none is set", () => {
+    const wrap = makePanzoomWrap();
+    expect(boardsInset(wrap)).toBe(0);
+    wrap.style.setProperty("--boards-inset", "40px");
+    expect(boardsInset(wrap)).toBe(40);
+  });
+});
 
 describe("panToParentRect", () => {
   test("pans by the parent-viewport rect (the stylebook pan-to-card entry point)", () => {
@@ -883,8 +947,8 @@ describe("panToParentRect", () => {
   });
 
   /*
-   * Edit docks the Document Header card ABOVE its scroller, inside the same stage cell. The live
-   * geometry: a 859px stage, a 176.5px band and the stage's 24px gap, which leaves the scroller
+   * Over a collection entry Edit stands the writing banner ABOVE its scroller, inside the same stage
+   * cell. The geometry: a 859px stage, a 176.5px band and the stage's 24px gap, which leaves the scroller
    * 642px tall from y=217. A node centred at y=538 is dead centre in what the author can see — and
    * 108.5px below the centre of the STAGE, which is what this measured before, so a reveal "centred"
    * it by scrolling it up under the band's lower half.

@@ -13,7 +13,7 @@ code:
 
 # Outline panel
 
-Outline is the page's structure as a tree: every element in the open file, nested the way it nests on the page. Open it by clicking **Outline** in the **Document** group of the Navigator rail, or with :kbd[⌘5]. Use it whenever the thing you want to grab is hard to click on the canvas: a wrapper with no visible edges, an element hidden behind another, or the exact parent in a deep stack.
+Outline is the page's structure as a tree: every element in the open file, nested the way it nests on the page. Open it by clicking **Outline** in the **Document** group of the Navigator rail (beside **Data**, under the **Site** panel), or by running **Show Outline** from :kbd[⌘K]. Use it whenever the thing you want to grab is hard to click on the canvas: a wrapper with no visible edges, an element hidden behind another, or the exact parent in a deep stack.
 
 ![The Outline panel showing a nested element tree with a selected row](../../images/layers-panel.png)
 
@@ -91,7 +91,7 @@ For bigger moves, drag the **⠿** handle (it appears on any row you hover) or t
 
 Right-clicking a row opens the same context menu as the canvas: **Copy**, **Duplicate**, **Copy styles**, **Wrap in Div**, **Repeat...**, **Convert to Component**, **Delete**, and more. The full list is in **[The canvas](/docs/studio/interface/canvas)**. **Set Title** in that menu starts the same rename as double-clicking.
 
-In **Project Styles** the Outline panel switches to the element catalog instead of the document tree. See **[Project Styles](/docs/studio/design/stylebook)**.
+Beside a page's or component's **Elements** view, the Outline panel switches to the element catalog instead of the document tree. In the **Styles** workspace the **Styles** panel takes the Navigator's place, listing your variables, element defaults and color schemes. See **[Project Styles](/docs/studio/design/stylebook)**.
 
 ## Next
 

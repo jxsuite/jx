@@ -278,7 +278,7 @@
                   "tagName": "img",
                   "attributes": {
                     "part": "favicon",
-                    "src": "${state.favicon}",
+                    "src": "${state.faviconSrc}",
                     "alt": "Current favicon"
                   }
                 },
@@ -372,7 +372,7 @@
       "$props": {
         "span": true,
         "label": "Global Styles",
-        "description": "Design tokens and the default element styles that apply across every page. Opens Project Styles over this same document."
+        "description": "The CSS variables and the default element styles that apply across every page live in the Styles workspace, which edits this same file."
       },
       "attributes": {
         "part": "row",
@@ -411,7 +411,7 @@
               "children": [
                 {
                   "tagName": "span",
-                  "textContent": "Edit Global Styles"
+                  "textContent": "Go to Styles"
                 }
               ]
             }

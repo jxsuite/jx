@@ -143,19 +143,9 @@ const GRID_SCHEME = "grid://";
  */
 export const GRID_STUB_DOCUMENT = { children: [], tagName: "div" };
 
-/**
- * The virtual sources a tab id can name.
- *
- * `library` is the odd one and deliberately so: the Library is a source over this same contract
- * (`browse/library-source.ts`) but its tab's editor kind is `library`, not `grid` — Table is one of
- * its five layouts rather than its identity. It lives in this id space because "which virtual tab
- * is this?" has exactly one answer per window and there is no second scheme worth inventing.
- * Category and layout are VIEW state and are deliberately absent from the id: a Library that
- * changed identity when you clicked "Pages" would open a second tab per filter.
- */
+/** The virtual sources a grid tab id can name. */
 export type GridTabRef =
   | { kind: "pages" }
-  | { kind: "library" }
   | { kind: "collection"; name: string }
   | { kind: "data"; connection: string; table: string };
 
@@ -164,9 +154,6 @@ export function makeGridTabId(ref: GridTabRef): string {
   switch (ref.kind) {
     case "pages": {
       return `${GRID_SCHEME}pages`;
-    }
-    case "library": {
-      return `${GRID_SCHEME}library`;
     }
     case "collection": {
       return `${GRID_SCHEME}collection/${encodeURIComponent(ref.name)}`;
@@ -191,9 +178,6 @@ export function parseGridTabId(id: string): GridTabRef | null {
   if (parts[0] === "pages" && parts.length === 1) {
     return { kind: "pages" };
   }
-  if (parts[0] === "library" && parts.length === 1) {
-    return { kind: "library" };
-  }
   if (parts[0] === "collection" && parts.length === 2 && parts[1]) {
     return { kind: "collection", name: decodeURIComponent(parts[1]) };
   }
@@ -208,11 +192,8 @@ export function parseGridTabId(id: string): GridTabRef | null {
 }
 
 /**
- * Short human label for a virtual tab ("posts · grid", "users @ main · grid", "Pages · grid").
- *
- * The Library is just "Library": the `· grid` suffix distinguishes a grid over a source from the
- * document tab of the same name, and the Library has no document tab to be confused with — nor is a
- * grid what it is, only what one of its layouts draws.
+ * Short human label for a virtual tab ("posts · grid", "users @ main · grid", "Pages · grid"). The
+ * `· grid` suffix distinguishes a grid over a source from the document tab of the same name.
  */
 export function gridTabLabel(id: string): string | null {
   const ref = parseGridTabId(id);
@@ -222,9 +203,6 @@ export function gridTabLabel(id: string): string | null {
   switch (ref.kind) {
     case "pages": {
       return "Pages · grid";
-    }
-    case "library": {
-      return "Library";
     }
     case "collection": {
       return `${ref.name} · grid`;

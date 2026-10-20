@@ -168,6 +168,7 @@ Coercion per the content-type schema: `number` strips currency symbols/commas (`
 serializeJxMarkdown(doc, {
   mode?: "roundtrip" | "export",   // default "roundtrip"
   frontmatter?: boolean,            // roundtrip: emit YAML frontmatter (default true)
+  source?: string,                  // roundtrip: the text the document was read from
   allowlist?: Set<string>,          // roundtrip: markdown-native tags (default MD_ALL)
   componentDefs?: Map<string, JxElement>,                       // export: inline custom elements
   evaluateTemplate?: (value, scope) => unknown,                  // export: injected template hook
@@ -176,6 +177,10 @@ serializeJxMarkdown(doc, {
 ```
 
 - **roundtrip** — lossless for everything it can express: YAML frontmatter (via the `yaml` package) from non-children doc keys; elements outside the allowlist (or carrying Jx-specific props) emit as remark directives with collapsed dot-path attributes. Inverse of `transpileJxMarkdown()`. It is not TOTAL: a `tagName` chosen at render time cannot be expressed at all and throws, naming the candidates it saw.
+  - An element is written as markdown only when markdown can say all of it. An attribute markdown has no spelling for (an image's `width` and `height`, a heading's `id`, a link's `target`) makes the element a directive, because markdown would drop it: markdown spells only a link's `href` and `title`, an image's `src`, `alt` and `title`, and an ordered list's `start`. An image standing at block level is its `::img{…}` leaf directive, since markdown's only image is inline and would run into the paragraph beside it.
+  - A table is a GFM pipe table only when GFM reads it back as the same tree: a `thead` holding one row of `th` cells, then optionally a `tbody` whose every row has as many `td` cells, none of them carrying an attribute or anything but one line of inline content. Any other table (no header row, a class, a block in a cell) stays the directive table it was read from, with every part kept.
+  - The frontmatter is written with no line folding and with YAML 1.1 quoting, so a long string stays on its line and a string a YAML 1.1 reader would type (a timestamp such as `"2024-07-26T17:39:36Z"`, `"yes"`) stays quoted; runs of blank lines are squeezed in the body only, never inside a frontmatter block scalar. Saving an unedited entry therefore changes no value in it.
+  - Given `source`, the text the document was read from, a save changes only what was edited. Every top-level frontmatter key whose value equals the value the source spelled keeps the source's own bytes (quotes, a plain scalar wrapped over several lines, a `>` or `|` block, comments and blank lines after it); a changed key is written in its place, a removed key is dropped, and a new key is appended after the last. A source block that is not a block mapping (a flow mapping, duplicate or non-string keys, a parse error) is written whole as above. The body is written with the emphasis, strong and bullet markers the source's body used first (`_em_`, `__strong__`, `*` bullets), the house `*`, `*` and `-` where it used none. Studio passes the text each tab was read or last saved as.
 - **export** — lossy clean GFM: wrappers (`div`, `section`, …) unwrapped, custom elements inlined by resolving definitions with instance `$props`, `$prototype: "Array"` descriptors expanded, `innerHTML` converted, template strings evaluated through the injected hooks (the compiler passes its static-template machinery; the default keeps templates verbatim). No frontmatter, no directives.
 
 Fenced-code language is canonical on `className` (`language-x`); `attributes.class` is read for backward compatibility.

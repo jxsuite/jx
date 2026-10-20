@@ -554,7 +554,11 @@ export async function createDevServer(options: {
 
         // Resolve npm-style bare specifiers via node_modules.
         // Bundle on-demand so internal bare specifiers (e.g. lit/...) resolve.
-        const resolved = resolveNpmPath(absRoot, path);
+        /* The open project's own packages first: it pins the versions its pages are built with,
+           and a project outside the served root has no other way to reach them. */
+        const resolved =
+          (activeProjectRoot ? resolveNpmPath(activeProjectRoot, path) : null) ??
+          resolveNpmPath(absRoot, path);
         if (resolved) {
           const cacheKey = resolved;
           if (!bundleCache.has(cacheKey)) {

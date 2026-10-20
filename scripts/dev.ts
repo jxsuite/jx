@@ -61,6 +61,10 @@ await createDevServer({
   ],
   port: Number(process.env.JX_DEV_PORT ?? 3000),
   root: resolve(import.meta.dir, ".."),
+  /* `JX_DEV_WATCH=0` serves the tree as built, with no rebuild and no live reload: what the perf
+     lane wants, because a file written anywhere under the root mid-trace would rebuild a bundle and
+     reload the page a scenario is driving. */
+  watch: process.env.JX_DEV_WATCH !== "0",
 });
 
 /**

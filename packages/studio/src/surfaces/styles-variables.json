@@ -1,0 +1,149 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioStylesVariables",
+  "$description": "The Styles workspace's Variables view (studio.md §7.1): the project's CSS custom properties, the `--` keys of `project.json`'s root style block, edited in the pane over the same tab as the Elements view and the Code view. It draws the view's frame and nothing it edits: a heading, one sentence saying what these are, one saying when an edit reaches the file (a variable is written as it is changed, which also writes any element style edit still waiting for Save, because both live in the one file), the door to Project Settings › Contexts where colour schemes and breakpoints are declared, and an empty `editor` island the CSS Variables editor (`settings/css-vars-editor.ts`) is mounted into (studio-ui-guidelines.md §9.4). `style/variables-view.ts` decides every word.",
+  "tagName": "section",
+  "attributes": {
+    "part": "variables-view",
+    "aria-labelledby": "${state.headingId}",
+    "data-jx-region": "${state.region}"
+  },
+  "style": {
+    "$description": "Fills the pane's stage by its own geometry, as the workspace home does (`workspace-home.json`): the stage is `position: relative`, so the view takes the whole of it and scrolls itself without the stage being restyled for it. The column is capped so a value field never stretches across a wide pane.",
+    "position": "absolute",
+    "inset": "0",
+    "overflowY": "auto",
+    "boxSizing": "border-box",
+    "padding": "var(--jx-space-6)",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "background": "var(--bg-panel)",
+    "& [part=\"column\"]": {
+      "maxWidth": "760px",
+      "margin": "0 auto"
+    },
+    "& [part=\"head\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "marginBottom": "var(--jx-space-5)"
+    },
+    "& [part=\"title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600"
+    },
+    "& [part=\"lede\"], & [part=\"saving\"]": {
+      "margin": "0",
+      "maxWidth": "68ch",
+      "lineHeight": "1.5",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"saving\"]": {
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"schemes\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"schemes-text\"]": {
+      "margin": "0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "column"
+      },
+      "children": [
+        {
+          "tagName": "header",
+          "attributes": {
+            "part": "head"
+          },
+          "children": [
+            {
+              "tagName": "h2",
+              "attributes": {
+                "part": "title",
+                "id": "${state.headingId}"
+              },
+              "textContent": "${state.title}"
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "lede"
+              },
+              "textContent": "${state.lede}"
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "saving"
+              },
+              "textContent": "${state.saving}"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "schemes"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "schemes-text"
+                  },
+                  "textContent": "${state.schemes}"
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "manage-contexts"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/manageContexts"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Opens Project Settings on Contexts, the one place a colour scheme or a breakpoint is declared (studio.md §17.1)."
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.manageLabel}"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "editor",
+            "role": "none"
+          }
+        }
+      ]
+    }
+  ]
+}

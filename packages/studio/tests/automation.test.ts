@@ -177,11 +177,11 @@ describe("run is registry.run", () => {
     expect(ran).toEqual([]);
   });
 
-  test("an id with a registry gap says which phase lands it", async () => {
-    const { deps } = makeFixture();
-    const error = await rejection(createAutomationApi(deps).run("media.browse"));
-    expect(error.message).toContain(
-      "has no command record yet (media.browse, site-architecture.md §9.4)",
+  test("the countdown of command gaps is empty: media.browse, its last entry, is a record", () => {
+    expect(Object.keys(AUTOMATION_COMMANDS)).not.toContain("media.browse");
+    // `GapDisposition` has one member, so the type already says this; the runtime set is the proof.
+    expect(new Set(Object.values(AUTOMATION_COMMANDS).map((gap) => gap.disposition))).toEqual(
+      new Set(["refused"]),
     );
   });
 
@@ -280,6 +280,7 @@ describe("probe.state", () => {
       "pane",
       "project",
       "selection",
+      "workspace",
     ]);
   });
 });
@@ -294,9 +295,8 @@ describe("the registry-gap declaration", () => {
   });
 
   test("names every refusal §13.5 makes normative", () => {
-    const refused = Object.entries(AUTOMATION_COMMANDS)
-      .filter(([, entry]) => entry.disposition === "refused")
-      .map(([id]) => id);
+    // Every entry is a refusal now (`GapDisposition` has one member), so the refusals are the keys.
+    const refused = Object.keys(AUTOMATION_COMMANDS);
     // The `refused` half is NOT a countdown — these are things the app will never provide, and
     // They stay so that reaching for one gets the reason rather than "unknown command".
     expect(refused).toContain("view.setStatus");

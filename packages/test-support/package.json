@@ -1,0 +1,20 @@
+{
+  "name": "@jxsuite/test-support",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The shared bun test preload for the monorepo's happy-dom suites: compact DOM printing, the deep-equality guard and the Bun pin check",
+  "type": "module",
+  "exports": {
+    "./preload": "./src/preload.ts",
+    "./inspect-dom": "./src/inspect-dom.ts",
+    "./dom-equality": "./src/dom-equality.ts",
+    "./bun-pin": "./src/bun-pin.ts"
+  },
+  "scripts": {
+    "test": "bun test --isolate",
+    "test:coverage": "bun test --isolate --coverage"
+  },
+  "dependencies": {
+    "@happy-dom/global-registrator": "^21.0.3"
+  }
+}

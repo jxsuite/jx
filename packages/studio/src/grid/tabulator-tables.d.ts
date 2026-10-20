@@ -114,6 +114,12 @@ declare module "tabulator-tables" {
     replaceData(data: RowData<Value>[]): Promise<void>;
     getRows(activeOnly?: string): RowComponent<Value>[];
     getRanges(): RangeComponent<Value>[];
+    /** The row whose `index` field holds `index`, or `false` for none. */
+    getRow(index: string): RowComponent<Value> | false;
+    /** Scroll a row into view; rejects when no row holds `index`. */
+    scrollToRow(index: string, position?: string, ifVisible?: boolean): Promise<void>;
+    /** Select the range between two cells, replacing the oldest range past `selectableRange`. */
+    addRange(start: CellComponent<Value>, end: CellComponent<Value>): RangeComponent<Value>;
     setFilter(filter: (data: RowData<Value>) => boolean): void;
     clearFilter(includeHeaderFilters?: boolean): void;
     redraw(force?: boolean): void;

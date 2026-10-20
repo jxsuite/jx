@@ -11,14 +11,15 @@ code:
   - packages/studio/src/settings/preferences-accounts.ts
   - packages/studio/src/settings/preferences-keymap.ts
   - packages/studio/src/ui/ai-credentials-form.ts
+  - packages/studio/src/settings/developer-panels.ts
 ---
 
 # Preferences
 
-Preferences holds the settings that belong to **Studio**, not to a project: how the editor looks, which AI provider it talks to, which accounts it has signed you into, and what every keyboard shortcut does. Open it with :kbd[Cmd+,] on macOS or :kbd[Ctrl+,] elsewhere, find **Preferences…** in the command palette, or pick it from the **Settings** menu at the foot of the rail, whose submenu takes you straight to Appearance, Assistant, Accounts or Keyboard. However you arrive, the keyboard starts on that section's own item in the list rather than on the first one, so exactly one item reads as the current section.
+Preferences holds the settings that belong to **Studio**, not to a project: how the editor looks, which AI provider it talks to, which accounts it has signed you into, and what every keyboard shortcut does. Open it with :kbd[Cmd+,] on macOS or :kbd[Ctrl+,] elsewhere, find **Preferences…** in the command palette, or pick it from the **Settings** menu in the Command Bar, whose submenu takes you straight to Appearance, Assistant, Accounts or Keyboard. However you arrive, the keyboard starts on that section's own item in the list rather than on the first one, so exactly one item reads as the current section.
 
 :::doc-note
-**Preferences is not Project Settings.** Preferences is a dialog, it follows you between projects, and it works with no project open at all. Project Settings (contexts, definitions, packages, deploy) belongs to one project, and it is a **document**: the project's own `project.json`, open in a pane with undo and :kbd[Cmd+S] like any other file. See **[Project settings](/docs/studio/projects/settings)**. They share the rail's **Settings** menu, which is the one place both are named side by side, with a divider between what belongs to the app and what belongs to the project.
+**Preferences is not Project Settings.** Preferences follows you between projects, and it works with no project open at all. Project Settings (languages, extensions, contexts, packages) belongs to one project and edits that project's own `project.json`. Both are dialogs you can open from any workspace. See **[Project settings](/docs/studio/projects/settings)**. They share the Command Bar's **Settings** menu, which holds exactly these two, side by side, with a divider between what belongs to the app and what belongs to the project. Each one's submenu lists its sections; Project Settings' is grouped into General, Integrations and Advanced, the way its dialog is.
 :::
 
 Preferences opens over the workspace rather than replacing it, and :kbd[Escape] closes it. Nothing you do behind it is suspended.
@@ -30,6 +31,8 @@ Apart from the Assistant key form, which has its own **Save**, every change here
 Choose the **Light** or **Dark** chrome theme. The choice applies immediately to the whole window, including any open [code editor](/docs/studio/logic/code) and anything showing over it, and is remembered for the next session.
 
 This is the editor's own theme. It has no effect on the site you're building, whose colors come from your project's styles, and the canvas stays a light document page in either theme so that what you see is what you ship. To preview your own site in a dark colour scheme, use the light/dark control on the canvas instead. See **[Contexts](/docs/studio/projects/settings)**.
+
+**Show developer panels** puts **Files** and **Packages** on the Design workspace's rail, beside the Site panel, Outline and Data. It is off to begin with, because the Site panel already lists your pages, templates, components and media by what they are. Turn it on when you want the project's file tree or its packages a click away; with it off, both are still in the command palette as **Show Files** and **Show Packages**. Like the theme, the choice follows you into every project and window.
 
 ## Assistant
 

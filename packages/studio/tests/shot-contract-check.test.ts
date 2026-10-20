@@ -434,7 +434,7 @@ describe("the contract-1 bespoke verbs (the migration's codemod, applied at read
             { do: "openSettings", section: "contexts" },
             { do: "editFunction", path: ["children", 3], eventKey: "onClick" },
             { do: "select", path: null },
-            { do: "openBrowse" },
+            { do: "showWelcome" },
             // Not a command verb: raw input and sleeps stay out of the command list.
             { do: "wait", ms: 400 },
             { do: "canvasKey", key: "Enter" },
@@ -446,7 +446,7 @@ describe("the contract-1 bespoke verbs (the migration's codemod, applied at read
       ["settings.open", { section: "contexts" }],
       ["formula.editEvent", { path: ["children", 3], eventKey: "onClick" }],
       ["selection.set", { path: null }],
-      ["library.open", {}],
+      ["project.showWelcome", {}],
     ]);
   });
 
@@ -568,8 +568,10 @@ describe("loadCommandTable", () => {
     // Resolve at all: neither was ever listed in the hand-kept shim table.
     expect(loaded.get("seed.projectList")?.source).toBe(DEFAULT_COMMAND_SOURCES[1]);
     expect(loaded.get("seed.git")?.source).toBe(DEFAULT_COMMAND_SOURCES[1]);
-    // … and the shim still contributes the ids no registry declares yet.
-    expect(loaded.get("media.browse")?.source).toBe(DEFAULT_COMMAND_SOURCES[1]);
+    // … and the shim still contributes the refusals no registry declares. `media.browse` was its
+    // Last command gap and is a record now, so it resolves from the FIRST source.
+    expect(loaded.get("view.setStatus")?.source).toBe(DEFAULT_COMMAND_SOURCES[1]);
+    expect(loaded.get("media.browse")?.source).toBe(DEFAULT_COMMAND_SOURCES[0]);
     // `insert.data` is the shape of the countdown ending: the record landed in the registry,
     // So the id resolves from the FIRST source and `element.insertData` left the shim entirely.
     expect(loaded.get("insert.data")?.source).toBe(DEFAULT_COMMAND_SOURCES[0]);

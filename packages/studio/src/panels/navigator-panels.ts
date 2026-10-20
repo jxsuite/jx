@@ -7,8 +7,10 @@
  * Nothing here decides what a panel is called, what level it is, or what it draws — that would be
  * the second definition site the registry exists to prevent.
  *
- * **Registration order is rail order** within a level group: PROJECT (Files ⌘1 · Search ⌘2 · Source
- * Control ⌘3) above the divider, DOCUMENT (Outline ⌘4 · Page ⌘5 · Data ⌘6 · Packages ⌘7) below it.
+ * **Registration order is rail order** within a level group: PROJECT (Site, then Files with the
+ * developer panels on) above the divider, DOCUMENT (Outline · Data, then Packages with the
+ * developer panels on) below it (§5.1). Search, Languages and Insert are registered rail-less:
+ * reachable by `view.setActivity` and the palette, with no button.
  *
  * **Every rail button opens the Navigator.** Problems used to hold the fourth PROJECT slot while
  * its body was drawn in the Bottom dock, and paying for that took a per-dock branch in three
@@ -17,21 +19,22 @@
  * The count reaches the user from the status bar the moment there is one.
  *
  * **Search is declared and hidden.** It is a surface a later phase builds (the palette's project
- * index), and it holds a slot in the rail's four-tab budget (`studio-ui-guidelines.md` §12.2). A
+ * index), and it is off the rail like every other panel the Design rail does not list (§5.1). A
  * `when: () => false` record is the honest way to say "this exists in the design and not yet in the
- * app": the id is reserved, the budget already counts it, and the day it ships the only edit is
- * deleting one predicate — as opposed to a stub button that lies to whoever clicks it.
+ * app": the id is reserved, and the day it ships the only edit is deleting one predicate — as
+ * opposed to a stub button that lies to whoever clicks it.
  */
 
 import { registerFilesPanel } from "../files/files";
 import { registerDataPanel } from "./data-explorer";
 import { registerInsertPanel } from "./elements-panel";
-import { registerGitPanel } from "./git-panel";
 import { registerI18nPanel } from "./i18n-panel";
-import { registerPagePanel } from "./head-panel";
 import { registerPackagesPanel } from "./imports-panel";
 import { registerBottomPanels } from "./bottom-dock";
 import { registerLayersPanel } from "./layers-panel";
+import { registerSitePanel } from "./site-panel";
+import { registerCollectionsPanel } from "./collections-panel";
+import { registerStylesPanel } from "./styles-panel";
 import { getPanel, listPanels, railPanelSet, registerPanel, resetPanels } from "./panel-registry";
 import type { PanelRecord } from "./panel-registry";
 
@@ -45,14 +48,21 @@ const NOT_YET_BUILT = () => false;
  * per window in the app, but a test suite mounts it per case.
  */
 export function registerNavigatorPanels(): void {
-  // Keyed on Files rather than on `listPanels("navigator")`, because the Bottom dock composes
+  // Keyed on Site rather than on `listPanels("navigator")`, because the Bottom dock composes
   // Itself independently (`bottomPanelSet()` calls `registerBottomPanels()` directly) and either
   // Order has to leave this function still registering the Navigator's own eight.
-  if (getPanel("files")) {
+  if (getPanel("site")) {
     return;
   }
 
   // ── PROJECT group ───────────────────────────────────────────────────────────
+  registerSitePanel();
+  /* The Content workspace's Navigator (§22.5): off the rail, because Content draws none, and opened
+     by that workspace's frame. */
+  registerCollectionsPanel();
+  /* The Styles workspace's Navigator (§7.1): variables, element defaults and color schemes, off the
+     rail for the same reason. */
+  registerStylesPanel();
   registerFilesPanel();
   registerPanel({
     id: "search",
@@ -60,10 +70,13 @@ export function registerNavigatorPanels(): void {
     level: "project",
     dock: "navigator",
     icon: "magnifying-glass",
+    rail: false,
     when: NOT_YET_BUILT,
     render: () => nothingYet(),
   });
-  registerGitPanel();
+  /* No Source Control panel: its change list, commit and branch picker are the Publish workspace's
+     Review changes and Branches (§5.5, §22.8), and a Navigator beside that workspace would be a
+     second list of the same things. */
   /* Off the rail, and registered in the PROJECT group anyway: registration order is roster order,
      so this is what puts Languages beside the panels it belongs with in the palette and in
      `panel.focus.*`. Its `when` is `project.isMultilingual` — a project written in one language
@@ -72,7 +85,6 @@ export function registerNavigatorPanels(): void {
 
   // ── DOCUMENT group ──────────────────────────────────────────────────────────
   registerLayersPanel();
-  registerPagePanel();
   registerDataPanel();
   registerPackagesPanel();
 

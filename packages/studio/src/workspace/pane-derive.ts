@@ -79,10 +79,10 @@ export type DerivePreset = (typeof DERIVE_PRESETS)[number];
  * The canvas mode a preset needs the SOURCE document to DECLARE, for the presets that need one.
  *
  * `tab.capabilities.modes` is the format's own answer to "what can this document be shown as", and
- * the preset menu consulted it nowhere: over a document that declares `["settings", "stylebook",
- * "source"]` it still offered "Same page at Base" — a lens whose stage can only draw an empty
- * artboard — and "Component definition", whose rule can never resolve because nothing in a settings
- * form is a component instance. Both produced a pane the author then had to close.
+ * the preset menu consulted it nowhere: over a document that declares `["stylebook", "source"]` it
+ * still offered "Same page at Base" — a lens whose stage can only draw an empty artboard — and
+ * "Component definition", whose rule can never resolve because nothing in a configuration object is
+ * a component instance. Both produced a pane the author then had to close.
  *
  * Two presets are absent, for two different reasons. `diff` needs no mode: a comparison is two
  * texts and every document has those, and it is already gated on the file having changes. `layout`

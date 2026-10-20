@@ -78,11 +78,12 @@ describe("the records themselves", () => {
       "view.toggleBottomDock",
       "view.setBottomTab",
       "view.setAssistant",
-      "view.setLayout",
-      "view.saveLayout",
-      "view.renameLayout",
-      "view.deleteLayout",
-      "view.resetLayout",
+      "view.setWorkspace",
+      "workspace.focus.design",
+      "workspace.focus.content",
+      "workspace.focus.media",
+      "workspace.focus.styles",
+      "workspace.focus.publish",
       "view.setTheme",
     ]);
     // ⌘J is the one toggle this module declares, and it is here rather than in
@@ -93,21 +94,28 @@ describe("the records themselves", () => {
 
   test("every record that takes arguments declares a schema for them", () => {
     // The palette prompt and the AI parameter list are both projections of `args`, so a verb with
-    // Parameters must declare them — and `view.resetLayout`, which has none, must NOT declare an
-    // Empty schema that would have the palette prompt for nothing.
+    // Parameters must declare them — and the five `workspace.focus.*` chord records, which take
+    // None, must NOT declare an empty schema that would have the palette prompt for nothing.
     const undeclared = registry
       .list()
       .filter((command) => !command.args)
       .map((command) => command.id);
-    expect(undeclared).toEqual(["view.toggleBottomDock", "view.resetLayout"]);
+    expect(undeclared).toEqual([
+      "view.toggleBottomDock",
+      "workspace.focus.design",
+      "workspace.focus.content",
+      "workspace.focus.media",
+      "workspace.focus.styles",
+      "workspace.focus.publish",
+    ]);
   });
 });
 
 describe("view.setActivity", () => {
   test("shows the panel and opens the Navigator dock", () => {
     shell.docks.left.collapsed = true;
-    void registry.run("view.setActivity", { tab: "git" });
-    expect(shell.leftTab).toBe("git");
+    void registry.run("view.setActivity", { tab: "files" });
+    expect(shell.leftTab).toBe("files");
     expect(shell.docks.left.collapsed).toBe(false);
   });
 
@@ -123,7 +131,7 @@ describe("view.setActivity", () => {
     // Stale script or an older session still carries.
     expect(() => registry.run("view.setActivity", { tab: "head" })).toThrow(
       'command "view.setActivity" argument "tab": "head" is not declared — declared: ' +
-        "files, search, git, i18n, layers, page, data, packages, insert",
+        "site, collections, styles, files, search, i18n, layers, data, packages, insert",
     );
     expect(shell.leftTab).toBe("layers");
   });
@@ -160,9 +168,9 @@ describe("view.setRightTab", () => {
     expect(setInspectorTab).toHaveBeenCalledWith("assistant");
   });
 
-  test("refuses an undeclared tab, naming the four that exist", () => {
+  test("refuses an undeclared tab, naming the five leaves that exist", () => {
     expect(() => registry.run("view.setRightTab", { tab: "content" })).toThrow(
-      "declared: properties, style, events, assistant",
+      "declared: page, properties, style, events, assistant",
     );
     expect(setInspectorTab).not.toHaveBeenCalled();
   });
@@ -241,8 +249,17 @@ describe("view.setNavigator / view.setRightPanel / view.setAssistant", () => {
   test("closing it steps off the Assistant tab and leaves the dock open", () => {
     currentTab = "assistant";
     void registry.run("view.setAssistant", { open: false });
-    expect(setInspectorTab).toHaveBeenLastCalledWith("properties");
+    // With no resting-tab answer (the CI projection), onto Page, the strip's first tab (§6).
+    expect(setInspectorTab).toHaveBeenLastCalledWith("page");
     expect(shell.docks.right.collapsed).toBe(false);
+  });
+
+  test("closing it steps onto the tab the strip rests on, so a selection shows its Element leaf", () => {
+    const resting = createCommandRegistry({ getContext: () => ctx });
+    registerShellViewCommands(resting, { ...deps, restingInspectorTab: () => "style" });
+    currentTab = "assistant";
+    void resting.run("view.setAssistant", { open: false });
+    expect(setInspectorTab).toHaveBeenLastCalledWith("style");
   });
 
   test("closing it does NOT disturb a tab that is not the assistant", () => {
@@ -327,14 +344,14 @@ describe("the enums do not drift from what the shell renders", () => {
     // Registry and this enum agree, which is asserted in `tests/panel-registry.test.ts`; here we
     // Only check that the rail really has stopped keeping its own list.
     expect(declaredValues("../src/surfaces/rail.ts")).toEqual([]);
-    expect(NAVIGATOR_PANEL_IDS.length).toBe(9);
+    expect(NAVIGATOR_PANEL_IDS.length).toBe(10);
   });
 
   test("the Inspector renders exactly INSPECTOR_TAB_IDS", () => {
     // The Inspector no longer declares any ids either — it renders `commands/defaults.ts`'s
     // `INSPECTOR_TABS`, and `tests/right-panel.test.ts` asserts that list and this enum agree.
     expect(declaredValues("../src/panels/right-panel.ts")).toEqual([]);
-    expect(INSPECTOR_TAB_IDS).toEqual(["properties", "style", "events", "assistant"]);
+    expect(INSPECTOR_TAB_IDS).toEqual(["page", "properties", "style", "events", "assistant"]);
   });
 });
 

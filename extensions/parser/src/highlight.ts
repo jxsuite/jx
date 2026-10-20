@@ -108,7 +108,16 @@ export function highlightFence(code: string, info: string): (JxElement | string)
   if (!h.getLoadedLanguages().includes(lang)) {
     return null;
   }
-  const { tokens } = h.codeToTokens(code, { defaultColor: false, lang, themes: THEMES });
+  /* No per-line time limit (Shiki's default is 500 ms). With one, a line that tokenizes slowly
+     (the first line of a grammar, while its regexes are still being compiled, on a loaded CI runner)
+     is cut short and its rest painted in whatever scope it stopped in, so the same fence built
+     twice could highlight differently. A build's output must not depend on the machine's speed. */
+  const { tokens } = h.codeToTokens(code, {
+    defaultColor: false,
+    lang,
+    themes: THEMES,
+    tokenizeTimeLimit: 0,
+  });
   const out: (JxElement | string)[] = [];
   for (const [i, line] of tokens.entries()) {
     if (i > 0) {

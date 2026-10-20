@@ -1,8 +1,9 @@
 /// <reference lib="dom" />
 /**
- * The Navigator's Page panel — everything the open document says about itself before anybody reads
- * its body: its frontmatter, the layout it is poured into, its title, description, viewport and
- * icon, its OpenGraph card, and the raw `$head` tags no structured control owns.
+ * The Page panel — the Inspector's first tab (§6) — everything the open document says about itself
+ * before anybody reads its body: its frontmatter, the layout it is poured into, its title,
+ * description, viewport and icon, its OpenGraph card, and the raw `$head` tags no structured
+ * control owns.
  *
  * This is the FLOW. The markup is `surfaces/panel-page.json` and the scope that feeds it is
  * `surfaces/panel-page.ts`; what stays here is every decision — what a `$head` entry means, which
@@ -13,29 +14,27 @@
  * read at submit time, which is a spelling a document does not have: a binding writes only when the
  * SCOPE moves, so every field's setter states what the control now holds before anything is decided
  * about it, and clearing one after a successful add is then a real change the runtime carries back.
- * `sync()` — not `renderLeftPanel()` — is what an echo calls: it assigns into the standing scope in
- * the same turn, where a Navigator repaint is a frame away and would rebuild far more than one
- * field.
+ * `sync()` — not a dock repaint — is what an echo calls: it assigns into the standing scope in the
+ * same turn, where a dock repaint is a frame away and would rebuild far more than one field.
  *
- * **What a frontmatter row looks like is `panels/frontmatter-fields.ts`'s answer.** The Document
- * Header card draws the same field set from the same schemas; the two surfaces deciding
- * independently that a `$ref` is a picker or that an array is a comma-separated line is how they
- * came to disagree about `title` in the first place.
+ * **What a frontmatter row looks like is `panels/frontmatter-fields.ts`'s answer.** The Page tab is
+ * the one surface that edits a page's frontmatter (the Document Header card that once drew the same
+ * field set above the canvas is gone, studio.md §4.2), and keeping the row vocabulary in its own
+ * module is what stopped two surfaces disagreeing about `title`.
  *
  * The other half of this module has no surface at all: the merged-`$head` preview model that
- * `panels/seo-modal.ts` and the Document Header card both read. It is pure, and pinned against
+ * `panels/seo-modal.ts` reads. It is pure, and pinned against
  * `packages/compiler/src/site/head-merger.ts` by `tests/head-panel.test.ts`.
  */
 
 import { isString } from "@jxsuite/schema/guards";
-import { nothing } from "lit-html";
-import { projectState, renderOnly } from "../store";
+import { withPageDescription } from "@jxsuite/site/head-merger";
+import { projectState, renderOnly, updateSession } from "../store";
 import type { DirEntry, JsonValue } from "../types";
 import { activeTab } from "../workspace/workspace";
 import { activeRegistry } from "../commands/active-registry";
 import { clearProblems, notify } from "../services/notify";
 import type { NotifyOptions } from "../services/notify";
-import { registerPanel } from "./panel-registry";
 import { mutateUpdateFrontmatter, transact, transactDoc } from "../tabs/transact";
 import { collectFmFields, projectFmField } from "./frontmatter-fields";
 import { isGoogleFontEntry, isGoogleFontPreconnect } from "../utils/google-fonts";
@@ -45,7 +44,15 @@ import { pageRoute } from "./tab-strip";
 import { LIVE_PREVIEW } from "../ui/timing";
 import { previewAssetSrc } from "../canvas/asset-refs";
 import { IMAGE_EXTENSIONS, extensionOf } from "../files/media-upload";
-import { renderPagePanelSurface } from "../surfaces/panel-page";
+import { renderPagePanelSurface, unmountPagePanelSurface } from "../surfaces/panel-page";
+import { emptyState } from "../surfaces/empty-state";
+import type { EmptyStateSpec } from "./empty-state";
+import { collectionForFile } from "../content/collection-match";
+import {
+  isEntryTab,
+  renderEntryInspector,
+  unmountEntryInspector,
+} from "../content/entry-inspector";
 
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
@@ -73,7 +80,14 @@ interface MetaField {
 /** @type {{ name: string; path: string }[] | null} */
 let layoutEntries: { name: string; path: string }[] | null = null;
 
-async function loadLayoutEntries() {
+/**
+ * List `layouts/` now and keep the answer as the picker's cache.
+ *
+ * The one reading of which files are layouts and what each is called: the Page panel's picker and
+ * Add new (`create/add-new-flow.ts`) both read it, so they cannot name different templates. JSON
+ * only, because a layout is resolved as JSON.
+ */
+export async function listLayoutEntries(): Promise<{ name: string; path: string }[]> {
   try {
     const platform = getPlatform();
     const listing = await platform.listDirectory("layouts");
@@ -89,8 +103,12 @@ async function loadLayoutEntries() {
   } catch {
     layoutEntries = [];
   }
-  renderOnly("leftPanel");
-  renderOnly("frontmatterPanel", "seoModal");
+  return layoutEntries;
+}
+
+async function loadLayoutEntries() {
+  await listLayoutEntries();
+  renderOnly("rightPanel", "seoModal");
 }
 
 /**
@@ -106,11 +124,10 @@ export function invalidateLayoutPickerCache() {
 /**
  * The layouts the picker offers, or `null` while the directory is still being listed.
  *
- * The listing BOTH surfaces draw their Layout picker from, handed over as DATA. The Page panel
- * (`src/surfaces/panel-page.json`) and the Document Header card (`src/surfaces/doc-header.json`)
- * are documents and neither can interpolate the other's markup — but a second LISTING would be a
- * second cache with a second lifetime, and {@link invalidateLayoutPickerCache} would then forget
- * only one of them. Asking starts the read; it repaints both surfaces when it lands.
+ * The listing the Page tab's Layout picker is drawn from, handed over as DATA: the Page panel
+ * (`src/surfaces/panel-page.json`) is a document and reads it as a projection. One listing is one
+ * cache with one lifetime, which {@link invalidateLayoutPickerCache} forgets. Asking starts the
+ * read; it repaints the Inspector when it lands.
  *
  * @returns {{ name: string; path: string }[] | null}
  */
@@ -144,16 +161,63 @@ export const OG_FIELDS: MetaField[] = [
 const MANAGED_META_KEYS = new Set([...PAGE_FIELDS, ...OG_FIELDS].map((f) => f.key));
 
 /**
- * Frontmatter keys the Document Header card owns with a dedicated control, so the generic field
- * list must not print them a second time.
+ * Frontmatter keys the Page tab owns with a dedicated control, so the generic field list must not
+ * print them a second time.
  *
- * **The one policy.** `frontmatter-panel.ts` used to pass an EMPTY reserved set while this module
- * passed `{title}`, so the same key rendered as a bare Obsidian-style property above the canvas and
- * as the Page panel's Title field at the same time, with two different commit paths. Merging the
- * two field sets was only safe once one of the two policies won, and it is this one: a document has
- * ONE title, and the surface that gives it a named row is the one that owns the key.
+ * **The one policy.** A document has ONE title, and the surface that gives it a named row is the
+ * one that owns the key: listed as a generic field as well, the same key rendered twice with two
+ * different commit paths.
  */
 export const RESERVED_FM_KEYS = new Set(["title"]);
+
+/**
+ * The frontmatter keys a document's head controls own, so its generic field list leaves them out:
+ * {@link RESERVED_FM_KEYS}, plus `description` on a PAGE, whose description the build writes as its
+ * description meta (`withPageDescription` in `@jxsuite/site/head-merger`). Listed as a frontmatter
+ * field as well, a Markdown page showed two Description rows with two values (the frontmatter's and
+ * the head's empty one), and only one of them reaches the browser. A layout's or component's
+ * `description` is data the build does not read, so it stays an ordinary field.
+ *
+ * @param tab The document whose fields are listed.
+ */
+export function reservedFmKeys(tab: Tab | null): ReadonlySet<string> {
+  return isPageDocument(tab) ? new Set([...RESERVED_FM_KEYS, "description"]) : RESERVED_FM_KEYS;
+}
+
+/**
+ * A page's description, from wherever the build reads it: a `<meta name="description">` in its own
+ * `$head` when it has one (stated last, it wins), else its `description` property.
+ *
+ * @param doc The head-bearing view of the document (`buildHeadDoc` for a Markdown page).
+ */
+export function pageDescription(doc: JxMutableNode): string {
+  const meta = findMetaEntry(doc.$head ?? [], "name", "description");
+  if (meta) {
+    return String(meta.attributes?.content ?? "");
+  }
+  return isString(doc.description) ? doc.description : "";
+}
+
+/**
+ * Write a page's description where {@link pageDescription} reads it, so the one field never edits a
+ * value the build then overrules: the `description` property when that is where the page keeps it
+ * and its `$head` states none, else the head's meta (a page with neither gets the meta, as before).
+ * An empty value removes it.
+ *
+ * @param doc The head-bearing view of the document.
+ * @param value The new description, already trimmed.
+ */
+export function setPageDescription(doc: JxMutableNode, value: string): void {
+  if (!findMetaEntry(doc.$head ?? [], "name", "description") && isString(doc.description)) {
+    if (value) {
+      doc.description = value;
+    } else {
+      delete doc.description;
+    }
+    return;
+  }
+  upsertMeta(doc, "name", "description", value);
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -752,11 +816,10 @@ async function loadLayoutHead(path: string): Promise<void> {
   _layoutHeadPending = null;
   _layoutHeadPath = path;
   _layoutHead = doc?.$head ?? [];
-  // THREE surfaces show the merged head now, and the layout layer arrives asynchronously: the
-  // Document Header card, and Search appearance, which is where the previews went. A modal left
-  // Off this list renders the page's own head with the layout layer missing — which reads as
+  // Search appearance shows the merged head, and the layout layer arrives asynchronously. A modal
+  // Left off this list renders the page's own head with the layout layer missing — which reads as
   // "you have no description" on a page that inherits one.
-  renderOnly("frontmatterPanel", "seoModal");
+  renderOnly("seoModal");
 }
 
 /**
@@ -833,7 +896,8 @@ export function seoPreviewFor(tab: Tab | null, doc: JxMutableNode): SeoPreview {
     {
       layout: layout.entries,
       layoutName: layout.name,
-      page: doc.$head ?? [],
+      // The page level as the build merges it: its `description` property leads its own head.
+      page: withPageDescription(doc.$head ?? [], doc.description),
       site: config?.$head ?? [],
     },
     ctx,
@@ -854,7 +918,7 @@ export function seoPreviewFor(tab: Tab | null, doc: JxMutableNode): SeoPreview {
  * component GAINED a header card because the focused tab was a page — and the Layout picker
  * appeared or vanished in the pane you were editing according to the document in the other one.
  *
- * A caller whose subject genuinely IS the focused document (the Navigator's Page panel) passes
+ * A caller whose subject genuinely IS the focused document (the Inspector's Page tab) passes
  * `activeTab.value`, where a reviewer can see it. The same bargain `setCanvasMode` made.
  *
  * @param {Tab | null} tab
@@ -877,9 +941,17 @@ export function buildHeadDoc(
   const headDoc: JxMutableNode = { ...doc };
   if (fm.title !== undefined) {
     /* SAFETY: deliberately not narrowed — a YAML title can be a number, and it is overlaid as
-       written. Every reader of a head doc's `title` (titleRow here and in frontmatter-panel.ts,
-       seoPreviewFor) tests it with isString before using it as text. */
+       written. Every reader of a head doc's `title` (titleRow here, seoPreviewFor) tests it with
+       isString before using it as text. */
     headDoc.title = fm.title as string;
+  }
+  if (isString(fm.description)) {
+    // The page's description property, which the build writes as its description meta.
+    headDoc.description = fm.description;
+  }
+  if (isString(fm.$layout) || fm.$layout === false) {
+    // A Markdown page's layout override is its frontmatter `$layout`, which the build reads.
+    headDoc.$layout = fm.$layout;
   }
   if (fm.$head !== undefined) {
     /* SAFETY: Studio's one writer of the frontmatter `$head` key is applyContentMutation below,
@@ -897,13 +969,10 @@ export function buildHeadDoc(
  * adapts one to the other in the module that owns both, instead of in the Navigator orchestrator
  * that owns neither.
  *
- * **`tab` is a parameter for the same reason every other frontmatter helper's is.** It resolved
- * `activeTab.value` itself, and the Document Header card calls it for the CONTENT branch of every
- * mutation it makes — Title, Clear title, the Layout picker — as does Search appearance, which is
- * where the head fields went and which takes its tab the same way. The card is drawn per pane, so
- * on a markdown page the card in one pane retitled the document in the other. The comment beside
- * the card's JSON branch has claimed since the pane grid landed that this was fixed; the fix
- * reached the JSON branch only, and this is the half that was left.
+ * **`tab` is a parameter for the same reason every other frontmatter helper's is.** Search
+ * appearance commits through it for the tab it was opened over, which need not be the focused
+ * pane's; resolving `activeTab.value` here once let an edit in one pane retitle the document in the
+ * other.
  *
  * @param {Tab | null} tab The document to commit into.
  * @param {() => void} rerender
@@ -924,18 +993,54 @@ export function applyContentMutation(
   if (isString(fmNow.title)) {
     tmp.title = fmNow.title;
   }
+  if (isString(fmNow.description)) {
+    tmp.description = fmNow.description;
+  }
   if (fmHead) {
     tmp.$head = [...fmHead];
   }
-  fn(tmp);
-  if (tmp.title !== fmNow.title) {
-    mutateUpdateFrontmatter(tab, "title", tmp.title);
+  if (isString(fmNow.$layout) || fmNow.$layout === false) {
+    tmp.$layout = fmNow.$layout;
   }
+  fn(tmp);
   const newHead = tmp.$head && tmp.$head.length > 0 ? tmp.$head : undefined;
-  /* SAFETY: every entry here either came from the frontmatter (JSON, from the format's split) or
-     was built by a head editor out of string attributes; JxHeadEntry is wider than JsonValue only
-     through its open index signature, which no head editor writes. */
-  mutateUpdateFrontmatter(tab, "$head", newHead as JsonValue | undefined);
+  const layoutChanged = tmp.$layout !== fmNow.$layout;
+  const titleChanged = tmp.title !== fmNow.title;
+  const descriptionChanged = isString(fmNow.description) && tmp.description !== fmNow.description;
+  const headChanged = JSON.stringify(newHead) !== JSON.stringify(fmHead);
+  /* The writes go through the transaction log, as every other frontmatter commit does. That is what
+     records them for undo and swaps the document's root reference, which is the signal the canvas
+     redraws on: a Layout pick on a Markdown page that only mutated the frontmatter in place was
+     stored, and the page went on showing its old layout until something unrelated redrew it. A
+     mutation that changed nothing records nothing, since an empty transaction is still an undo step. */
+  if (layoutChanged || titleChanged || descriptionChanged || headChanged) {
+    transactDoc(tab, (t) => {
+      // The Layout picker writes `$layout`, and on a Markdown page that is a frontmatter key.
+      if (layoutChanged) {
+        mutateUpdateFrontmatter(
+          t,
+          "$layout",
+          isString(tmp.$layout) || tmp.$layout === false ? tmp.$layout : undefined,
+        );
+      }
+      if (titleChanged) {
+        mutateUpdateFrontmatter(t, "title", tmp.title);
+      }
+      if (descriptionChanged) {
+        mutateUpdateFrontmatter(
+          t,
+          "description",
+          isString(tmp.description) ? tmp.description : undefined,
+        );
+      }
+      if (headChanged) {
+        /* SAFETY: every entry here either came from the frontmatter (JSON, from the format's split)
+           or was built by a head editor out of string attributes; JxHeadEntry is wider than
+           JsonValue only through its open index signature, which no head editor writes. */
+        mutateUpdateFrontmatter(t, "$head", newHead as JsonValue | undefined);
+      }
+    });
+  }
   rerender();
 }
 
@@ -947,15 +1052,22 @@ interface RowCommit {
   clear: () => void;
   /** Commit what the control settled on — a string from every kind but the checkbox. */
   commit: (raw: string | boolean) => void;
+  /**
+   * Whether this row's Browse lists only pictures (studio.md §9.3): the social image and the icon
+   * always do, a frontmatter media field only when its schema says `format: "image"` — a video or a
+   * PDF field browsing a picture-only list could never be filled from it.
+   */
+  images: boolean;
 }
 
-/** What the panel is drawn against. `left-panel.ts`'s context, reduced to what this reads. */
+/** What the panel is drawn against: the focused document, reduced to what this reads. */
 export interface PagePanelContext {
   /** The head-bearing view of the open document — `buildHeadDoc` for a content page. */
   document: JxMutableNode;
   /** How a change to that view is written back into whichever realm it belongs to. */
   applyMutation: (fn: (doc: JxMutableNode) => void) => void;
-  renderLeftPanel: () => void;
+  /** Repaint the host the panel is drawn in — the Inspector's Page tab. */
+  rerender: () => void;
 }
 
 /** Where the surface is mounted, and the context it was last drawn against. */
@@ -975,6 +1087,22 @@ let _addValue = "";
 
 /** This projection's rows, by key. Rebuilt with each projection. */
 const _commits = new Map<string, RowCommit>();
+
+/** This projection's row buttons ({@link PageRow.action}), by row key. Rebuilt with each projection. */
+const _rowActions = new Map<string, () => void>();
+
+/**
+ * The page's URL, derived from where its file sits under `pages/` (`pages/about.md` → `/about`), as
+ * a readout: changing a URL is moving the file, which the file tree owns. `null` for anything that
+ * is not a page.
+ */
+function urlRow(tab: Tab | null): PageRow | null {
+  const route = tab?.documentPath ? pageRoute(tab.documentPath) : null;
+  if (route === null) {
+    return null;
+  }
+  return { ...blankRow("__url", "url", "URL"), kind: "readout", value: route };
+}
 
 /**
  * This projection's custom `$head` entries, by the key they were drawn with.
@@ -999,8 +1127,10 @@ const TAG_OPTIONS: SurfaceOption[] = [
 /** A blank row, so every kind carries every field the document's bindings read. */
 function blankRow(key: string, prop: string, label: string): PageRow {
   return {
+    action: "",
     checked: false,
     clearLabel: `Clear ${prop}`,
+    hasAction: false,
     hasNote: false,
     hasThumb: false,
     isSet: false,
@@ -1026,6 +1156,7 @@ function thumbFor(row: PageRow, value: string): void {
 function titleRow(doc: JxMutableNode, apply: PagePanelContext["applyMutation"]): PageRow {
   const title = isString(doc.title) ? doc.title : "";
   _commits.set("title", {
+    images: false,
     clear: () =>
       apply((d) => {
         delete d.title;
@@ -1058,6 +1189,7 @@ function metaRow(
   const value = String(findMetaEntry(head, field.attr, field.key)?.attributes?.content ?? "");
   const key = `meta:${field.attr}:${field.key}`;
   _commits.set(key, {
+    images: field.media === true,
     clear: () => apply((d) => upsertMeta(d, field.attr, field.key, "")),
     /* A media field is not trimmed: a path is committed exactly as it was chosen, and the browser
        and the upload both hand one back already clean. */
@@ -1080,10 +1212,31 @@ function metaRow(
   return row;
 }
 
+/**
+ * The page's one Description: the value the build writes as its description meta, read and written
+ * where it lives ({@link pageDescription}, {@link setPageDescription}).
+ */
+function descriptionRow(doc: JxMutableNode, apply: PagePanelContext["applyMutation"]): PageRow {
+  const value = pageDescription(doc);
+  const key = "meta:name:description";
+  _commits.set(key, {
+    images: false,
+    clear: () => apply((d) => setPageDescription(d, "")),
+    commit: (raw) => apply((d) => setPageDescription(d, String(raw).trim())),
+  });
+  const row = blankRow(key, "description", "Description");
+  row.isSet = Boolean(value);
+  row.value = value;
+  row.kind = "text";
+  row.placeholder = "Description…";
+  return row;
+}
+
 /** The favicon, which is a `<link rel="icon">` rather than a `<meta>`. */
 function iconRow(head: JxHeadEntry[], apply: PagePanelContext["applyMutation"]): PageRow {
   const value = String(findLinkEntry(head, "icon")?.attributes?.href ?? "");
   _commits.set("link:icon", {
+    images: true,
     clear: () => apply((d) => upsertLink(d, "icon", "")),
     commit: (raw) => apply((d) => upsertLink(d, "icon", String(raw))),
   });
@@ -1099,8 +1252,7 @@ function iconRow(head: JxHeadEntry[], apply: PagePanelContext["applyMutation"]):
  * The Layout picker, or `null` when this document takes none — a component has no layout, and a
  * page whose layouts directory is still being listed has nothing to offer yet.
  *
- * The listing is {@link layoutPickerEntries}', which the Document Header card reads too: creating a
- * layout invalidates one cache rather than two.
+ * The listing is {@link layoutPickerEntries}', one cache that creating a layout invalidates.
  */
 function layoutSection(
   tab: Tab | null,
@@ -1118,6 +1270,7 @@ function layoutSection(
   const defaultPath = projectState?.projectConfig?.defaults?.layout;
   const defaultLabel = defaultPath ? layoutDisplayName(defaultPath) : "";
   _commits.set("__layout", {
+    images: false,
     clear: () =>
       apply((d) => {
         delete d.$layout;
@@ -1145,6 +1298,17 @@ function layoutSection(
     ...entries.map((l) => ({ label: l.name, value: l.path })),
   ];
   row.value = current === false ? "__none__" : current || "__default__";
+  // The template the page is drawn in, opened in Design: its own `$layout`, else the default.
+  const effective = getEffectiveLayoutPath(current);
+  if (effective) {
+    row.action = "Edit template";
+    row.hasAction = true;
+    _rowActions.set("__layout", () => {
+      void import("../files/files").then(({ openFileInTab }) =>
+        openFileInTab(effective.replace(/^\.\//, "")),
+      );
+    });
+  }
   return { hasSeo: false, key: "layout", rows: [row], title: "Layout" };
 }
 
@@ -1161,7 +1325,7 @@ function frontmatterSection(tab: Tab | null): PageSection | null {
   const { collection, fields, hasSchema, requiredFields } = collectFmFields(
     tab,
     projectState?.projectConfig,
-    RESERVED_FM_KEYS,
+    reservedFmKeys(tab),
   );
   if (fields.length === 0 && !hasSchema) {
     return null;
@@ -1172,6 +1336,7 @@ function frontmatterSection(tab: Tab | null): PageSection | null {
       rerender: sync,
     });
     _commits.set(key, {
+      images: row.kind === "media" && f.entry.format === "image",
       clear: () => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field)),
       commit: (raw) => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field, parse(raw))),
     });
@@ -1207,12 +1372,13 @@ function customEntries(head: JxHeadEntry[]): PageTagRow[] {
 /**
  * Everything the panel says about one document, and the commit table behind it.
  *
- * `activeTab.value` is read HERE and nowhere below it: the Navigator's Page panel is an app-level
+ * `activeTab.value` is read HERE and nowhere below it: the Inspector's Page tab is an app-level
  * surface that shows the focused document by definition, and spelling that out once at the top is
  * what lets every helper under it take a tab instead of asking for one.
  */
 function view(ctx: PagePanelContext): PagePanelView {
   _commits.clear();
+  _rowActions.clear();
   const tab = activeTab.value;
   const doc = ctx.document;
   const head = doc.$head ?? [];
@@ -1226,13 +1392,19 @@ function view(ctx: PagePanelContext): PagePanelView {
   if (layout) {
     sections.push(layout);
   }
+  const url = urlRow(tab);
   sections.push(
     {
       hasSeo: true,
       key: "page",
       rows: [
         titleRow(doc, ctx.applyMutation),
-        ...PAGE_FIELDS.map((field) => metaRow(field, head, ctx.applyMutation)),
+        ...(url ? [url] : []),
+        ...PAGE_FIELDS.map((field) =>
+          field.key === "description"
+            ? descriptionRow(doc, ctx.applyMutation)
+            : metaRow(field, head, ctx.applyMutation),
+        ),
         iconRow(head, ctx.applyMutation),
       ],
       title: "Page",
@@ -1324,7 +1496,7 @@ function addEntry(): void {
     }
     d.$head.push(entry);
   });
-  ctx.renderLeftPanel();
+  ctx.rerender();
 }
 
 /** Take one custom `$head` entry away, by the entry the key was drawn for. */
@@ -1343,7 +1515,7 @@ function removeEntry(key: string): void {
       d.$head.splice(idx, 1);
     }
   });
-  ctx.renderLeftPanel();
+  ctx.rerender();
 }
 
 /**
@@ -1376,9 +1548,13 @@ const ACTIONS: PagePanelActions = {
     flushPending(key);
     void mediaPicker().then((m) => {
       if (anchor instanceof HTMLElement) {
-        m.showMediaPickerPopover(anchor, (val: string) => {
-          _commits.get(key)?.commit(val);
-        });
+        m.showMediaPickerPopover(
+          anchor,
+          (val: string) => {
+            _commits.get(key)?.commit(val);
+          },
+          { images: _commits.get(key)?.images ?? true },
+        );
       }
     });
   },
@@ -1411,11 +1587,14 @@ const ACTIONS: PagePanelActions = {
     sync();
   },
   openSeo: () => {
-    /* The COMMAND, not a local open() — the Document Header card offers the same door and neither
-       of them owns it, so the palette has it by name. */
+    /* The COMMAND, not a local open(): no surface owns the capability, so the palette has it by
+       name. */
     void activeRegistry()?.run("document.openSeo");
   },
   removeEntry,
+  runRowAction: (key) => {
+    _rowActions.get(key)?.();
+  },
   setBoolean: (key, checked) => commitNow(key, checked),
   setChoice: (key, value) => commitNow(key, value),
   setNumber: (key, value) => commitNow(key, value),
@@ -1458,50 +1637,137 @@ export function renderPagePanel(host: HTMLElement, ctx: PagePanelContext): void 
   sync();
 }
 
+// ─── The Inspector's Page tab ────────────────────────────────────────────
+
 /**
- * The Navigator's content area inside a panel body.
+ * What the Page tab is called for a document (§6): Page under `pages/`, Template under `layouts/`,
+ * Component under `components/`, Entry for a file a collection owns, Document for anything else.
  *
- * `afterRender` is handed the `.panel-body`, and the panel's own content goes one level in — which
- * is where the document must be mounted rather than beside it, because that child is lit's part and
- * clearing it is how switching to another panel takes this surface down. A body drawn by the
- * fallback path has no content area; mounting into the body itself is then still correct.
+ * Path-based, like the rest of the site model: a file's role in a project is where it lives, and
+ * `collectionForFile` is the one matcher that answers "is this an entry" (§22.1 uses it too).
  */
-function contentArea(body: HTMLElement): HTMLElement {
-  return body.querySelector<HTMLElement>(".panel-content") ?? body;
+export function pageTabTitle(path: string | null | undefined): string {
+  if (!path) {
+    return "Document";
+  }
+  if (path.startsWith("pages/")) {
+    return "Page";
+  }
+  if (path.startsWith("layouts/")) {
+    return "Template";
+  }
+  if (path.startsWith("components/")) {
+    return "Component";
+  }
+  const collection = collectionForFile(path);
+  return collection && !collection.fileBacked ? "Entry" : "Document";
+}
+
+/** What the Component tab says: why there is no page form, and the one verb that reaches its own. */
+export const COMPONENT_TAB_MESSAGE =
+  "A component has no page settings: its title, search and social details come from the page that uses it.";
+
+/** The Component tab's empty state, for a component document's tab. */
+export function componentTabSpec(tab: Tab): EmptyStateSpec {
+  return {
+    actions: [
+      {
+        label: "Edit tag and props",
+        run: () => {
+          // The root is the component's definition; selecting it opens Element › Content on its
+          // Tag name and "Component Defaults" (`panels/properties-panel.ts`).
+          updateSession(tab, { selection: [[]], ui: { rightTab: "properties" } });
+        },
+      },
+    ],
+    detail: "Its tag name and the props it takes are set on its root element.",
+    message: COMPONENT_TAB_MESSAGE,
+  };
+}
+
+/** The sentence the Page tab shows with no document open. */
+export const PAGE_TAB_EMPTY = "Open a page to edit its title, description and social preview.";
+
+/** The Inspector's Page body host, handed over once by the dock. */
+let _tabHost: HTMLElement | null = null;
+
+/**
+ * Take the Inspector's Page body host, or let it go (`null`, when the dock is taken down).
+ *
+ * The Page panel moved here from the Navigator (§6): the same surface, re-hosted unchanged, drawn
+ * against the focused document. `panels/right-panel.ts` hands the host over and calls
+ * {@link renderPageTab} whenever the dock repaints.
+ */
+export function bindPageHost(host: HTMLElement | null): void {
+  if (_tabHost && _tabHost !== host) {
+    unmountEntryInspector(_tabHost);
+    unmountPagePanelSurface(_tabHost);
+    if (_host === _tabHost) {
+      _host = null;
+      _ctx = null;
+    }
+  }
+  _tabHost = host;
+  renderPageTab();
 }
 
 /**
- * Contribute the Page panel.
+ * Draw the Page tab against the focused document, or empty it when nothing is open.
  *
- * `level: "document"` — title, description, social card and custom `$head` entries are the open
- * document's. The id is `page` now: "head" named an HTML element, and §5.1's Document group calls
- * the surface Page. The record is what keeps the surface addressable under one name.
+ * Idempotent and cheap: a standing surface is only assigned to (`renderPagePanelSurface`), so the
+ * dock can call this on every repaint without taking the caret out of a field.
  */
-export function registerPagePanel(): void {
-  registerPanel({
-    id: "page",
-    title: "Page",
-    level: "document",
-    dock: "navigator",
-    icon: "file",
-    requiresDocument: "Open a page to edit its title, description and social preview.",
-    render: () => nothing,
-    afterRender: (ctx, host) => {
-      const doc = ctx.doc!;
-      const isContent = doc.mode === "content";
-      const fm = doc.content?.frontmatter ?? {};
-      renderPagePanel(contentArea(host), {
-        /* The Navigator's Page panel IS an app-level surface: it shows the focused document by
-           definition, so it spells that out at the call site instead of leaving it to a helper two
-           other surfaces share. */
-        applyMutation: isContent
-          ? (fn) => applyContentMutation(activeTab.value, ctx.rerender, fn)
-          : (fn) => {
-              transact(activeTab.value, fn);
-            },
-        document: isContent ? buildHeadDoc(doc.document, fm) : doc.document,
-        renderLeftPanel: ctx.rerender,
-      });
-    },
+export function renderPageTab(): void {
+  const host = _tabHost;
+  if (!host) {
+    return;
+  }
+  const tab = activeTab.value;
+  if (!tab || isEntryTab(tab)) {
+    unmountPagePanelSurface(host);
+    if (_host === host) {
+      _host = null;
+      _ctx = null;
+    }
+    /* A collection entry's tab is titled Entry and draws the entry's own settings — status,
+       fields, page URL, file (§22.5) — rather than a page's title, head and SEO preview: the
+       entry's page is its collection's template, and its head is that page's. */
+    if (tab) {
+      renderEntryInspector(host, tab);
+    } else {
+      unmountEntryInspector(host);
+    }
+    return;
+  }
+  unmountEntryInspector(host);
+  /* A component is not a page: it has no title, no head and no social card of its own — the pages
+     that use it do. Its own settings (its tag, the props it takes and their defaults) are its ROOT
+     element's, edited in Element › Content, so the tab says that and goes there. */
+  if (pageTabTitle(tab.documentPath) === "Component") {
+    unmountPagePanelSurface(host);
+    if (_host === host) {
+      _host = null;
+      _ctx = null;
+    }
+    // Assigned on every repaint; placed only when it is not already the tab's one child.
+    const state = emptyState(host, componentTabSpec(tab));
+    if (host.firstChild !== state || host.childNodes.length !== 1) {
+      host.replaceChildren(state);
+    }
+    return;
+  }
+  const isContent = tab.doc.mode === "content";
+  renderPagePanel(host, {
+    /* The Page tab IS an app-level surface: it shows the focused document by definition, so it
+       spells that out at the call site instead of leaving it to a helper two other surfaces share. */
+    applyMutation: isContent
+      ? (fn) => applyContentMutation(activeTab.value, renderPageTab, fn)
+      : (fn) => {
+          transact(activeTab.value, fn);
+        },
+    document: isContent
+      ? buildHeadDoc(tab.doc.document, tab.doc.content.frontmatter)
+      : tab.doc.document,
+    rerender: renderPageTab,
   });
 }

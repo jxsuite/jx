@@ -51,16 +51,22 @@ export function childList(node: JxMutableNode | null | undefined): (JxMutableNod
  * `$switch` cases. Runs once when a document is loaded into a tab so every in-studio doc — and its
  * history checkpoints — uses the member form before any mutation.
  *
+ * The rewrite is the editor's invariant, not the file's: `onBare` hears every repeater it moved,
+ * with the JSON Pointer of the node holding it (in the NORMALIZED document's coordinates), so a
+ * save can put the authored form back (`tabs/bare-repeaters.ts`).
+ *
  * @param {T} node
+ * @param {BareRepeaterVisitor} [onBare]
+ * @param {string} [pointer] - The node's JSON Pointer, `""` for the root.
  * @returns {T} The same node (mutated)
  */
-export function normalizeArrayChildren<T>(node: T): T {
+export function normalizeArrayChildren<T>(node: T, onBare?: BareRepeaterVisitor, pointer = ""): T {
   if (!isNonNullObject(node)) {
     return node;
   }
   if (Array.isArray(node)) {
-    for (const child of node) {
-      normalizeArrayChildren(child);
+    for (const [i, child] of node.entries()) {
+      normalizeArrayChildren(child, onBare, `${pointer}/${i}`);
     }
     return node;
   }
@@ -70,22 +76,35 @@ export function normalizeArrayChildren<T>(node: T): T {
   const { children } = n;
   if (isMappedArray(children)) {
     // SAFETY: A legacy whole-children repeater is the same repeater node that becomes the member.
-    n.children = [children as JxMutableNode];
+    const repeater = children as JxMutableNode;
+    onBare?.(pointer, repeater);
+    n.children = [repeater];
   }
   if (Array.isArray(n.children)) {
-    for (const child of n.children) {
-      normalizeArrayChildren(child);
+    for (const [i, child] of n.children.entries()) {
+      normalizeArrayChildren(child, onBare, `${pointer}/children/${i}`);
     }
   }
   if (n.$prototype === "Array" && isNonNullObject(n.map)) {
-    normalizeArrayChildren(n.map);
+    normalizeArrayChildren(n.map, onBare, `${pointer}/map`);
   }
   if (isNonNullObject(n.cases)) {
-    for (const caseDef of Object.values(n.cases)) {
-      normalizeArrayChildren(caseDef);
+    for (const [key, caseDef] of Object.entries(n.cases)) {
+      normalizeArrayChildren(caseDef, onBare, `${pointer}/cases/${pointerToken(key)}`);
     }
   }
   return node;
+}
+
+/**
+ * Hears each legacy whole-children repeater {@link normalizeArrayChildren} rewrites: the JSON
+ * Pointer of the node holding it, and the repeater.
+ */
+export type BareRepeaterVisitor = (pointer: string, repeater: JxMutableNode) => void;
+
+/** One JSON Pointer reference token (RFC 6901 §4). */
+export function pointerToken(segment: string | number): string {
+  return String(segment).replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
 /**

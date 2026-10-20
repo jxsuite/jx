@@ -97,10 +97,25 @@ export function assetContextFor(
  * @returns {string} A src the parent realm can load
  */
 export function previewAssetSrc(value: string): string {
+  return previewAssetSrcFor(value, activeTab.value?.documentPath);
+}
+
+/**
+ * {@link previewAssetSrc} for a value authored in a NAMED document rather than the focused one.
+ *
+ * A project-level surface (Project Settings › Overview previewing the `$head` favicon of
+ * `project.json`) is about the project whatever tab is in front, so it names its document instead
+ * of asking which one has the focus.
+ *
+ * @param {string} value - The reference as the author wrote it
+ * @param {string | null | undefined} documentPath - Project-relative path of the authoring document
+ * @returns {string} A src the parent realm can load
+ */
+export function previewAssetSrcFor(value: string, documentPath: string | null | undefined): string {
   if (!value) {
     return value;
   }
-  const ctx = assetContextFor(activeTab.value?.documentPath, hostAssetDeclarations());
+  const ctx = assetContextFor(documentPath, hostAssetDeclarations());
   const versioned = ctx && { ...ctx, versions: assetVersionsSnapshot() };
   return loopbackAssetSrc(resolveAssetRef(value, versioned) ?? value);
 }

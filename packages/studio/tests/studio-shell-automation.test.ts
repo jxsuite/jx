@@ -14,9 +14,12 @@
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { bootStudio } from "./studio-shell-fixture";
-import { activeTab } from "../src/workspace/workspace";
+import { activeTab, workspace } from "../src/workspace/workspace";
+import { getPlatform } from "../src/platform";
 import { shell } from "../src/shell";
 import { isJsonObject } from "@jxsuite/schema/guards";
+import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
+import { PROJECT_CONFIG_PATH } from "../src/tabs/tab";
 import type { AutomationApi } from "../src/services/automation";
 import type { CommandArgValues } from "../src/commands/command-args";
 
@@ -66,7 +69,7 @@ describe("the hook installed, over the composed registry", () => {
       "data.openGrid",
       "formula.editDef",
       "inspector.setSection",
-      "library.open",
+      "content.showCollection",
       "project.new",
       "settings.open",
       "style.setSelector",
@@ -132,7 +135,14 @@ describe("run() reaches the implementations", () => {
     expect(shell.docks.right.collapsed).toBe(false);
     expect(activeTab.value?.session.ui.rightTab).toBe("assistant");
     await api().run("view.setAssistant", { open: false });
+    // The fixture has a node selected, so closing steps onto the tab the strip rests on with a
+    // Selection: Element, on its last leaf (Content by default), not the document's Page (§6).
     expect(activeTab.value?.session.ui.rightTab).toBe("properties");
+    activeTab.value!.session.selection = [];
+    await api().run("view.setAssistant", { open: true });
+    await api().run("view.setAssistant", { open: false });
+    // With nothing selected it rests on Page.
+    expect(activeTab.value?.session.ui.rightTab).toBe("page");
     expect(shell.docks.right.collapsed).toBe(false);
   });
 
@@ -156,12 +166,12 @@ describe("run() reaches the implementations", () => {
 
   test("an undeclared panel id refuses through the hook, naming the declared set", async () => {
     expect(await refusal("view.setActivity", { tab: "head" })).toContain(
-      "is not declared — declared: files, search, git, i18n, layers, page, data, packages, insert",
+      "is not declared — declared: site, collections, styles, files, search, i18n, layers, data, packages, insert",
     );
   });
 
-  test("an id nothing declares still refuses with the countdown's own note", async () => {
-    expect(await refusal("media.browse")).toContain("has no command record yet");
+  test("an id §13.5 refuses still refuses with the refusal's own note", async () => {
+    expect(await refusal("view.setStatus")).toContain("is refused by spec §13.5");
   });
 });
 
@@ -191,5 +201,57 @@ describe("the Data panel the commands drive", () => {
     refresh?.click();
     await flush();
     expect(shell.leftTab).toBe("data");
+  });
+});
+
+describe("view.setWorkspace reaches the bootstrap's homes", () => {
+  /* The switch takes its homes by injection (`workspaceDeps` in studio.ts), because the Library and
+     the configuration document belong to other modules. A per-module test hands in its own doubles,
+     so only a boot can prove the bootstrap hands in the REAL openers, and that the follow it
+     installs and the command it registers share them. */
+  test("each workspace with no tab of its own opens its home, and Design returns to the page", async () => {
+    const page = activeTab.value;
+    expect(page).not.toBeNull();
+    expect(shell.workspace).toBe("design");
+
+    await api().run("view.setWorkspace", { workspace: "media" });
+    expect(shell.workspace).toBe("media");
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("media"));
+
+    await api().run("view.setWorkspace", { workspace: "publish" });
+    expect(shell.workspace).toBe("publish");
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("publish"));
+
+    await api().run("view.setWorkspace", { workspace: "content" });
+    expect(shell.workspace).toBe("content");
+    expect(activeTab.value?.id).toBe(workspaceHomeTabId("content"));
+
+    // Styles' home is `project.json` in its Variables view on a first visit, and its preset
+    // Selects the Inspector's Style tab ON that document, through the bootstrap's `setInspectorTab`.
+    await api().run("view.setWorkspace", { workspace: "styles" });
+    expect(shell.workspace).toBe("styles");
+    expect(activeTab.value?.id).toBe(PROJECT_CONFIG_PATH);
+    expect(activeTab.value?.session.ui.canvasMode).toBe("tokens");
+    expect(activeTab.value?.session.ui.rightTab).toBe("style");
+
+    await api().run("view.setWorkspace", { workspace: "design" });
+    expect(shell.workspace).toBe("design");
+    expect(activeTab.value?.id).toBe(page?.id);
+  });
+
+  /* `pane.compareWith` reads into the other pane without moving the keyboard. The bootstrap wraps
+     its opener so a compared document of ANOTHER workspace is revealed (entering that workspace)
+     rather than left hidden by that pane's strip. */
+  test("comparing with another workspace's document enters that workspace", async () => {
+    await getPlatform().writeFile(PROJECT_CONFIG_PATH, JSON.stringify({ name: "x" }));
+    expect(shell.workspace).toBe("design");
+    await api().run("pane.compareWith", { path: PROJECT_CONFIG_PATH });
+    await flush();
+    const compared = [...workspace.tabs.values()].find(
+      (tab) => tab.documentPath === PROJECT_CONFIG_PATH,
+    );
+    expect(compared).toBeDefined();
+    expect(shell.workspace).toBe("styles");
+    expect(activeTab.value?.documentPath).toBe(PROJECT_CONFIG_PATH);
   });
 });

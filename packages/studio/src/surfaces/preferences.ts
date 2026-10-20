@@ -111,6 +111,8 @@ export interface PreferencesView {
   sectionTitle: string;
   sectionBlurb: string;
   themes: PreferencesThemeRow[];
+  /** Whether **Show developer panels** is on: Files and Packages on the Design rail (§5.1). */
+  developerPanels: boolean;
   accounts: PreferencesAccountRow[];
   /** Why there is no keyboard sheet at all. Empty means there is one. */
   keyboardEmpty: string;
@@ -138,6 +140,8 @@ export interface PreferencesSurfaceOptions {
   view: PreferencesView;
   onSelectSection: (id: string) => void;
   onSetTheme: (value: string) => void;
+  /** The **Show developer panels** switch moved. */
+  onSetDeveloperPanels: (show: boolean) => void;
   /** One account button was pressed, named by its `"<account>/<action>"` key. */
   onAccountAction: (key: string) => void;
   onKeyQuery: (value: string) => void;
@@ -177,6 +181,7 @@ interface PreferencesFlags {
 interface PreferencesScope extends PreferencesView, PreferencesFlags {
   selectSection: (id: string) => void;
   setTheme: (value: string) => void;
+  setDeveloperPanels: (show: boolean) => void;
   runAccountAction: (key: string) => void;
   setKeyQuery: (value: string) => void;
   toggleKeystroke: () => void;
@@ -264,6 +269,9 @@ export function openPreferencesSurface(
          (studio-ui-guidelines.md §9.3). */
       scope.keyQuery = value;
       options.onKeyQuery(value);
+    },
+    setDeveloperPanels: (show: boolean) => {
+      options.onSetDeveloperPanels(show);
     },
     setTheme: (value: string) => {
       options.onSetTheme(value);

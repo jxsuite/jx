@@ -1,35 +1,37 @@
 /// <reference lib="dom" />
 /**
- * The rail foot's ⚙ Settings menu — a RENDERING of the `settings/menu` placement.
+ * The top bar's ⚙ Settings menu — a RENDERING of the `settings/menu` placement.
  *
  * The gear used to run one command. That was the right shape for a pinned slot and the wrong shape
- * for the question people bring to it: Studio has two settings families at two containment levels —
- * `app.preferences` (the application, ⌘,) and `settings.open` (this project, ⌘⇧,) — plus a third
- * editor over the same project document, `styles.open`. A slot can hold one of those and must lie
- * about the rest by omission. A menu can hold all three and say what each one is, because it prints
- * every row's own name, chord and gate beside it (`studio-ui-guidelines.md` §12.3). That is the
- * whole argument for the matrix row `settings/menu` admitting two levels, and for the divider this
- * file draws where the level changes.
+ * for the question people bring to it: Studio has two settings families at two containment levels,
+ * `app.preferences` (the application, ⌘,) and `settings.open` (this project, ⌘⇧,). A slot can hold
+ * one of those and must lie about the other by omission. A menu can hold both and say what each one
+ * is, because it prints every row's own name, chord and gate beside it (`studio-ui-guidelines.md`
+ * §12.3). That is the whole argument for the matrix row `settings/menu` admitting two levels, and
+ * for the divider this file draws where the level changes. Project Styles is not here: Styles is a
+ * workspace, and the top bar already names it.
  *
  * **Nothing here is a list of actions.** The rows are `registry.forPlacement("settings/menu")`, so
  * a record joins the menu by declaring the placement and leaves by not declaring it. The submenus
  * are the enumeration of each parent command's own `section` ARGUMENT, read from that argument's
  * own definition site — which is state the command already validates, not a second vocabulary
- * (`studio-ui-guidelines.md` §12.5).
+ * (`studio-ui-guidelines.md` §12.5). Project Settings' submenu is GROUPED as its dialog's nav is
+ * (General, Integrations, Advanced), with a divider where the group changes.
  *
  * **A parent row runs its own command AND owns a submenu.** The APG menu pattern does not describe
  * that and Spectrum's stock submenu forbade it outright; the kit's `jx-menu-item` makes it the rule
  * (`ui.md` §5.1), so the deviation `specs/studio-ui-guidelines.md` §8.4 records is now what the
  * element does rather than what this file hand-rolls around it. Nothing is unreachable by keyboard:
  * Enter runs the row, ArrowRight reaches every child, and every child is also in the settings
- * document's own inner nav.
+ * dialog's own nav.
  *
  * The menu is the `menu` surface (`surfaces/menu.json`, through `surfaces/menu.ts`). What is left
  * here is the projection — which records, which sections, what each row runs — and where the panel
- * hangs: off the gear's right edge, its bottom flush with the rail's, which is also the floor every
- * submenu keeps above the status bar. The section subscription lives for as long as the menu is up:
- * six of Project Settings' sections are contributed by extensions and register a tick after the
- * built-ins (`settings/extension-sections.ts`), so a menu opened in that window would otherwise be
+ * hangs: below the gear, right-aligned to it. The gear moved from the rail's foot to the top bar
+ * because the rail is drawn only in the Design workspace, and the settings are every workspace's.
+ * The section subscription lives for as long as the menu is up: six of Project Settings' sections
+ * are contributed by extensions and register a tick after the built-ins
+ * (`settings/extension-sections.ts`), so a menu opened in that window would otherwise be
  * permanently short. It deliberately does NOT call the sync itself: opening a menu must not do IO.
  *
  * @docs studio/interface/preferences
@@ -39,10 +41,9 @@
 import { activeRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
 import { LEVELS } from "../commands/levels";
-import { onSettingsDocumentChanged, sortedSettingsSections } from "../settings/section-registry";
+import { groupedSettingsSections, onSettingsDocumentChanged } from "../settings/section-registry";
 import { PREFERENCES_SECTIONS } from "../settings/preferences-sections";
 import { openMenu } from "../surfaces/menu";
-import { REGION_ATTR } from "../ui/regions";
 import { rectOf } from "../utils/geometry";
 
 import type { CommandArgValues } from "../commands/command-args";
@@ -51,7 +52,12 @@ import type { Level } from "../commands/levels";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { KeyedLabel } from "../ui/surface";
 
-/** The placement the rail's gear renders. One definition site for the string. */
+/** One submenu row's source: the argument value, its label, and whether a new group starts here. */
+interface SectionRow extends KeyedLabel {
+  dividerAbove: boolean;
+}
+
+/** The placement the top bar's gear renders. One definition site for the string. */
 export const SETTINGS_MENU_PLACEMENT = "settings/menu" as const;
 
 let _menu: MenuHandle | null = null;
@@ -69,19 +75,31 @@ let _rerender: (() => void) | null = null;
  * `settings.open` refuses anything absent from `settingsSectionKeys()` — so a submenu row can never
  * name a value its own command would refuse.
  */
-const SECTION_SOURCES: ReadonlyMap<string, () => readonly KeyedLabel[]> = new Map([
+const SECTION_SOURCES: ReadonlyMap<string, () => readonly SectionRow[]> = new Map([
   [
     "app.preferences",
-    () => PREFERENCES_SECTIONS.map((section) => ({ key: section.id, label: section.title })),
+    () =>
+      PREFERENCES_SECTIONS.map((section) => ({
+        dividerAbove: false,
+        key: section.id,
+        label: section.title,
+      })),
   ],
   [
     "settings.open",
-    () => sortedSettingsSections().map((section) => ({ key: section.key, label: section.label })),
+    () =>
+      groupedSettingsSections().flatMap((group, groupIndex) =>
+        group.sections.map((section, index) => ({
+          dividerAbove: groupIndex > 0 && index === 0,
+          key: section.key,
+          label: section.label,
+        })),
+      ),
   ],
 ]);
 
 /** The sections a row offers, or none. */
-function menuSectionsFor(id: string): readonly KeyedLabel[] {
+function menuSectionsFor(id: string): readonly SectionRow[] {
   return SECTION_SOURCES.get(id)?.() ?? [];
 }
 
@@ -134,7 +152,7 @@ function buildSettingsMenuRows(registry: CommandRegistry): MenuRowProjection[] {
         ? menuSectionsFor(id).map((section) => ({
             destructive: false,
             disabled: false,
-            dividerAbove: false,
+            dividerAbove: section.dividerAbove,
             id: `${id}:${section.key}`,
             // Named by the argument value it passes, never by a reworded command title.
             run: () => runRow(id, { section: section.key }),
@@ -161,26 +179,9 @@ function buildSettingsMenuRows(registry: CommandRegistry): MenuRowProjection[] {
   });
 }
 
-// ─── Geometry ─────────────────────────────────────────────────────────────────
-
-/**
- * The lowest edge any menu in this stack may reach.
- *
- * The trigger's REGION, not the viewport. The gear sits in the rail, whose bottom is the status
- * bar's top — so clamping to the viewport would let a tall submenu run down over the status bar
- * while the root menu sits neatly above it. One floor for both levels is what keeps the stack
- * looking like one surface, and it is expressed through the shell's own addressing grammar rather
- * than a selector into markup — so a menu button in another region would align to that one without
- * this function learning about it.
- */
-function menuFloor(anchor: HTMLElement): number {
-  const host = anchor.closest<HTMLElement>(`[${REGION_ATTR}]`);
-  return host ? rectOf(host).bottom : window.innerHeight;
-}
-
 // ─── Public surface ───────────────────────────────────────────────────────────
 
-/** Whether the gear menu is on screen. The rail reads it for `aria-expanded`. */
+/** Whether the gear menu is on screen. The top bar reads it for `aria-expanded`. */
 export function isSettingsMenuOpen(): boolean {
   return _menu !== null;
 }
@@ -197,7 +198,7 @@ export function dismissSettingsMenu(): void {
  * class stay lit BINDINGS rather than imperative attribute writes; a stale `aria-expanded` is a
  * defect this app has shipped before. Same seam as `showContextMenu(e, path, { rerender })`.
  *
- * @param anchor The control the menu hangs off — the rail's gear.
+ * @param anchor The control the menu hangs off — the top bar's gear.
  */
 export function openSettingsMenu(anchor: HTMLElement, opts: { rerender?: () => void } = {}): void {
   if (_menu) {
@@ -213,9 +214,7 @@ export function openSettingsMenu(anchor: HTMLElement, opts: { rerender?: () => v
     return;
   }
   _rerender = opts.rerender ?? null;
-  const floor = (): number => menuFloor(anchor);
   const handle = openMenu({
-    floor,
     label: "Settings",
     onClosed: (closedHandle) => {
       if (_menu !== closedHandle) {
@@ -230,13 +229,16 @@ export function openSettingsMenu(anchor: HTMLElement, opts: { rerender?: () => v
       rerender?.();
     },
     opener: anchor,
-    /* Hanging off the trigger's right edge, with its BOTTOM flush with the bottom of the region the
-       trigger lives in. Not "below the trigger": the gear is the last control in a full-height rail
-       whose foot abuts the status bar, so a menu dropped below it would be off-screen, and one
-       aligned to the button would float six pixels of `.rail-footer` padding clear of the status
-       bar. Floored at 4, because Project Settings has ~16 sections once extensions have contributed
-       and a menu taller than the area must keep its FIRST rows on screen. */
-    place: (box) => ({ x: rectOf(anchor).right + 4, y: Math.max(4, floor() - box.height) }),
+    /* Below the gear, its RIGHT edge flush with the gear's. The gear sits at the right-hand end of
+       the top bar, just before the dock toggles, so a menu hanging from its left edge would run off
+       the window; right-aligning it is a function of the menu's own width, which is why this is a
+       `place` callback run once the panel has been laid out. Floored at 4 on the left, so a menu
+       wider than the space to the gear's left keeps its leading edge on screen. */
+    place: (box) => {
+      const gear = rectOf(anchor);
+      return { x: Math.max(4, gear.right - box.width), y: gear.bottom + 4 };
+    },
+    placement: "block-end span-inline-start",
     region: "settings",
     rows,
   });

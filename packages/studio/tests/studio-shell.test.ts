@@ -44,6 +44,7 @@ import type { initBlockActionBar } from "../src/panels/block-action-bar";
 import type { initCanvasRender } from "../src/canvas/canvas-render";
 import type { initCanvasPatcher } from "../src/canvas/canvas-patcher";
 import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
+import type { SourceControlDeps } from "../src/publish/source-control";
 import type { ProjectOpenTarget, StageContext, StudioCommandHooks } from "../src/editor/shortcuts";
 import type { CommandRegistry } from "../src/commands/registry";
 import type { CommandArgValues } from "../src/commands/command-args";
@@ -308,6 +309,18 @@ void mock.module("../src/panels/left-panel.ts", () => ({
   },
   render: mock(() => {}),
   unmount: mock(() => {}),
+}));
+
+// Wrap source-control: capture what the bootstrap injects (`setSourceControlDeps`) while the real
+// Flow still receives it. NB: mock.module rebinds the live namespace too, so snapshot FIRST.
+const sourceControlSnapshot = { ...(await import("../src/publish/source-control")) };
+let sourceControlDeps: SourceControlDeps | null = null;
+void mock.module("../src/publish/source-control.ts", () => ({
+  ...sourceControlSnapshot,
+  setSourceControlDeps: (deps: SourceControlDeps) => {
+    sourceControlDeps = deps;
+    sourceControlSnapshot.setSourceControlDeps(deps);
+  },
 }));
 
 // Wrap iframe-host: capture the stylebook hit handler and make the edit snapshot controllable
@@ -882,7 +895,7 @@ describe("canvas render effects", () => {
     openShellTab();
     await flush();
     scheduleCanvasRenderMock.mockClear();
-    shell.settingsTab = "fonts";
+    shell.stylebook.customizedOnly = !shell.stylebook.customizedOnly;
     expect(scheduleCanvasRenderMock).toHaveBeenCalledWith(PRIMARY_PANE);
   });
 
@@ -1071,7 +1084,8 @@ describe("openRecentProject", () => {
   test("loads project.json, rebuilds project state, and opens the project", async () => {
     await toolbarCtx.openRecentProject("/recent/site");
     expect(platform.projectRoot).toBe("/recent/site");
-    expect(shell.leftTab).toBe("files");
+    // The Design frame's Navigator panel, not the developer Files panel the open used to force.
+    expect(shell.leftTab).toBe("site");
     expect(statusMessages).toHaveLength(0);
   });
 
@@ -1651,7 +1665,7 @@ describe("parent-chrome commit guard", () => {
   test("a chrome pointerdown suppresses the block action bar", () => {
     pointerDownAt();
     // The exemption was asked of the pointerdown's own target, and it did not apply.
-    expect(isEditChromeTargetMock).toHaveBeenCalledWith(document);
+    expect(isEditChromeTargetMock.mock.calls.map(([target]) => target)).toContain(document);
     expect(suppressBarMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1661,7 +1675,7 @@ describe("parent-chrome commit guard", () => {
     try {
       pointerDownAt();
       // The exemption is decided on the target the pointer landed on.
-      expect(isEditChromeTargetMock).toHaveBeenCalledWith(document);
+      expect(isEditChromeTargetMock.mock.calls.map(([target]) => target)).toContain(document);
       expect(suppressBarMock).not.toHaveBeenCalled();
       expect(commitEditMock).not.toHaveBeenCalled();
     } finally {
@@ -1681,7 +1695,7 @@ describe("parent-chrome commit guard", () => {
     try {
       pointerDownAt(inStage);
       // The guard saw the stage element itself, not a retargeted ancestor.
-      expect(isEditChromeTargetMock).toHaveBeenCalledWith(inStage);
+      expect(isEditChromeTargetMock.mock.calls.map(([target]) => target)).toContain(inStage);
       expect(suppressBarMock).not.toHaveBeenCalled();
       expect(commitEditMock).toHaveBeenCalledWith();
     } finally {
@@ -1713,21 +1727,40 @@ describe("stylebook hit routing", () => {
 });
 
 describe("left panel wiring", () => {
-  test("mount ctx propagates git-diff state and canvas renders", () => {
+  test("mount ctx renders the canvas", () => {
     expect(leftPanelCtx).not.toBeNull();
-    leftPanelCtx.setGitDiffState({ path: "z.json" });
-    expect(canvasRenderCtx.gitDiffState).toEqual({ path: "z.json" });
-    leftPanelCtx.setGitDiffState(null);
-    expect(canvasRenderCtx.gitDiffState).toBeNull();
-
     renderCanvasMock.mockClear();
     leftPanelCtx.renderCanvas();
     expect(renderCanvasMock).toHaveBeenCalledTimes(1);
   });
+});
+
+/* Source control is the Publish workspace's flow now, not a Navigator panel's, so the bootstrap
+   hands IT the clone flow and the diff-state setter (`setSourceControlDeps`). */
+describe("source control wiring", () => {
+  test("the injected diff-state setter propagates git-diff state to the canvas", () => {
+    expect(sourceControlDeps).not.toBeNull();
+    sourceControlDeps!.setGitDiffState!({
+      currentContent: "new",
+      filePath: "z.json",
+      fileStatus: "M",
+      originalContent: "old",
+    });
+    expect(canvasRenderCtx.gitDiffState).toEqual({
+      currentContent: "new",
+      filePath: "z.json",
+      fileStatus: "M",
+      originalContent: "old",
+    });
+    sourceControlDeps!.setGitDiffState!(null);
+    expect(canvasRenderCtx.gitDiffState).toBeNull();
+  });
 
   test("clone-repository delegates report unsupported platforms", async () => {
+    const { runCloneRepository } = await import("../src/publish/source-control");
     // The in-memory platform has no gitClone, so both delegates hit the unsupported guard.
-    await leftPanelCtx.cloneRepository();
+    runCloneRepository();
+    await flush();
     expect(statusMessages.at(-1)).toBe("Cloning is not supported on this platform.");
     statusMessages.length = 0;
     await welcomeCtx.cloneRepository();

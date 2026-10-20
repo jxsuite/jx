@@ -10,7 +10,7 @@ import {
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
-import { displayTagName, isNumber } from "@jxsuite/schema/guards";
+import { isNumber } from "@jxsuite/schema/guards";
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
 import {
   attachInstruction,
@@ -26,13 +26,12 @@ import {
   parentElementPath,
   renderOnly,
 } from "../store";
-import { mutateInsertNode, mutateMoveNode, transact, transactDoc } from "../tabs/transact";
+import { mutateInsertNode, mutateMoveNode, transactDoc } from "../tabs/transact";
 import { primarySelection } from "../tabs/selection";
 import { activeTab } from "../workspace/workspace";
 import { view } from "../view";
 import { buildComponentInstance, componentRegistry } from "../files/components";
-import { enableElement } from "../files/elements";
-import type { ElementsEntry } from "../files/elements";
+import { mutateImportComponent } from "../editor/insert-component";
 import { renderComponentPreview } from "./component-preview";
 import { defaultDef, unsafeTags } from "./shared";
 import { elementAtPoint } from "../utils/geometry";
@@ -487,33 +486,21 @@ export function applyDropInstruction(
     /* SAFETY: every minter of a "block" payload — the Insert palette's element and component cards
        and the file drop (`file-drop-action.ts`) — sets `fragment` to the JxMutableNode it inserts. */
     const fragment = srcData.fragment as JxMutableNode;
+    /* Auto-import to `$elements` if the dropped block is a custom component, through the rule
+       every insertion door shares (`editor/insert-component.ts`, over the one `$elements` service):
+       this call site once had its own duplicate rule and matched a local component by
+       `ref.endsWith(basename)`, so dropping `./components/card.json` into a page that already
+       imported `./vendor/card.json` counted as already imported. The import is part of the same
+       transaction as the insert, so one ⌘Z takes back both. */
     if (slot) {
-      transactDoc(tab, (t) =>
-        mutateInsertNode(t, slot.parent, slot.index, structuredClone(fragment)),
-      );
-    }
-
-    /* Auto-import to `$elements` if the dropped block is a custom component.
-       Through the ONE service (`files/elements.ts`), which is the whole point of it: this call site
-       had its own duplicate rule and matched a local component by `ref.endsWith(basename)`, so
-       dropping `./components/card.json` into a page that already imported `./vendor/card.json`
-       counted as already imported and produced an element the page could not resolve. */
-    const tag = fragment.tagName;
-    if (displayTagName(tag).includes("-")) {
-      const comp = componentRegistry.find((c: ComponentEntry) => c.tagName === tag);
-      /* SAFETY: `$elements` holds module specifiers and `{ $ref }` imports; the document type and
-         files/elements.ts spell an inline entry as JxMutableNode and JxElement respectively, two
-         editor views of the same JSON object that enableElement only compares by `$ref`. */
-      const before = (tab.doc.document.$elements ?? []) as ElementsEntry[];
-      const after = comp ? enableElement(before, comp, tab.documentPath ?? null) : before;
-      // Only when the list actually GREW. A component the registry cannot name — an npm entry with
-      // No package, a local one with no path — returns the list unchanged, and writing that back
-      // Would put an empty `$elements: []` on a document that had none.
-      if (after.length !== before.length) {
-        transact(tab, (d: JxMutableNode) => {
-          d.$elements = after;
-        });
-      }
+      transactDoc(tab, (t) => {
+        mutateInsertNode(t, slot.parent, slot.index, structuredClone(fragment));
+        mutateImportComponent(t, fragment.tagName);
+        /* The inserted node is the selection, as every other insert leaves it (the slash menu, Enter,
+           paste): the Inspector is then on the thing just placed, which is where a dropped image's
+           missing alt text or a component's props are filled in. */
+        t.session.selection = [[...slot.parent, "children", slot.index]];
+      });
     }
   }
 }

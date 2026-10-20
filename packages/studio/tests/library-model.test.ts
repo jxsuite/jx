@@ -1,5 +1,6 @@
 /**
- * Tests for src/browse/library-model.ts — the scan, the categories, and the two derived axes.
+ * Tests for src/browse/library-model.ts — the scan, the collection each file is in, and the two
+ * derived axes.
  *
  * The load-bearing one is "a directory it could not read is reported, not swallowed". That single
  * `catch {}` in the predecessor is why an HTTP 500 and an empty project rendered the same sentence,
@@ -9,23 +10,20 @@ import "./with-dom.js";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { resetStudioState } from "./harness";
 import {
-  LIBRARY_CATEGORIES,
-  LIBRARY_CATEGORY_KEYS,
   LIBRARY_LAYOUTS,
   LIBRARY_LAYOUT_LABELS,
   PREVIEW_LAYOUTS,
-  categoryFor,
-  contentTypeFor,
   filterLibrary,
-  groupByCategory,
+  folderOf,
   groupByDate,
+  groupByFolder,
   isLibraryLayout,
-  libraryCategory,
   libraryDate,
   libraryLocales,
   projectLocales,
+  entryCollectionOf,
+  libraryScanDirs,
   scanLibrary,
-  uploadDirForCategory,
 } from "../src/browse/library-model";
 import { resetAssetVersions, versionOf } from "../src/files/asset-versions";
 import type { LibraryFile } from "../src/browse/library-model";
@@ -73,45 +71,37 @@ beforeEach(() => {
   });
 });
 
-// ─── Categories ──────────────────────────────────────────────────────────────
+// ─── Collections ─────────────────────────────────────────────────────────────
 
-describe("categories", () => {
-  test("media wins over the directory it happens to sit in", () => {
-    expect(categoryFor("pages/hero.png", ".png")).toBe("Media");
+describe("the collection a scanned file is in", () => {
+  test("a page is in Pages, an entry in its collection, everything else in none", async () => {
+    const scan = await scanLibrary(["pages", "content", "components", "public"], {
+      listDirectory: listDirectory(),
+    });
+    const of = (path: string) => scan.files.find((f) => f.path === path);
+    expect(of("pages/index.json")?.collection).toBe("pages");
+    expect(of("content/posts/draft.md")?.collection).toBe("posts");
+    expect(of("components/button.json")?.collection).toBeNull();
+    expect(of("public/logo.png")?.collection).toBeNull();
   });
 
-  test("maps every conventional directory, and admits when it cannot", () => {
-    expect(categoryFor("pages/a.json", ".json")).toBe("Pages");
-    expect(categoryFor("layouts/a.json", ".json")).toBe("Layouts");
-    expect(categoryFor("components/a.json", ".json")).toBe("Components");
-    expect(categoryFor("content/a.md", ".md")).toBe("Content");
-    expect(categoryFor("public/a.txt", ".txt")).toBe("Media");
-    expect(categoryFor("data/a.json", ".json")).toBe("Content");
-    expect(categoryFor("styles/a.json", ".json")).toBe("Components");
-    expect(categoryFor("scripts/a.sh", ".sh")).toBe("Other");
+  test("media is media by its extension, whatever folder it is in", async () => {
+    const tree = {
+      pages: [file("hero.png", "pages/hero.png"), file("a.json", "pages/a.json")],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(["pages"], { listDirectory: listDirectory(tree) });
+    expect(scan.files.map((f) => [f.name, f.media, f.collection])).toEqual([
+      ["a.json", false, "pages"],
+      ["hero.png", true, null],
+    ]);
   });
 
-  test("the content type of a path comes from project.json, capitalized", () => {
-    expect(contentTypeFor("content/posts/hello.md")).toBe("Posts");
-    expect(contentTypeFor("content/other/hello.md")).toBeNull();
-  });
-
-  test("a collection with no source declares no paths", () => {
-    expect(contentTypeFor("drafts/x.md")).toBeNull();
-  });
-
-  test("only All has no upload destination — and that is why it has to ask", () => {
-    const withoutDir = LIBRARY_CATEGORIES.filter((c) => c.dir === undefined).map((c) => c.key);
-    expect(withoutDir).toEqual(["all"]);
-    expect(uploadDirForCategory("all")).toBeUndefined();
-    expect(uploadDirForCategory("media")).toBe("public");
-    expect(uploadDirForCategory("nonsense")).toBeUndefined();
-  });
-
-  test("the declared key list is what a command's enum refuses against", () => {
-    expect(LIBRARY_CATEGORY_KEYS).toEqual(LIBRARY_CATEGORIES.map((c) => c.key));
-    expect(libraryCategory("pages")?.label).toBe("Pages");
-    expect(libraryCategory("gone")).toBeUndefined();
+  test("an underscore-prefixed page part is no route, so it is in no collection", async () => {
+    const tree = {
+      pages: [file("_card.json", "pages/_card.json")],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(["pages"], { listDirectory: listDirectory(tree) });
+    expect(scan.files[0]!.collection).toBeNull();
   });
 });
 
@@ -131,8 +121,8 @@ describe("scanLibrary", () => {
       "public/logo.png",
     ]);
     const post = scan.files.find((f) => f.name === "draft.md")!;
-    expect(post.category).toBe("Content");
-    expect(post.type).toBe("Posts");
+    expect(post.collection).toBe("posts");
+    expect(post.type).toBe(".md");
   });
 
   test("carries size and modification time through when the platform reports them", async () => {
@@ -194,13 +184,123 @@ describe("scanLibrary", () => {
     expect(scan.files[0]!.type).toBe("file");
   });
 
-  test("a content file outside every declared collection falls back to its extension", async () => {
+  test("a content file outside every declared collection is in none", async () => {
     const tree = { content: [file("note.md", "content/note.md")] } satisfies Record<
       string,
       DirEntry[]
     >;
     const scan = await scanLibrary(["content"], { listDirectory: listDirectory(tree) });
-    expect(scan.files[0]!.type).toBe(".md");
+    expect([scan.files[0]!.type, scan.files[0]!.collection]).toEqual([".md", null]);
+  });
+
+  /* The jxsuite docs file their CLI pages under `framework/build/`: skipping the NAME `build`
+     dropped two entries and made the Content home and the Site panel disagree. */
+  test("walks a collection folder named build or dist", async () => {
+    const tree = {
+      "content/posts": [dir("build", "content/posts/build"), dir("dist", "content/posts/dist")],
+      "content/posts/build": [file("cli.md", "content/posts/build/cli.md")],
+      "content/posts/dist": [file("out.md", "content/posts/dist/out.md")],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(["content/posts"], { listDirectory: listDirectory(tree) });
+    expect(scan.files.map((f) => [f.path, f.collection])).toEqual([
+      ["content/posts/build/cli.md", "posts"],
+      ["content/posts/dist/out.md", "posts"],
+    ]);
+  });
+
+  test("an OPTIONAL root that cannot be read is empty, not a failure; its depths still fail", async () => {
+    const tree = {
+      shown: [dir("gone", "shown/gone")],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(
+      ["missing", "shown"],
+      { listDirectory: listDirectory(tree) },
+      new Set(["missing", "shown"]),
+    );
+    expect(scan.files).toEqual([]);
+    expect(scan.failures.map((f) => f.dir)).toEqual(["shown/gone"]);
+  });
+});
+
+describe("libraryScanDirs", () => {
+  test("adds every directory collection a project directory does not already cover", () => {
+    const config = {
+      content: {
+        catalogue: { source: "./data/products.csv" },
+        docs: { source: "../../docs" },
+        exhibitions: { source: "./content/exhibitions/{locale}/" },
+        none: {},
+        posts: { source: "./content/posts/" },
+        root: { source: "./" },
+      },
+    };
+    expect(libraryScanDirs(["pages", "content"], config)).toEqual([
+      "pages",
+      "content",
+      "../../docs",
+    ]);
+    // A collection declared after the project opened, before `content/` existed.
+    expect(libraryScanDirs(["pages"], config)).toEqual([
+      "pages",
+      "../../docs",
+      "content/exhibitions",
+      "content/posts",
+    ]);
+  });
+
+  test("hands back the project's own list, untouched, when nothing is missing", () => {
+    const dirs = ["pages", "content"];
+    expect(libraryScanDirs(dirs, { content: { posts: { source: "content/posts" } } })).toBe(dirs);
+    expect(libraryScanDirs(dirs, null)).toBe(dirs);
+  });
+});
+
+describe("entryCollectionOf", () => {
+  test("a declared format lists only its own files; an undeclared one lists everything", () => {
+    resetStudioState({
+      projectConfig: {
+        content: {
+          docs: { format: "json", source: "./docs/" },
+          notes: { source: "./notes/" },
+        },
+      },
+    });
+    expect(entryCollectionOf("docs/a.json")).toBe("docs");
+    // `nav.json` beside Markdown pages is the collection's folder, not one of its entries.
+    expect(entryCollectionOf("docs/nav.md")).toBeNull();
+    expect(entryCollectionOf("notes/a.md")).toBe("notes");
+    expect(entryCollectionOf("notes/b.json")).toBe("notes");
+    expect(entryCollectionOf("elsewhere/a.md")).toBeNull();
+  });
+
+  test("a page is a file the build routes: a backup beside it is in no collection", () => {
+    resetStudioState({ projectConfig: {} });
+    const routed = [".json", ".md"];
+    expect(entryCollectionOf("pages/index.md", routed)).toBe("pages");
+    expect(entryCollectionOf("pages/index.json.bak", routed)).toBeNull();
+    // With no extensions known, the folder still decides, as it always has.
+    expect(entryCollectionOf("pages/index.json.bak")).toBe("pages");
+  });
+
+  test("the scan hands its extensions to every file it lists, at every depth", async () => {
+    resetStudioState({ projectConfig: {} });
+    const tree = {
+      pages: [
+        file("index.json", "pages/index.json"),
+        file("index.json.bak", "pages/index.json.bak"),
+        { name: "products", path: "pages/products", type: "directory" },
+      ],
+      "pages/products": [
+        file("[sku].md", "pages/products/[sku].md"),
+        file("notes.txt", "pages/products/notes.txt"),
+      ],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(["pages"], { listDirectory: listDirectory(tree) }, new Set(), [
+      ".json",
+      ".md",
+    ]);
+    const pages = scan.files.filter((f) => f.collection === "pages").map((f) => f.path);
+    expect(pages.toSorted()).toEqual(["pages/index.json", "pages/products/[sku].md"]);
   });
 });
 
@@ -208,33 +308,52 @@ describe("scanLibrary", () => {
 
 describe("filterLibrary", () => {
   const files: LibraryFile[] = [
-    { category: "Pages", ext: ".json", name: "index.json", path: "pages/index.json", type: "." },
-    { category: "Media", ext: ".png", name: "logo.png", path: "public/logo.png", type: ".png" },
+    {
+      collection: "pages",
+      ext: ".json",
+      media: false,
+      name: "index.json",
+      path: "pages/index.json",
+      type: ".json",
+    },
+    {
+      collection: "pages",
+      ext: ".json",
+      media: false,
+      name: "about.json",
+      path: "pages/about/index.json",
+      type: ".json",
+    },
+    {
+      collection: null,
+      ext: ".png",
+      media: true,
+      name: "logo.png",
+      path: "public/logo.png",
+      type: ".png",
+    },
   ];
 
-  test("all + empty query is the identity, and does not copy the array", () => {
-    expect(filterLibrary(files, { category: "all", query: "" })).toBe(files);
-  });
-
-  test("filters by category label, not by key", () => {
-    expect(filterLibrary(files, { category: "media", query: "" }).map((f) => f.name)).toEqual([
-      "logo.png",
+  test("keeps only the named collection's files", () => {
+    expect(filterLibrary(files, { collection: "pages", query: "" }).map((f) => f.name)).toEqual([
+      "index.json",
+      "about.json",
     ]);
   });
 
+  test("a file in no collection is in no collection's list", () => {
+    expect(filterLibrary(files, { collection: "posts", query: "" })).toEqual([]);
+  });
+
   test("matches the query against name AND path, case-insensitively", () => {
-    expect(filterLibrary(files, { category: "all", query: "PUBLIC" }).length).toBe(1);
-    expect(filterLibrary(files, { category: "all", query: "  index " }).length).toBe(1);
+    expect(filterLibrary(files, { collection: "pages", query: "ABOUT" }).length).toBe(1);
+    expect(filterLibrary(files, { collection: "pages", query: "  index " }).length).toBe(2);
   });
 
-  test("an unknown category filters nothing rather than everything", () => {
-    expect(filterLibrary(files, { category: "gone", query: "" }).length).toBe(2);
-  });
-
-  test("an absent or blank locale is the identity — the third clause does not copy either", () => {
-    expect(filterLibrary(files, { category: "all", query: "" })).toBe(files);
-    expect(filterLibrary(files, { category: "all", locale: "", query: "" })).toBe(files);
-    expect(filterLibrary(files, { category: "all", locale: "   ", query: "" })).toBe(files);
+  test("an absent or blank locale filters nothing", () => {
+    expect(filterLibrary(files, { collection: "pages", query: "" })).toHaveLength(2);
+    expect(filterLibrary(files, { collection: "pages", locale: "", query: "" })).toHaveLength(2);
+    expect(filterLibrary(files, { collection: "pages", locale: "   ", query: "" })).toHaveLength(2);
   });
 
   test("filters on the canonical TAG, never on the label two locales can share", () => {
@@ -243,9 +362,13 @@ describe("filterLibrary", () => {
       { ...files[0]!, locale: "fr-CA", name: "ca.json", path: "pages/fr-ca/ca.json" },
       files[1]!,
     ];
-    expect(filterLibrary(localized, { category: "all", locale: "fr", query: "" })).toHaveLength(1);
+    expect(filterLibrary(localized, { collection: "pages", locale: "fr", query: "" })).toHaveLength(
+      1,
+    );
     expect(
-      filterLibrary(localized, { category: "all", locale: "fr-CA", query: "" }).map((f) => f.name),
+      filterLibrary(localized, { collection: "pages", locale: "fr-CA", query: "" }).map(
+        (f) => f.name,
+      ),
     ).toEqual(["ca.json"]);
   });
 
@@ -255,11 +378,11 @@ describe("filterLibrary", () => {
       { ...files[0]!, locale: "fr", name: "about.json", path: "pages/fr/about.json" },
     ];
     expect(
-      filterLibrary(localized, { category: "pages", locale: "fr", query: "about" }).map(
+      filterLibrary(localized, { collection: "pages", locale: "fr", query: "about" }).map(
         (f) => f.name,
       ),
     ).toEqual(["about.json"]);
-    expect(filterLibrary(localized, { category: "media", locale: "fr", query: "" })).toEqual([]);
+    expect(filterLibrary(localized, { collection: "posts", locale: "fr", query: "" })).toEqual([]);
   });
 });
 
@@ -377,11 +500,11 @@ describe("the locale a file sits under", () => {
 // ─── Layouts ─────────────────────────────────────────────────────────────────
 
 describe("layouts", () => {
-  test("every layout has a label, and only the two visual ones draw previews", () => {
+  test("every layout has a label, and only Cards draws previews", () => {
     for (const layout of LIBRARY_LAYOUTS) {
       expect(LIBRARY_LAYOUT_LABELS[layout]).toBeTruthy();
     }
-    expect([...PREVIEW_LAYOUTS].toSorted()).toEqual(["cards", "media"]);
+    expect([...PREVIEW_LAYOUTS]).toEqual(["cards"]);
   });
 
   test("isLibraryLayout is the guard the setter refuses through", () => {
@@ -394,8 +517,9 @@ describe("layouts", () => {
 
 describe("libraryDate", () => {
   const base: LibraryFile = {
-    category: "Content",
+    collection: "posts",
     ext: ".md",
+    media: false,
     name: "post.md",
     path: "content/post.md",
     type: "Posts",
@@ -422,11 +546,19 @@ describe("libraryDate", () => {
 });
 
 describe("grouping", () => {
+  const entry = (name: string, path: string): LibraryFile => ({
+    collection: "posts",
+    ext: ".md",
+    media: false,
+    name,
+    path,
+    type: ".md",
+  });
   const files: LibraryFile[] = [
-    { category: "Content", ext: ".md", name: "2024-01-02-a.md", path: "c/a.md", type: "Posts" },
-    { category: "Content", ext: ".md", name: "2024-03-04-b.md", path: "c/b.md", type: "Posts" },
-    { category: "Content", ext: ".md", name: "2024-01-02-c.md", path: "c/c.md", type: "Posts" },
-    { category: "Pages", ext: ".json", name: "index.json", path: "pages/index.json", type: "." },
+    entry("2024-01-02-a.md", "c/a.md"),
+    entry("2024-03-04-b.md", "c/b.md"),
+    entry("2024-01-02-c.md", "c/2024/c.md"),
+    { ...entry("index.json", "pages/index.json"), collection: "pages", ext: ".json" },
   ];
 
   test("days come back newest first, with the undated set apart", () => {
@@ -436,25 +568,16 @@ describe("grouping", () => {
     expect(undated.map((f) => f.name)).toEqual(["index.json"]);
   });
 
-  test("board columns follow the Library's own category order, unknown ones last", () => {
-    const withOther: LibraryFile[] = [
-      ...files,
-      { category: "Other", ext: ".sh", name: "x.sh", path: "bin/x.sh", type: ".sh" },
-      { category: "Media", ext: ".png", name: "l.png", path: "public/l.png", type: ".png" },
-    ];
-    expect(groupByCategory(withOther).map((g) => g.group)).toEqual([
-      "Pages",
-      "Content",
-      "Media",
-      "Other",
+  test("board columns are the folders the files are in, in path order", () => {
+    expect(groupByFolder(files).map((g) => [g.group, g.files.length])).toEqual([
+      ["c", 2],
+      ["c/2024", 1],
+      ["pages", 1],
     ]);
   });
 
-  test("two unordered groups sort by name rather than arbitrarily", () => {
-    const odd: LibraryFile[] = [
-      { category: "Zebra", ext: "", name: "z", path: "z", type: "" },
-      { category: "Alpha", ext: "", name: "a", path: "a", type: "" },
-    ];
-    expect(groupByCategory(odd).map((g) => g.group)).toEqual(["Alpha", "Zebra"]);
+  test("a file at the root is in the root folder", () => {
+    expect(folderOf("README.md")).toBe(".");
+    expect(folderOf("pages/blog/a.md")).toBe("pages/blog");
   });
 });

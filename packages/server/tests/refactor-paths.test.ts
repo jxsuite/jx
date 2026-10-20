@@ -168,9 +168,13 @@ describe("rewriteRef", () => {
     expect(rewriteRef(pathRef("layouts/base.json"), c, true)).toBe("layouts/main.json");
   });
 
-  test("$layout doc-relative still resolves at docDir", () => {
+  test("$layout ./ resolves at root too, the way the compiler reads it (site-architecture.md §5.2)", () => {
+    // `ctx` places the referencing document in /p/pages; the layout lives at /p/layouts.
     const c = ctx({ newAbs: "/p/layouts/main.json", oldAbs: "/p/layouts/base.json" });
-    expect(rewriteRef(pathRef("../layouts/base.json"), c, true)).toBe("../layouts/main.json");
+    expect(rewriteRef(pathRef("./layouts/base.json"), c, true)).toBe("./layouts/main.json");
+    // A `../` spelling names a file outside the project from the root, so a rename inside it is
+    // Not a reference to rewrite.
+    expect(rewriteRef(pathRef("../layouts/base.json"), c, true)).toBeNull();
   });
 
   test("rooted asset keeps rooted style and suffix", () => {

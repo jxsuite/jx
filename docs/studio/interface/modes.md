@@ -18,13 +18,13 @@ code:
 
 # Editors and views
 
-Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Diff**, **Entry**, **Library** or **Project Styles**. It lists only the editors this file supports, so there is nothing in it to be disabled. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
+Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Diff**, **Entry**, **Home**, or one of the Styles workspace's **Elements** and **Variables**. It lists only the editors this file supports, so there is nothing in it to be disabled. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
 
 Those seven names come from one list in Studio, which is why the pane's context bar and the status bar can never print different words for the same editor.
 
 ## Edit
 
-Edit is for writing. The canvas becomes the page itself: click any text and type, press `/` for blocks, fill in the page's metadata alongside. It reads like the finished page because it is the finished page. The context bar's **Size** control works here too: pick a [breakpoint](/docs/studio/design/breakpoints) and the column narrows to it, so you can write against the width your readers will have. Or drag the handle on either side of the column, and the width becomes anything you like with the breakpoint following it. Full guide: **[Edit mode](/docs/studio/editing)**.
+Edit is for writing. The canvas becomes the page itself: click any text and type, press `/` for blocks, and fill in the page's metadata on the Inspector's **Page** tab beside it. Nothing is docked above the page, so it opens at its first line. It reads like the finished page because it is the finished page. The context bar's **Size** control works here too: pick a [breakpoint](/docs/studio/design/breakpoints) and the column narrows to it, so you can write against the width your readers will have. Or drag the handle on either side of the column, and the width becomes anything you like with the breakpoint following it. Full guide: **[Edit mode](/docs/studio/editing)**.
 
 ![Jx Studio editing markdown content inline with a WYSIWYG editor](../../images/mode-edit.png)
 
@@ -34,7 +34,7 @@ Edit is for writing. The canvas becomes the page itself: click any text and type
 
 ## Design
 
-Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** tab of the Inspector becomes a full visual inspector for the selected element. Design doesn't show the Document Header card, so the artboards get the whole pane; a page's title, layout and frontmatter are in Edit view or on the Navigator's **Page** panel. Full guide: **[Design mode](/docs/studio/design)**.
+Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** tab of the Inspector becomes a full visual inspector for the selected element. A page's title, layout and frontmatter are on the Inspector's **Page** tab, in Design as in Edit. Full guide: **[Design mode](/docs/studio/design)**.
 
 ![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../../images/mode-design.png)
 
@@ -44,15 +44,15 @@ Grid is for tabular data. Files like CSV spreadsheets open as an editable table:
 
 ## Entry
 
-A file that belongs to a content collection can open as a form built from that collection's schema: a date picker for a date, a toggle for a boolean, a tag input for a list, and a picker of real entries for a field that references another collection. **Open Entry Form** in the palette opens it, and the body of the same file stays one :kbd[⌘Z] history away in the Canvas editor. Full guide: **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
+An entry that is only fields (a JSON entry of a content collection) opens as a form built from that collection's schema: a date picker for a date, a toggle for a boolean, a tag input for a list, and a picker of real entries for a field that references another collection. **Open Entry** in the palette opens it. An entry with a body is written on the canvas instead, with the same form in the Inspector's **Entry** tab. Full guide: **[Content types](/docs/studio/projects/content-types#edit-an-entrys-fields)**.
 
-## Library
+## Home
 
-Library is the project's browser: every page, layout, component, content entry and media file, filtered by category and searchable, in whichever layout suits what you are looking at (**Table**, **Cards**, **Media**, **Calendar** or **Board**). **Open Library**, from the **⬢ menu** or the palette, opens it as a document in a pane. It sits in the strip alongside your files rather than over the top of them, and you can keep it beside a page in a [split](/docs/studio/interface/tabs#two-panes). Full guide: **[The Library](/docs/studio/projects/browse)**.
+Home is a workspace's own page, the tab a workspace opens on when none of its documents is open: the Content workspace's collection browser, the Media workspace's library, and Publish's page. It sits in the strip alongside your files rather than over the top of them, and you can keep it beside a page in a [split](/docs/studio/interface/tabs#two-panes). Full guides: **[The Content workspace](/docs/studio/projects/browse)** and **[Media](/docs/studio/projects/media)**.
 
 ## Media
 
-An image, video, audio file, font or PDF opens in a viewer rather than an editor. It shows the file itself (the picture at full size, media with playback controls, a font set as a specimen) plus what Studio knows about it, the URL a document references it by, and which documents use it. Clicking a file in the Files panel or a tile in the Library is all it takes. Full guide: **[Media](/docs/studio/projects/media#open-a-media-file)**.
+An image, video, audio file, font or PDF opens in a viewer rather than an editor. It shows the file itself (the picture at full size, media with playback controls, a font set as a specimen) plus what Studio knows about it, the URL a document references it by, and which documents use it. Clicking a file in the Files panel, or **Open in viewer** on a file in the Media workspace, is all it takes. Full guide: **[Media](/docs/studio/projects/media#open-a-media-file)**.
 
 ## Code
 
@@ -62,7 +62,7 @@ Switching away from Code, to another editor or another view or another document,
 
 ## Diff
 
-Diff compares the open file against your last commit. You reach it from the [Source Control](/docs/studio/publish/source-control) panel by clicking a changed file, or from the **Editor** control on a file that has changes.
+Diff compares the open file against your last commit. You reach it from **[Review changes](/docs/studio/publish/source-control)** in the Publish workspace, with a changed file's **Before and after**, or from the **Editor** control on a file that has changes.
 
 It has two halves and a switch above them. **Visual** draws the page twice, side by side, with added blocks marked in green, removed blocks in red, and edited ones marked on both sides. **Code** shows the file's text with changed lines highlighted instead. A file with no visual form, such as a stylesheet or a script, offers only Code.
 
@@ -72,36 +72,34 @@ The full guide is **[Source control](/docs/studio/publish/source-control#read-a-
 
 ## Project Styles
 
-Project Styles is the catalog of your project's element defaults: every heading, button, and link rendered with its base style, so you set the look of each element type once for the whole site. Selecting it switches the Inspector to the **Style** tab automatically. See **[Design mode](/docs/studio/design)** for how it fits into styling.
+Project Styles is the Styles workspace's two style editors over your project file. **Elements** is the catalog of your project's element defaults: every heading, button, and link rendered with its base style, so you set the look of each element type once for the whole site. Selecting an element switches the Inspector to the **Style** tab automatically. **Variables** lists your site's CSS custom properties by group, each editable in place. See **[Project Styles](/docs/studio/design/stylebook)** and **[Design tokens](/docs/studio/design/tokens)**.
 
 ![Jx Studio Project Styles showing element defaults across breakpoints](../../images/stylebook.png)
 
 ## Project Settings
 
-Your project's configuration, `project.json`, opens as a document too, and **Open Project Settings** shows it in its own editor: the sections down the left (Overview, Contexts, Site head, Locales, CSS Variables, Data Shapes, Content types, Packages, Extensions, Deploy, Raw JSON, plus any an extension adds), the section you picked filling the rest of the pane. Because it is a document, :kbd[⌘Z], the unsaved dot and :kbd[⌘S] mean here exactly what they mean in a page.
+Your project's configuration, `project.json`, opens as a document in the Styles workspace, with three editors: **Elements**, **Variables** and **Code**. Switching between them keeps one undo history and one unsaved dot, and :kbd[⌘Z], the unsaved dot and :kbd[⌘S] mean here exactly what they mean in a page. The one difference is **Variables**, which saves each change as you make it.
 
-The pane's context bar steps aside for it. A settings form has no canvas view to choose, no rendering context to resolve against, and the place contexts are _defined_ is a section of the very document on screen. So the editor takes the whole pane instead of sitting under a row of controls with nothing to say. Full guide: **[Project settings](/docs/studio/projects/settings)**.
-
-**Project Styles** and **Code** are two more editors over that same file, so switching between them keeps one undo history and one unsaved dot. **Edit Global Styles**, in the Overview section, is the way across to Project Styles.
+**Open Project Settings** is not one of its editors: it opens a dialog over whatever you are doing, with its sections in three groups (General, Integrations, Advanced), and every change in it is written to `project.json` as you make it. **Go to Styles**, in its Overview section, closes the dialog and opens the Styles workspace; **Edit as code**, in Raw JSON, opens the Code editor. Full guide: **[Project settings](/docs/studio/projects/settings)**.
 
 ## Which files offer what
 
 Every file opens in its natural editor and view, and the two controls offer only what that file supports:
 
-| File                               | Opens in           | Editor also offers           | View also offers        |
-| ---------------------------------- | ------------------ | ---------------------------- | ----------------------- |
-| Markdown pages and content (`.md`) | **Canvas** · Edit  | **Code**                     | **Design**, **Preview** |
-| Components and pages (`.json`)     | **Canvas** · Edit  | **Code**, **Project Styles** | **Design**, **Preview** |
-| Spreadsheets (`.csv`)              | **Grid**           | **Code**                     | —                       |
-| Images, video, audio, fonts, PDFs  | **Media**          | —                            | —                       |
-| Vector images (`.svg`)             | **Media**          | **Code**                     | —                       |
-| The project file (`project.json`)  | **Project Styles** | **Code**                     | —                       |
+| File                               | Opens in          | Editor also offers      | View also offers        |
+| ---------------------------------- | ----------------- | ----------------------- | ----------------------- |
+| Markdown pages and content (`.md`) | **Canvas** · Edit | **Code**                | **Design**, **Preview** |
+| Components and pages (`.json`)     | **Canvas** · Edit | **Code**, **Elements**  | **Design**, **Preview** |
+| Spreadsheets (`.csv`)              | **Grid**          | **Code**                | —                       |
+| Images, video, audio, fonts, PDFs  | **Media**         | —                       | —                       |
+| Vector images (`.svg`)             | **Media**         | **Code**                | —                       |
+| The project file (`project.json`)  | **Elements**      | **Variables**, **Code** | —                       |
 
-Any file with uncommitted changes also offers **Diff**, including files that have no other editor at all. Opening one of those from the Files tree still says Studio has no editor for it; Source Control asks the narrower question of what changed, and answers it.
+Any file with uncommitted changes also offers **Diff**, including files that have no other editor at all. Opening one of those from the Files tree still says Studio has no editor for it; Review changes asks the narrower question of what changed, and answers it.
 
-Opening `project.json` from the Files tree lands on **Project Styles**; **Open Project Settings** puts that same document into its settings editor, and **Open Project Styles** puts it back. All three are in the **Settings** menu at the foot of the rail.
+Opening `project.json` from the Files tree lands on **Elements**, and **Go to Styles** (:kbd[⌘4], or from :kbd[⌘K]) switches to the Styles workspace from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
 
-A file that belongs to a content collection also has an **Entry** editor. **Open Entry Form** is how you reach it, and it joins that file's **Editor** control from then on, so you can move between the form and the body without losing your place in either.
+A JSON entry of a content collection also has an **Entry** editor. **Open Entry** is how you reach it, and it joins that file's **Editor** control from then on, so you can move between the form and the source without losing your place in either. A Markdown entry is written on the canvas, with its fields in the Inspector's **Entry** tab.
 
 Installed format extensions can add their own file types with their own lists, so this table can grow with your project.
 

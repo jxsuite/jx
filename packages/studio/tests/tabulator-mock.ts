@@ -152,6 +152,38 @@ export class FakeTabulator {
     return this.ranges;
   }
 
+  /** The keys `scrollToRow` was called with, in order. */
+  scrolledTo: string[] = [];
+
+  getRow(index: string): FakeRow | false {
+    const key = this.options.index ?? "id";
+    const data = this.data.find((row) => String(row[key]) === index);
+    if (!data) {
+      return false;
+    }
+    const row = fakeRow(data);
+    for (const field of Object.keys(data)) {
+      fakeCell(row, field, this);
+    }
+    return row;
+  }
+
+  scrollToRow(index: string, _position?: string, _ifVisible?: boolean) {
+    this.scrolledTo.push(index);
+    return Promise.resolve();
+  }
+
+  /** Mirrors `selectableRange: 1`: a new range replaces the one there was. */
+  addRange(start: FakeCell, end: FakeCell) {
+    const cells = start.row.cells.slice(
+      start.row.cells.indexOf(start),
+      start.row.cells.indexOf(end) + 1,
+    );
+    const range = fakeRange([cells]);
+    this.ranges = [range];
+    return range;
+  }
+
   setFilter(filter: (data: RowData<GridCellValue>) => boolean) {
     this.filter = filter;
   }

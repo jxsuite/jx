@@ -32,9 +32,9 @@ import { emptyContext } from "../commands/context";
 import { projectState } from "../store";
 import { shell } from "../shell";
 import { activeTab } from "../workspace/workspace";
+import { developerPanelsShown } from "../settings/developer-panels";
 import type { Level } from "../commands/levels";
 import type { CommandContext } from "../commands/context";
-import type { GitDiffState } from "../types";
 import type { JxMutableNode, JxStateDefinition } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab, TabUi } from "../tabs/tab";
@@ -85,8 +85,6 @@ export interface NavigatorPanelDeps {
   registerLayersDnD: () => void;
   registerElementsDnD: () => void;
   registerComponentsDnD: () => void;
-  setGitDiffState: (state: GitDiffState | null) => void;
-  cloneRepository?: () => void;
 }
 
 /**
@@ -158,8 +156,13 @@ export interface PanelRecord {
    * losing its rail slot and gaining its real home (Insert, reachable from the canvas and palette;
    * State, folded into Data — §5.1). Declaring it `false` also removes the panel's `rail/<level>`
    * placement, which is what keeps the rail inside its four-per-group budget.
+   *
+   * `"developer"` is a rail button only while **Show developer panels** is on (§5.1,
+   * `settings/developer-panels.ts`): Files and Packages, which a site author does not need on the
+   * Design rail and a developer wants one click away. It keeps its rail placement either way, so
+   * the budget counts the button the switch can add.
    */
-  rail?: boolean;
+  rail?: boolean | "developer";
   /**
    * The sentence a document-level panel shows instead of its body when no document is open.
    *
@@ -208,6 +211,7 @@ export function panelContext(): CommandContext {
   ctx.project.isMultilingual =
     (resolveI18n(projectState?.projectConfig ?? {}).i18n?.locales.length ?? 0) > 1;
   ctx.git.dirtyCount = shell.git.status?.files.length ?? 0;
+  ctx.workspace.id = shell.workspace;
   ctx.document.open = activeTab.value !== null;
   return ctx;
 }
@@ -324,7 +328,8 @@ function railablePanels(): readonly PanelRecord[] {
  * @param {CommandContext} ctx
  */
 export function railGroups(ctx: CommandContext): RailGroup[] {
-  const railable = railablePanels();
+  const developer = developerPanelsShown();
+  const railable = railablePanels().filter((panel) => panel.rail !== "developer" || developer);
   return RAIL_GROUP_LEVELS.flatMap(({ level, label }) => {
     const panels = railable.filter((panel) => panel.level === level && isPanelVisible(panel, ctx));
     return panels.length > 0 ? [{ level, label, panels }] : [];
@@ -334,10 +339,10 @@ export function railGroups(ctx: CommandContext): RailGroup[] {
 /**
  * The rail's panels flattened into rail order — PROJECT group, then DOCUMENT group.
  *
- * This is the order ⌘1–8 follow, and it is derived from the same two rows the rail draws rather
- * than from registration order, so a panel registered by its dock's module (Problems, from
- * `panels/bottom-dock.ts`) still lands in the slot its LEVEL gives it. `when` is not applied: a
- * chord roster that changed length with context would move every chord after the hidden panel.
+ * This is the order the `panel.focus.*` records follow, and it is derived from the same two rows
+ * the rail draws rather than from registration order, so a panel registered by its dock's module
+ * still lands in the slot its LEVEL gives it. `when` is not applied: a roster that changed length
+ * with context would reorder the palette under the reader.
  */
 export function railPanelSet(): PanelRecord[] {
   const railable = railablePanels();

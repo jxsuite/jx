@@ -71,6 +71,8 @@ const { emptyContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { checkPlacements } = await import("../src/commands/levels");
 const { shell } = await import("../src/shell");
+const { developerPanelsShown, setDeveloperPanelsShown } =
+  await import("../src/settings/developer-panels");
 
 /** The sheet itself, which is the surface's own root. */
 function sheet(): HTMLElement | null {
@@ -374,6 +376,25 @@ describe("Appearance", () => {
     expect(localStorage.getItem("jx-studio-theme")).toBe("light");
     // And the sheet repaints so the pressed state is not a lie.
     expect(isSelected(dAll('[part="theme"]')[0]!)).toBe(true);
+  });
+
+  test("Show developer panels is off, and turning it on is stored and drawn (§5.1)", async () => {
+    void openPreferences("appearance");
+    await flush(3);
+    /* SAFETY: `[part="developer-panels"]` is the Appearance section's one `jx-switch`, whose
+       document installs a boolean `checked` accessor on the element. */
+    const toggle = (): HTMLElement & { checked: boolean } =>
+      dAll('[part="developer-panels"]')[0] as HTMLElement & { checked: boolean };
+    expect(toggle().checked).toBe(false);
+    expect(developerPanelsShown()).toBe(false);
+    const input = toggle().querySelector("input")!;
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush(3);
+    expect(developerPanelsShown()).toBe(true);
+    expect(localStorage.getItem("jx.panels.developer")).toBe("true");
+    expect(toggle().checked).toBe(true);
+    setDeveloperPanelsShown(false);
   });
 });
 

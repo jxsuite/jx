@@ -407,6 +407,14 @@ describe("createDevServer", () => {
       mkdirSync(join(OUTSIDE, "pages"), { recursive: true });
       writeFileSync(join(OUTSIDE, ".dev.vars"), "JX_GAPS_VAR=from-outside\n");
       writeFileSync(join(OUTSIDE, "pages", "page-fn.js"), READ_ENV_FN);
+      // A package only the project installed, with a subpath export the way `npm:pkg/client` names one.
+      const pkg = join(OUTSIDE, "node_modules", "only-here");
+      mkdirSync(pkg, { recursive: true });
+      writeFileSync(
+        join(pkg, "package.json"),
+        JSON.stringify({ exports: { "./client": "./client.js" }, name: "only-here" }),
+      );
+      writeFileSync(join(pkg, "client.js"), "export const where = 'the project';");
       server = await createDevServer({
         allowedRoots: [OUTSIDE],
         port: 0,
@@ -441,6 +449,16 @@ describe("createDevServer", () => {
       });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ root: OUTSIDE, value: "from-outside" });
+    });
+
+    test("a package the project installed is bundled from the project's own node_modules", async () => {
+      await fetch(`${base}/__studio/activate`, {
+        body: JSON.stringify({ root: OUTSIDE }),
+        method: "POST",
+      });
+      const res = await fetch(`${base}/node_modules/only-here/client`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain("the project");
     });
   });
 

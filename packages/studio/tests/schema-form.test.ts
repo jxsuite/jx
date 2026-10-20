@@ -311,6 +311,33 @@ describe("form dispatch", () => {
     expect(m.container.querySelector('[data-prop="customProp"]')).not.toBeNull();
   });
 
+  /* An entry's `date` was a free textbox with the raw key as its label. A `format: "date"` field is
+     a date input, and a host can title a row in words. */
+  test("a date field is a date input showing its day; a ui label titles the row", async () => {
+    const m = await mountForm(
+      {
+        properties: {
+          link: { format: "uri", type: "string" },
+          publishedAt: { format: "date", type: "string" },
+          stamp: { format: "date", type: "string" },
+          title: { type: "string" },
+        },
+      },
+      { link: "https://x.test", publishedAt: "2026-09-30", stamp: "2026-10-01T08:00:00.000Z" },
+      { ui: { publishedAt: { label: "Published at" } } },
+    );
+    const typeOf = (prop: string) => control(m, prop, "text").type;
+    expect([typeOf("publishedAt"), typeOf("stamp"), typeOf("link"), typeOf("title")]).toEqual([
+      "date",
+      "date",
+      "url",
+      "text",
+    ]);
+    expect(control(m, "stamp", "text").value).toBe("2026-10-01");
+    expect(part(m, "publishedAt", "label").textContent).toBe("Published at");
+    expect(part(m, "title", "label").textContent).toBe("title");
+  });
+
   test("string fields commit debounced patches; blank clears to undefined", async () => {
     const m = await mountForm(
       { properties: { empty: { type: "string" }, source: { type: "string" } } },
@@ -566,6 +593,89 @@ describe("binding a config field", () => {
   });
 });
 
+// ─── Image objects ───────────────────────────────────────────────────────────
+
+describe("an image object field", () => {
+  const IMAGE = {
+    properties: {
+      featuredImage: {
+        properties: {
+          alt: { type: "string" },
+          height: { type: "number" },
+          src: { type: "string" },
+          width: { type: "number" },
+        },
+        type: "object",
+      },
+      seo: { properties: { title: { type: "string" } }, type: "object" },
+    },
+  };
+
+  test("is the media field over its src, and its alt text is a row of its own", async () => {
+    const seen: SchemaFormControlArgs[] = [];
+    registerFormControl("media", {
+      mount(host, args) {
+        let latest = args;
+        seen.push(args);
+        const button = document.createElement("button");
+        button.dataset["stub"] = "media";
+        button.textContent = String(args.value);
+        button.addEventListener("click", () => latest.onChange(button.dataset["next"]));
+        host.replaceChildren(button);
+        return {
+          dispose: () => host.replaceChildren(),
+          update: (next) => {
+            latest = next;
+            seen.push(next);
+          },
+        };
+      },
+    });
+    const value = { featuredImage: { alt: "A barn", height: 5, src: "/a.jpg", width: 10 } };
+    const m = await mountForm(IMAGE, value);
+    const media = stub(m.container, "media")!;
+    // The media field is handed the picture's path, not the object.
+    expect(media.textContent).toBe("/a.jpg");
+    // An object that is no image stays the JSON it is.
+    expect(row(m, "seo").querySelector('[part="json"], textarea')).not.toBeNull();
+
+    // A new picture keeps its alt text and drops the old picture's size.
+    media.dataset["next"] = "/b.jpg";
+    media.click();
+    // The same picture again is no change; clearing the picture clears the image.
+    media.dataset["next"] = "/a.jpg";
+    media.click();
+    delete media.dataset["next"];
+    media.click();
+    expect(m.patches).toEqual([
+      { featuredImage: { alt: "A barn", src: "/b.jpg" } },
+      { featuredImage: undefined },
+    ]);
+
+    // The alt text row writes the object back with that one member changed, or removed.
+    const alt = row(m, "featuredImage/alt");
+    expect(alt.textContent).toContain("featuredImage alt text");
+    commit(control(m, "featuredImage/alt", "text"), "A red barn");
+    commit(control(m, "featuredImage/alt", "text"), "");
+    expect(m.patches.slice(2)).toEqual([
+      { featuredImage: { alt: "A red barn", height: 5, src: "/a.jpg", width: 10 } },
+      { featuredImage: { height: 5, src: "/a.jpg", width: 10 } },
+    ]);
+    expect(seen.length).toBeGreaterThan(0);
+  });
+
+  test("an image object with no alt member draws no alt row", async () => {
+    resetSchemaForms();
+    const bare = {
+      properties: {
+        icon: { properties: { src: { type: "string" } }, type: "object" },
+      },
+    };
+    const m = await mountForm(bare, { icon: { src: "/i.svg" } });
+    expect(m.container.querySelector('[data-prop="icon/alt"]')).toBeNull();
+  });
+});
+
 // ─── The control registry ────────────────────────────────────────────────────
 
 describe("control registry and ui overrides", () => {
@@ -746,6 +856,83 @@ describe("array-of-objects fields", () => {
       },
     );
     expect(options(control(m, "fields", "cell-select"))).toEqual(["__none__", "slug", "title"]);
+  });
+});
+
+// ─── Arrays of single values ─────────────────────────────────────────────────
+
+describe("arrays of single values", () => {
+  const tagsSchema: JsonSchema = {
+    properties: { tags: { items: { type: "string" }, type: "array" } },
+  };
+
+  test("a list of text is a row per item, named by its place, not a JSON box", async () => {
+    const m = await mountForm(tagsSchema, { tags: ["Patios", "Walls"] });
+    expect(row(m, "tags").querySelector('[part="json"]')).toBeNull();
+    const cells = [
+      ...row(m, "tags").querySelectorAll<HTMLInputElement>('[part="cell-text"] [part="input"]'),
+    ];
+    expect(cells.map((cell) => cell.value)).toEqual(["Patios", "Walls"]);
+    type(cells[1]!, "Steps");
+    expect(m.patches).toEqual([{ tags: ["Patios", "Steps"] }]);
+  });
+
+  test("clearing an item keeps its row; add appends one; remove takes one out", async () => {
+    const m = await mountForm(tagsSchema, { tags: ["a", "b"] }, { withRerender: true });
+    type(row(m, "tags").querySelector('[part="cell-text"] [part="input"]')!, "");
+    expect(m.patches.at(-1)).toEqual({ tags: ["", "b"] });
+    pointer(part(m, "tags", "row-add").querySelector('[part="control"]')!, "click");
+    expect(m.patches.at(-1)).toEqual({ tags: ["a", "b", ""] });
+    pointer(row(m, "tags").querySelector('[part="row-remove"] [part="control"]')!, "click");
+    expect(m.patches.at(-1)).toEqual({ tags: ["b"] });
+
+    const one = await mountForm(tagsSchema, { tags: ["only"] });
+    pointer(row(one, "tags").querySelector('[part="row-remove"] [part="control"]')!, "click");
+    expect(one.patches).toEqual([{ tags: undefined }]);
+  });
+
+  test("a value that is not a list yet is shown as its one item", async () => {
+    const m = await mountForm(tagsSchema, { tags: "Patios" });
+    const cell = row(m, "tags").querySelector<HTMLInputElement>(
+      '[part="cell-text"] [part="input"]',
+    )!;
+    expect(cell.value).toBe("Patios");
+    const empty = await mountForm(tagsSchema, { tags: "" });
+    expect(row(empty, "tags").querySelector('[part="row"]')).toBeNull();
+  });
+
+  test("numbers and enums draw their own cells; a JSON-schema item stays JSON", async () => {
+    const m = await mountForm(
+      {
+        properties: {
+          kinds: { items: { enum: ["a", "b"] }, type: "array" },
+          sizes: { items: { type: "integer" }, type: "array" },
+          schemas: { items: { format: "json-schema", type: "string" }, type: "array" },
+        },
+      },
+      { kinds: ["a"], schemas: [], sizes: [3] },
+    );
+    expect(row(m, "sizes").querySelector('[part="cell-number"]')).not.toBeNull();
+    expect(row(m, "kinds").querySelector('[part="cell-select"]')).not.toBeNull();
+    expect(row(m, "schemas").querySelector('[part="row"]')).toBeNull();
+  });
+
+  test("a picture item is the registered media control, writing the list back", async () => {
+    const seen: SchemaFormControlArgs[] = [];
+    registerFormControl(
+      "media",
+      stubControl("media-cell", (args) => {
+        seen.push(args);
+        return String(args.value);
+      }),
+    );
+    const m = await mountForm(
+      { properties: { gallery: { items: { format: "image", type: "string" }, type: "array" } } },
+      { gallery: ["/a.jpg", "/b.jpg"] },
+    );
+    expect(stub(row(m, "gallery"), "media-cell")?.textContent).toBe("/a.jpg");
+    seen.find((args) => args.value === "/b.jpg")!.onChange("/c.jpg");
+    expect(m.patches).toEqual([{ gallery: ["/a.jpg", "/c.jpg"] }]);
   });
 });
 

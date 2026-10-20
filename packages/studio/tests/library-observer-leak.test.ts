@@ -123,7 +123,7 @@ const {
   detachLibraryPane,
   invalidateLibrary,
   renderLibraryMode,
-  setLibraryCategory,
+  resetContentView,
   setLibraryLayout,
   setLibrarySearch,
 } = await import("../src/browse/library-pane");
@@ -177,10 +177,10 @@ async function windowedPane(): Promise<HTMLElement> {
   host?.remove();
   closeAllTabs();
   const tab = openTab({
-    capabilities: { modes: ["manage"] },
+    capabilities: { modes: ["content-home"] },
     document: { children: [], tagName: "div" },
     documentPath: null,
-    id: "grid://library",
+    id: "workspace://content",
   });
   host = document.createElement("div");
   document.body.append(host);
@@ -236,7 +236,7 @@ beforeEach(() => {
   resetNotifications();
   detachLibraryPane("primary");
   invalidateLibrary();
-  setLibraryCategory("all");
+  resetContentView();
   setLibraryLayout("cards");
   setLibrarySearch("");
   live.clear();

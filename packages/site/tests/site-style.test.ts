@@ -17,6 +17,22 @@ describe("buildSiteStyleCSS", () => {
     expect(css).toContain("body { color: red; margin: 0 }");
   });
 
+  test("a host drawing the page inside its own box names the root and body for it", () => {
+    const css = buildSiteStyleCSS(
+      { "--brand": "#0f0", "@--md": { "--pad": "2rem", margin: "0" }, color: "red" },
+      { "--dark": "(prefers-color-scheme: dark)", "--md": "(min-width: 768px)" },
+      id,
+      undefined,
+      { body: ":host", root: ":host" },
+    );
+    expect(css).toContain(":host { --brand: #0f0 }");
+    expect(css).toContain(":host { color: red }");
+    expect(css).toContain("@media (min-width: 768px) { :host { --pad: 2rem } }");
+    expect(css).toContain(":host { color-scheme: light dark }");
+    expect(css).not.toContain(":root");
+    expect(css).not.toMatch(/\bbody\b/);
+  });
+
   test("applies the transpose hook to values", () => {
     const css = buildSiteStyleCSS({ minHeight: "100vh" }, {}, (v) => v.replace("vh", "cqh"));
     expect(css).toContain("body { min-height: 100cqh }");

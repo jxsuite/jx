@@ -1,5 +1,6 @@
 /**
- * Right panel — the Inspector dock: four text-labelled tabs, one dock, one column.
+ * Right panel — the Inspector dock: three text-labelled tabs (Page · Element · Assistant), five
+ * leaves, one dock, one column (§6).
  *
  * The dock is `src/surfaces/inspector-dock.json` now, so everything here is addressed by ROLE, by
  * `part` or by the region grammar: there is no `sp-tabs`, no `sp-tab` and no `.panel-body` to find.
@@ -15,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initShellRefs, requireShellRef, rightPanel, updateUi } from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { INSPECTOR_TAB_IDS, setLayoutSelection, shell } from "../src/shell";
-import { INSPECTOR_TABS } from "../src/commands/defaults";
+import { INSPECTOR_STRIP, INSPECTOR_TABS } from "../src/commands/defaults";
 
 import type { LayoutHit } from "../src/canvas/iframe-protocol";
 
@@ -24,7 +25,7 @@ function inspectorHost(): HTMLElement {
   return requireShellRef(rightPanel, "right-panel");
 }
 
-const { inspectorTab, mount, render, setInspectorTab, unmount } =
+const { inspectorTab, mount, render, restingInspectorTab, setInspectorTab, unmount } =
   await import("../src/panels/right-panel");
 
 const mountAssistant = mock((_host: HTMLElement) => {});
@@ -53,15 +54,20 @@ function panels(): HTMLElement[] {
   return [...inspectorHost().querySelectorAll<HTMLElement>('[role="tabpanel"]')];
 }
 
-/** The tab bodies that are showing. Exactly one, always. */
+/** The leaf bodies that are showing: in the showing panel, and the active leaf of it. Exactly one. */
 function visibleBodies(): HTMLElement[] {
   const bodies: HTMLElement[] = [];
   for (const panel of inspectorHost().querySelectorAll<HTMLElement>(
     '[role="tabpanel"]:not([hidden])',
   )) {
-    bodies.push(...panel.querySelectorAll<HTMLElement>('[part="panel-body"]'));
+    bodies.push(...panel.querySelectorAll<HTMLElement>('[part="panel-body"][data-active="true"]'));
   }
   return bodies;
+}
+
+/** Element's sub-switch buttons, in order. */
+function subtabs(): HTMLElement[] {
+  return [...inspectorHost().querySelectorAll<HTMLElement>('[part="subtab"]')];
 }
 
 /** The header's two spans. */
@@ -96,20 +102,63 @@ afterEach(() => {
   shell.layoutSelection = null;
 });
 
-describe("the four tabs", () => {
-  test("mount + render shows four text-labelled tabs and the Content body", async () => {
+describe("the three tabs", () => {
+  test("mount + render shows three text-labelled tabs and the Page body", async () => {
     resetWorkspaceWithTab();
     mount(makeCtx());
     render();
     await flush(4);
     expect(tablist()).not.toBeNull();
+    // The workspace fixture's document is `index.json`, at the root: neither a page nor a template,
+    // So the Page tab is titled Document (§6).
     expect(tabs().map((el) => el.getAttribute("label"))).toEqual([
-      "Content",
-      "Style",
-      "Logic",
+      "Document",
+      "Element",
       "Assistant",
     ]);
-    expect(visibleBodies().length).toBe(1);
+    expect(visibleBodies().map((body) => body.dataset.tab)).toEqual(["page"]);
+  });
+
+  test("Element hosts Content, Style and Logic behind a sub-switch", async () => {
+    resetWorkspaceWithTab();
+    mount(makeCtx());
+    setInspectorTab("style");
+    await flush(4);
+    expect(subtabs().map((el) => el.textContent.trim())).toEqual(["Content", "Style", "Logic"]);
+    expect(subtabs().map((el) => el.dataset.tab)).toEqual(["properties", "style", "events"]);
+    expect(tablist()?.getAttribute("selected")).toBe("element");
+    expect(visibleBodies().map((body) => body.dataset.tab)).toEqual(["style"]);
+    // Every segment is a radio of the group, announced and drawn by the kit's string `checked`.
+    const radios = subtabs().map((el) => el.querySelector('[part="control"]'));
+    expect(radios.map((control) => control?.getAttribute("role"))).toEqual([
+      "radio",
+      "radio",
+      "radio",
+    ]);
+    expect(radios.map((control) => control?.getAttribute("aria-checked"))).toEqual([
+      "false",
+      "true",
+      "false",
+    ]);
+    expect(subtabs().map((el) => el.dataset.selected !== undefined)).toEqual([false, true, false]);
+
+    subtabs()[2]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(4);
+    expect(inspectorTab()).toBe("events");
+    expect(visibleBodies().map((body) => body.dataset.tab)).toEqual(["events"]);
+  });
+
+  test("the Element tab opens on the leaf last used there", async () => {
+    resetWorkspaceWithTab();
+    mount(makeCtx());
+    render();
+    await flush(4);
+    setInspectorTab("events");
+    setInspectorTab("page");
+    await flush(4);
+    clickTab("element");
+    await flush(4);
+    expect(inspectorTab()).toBe("events");
   });
 
   test("the strip is a named tablist and each tab is paired with a panel", async () => {
@@ -122,7 +171,7 @@ describe("the four tabs", () => {
        panel names the tab back, so the two ids have to resolve to each other — a pairing minted
        from one key in the projection, and asserted here because nothing else can check it. */
     expect(tablist()?.getAttribute("aria-label")).toBe("Inspector");
-    expect(tabs()).toHaveLength(4);
+    expect(tabs()).toHaveLength(3);
     for (const tab of tabs()) {
       const panelId = tab.getAttribute("aria-controls") ?? "";
       const panel = inspectorHost().querySelector(`#${panelId}`);
@@ -147,15 +196,18 @@ describe("the four tabs", () => {
     await flush(4);
     const afterSwitch = panels().filter((panel) => !panel.hasAttribute("hidden"));
     expect(afterSwitch).toHaveLength(1);
-    expect(afterSwitch[0]?.dataset.tab).toBe("style");
+    expect(afterSwitch[0]?.dataset.tab).toBe("element");
   });
 
-  test("the tab ids and the tab titles are the same list, in the same order", () => {
+  test("the leaf ids and the leaf titles are the same list, in the same order", () => {
     // Two declarations, deliberately: `shell.ts` owns the enum `view.setRightTab` validates
-    // Against, and `commands/defaults.ts` owns the titles ⌘⇧1–4 and the chrome budget read —
+    // Against, and `commands/defaults.ts` owns the titles ⌘⇧1–5 and the chrome budget read —
     // Because that module has to load in a bare Bun process. This is the guard against drift, the
     // Same one `tests/navigator-panels.test.ts` runs for the rail.
     expect(INSPECTOR_TABS.map((tab) => tab.id)).toEqual([...INSPECTOR_TAB_IDS]);
+    // Every leaf names a strip tab that exists, and every strip tab hosts at least one leaf.
+    const strip = INSPECTOR_STRIP.map((tab) => tab.id);
+    expect(new Set(INSPECTOR_TABS.map((tab) => tab.strip))).toEqual(new Set(strip));
   });
 
   test("every tab body is addressable as `inspector/tab:<id>`", async () => {
@@ -217,14 +269,14 @@ describe("the four tabs", () => {
     expect(ctx.getCanvasMode).toHaveBeenCalled();
   });
 
-  test("an undeclared stored tab coerces to Content", async () => {
+  test("an undeclared stored tab coerces to Page", async () => {
     resetWorkspaceWithTab();
     mount(makeCtx());
     updateUi(activeTab.value, "rightTab", "content");
     render();
     await flush(4);
-    expect(inspectorTab()).toBe("properties");
-    expect(tablist()?.getAttribute("selected")).toBe("properties");
+    expect(inspectorTab()).toBe("page");
+    expect(tablist()?.getAttribute("selected")).toBe("page");
   });
 
   test("activating a tab switches the dock, and re-activating it says nothing", async () => {
@@ -232,14 +284,16 @@ describe("the four tabs", () => {
     mount(makeCtx());
     render();
     await flush(4);
-    clickTab("style");
+    clickTab("element");
     await flush(4);
-    expect(activeTab.value?.session.ui.rightTab).toBe("style");
+    expect(activeTab.value?.session.ui.rightTab).toBe("properties");
     // The tab that is already current dispatches no `change` at all, so the write never repeats.
-    updateUi(activeTab.value, "rightTab", "style");
-    clickTab("style");
+    clickTab("element");
     await flush(2);
-    expect(activeTab.value?.session.ui.rightTab).toBe("style");
+    expect(activeTab.value?.session.ui.rightTab).toBe("properties");
+    clickTab("assistant");
+    await flush(2);
+    expect(activeTab.value?.session.ui.rightTab).toBe("assistant");
   });
 
   test("an id the enum does not declare cannot select anything", async () => {
@@ -252,7 +306,127 @@ describe("the four tabs", () => {
        point: the refusal has to hold for a `change` that arrives from anywhere. */
     tablist()?.dispatchEvent(new CustomEvent("change", { bubbles: true, detail: "nonsense" }));
     await flush(2);
+    expect(inspectorTab()).toBe("page");
+  });
+});
+
+describe("the Page tab's title says what the document is (§6)", () => {
+  const cases: [string, string][] = [
+    ["pages/about.json", "Page"],
+    ["layouts/base.json", "Template"],
+    ["components/site-card.json", "Component"],
+    ["styles/notes.json", "Document"],
+  ];
+  for (const [path, title] of cases) {
+    test(`${path} is a ${title}`, async () => {
+      resetWorkspaceWithTab(undefined, { documentPath: path });
+      mount(makeCtx());
+      render();
+      await flush(4);
+      expect(tabs()[0]?.getAttribute("label")).toBe(title);
+      expect(headerTitle()).toBe(title);
+    });
+  }
+
+  test("with nothing open the tab is Page, and its body says what it needs", async () => {
+    closeAllTabs();
+    mount(makeCtx());
+    render();
+    await flush(4);
+    expect(tabs()[0]?.getAttribute("label")).toBe("Page");
+    expect(inspectorHost().querySelector('[part="leaf-empty"]')?.textContent).toBe(
+      "Open a page to edit its title, description and social preview.",
+    );
+  });
+});
+
+describe("the strip follows the selection, and yields to the author (§6)", () => {
+  test("a selection arriving switches Page to Element, and leaving switches back", async () => {
+    const tab = resetWorkspaceWithTab();
+    mount(makeCtx());
+    render();
+    await flush(4);
+    expect(inspectorTab()).toBe("page");
+    tab.session.selection = [["children", 0]];
+    await flush(4);
     expect(inspectorTab()).toBe("properties");
+    tab.session.selection = [];
+    await flush(4);
+    expect(inspectorTab()).toBe("page");
+  });
+
+  test("Element reopens on the leaf last used there", async () => {
+    const tab = resetWorkspaceWithTab();
+    mount(makeCtx());
+    render();
+    await flush(4);
+    tab.session.selection = [["children", 0]];
+    await flush(4);
+    setInspectorTab("style");
+    tab.session.selection = [];
+    await flush(4);
+    expect(inspectorTab()).toBe("page");
+    tab.session.selection = [["children", 0]];
+    await flush(4);
+    expect(inspectorTab()).toBe("style");
+    expect(tab.session.ui.elementTab).toBe("style");
+  });
+
+  test("an explicit Page with a node selected is kept until the selection crosses empty", async () => {
+    const tab = resetWorkspaceWithTab({
+      children: [
+        { tagName: "p", textContent: "One" },
+        { tagName: "p", textContent: "Two" },
+      ],
+      tagName: "div",
+    });
+    mount(makeCtx());
+    render();
+    await flush(4);
+    tab.session.selection = [["children", 0]];
+    await flush(4);
+    clickTab("page");
+    await flush(4);
+    // Another click on the canvas changes WHICH node, not whether there is one: no transition.
+    tab.session.selection = [["children", 1]];
+    await flush(4);
+    expect(inspectorTab()).toBe("page");
+  });
+
+  test("the Assistant is never switched away from", async () => {
+    const tab = resetWorkspaceWithTab();
+    mount(makeCtx());
+    setInspectorTab("assistant");
+    await flush(4);
+    tab.session.selection = [["children", 0]];
+    await flush(4);
+    expect(inspectorTab()).toBe("assistant");
+    tab.session.selection = [];
+    await flush(4);
+    expect(inspectorTab()).toBe("assistant");
+  });
+
+  test("the resting tab is Page with nothing selected, else the Element leaf last used", async () => {
+    expect(restingInspectorTab()).toBe("page");
+    const tab = resetWorkspaceWithTab();
+    mount(makeCtx());
+    render();
+    await flush(4);
+    expect(restingInspectorTab()).toBe("page");
+    tab.session.selection = [["children", 0]];
+    setInspectorTab("events");
+    setInspectorTab("assistant");
+    // What closing the Assistant steps onto: the selection's Logic view, not the document.
+    expect(restingInspectorTab()).toBe("events");
+  });
+
+  test("focusing a document that already has a selection is not a transition", async () => {
+    const tab = resetWorkspaceWithTab();
+    tab.session.selection = [["children", 0]];
+    mount(makeCtx());
+    render();
+    await flush(4);
+    expect(inspectorTab()).toBe("page");
   });
 });
 
@@ -261,10 +435,23 @@ describe("the header names its target", () => {
     const tab = resetWorkspaceWithTab();
     tab.session.selection = [["children", 0]];
     mount(makeCtx());
-    render();
+    setInspectorTab("properties");
     await flush(4);
-    expect(headerTitle()).toBe("Content");
+    expect(headerTitle()).toBe("Element");
     expect(headerTarget()).toBeTruthy();
+  });
+
+  test("the Page tab names the document even while a node is selected", async () => {
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" });
+    tab.session.selection = [["children", 0]];
+    mount(makeCtx());
+    setInspectorTab("properties");
+    await flush(4);
+    expect(headerTarget()).not.toBe("about.json");
+    setInspectorTab("page");
+    await flush(4);
+    expect(headerTitle()).toBe("Page");
+    expect(headerTarget()).toBe("about.json");
   });
 
   test("with no selection it names the document, and with no document says so", async () => {
@@ -285,7 +472,10 @@ describe("the header names its target", () => {
     mount(makeCtx());
     render();
     await flush(4);
-    expect(headerTitle()).toBe("Content");
+    expect(headerTitle()).toBe("Document");
+    setInspectorTab("style");
+    await flush(4);
+    expect(headerTitle()).toBe("Element");
     setInspectorTab("assistant");
     await flush(4);
     expect(headerTitle()).toBe("Assistant");
@@ -331,6 +521,30 @@ describe("the layout selection", () => {
     setLayoutSelection(headerHit);
     await flush(4);
     expect(headerTarget()).toBe("<header> in layouts/base.json");
+  });
+
+  test("a Styles specimen is named by its TAG, and counts as a selection", async () => {
+    // `selectStylebookTag` leaves the document selection empty: the header said the catalogue's
+    // Root `div` while `h1 · Base` was being edited, because it read only the document selection.
+    const tab = resetWorkspaceWithTab();
+    tab.session.ui.canvasMode = "stylebook";
+    mount(makeCtx());
+    render();
+    await flush(4);
+    expect(inspectorTab()).toBe("page");
+    shell.stylebook.selection = "h1";
+    await flush(4);
+    try {
+      expect(inspectorTab()).toBe("properties");
+      expect(headerTitle()).toBe("Element");
+      expect(headerTarget()).toBe("h1");
+      // The Variables view styles no tag, so the same pick is not this tab's target there.
+      tab.session.ui.canvasMode = "tokens";
+      await flush(4);
+      expect(headerTarget()).not.toBe("h1");
+    } finally {
+      shell.stylebook.selection = null;
+    }
   });
 
   test("the inspector header names the BATCH when several elements are selected (§6.7)", async () => {
@@ -394,7 +608,7 @@ describe("with no document open", () => {
     resetWorkspaceWithTab();
     render();
     await flush(4);
-    expect(inspectorTab()).toBe("properties");
+    expect(inspectorTab()).toBe("page");
   });
 
   test("the no-document state is replaced when a tab opens", async () => {
@@ -439,6 +653,27 @@ describe("lifecycle", () => {
     // The document mount APPENDS, so the cell is cleared first — without that, every query below
     // Would silently pick whichever dock happened to be first.
     expect(inspectorHost().querySelectorAll('[role="tablist"]')).toHaveLength(1);
-    expect(inspectorHost().querySelectorAll('[part="panel-body"]')).toHaveLength(4);
+    expect(inspectorHost().querySelectorAll('[part="panel-body"]')).toHaveLength(5);
+  });
+});
+
+/* The Inspector shows its Page panel on every deselect and every close of the Assistant (§6). A
+   panel hidden with `display: none` leaves the box tree and is restyled whole on its way back (300
+   elements per deselect in the perf trace); one hidden with `content-visibility: hidden` keeps its
+   computed style. `visibility: hidden` is what keeps it unfocusable and out of the accessibility
+   tree, which is what `hidden` promises. happy-dom does no layout, so the rules are what is held. */
+describe("how the dock hides what is not showing", () => {
+  test("a hidden tab panel and an inactive leaf keep their style, and stay unfocusable", async () => {
+    // SAFETY: a surface document's `style` is an object of rule objects whose values are strings.
+    const dock = (await Bun.file(
+      new URL("../src/surfaces/inspector-dock.json", import.meta.url),
+    ).json()) as { style: Record<string, Record<string, string>> };
+    for (const rule of ['& [part="panel"][hidden]', '& [part="panel-body"][data-active="false"]']) {
+      const declared = dock.style[rule]!;
+      expect(declared["contentVisibility"]).toBe("hidden");
+      expect(declared["visibility"]).toBe("hidden");
+      expect(declared["flex"]).toBe("0 0 0");
+      expect(declared["display"]).not.toBe("none");
+    }
   });
 });

@@ -1,5 +1,6 @@
 import { flush, resetStudioState, resetWorkspaceWithTab, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { isJsonObject, isNumber } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
 import {
@@ -90,12 +91,9 @@ describe("the cell", () => {
     expect(cell!.root.isConnected).toBe(true);
     // Complete: the four surfaces are children of the root that was appended, not added after. A
     // Pane has no address bar of its own: that is the status bar's breadcrumb trail now.
-    expect([...cell!.root.children]).toEqual([
-      cell!.strip,
-      cell!.chrome,
-      cell!.stage,
-      cell!.dropZone,
-    ]);
+    expect(identities(cell!.root.children)).toEqual(
+      identities([cell!.strip, cell!.chrome, cell!.stage, cell!.dropZone]),
+    );
     expect(resolveRegion("pane.primary")).toBe(cell!.stage);
     expect(resolveRegion("pane.primary/tabs")).toBe(cell!.strip);
   });
@@ -283,7 +281,9 @@ describe("the second cell", () => {
 
     const side = cellForPane(SECONDARY_PANE)!;
     expect(side.root.isConnected).toBe(true);
-    expect([...side.root.children]).toEqual([side.strip, side.chrome, side.stage, side.dropZone]);
+    expect(identities(side.root.children)).toEqual(
+      identities([side.strip, side.chrome, side.stage, side.dropZone]),
+    );
     expect(resolveRegion("pane.secondary")).toBe(side.stage);
     expect(resolveRegion("pane.secondary/tabs")).toBe(side.strip);
     // Its own surface record, registered against its own stage.

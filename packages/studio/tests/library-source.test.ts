@@ -8,12 +8,12 @@ import { installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   LIBRARY_READ_ONLY,
+  expandFileRecords,
   createLibrarySource,
   libraryColumns,
   libraryRow,
-  libraryTabId,
 } from "../src/browse/library-source";
-import { gridTabLabel, makeGridTabId, parseGridTabId } from "../src/grid/grid-source";
+import { gridTabLabel, parseGridTabId } from "../src/grid/grid-source";
 import type { DirEntry } from "../src/types";
 
 function tree() {
@@ -50,14 +50,14 @@ beforeEach(() => {
   resetStudioState({ projectConfig: null, projectDirs: ["pages", "public"] });
 });
 
-describe("the tab id", () => {
-  test("round-trips, and reads as Library rather than as a grid", () => {
-    expect(libraryTabId()).toBe("grid://library");
-    expect(parseGridTabId(makeGridTabId({ kind: "library" }))).toEqual({ kind: "library" });
-    expect(gridTabLabel("grid://library")).toBe("Library");
+describe("the id", () => {
+  test("is the Content home's tab id, and no grid id names a Library any more", () => {
+    expect(createLibrarySource().id).toBe("workspace://content");
+    expect(parseGridTabId("grid://library")).toBeNull();
+    expect(gridTabLabel("grid://library")).toBeNull();
   });
 
-  test("does not collide with the collection whose name is 'library'", () => {
+  test("a collection named 'library' is still a collection", () => {
     expect(parseGridTabId("grid://collection/library")).toEqual({
       kind: "collection",
       name: "library",
@@ -66,22 +66,37 @@ describe("the tab id", () => {
 });
 
 describe("columns and rows", () => {
-  test("every column is read-only, and the name is the row key", () => {
+  test("every column is read-only, and a page's URL is its key", () => {
     const columns = libraryColumns();
     expect(columns.every((c) => !c.editable)).toBe(true);
-    expect(columns.filter((c) => c.pk).map((c) => c.field)).toEqual(["name"]);
+    expect(columns.filter((c) => c.pk).map((c) => c.field)).toEqual(["url"]);
+  });
+
+  /* The Content-Pages board: a page is listed by what it is called and where it is published, not
+     by a file name two of them share (`index.json`), and never by its path. */
+  test("Pages read Title, URL, Template and Edited, with Status and Language only when they apply", () => {
+    expect(libraryColumns().map((c) => [c.field, c.title])).toEqual([
+      ["title", "Title"],
+      ["url", "URL"],
+      ["template", "Template"],
+      ["modified", "Edited"],
+    ]);
+    expect(
+      libraryColumns(undefined, { date: false, locale: true, status: true }).map((c) => c.field),
+    ).toEqual(["title", "url", "template", "status", "locale", "modified"]);
   });
 
   test("a row carries nulls where the platform reported nothing, never invented values", () => {
     const row = libraryRow({
-      category: "Pages",
+      collection: "pages",
       ext: ".json",
+      media: false,
       name: "b.json",
       path: "pages/b.json",
       type: ".json",
     });
     expect(row.key).toBe("pages/b.json");
-    expect(row.cells.size).toBeNull();
+    expect(row.cells.url).toBe("/b");
     expect(row.cells.modified).toBeNull();
     expect(row.cells.locale).toBeNull();
   });
@@ -94,15 +109,16 @@ describe("columns and rows", () => {
    */
   test("every declared column has a cell in the row the GridSource hands back", () => {
     const row = libraryRow({
-      category: "Pages",
+      collection: "pages",
       ext: ".json",
+      media: false,
       locale: "fr",
       name: "b.json",
       path: "pages/fr/b.json",
       type: ".json",
     });
     expect(Object.keys(row.cells).toSorted()).toEqual(
-      libraryColumns()
+      libraryColumns(undefined, { date: false, locale: true, status: true })
         .map((c) => c.field)
         .toSorted(),
     );
@@ -138,6 +154,38 @@ describe("createLibrarySource", () => {
     await source.rows();
     await source.refresh!();
     expect(listed).toEqual(["pages", "public", "pages", "public"]);
+  });
+
+  /* A window restored into Content asks for rows before the project's directories have loaded, and
+     the walk of none is an answer of none. That answer is stale the moment the list arrives. */
+  test("a scan of a directory list the project has since outgrown is stale", async () => {
+    resetStudioState({ projectConfig: null, projectDirs: [] });
+    const source = createLibrarySource();
+    expect(source.stale()).toBe(false);
+    await source.rows();
+    expect([source.files().length, source.stale()]).toEqual([0, false]);
+    resetStudioState({ projectConfig: null, projectDirs: ["pages", "public"] });
+    expect(source.stale()).toBe(true);
+    await source.refresh!();
+    expect([source.files().length, source.stale()]).toEqual([3, false]);
+  });
+
+  test("walks a declared collection outside the project's list, and its absence is no failure", async () => {
+    install({ ...tree(), "../../docs": [{ name: "a.md", path: "../../docs/a.md", type: "file" }] });
+    resetStudioState({
+      projectConfig: {
+        content: { docs: { source: "../../docs" }, posts: { source: "./content/posts" } },
+      },
+      projectDirs: ["pages"],
+    });
+    const source = createLibrarySource();
+    await source.rows();
+    expect(listed).toEqual(["pages", "../../docs", "content/posts"]);
+    expect(source.files().map((f) => [f.path, f.collection])).toContainEqual([
+      "../../docs/a.md",
+      "docs",
+    ]);
+    expect(source.failures()).toEqual([]);
   });
 
   test("exposes the failures the scan collected, so an incomplete list can say so", async () => {
@@ -182,25 +230,29 @@ describe("createLibrarySource", () => {
     expect(result.inserts[0]!.ok).toBe(false);
     // The refusal points the author at where those edits DO live.
     expect(LIBRARY_READ_ONLY).toBe(
-      "The Library lists files; it does not edit them. Rename, duplicate or delete from the file's " +
-        "context menu, or open the file to edit it.",
+      "The Content workspace lists files; it does not edit them in the list. Rename, duplicate or " +
+        "delete from the file's context menu, or open the file to edit it.",
     );
   });
 
   test("columns() answers the table's own column set", async () => {
     const source = createLibrarySource();
     const columns = await source.columns();
-    expect(columns.map((c) => c.field)).toEqual([
-      "name",
-      "category",
-      "locale",
-      "type",
-      "size",
-      "modified",
-      "path",
-    ]);
-    expect(source.label).toBe("Library");
-    expect(source.id).toBe("grid://library");
+    expect(columns.map((c) => c.field)).toEqual(["title", "url", "template", "modified"]);
+    // A collection leads with what an entry says about itself, and keeps its file (the Path) after.
+    expect(libraryColumns("posts").map((c) => c.field)).toEqual(["title", "modified", "path"]);
+    expect(
+      libraryColumns("posts", {
+        date: true,
+        fields: [{ name: "course", title: "Course" }],
+        status: true,
+      }).map((c) => c.field),
+    ).toEqual(["title", "status", "date", "field:course", "modified", "path"]);
+    // The Locale column only when the entries are in more than one language.
+    expect(
+      libraryColumns("posts", { date: false, locale: true, status: false }).map((c) => c.field),
+    ).toEqual(["title", "locale", "modified", "path"]);
+    expect(source.label).toBe("Content");
   });
 
   test("with no project open it scans nothing and reports nothing", async () => {
@@ -208,5 +260,65 @@ describe("createLibrarySource", () => {
     const source = createLibrarySource();
     const result = await source.rows();
     expect(result).toEqual({ rows: [], total: 0 });
+  });
+});
+
+describe("a file-backed collection", () => {
+  const CSV = "Title,sku\nTilt Trailer,tilt\nMini Trencher,trencher\n";
+
+  function installPricing(files: Record<string, string>) {
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          path === "content"
+            ? Promise.resolve([{ name: "pricing", path: "content/pricing", type: "directory" }])
+            : path === "content/pricing"
+              ? Promise.resolve([
+                  { name: "prices.csv", path: "content/pricing/prices.csv", type: "file" },
+                ])
+              : Promise.reject(new Error(`ENOENT: ${path}`)),
+      },
+      files,
+    );
+    resetStudioState({
+      projectConfig: {
+        content: { pricing: { format: "Csv", source: "./content/pricing/prices.csv" } },
+      },
+      projectDirs: ["content"],
+    });
+  }
+
+  test("is listed as its records, each keyed by its place in the file it opens", async () => {
+    installPricing({ "content/pricing/prices.csv": CSV });
+    const source = createLibrarySource();
+    await source.rows();
+    const records = source.files().filter((file) => file.collection === "pricing");
+    expect(records.map((file) => [file.path, file.name, file.record?.source])).toEqual([
+      ["content/pricing/prices.csv#1", "Tilt Trailer", "content/pricing/prices.csv"],
+      ["content/pricing/prices.csv#2", "Mini Trencher", "content/pricing/prices.csv"],
+    ]);
+    expect(records[1]?.record?.fields).toEqual({ Title: "Mini Trencher", sku: "trencher" });
+  });
+
+  test("a file that cannot be read stays listed as the file it is", async () => {
+    installPricing({});
+    const source = createLibrarySource();
+    await source.rows();
+    expect(source.files().map((file) => file.path)).toEqual(["content/pricing/prices.csv"]);
+  });
+
+  test("a collection file whose kind holds no records is the file it is", async () => {
+    const file = {
+      collection: "notes",
+      ext: ".yaml",
+      media: false,
+      name: "notes.yaml",
+      path: "content/notes.yaml",
+      type: ".yaml",
+    };
+    resetStudioState({
+      projectConfig: { content: { notes: { source: "./content/notes.yaml" } } },
+    });
+    expect(await expandFileRecords([file], () => Promise.resolve("- a"))).toEqual([file]);
   });
 });

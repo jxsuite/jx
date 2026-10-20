@@ -12,8 +12,8 @@
  * picture.
  *
  * What CAN fail here is the set of controls: a lens must not offer the two axes that WRITE
- * (`ctx.setCanvasMode(tab, …)` on a tab the pane beside it owns), must not draw the Document Header
- * card (an editing surface over the same frontmatter), must keep the zoom pod (zoom is the one view
+ * (`ctx.setCanvasMode(tab, …)` on a tab the pane beside it owns), must not draw the writing banner
+ * (its door belongs to the pane that owns the entry), must keep the zoom pod (zoom is the one view
  * fact a lens owns), and must draw a derivation chip where an ordinary pane draws tab chips.
  */
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
@@ -38,7 +38,6 @@ const {
 } = await import("../src/workspace/workspace");
 const { setPaneDerivation, applyDerivation, derivationOfPane, noopDerivationDeps } =
   await import("../src/workspace/pane-derive");
-const { hasDocumentHeader } = await import("../src/panels/frontmatter-panel");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 const { activeRegistry, setActiveRegistry } = await import("../src/commands/active-registry");
@@ -441,14 +440,14 @@ describe("the preset menu's rows", () => {
      with a derivation, no tabs and nothing drawn anywhere. */
   /* THE BREAKPOINT ROWS HAVE THEIR OWN REFUSAL, and they are built in a second loop that could
      drop it while every projection row above kept theirs. {@link MODE_FOR_PRESET} exists for
-     exactly this row — over the Project Settings document the menu offered "Same page at Base",
+     exactly this row — over the configuration document the menu offered "Same page at Base",
      whose stage can only draw an empty artboard — and `presetRefusal`'s half of that is covered by
      `pane-derive.test.ts`. What was not covered is the WIRING: `deriveReason ?? presetRefusal(…)`
      in the breakpoint loop, whose left side is `null` for an ordinary pane, so dropping the right
      side puts a live row over a document that cannot draw it. */
   test("a breakpoint row carries the refusal for the size it names", () => {
     const page = twoPaneGrid();
-    page.capabilities.modes = ["settings", "stylebook", "source"];
+    page.capabilities.modes = ["stylebook", "source"];
     const breakpoints = paneContext
       .presetRows(PRIMARY_PANE)
       .filter((row) => row.args["preset"] === "breakpoint");
@@ -762,6 +761,51 @@ describe("the tab strip in a derived pane", () => {
     expect(stripHost.querySelector('[part="subject"]')?.textContent.trim()).toBe("/");
     // …and the ✕ is there, which is the only way out of a pane that draws nothing.
     expect(stripHost.querySelector('[part="overflow"]:not([hidden])')).not.toBeNull();
+  });
+
+  /* A RESOLVED companion owns a real tab, so the branch above never fired for it; after a switch to
+     a workspace that tab is not in, the workspace filter left nothing to draw, and the pane showed
+     its document under a blank row with no ✕. */
+  test("a resolved COMPANION whose tab is another workspace's still draws its chip", async () => {
+    lensGrid();
+    setPaneDerivation(SECONDARY_PANE, {
+      kind: "companion",
+      preset: "layout",
+      reason: "",
+      resolved: "scratch.json",
+      sourcePaneId: PRIMARY_PANE,
+      status: "ready",
+    });
+    const side = paneById(SECONDARY_PANE)!;
+    if (!side.tabOrder.includes("scratch.json")) {
+      moveTabToPane("scratch.json", SECONDARY_PANE);
+    }
+    side.activeTabId = "scratch.json";
+    focusPane(SECONDARY_PANE);
+    tabStrip.mount(stripHost);
+    await flush();
+    expect(stripHost.querySelectorAll('[part="tab"]')).toHaveLength(1);
+
+    shell.workspace = "media";
+    await flush();
+    expect(stripHost.querySelectorAll('[part="tab"]')).toHaveLength(0);
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe("Layout");
+    expect(stripHost.querySelector('[part="overflow"]:not([hidden])')).not.toBeNull();
+    shell.workspace = "design";
+  });
+
+  /* Media draws no tab strip, and the frame's rule hiding strips must not take this row with it:
+     the chip names the side pane and its ✕ is a lens's only visible exit. happy-dom applies no
+     stylesheet, so the rule is read from the frame sheet's source. */
+  test("a workspace with no tab strip still draws a derived pane's chip row", async () => {
+    const source = await Bun.file(new URL("../styles/shell-frame.json", import.meta.url)).text();
+    const frame: { style: object } = JSON.parse(source);
+    const hiding = Object.keys(frame.style).filter((selector) =>
+      selector.startsWith("#app.tabs-hidden"),
+    );
+    expect(hiding).toEqual([
+      '#app.tabs-hidden #pane-grid [data-pane-id] > [part="strip"]:not(:has([part="derivation"]))',
+    ]);
   });
 
   test("draws ONE derivation chip and no tab chips", async () => {
@@ -1143,14 +1187,6 @@ describe("the derivation chip's box", () => {
 });
 
 describe("what a lens does NOT draw", () => {
-  test("no Document Header card — it is an editing surface over a document this pane does not own", () => {
-    const page = lensGrid();
-    /* The gate is `derivationOfPane(paneId)?.kind !== "lens"` inside `renderCanvasImpl`, so the
-       test states the two halves it composes: the document HAS a header, and the pane is a lens. */
-    expect(hasDocumentHeader(page)).toBe(true);
-    expect(derivationOfPane(SECONDARY_PANE)?.kind).toBe("lens");
-  });
-
   test("the jump bar's leading verb becomes Keep, and a lens refuses it", () => {
     const page = lensGrid();
     const derived = derivationOfPane(SECONDARY_PANE);

@@ -3,11 +3,11 @@
  * Schema-form — the reusable JSON-Schema → form engine, and the FLOW half of it.
  *
  * Maps schema property types to controls (enum → select, boolean → checkbox, number/integer →
- * number field, `json-schema` format → JSON editor, array-of-objects → a row per item, other
- * array/object → JSON text, default → text field); hosts commit edits through a single
- * `onChange(patch)` callback; dynamic enum choices resolve through a {@link SchemaFormContext}.
- * Custom controls register by name via {@link registerFormControl} and are consulted first for `ui`
- * overrides.
+ * number field, `json-schema` format → JSON editor, array-of-objects → a row per item, an array of
+ * single values (text, numbers, pictures, entries) → a row per item too, other array/object → JSON
+ * text, default → text field); hosts commit edits through a single `onChange(patch)` callback;
+ * dynamic enum choices resolve through a {@link SchemaFormContext}. Custom controls register by
+ * name via {@link registerFormControl} and are consulted first for `ui` overrides.
  *
  * **This module decides; `surfaces/schema-form.json` draws.** Every question with an answer — which
  * control a property gets, what its choices are, which rungs of the value ladder the position
@@ -174,9 +174,10 @@ export interface RenderFormOptions {
   /**
    * Per-field overrides from `$studio.settings.entry.ui`: a registered control name, and/or an
    * `enum` source (choice list or `{ "$ref": "#/$context/<pointer>" }`) layered over the field
-   * schema — fragments stay valid JSON Schema while descriptors add dynamic choices.
+   * schema — fragments stay valid JSON Schema while descriptors add dynamic choices. `label` is the
+   * words the row is titled with in place of the property's key.
    */
-  ui?: Record<string, { control?: string; enum?: unknown }> | undefined;
+  ui?: Record<string, { control?: string; enum?: unknown; label?: string }> | undefined;
   rerender?: (() => void) | undefined;
   /**
    * Externally-produced diagnostics, keyed by property name — §16.1's inline tier, sourced.
@@ -416,16 +417,28 @@ interface FieldPlan {
   itemProps?: Record<string, JsonSchema> | undefined;
   /** The rows currently held, so a cell edit can rebuild the array. */
   rows?: JsonObject[] | undefined;
+  /**
+   * The field is an array of single values (`string[]`, a gallery of pictures), drawn as rows of
+   * one cell each: every row is `{ [SCALAR_CELL]: item }` here, and a commit writes the bare items
+   * back. One row editor for both shapes, rather than a list control beside the row control.
+   */
+  scalarItems?: boolean | undefined;
   /** The ladder, when this position offers one. */
   ladder?: { fieldKey: string; mode: SlotMode; offered: SlotMode[]; sources: SurfaceOption[] };
   /** A registered control owns the whole field; args are rebuilt for it on every repaint. */
   control?: SchemaFormMountedControl | undefined;
   /**
+   * The member of the property's OBJECT this row edits, when the row is one part of an object
+   * field: an image object's `alt` is a text row of its own, and its commit writes the whole object
+   * back with that one member changed.
+   */
+  member?: string | undefined;
+  /**
    * Registered controls owning one cell, keyed by the cell's host id.
    *
    * The same kind of entry a field's own control is, and reached by the same dispatch: a cell host
-   * is a host like any other. The one control a cell is ever given is `reference` (see
-   * {@link deriveCell}).
+   * is a host like any other. A cell is given `reference` for an entry of another collection and
+   * `media` for a picture (see {@link deriveCell}).
    */
   cellControls?: Map<
     string,
@@ -574,9 +587,35 @@ function createController(): FormController {
         return;
       }
       default: {
+        if (plan.member !== undefined) {
+          // One member of an object: the object goes back whole, with that member set or removed.
+          const held = value[plan.prop];
+          const base: JsonObject = isJsonObject(held) ? { ...held } : {};
+          if (raw) {
+            base[plan.member] = raw;
+          } else {
+            delete base[plan.member];
+          }
+          patch(plan.prop, Object.keys(base).length > 0 ? base : undefined);
+          return;
+        }
         patch(plan.prop, raw || undefined);
       }
     }
+  };
+
+  /**
+   * Write a row field's rows back as the array the document holds: the rows themselves for an array
+   * of objects, each row's one value for an array of single values. A row whose value was cleared
+   * stays as an empty string, so clearing the text of an item does not delete its row under the
+   * caret; Remove is how an item goes.
+   */
+  const patchRows = (plan: FieldPlan, rows: JsonObject[]): void => {
+    let next: JsonValue | undefined;
+    if (rows.length > 0) {
+      next = plan.scalarItems ? rows.map((row) => row[SCALAR_CELL] ?? "") : rows;
+    }
+    patch(plan.prop, next);
   };
 
   /** The field's items, each shallow-copied so a cell edit never writes through to the document. */
@@ -602,7 +641,7 @@ function createController(): FormController {
           seed[k] = v.default as JsonValue;
         }
       }
-      patch(field, [...cellRows(plan), seed]);
+      patchRows(plan, [...cellRows(plan), seed]);
       opts.rerender?.();
     },
     commit: (key: string, raw: string) => {
@@ -644,8 +683,10 @@ function createController(): FormController {
         return;
       }
       const idx = Number(row);
-      const kept = cellRows(plan).filter((_, i) => i !== idx);
-      patch(field, kept.length > 0 ? kept : undefined);
+      patchRows(
+        plan,
+        cellRows(plan).filter((_, i) => i !== idx),
+      );
       opts.rerender?.();
     },
   };
@@ -669,7 +710,7 @@ function createController(): FormController {
       ...target,
       [cell]: coerceCell(cellSchema, next, plan.refCells?.has(`${field}/${row}/${cell}`) ?? false),
     } as JsonObject;
-    patch(field, rows);
+    patchRows(plan, rows);
   }
 
   /** A cell's committed string, as the item property's declared type. */
@@ -887,16 +928,91 @@ function deriveFields(
 ): SchemaFormFieldView[] {
   const required = new Set(schema.required);
   const sources = refSourcesFor(ctx);
-  return Object.entries(schema.properties ?? {}).map(([prop, ps]) =>
-    deriveField(prop, ps, {
-      ctx,
-      opts,
-      plans,
-      required: required.has(prop),
-      sources,
-      value,
-    }),
+  return Object.entries(schema.properties ?? {}).flatMap(([prop, ps]) => {
+    const args = { ctx, opts, plans, required: required.has(prop), sources, value };
+    const field = deriveField(prop, ps, args);
+    // An image object's alt text is a row of its own, under the picture it describes.
+    return field.kind === "control" && isImageObjectSchema(ps) && ps.properties?.["alt"]
+      ? [field, imageAltRow(prop, args)]
+      : [field];
+  });
+}
+
+/** The members an image object may have beside its `src`: what an `<img>` says about itself. */
+const IMAGE_OBJECT_MEMBERS: ReadonlySet<string> = new Set([
+  "src",
+  "alt",
+  "width",
+  "height",
+  "title",
+]);
+
+/**
+ * Whether a property is an image OBJECT: `{ src, alt?, width?, height?, title? }`, the shape a site
+ * imported from a CMS keeps a picture in (`featuredImage: { src, width, height, alt }`). Such a
+ * field is a picture to pick, not a record to type JSON into.
+ */
+export function isImageObjectSchema(ps: JsonSchema): boolean {
+  const properties = ps.properties ?? {};
+  return (
+    ps.type === "object" &&
+    properties["src"]?.type === "string" &&
+    Object.keys(properties).every((name) => IMAGE_OBJECT_MEMBERS.has(name))
   );
+}
+
+/** The media control over an image object's `src`, writing the object back around it. */
+function imageObjectControl(media: SchemaFormMountedControl): SchemaFormMountedControl {
+  /** The args the media control sees: the `src`, and a commit that rebuilds the object. */
+  const srcArgs = (args: SchemaFormControlArgs): SchemaFormControlArgs => {
+    const held = isJsonObject(args.value) ? args.value : {};
+    const { src } = held;
+    return {
+      ...args,
+      onChange: (next) => {
+        if (next === src) {
+          return;
+        }
+        /* A different picture: its alt text and title still describe what the author meant, but the
+           old picture's width and height would be a lie about the new one, so they go. A cleared
+           field clears the whole object: an image with no picture is no image. */
+        const { height: _height, width: _width, ...kept } = held;
+        let rebuilt: JsonValue | undefined;
+        if (next !== undefined && next !== "") {
+          rebuilt = { ...kept, src: next };
+        }
+        args.onChange(rebuilt);
+      },
+      value: isString(src) ? src : undefined,
+    };
+  };
+  return {
+    mount(host, args) {
+      const handle = media.mount(host, srcArgs(args));
+      return {
+        dispose: () => handle.dispose(),
+        update: (next) => handle.update(srcArgs(next)),
+      };
+    },
+  };
+}
+
+/** The text row an image object's `alt` is edited in. */
+function imageAltRow(prop: string, args: DeriveArgs): SchemaFormFieldView {
+  const key = `${prop}/alt`;
+  const held = args.value[prop];
+  const alt = isJsonObject(held) ? held["alt"] : undefined;
+  const row = deriveField(key, { type: "string" }, { ...args, required: false });
+  const plan = args.plans.get(key);
+  if (plan) {
+    plan.prop = prop;
+    plan.member = "alt";
+  }
+  return {
+    ...row,
+    label: `${args.opts.ui?.[prop]?.label ?? prop} alt text`,
+    value: isString(alt) ? alt : "",
+  };
 }
 
 interface DeriveArgs {
@@ -941,11 +1057,12 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
     invalid: error !== "",
     key: prop,
     kind: "text",
-    label: prop,
+    label: opts.ui?.[prop]?.label ?? prop,
     max: "",
     min: "",
     mono: false,
     multiline: false,
+    inputType: "text",
     options: [],
     placeholder: "",
     prop: ps.name || prop,
@@ -1032,6 +1149,29 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
     }
   }
 
+  /* An image field (`format: "image"`) is the registered `media` control: the same field, Upload and
+     Browse the page's Icon and OG Image rows draw (`surfaces/media-field.json`), so a collection
+     entry's picture is picked from the project's media rather than typed as a path. Unregistered
+     (a bare-Bun import of this engine), it falls through to the text control below. */
+  if (ps.format === "image") {
+    const media = controlRegistry.get("media");
+    if (media) {
+      plan.commit = "none";
+      plan.control = media;
+      row.kind = "control";
+      return row;
+    }
+  }
+  /* An image OBJECT (`{ src, alt, width, height }`) is the same media field over its `src`; its
+     `alt` is a text row of its own (`deriveFields`). Unregistered, it falls through to JSON. */
+  const imageMedia = isImageObjectSchema(ps) ? controlRegistry.get("media") : undefined;
+  if (imageMedia) {
+    plan.commit = "none";
+    plan.control = imageObjectControl(imageMedia);
+    row.kind = "control";
+    return row;
+  }
+
   /* SAFETY: both sources are read from JSON — the descriptor's `$studio.settings.entry.ui` and the
      field schema — so whichever `enum` is present is a JSON value. */
   const enumSource = (opts.ui?.[prop]?.enum ?? ps.enum) as JsonValue | undefined;
@@ -1081,6 +1221,9 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
   if (ps.type === "array" && ps.items?.type === "object" && ps.items.properties) {
     return arrayOfObjects(prop, ps.items.properties, args, plan, row);
   }
+  if (ps.type === "array" && isSingleValueSchema(ps.items)) {
+    return arrayOfSingleValues(prop, ps.items, args, plan, row);
+  }
   /* A union with an object or a list in it (`alerts` is an object of types or `false`) is JSON too:
      a text box would store what is typed as a string, which is none of the members. */
   const types = Array.isArray(ps.type) ? ps.type : [ps.type];
@@ -1095,8 +1238,26 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
   row.kind = "text";
   row.value = asText(current);
   row.placeholder = ps.default !== undefined ? String(ps.default) : (ps.examples?.[0] ?? "");
+  row.inputType = TEXT_INPUT_TYPES.get(ps.format ?? "") ?? "text";
+  /* A date input shows nothing for a value it cannot read, so a timestamp is shown as its day. YAML
+     reads an unquoted date as a Date, which reaches here as its quoted JSON. */
+  const day = /^"?(\d{4}-\d{2}-\d{2})/.exec(row.value);
+  if (row.inputType === "date" && day) {
+    row.value = day[1] ?? row.value;
+  }
   return row;
 }
+
+/**
+ * The native input a string format is typed in. `date` is the one that changes what can be typed: a
+ * date picker, and a value that is always `YYYY-MM-DD`, the `full-date` JSON Schema's `date` names.
+ * `email` and `uri` only change the keyboard a phone shows, and the value stays the text typed.
+ */
+const TEXT_INPUT_TYPES: ReadonlyMap<string, string> = new Map([
+  ["date", "date"],
+  ["email", "email"],
+  ["uri", "url"],
+]);
 
 /** The property chips above a JSON-Schema field: what shape is in there right now. */
 function schemaPropertyChips(current: JsonValue | undefined): { key: string; label: string }[] {
@@ -1134,6 +1295,69 @@ function arrayOfObjects(
   plan.refCells = new Set();
   row.kind = "rows";
   row.rows = rows.map((item, idx) => deriveRow(prop, String(idx), item, itemProps, args, plan));
+  return row;
+}
+
+/** The one cell key a row of an array of single values is drawn under. */
+const SCALAR_CELL = "value";
+
+/**
+ * Whether an array's items are single values a cell can edit: text, a number, a yes/no, one of an
+ * enum, or an entry of another collection. A picture is text with `format: "image"`, so it is one.
+ */
+function isSingleValueSchema(items: JsonSchema | undefined): items is JsonSchema {
+  if (items === undefined || items.format === "json-schema") {
+    return false;
+  }
+  if (referenceTarget(items) !== null || Array.isArray(items.enum)) {
+    return true;
+  }
+  return (
+    items.type === "string" ||
+    items.type === "number" ||
+    items.type === "integer" ||
+    items.type === "boolean"
+  );
+}
+
+/**
+ * An array of single values (`categories: string[]`, a gallery's picture paths): one row per item,
+ * each a single cell drawn by the item schema, with the same remove and add an array of objects
+ * gets. A value that is not yet a list (a CSV cell holding one category) is shown as its one item,
+ * and becomes a list the moment it is edited; the field's own check still says it is not one.
+ */
+function arrayOfSingleValues(
+  prop: string,
+  items: JsonSchema,
+  args: DeriveArgs,
+  plan: FieldPlan,
+  row: SchemaFormFieldView,
+): SchemaFormFieldView {
+  const held = args.value[prop];
+  let list: JsonValue[] = [];
+  if (Array.isArray(held)) {
+    list = held;
+  } else if (held !== undefined && held !== null && held !== "") {
+    list = [held];
+  }
+  const rows: JsonObject[] = list.map((item) => ({ [SCALAR_CELL]: item }));
+  const itemProps = { [SCALAR_CELL]: items };
+  const label = args.opts.ui?.[prop]?.label ?? prop;
+  plan.commit = "none";
+  plan.itemProps = itemProps;
+  plan.rows = rows;
+  plan.scalarItems = true;
+  plan.cellControls = new Map();
+  plan.refCells = new Set();
+  row.kind = "rows";
+  row.rows = rows.map((item, idx) => {
+    const drawn = deriveRow(prop, String(idx), item, itemProps, args, plan);
+    // A row has one cell, so the cell is named by its place in the list rather than by `value`.
+    for (const cell of drawn.cells) {
+      cell.label = `${label} ${idx + 1}`;
+    }
+    return drawn;
+  });
   return row;
 }
 
@@ -1182,10 +1406,10 @@ function deriveCell(
     return cell;
   }
   if (referenceTarget(cellSchema) !== null) {
-    /* A CELL's control is mounted into a host of the cell's own, exactly as a field's is: the one
-       control a cell is ever given is the reference picker, and that is a document now
-       (`surfaces/reference-field.json`). What the cell host must never become is a second writer of
-       a node the document already owns. */
+    /* A CELL's control is mounted into a host of the cell's own, exactly as a field's is: the
+       reference picker is a document now (`surfaces/reference-field.json`), as the media field
+       below is. What the cell host must never become is a second writer of a node the document
+       already owns. */
     const reference = controlRegistry.get("reference");
     if (reference) {
       cell.kind = "control";
@@ -1197,6 +1421,14 @@ function deriveCell(
       });
       return cell;
     }
+  }
+  /* A picture cell (`format: "image"`, a gallery's item) is the media control a picture FIELD
+     gets, mounted into the cell's host by the same dispatch. */
+  const media = cellSchema.format === "image" ? controlRegistry.get("media") : undefined;
+  if (media) {
+    cell.kind = "control";
+    plan.cellControls?.set(id, { control: media, key: cellKey, row: rowKey, schema: cellSchema });
+    return cell;
   }
   // SAFETY: an item property's schema is read from JSON, so its `enum` is a JSON value.
   const enumValues = resolveFormEnum(

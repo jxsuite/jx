@@ -31,13 +31,22 @@ import {
 } from "./harness";
 import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import type { Tab } from "../src/tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { CommandArgValues } from "../src/commands/command-args";
 
 const paneContext = await import("../src/panels/pane-context");
-const { PRIMARY_PANE, SECONDARY_PANE, closeAllTabs, focusPane, openTab, splitRight, workspace } =
-  await import("../src/workspace/workspace");
+const {
+  PRIMARY_PANE,
+  SECONDARY_PANE,
+  closeAllTabs,
+  closeTab: closeWorkspaceTab,
+  focusPane,
+  openTab,
+  splitRight,
+  workspace,
+} = await import("../src/workspace/workspace");
 const { getFit, hasDeclaredFit, resetFits } = await import("../src/canvas/canvas-utils");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
@@ -323,6 +332,59 @@ describe("the bar", () => {
     expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("0px");
   });
 
+  /* A projection runs inside whatever changed the pane, with the rest of that change unwritten, so
+     a height read there paid a style recalculation of the whole half-written document (the perf
+     trace's `topBandHeight`). The band's ResizeObserver writes the offset once layout is done. */
+  test("a re-projection reads no layout; the band's observer moves the offset", async () => {
+    const observed: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
+    const Original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      targets: Element[] = [];
+      constructor(callback: ResizeObserverCallback) {
+        observed.push({ callback, targets: this.targets });
+      }
+      observe(target: Element) {
+        this.targets.push(target);
+      }
+      unobserve(target: Element) {
+        this.targets.splice(this.targets.indexOf(target), 1);
+      }
+      disconnect() {
+        this.targets.length = 0;
+      }
+    };
+    try {
+      openTestTab();
+      await mountBar();
+      const band = part("band")!;
+      expect(identities(observed.at(-1)?.targets ?? [])).toEqual(identities([band]));
+      let reads = 0;
+      let height = 28;
+      Object.defineProperty(band, "offsetHeight", {
+        configurable: true,
+        get: () => {
+          reads += 1;
+          return height;
+        },
+      });
+      paneContext.render();
+      paneContext.render();
+      expect(reads).toBe(0);
+      // A banner wrapped the band to 64px: the observer, not the projection, reports it.
+      height = 64;
+      const watch = observed.at(-1)!;
+      /* SAFETY: the flow's callback reads neither argument; it re-measures the band it closed
+         over, which is the behaviour under test. */
+      watch.callback([], {} as ResizeObserver);
+      expect(reads).toBe(1);
+      expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("64px");
+      paneContext.unmount();
+      expect(watch.targets).toHaveLength(0);
+    } finally {
+      globalThis.ResizeObserver = Original;
+    }
+  });
+
   test("render() is inert before mount and after unmount", async () => {
     openTestTab();
     paneContext.render();
@@ -333,16 +395,6 @@ describe("the bar", () => {
     paneContext.render();
     await flush(6);
     expect(part("bar")).toBeNull();
-  });
-
-  test("Project Settings gets no bar at all — three inert controls above their own definition site", async () => {
-    const tab = openTestTab();
-    await mountBar();
-    expect(part("bar")).not.toBeNull();
-    tab.session.ui.canvasMode = "settings";
-    await flush(6);
-    expect(part("bar")).toBeNull();
-    expect(document.documentElement.style.getPropertyValue("--pane-context-h")).toBe("0px");
   });
 
   test("no read-only banner while the document has no collaboration to report", async () => {
@@ -504,6 +556,126 @@ describe("editor kind", () => {
     await flush(4);
     expect(ctx.setCanvasMode).not.toHaveBeenCalled();
     expect(tab.session.ui.canvasMode).toBe("edit");
+  });
+});
+
+describe("a workspace home", () => {
+  test("names its editor and draws no rendering context over the workspace surface", async () => {
+    const tab = resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "", id: "workspace://publish" },
+    );
+    tab.documentPath = null;
+    tab.capabilities.modes = ["publish-home"];
+    tab.session.ui.canvasMode = "publish-home";
+    await mountBar();
+    expect(part("static")?.textContent.trim()).toBe("Home");
+    expect(root.querySelector('[data-axis="context"]')).toBeNull();
+    expect(part("preset")).toBeNull();
+  });
+
+  test("a document still draws its Context axis", async () => {
+    openTestTab();
+    await mountBar();
+    expect(root.querySelector('[data-axis="context"]')).not.toBeNull();
+    expect(part("preset")).not.toBeNull();
+  });
+});
+
+// ─── Back to the workspace home ───────────────────────────────────────────────
+
+describe("back to the workspace home", () => {
+  afterEach(() => {
+    shell.workspace = "design";
+  });
+
+  /** The media home with a viewer beside it, the viewer on screen, in Media. */
+  function mediaViewer(): Tab {
+    const home = resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "", id: "workspace://media" },
+    );
+    home.documentPath = null;
+    home.capabilities.modes = ["media-home"];
+    home.session.ui.canvasMode = "media-home";
+    const viewer = openTab({
+      capabilities: { modes: ["media"] },
+      document: { children: [], tagName: "div" },
+      documentPath: "public/logo.png",
+      id: "public/logo.png",
+    });
+    viewer.session.ui.canvasMode = "media";
+    shell.workspace = "media";
+    return viewer;
+  }
+
+  test("a media viewer draws a Back control naming Media, and pressing it closes the viewer", async () => {
+    const viewer = mediaViewer();
+    const closeTab = mock((_id: string) => {});
+    await mountBar(makeCtx({ closeTab }));
+    expect(part("back")).not.toBeNull();
+    expect(nameOf(part("back")!)).toBe("Back to Media");
+    expect(hintOf(part("back")!)).toBe("Close this view and return to Media");
+    pointer(part("back")!, "click");
+    await flush();
+    expect(closeTab).toHaveBeenCalledWith(viewer.id);
+  });
+
+  test("Back hands the keyboard to the home it lands on, as Escape does", async () => {
+    const viewer = mediaViewer();
+    const closeTab = mock((id: string) => {
+      closeWorkspaceTab(id);
+    });
+    const focusHome = mock((_pane: string, _id: string) => {});
+    await mountBar(makeCtx({ closeTab, focusHome }));
+    pointer(part("back")!, "click");
+    await flush();
+    expect(closeTab).toHaveBeenCalledWith(viewer.id);
+    expect(focusHome).toHaveBeenCalledWith(PRIMARY_PANE, "media");
+  });
+
+  test("Styles' Code view goes back to the home view without closing anything", async () => {
+    const config = resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "project.json", id: "project.json" },
+    );
+    config.capabilities.modes = ["stylebook", "tokens", "source"];
+    config.session.ui.canvasMode = "source";
+    shell.workspace = "styles";
+    const ctx = makeCtx({ closeTab: mock(() => {}) });
+    await mountBar(ctx);
+    expect(nameOf(part("back")!)).toBe("Back to Variables");
+    pointer(part("back")!, "click");
+    await flush(4);
+    expect(ctx.setCanvasMode).toHaveBeenCalledWith(config, "tokens");
+    expect(ctx.closeTab).not.toHaveBeenCalled();
+    expect(part("back")).toBeNull();
+  });
+
+  test("without a close to hand the control runs pane.backToHome for its pane", async () => {
+    mediaViewer();
+    const ran: CommandArgValues[] = [];
+    activeRegistry()!.register({
+      args: { additionalProperties: true, properties: {}, required: [], type: "object" },
+      category: "View",
+      id: "pane.backToHome",
+      level: "document",
+      run: (_ctx, args: CommandArgValues) => {
+        ran.push(args);
+      },
+      title: "Back",
+    });
+    await mountBar();
+    pointer(part("back")!, "click");
+    await flush();
+    expect(ran).toEqual([{ pane: PRIMARY_PANE }]);
+  });
+
+  test("a workspace with a strip draws no Back: its strip is the way between documents", async () => {
+    mediaViewer();
+    shell.workspace = "design";
+    await mountBar();
+    expect(part("back")).toBeNull();
   });
 });
 
@@ -825,6 +997,16 @@ describe("rendering context", () => {
     tab.session.ui.previewLocale = "en";
     await flush(4);
     expect(summary()).toBe(`Base · ${localeLabel("en")}`);
+  });
+
+  // The artboard does not draw a tag the project dropped, so the bar must not report it either.
+  test("a restored tag the project no longer declares is not reported as the pane's language", async () => {
+    const tab = multilingual(["en", "fr"], "pages/fr/a-propos.json");
+    tab.session.ui.previewLocale = "ar";
+    await mountBar();
+    expect(summary()).toBe("Base");
+    const french = segments("locales").find((b) => nameOf(b) === localeLabel("fr"))!;
+    expect(control(french).getAttribute("aria-checked")).toBe("true");
   });
 
   test("the layout switch shows for a site page with a layout and flips showLayout", async () => {

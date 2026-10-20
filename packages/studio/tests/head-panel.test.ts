@@ -30,18 +30,15 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { nothing } from "lit-html";
-import { getPanel, resetPanels } from "../src/panels/panel-registry";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { setProjectState } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
 import { activeRegistry, setActiveRegistry } from "../src/commands/active-registry";
 
 import type { HeadLayers, SeoPreview } from "../src/panels/head-panel";
-import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
 import type { FormatFrontmatter } from "../src/format/format-host";
-import type { Tab } from "../src/tabs/tab";
 import type { DirEntry } from "../src/types";
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 
@@ -49,6 +46,8 @@ import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 const mediaCalls: string[] = [];
 let browseAnchor: HTMLElement | null = null;
 let browseCommit: ((val: string) => void) | null = null;
+/** The options of the last Browse: whether it listed pictures only. */
+let browseOptions: { images?: boolean } | undefined;
 let uploadCommit: ((val: string) => void) | null = null;
 void mock.module("../src/ui/media-picker.js", () => ({
   invalidateMediaCache: () => {},
@@ -56,23 +55,53 @@ void mock.module("../src/ui/media-picker.js", () => ({
     mediaCalls.push("upload");
     uploadCommit = onCommit;
   },
-  showMediaPickerPopover: (anchor: HTMLElement, onCommit: (val: string) => void) => {
+  showMediaPickerPopover: (
+    anchor: HTMLElement,
+    onCommit: (val: string) => void,
+    pickOptions?: { images?: boolean },
+  ) => {
     mediaCalls.push("browse");
     browseAnchor = anchor;
     browseCommit = onCommit;
+    browseOptions = pickOptions;
   },
   uploadAndAssign: () => Promise.resolve(null),
+  // Reached through the form controls the panel's graph now loads; never driven here.
+  isMediaScanPath: () => false,
+  mountMediaPicker: () => {},
+  onProjectMediaChange: () => () => {},
+  openFullMediaPicker: () => Promise.resolve(null),
+  projectMediaFiles: () => null,
+  unmountMediaPicker: () => {},
+}));
+
+/* The Layout row's Edit template reaches the file opener through a lazy `import()` too, so it is
+   doubled for the same reason: a witness to assert against, and no real import to overlap. */
+const openedFiles: string[] = [];
+void mock.module("../src/files/files.js", () => ({
+  openFileInTab: (path: string) => {
+    openedFiles.push(path);
+    return Promise.resolve();
+  },
 }));
 
 const {
   BUILD_FALLBACK_TITLE,
+  applyContentMutation,
+  COMPONENT_TAB_MESSAGE,
   buildSeoPreview,
   invalidateLayoutHeadCache,
   invalidateLayoutPickerCache,
   layoutDisplayName,
   layoutHeadEntries,
-  registerPagePanel,
+  bindPageHost,
+  buildHeadDoc,
+  pageDescription,
+  pageTabTitle,
+  reservedFmKeys,
+  setPageDescription,
   renderPagePanel,
+  renderPageTab,
   resolveMetaField,
   resolveSeoUrl,
   resolveTitleField,
@@ -156,7 +185,7 @@ async function draw(doc: JxMutableNode): Promise<Drawn> {
       fn(result.doc);
     },
     document: result.doc,
-    renderLeftPanel: () => {
+    rerender: () => {
       result.leftPanelRenders += 1;
     },
   });
@@ -244,6 +273,7 @@ beforeEach(() => {
   mediaCalls.length = 0;
   browseAnchor = null;
   browseCommit = null;
+  browseOptions = undefined;
   uploadCommit = null;
   for (const stale of document.querySelectorAll("body > div:not([id])")) {
     stale.remove();
@@ -350,7 +380,7 @@ describe("page section", () => {
           fn(next);
         },
         document: next,
-        renderLeftPanel: () => {},
+        rerender: () => {},
       });
       runPending();
     });
@@ -371,8 +401,52 @@ describe("media rows reach the shared picker rather than drawing one", () => {
     await flush(2);
     expect(mediaCalls).toEqual(["browse"]);
     expect(browseAnchor).toBe(browse);
+    // The icon holds a picture, so its browser lists pictures only.
+    expect(browseOptions).toEqual({ images: true });
     browseCommit!("/from-browser.png");
     expect(drawn.doc.$head?.[0]?.attributes?.href).toBe("/from-browser.png");
+  });
+
+  /* A frontmatter media field lists pictures only when its schema says so (studio.md §9.3): the
+     Document Header card drew these rows with that rule, and the Page tab, which carries them now,
+     must not widen a video or document field into a picture-only list it could never be filled
+     from. */
+  test("a frontmatter media field browses pictures only when its schema says `format: image`", async () => {
+    installMockPlatform();
+    resetStudioState({
+      projectConfig: {
+        content: {
+          posts: {
+            format: "json",
+            schema: {
+              properties: {
+                clip: { format: "uri-reference", type: "string" },
+                hero: { format: "image", type: "string" },
+              },
+            },
+            source: "./posts",
+          },
+        },
+      },
+    });
+    closeAllTabs();
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/hello.json" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = {};
+    const drawn = await draw({ tagName: "div" });
+    const fm = section(drawn.host, "frontmatter")!;
+
+    pointer(row(fm, "hero").querySelector<HTMLElement>('[part="browse"]')!, "click");
+    await flush(2);
+    expect(browseOptions).toEqual({ images: true });
+    browseCommit!("/media/cover.png");
+    expect(tab.doc.content.frontmatter.hero).toBe("/media/cover.png");
+
+    pointer(row(fm, "clip").querySelector<HTMLElement>('[part="browse"]')!, "click");
+    await flush(2);
+    expect(browseOptions).toEqual({ images: false });
+    browseCommit!("/media/talk.mp4");
+    expect(tab.doc.content.frontmatter.clip).toBe("/media/talk.mp4");
   });
 
   test("Upload opens the OS picker and assigns what comes back", async () => {
@@ -734,6 +808,127 @@ describe("layout section", () => {
     expect("$layout" in drawn.doc).toBe(false);
   });
 
+  /* A Markdown page's layout override is a frontmatter key. The mutation path used to rebuild only
+     title, description and `$head` on its scratch object, so the picker's `$layout` landed nowhere
+     and the page kept its old layout. */
+  test("on a Markdown page the picker writes and reads frontmatter $layout", () => {
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.md" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { title: "About" };
+    let rerenders = 0;
+    const rerender = () => {
+      rerenders += 1;
+    };
+
+    applyContentMutation(tab, rerender, (d) => {
+      d.$layout = "./layouts/blog.json";
+    });
+    expect(tab.doc.content.frontmatter.$layout).toBe("./layouts/blog.json");
+    expect(buildHeadDoc(tab.doc.document, tab.doc.content.frontmatter).$layout).toBe(
+      "./layouts/blog.json",
+    );
+
+    applyContentMutation(tab, rerender, (d) => {
+      d.$layout = false;
+    });
+    expect(tab.doc.content.frontmatter.$layout).toBe(false);
+
+    applyContentMutation(tab, rerender, (d) => {
+      delete d.$layout;
+    });
+    expect("$layout" in tab.doc.content.frontmatter).toBe(false);
+    // A title edit leaves the layout alone.
+    applyContentMutation(tab, rerender, (d) => {
+      d.title = "About us";
+    });
+    expect(tab.doc.content.frontmatter).toEqual({ title: "About us" });
+    expect(rerenders).toBe(4);
+  });
+
+  /* Storing the key was not enough: the canvas redraws when the document's root reference moves,
+     and an in-place frontmatter write moved nothing, so the page kept drawing its old layout. The
+     commit is a transaction now, which also makes it one undo step. */
+  test("on a Markdown page a layout pick redraws the canvas and undoes as one step", async () => {
+    const { undo } = await import("../src/tabs/transact");
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.md" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { title: "About" };
+    tab.doc.dirty = false;
+    const rootBefore = tab.doc.document;
+
+    applyContentMutation(
+      tab,
+      () => {},
+      (d) => {
+        d.$layout = "./layouts/blog.json";
+      },
+    );
+    expect(tab.doc.document).not.toBe(rootBefore);
+    expect(tab.doc.dirty).toBe(true);
+
+    undo(tab);
+    expect("$layout" in tab.doc.content.frontmatter).toBe(false);
+    expect(tab.doc.content.frontmatter.title).toBe("About");
+  });
+
+  test("a content mutation that changes nothing records nothing and leaves the page clean", () => {
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.md" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { $layout: false, title: "About" };
+    tab.doc.dirty = false;
+    const rootBefore = tab.doc.document;
+    const historyBefore = tab.history.snapshots.length;
+    let rerenders = 0;
+
+    applyContentMutation(
+      tab,
+      () => {
+        rerenders += 1;
+      },
+      (d) => {
+        d.title = "About";
+      },
+    );
+    expect(tab.doc.document).toBe(rootBefore);
+    expect(tab.doc.dirty).toBe(false);
+    expect(tab.history.snapshots.length).toBe(historyBefore);
+    expect(rerenders).toBe(1);
+  });
+
+  test("Edit template opens the layout the page is drawn in, and is absent with none", async () => {
+    setupSitePage();
+    await draw({ tagName: "div" });
+    await flush();
+    openedFiles.length = 0;
+
+    const pressAction = (host: HTMLElement) => {
+      const button = section(host, "layout")!.querySelector<HTMLElement>('[part="row-action"]');
+      expect(button?.textContent).toContain("Edit template");
+      button!.click();
+    };
+    const byDefault = await draw({ tagName: "div" });
+    pressAction(byDefault.host);
+    const own = await draw({ $layout: "./layouts/blog.json", tagName: "div" });
+    pressAction(own.host);
+    await flush();
+    expect(openedFiles).toEqual(["layouts/main-layout.json", "layouts/blog.json"]);
+
+    const none = await draw({ $layout: false, tagName: "div" });
+    expect(section(none.host, "layout")!.querySelector('[part="row-action"]')).toBeNull();
+  });
+
+  test("a page states its URL, derived from its file, and a non-page has none", async () => {
+    setupSitePage("pages/blog/index.json");
+    const drawn = await draw({ tagName: "div" });
+    const url = section(drawn.host, "page")!.querySelector<HTMLElement>('[part="readout"]');
+    expect(url?.textContent).toBe("/blog");
+    expect(url?.getAttribute("aria-label")).toBe("URL");
+
+    resetWorkspaceWithTab(undefined, { documentPath: "layouts/base.json" });
+    const layoutDoc = await draw({ tagName: "div" });
+    expect(section(layoutDoc.host, "page")!.querySelector('[part="readout"]')).toBeNull();
+  });
+
   test("the clear dot removes an explicit $layout", async () => {
     setupSitePage();
     await draw({ tagName: "div" });
@@ -924,57 +1119,176 @@ describe("frontmatter section", () => {
 // ─── The panel record, and which document it is drawn for ────────────────────
 
 /*
- * These four moved here from `tests/left-panel.test.ts`, where they read the arguments the
- * Navigator handed a lit renderer. The renderer is gone, so what they assert is asserted through
- * the record itself: `afterRender` mounts the document, and the contract is which document it draws
- * and where a commit lands. `left-panel.test.ts` goes on covering the Navigator's own routing.
+ * The Page panel is the Inspector's Page tab now (§6): the dock hands `bindPageHost` the leaf's body
+ * host and `renderPageTab` draws the FOCUSED document into it. What these assert is which document
+ * it draws and where a commit lands; `right-panel.test.ts` covers the dock's own routing.
  */
-describe("the Page panel record", () => {
-  /* SAFETY: the Page panel record's render and afterRender read only ctx.doc and ctx.rerender
-     (registerPagePanel in head-panel.ts), so no NavigatorPanelDeps member is ever read off this
-     empty object. */
-  const NO_DEPS = {} as NavigatorPanelDeps;
-
-  /**
-   * Run the registered panel's `afterRender` against a body the Navigator would have drawn.
-   *
-   * The record is what is under test, so it is asked for by id rather than called directly: the
-   * mount seam a panel gets is `.panel-content` inside the body, and a record that returned markup
-   * instead would leave that node empty.
-   */
-  async function paint(tab: Tab): Promise<HTMLElement> {
-    resetPanels();
-    registerPagePanel();
-    const record = getPanel("page")!;
+describe("the Inspector's Page tab", () => {
+  /** Hand the tab a host the dock would have created, and let it draw the focused document. */
+  async function paint(): Promise<HTMLElement> {
     const body = document.createElement("div");
-    body.innerHTML = '<div class="panel-content"></div>';
     document.body.append(body);
-    // `render` draws nothing: the document is mounted in `afterRender` and lit owns the body.
-    expect(record.render({ deps: NO_DEPS, doc: null, rerender: () => {} })).toBe(nothing);
-    record.afterRender!(
-      {
-        deps: NO_DEPS,
-        doc: {
-          canvas: null,
-          content: tab.doc.content,
-          document: tab.doc.document,
-          documentPath: tab.documentPath,
-          mode: tab.doc.mode,
-          selection: [],
-          ui: tab.session.ui,
-        },
-        rerender: () => {},
-      },
-      body,
-    );
+    bindPageHost(body);
     await flush(4);
     return body;
   }
 
+  afterEach(() => {
+    bindPageHost(null);
+  });
+
+  test("its title says what the document is (§6)", () => {
+    expect(pageTabTitle("pages/about.json")).toBe("Page");
+    expect(pageTabTitle("pages/blog/[slug].json")).toBe("Page");
+    expect(pageTabTitle("layouts/base.json")).toBe("Template");
+    expect(pageTabTitle("components/site-card.json")).toBe("Component");
+    expect(pageTabTitle("notes/readme.md")).toBe("Document");
+    expect(pageTabTitle(null)).toBe("Document");
+  });
+
+  test("a file a collection owns is an Entry", () => {
+    resetStudioState();
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "Blog",
+      projectConfig: { content: { posts: { format: "markdown", source: "./content/posts" } } },
+      projectDirs: [],
+      projectRoot: ".",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    expect(pageTabTitle("content/posts/hello.md")).toBe("Entry");
+    setProjectState(null);
+  });
+
+  test("with no document open it draws nothing, and a document arriving draws it", async () => {
+    resetStudioState();
+    closeAllTabs();
+    const body = await paint();
+    expect(body.querySelector('[data-section="page"]')).toBeNull();
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
+    renderPageTab();
+    await flush(4);
+    expect(body.querySelector('[data-section="page"]')).not.toBeNull();
+    closeAllTabs();
+    renderPageTab();
+    await flush(4);
+    expect(body.querySelector('[data-section="page"]')).toBeNull();
+  });
+
+  test("a Markdown page's frontmatter description is its one Description, read and written there", async () => {
+    resetStudioState();
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "Rental",
+      projectConfig: {},
+      projectDirs: [],
+      projectRoot: ".",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/index.md" });
+    tab.doc.mode = "content";
+    tab.doc.content.frontmatter = { description: "Equipment rental in Manheim", title: "Home" };
+    const body = await paint();
+    // Listed once: not again as a frontmatter field beside the Page section's row.
+    expect(body.querySelectorAll('[data-prop="description"]')).toHaveLength(1);
+    const page = section(body, "page")!;
+    expect(control(page, "description").value).toBe("Equipment rental in Manheim");
+    setAndFire(page, "description", "  Excavators and loaders  ");
+    expect(tab.doc.content.frontmatter.description).toBe("Excavators and loaders");
+    // Written where the build reads it, not into a second store the property would shadow.
+    expect(tab.doc.content.frontmatter.$head).toBeUndefined();
+    // And the search preview judges the page on it: no "no description reaches this page".
+    const preview = seoPreviewFor(tab, buildHeadDoc(tab.doc.document, tab.doc.content.frontmatter));
+    expect(seoField(preview, "description").value).toBe("Excavators and loaders");
+    expect(preview.warnings.map((w) => w.id)).not.toContain("description-missing");
+    setProjectState(null);
+  });
+
+  test("a page whose head states a description keeps editing the head's, which is the one that wins", () => {
+    const doc: JxMutableNode = {
+      $head: [{ attributes: { content: "meta", name: "description" }, tagName: "meta" }],
+      description: "shadowed",
+      tagName: "main",
+    };
+    expect(pageDescription(doc)).toBe("meta");
+    setPageDescription(doc, "new meta");
+    expect(pageDescription(doc)).toBe("new meta");
+    expect(doc.description).toBe("shadowed");
+    // A page with neither gets the meta, as a JSON page always has.
+    const bare: JxMutableNode = { tagName: "main" };
+    setPageDescription(bare, "fresh");
+    expect(bare.description).toBeUndefined();
+    expect(pageDescription(bare)).toBe("fresh");
+    // A property-only page clears by removing the property.
+    const property: JxMutableNode = { description: "x", tagName: "main" };
+    setPageDescription(property, "");
+    expect("description" in property).toBe(false);
+  });
+
+  test("only a page reserves description: a component's is its own field", () => {
+    resetStudioState();
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "Rental",
+      projectConfig: {},
+      projectDirs: [],
+      projectRoot: ".",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    const page = resetWorkspaceWithTab(undefined, { documentPath: "pages/index.md" });
+    expect([...reservedFmKeys(page)].toSorted()).toEqual(["description", "title"]);
+    const layout = resetWorkspaceWithTab(undefined, { documentPath: "layouts/base.md" });
+    expect([...reservedFmKeys(layout)]).toEqual(["title"]);
+    setProjectState(null);
+  });
+
+  test("a component has no page form: it says so, and its one verb selects the root", async () => {
+    resetStudioState();
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "components/pricing-card.json" });
+    const body = await paint();
+    expect(body.querySelector('[data-section="page"]')).toBeNull();
+    expect(body.textContent).toContain(COMPONENT_TAB_MESSAGE);
+    const action = [...body.querySelectorAll<HTMLElement>("jx-button")].find((el) =>
+      el.textContent.includes("Edit tag and props"),
+    );
+    expect(action).toBeTruthy();
+    action!.click();
+    expect(tab.session.selection).toEqual([[]]);
+    expect(tab.session.ui.rightTab).toBe("properties");
+
+    // A repaint keeps the standing state; a page arriving puts the page form back.
+    const standing = body.firstChild;
+    renderPageTab();
+    expect(body.firstChild).toBe(standing);
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
+    renderPageTab();
+    await flush(4);
+    expect(body.querySelector('[data-section="page"]')).not.toBeNull();
+    expect(body.textContent).not.toContain(COMPONENT_TAB_MESSAGE);
+  });
+
+  test("letting the host go takes the surface out of it", async () => {
+    resetStudioState();
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
+    const body = await paint();
+    expect(body.querySelector('[data-section="page"]')).not.toBeNull();
+    bindPageHost(null);
+    expect(body.children).toHaveLength(0);
+  });
+
   test("a JSON document is drawn from its root node and transacts mutations directly", async () => {
     resetStudioState();
     const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/a.json" });
-    const body = await paint(tab);
+    const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "title", "Page title");
     expect(tab.doc.document.title).toBe("Page title");
@@ -989,7 +1303,7 @@ describe("the Page panel record", () => {
       $head: [{ attributes: { content: "d", name: "description" }, tagName: "meta" }],
       title: "FM Title",
     };
-    const body = await paint(tab);
+    const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     expect(control(page, "title").value).toBe("FM Title");
     expect(control(page, "description").value).toBe("d");
@@ -1000,7 +1314,7 @@ describe("the Page panel record", () => {
     const tab = resetWorkspaceWithTab(undefined, { documentPath: "posts/b.md" });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = { title: "Old" };
-    const body = await paint(tab);
+    const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "title", "New");
     expect(tab.doc.content.frontmatter.title).toBe("New");
@@ -1019,7 +1333,7 @@ describe("the Page panel record", () => {
       $head: [{ attributes: { content: "x", name: "description" }, tagName: "meta" }],
       title: "Same",
     };
-    const body = await paint(tab);
+    const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "description", "");
     expect(tab.doc.content.frontmatter.$head).toBeUndefined();

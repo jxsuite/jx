@@ -70,8 +70,9 @@ describe("the set", () => {
       "collab",
       "collection",
       // `content.*` — the content-entry verbs (site-architecture.md §7.4, §7.6): create one seeded
-      // From its collection's schema, open one as a form, mark one a draft, and choose whether
-      // Drafts are listed. The draft pair are `set*` because a toggle against unstated state can
+      // From its collection's schema, open one where it is written, mark one a draft, and choose
+      // Whether drafts are listed; and the Content home's own (which collection it shows, and that
+      // Collection's view, search, language and rescan, studio.md §22.5). The draft pair are `set*` because a toggle against unstated state can
       // Publish something the author believed was private.
       "content",
       "data",
@@ -95,10 +96,7 @@ describe("the set", () => {
       // `canvas/canvas-render.ts`, beside `selection.set`: both name what the pane points at.
       "insert",
       "inspector",
-      // `library.*` — the Library editor kind (§9.1.2). It replaced `project.browse`, which was one
-      // Verb over a modal; the Library's category, layout, filter, rescan and new-entry states are
-      // Each a record, so the palette and the assistant can reach what only its own buttons could.
-      "library",
+      "media",
       // `packages.remove` — uninstalling an extension's dependency, which the Extensions section
       // And the Packages table both render from.
       "packages",
@@ -119,6 +117,9 @@ describe("the set", () => {
       // And the plural is how the ids carry it.
       "styles",
       "view",
+      // `workspace.focus.<id>` — ⌘1–5, one record per workspace, each running `view.setWorkspace`'s
+      // Own path. A chord carries no argument, which is why the setter cannot hold them itself.
+      "workspace",
     ]);
   });
 
@@ -130,7 +131,8 @@ describe("the set", () => {
     const inMenu = COMMANDS.filter((c) => (c.menus ?? []).includes("settings/menu"))
       .map((c) => c.id)
       .toSorted();
-    expect(inMenu).toEqual(["app.preferences", "settings.open", "styles.open"]);
+    // Preferences and Project Settings; Styles is a workspace the top bar already names (§17.1).
+    expect(inMenu).toEqual(["app.preferences", "settings.open"]);
     // The ⬢ menu is unchanged by this: `styles.open` never declared it.
     const overflow = COMMANDS.filter((c) => (c.menus ?? []).includes("commandbar/overflow"));
     expect(overflow.map((c) => c.id)).not.toContain("styles.open");
@@ -237,7 +239,6 @@ describe("the ids the screenshot manifest names now have records", () => {
     "formula.editEvent",
     "formula.openWorkspace",
     "inspector.setSection",
-    "library.open",
     "project.new",
     "selection.set",
     "settings.open",

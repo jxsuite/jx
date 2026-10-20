@@ -19,7 +19,7 @@ import {
 } from "../src/workspace/workspace";
 import { reactive } from "../src/reactivity";
 import { resetProjectShell, shell } from "../src/shell";
-import { initShellRefs, registerRenderer } from "../src/store";
+import { initShellRefs, registerRenderer, setProjectState } from "../src/store";
 import { activeCanvasSurface, surfaceForPane } from "../src/canvas/canvas-surface";
 import { canvasPerf, resetCanvasPerf } from "../src/canvas/canvas-perf";
 import { clearDragGhost, setDragGhost } from "../src/panels/drag-ghost";
@@ -496,6 +496,34 @@ describe("mountIframeCanvas", () => {
     expect(channels[0]!.posts[1]).toMatchObject({ colorScheme: "dark", kind: "render" });
   });
 
+  // A frame that boots after the pane's locale was posted must still draw the file's language.
+  test("the render message carries the language the tab is drawn in", async () => {
+    resetWorkspaceWithTab();
+    setProjectState({
+      dirs: new Map(),
+      expanded: new Set(),
+      isSiteProject: true,
+      name: "site",
+      projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "ar"] }, name: "site" },
+      projectRoot: "",
+      searchQuery: "",
+      selectedPath: null,
+    });
+    try {
+      activeTab.value!.documentPath = "pages/ar/about.json";
+      const canvasEl = document.createElement("div");
+      document.body.append(canvasEl);
+      await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
+      channels[0]!.deliver({ kind: "ready" });
+      expect(channels[0]!.posts[0]).toMatchObject({
+        kind: "render",
+        locale: { dir: "rtl", locale: "ar" },
+      });
+    } finally {
+      setProjectState(null);
+    }
+  });
+
   /*
    * The scheme a render posts belongs to the tab being RENDERED, not to the tab with the keyboard.
    *
@@ -634,6 +662,21 @@ describe("mountIframeCanvas", () => {
     const before = channels[0]!.posts.length;
     postLocaleToLiveHosts("fr", elsewhere);
     expect(channels[0]!.posts).toHaveLength(before);
+  });
+
+  // A restored session writes the language after its files opened: the render a booting frame is
+  // Waiting for must carry it, since no render follows.
+  test("a language set while the host boots reaches the render it is waiting for", async () => {
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
+
+    postLocaleToLiveHosts("ar", canvasEl);
+    channels[0]!.deliver({ kind: "ready" });
+
+    const posted = channels[0]!.posts.filter((m) => m.kind === "render" || m.kind === "setLocale");
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toMatchObject({ kind: "render", locale: { dir: "rtl", locale: "ar" } });
   });
 
   /*
@@ -2388,7 +2431,8 @@ describe("cross-frame drag session (Phase 4c)", () => {
     const seen: HostState[] = [];
     setNativeDragEnterHandler((h) => seen.push(h));
     channels[0]!.deliver({ kind: "nativeDragEnter" });
-    expect(seen).toEqual([host]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(host);
     setNativeDragEnterHandler(() => {});
   });
 
@@ -3284,6 +3328,123 @@ describe("stylebook host capability", () => {
     channel.posts.length = 0;
     panToStylebookTag("nope");
     expect(channel.posts).toHaveLength(0);
+  });
+
+  test("a pan asked for before the stylebook canvas exists is served by its first render", async () => {
+    /* The Styles panel's element row, clicked from the Variables view: the pane is switched to
+       Elements and the tag selected and panned to in one tick, before the frame that draws its card
+       has been mounted. The pan waits for that frame instead of being dropped. */
+    const wrap = document.createElement("div");
+    wrap.id = "canvas-wrap";
+    document.body.append(wrap);
+    initShellRefs();
+    registerPrimaryStage();
+
+    shell.stylebook.selection = "p";
+    panToStylebookTag("p");
+
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: null }));
+    mountStylebookCanvas(9, makeGenerated(), canvasEl, 480);
+    const channel = channels.at(-1)!;
+    channel.deliver({ kind: "ready" });
+    channel.posts.length = 0;
+    channel.deliver({ gen: 9, kind: "renderComplete" });
+    await flush();
+    const measures = channel.posts.filter(ofKind("measure"));
+    // The selection's own measure, and the kept pan's, under its own id.
+    expect(measures.map((m) => m.paths)).toEqual([[CARD_PATH], [CARD_PATH]]);
+    expect(measures[1]!.reqId).not.toBe(measures[0]!.reqId);
+
+    // Served once: the next render pans nowhere.
+    channel.posts.length = 0;
+    channel.deliver({ gen: 10, kind: "renderComplete" });
+    await flush();
+    expect(channel.posts.filter(ofKind("measure"))).toHaveLength(1);
+  });
+
+  test("a kept pan the author has moved past is forgotten, not served late", async () => {
+    const wrap = document.createElement("div");
+    wrap.id = "canvas-wrap";
+    document.body.append(wrap);
+    initShellRefs();
+    registerPrimaryStage();
+
+    shell.stylebook.selection = "p";
+    panToStylebookTag("p");
+    shell.stylebook.selection = "h1";
+
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: null }));
+    mountStylebookCanvas(9, makeGenerated(), canvasEl, 480);
+    const channel = channels.at(-1)!;
+    channel.deliver({ kind: "ready" });
+    channel.posts.length = 0;
+    channel.deliver({ gen: 9, kind: "renderComplete" });
+    await flush();
+    // `h1` has no card in this catalogue, so the selection measures nothing, and nothing pans.
+    expect(channel.posts.filter(ofKind("measure"))).toHaveLength(0);
+    shell.stylebook.selection = "p";
+    channel.posts.length = 0;
+    channel.deliver({ gen: 10, kind: "renderComplete" });
+    await flush();
+    // `p` is selected again, but the old request was dropped: one measure, the selection's.
+    expect(channel.posts.filter(ofKind("measure"))).toHaveLength(1);
+  });
+
+  test("a pan posted while the selection measure is in flight leaves the selection reply current", async () => {
+    // The Styles Outline's row click: `selectStylebookTag(tag, …, { panCanvas: true })` moves the
+    // Selection (the watcher posts a measure) and pans in the SAME tick. The pan's id must not
+    // Retire the selection request, or the specimen is centred and never outlined.
+    const wrap = document.createElement("div");
+    wrap.id = "canvas-wrap";
+    document.body.append(wrap);
+    initShellRefs();
+    registerPrimaryStage();
+
+    const { canvasEl, channel } = await mountStylebookReady();
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: null }));
+    channel.posts.length = 0;
+
+    shell.stylebook.selection = "p";
+    await flush();
+    panToStylebookTag("p");
+    const [selMeasure, panMeasure] = channel.posts.filter(ofKind("measure"));
+    expect(selMeasure).toBeDefined();
+    expect(panMeasure).toBeDefined();
+    expect(panMeasure!.reqId).not.toBe(selMeasure!.reqId);
+
+    const sel = partOf(canvasEl, ".overlay-selection");
+    channel.deliver({
+      hits: [{ path: CARD_PATH, rect: { height: 40, width: 200, x: 12, y: 30 } }],
+      kind: "geometry",
+      reqId: selMeasure!.reqId,
+    });
+    channel.deliver({
+      hits: [{ path: CARD_PATH, rect: { height: 40, width: 200, x: 12, y: 30 } }],
+      kind: "geometry",
+      reqId: panMeasure!.reqId,
+    });
+    expect(sel.style.display).toBe("block");
+    expect(partOf(sel, ".overlay-label").textContent).toBe("<p>");
+  });
+
+  test("a selection reply that lands after the selection was cleared draws nothing", async () => {
+    const { canvasEl, channel } = await mountStylebookReady();
+    channel.posts.length = 0;
+    shell.stylebook.selection = "p";
+    await flush();
+    const measure = channel.posts.find(ofKind("measure"))!;
+    shell.stylebook.selection = null;
+    await flush();
+    channel.deliver({
+      hits: [{ path: CARD_PATH, rect: { height: 40, width: 200, x: 12, y: 30 } }],
+      kind: "geometry",
+      reqId: measure.reqId,
+    });
+    expect(partOf(canvasEl, ".overlay-selection").style.display).toBe("none");
   });
 
   test("a later page mount on the same canvas clears the stylebook capability", async () => {

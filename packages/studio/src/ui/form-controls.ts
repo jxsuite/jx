@@ -34,6 +34,7 @@ import {
 import { mountSchemaBuilderSurface } from "../surfaces/schema-builder";
 import { mountReferenceFieldSurface } from "../surfaces/reference-field";
 import { mountSecretFieldSurface } from "../surfaces/secret-field";
+import { mountMediaPicker, unmountMediaPicker } from "./media-picker";
 import { camelToLabel, toCamelCase } from "../utils/studio-utils";
 
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
@@ -710,6 +711,44 @@ export const secretControl: SchemaFormMountedControl = { mount: mountSecret };
 
 registerFormControl("secret", secretControl);
 
+// ─── Media control ───────────────────────────────────────────────────────────
+
+/**
+ * An image field as the media field: the path, its thumbnail, **Upload media** and **Browse
+ * media**, exactly as the page's Icon and OG Image rows draw them. The flow is
+ * `ui/media-picker.ts`'s, which already makes a repeat mount into the same host an update, so this
+ * control only keeps the latest commit hook and clears the field to absent rather than to "".
+ *
+ * @param {HTMLElement} host - The field's `[part="control-host"]`
+ * @param {SchemaFormControlArgs} args - The value and the commit hook
+ * @returns {SchemaFormControlHandle}
+ */
+function mountMedia(host: HTMLElement, args: SchemaFormControlArgs): SchemaFormControlHandle {
+  let latest = args;
+  const draw = (): void => {
+    mountMediaPicker(
+      host,
+      latest.key,
+      isString(latest.value) ? latest.value : "",
+      (value: string) => latest.onChange(value === "" ? undefined : value),
+      { images: true },
+    );
+  };
+  draw();
+  return {
+    dispose: () => unmountMediaPicker(host),
+    update(next) {
+      latest = next;
+      draw();
+    },
+  };
+}
+
+/** The media control as the registry holds it, named so a test can drive it as the engine does. */
+export const mediaControl: SchemaFormMountedControl = { mount: mountMedia };
+
+registerFormControl("media", mediaControl);
+
 // ─── Reference control ───────────────────────────────────────────────────────
 
 /**
@@ -804,13 +843,13 @@ function entryIdsFor(collection: string): Promise<string[]> {
  * `null` means the read is still in flight, and `onSettled` is called when it lands — which is the
  * second frame a document has to be GIVEN, since nothing repaints it on the read's behalf.
  *
- * Exported because two surfaces draw the choices and neither is this control: the Document Header
- * card and the Navigator's Page panel project a `$ref` field as a picker row of their own
- * (`panels/frontmatter-fields.ts`), and what they need is not the widget but the answer behind it.
- * Taking it from here rather than calling `listCollectionEntryIds` directly is what keeps ONE cache
- * and ONE invalidation: a collection listed for the Document Header card is not listed again for
- * the entry editor, and {@link invalidateReferenceEntries} after an entry is created is still the
- * single event that forgets it.
+ * Exported because a surface draws the choices and is not this control: the Inspector's Page tab
+ * projects a `$ref` field as a picker row of its own (`panels/frontmatter-fields.ts`), and what it
+ * needs is not the widget but the answer behind it. Taking it from here rather than calling
+ * `listCollectionEntryIds` directly is what keeps ONE cache and ONE invalidation: a collection
+ * listed for the Page tab is not listed again for the entry editor, and
+ * {@link invalidateReferenceEntries} after an entry is created is still the single event that
+ * forgets it.
  *
  * @param {string} collection
  * @param {() => void} [onSettled]
@@ -990,4 +1029,4 @@ export const referenceControl: SchemaFormMountedControl = { mount: mountReferenc
 registerFormControl("reference", referenceControl);
 
 // Keep an explicit export so hosts can assert the built-ins module loaded
-export const builtinFormControls = ["schema-builder", "secret", "reference"] as const;
+export const builtinFormControls = ["schema-builder", "secret", "reference", "media"] as const;

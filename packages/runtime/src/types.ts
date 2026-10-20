@@ -158,7 +158,7 @@ export interface JxMount {
    * touches.
    */
   readonly elements: ReadonlySet<string>;
-  /** Stops every effect, calls `onUnmount`, removes the root. Idempotent. */
+  /** Removes the root, stops every effect, then calls `onUnmount`. Idempotent. */
   readonly dispose: () => void;
 }
 

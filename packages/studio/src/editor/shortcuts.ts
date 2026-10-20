@@ -528,15 +528,15 @@ function cycleRegion(direction: 1 | -1): void {
   }
 }
 
-// ─── Panel and inspector focus (⌘1–8, ⌘⇧1–4) ─────────────────────────────────
+// ─── Panel and inspector focus (`panel.focus.*`, ⌘⇧1–4) ──────────────────────
 
 /**
  * Toggle-FOCUS, not toggle-visible.
  *
- * ⌘1 from the canvas reveals Files and puts the caret in it; ⌘1 again — with Files already focused
- * — collapses the dock and hands the caret back to the pane. The distinction matters because the
- * common case is "take me there", and a toggle-visible binding makes that a coin flip on whichever
- * panel happened to be showing.
+ * `Show Files` from the canvas reveals Files and puts the caret in it; running it again — with
+ * Files already focused — collapses the dock and hands the caret back to the pane. The distinction
+ * matters because the common case is "take me there", and a toggle-visible binding makes that a
+ * coin flip on whichever panel happened to be showing.
  *
  * Every panel this can be handed lives in the Navigator. The roster is the rail plus the rail-less
  * NAVIGATOR panels (`panels/navigator-panels.ts`), so a Bottom-dock record cannot reach here — the
@@ -546,14 +546,14 @@ function cycleRegion(direction: 1 | -1): void {
  */
 function focusPanel(panelId: string): void {
   /* THE DOOR. `shell.ts`'s `NAVIGATOR_PANEL_IDS` docstring says the command is what refuses an
-     undeclared id, "at the one door a caller comes through" — this is that door for ⌘1–8, and it
+     undeclared id, "at the one door a caller comes through" — this is that door for `panel.focus.*`, and it
      was the only one of three doors that had no lock. `setActivityTab` now takes a
      `NavigatorPanelId`, so the roster's `string` has to be narrowed somewhere; narrowing HERE keeps
      `commands/defaults.ts` free of shell types, which is the property that lets three CI checks
      load the command set in a bare Bun process.
 
      A throw rather than a silent return: `tests/navigator-panels.test.ts` asserts the enum and the
-     registry agree, so this is unreachable while that passes, and a chord that quietly does nothing
+     registry agree, so this is unreachable while that passes, and a command that quietly does nothing
      is precisely the defect this change is closing. */
   const id = requireNavigatorPanelId(panelId, "panel.focus");
   const alreadyThere =
@@ -990,7 +990,6 @@ export function initShortcuts(registry: CommandRegistry, stageContext: StageCont
  * scrolled with the wheel at all.
  *
  * - `grid` — a Tabulator viewport with its own virtual scroller.
- * - `manage` — the Library's ordinary overflow container.
  * - `settings` — the Project Settings document (`panels/settings-pane.ts`): an `overflow-y: auto`
  *   section column, plus the Raw JSON `<pre>`'s own box inside it.
  * - `entry` — the Entry editor's `overflow-y: auto` form (`content/entry-editor.ts`).
@@ -1000,28 +999,30 @@ export function initShortcuts(registry: CommandRegistry, stageContext: StageCont
  *   there is no artboard here to zoom, either.
  */
 const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
+  /* The Content home — `browse/library-pane.ts`. Its own scrolling list, nothing to zoom. */
+  "content-home",
   "entry",
   "grid",
-  "manage",
   /* `media` — the Media viewer's own scrolling column (`media/media-pane.ts`). There is no artboard
      here either: a wheel over an image is a scroll down the page it sits on, not a zoom. */
   "media",
+  /* A workspace's home — `workspace/workspace-home.ts`. A centred column with nothing to zoom. */
+  "media-home",
   "preview",
-  "settings",
+  "publish-home",
 ]);
 
 /**
  * Can a box between `target` and the stage still answer this wheel itself?
  *
- * Edit forwards every wheel to the page's scroller (see the branch below), which was the whole
- * story while the stage cell held nothing but the page. It also holds the Document Header band now,
- * a capped scroll container standing beside the scroller — and a `preventDefault` from an ANCESTOR
- * listener cancels the native scroll of whatever the pointer is over, so a form taller than the cap
- * could not be wheeled at all while the page scrolled underneath it instead. So the stage takes the
- * wheel only when nothing inside it wants one: the walk stops at the stage cell, and it steps over
- * the page's scroller because that box is what the forwarding is FOR — a wheel forwarded out of the
- * cross-origin frame is dispatched on the cell itself and reaches no scrollable element on the way,
- * and letting the browser scroll the page natively would chain out of it into the shell.
+ * Edit forwards every wheel to the page's scroller (see the branch below). A `preventDefault` from
+ * an ANCESTOR listener cancels the native scroll of whatever the pointer is over, so any box in the
+ * stage cell that scrolls itself (a sideways strip, a capped list) would otherwise be unwheelable
+ * while the page scrolled underneath it instead. So the stage takes the wheel only when nothing
+ * inside it wants one: the walk stops at the stage cell, and it steps over the page's scroller
+ * because that box is what the forwarding is FOR — a wheel forwarded out of the cross-origin frame
+ * is dispatched on the cell itself and reaches no scrollable element on the way, and letting the
+ * browser scroll the page natively would chain out of it into the shell.
  *
  * @param {WheelEvent} e
  * @param {HTMLElement} stage The cell the listener is on — the walk's upper bound, exclusive.
@@ -1146,8 +1147,8 @@ export function installStageGestures(surface: CanvasSurface): () => void {
         /* The stage's own scroller, by the `part` the stage document draws it with — the same
            attribute every other consumer of the canvas's chrome now addresses it by. */
         const sc = canvasWrap.querySelector<HTMLElement>('[part="edit-canvas"]');
-        /* …unless the pointer is over a box in this cell that scrolls itself — the Document Header
-           band, which Edit docks beside the scroller. See {@link wheelBelongsInside}. */
+        /* …unless the pointer is over a box in this cell that scrolls itself. See
+           {@link wheelBelongsInside}. */
         if (sc && !wheelBelongsInside(e, canvasWrap, sc)) {
           e.preventDefault();
           sc.scrollTop += e.deltaY;
@@ -1231,7 +1232,7 @@ export function installStageGestures(surface: CanvasSurface): () => void {
   canvasWrap.addEventListener(
     "click",
     (e: MouseEvent) => {
-      if (e.target !== canvasWrap && e.target !== surface.panzoomWrap) {
+      if (!isStageBackground(e.target, canvasWrap, surface.panzoomWrap)) {
         return;
       }
       const tab = tabOfPane(surface.paneId);
@@ -1247,6 +1248,27 @@ export function installStageGestures(surface: CanvasSurface): () => void {
     clearTimeout(zoomRelease);
     controller.abort();
   };
+}
+
+/**
+ * Whether a click landed on a stage's BACKGROUND rather than on anything drawn in it: the stage
+ * itself, the pan/zoom surface, or the frame box every view draws its artboards in.
+ *
+ * The frame box is the one that matters in Edit. Edit has no pan/zoom surface; its frame is the
+ * scrolling `[part="edit-canvas"]` that fills the stage around the page column, so the grey margin
+ * beside the page IS that box, and a test that knew only the stage and the pan/zoom surface never
+ * saw a click there. The frame is recognised by its static `data-slot`, which the stage document
+ * stamps on it in every view.
+ */
+export function isStageBackground(
+  target: EventTarget | null,
+  stage: Element,
+  panzoom: Element | null,
+): boolean {
+  if (target === stage || (panzoom !== null && target === panzoom)) {
+    return true;
+  }
+  return target instanceof HTMLElement && target.dataset.slot === "frame" && stage.contains(target);
 }
 
 /** The context a stage answers with before the bootstrap has published a reader. */

@@ -111,6 +111,8 @@ Saving a collection or pages row rewrites that file's frontmatter block from scr
 
 A CSV file opens as a grid tab with **Code** as its raw-text alternate, and saves as one atomic step: if the file changed on disk underneath you, the save stops instead of overwriting it. Only the cells you actually edited are rewritten. Untouched cells keep their exact original text, so a one-cell fix produces a one-cell diff.
 
+A CSV file that is a content collection's source has a third editor, **Entry**: one row at a time, as the collection's schema types it, which is where a record opened from the [Content workspace](/docs/studio/projects/browse#a-collection-stored-in-one-file) lands. It edits the same rows as the grid, so an edit made there is a pending cell here, and one **Save** writes both.
+
 ## The redirect table
 
 Redirects open as a grid over three columns (**Source**, **Destination**, **Status**) and inherit the whole surface: inline editing, **Add Row** and **Delete Rows**, find & replace, undo, one batched **Save**, and views you can save. Saving writes the rules into `project.json` all together, or refuses the batch and says why, so the site never ends up with half its old URLs working. **[Project settings](/docs/studio/projects/settings)** covers what the rules mean and how they're checked.

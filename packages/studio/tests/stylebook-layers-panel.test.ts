@@ -1,5 +1,5 @@
 /**
- * The Outline panel while the pane is showing Project Styles —
+ * The Outline panel while the pane is showing a document's Elements view —
  * `src/panels/stylebook-layers-panel.ts` and the surface it mounts,
  * `src/surfaces/panel-stylebook-layers.{json,ts}`.
  *
@@ -122,7 +122,6 @@ describe("stylebookLayersValues", () => {
     // H1, ul, one deduped li (two li children share the tag).
     expect(values.rows.map((r) => r.key)).toEqual(["h1", "ul", "ul li"]);
     expect(values.rows.map((r) => r.tag)).toEqual(["h1", "ul", "li"]);
-    expect(values.tab).toBe("elements");
   });
 
   test("a child's indent is one step deeper than its parent's", () => {
@@ -163,19 +162,9 @@ describe("stylebookLayersValues", () => {
     expect(comps.map((r) => r.selected)).toEqual([false, true]);
   });
 
-  test("variables are the document's own custom properties, and nothing else", () => {
-    makeTab({ "--accent": "#f00", "--gap": "8px", h1: { color: "red" } });
-    const values = stylebookLayersValues(ctx);
-    expect(values.hasVariables).toBe(true);
-    expect(values.variables).toEqual([
-      { key: "--accent", name: "--accent", value: "#f00" },
-      { key: "--gap", name: "--gap", value: "8px" },
-    ]);
-  });
-
-  test("a document with no style block has no variables", () => {
-    resetWorkspaceWithTab({ children: [], tagName: "div" });
-    expect(stylebookLayersValues(ctx).hasVariables).toBe(false);
+  test("lists the catalogue alone: custom properties are the Styles panel's", () => {
+    makeTab({ "--accent": "#f00", h1: { color: "red" } });
+    expect(Object.keys(stylebookLayersValues(ctx))).toEqual(["rows"]);
   });
 });
 
@@ -232,26 +221,17 @@ describe("the catalogue surface", () => {
     expect(selectStylebookTag).toHaveBeenCalledWith("x-card", undefined, { panCanvas: true });
   });
 
-  test("the variables tab lists each property beside its value", async () => {
-    makeTab({ "--accent": "#f00", "--gap": "8px", h1: { color: "red" } });
-    shell.stylebook.tab = "variables";
+  test("a row click after a re-mount selects through the latest ctx", async () => {
+    makeTab();
     await renderCatalogue();
-    const listed = rows();
-    expect(listed).toHaveLength(2);
-    expect(listed.map((el) => textOf(el, "label"))).toEqual(["--accent", "--gap"]);
-    expect(listed.map((el) => textOf(el, "value"))).toEqual(["#f00", "8px"]);
-    expect(host.textContent).not.toContain("h1");
-  });
-
-  test("no variables teaches what the tab is for", async () => {
-    makeTab({ h1: { color: "red" } });
-    shell.stylebook.tab = "variables";
-    await renderCatalogue();
-    expect(rows()).toHaveLength(0);
-    expect(host.querySelector('[part="empty-message"]')?.textContent).toContain(
-      "No variables defined",
+    const later = mock(
+      (_tag: string, _media?: string | null, _opts?: { panCanvas?: boolean }) => {},
     );
-    expect(host.querySelector('[part="empty-detail"]')?.textContent).toBeTruthy();
+    mountStylebookLayersPanel({ ...ctx, selectStylebookTag: later }, host);
+    await flush();
+    row("h1").click();
+    expect(later).toHaveBeenCalledWith("h1", undefined, { panCanvas: true });
+    expect(selectStylebookTag).not.toHaveBeenCalled();
   });
 
   test("emits no class of its own — the document styles through `part`", async () => {

@@ -1,0 +1,346 @@
+/**
+ * An entry written on the canvas, inside its template's layout (studio.md §22.5).
+ *
+ * `resolveCanvasDocument` resolves a collection entry the way it resolves a page: the layout is the
+ * entry's own `$layout`, else its collection's template page's `$layout`, else `defaults.layout`;
+ * the layout's nodes are marked as the layout's, and the entry's own tree is the editable region.
+ * What this file proves is the part that makes writing possible: a render path inside the entry's
+ * body maps back to a path in the ENTRY's document, and every layout node is classified as layout
+ * chrome, which the canvas locks.
+ */
+import { installMockPlatform, resetStudioState } from "./harness";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  entryLayout,
+  pageLayout,
+  rebaseLayoutElementRefs,
+  resolveCanvasDocument,
+  resolveCanvasLayout,
+} from "../src/canvas/canvas-live-render";
+import { classifyRenderNode } from "../src/canvas/path-mapping";
+import { invalidateLayoutCache } from "../src/site-context";
+import { invalidateCollectionPages } from "../src/content/collection-pages";
+import { closeAllTabs, openTab } from "../src/workspace/workspace";
+import { getNodeAtPath } from "../src/store";
+import { isJsonObject, isNodeObject, isString } from "@jxsuite/schema/guards";
+import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import type { PathMapCtx } from "../src/canvas/path-mapping";
+
+/* SAFETY: harness imports with-dom first, whose GlobalRegistrator copies happy-dom's window members
+   onto globalThis, `happyDOM` among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
+happyDOM.setURL("http://localhost:3000/");
+
+const BASE = {
+  children: [
+    { tagName: "header", textContent: "Site header" },
+    { children: [{ tagName: "slot" }], tagName: "main" },
+    { tagName: "footer", textContent: "Site footer" },
+  ],
+  tagName: "div",
+};
+const POST = {
+  children: [
+    { tagName: "nav", textContent: "Post nav" },
+    { children: [{ tagName: "slot" }], tagName: "article" },
+  ],
+  tagName: "div",
+};
+
+/** A Markdown entry's body as the canvas edits it: the entry's own element tree. */
+function entryBody(): JxMutableNode {
+  return {
+    children: [
+      { tagName: "h1", textContent: "Spring planting" },
+      { tagName: "p", textContent: "The cold frame is full again." },
+    ],
+    tagName: "div",
+  };
+}
+
+const CONTENT = { posts: { format: "markdown", source: "./content/posts" } };
+
+function setup(files: Record<string, string>, defaults?: { layout: string }) {
+  installMockPlatform(
+    {
+      listDirectory: (path: string) =>
+        Promise.resolve(
+          path === "pages"
+            ? [{ name: "blog", path: "pages/blog", type: "directory" as const }]
+            : path === "pages/blog"
+              ? [{ name: "[slug].json", path: "pages/blog/[slug].json", type: "file" as const }]
+              : [],
+        ),
+    },
+    files,
+  );
+  resetStudioState({
+    isSiteProject: true,
+    projectConfig: defaults ? { content: CONTENT, defaults } : { content: CONTENT },
+  });
+}
+
+/** Open the entry the way an author does: its own file, in its writing editor. */
+function openEntryTab(doc: JxMutableNode = entryBody(), frontmatter: Record<string, string> = {}) {
+  closeAllTabs();
+  const tab = openTab({
+    document: doc,
+    documentPath: "content/posts/spring-planting.md",
+    frontmatter,
+    id: "content/posts/spring-planting.md",
+  });
+  tab.session.ui.canvasMode = "edit";
+  return tab;
+}
+
+/** The render node at a path inside a resolved document. */
+function renderNodeAt(root: JxMutableNode, path: JxPath): JxMutableNode {
+  const node = getNodeAtPath(root, path);
+  if (!isNodeObject(node)) {
+    throw new TypeError(`no element at ${path.join("/")}`);
+  }
+  return node;
+}
+
+beforeEach(() => {
+  invalidateLayoutCache();
+  invalidateCollectionPages();
+});
+
+afterEach(() => {
+  closeAllTabs();
+});
+
+describe("a page's own layout override", () => {
+  /* A Markdown page keeps its `$layout` in frontmatter, where the Page tab's Layout picker writes
+     it and the build reads it; the canvas reads it there too, so the picker's choice is drawn. */
+  test("is the document's $layout first, then a Markdown page's frontmatter $layout", () => {
+    const tab = openEntryTab(entryBody(), { $layout: "./layouts/post.json" });
+    expect(pageLayout(tab.doc.document, tab)).toBe("./layouts/post.json");
+    expect(pageLayout({ $layout: false, tagName: "div" }, tab)).toBe(false);
+  });
+
+  test("a frontmatter `$layout: false` is honoured, and a non-string is not a layout", () => {
+    const tab = openEntryTab();
+    tab.doc.content.frontmatter.$layout = false;
+    expect(pageLayout(tab.doc.document, tab)).toBe(false);
+    tab.doc.content.frontmatter.$layout = 3;
+    expect(pageLayout(tab.doc.document, tab)).toBeUndefined();
+    expect(pageLayout({ tagName: "div" }, null)).toBeUndefined();
+  });
+});
+
+describe("the layout an entry is drawn in", () => {
+  test("is its collection's template page's layout when the entry names none", async () => {
+    setup({
+      "layouts/post.json": JSON.stringify(POST),
+      "pages/blog/[slug].json": JSON.stringify({
+        $layout: "./layouts/post.json",
+        $paths: { contentType: "posts", param: "slug" },
+        tagName: "article",
+      }),
+    });
+    const tab = openEntryTab();
+    expect(await entryLayout(tab.doc.document, tab, tab.documentPath)).toBe("./layouts/post.json");
+  });
+
+  test("is the entry's own $layout first, from its frontmatter", async () => {
+    setup({ "layouts/base.json": JSON.stringify(BASE) }, { layout: "./layouts/base.json" });
+    const tab = openEntryTab(entryBody(), { $layout: "./layouts/special.json" });
+    expect(await entryLayout(tab.doc.document, tab, tab.documentPath)).toBe(
+      "./layouts/special.json",
+    );
+  });
+
+  test("falls back to the project default, and to none when there is none", async () => {
+    setup({}, { layout: "./layouts/base.json" });
+    const tab = openEntryTab();
+    expect(await entryLayout(tab.doc.document, tab, tab.documentPath)).toBe("./layouts/base.json");
+    setup({});
+    invalidateCollectionPages();
+    expect(await entryLayout(tab.doc.document, tab, tab.documentPath)).toBeNull();
+  });
+
+  test("a file in no collection has no template page to ask", async () => {
+    setup({}, { layout: "./layouts/base.json" });
+    const tab = openEntryTab();
+    expect(await entryLayout(tab.doc.document, tab, "notes/readme.md")).toBe("./layouts/base.json");
+  });
+});
+
+describe("a layout inside a layout", () => {
+  const NESTED_POST = { ...POST, $layout: "./layouts/base.json" };
+
+  test("the entry is drawn in the whole chain, each node marked with its own file", async () => {
+    setup({
+      "layouts/base.json": JSON.stringify(BASE),
+      "layouts/post.json": JSON.stringify(NESTED_POST),
+      "pages/blog/[slug].json": JSON.stringify({
+        $layout: "./layouts/post.json",
+        $paths: { contentType: "posts", param: "slug" },
+        tagName: "article",
+      }),
+    });
+    const tab = openEntryTab();
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    const header = renderNodeAt(result.renderDoc, ["children", 0]);
+    expect(header.textContent).toBe("Site header");
+    expect(header.$__layout).toEqual({ file: "layouts/base.json", path: ["children", 0] });
+    const postNav = renderNodeAt(result.renderDoc, ["children", 1, "children", 0]);
+    expect(postNav.textContent).toBe("Post nav");
+    expect(postNav.$__layout).toEqual({ file: "layouts/post.json", path: ["children", 0] });
+    expect(renderNodeAt(result.renderDoc, ["children", 2]).textContent).toBe("Site footer");
+    // The entry's body sits in the INNER layout's slot, and that is the editable region.
+    expect(result.mapperCtx.pageContentPrefix).toEqual(["children", 1, "children", 1, "children"]);
+    expect(result.renderDoc.$layout).toBeUndefined();
+  });
+
+  test("a cycle stops at the first repeat, and an unreadable parent leaves the chain", async () => {
+    setup({
+      "layouts/a.json": JSON.stringify({ ...POST, $layout: "./layouts/b.json" }),
+      "layouts/b.json": JSON.stringify({ ...BASE, $layout: "./layouts/a.json" }),
+      "layouts/orphan.json": JSON.stringify({ ...POST, $layout: "./layouts/missing.json" }),
+    });
+    const cyclic = await resolveCanvasLayout("./layouts/a.json");
+    expect(renderNodeAt(cyclic!, ["children", 0]).textContent).toBe("Site header");
+    const orphan = await resolveCanvasLayout("./layouts/orphan.json");
+    expect(renderNodeAt(orphan!, ["children", 0]).textContent).toBe("Post nav");
+    expect(await resolveCanvasLayout("./layouts/missing.json")).toBeNull();
+  });
+});
+
+describe("writing an entry inside its layout", () => {
+  async function resolved() {
+    setup({ "layouts/base.json": JSON.stringify(BASE) }, { layout: "./layouts/base.json" });
+    const tab = openEntryTab();
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    const ctx: PathMapCtx = {
+      arrayPaths: new Set(result.mapperCtx.arrayPaths),
+      canvasMode: result.mapperCtx.canvasMode,
+      layoutWrapped: result.mapperCtx.layoutWrapped,
+      pageContentOffset: result.mapperCtx.pageContentOffset,
+      pageContentPrefix: result.mapperCtx.pageContentPrefix,
+    };
+    return { ctx, result, tab };
+  }
+
+  test("the entry is wrapped, and the entry's body is the editable region", async () => {
+    const { result } = await resolved();
+    expect(result.mapperCtx.layoutWrapped).toBe(true);
+    expect(result.mapperCtx.pageContentPrefix).toEqual(["children", 1, "children"]);
+    expect(result.mapperCtx.pageContentOffset).toBe(0);
+    const main = renderNodeAt(result.renderDoc, ["children", 1]);
+    expect(main.tagName).toBe("main");
+  });
+
+  test("an edit inside the body lands on the ENTRY's own document", async () => {
+    const { ctx, result, tab } = await resolved();
+    const renderPath: JxPath = ["children", 1, "children", 1];
+    const rendered = renderNodeAt(result.renderDoc, renderPath);
+    expect(rendered.textContent).toBe("The cold frame is full again.");
+    const mapped = classifyRenderNode(renderPath, rendered, ctx);
+    expect(mapped).toEqual({ kind: "path", path: ["children", 1] });
+    // The mapped path addresses the entry's paragraph, so a mutation through it edits the entry.
+    const target = getNodeAtPath(tab.doc.document, ["children", 1]);
+    expect(target?.textContent).toBe("The cold frame is full again.");
+  });
+
+  test("every layout node is the layout's, and the chrome around the body is locked", async () => {
+    const { ctx, result } = await resolved();
+    const header = renderNodeAt(result.renderDoc, ["children", 0]);
+    expect(classifyRenderNode(["children", 0], header, ctx)).toEqual({
+      chrome: true,
+      kind: "layout",
+      layoutFile: "layouts/base.json",
+      layoutPath: ["children", 0],
+    });
+    const footer = renderNodeAt(result.renderDoc, ["children", 2]);
+    expect(classifyRenderNode(["children", 2], footer, ctx)).toMatchObject({
+      chrome: true,
+      kind: "layout",
+    });
+    // The box the body sits in wraps it, so it is the layout's but not locked over the body.
+    const main = renderNodeAt(result.renderDoc, ["children", 1]);
+    expect(classifyRenderNode(["children", 1], main, ctx)).toMatchObject({
+      chrome: false,
+      kind: "layout",
+    });
+  });
+
+  test("the show-layout toggle off draws the entry alone, as it does a page", async () => {
+    setup({ "layouts/base.json": JSON.stringify(BASE) }, { layout: "./layouts/base.json" });
+    const tab = openEntryTab();
+    tab.session.ui.showLayout = false;
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(result.mapperCtx.layoutWrapped).toBe(false);
+  });
+
+  test("a JSON entry is not written on the canvas, so it is never wrapped", async () => {
+    setup({ "layouts/base.json": JSON.stringify(BASE) }, { layout: "./layouts/base.json" });
+    closeAllTabs();
+    const tab = openTab({
+      document: { tagName: "div" },
+      documentPath: "content/posts/data.json",
+      id: "content/posts/data.json",
+    });
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(result.mapperCtx.layoutWrapped).toBe(false);
+  });
+
+  test("outside a site project an entry path is an ordinary document", async () => {
+    setup({ "layouts/base.json": JSON.stringify(BASE) }, { layout: "./layouts/base.json" });
+    resetStudioState({
+      isSiteProject: false,
+      projectConfig: { content: CONTENT, defaults: { layout: "./layouts/base.json" } },
+    });
+    const tab = openEntryTab();
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(result.mapperCtx.layoutWrapped).toBe(false);
+  });
+});
+
+describe("a layout's component imports, around a document in another folder", () => {
+  test("resolve from the layout's file, not the entry's", async () => {
+    setup(
+      {
+        "layouts/base.json": JSON.stringify({
+          ...BASE,
+          $elements: [
+            { $ref: "../components/site-nav.json" },
+            { $ref: "./parts/site-footer.json" },
+            { $ref: "@acme/widgets" },
+            "plain-tag",
+          ],
+        }),
+      },
+      { layout: "./layouts/base.json" },
+    );
+    const tab = openEntryTab();
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    const refs = (result.renderDoc.$elements ?? []).map((el) =>
+      isString(el) ? el : isJsonObject(el) ? el["$ref"] : null,
+    );
+    expect(refs).toContain("../../components/site-nav.json");
+    expect(refs).toContain("../../layouts/parts/site-footer.json");
+    expect(refs).toContain("@acme/widgets");
+    expect(refs).toContain("plain-tag");
+    expect(refs).not.toContain("../components/site-nav.json");
+  });
+
+  test("an import the document declares itself, or a non-list, is left alone", () => {
+    const own = { $ref: "./card.json" };
+    const unmarked = { $__layout: true, $ref: "./x.json" };
+    rebaseLayoutElementRefs([own, null, "plain-tag", unmarked], "a/b.md");
+    expect(own.$ref).toBe("./card.json");
+    expect(unmarked.$ref).toBe("./x.json");
+    expect(() => rebaseLayoutElementRefs(undefined, "a/b.md")).not.toThrow();
+    const page = {
+      $__layout: { file: "layouts/base.json", path: [] },
+      $ref: "../components/n.json",
+    };
+    rebaseLayoutElementRefs([page], "pages/index.json");
+    expect(page.$ref).toBe("../components/n.json");
+  });
+});

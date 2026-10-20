@@ -114,7 +114,6 @@ function leftCtx(): NavigatorPanelDeps {
     renderCanvas: mock(() => {}),
     mountSignalsPanel: mock(() => {}),
     setCanvasMode: mock(() => {}),
-    setGitDiffState: mock(() => {}),
     /* SAFETY: the Elements palette is the only reader of `webdata`, and it reads nothing but
        `elements` (category name to `{ tag }` blocks); one category is all the Insert panel needs. */
     webdata: { elements: { Text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"],
@@ -123,7 +122,7 @@ function leftCtx(): NavigatorPanelDeps {
 
 describe("navigator/panel:<id>", () => {
   /** Every panel the left panel routes to — the ids that come free from one stamp. */
-  const PANELS = ["files", "git", "insert", "layers", "packages", "data", "page"];
+  const PANELS = ["site", "files", "insert", "layers", "packages", "data"];
 
   for (const panel of PANELS) {
     test(`"${panel}" is addressable without anyone authoring its id`, async () => {
@@ -157,26 +156,6 @@ describe("navigator/panel:<id>", () => {
     const panelRegions = listRegions().filter((id) => id.startsWith("navigator/panel:"));
     expect(panelRegions).toEqual(["navigator/panel:data"]);
   });
-
-  test("a leaf inside a panel is hand-stamped and nests under the derived one", async () => {
-    /* The leaf is `surfaces/git-panel.json`'s own `data-jx-region`, so the panel has to draw its
-       repository body to have one — and a mounted document needs more turns than a lit render. */
-    resetWorkspaceWithTab();
-    shell.leftTab = "git";
-    shell.git.status = {
-      ahead: 0,
-      behind: 0,
-      branch: "main",
-      files: [],
-      isRepo: true,
-      remotes: [],
-    };
-    leftPanelModule.mount(leftCtx());
-    await flush(6);
-    const commit = resolveRegion("navigator/panel:git/commit");
-    expect(commit).not.toBeNull();
-    expect(resolveRegion("navigator/panel:git")!.contains(commit)).toBe(true);
-  });
 });
 
 // ─── inspector/tab:<value>, stamped from the tab records ──────────────────────
@@ -191,28 +170,37 @@ describe("inspector/tab:<value>", () => {
     });
   }
 
-  /** Whether an Inspector tab's body is the one on screen — its panel is not `hidden`. */
+  /**
+   * Whether an Inspector leaf's body is the one on screen — its panel is not `hidden`, and inside
+   * Element's panel it is the active leaf of three.
+   */
   function showingTab(key: string): boolean {
-    const panel = resolveRegion(`inspector/tab:${key}`)?.closest('[role="tabpanel"]');
-    return panel !== null && panel !== undefined && !panel.hasAttribute("hidden");
+    const body = resolveRegion(`inspector/tab:${key}`);
+    const panel = body?.closest('[role="tabpanel"]');
+    return (
+      panel !== null &&
+      panel !== undefined &&
+      !panel.hasAttribute("hidden") &&
+      body?.dataset.active === "true"
+    );
   }
 
-  test("all four tab bodies are addressable, and only the active one is shown", async () => {
+  test("all five leaf bodies are addressable, and only the active one is shown", async () => {
     const tab = resetWorkspaceWithTab();
     tab.session.ui.rightTab = "style";
     mountInspector();
     await flush(3);
 
-    for (const key of ["properties", "style", "events", "assistant"]) {
+    for (const key of ["page", "properties", "style", "events", "assistant"]) {
       const body = resolveRegion(`inspector/tab:${key}`);
       expect(body).not.toBeNull();
       expect(inspectorHost().contains(body)).toBe(true);
     }
-    /* Showing is the `tabpanel`'s own `hidden`, not an inline `display` this dock writes onto a
-       container: the four bodies are real tab panels now, so the strip's `aria-selected` and the
-       panel's `hidden` are one fact rather than two that can disagree. */
+    /* Showing is the `tabpanel`'s own `hidden` for the strip, and the leaf's `data-active` inside
+       Element: never an inline `display` this dock writes onto a container. */
     expect(showingTab("style")).toBe(true);
     expect(showingTab("properties")).toBe(false);
+    expect(showingTab("page")).toBe(false);
   });
 
   test("an unknown stored tab falls back to the first record, not to a dead region", async () => {
@@ -220,7 +208,7 @@ describe("inspector/tab:<value>", () => {
     tab.session.ui.rightTab = "content";
     mountInspector();
     await flush(3);
-    expect(showingTab("properties")).toBe(true);
+    expect(showingTab("page")).toBe(true);
     expect(resolveRegion("inspector/tab:content")).toBeNull();
   });
 });

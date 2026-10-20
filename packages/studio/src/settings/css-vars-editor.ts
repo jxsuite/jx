@@ -11,8 +11,16 @@
  * **The markup left.** The section is the `settings-css-vars` surface
  * (`surfaces/settings-css-vars.json`), mounted by `surfaces/settings-css-vars.ts`; what is here is
  * the part that was always this module's — what a row shows, what an edit writes, and what a failed
- * write says. `renderCssVarsEditor` is unchanged as a contract: the registry hands a container to a
- * `render`, and this one mounts a document into it instead of rendering lit.
+ * write says. `renderCssVarsEditor` is unchanged as a contract: it is handed a container and mounts
+ * a document into it instead of rendering lit.
+ *
+ * **Its host is the Styles workspace's Variables view** (`style/variables-view.ts`, §7.1), the
+ * `tokens` editor of the `project.json` tab. It was Project Settings › CSS Variables, and its
+ * persistence did not change with the move: an edit is committed through the configuration
+ * chokepoint (`updateSiteConfig` → `commitProjectConfig`) as it is made, which writes the whole
+ * document, so an element style edit the Elements view left unsaved on the same tab is written too
+ * and the tab comes back clean. The view says so in as many words, rather than letting the Save
+ * button's state be the first the author hears of it.
  *
  * Three things it does NOT do, each on purpose:
  *
@@ -28,7 +36,7 @@
 
 import { isNumber, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { notify } from "../services/notify";
+import { runActiveReported } from "../commands/run-reported";
 import { projectState } from "../store";
 import { getEffectiveMedia, updateSiteConfig } from "../site-context";
 import {
@@ -37,12 +45,15 @@ import {
   groupTokens,
   listTokenContexts,
   readTokenOverride,
-  tokenLabel,
   writeTokenOverride,
 } from "../style/project-styles";
 import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
 import { pushProjectStylesToCanvas } from "../style/live-preview";
-import { renderCssVarsSurface } from "../surfaces/settings-css-vars";
+import {
+  renderCssVarsSurface,
+  revealCssVarsGroup,
+  revealCssVarsToken,
+} from "../surfaces/settings-css-vars";
 import { friendlyNameToVar } from "../utils/studio-utils";
 
 import type { JxStyle, ProjectConfig } from "@jxsuite/schema/types";
@@ -89,6 +100,8 @@ const ADD_OVERRIDE_ROW = { label: "Add override…", value: "" };
 interface Form {
   add: Partial<Record<TokenGroupId, { name: string; value: string }>>;
   error: string;
+  /** The token the Outline pointed this editor at ({@link focusCssVar}), or `null`. */
+  current: string | null;
 }
 
 const forms = new WeakMap<HTMLElement, Form>();
@@ -97,7 +110,7 @@ const forms = new WeakMap<HTMLElement, Form>();
 function form(container: HTMLElement): Form {
   let state = forms.get(container);
   if (!state) {
-    state = { add: {}, error: "" };
+    state = { add: {}, current: null, error: "" };
     forms.set(container, state);
   }
   return state;
@@ -197,11 +210,11 @@ function overrideRow(
   const current = readTokenOverride(rootStyle, context, token.name);
   return {
     ctx: context.name,
-    fieldLabel: `${token.label} in ${context.label}`,
+    fieldLabel: `${token.name} in ${context.label}`,
     id: `${token.name} ${context.name}`,
     kind: context.kind,
     label: context.label,
-    swatchLabel: `${token.label} in ${context.label}`,
+    swatchLabel: `${token.name} in ${context.label}`,
     swatchState: isColor ? "swatch" : "none",
     token: token.name,
     value: current === undefined ? "" : String(current),
@@ -217,6 +230,10 @@ function overrideRow(
  * in dark mode" is a question a palette is always answering. A token with no value is offered no
  * picker: writing an empty override is how one is CLEARED, so the affordance would be inert.
  *
+ * A row is NAMED by its custom property, `--color-accent`, never by a friendly rewording of it: the
+ * Outline beside the view lists the same `--name`, a `var()` reference spells it, and it is what
+ * CSS reads. The same goes for a reference chip, which names the property the value follows.
+ *
  * @param {ProjectToken} token
  * @param {TokenGroup} group
  * @param {JxStyle} rootStyle
@@ -228,6 +245,7 @@ function tokenRow(
   group: TokenGroup,
   rootStyle: JxStyle,
   declared: TokenContext[],
+  current: string | null,
 ): TokenRowView {
   const isColor = group.id === "color";
   const value = String(token.value);
@@ -240,25 +258,26 @@ function tokenRow(
   );
   const addable = value === "" ? [] : addableContexts(rootStyle, declared, token.name, shown);
   return {
-    addLabel: `Add an override for ${token.label}`,
+    addLabel: `Add an override for ${token.name}`,
     addOptions: [ADD_OVERRIDE_ROW, ...addable.map((c) => ({ label: c.label, value: c.name }))],
     addPick: "",
     addState: addable.length === 0 ? "none" : "shown",
-    chipLabel: refName === null ? "" : tokenLabel(refName),
+    chipLabel: refName ?? "",
     chipState: refName === null ? "none" : isColor && resolved !== undefined ? "swatch" : "plain",
     chipSwatch: resolved === undefined ? "" : String(resolved),
     chipTitle:
       refName === null
         ? ""
         : `${toTokenRef(refName)} → ${resolved === undefined ? "unresolved" : String(resolved)}`,
-    label: token.label,
+    current: token.name === current,
+    label: token.name,
     name: token.name,
     overrides: shown.map((context) => overrideRow(token, context, isColor, rootStyle)),
     overrideState: shown.length === 0 && addable.length === 0 ? "none" : "shown",
     previewFont: group.id === "font" ? value : "",
     previewState: group.id === "font" ? "font" : "none",
-    removeLabel: `Delete ${token.label}`,
-    swatchLabel: `${token.label} colour`,
+    removeLabel: `Delete ${token.name}`,
+    swatchLabel: `${token.name} color`,
     swatchState: isColor ? "swatch" : "none",
     value,
     ...well(isColor ? resolved : undefined, COLOR_INPUT_FALLBACK),
@@ -297,7 +316,9 @@ function view(container: HTMLElement): CssVarsView {
       nameLabel: `New ${group.title} name`,
       noticeState: group.id === "color" && !hasScheme ? "shown" : "none",
       title: group.title,
-      tokens: tokens.map((token) => tokenRow(token, group, rootStyle, declared)),
+      tokens: tokens.map((token) =>
+        tokenRow(token, group, rootStyle, declared, form(container).current),
+      ),
       valueHint: ADD_ROW_HINTS[group.id].value,
       valueLabel: `New ${group.title} value`,
     });
@@ -360,16 +381,17 @@ function addOverride(container: HTMLElement, token: string, ctx: string): void {
   commit(container);
 }
 
-/** Switch Settings to the Contexts section, saying so when the section registry will not load. */
-async function openContextsSection(): Promise<void> {
-  try {
-    const { setSettingsSection } = await import("./section-registry");
-    setSettingsSection("contexts");
-  } catch (error) {
-    notify.error(`Could not open Settings › Contexts — ${errorMessage(error)}`, {
-      source: "Settings",
-    });
-  }
+/**
+ * Open Project Settings on Contexts, where the color schemes and breakpoints this editor overrides
+ * per token are defined.
+ *
+ * Through the command rather than by writing the registry's section: the editor is hosted outside
+ * Settings (the Styles workspace's Variables view), so selecting a section of a dialog that is not
+ * open would change nothing the reader can see. A refusal is filed under "Styles", the workspace
+ * the editor lives in, as the Variables view's own button files it.
+ */
+function openContextsSection(): void {
+  void runActiveReported("settings.open", { section: "contexts" }, "Styles");
 }
 
 /**
@@ -395,11 +417,11 @@ function actions(container: HTMLElement): CssVarsActions {
        * point at the place a scheme is DEFINED. It used to define one itself — a button here
        * appended `'--dark': '(prefers-color-scheme: dark)'` to `$media` without ever using the word
        * breakpoint, which made this form the fourth and least discoverable definition site for a
-       * map whose other three lived in the wizard, Overview and Properties › Media. The lazy import
-       * breaks the css-vars-editor ↔ section-registry cycle.
+       * map whose other three lived in the wizard, Overview and Properties › Media. It goes there
+       * through `settings.open`, so the dialog opens on Contexts however this editor is hosted.
        */
       manageContexts: () => {
-        void openContextsSection();
+        openContextsSection();
       },
       removeToken: (name: string) => {
         delete style()[name];
@@ -452,4 +474,48 @@ function actions(container: HTMLElement): CssVarsActions {
  */
 export function renderCssVarsEditor(container: HTMLElement): void {
   refresh(container);
+}
+
+/**
+ * Point the editor at one token: mark its row, scroll it into view and put the keyboard on its
+ * value. What a variable row in the Styles workspace's Outline asks for.
+ *
+ * A name this project does not declare is still recorded (it may be about to be added, or the
+ * Outline may be ahead of a write), and simply marks nothing. The flow only marks the row; bringing
+ * it on screen is the surface's (`revealCssVarsToken`), because only the adapter knows where the
+ * row it draws is.
+ *
+ * @param {HTMLElement} container
+ * @param {string | null} name A custom property, `--accent`, or `null` to mark none
+ * @param {{ reveal?: boolean }} [options] `reveal: false` marks the row without moving the keyboard
+ *   or the scroll position
+ */
+export function focusCssVar(
+  container: HTMLElement,
+  name: string | null,
+  options: { reveal?: boolean } = {},
+): void {
+  form(container).current = name;
+  refresh(container);
+  if (name === null || options.reveal === false) {
+    return;
+  }
+  revealCssVarsToken(container, name);
+}
+
+/**
+ * Point the editor at one group: bring its heading on screen, and with `add` put the keyboard on
+ * its Add row, the editor's own way of adding a variable. What a group heading and "Add variable"
+ * in the Styles workspace's Styles panel ask for.
+ *
+ * @param {HTMLElement} container
+ * @param {TokenGroupId} group
+ * @param {{ add?: boolean }} [options] `add: true` focuses the Add row's name field
+ */
+export function focusCssVarGroup(
+  container: HTMLElement,
+  group: TokenGroupId,
+  options: { add?: boolean } = {},
+): void {
+  revealCssVarsGroup(container, group, options.add === true);
 }

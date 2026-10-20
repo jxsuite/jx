@@ -20,6 +20,7 @@ import {
   loadFormats,
 } from "../format/format-host";
 import { serializeJson } from "@jxsuite/schema/json-layout";
+import { restoreBareRepeaters } from "../tabs/bare-repeaters";
 import type { Tab } from "../tabs/tab";
 
 /**
@@ -43,7 +44,11 @@ export async function serializeDocument(tab: Tab): Promise<string> {
     const fm = tab.doc.content.frontmatter;
     const doc = tab.doc.document;
     const fullDoc = { ...fm, ...doc, children: doc.children ?? [] };
-    return formatSerialize(sourceFormat.name, fullDoc, { mode: "roundtrip" });
+    // The text the file was read as, so what the author did not edit keeps its own spelling.
+    return formatSerialize(sourceFormat.name, fullDoc, {
+      mode: "roundtrip",
+      ...(tab.doc.source !== null && { source: tab.doc.source }),
+    });
   }
   if (tab.doc.mode === "content") {
     const format = defaultContentFormat();
@@ -62,6 +67,11 @@ export async function serializeDocument(tab: Tab): Promise<string> {
      a blank line sits, which characters were escaped — and it is null for a document with no JSON
      source, where every object expands and every array is laid by fit: the formatter's own answer
      for stringified output. Either way the text ends with one newline, as every formatted file
-     does. */
-  return serializeJson(tab.doc.document, tab.doc.layout ?? null);
+     does. A repeater the file wrote as a node's whole `children` is written that way again
+     (`tabs/bare-repeaters.ts`), so the member form the editor works in never reaches the disk —
+     which is also what keeps the layout's pointers, taken from the file's own text, lined up. */
+  return serializeJson(
+    restoreBareRepeaters(tab.doc.document, tab.doc.bareRepeaters ?? null),
+    tab.doc.layout ?? null,
+  );
 }

@@ -261,6 +261,29 @@ describe("jumpSegments", () => {
     ).toEqual([["file", "pages/index.json", "palette.openFiles"]]);
   });
 
+  test("a virtual tab is named as its chip names it, never 'Untitled · Not saved to disk yet'", () => {
+    resetStudioState({ name: "My Site", projectRoot: "/p" });
+    closeAllTabs();
+    const doc = { children: [], tagName: "div" };
+    const home = openTab({ document: doc, documentPath: null, id: "workspace://content" });
+    const [homeSegment] = jumpSegments(home);
+    expect(homeSegment?.label).toBe("Content");
+    expect(homeSegment?.title).toBe("The Content workspace's home, a view rather than a file");
+    const grid = openTab({
+      document: structuredClone(doc),
+      documentPath: null,
+      id: "grid://pages",
+    });
+    expect(jumpSegments(grid)[0]?.label).toBe("Pages · grid");
+    expect(jumpSegments(grid)[0]?.title).not.toContain("Not saved");
+    // Only a genuinely new document is untitled.
+    const fresh = openTab({ document: structuredClone(doc), documentPath: null, id: "new-1" });
+    expect(jumpSegments(fresh)[0]).toMatchObject({
+      label: "Untitled",
+      title: "Not saved to disk yet",
+    });
+  });
+
   test("with no project open the address still starts at the file", () => {
     const tab = resetWorkspaceWithTab();
     expect(jumpSegments(tab)[0]!.kind).toBe("file");

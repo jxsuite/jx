@@ -92,15 +92,19 @@ describe("check-icons", () => {
       expect([...keys].filter((k) => !glyphs.has(k))).toEqual([]);
     });
 
-    test("a key is not a tag — `git-branch` is a glyph and no document declares it", () => {
+    test("a key is not a tag — `browser` is a glyph and no document declares it", () => {
       const tags = kitTagsUsed(join(STUDIO, "src"));
-      expect(tags.has("git-branch")).toBe(false);
-      expect(manifestNames()).toContain("git-branch");
+      expect(tags.has("browser")).toBe(false);
+      expect(manifestNames()).toContain("browser");
     });
 
     test("only registerPanel keys are collected — a command's icon has a visible fallback", () => {
       const keys = iconKeysDeclared(join(STUDIO, "src"));
-      expect(keys.has("git-branch")).toBe(true);
+      // The Site panel's rail glyph (§5.7), and Files', which a "developer" rail flag still draws.
+      expect(keys.has("browser")).toBe(true);
+      expect(keys.has("folder")).toBe(true);
+      // Source Control is off the rail now, so its glyph is drawn by nothing and not collected.
+      expect(keys.has("git-branch")).toBe(false);
       // Declared on command records, which fall back to the title. Sweeping those in is what let
       // The first version report 83 icons "all registered" with three rail buttons drawing nothing.
       expect(keys.has("arrow-up")).toBe(false);

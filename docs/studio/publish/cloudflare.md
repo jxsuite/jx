@@ -4,11 +4,12 @@ description: "Connect Jx Studio to Cloudflare Pages: sign in or paste a token, c
 code:
   - packages/studio/src/publish/publish-panel.ts
   - packages/studio/src/publish/pages-service.ts
+  - packages/studio/src/publish/publish-workspace.ts
 ---
 
 # Publish to Cloudflare Pages
 
-The Publish panel connects your project to Cloudflare Pages, so that every commit you sync builds and publishes automatically. Cloudflare Pages is a free host that serves your prebuilt pages from a CDN, and if your project has a database or sign-ins, it also runs the small worker Jx emits for their `/_jx/*` routes. Open it with the **Publish** button in the toolbar.
+The Publish panel connects your project to Cloudflare Pages, so that every change you publish builds and goes live automatically. Cloudflare Pages is a free host that serves your prebuilt pages from a CDN, and if your project has a database or sign-ins, it also runs the small worker Jx emits for their `/_jx/*` routes. Open it from **Publish › Hosting**: the host section's **Set Up Publishing** button, which is also the **Set Up Publishing** command in [Quick Access](/docs/studio/interface/quick-access).
 
 ![The Publish modal showing the connected state with the latest deployment status](../../images/publish-panel.png)
 
@@ -25,7 +26,7 @@ The first time you open the panel, it asks for a Cloudflare connection. What you
 Once a token is stored, the panel reports that it is stored. It never renders the token back into the field. The box is drawn empty, and only when you ask to replace the token. Revoking lives with every other credential, in **[Preferences › Accounts](/docs/studio/interface/preferences)**.
 :::
 
-If the panel instead says it can't reach the Cloudflare API on this platform, you don't need it at all. Set up Pages once in Cloudflare's own dashboard and publishing still works the same way: commit and sync, your host builds.
+If the panel instead says it can't reach the Cloudflare API on this platform, you don't need it at all. Set up Pages once in Cloudflare's own dashboard and publishing still works the same way: publish your changes, and your host builds.
 
 Where the platform holds the connection for you, an authorization that has expired is named as exactly that: the panel says the connection expired and offers **Reconnect Cloudflare**, rather than asking you to connect an account you already connected. Your deployments are untouched. The site keeps serving, and only the panel's ability to read and change the Pages project is waiting on the reconnection.
 
@@ -51,13 +52,15 @@ After connecting, the panel becomes a status view:
 - The latest deployment's stage and status (for example _deploy: success_), with a **preview** link to that exact build.
 - **Refresh** re-checks; **Disconnect** removes the connection (your Pages project and site stay up; only the link from Studio is removed).
 
-There is no publish button, because publishing is automatic: every **Commit and sync** in **[Source control](/docs/studio/publish/source-control)** triggers a fresh build and deployment. Right after connecting, the panel shows _No deployments yet_. Your next commit starts the first one.
+There is no publish button here, because publishing is automatic: once a provider is connected, **Publish live** in **[Review changes](/docs/studio/publish/source-control)** commits, pushes and asks Cloudflare what it built. Right after connecting, the panel shows _No deployments yet_. Your next publish starts the first one.
+
+**Publish › Deploys** follows it from then on: the live address and the latest production deployment, a deploy that is running with its steps, every deployment Cloudflare reports, and the branch previews, the deployments built from a branch other than production. Each row says its state in words: **Live** for the production deployment serving the site, **Replaced** for an older one, **Ready** for a finished preview, and **Building…**, **Failed** or **Canceled** otherwise; hover the word for the stage and status Cloudflare reported. The list is read when you open Deploys, when you click its **Refresh**, and again after a deploy finishes.
 
 ## Sites with a database or sign-in
 
 Pages serves both halves of a Jx site, but a project with **[data tables](/docs/studio/data)** or accounts needs three things arranged once:
 
-1. **Set the adapter.** In _Settings > General_, set **Platform Adapter** to **Cloudflare Pages**, or to **Cloudflare Workers** if you deploy the site as a Worker instead. Connecting this panel doesn't change it for you, and the build stops with an error on **Static** as soon as the project declares data tables.
+1. **Set the adapter.** Set `build.adapter` in `project.json` to `cloudflare-pages`, or to `cloudflare-workers` if you deploy the site as a Worker instead: pick it under **How it is built** in **Publish › Hosting**. Connecting this panel doesn't change the adapter for you, and the build stops with an error on **Static** as soon as the project declares data tables.
 2. **Push the schema to the real database, from a terminal.** While you develop, a [D1 connection](/docs/studio/data/connections) is stood in by a local SQLite file. Studio's **Push Schema** button goes through that same local backend, so it creates your tables in `.jx/data/<connection>.sqlite` and never touches D1 or `wrangler.jsonc`. `jx db push` is the path that talks to the connection as declared: it applies the same additive plan to D1 itself, and writes D1's binding into your project's `wrangler.jsonc` on the way through. Reaching D1 from outside a deployed worker goes over Cloudflare's API, which needs three things together: the connection's **database ID**, a `CLOUDFLARE_API_TOKEN`, and an account ID (the connection's own **account ID**, or `CLOUDFLARE_ACCOUNT_ID`). Miss one and the push reports the connection as unreachable. Accounts need a second pass: the auth extension's own tables aren't part of the CLI push, and **[Auth and secrets](/docs/studio/data/auth-and-secrets)** covers where they come from.
 3. **Set the secret values on Cloudflare.** `project.json` records only the _names_ of environment variables: the session signing secret, a database URL, OAuth credentials. Give each name a value on the Pages project, with `wrangler pages secret put <NAME>` or the environment settings in Cloudflare's dashboard; locally the same names are read from `.dev.vars`. **[Auth and secrets](/docs/studio/data/auth-and-secrets)** covers the whole arrangement.
 

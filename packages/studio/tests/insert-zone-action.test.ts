@@ -66,6 +66,17 @@ void mock.module("../src/tabs/transact", () => ({
   },
 }));
 
+// The component half of an insert (§5.7): an instance for a registered tag, and the import after.
+const imported: string[] = [];
+void mock.module("../src/editor/insert-component", () => ({
+  componentInstance: (tag: string): JxMutableNode | null =>
+    tag === "site-card" ? { $props: { heading: "Hi" }, tagName: tag } : null,
+  // Called INSIDE the insert's transaction, so the instance and its import are one undo step.
+  mutateImportComponent: (_t: FakeTab, tag: string) => {
+    imported.push(tag);
+  },
+}));
+
 // The activeTab mock is the reactive ref the handler reads.
 const activeTab: FakeActiveTab = { value: { session: {} } };
 void mock.module("../src/workspace/workspace", () => ({ activeTab }));
@@ -98,6 +109,7 @@ beforeEach(() => {
   insertCalls.length = 0;
   lastT = null;
   lastTab = null;
+  imported.length = 0;
 });
 
 describe("runInsertZoneAction", () => {
@@ -131,5 +143,28 @@ describe("runInsertZoneAction", () => {
 
     // The new node is selected at [...insertParentPath, "children", index].
     expect(lastT!.session.selection).toEqual([[...zone.insertParentPath, "children", zone.index]]);
+    // An HTML element imports nothing.
+    expect(imported).toEqual([]);
+  });
+
+  test("a Components pick inserts an instance and imports the component", () => {
+    runInsertZoneAction(anchorStub(), zone);
+    capturedOpts!.onSelect({
+      component: true,
+      description: "components/site-card.json",
+      group: "Components",
+      label: "<site-card>",
+      tag: "site-card",
+    });
+    expect(defaultDefCalls).toEqual([]);
+    expect(insertCalls[0]?.def).toEqual({ $props: { heading: "Hi" }, tagName: "site-card" });
+    expect(imported).toEqual(["site-card"]);
+  });
+
+  test("a component the registry no longer knows inserts the element's default", () => {
+    runInsertZoneAction(anchorStub(), zone);
+    capturedOpts!.onSelect({ component: true, description: "", label: "x", tag: "gone-away" });
+    expect(defaultDefCalls).toEqual(["gone-away"]);
+    expect(imported).toEqual([]);
   });
 });

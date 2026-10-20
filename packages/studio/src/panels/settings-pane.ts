@@ -1,219 +1,325 @@
 /// <reference lib="dom" />
 /**
- * The Project Settings editor, drawn inside the pane — the stage, not an overlay.
+ * The Project Settings editor's flow: the grouped section list, the section body, and the Moved
+ * footnote, drawn inside the settings dialog (§17.1).
  *
- * Two columns: the section list (inner nav) and the section body. It is deliberately the same
- * two-column shape the modal had, because the modal's IA was never the problem — its MODALITY was.
- * Moving the identical layout into `#canvas-wrap` is what makes the seven screenshot crops change
- * frame (`overlay.dialog:settings` → `pane.primary`) without one manifest STEP changing, which is
- * the proof that the command boundary was drawn in the right place.
+ * Two columns. The list is the section registry in its three groups (General, Integrations,
+ * Advanced), so an extension's section joins the dialog by registering and leaves by going away;
+ * the body is whichever section is current, drawn by that section's own renderer.
  *
  * **This file is the FLOW; the markup is a document.** `surfaces/settings-pane.json` owns the two
- * columns, the list's ARIA and keyboard, and every value in their style;
- * `surfaces/settings-pane.ts` mounts one per pane (studio-ui-guidelines.md §6, §9.3). What stays
- * here is the part that is a decision: which sections there are, which one is current, and which
- * renderer gets the body.
+ * columns, the lists' ARIA and keyboard, and every value in their style;
+ * `surfaces/settings-pane.ts` mounts it (studio-ui-guidelines.md §6, §9.3), and
+ * `settings/settings-dialog.ts` owns the dialog it is mounted into. What stays here is the part
+ * that is a decision: which sections there are, which one is current, which renderer gets the body,
+ * and what a renderer's failure says.
  *
- * Mounting follows `grid/grid-panel.ts`: `canvas/canvas-render.ts` calls {@link renderSettingsPane}
- * when the tab enters this mode, and this module owns its reactivity from there — a subscription to
- * the section registry and to the chosen section, so an extension's section appearing a tick later
- * redraws the nav without the canvas being re-rendered.
- *
- * **It imports the registry, never the sections.** `canvas-render.ts` reaches this module, so
- * anything it imports joins the canvas's import graph; the section RENDERERS are registered by
+ * **It imports the registry, never the sections.** The section RENDERERS are registered by
  * `settings/settings-document.ts`, which the app loads when it registers its commands.
  *
- * Nothing here is stamped with a region of its own. `#canvas-wrap` already carries `pane.primary`
- * (the frame, `shell/tree.ts`), the entry rows and the entry editor are stamped by
- * `settings/contributed-section.ts` as `pane.primary/entry:<key>` and `pane.primary/editor`, and a
- * third id for "the settings body" would be a hand-stamped region with nothing to say.
+ * Nothing here is stamped with a region of its own. The dialog carries `overlay.dialog:settings`,
+ * and the entry rows and entry editor of a map-layout section are stamped by
+ * `settings/contributed-section.ts` under it, as `overlay.dialog:settings/entry:<key>` and
+ * `overlay.dialog:settings/editor`.
  *
  * @docs studio/projects/settings
  */
 
+import { errorMessage } from "@jxsuite/schema/parse";
 import {
+  groupedSettingsSections,
   onSettingsDocumentChanged,
   settingsSection,
   settingsDocumentSection,
   setSettingsSection,
-  sortedSettingsSections,
 } from "../settings/section-registry";
 import { mountSettingsPaneSurface } from "../surfaces/settings-pane";
-import type { SettingsPaneHandle } from "../surfaces/settings-pane";
-import type { CanvasSurface } from "../canvas/canvas-surface";
+import { workspaceInfo } from "../workspace/workspace-ids";
+import type { SettingsPaneHandle, SettingsPaneValues } from "../surfaces/settings-pane";
+import type { InspectorTabId } from "../shell";
+import type { WorkspaceId } from "../workspace/workspace-ids";
+import type { StylesView } from "../style/project-styles";
+import type { PublishTab } from "../publish/publish-ids";
 
 /** What the body says when the section that is current is registered by nobody. */
 const NO_SECTIONS = "No settings sections.";
 
 /**
- * One mounted editor per PANE.
+ * What left Project Settings for a workspace, in the order the footnote lists it (§17.1).
  *
- * `config` is a kind the side pane may host, so the previous single `_host` had both panes' stages
- * competing for it: `settingsPaneMounted` answered false for whichever host lost, and that pane's
- * fast path rebuilt the whole section body on every render — throwing away an open inline form
- * mid-keystroke, which is the exact failure the idempotence was written to prevent.
+ * Colors and fonts are the project's design tokens, which the Styles workspace edits beside the
+ * elements they style; hosting and the domain are where the site is published, which the Publish
+ * workspace owns. Head and SEO defaults did not leave (Advanced › Site head still edits them) but
+ * are also on Design's Page tab, which is where an author looks for a page's title. A reader who
+ * learned any of them here is told where it is rather than left to search for it. `place` is what
+ * the button says when it is not simply the workspace's title, and `inspector` is the Inspector tab
+ * that place IS: a button that says "Page tab" and only switches workspace would leave an author
+ * already in Design looking at the Element tab, with nothing visibly changed.
  */
-interface ActiveSettingsPane {
-  host: HTMLElement;
-  /** The mounted chrome. */
-  surface: SettingsPaneHandle;
+const MOVED: readonly {
+  what: string;
+  workspace: WorkspaceId;
+  place?: string;
+  inspector?: InspectorTabId;
+  /** The Styles view the place IS, for a row that moved into one of them. */
+  view?: StylesView;
+  /** The Publish sub-tab the place IS: Hosting, for the adapter and the domain. */
+  publishTab?: PublishTab;
+}[] = [
+  /* The design tokens are the Variables view, not whichever Styles view was last open: a button
+     that says "Variables" and lands on the element catalogue would have the author hunting. */
+  { place: "Styles › Variables", view: "variables", what: "Colors and fonts", workspace: "styles" },
+  {
+    place: "Publish › Hosting",
+    publishTab: "hosting",
+    what: "Hosting and domain",
+    workspace: "publish",
+  },
+  { inspector: "page", place: "Page tab", what: "Head and SEO defaults", workspace: "design" },
+];
+
+/** What the mounted editor is told to do by things only its host can do. */
+export interface SettingsPaneOptions {
   /**
-   * The document's `[part="body"]` island, as {@link draw} last read it off the surface.
-   *
-   * Held here as well so a CHANGE of element can reset {@link ActiveSettingsPane.rendered}: the body
-   * is what a section was drawn into, and a body that has been replaced holds nothing. A mount is
-   * asynchronous, so it is null for the first tick and `draw` returns at that —
-   * {@link renderSettingsPane} redraws once the mount settles.
+   * A Moved footnote's button: close the dialog and go to the named workspace, and to the named
+   * Inspector tab or Styles view there when the row names one.
    */
-  body: HTMLElement | null;
-  /**
-   * The element the ACTIVE section was drawn into, inside {@link ActiveSettingsPane.body}.
-   *
-   * Sections no longer share one container, and they cannot: a converted section mounts a document
-   * and clears what it is given, which destroys lit's `_$litPart$` markers — so the next lit
-   * section rendering into that same element throws on a part whose markers have left the document.
-   * It fails the other way too: lit renders BESIDE foreign nodes rather than replacing them, so a
-   * lit section drawn after a document one left both on screen at once. A fresh host per section is
-   * what makes the two kinds coexist, which is the whole of `studio-ui-guidelines.md` §9.3's
-   * surface-level rule applied to one dispatcher.
-   */
-  sectionHost: HTMLElement | null;
-  /** The section the body currently holds, so an idle re-render does not rebuild it. */
-  rendered: string | null;
-  /** Unsubscribe from the document's change notifications. */
-  off: (() => void) | null;
+  openMoved: (
+    workspace: WorkspaceId,
+    inspector?: InspectorTabId,
+    view?: StylesView,
+    publishTab?: PublishTab,
+  ) => void;
 }
 
-const _active = new Map<string, ActiveSettingsPane>();
+/** The mounted editor. */
+export interface SettingsPaneMount {
+  /** Settles once the columns are mounted and the current section has been drawn once. */
+  ready: Promise<void>;
+  /** Put the keyboard on the current section's row. */
+  focusActive: () => void;
+  /**
+   * Stop following the section registry while the dialog is closed. The editor stays built; a
+   * section registering or a project closing in the meantime is caught up on by {@link resume}.
+   */
+  suspend: () => void;
+  /** Follow the registry again and redraw the current section: the dialog is being shown again. */
+  resume: () => void;
+  /** Take the editor down and unsubscribe. Idempotent. */
+  dispose: () => void;
+}
 
-/** A section row's element id — minted from the key, so the panel can name the row that chose it. */
+/** A section row's element id: minted from the key, so the body can name the row that chose it. */
 function tabIdFor(key: string): string {
   return `settings-nav-${key}`;
 }
 
-/**
- * Mount (or refresh) the settings editor inside the pane.
- *
- * Idempotent for the same host: canvas-render calls this on every render for this mode, and
- * rebuilding the section body on each one would throw away an open inline form mid-keystroke.
- *
- * @param {CanvasSurface} surface - The pane whose stage hosts the editor
- */
-export function renderSettingsPane(surface: CanvasSurface): void {
-  const { paneId, wrap: host } = surface;
-  if (_active.get(paneId)?.host !== host) {
-    detachSettingsPane(paneId);
-    const record: ActiveSettingsPane = {
-      body: null,
-      host,
-      off: onSettingsDocumentChanged(() => draw(paneId, true)),
-      rendered: null,
-      sectionHost: null,
-      surface: mountSettingsPaneSurface(host, values(), {
-        selectSection: (key: string) => {
-          setSettingsSection(key);
-        },
-      }),
-    };
-    _active.set(paneId, record);
-    /* A mount is asynchronous and the island does not exist until it lands, so the `draw` below
-       returns at `!panel.body`. THIS is the pass that first reaches a section renderer — and it
-       only runs while this record is still the pane's, because a mode change can detach it while
-       the mount is in flight. */
-    void record.surface.ready.then(() => {
-      if (_active.get(paneId) === record) {
-        draw(paneId, true);
-      }
-    });
-  }
-  draw(paneId, false);
-}
-
-/** Tear one pane's editor down — the mode-change and project-close path. */
-export function detachSettingsPane(paneId: string): void {
-  const panel = _active.get(paneId);
-  if (!panel) {
-    return;
-  }
-  panel.off?.();
-  panel.surface.dispose();
-  _active.delete(paneId);
+/** The footnote row a button's workspace string names, or `null` for one this module never offered. */
+function movedRow(value: string): (typeof MOVED)[number] | null {
+  return MOVED.find((row) => row.workspace === value) ?? null;
 }
 
 /**
- * Whether the editor is mounted on this pane's stage — canvas-render's "did I already build this".
+ * Everything the document draws, decided here so the document decides nothing.
  *
- * @param {CanvasSurface} surface
- * @returns {boolean}
+ * @param {string} failure The current section's failure sentence, or the empty string
+ * @returns {SettingsPaneValues}
  */
-export function settingsPaneMounted(surface: CanvasSurface): boolean {
-  return _active.get(surface.paneId)?.host === surface.wrap;
-}
-
-/** Everything the document draws, decided here so the document decides nothing. */
-function values() {
+function values(failure: string): SettingsPaneValues {
   const active = settingsDocumentSection();
+  const grouped = groupedSettingsSections();
   return {
     active,
     activeTabId: tabIdFor(active),
     empty: NO_SECTIONS,
-    hasSection: settingsSection(active) !== undefined,
-    navLabel: "Project Settings sections",
-    sections: sortedSettingsSections().map((section) => ({
-      key: section.key,
-      label: section.label,
-      tabId: tabIdFor(section.key),
+    failure,
+    groups: grouped.map((group) => ({
+      id: group.id,
+      label: group.label,
+      note: group.note,
+      sections: group.sections.map((section) => ({
+        key: section.key,
+        label: section.label,
+        tabId: tabIdFor(section.key),
+      })),
+      tabsLabel: group.note === "" ? group.label : `${group.label}, ${group.note.toLowerCase()}`,
+      titleId: `settings-group-${group.id}`,
     })),
+    hasSection: settingsSection(active) !== undefined,
+    // The section's own sentence when it has one, its group's otherwise.
+    intro:
+      settingsSection(active)?.intro ||
+      (grouped.find((group) => group.sections.some((section) => section.key === active))?.intro ??
+        ""),
+    moved: MOVED.map((row) => {
+      const { title } = workspaceInfo(row.workspace);
+      const place = row.place ?? title;
+      return {
+        linkLabel: `${row.what}: ${place}. Go to ${title}`,
+        place,
+        what: row.what,
+        workspace: row.workspace,
+      };
+    }),
   };
 }
 
 /**
- * Update the nav, then the body.
+ * Mount the editor into `host`, the settings dialog's pane slot, and keep it current.
  *
- * @param {boolean} force - Re-run the section renderer even when the section has not changed. True
- *   for a real state change (a nav click, a section registering, an entry being selected by
- *   command); false for canvas-render's idempotent remount.
+ * It subscribes to the section registry and to the chosen section, so an extension's section
+ * appearing a tick later redraws the nav, and a deep link to an entry inside the section already on
+ * screen redraws its body, without the host doing anything.
+ *
+ * @param {HTMLElement} host
+ * @param {SettingsPaneOptions} options
+ * @returns {SettingsPaneMount}
  */
-function draw(paneId: string, force: boolean): void {
-  const panel = _active.get(paneId);
-  if (!panel) {
-    return;
-  }
-  const active = settingsDocumentSection();
-  panel.surface.update(values());
+export function mountSettingsPane(
+  host: HTMLElement,
+  options: SettingsPaneOptions,
+): SettingsPaneMount {
+  let disposed = false;
+  /** The island as {@link draw} last read it off the surface. */
+  let body: HTMLElement | null = null;
+  /**
+   * The element the ACTIVE section was drawn into, inside {@link body}.
+   *
+   * Sections do not share one container, and they cannot: a converted section mounts a document and
+   * clears what it is given, which destroys lit's `_$litPart$` markers, so the next lit section
+   * rendering into that same element throws on a part whose markers have left the document. A fresh
+   * host per section is what makes the two kinds coexist.
+   */
+  let sectionHost: HTMLElement | null = null;
+  /** The section the body currently holds. */
+  let rendered: string | null = null;
+  /** The current section's failure sentence; cleared whenever it is drawn again. */
+  let failure = "";
+  /** Counts renders, so a late rejection from a superseded one cannot overwrite a newer answer. */
+  let generation = 0;
 
-  /* The island the document is holding right now. A body that has been REPLACED holds nothing, so
-     the section it was said to be showing has to be re-drawn — which is the one thing the lit
-     `ref` this replaced was ever really tracking. */
-  const body = panel.surface.body();
-  if (body !== panel.body) {
-    panel.body = body;
-    panel.rendered = null;
+  const surface: SettingsPaneHandle = mountSettingsPaneSurface(host, values(failure), {
+    openMoved: (workspace: string) => {
+      const target = movedRow(workspace);
+      if (target !== null) {
+        options.openMoved(target.workspace, target.inspector, target.view, target.publishTab);
+      }
+    },
+    selectSection: (key: string) => {
+      setSettingsSection(key);
+    },
+  });
+
+  /** Say a section failed, where the section would have been. */
+  function fail(key: string, reason: string, at: number): void {
+    if (disposed || at !== generation) {
+      return;
+    }
+    const label = settingsSection(key)?.label ?? key;
+    failure = `Could not show ${label}: ${reason}`;
+    surface.update(values(failure));
   }
-  if (!body || (!force && panel.rendered === active)) {
-    return;
+
+  /**
+   * Update the nav, then the body.
+   *
+   * @param {boolean} force Re-run the section renderer even when the section has not changed: true
+   *   for a real state change (a nav click, a section registering, an entry selected by command).
+   */
+  function draw(force: boolean): void {
+    if (disposed) {
+      return;
+    }
+    const active = settingsDocumentSection();
+    const island = surface.body();
+    if (island !== body) {
+      body = island;
+      rendered = null;
+    }
+    if (!island || (!force && rendered === active)) {
+      surface.update(values(failure));
+      return;
+    }
+    /* Read BEFORE the write: whether the section is changing is what decides the host, and
+       `rendered` is about to stop saying so. */
+    const changed = rendered !== active;
+    rendered = active;
+    failure = "";
+    surface.update(values(failure));
+    const section = settingsSection(active);
+    if (!section) {
+      /* Every section unregistered at once: a project closing while the dialog is open. The
+         document says so itself (`hasSection`), and the island is emptied so a renderer's leftovers
+         do not sit under the sentence explaining that there is nothing to draw. */
+      sectionHost = null;
+      island.replaceChildren();
+      return;
+    }
+    /* A FRESH host whenever the section changes, and the same one for a forced redraw of the
+       section already showing: remounting that one would take the caret out of whatever field the
+       reader is typing in. */
+    if (changed || !sectionHost || sectionHost.parentElement !== island) {
+      sectionHost = document.createElement("div");
+      island.replaceChildren(sectionHost);
+    }
+    generation += 1;
+    const at = generation;
+    try {
+      const result = section.render(sectionHost);
+      if (result instanceof Promise) {
+        result.catch((error) => {
+          fail(active, errorMessage(error), at);
+        });
+      }
+    } catch (error) {
+      fail(active, errorMessage(error), at);
+    }
   }
-  /* Read BEFORE the write: whether the section is changing is what decides the host, and
-     `panel.rendered` is about to stop saying so. */
-  const changed = panel.rendered !== active;
-  panel.rendered = active;
-  const section = settingsSection(active);
-  if (!section) {
-    /* Every section unregistered at once — a project closing while the editor is open. The
-       document says so itself (`hasSection`), and the island is emptied so a renderer's leftovers
-       do not sit under the sentence explaining that there is nothing to draw. */
-    panel.sectionHost = null;
-    body.replaceChildren();
-    return;
-  }
-  /* A FRESH host whenever the section changes, and the same one for a forced redraw of the section
-     already showing — remounting that one would take the caret out of whatever field the reader is
-     typing in. The freshness is what lets the two kinds coexist: a lit section left its render part
-     on the element it drew into, and a document section clears the element it is given, so handing
-     either one the other's element is a throw or a double render. */
-  if (changed || !panel.sectionHost || panel.sectionHost.parentElement !== body) {
-    panel.sectionHost = document.createElement("div");
-    body.replaceChildren(panel.sectionHost);
-  }
-  section.render(panel.sectionHost);
+
+  const follow = (): (() => void) =>
+    onSettingsDocumentChanged(() => {
+      draw(true);
+    });
+  /** The registry subscription, or null while the dialog is closed. */
+  let off: (() => void) | null = follow();
+  /* The island does not exist until the mount lands, so the first pass that reaches a section
+     renderer is this one. */
+  const ready = surface.ready.then(() => {
+    draw(true);
+  });
+
+  return {
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      off?.();
+      off = null;
+      surface.dispose();
+    },
+    focusActive: () => {
+      surface.focusActive();
+    },
+    ready,
+    resume() {
+      if (disposed || off !== null) {
+        return;
+      }
+      off = follow();
+      /* Redrawn rather than trusted: anything may have moved while it was closed (a section
+         registered, the project closed or changed, the configuration edited in Styles). Into a
+         FRESH host, as every open drew into when each one built its own frame: several sections
+         keep their form state (a half-typed entry, a failed save's error) in a WeakMap keyed on
+         the host they were given, and an open is a new visit, so none of that may come back from
+         the last one, or from another project's. Only a redraw WHILE open keeps the host, which is
+         what keeps the caret in the field being typed in. */
+      sectionHost = null;
+      draw(true);
+    },
+    suspend() {
+      off?.();
+      off = null;
+    },
+  };
 }

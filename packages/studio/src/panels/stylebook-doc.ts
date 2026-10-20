@@ -21,8 +21,15 @@ import { isKeyframesAtRule } from "@jxsuite/runtime/css";
 import type { StylebookEntry } from "./stylebook-panel";
 import type { ComponentEntry } from "../files/components";
 import type { JxPath } from "../state";
-import { isNonNullObject } from "@jxsuite/schema/guards";
-import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import { isNonNullObject, isRef } from "@jxsuite/schema/guards";
+import type { StylebookSpecimens } from "../style/stylebook-specimens";
+import type {
+  JxDocument,
+  JxHeadEntry,
+  JxMutableNode,
+  JxStateDefinition,
+  JxStyle,
+} from "@jxsuite/schema/types";
 
 export interface StylebookDocResult {
   /** The specimen document (plain JSON — safe to post over the bridge). */
@@ -142,6 +149,101 @@ export function hasTagStyle(rootStyle: JxStyle, tagPath: string): boolean {
   return false;
 }
 
+/** One catalogue tag as a list of element defaults draws it: the Styles panel's, and the Outline's. */
+export interface CatalogueRow {
+  /** The catalogue entry the row stands for. */
+  entry: StylebookEntry;
+  tag: string;
+  /** The compound path (`ul li`): the row's key, and what selecting the row selects. */
+  path: string;
+  /** How deep in its specimen the tag sits: 0 for a section's own entries. */
+  depth: number;
+  /** Whether the selection's leaf is this tag ({@link selectionLeaf}). */
+  selected: boolean;
+}
+
+/**
+ * The leaf of a stylebook selection.
+ *
+ * A selection is a compound path (`"ul li"`) and the catalogue draws one row per TAG, so the row
+ * that is marked is the one whose tag is the path's last segment. That is what the tree has always
+ * done; it is written down here because "selected" meaning something other than "equal" is exactly
+ * the kind of thing a reader assumes is a bug.
+ */
+export function selectionLeaf(selection: string | null): string | null {
+  if (!selection) {
+    return null;
+  }
+  return selection.split(" ").pop() ?? null;
+}
+
+/**
+ * Flatten catalogue entries and everything under them into rows, in document order.
+ *
+ * Children are deduplicated by tag: a `<ul>` specimen carries several `<li>`s and they are one row,
+ * because the row selects a TAG and there is one rule per tag path to write. The ONE walk both
+ * lists draw from, so the two cannot drift; what each says about a row (its dot, its label) is the
+ * caller's.
+ *
+ * @param entries A section's entries, or several sections' in order
+ * @param selection The stylebook selection (`shell.stylebook.selection`)
+ */
+export function catalogueRows(
+  entries: readonly StylebookEntry[],
+  selection: string | null,
+): CatalogueRow[] {
+  const leaf = selectionLeaf(selection);
+  const out: CatalogueRow[] = [];
+  const walk = (entry: StylebookEntry, depth: number, parentPath: string): void => {
+    const path = parentPath ? `${parentPath} ${entry.tag}` : entry.tag;
+    out.push({ depth, entry, path, selected: entry.tag === leaf, tag: entry.tag });
+    const children = entry.children
+      ? [...new Map(entry.children.map((child) => [child.tag, child])).values()]
+      : [];
+    for (const child of children) {
+      walk(child, depth + 1, path);
+    }
+  };
+  for (const entry of entries) {
+    walk(entry, 0, "");
+  }
+  return out;
+}
+
+/**
+ * A card's specimen for a component drawn as the first row of a list
+ * (`style/stylebook-specimens.ts`): the list's repeater, reading its row from `rootState[key]` so
+ * two cards' lists cannot collide, and the rest of the page state the row was drawn in, the first
+ * card's value winning a shared name (`$page`, `$site`). Null when the sample is not a repeater
+ * over a state list.
+ */
+export function sampleRowSpecimen(
+  sample: JxDocument,
+  key: string,
+  rootState: Record<string, JxStateDefinition>,
+): JxMutableNode | null {
+  const [list] = Array.isArray(sample.children) ? sample.children : [];
+  if (!isNonNullObject(list) || Array.isArray(list) || !isRef(list.items)) {
+    return null;
+  }
+  const { $ref } = list.items;
+  const listKey = $ref.startsWith("#/state/") ? $ref.slice("#/state/".length) : "";
+  const rows = sample.state?.[listKey];
+  if (!Array.isArray(rows)) {
+    return null;
+  }
+  rootState[key] = rows;
+  for (const [name, value] of Object.entries(sample.state ?? {})) {
+    if (name !== listKey && !(name in rootState)) {
+      rootState[name] = value;
+    }
+  }
+  /* SAFETY: `list` is the repeater object a page's `children` held; only its `items` is replaced,
+     with a ref of the same shape. */
+  const repeater = { ...list, items: { $ref: `#/state/${key}` } } as JxMutableNode;
+  return { children: [repeater], tagName: "div" };
+}
+
 /** Options for {@link buildStylebookDoc}. */
 export interface BuildStylebookDocOpts {
   meta: { $sections: { label: string; elements: StylebookEntry[] }[] };
@@ -150,9 +252,16 @@ export interface BuildStylebookDocOpts {
   effectiveStyle: JxStyle;
   /** Merged $media map (getEffectiveMedia output) — becomes the doc's $media. */
   effectiveMedia: Record<string, string>;
+  /** Merged project+document `$head` (getEffectiveHead output) — becomes the doc's `$head`. */
+  effectiveHead?: JxHeadEntry[];
   filter: string;
   customizedOnly: boolean;
   projectRoot: string | null;
+  /**
+   * How each component card is drawn, by tag (`style/stylebook-specimens.ts`). A component with no
+   * entry is drawn bare, with its declared defaults as attributes.
+   */
+  specimens?: StylebookSpecimens;
 }
 
 /**
@@ -265,6 +374,8 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
 
   // Custom components from the registry — live custom elements registered via $elements.
   const $elements: (string | { $ref: string })[] = [];
+  // The data the sample-row cards read: each row's list, and the page context it was drawn in.
+  const rootState: Record<string, JxStateDefinition> = {};
   {
     let comps = opts.components;
     if (filter) {
@@ -288,17 +399,30 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
               "/",
             ),
           });
-          const attributes: Record<string, string> = {};
-          for (const p of comp.props ?? []) {
-            if (p.default !== undefined && p.default !== "false" && p.default !== "''") {
-              attributes[p.name] = String(p.default).replaceAll(/^'|'$/g, "");
+          const drawn = opts.specimens?.get(comp.tagName);
+          if (drawn?.kind === "props") {
+            const specimen: JxMutableNode = { $props: drawn.props, tagName: comp.tagName };
+            return cardNode(comp.tagName, `<${comp.tagName}>`, specimen, cardPath, null);
+          }
+          if (drawn?.kind === "row") {
+            const row = sampleRowSpecimen(drawn.sample.doc, `stylebookRow${ci}`, rootState);
+            if (row) {
+              return cardNode(comp.tagName, `<${comp.tagName}>`, row, cardPath, null);
             }
           }
-          const specimen: JxMutableNode = { tagName: comp.tagName };
-          if (Object.keys(attributes).length > 0) {
-            specimen.attributes = attributes;
+          if (drawn?.kind !== "none") {
+            const attributes: Record<string, string> = {};
+            for (const p of comp.props ?? []) {
+              if (p.default !== undefined && p.default !== "false" && p.default !== "''") {
+                attributes[p.name] = String(p.default).replaceAll(/^'|'$/g, "");
+              }
+            }
+            const specimen: JxMutableNode = { tagName: comp.tagName };
+            if (Object.keys(attributes).length > 0) {
+              specimen.attributes = attributes;
+            }
+            return cardNode(comp.tagName, `<${comp.tagName}>`, specimen, cardPath, null);
           }
-          return cardNode(comp.tagName, `<${comp.tagName}>`, specimen, cardPath, null);
         }
         // Npm/format-class components can't be $ref-registered — placeholder box (legacy parity).
         const fallback: JxMutableNode = {
@@ -325,7 +449,15 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
   if ($elements.length > 0) {
     doc.$elements = $elements;
   }
+  /* The project's `$head` too: its webfont links are what make `fontFamily: 'Barlow'` render as
+     Barlow, and a specimen sheet drawn in the system fallback shows styles the site never has. */
+  if (opts.effectiveHead && opts.effectiveHead.length > 0) {
+    doc.$head = opts.effectiveHead;
+  }
   doc.$media = opts.effectiveMedia;
+  if (Object.keys(rootState).length > 0) {
+    doc.state = rootState;
+  }
   doc.attributes = { class: "sb-root" };
   doc.children = sections;
   doc.style = transposeStylebookStyle(opts.effectiveStyle);

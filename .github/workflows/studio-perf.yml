@@ -1,19 +1,31 @@
 # Studio interaction perf gate.
 #
-# Nightly on main, plus every PR that can move the numbers. A dev machine compares only within
-# its own update-day window; a runner is the quiet environment the comparison needs, which is
-# why the gate lives here rather than in a local pre-push hook.
+# Two questions, two modes, because they have different answers to "compared with what?":
 #
-# The failure mode is the tracked baseline being beaten by a regression: `trace-studio.ts
-# --compare` exits non-zero when any per-scenario metric grows by more than 20% AND 25 ms
-# against `scripts/perf/baseline.json`, printing a delta table with the offending rows. A
-# regenerated baseline (`--write-baseline 1`) is an intentional performance-PASS change and
-# belongs in the same PR as the change that caused it.
+# - PULL REQUEST: did THIS change make Studio slower? The job builds the PR's merge base beside the
+#   PR, serves both, and runs `trace-studio.ts --base-url`: a same-runner A/B in which every
+#   scenario's repetitions are interleaved between the two builds, so whatever the runner is doing
+#   is paid by both, with a fresh Chrome per side for every scenario. The gate judges wall time and
+#   main-thread work (scripting + style + layout; the components are printed as diagnostics), and
+#   a metric regresses only when head's median beats base's by more than 20% AND
+#   25 ms AND the repetitions separate (one-sided exact Mann-Whitney, p < 0.05). A scenario base
+#   does not have (a new feature) is traced and held to the absolute ceilings in
+#   scripts/perf/budgets.json instead; one that throws on either side, or whose command head no
+#   longer declares, fails. The A/B table is the job summary.
 #
-# The baseline warns about its own machine: the nightly runner is quiet and the seed is CPU-hungry
-# sometimes, so a baseline captured on a LOUD dev machine and gated here against a quiet runner
-# reads as "every scenario improved" rather than as a news story. Both files carry their windows,
-# and a moved baseline must arrive with its own re-capture rationale in the PR that lands it.
+# - NIGHTLY: has main drifted? The absolute trend run against the tracked scripts/perf/baseline.json.
+#   It re-captures a fresh baseline from this runner every night and uploads it as the
+#   `studio-perf-results` artifact. baseline.json is (re)written ONLY from that artifact, never from
+#   a dev machine: the September baseline was captured on a loud workstation, and a CI runner gated
+#   against it read every scenario as 37 to 95% faster and the one real regression as +100%.
+#   Adoption: download the artifact of a green nightly (or a manual workflow_dispatch) run, copy
+#   its baseline.json over scripts/perf/baseline.json, and land it in a PR that says which run.
+#   A baseline records the analyzer version it was captured under, and the trend gates only
+#   against the current one: the tracked September file predates main-thread self time, so until
+#   a runner capture is adopted the nightly is report-only (a warning and the table, no red).
+#
+# Budget: two installs and two builds (~4 min), then 5 interleaved reps of every scenario on each
+# side. The job is capped well above its expected run so a hung Chrome fails rather than idles.
 name: Studio Perf
 
 on:
@@ -24,6 +36,7 @@ on:
       - "packages/ui/src/**"
       - "packages/runtime/src/**"
       - "scripts/perf/**"
+      - ".github/workflows/studio-perf.yml"
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
@@ -34,6 +47,7 @@ permissions:
 jobs:
   perf:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # The SAME pinned container the screenshots lane runs: Chrome for Testing must exist here too,
     # and a container whose install location the lane cannot guess gives persistent diagnostics.
     container:
@@ -42,29 +56,42 @@ jobs:
     env:
       PUPPETEER_SKIP_DOWNLOAD: "1"
       TZ: UTC
+      PERF_OUT: /tmp/jx-perf-out
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # The gate diffs nothing against git, but the dev server walks the whole tree and a
-          # normal checkout is all either needs.
+          # Full history: the A/B leg needs the merge base of this PR and its target branch.
           fetch-depth: 0
 
       - name: Trust the container workspace
         shell: bash
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory /tmp/jx-perf-base
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4
-
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup-bun
 
       # The traced bundle is the one this checkout builds, not a dev cache: the dist/ dev server
       # watcher reuses it and the gate's URLs go through the jxsuite.com fixture that lives in
       # the repo.
       - run: bun run build:studio
+
+      # On a pull request, `HEAD` is GitHub's merge of the PR into its target, so the merge base
+      # with the target is the target's tip: the A/B compares "main with this PR" against "main
+      # without it", which is the question a reviewer is asking.
+      - name: Materialise the merge base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "Base: $base"
+          git worktree add --detach /tmp/jx-perf-base "$base"
+          cd /tmp/jx-perf-base
+          bun install --frozen-lockfile
+          bun run build:studio
 
       - name: Resolve the container's Chrome for Testing
         shell: bash
@@ -82,34 +109,77 @@ jobs:
           echo "CHROME_BIN=$bin" >> "$GITHUB_ENV"
           "$bin" --version
 
-      - name: Start the dev server
+      # Head on :3000, base (pull requests only) on :3001. Each dev server serves its own tree, so
+      # each build is traced against its own copy of the jxsuite.com fixture. `JX_DEV_WATCH=0`:
+      # served as built, because a watcher that sees any write under the root rebuilds a bundle and
+      # live-reloads the page a scenario is driving (a base older than the flag ignores it).
+      - name: Start the dev servers
         shell: bash
         run: |
           set -euo pipefail
-          nohup bun run dev > /tmp/jx-dev-server.log 2>&1 &
-          echo $! > /tmp/jx-dev.pid
-          up=0
-          for i in $(seq 1 90); do
-            if curl -sf -o /dev/null http://127.0.0.1:3000/packages/studio/index.html; then
-              echo "server up after ${i} probe(s)"
-              up=1
-              break
-            fi
-            sleep 1
-          done
-          if [ "$up" != "1" ]; then
-            echo "::error::Dev server did not come up on :3000. Log tail follows."
-            tail -40 /tmp/jx-dev-server.log
-            exit 1
+          start() {
+            local dir=$1 port=$2
+            (cd "$dir" && JX_DEV_PORT=$port JX_DEV_WATCH=0 nohup bun run dev > "/tmp/jx-dev-$port.log" 2>&1 &)
+            for i in $(seq 1 120); do
+              if curl -sf -o /dev/null "http://127.0.0.1:$port/packages/studio/index.html"; then
+                echo ":$port up after ${i} probe(s)"
+                return 0
+              fi
+              sleep 1
+            done
+            echo "::error::Dev server did not come up on :$port. Log tail follows."
+            tail -40 "/tmp/jx-dev-$port.log"
+            return 1
+          }
+          start "$GITHUB_WORKSPACE" 3000
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            start /tmp/jx-perf-base 3001
           fi
 
-      # The gate itself. `--compare` exits non-zero on a regression against the tracked baseline
-      # and prints the per-scenario delta table as the job's summary: the nightly run's row is
-      # what a maintainer reads first after an idle cron fires.
-      - name: Trace interactions against the tracked baseline
+      - name: A/B against the merge base
+        if: github.event_name == 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
-          bun scripts/perf/trace-studio.ts --reps 3 \
-            --compare scripts/perf/baseline.json 2>&1 \
-            | tee "$GITHUB_STEP_SUMMARY"
+          studio() {
+            local project
+            project=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$2/sites/jxsuite.com/project.json")
+            echo "http://127.0.0.1:$1/packages/studio/index.html?project=$project&automation=1"
+          }
+          bun scripts/perf/trace-studio.ts \
+            --url "$(studio 3000 "$GITHUB_WORKSPACE")" \
+            --base-url "$(studio 3001 /tmp/jx-perf-base)" \
+            --out "$PERF_OUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      # The trend run. `--compare` exits non-zero on drift past 20% and 25 ms against the tracked
+      # baseline when it was captured under the current analyzer version (report-only otherwise);
+      # `--write-baseline` re-captures one from this runner for a maintainer to adopt.
+      - name: Trend against the tracked baseline
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun scripts/perf/trace-studio.ts --reps 5 \
+            --compare scripts/perf/baseline.json \
+            --write-baseline 1 --baseline-out "$PERF_OUT/baseline.json" \
+            --out "$PERF_OUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      # The dev servers' own logs go with the results: a file change or a failed request under a
+      # scenario is said there and nowhere else.
+      - name: Keep the dev server logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$PERF_OUT"
+          cp /tmp/jx-dev-*.log "$PERF_OUT/" 2>/dev/null || true
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: studio-perf-results
+          path: ${{ env.PERF_OUT }}
+          if-no-files-found: ignore
+          retention-days: 30

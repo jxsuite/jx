@@ -23,6 +23,8 @@
 
 import type { KeyScope } from "./levels";
 import type { JxPath } from "../state";
+import { DEFAULT_WORKSPACE } from "../workspace/workspace-ids";
+import type { WorkspaceId } from "../workspace/workspace-ids";
 
 /** PAL-derived capability keys. One `when` clause replaces a scattered `if (platform.x)`. */
 export const CAPABILITIES = [
@@ -35,6 +37,11 @@ export const CAPABILITIES = [
   /* The image editor's gate. A backend that cannot hand Studio a project file's raw bytes cannot
      decode one, so the Image mode is not offered at all rather than offered and then failing. */
   "readFileBytes",
+  /* The Publish family's host question (studio.md §22.8): the host can reach the Cloudflare API
+     (`cfApi`), so it can connect a provider, deploy and read deployments. Whether it can open a
+     pull request is not a key: no record is refused on it. Send for review is a destination
+     inside the workspace, refused by the flow with its reason (`publish/publish-changes.ts`). */
+  "publish",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -55,10 +62,11 @@ export type EditorKind =
   | "grid"
   | "code"
   | "diff"
-  | "library"
   | "config"
+  | "tokens"
   | "entry"
   | "media"
+  | "home"
   | "none";
 
 /** The Canvas view axis — one control, three values (§4.2). */
@@ -90,18 +98,22 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
   ["entry", "entry"],
   ["git-diff", "diff"],
   ["grid", "grid"],
-  ["manage", "library"],
+  /* A workspace's home (`workspace/workspace-home.ts`): the surface a workspace opens on when none
+     of its own tabs is open. No document, no selection, nothing to paste into, so not the Canvas
+     key scope a mode this map did not know would fall into. */
+  ["content-home", "home"],
+  ["media-home", "home"],
+  ["publish-home", "home"],
   /* The Media viewer — `media/media-pane.ts`. An image, a video, a font specimen: files the studio
      can SHOW but has no document model for, which is why clicking one used to end in "No format
      class imported for …", advice that means nothing about a PNG. */
   ["media", "media"],
   ["preview", "canvas"],
-  /* Project Settings — `settings/settings-document.ts`'s SETTINGS_MODE. A form over `project.json`,
-     which is a configuration object and not a document tree; `stylebook` (Project Styles) is the
-     second editor over that same document and answers `config` for the same reason. */
-  ["settings", "config"],
   ["source", "code"],
   ["stylebook", "config"],
+  /* The Variables view (`style/variables-view.ts`): a form over `project.json`'s custom
+     properties, nothing to paste into, so the global key scope rather than the Canvas one. */
+  ["tokens", "tokens"],
 ]);
 
 /**
@@ -109,8 +121,7 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
  *
  * An unknown mode reads as Canvas, and that default is only for modes STUDIO DOES NOT OWN: a format
  * declares its own list (`format.studio.modes`) and every mode declared that way is a view of the
- * artboard. A mode Studio itself introduces is not covered by it and belongs in the map above —
- * which is what `settings` was not.
+ * artboard. A mode Studio itself introduces is not covered by it and belongs in the map above.
  */
 /**
  * Human names for the editor kinds, so no surface prints an enum at a reader — and so two surfaces
@@ -121,13 +132,16 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
 export const EDITOR_KIND_LABELS: Readonly<Record<EditorKind, string>> = {
   canvas: "Canvas",
   code: "Code",
-  config: "Project Styles",
+  /* The Styles workspace's three views of `project.json` are named for what each one edits:
+     Elements (element defaults by tag, the `stylebook` editor), Variables and Code. */
+  config: "Elements",
   diff: "Diff",
   entry: "Entry",
   grid: "Grid",
+  home: "Home",
   media: "Media",
-  library: "Library",
   none: "None",
+  tokens: "Variables",
 };
 
 export function editorKindForMode(mode: string): EditorKind {
@@ -163,6 +177,15 @@ export interface CommandContext {
     ahead: number;
     behind: number;
     dirtyCount: number;
+  };
+  /**
+   * Which of the five workspaces is on screen (`shell.workspace`). A record or a panel whose
+   * surface belongs to one workspace gates on this, and every builder of a context — the live one,
+   * `panelContext()` and this module's empty one — has to fill it, or a predicate reads the default
+   * and silently never holds.
+   */
+  workspace: {
+    id: WorkspaceId;
   };
   document: {
     open: boolean;
@@ -293,6 +316,7 @@ export function emptyContext(): CommandContext {
   return {
     project: { open: false, isSite: false, isRepo: false, isMultilingual: false },
     git: { ahead: 0, behind: 0, dirtyCount: 0 },
+    workspace: { id: DEFAULT_WORKSPACE },
     document: { open: false, dirty: false, mode: "", canUndo: false, canRedo: false },
     editor: { kind: "none" },
     canvas: { view: "design" },
@@ -319,6 +343,7 @@ export function emptyContext(): CommandContext {
       windowControls: false,
       findReferences: false,
       readFileBytes: false,
+      publish: false,
     },
   };
 }

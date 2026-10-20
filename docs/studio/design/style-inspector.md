@@ -18,9 +18,9 @@ code:
 
 # Style inspector
 
-The Style inspector is the **Style** tab of the Inspector, a full set of visual CSS controls for what you have selected. Select an element in Design mode and click **Style** (or press :kbd[⌘⇧2]); edits apply to the live canvas as you make them. The dock's header names the tab and what it is pointed at: the element's tag, `6 elements` when several are selected, or the document's name when nothing is.
+The Style inspector is the **Style** tab of the Inspector, a full set of visual CSS controls for what you have selected. Select an element in Design mode and click **Style** (or press :kbd[⌘⇧3]); edits apply to the live canvas as you make them. The dock's header names the tab and what it is pointed at: the element's tag, `6 elements` when several are selected, or the document's name when nothing is.
 
-With no file open the tab offers **Open a page…**; with a file open and nothing selected it asks you to click anything on the canvas to style it, in the same words the **Content** and **Logic** tabs use.
+With no file open the tab offers **Open a page…**; with a file open and nothing selected it asks you to click anything on the canvas to style it, in the same words the **Content** and **Logic** tabs use. Beside the **Variables** view of the Styles workspace there is no element to style, so the tab says that variables are edited in the view itself and points you to the **Elements** view for element defaults (see **[Design tokens](/docs/studio/design/tokens)**).
 
 ![Jx Studio style inspector with spacing, typography, and color controls for a selected element](../../images/design-inspector.png)
 

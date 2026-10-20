@@ -327,17 +327,15 @@ describe("the screenshot manifest", () => {
     // The shot contract's conversion took it from 39 to 8 — the seeds moved to `seedIds()`, the
     // `toggle*` entries are refused by `TOGGLE_ID` before this map is read, and every id whose
     // Record landed left.
-    expect(Object.keys(AUTOMATION_COMMANDS).length).toBeLessThanOrEqual(8);
+    expect(Object.keys(AUTOMATION_COMMANDS).length).toBeLessThanOrEqual(5);
     // An entry that the registry HAS declared is a countdown that failed to count down.
     const declared = new Set(defaultCommandSet().map((command) => command.id));
     expect(Object.keys(AUTOMATION_COMMANDS).filter((id) => declared.has(id))).toEqual([]);
-    // And no `command` gap is a mystery: the manifest reaches each through an `unstable` step whose
-    // `reason` names the id, which is what makes the hatch count and this map the same debt.
-    const manifestText = await Bun.file(manifestPath).text();
-    for (const [id, entry] of Object.entries(AUTOMATION_COMMANDS)) {
-      if (entry.disposition === "command") {
-        expect(manifestText, `nothing in the manifest still needs "${id}"`).toContain(id);
-      }
-    }
+    /* And no `command` gap is left at all: `media.browse`, the last, is a record, so what remains is
+       every refusal §13.5 makes normative, which is not a debt. */
+    expect(new Set(Object.values(AUTOMATION_COMMANDS).map((entry) => entry.disposition))).toEqual(
+      new Set(["refused"]),
+    );
+    expect(declared.has("media.browse")).toBe(true);
   });
 });

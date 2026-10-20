@@ -105,8 +105,8 @@
     },
     "& [part=\"step-icon\"]": {
       "flex": "none",
-      "width": "10px",
-      "textAlign": "center"
+      "--jx-icon-size": "1em",
+      "marginBlockEnd": "-0.15em"
     },
     "& [part=\"action\"]": {
       "marginTop": "var(--jx-space-1)"
@@ -205,12 +205,18 @@
                             },
                             "children": [
                               {
-                                "tagName": "span",
+                                "tagName": "jx-icon",
                                 "attributes": {
-                                  "part": "step-icon",
-                                  "aria-hidden": "true"
+                                  "part": "step-icon"
                                 },
-                                "textContent": "${$map.item.icon}"
+                                "$props": {
+                                  "name": {
+                                    "$ref": "$map/item/icon"
+                                  },
+                                  "label": {
+                                    "$ref": "$map/item/iconLabel"
+                                  }
+                                }
                               },
                               {
                                 "tagName": "span",

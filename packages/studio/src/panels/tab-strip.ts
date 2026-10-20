@@ -54,6 +54,9 @@ import {
   workspace,
 } from "../workspace/workspace";
 import { gridTabLabel } from "../grid/grid-source";
+import { workspaceTabOrder } from "../workspace/tab-workspace";
+import { workspaceHomeLabel } from "../workspace/workspace-ids";
+import { shell, workspaceDrawsTabStrip } from "../shell";
 import { entryDraftPill } from "../content/entry-editor";
 import { DRAFT_FIELD, isDraftEntry } from "../content/draft-state";
 import { entryFields } from "../content/entry-fields";
@@ -246,7 +249,11 @@ export function mount(host: HTMLElement) {
            so a fact about a pane it does not draw — or about a tab in another pane's strip — has
            no reader inside this effect. */
       }
+      // The strip draws the workspace on screen's tabs alone, so a switch repaints every strip.
+      void shell.workspace;
       for (const tab of workspace.tabs.values()) {
+        // A tab's workspace follows its editor (`project.json` is Styles' in its stylebook only).
+        void tab.session.ui.canvasMode;
         void tab.doc.dirty;
         void tab.documentPath;
         void tab.pinned;
@@ -265,6 +272,7 @@ export function mount(host: HTMLElement) {
 }
 
 export function unmount() {
+  cancelMeasures();
   dismissOverflowMenu();
   dismissTabContextMenu();
   _scope?.stop();
@@ -301,6 +309,14 @@ function releaseHostDnD(host: HTMLElement): void {
 }
 
 function render() {
+  /* A workspace that draws no strip (Media, Styles, Publish) has its strips out of the grid
+     (`TAB_STRIP_HIDDEN_CLASS`), so painting them would be work nobody sees, and measuring a strip
+     that is not laid out reads zeros that flip the overflow chevron on every switch. They are left
+     standing as they were and repainted on the way back: this effect tracks `shell.workspace`.
+     A DERIVED pane is the exception. It follows the author into every workspace, and its row is
+     its derivation chip there (no tab of its own is the workspace's), which the frame keeps drawn
+     because it names the pane and holds the ✕ that closes it. So it is painted everywhere. */
+  const strips = workspaceDrawsTabStrip();
   /* One host draws ONE pane. While the shell has a single strip, both panes resolve to the same
      div — and the one whose tabs are on screen is the focused one, so it wins the tie. Without
      that rule the answer was render order, which is how the strip came to mark a tab active in a
@@ -314,7 +330,10 @@ function render() {
   }
   const drawn = new Set<string>();
   for (const [host, pane] of claims) {
-    paint(pane, host);
+    if (strips || pane.derived) {
+      paint(pane, host);
+    }
+    // Counted as drawn either way: a strip left standing is kept, not taken down below.
     _hosts.set(pane.id, host);
     drawn.add(pane.id);
   }
@@ -359,27 +378,81 @@ function paint(pane: Pane, host: HTMLElement): void {
 
   /* The strip is HELD — `surfaces/tab-strip.ts` takes it as the element is created — so this is an
      imperative USE of a node this module owns rather than a re-find of one it renders
-     (studio-ui-guidelines.md §9.4). The chip is asked for by the state the KIT puts on it, which is
-     the accessibility tree's own answer to "which tab is current".
+     (studio-ui-guidelines.md §9.4).
 
      THE REVEAL IS RECORDED ONLY WHEN THERE WAS A STRIP TO REVEAL IT IN. A mount is asynchronous,
      so the first paint into a fresh host has no document yet — and moving `_lastActive` there
      anyway would consume the transition and leave the chip off-screen with nothing left to notice.
      That is exactly the case a derived pane produces: its strip is created the moment its one tab
-     comes back. */
+     comes back.
+
+     The DECISION is taken here, in the paint that saw the transition, and only the scroll waits
+     for the frame: several paints can land in one task (a derivation and its return), and the
+     frame sees only the last of them, which may name the very tab `_lastActive` already held. */
   const strip = _strips.get(host)?.strip();
   if (strip && pane.activeTabId !== _lastActive.get(pane.id)) {
     _lastActive.set(pane.id, pane.activeTabId);
+    _revealPending.add(host);
+  }
+  scheduleMeasure(host);
+}
+
+/**
+ * The frame each host's strip is next read in: one per host, however many paints ask for it.
+ *
+ * Both reads the strip owes after a paint (bringing the active chip into view, and whether the
+ * chevron is needed) need LAYOUT, and both used to run inline at the tail of {@link paint}. A paint
+ * is never the last write of its task: a workspace switch or a tab activation goes on to swap the
+ * stage, the docks and the Inspector, so an inline read paid for a style recalculation of the whole
+ * half-written document (10 to 27 ms each, on every tab or workspace change in the perf trace), and
+ * the frame then paid again once the rest of the task had dirtied it. Read in the next frame, the
+ * strip shares the one layout the frame does anyway. The chevron already tolerated a lag (see
+ * {@link syncOverflow}), and the reveal still lands before that frame paints.
+ */
+const _measureFrames = new Map<HTMLElement, number>();
+
+/** Hosts whose active chip changed since their last frame, so the frame scrolls it into view. */
+const _revealPending = new Set<HTMLElement>();
+
+function scheduleMeasure(host: HTMLElement): void {
+  if (_measureFrames.has(host)) {
+    return;
+  }
+  _measureFrames.set(
+    host,
+    requestAnimationFrame(() => {
+      _measureFrames.delete(host);
+      const pane = drawnPane(host);
+      if (pane && workspaceDrawsTabStrip()) {
+        measureStrip(pane, host);
+      }
+      _revealPending.delete(host);
+    }),
+  );
+}
+
+/** Drop every pending read: the strips they would measure are going away. */
+function cancelMeasures(): void {
+  for (const frame of _measureFrames.values()) {
+    cancelAnimationFrame(frame);
+  }
+  _measureFrames.clear();
+  _revealPending.clear();
+}
+
+/** The reads {@link scheduleMeasure} runs for one host, in a frame of their own. */
+function measureStrip(pane: Pane, host: HTMLElement): void {
+  const strip = _strips.get(host)?.strip();
+  if (strip && _revealPending.has(host)) {
     /* Found by the id the DOCUMENT stamped, not by `aria-selected`. The kit is the single writer
        of a tab's selected state and it writes it on a MutationObserver when the tab SET moved — a
-       microtask later — so a strip whose one tab has just come back has no tab marked current at
-       the instant this runs. The flow already knows which chip it wants; asking the tree instead
-       is asking a question we have the answer to, and getting it one tick early. */
+       microtask later — so a strip whose one tab has just come back may have no tab marked current
+       yet. The flow already knows which chip it wants; asking the tree instead is asking a
+       question we have the answer to. */
     [...strip.children]
       .find((chip) => chip instanceof HTMLElement && chip.dataset.tab === pane.activeTabId)
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
-
   syncOverflow(pane, host);
 }
 
@@ -518,23 +591,31 @@ function project(pane: Pane): TabStripValues {
      that could put one there (`moveTabToPane`, through `revealOpenTab`) is reached solely by
      `openFileInPane`, which the follow calls for COMPANIONS. So the second disjunct is already
      total over a lens and the first chose nothing. */
-  if (derived && pane.tabOrder.length === 0) {
+  /* The tabs of the workspace on screen, in strip order. A pane's other tabs are another
+     workspace's: they keep their slots in `pane.tabOrder` and are simply not drawn. */
+  const visible = workspaceTabOrder(pane);
+  /* A derived pane none of whose tabs is in the workspace on screen draws its derivation chip too.
+     A COMPANION owns real tabs, and after a switch to Media or Publish the one it follows is
+     another workspace's: filtered away, it left a stage drawing a document under a blank row, with
+     no chip, no ✕ and no way out of the derivation. */
+  if (derived && visible.length === 0) {
     /* A COMPANION whose rule has not resolved reaches this too, and it has to. Its `tabOrder` is
        empty for a different reason than a lens's — the document it wants is not open YET, or the
        selection has nothing under it — and the branch below drew nothing: a pane with no chip,
        no ✕ and no way out, which `paneIsEmpty` will not collapse because the derivation counts as
        a subject. The chip is the pane's name and its exit.
        NO `_lastActive` / `_overflowing` RESET HERE, and both were, until each was shown to be a
-       write nothing can read. `_overflowing` is measured by {@link syncOverflow} at the end of
-       every ordinary render, inside the same synchronous call, so a stale `true` carried through a
-       derivation is corrected before any frame sees it. `_lastActive` cannot survive the round trip
+       write nothing can read. `_overflowing` is measured by {@link syncOverflow} in the frame
+       after every ordinary render, before that frame paints, so a stale `true` carried through a
+       derivation is corrected before anybody sees it. `_lastActive` cannot survive the round trip
        either: a tab can only come back through `insertIntoPane` and then `activateTab`, which are
        two reactive writes and therefore two renders, and the first of them lands here with
        `tabOrder` full and `activeTabId` still `null` — which resets the field anyway. Both were
        written as bookkeeping and both were unfalsifiable; the branch below owns the answer. */
     return derivationValues(pane, derived);
   }
-  if (pane.tabOrder.length === 0) {
+  // A non-derived pane whose every tab belongs elsewhere draws the same blank row an empty one does.
+  if (visible.length === 0) {
     /* An empty, non-derived pane WHILE A DRAG IS LIVE draws a `tabs` row with no chips instead of
        going blank: `blankValues` hides the row outright, and a hidden row has no `jx-tabs` element
        for `adoptStrip` to make a target of — so a tab dragged toward the empty primary beside a
@@ -569,7 +650,8 @@ function project(pane: Pane): TabStripValues {
     preset: "",
     stripLabel: stripLabel(pane),
     subject: "",
-    tabs: pane.tabOrder.flatMap((id, index) => chipView(pane, id, index, labels)),
+    // The chip's index is its slot in the pane's FULL order, which is what a drop is measured in.
+    tabs: visible.flatMap((id) => chipView(pane, id, pane.tabOrder.indexOf(id), labels)),
     trailing: _overflowing.get(pane.id) === true,
     trailingGlyph: "⌄",
     // ONE accessible name (`studio-ui-guidelines.md` §10): the glyph is hidden, so `title` is both
@@ -758,11 +840,11 @@ function syncDrag(): void {
 /**
  * Re-measure a pane's strip and re-project once if the chevron's presence changed.
  *
- * Measurement can only happen after the document has written the DOM, so this runs at the tail of
- * {@link paint} and guards its own re-entry on the boolean actually flipping — the chevron cannot
- * oscillate. Before the mount resolves there is no strip to measure and nothing to correct: the
- * next repaint measures it, and a strip that overflows on its first frame has no hidden tab a
- * reader could be looking for yet.
+ * Measurement can only happen after the document has written the DOM, so this runs in the frame
+ * after a {@link paint} ({@link scheduleMeasure}) and guards its own re-entry on the boolean
+ * actually flipping — the chevron cannot oscillate. Before the mount resolves there is no strip to
+ * measure and nothing to correct: the next repaint measures it, and a strip that overflows on its
+ * first frame has no hidden tab a reader could be looking for yet.
  */
 function syncOverflow(pane: Pane, host: HTMLElement) {
   const surface = _strips.get(host);
@@ -837,11 +919,13 @@ export function hiddenTabIds(paneId: string = workspace.activePaneId): string[] 
   const left = strip.scrollLeft;
   const right = left + strip.clientWidth;
   const hidden: string[] = [];
-  /* Typed, not filtered: a chip's position is what pairs it with `pane.tabOrder[index]`, so dropping
-     a node here would shift every later chip onto the wrong tab id. */
+  /* Typed, not filtered: a chip's position is what pairs it with the strip's drawn order, so dropping
+     a node here would shift every later chip onto the wrong tab id. The drawn order is the
+     workspace's tabs alone, which is what `project` drew. */
+  const drawn = workspaceTabOrder(pane);
   const chips = [...strip.querySelectorAll<HTMLElement>('[part="tab"]')];
   for (const [index, chip] of chips.entries()) {
-    const id = pane.tabOrder[index];
+    const id = drawn[index];
     if (id && (chip.offsetLeft < left || chip.offsetLeft + chip.offsetWidth > right)) {
       hidden.push(id);
     }
@@ -877,7 +961,7 @@ export function dismissOverflowMenu() {
 function openOverflowMenu(pane: Pane, labels: Map<string, string>, anchorEl: HTMLElement | null) {
   dismissOverflowMenu();
   const hidden = hiddenTabIds(pane.id);
-  const ids = hidden.length > 0 ? hidden : [...pane.tabOrder];
+  const ids = hidden.length > 0 ? hidden : workspaceTabOrder(pane);
   const anchor = rectOf(anchorEl ?? document.body);
   _overflowHandle = openMenu({
     /* The trigger says "Show hidden tabs" and this is the panel it opens, so it takes the same
@@ -1203,7 +1287,7 @@ function tabLabels(pane: Pane): Map<string, string> {
         ? [
             {
               documentPath: tab.documentPath,
-              fallback: gridTabLabel(tab.id) ?? "Untitled",
+              fallback: gridTabLabel(tab.id) ?? workspaceHomeLabel(tab.id) ?? "Untitled",
               id,
             },
           ]
@@ -1219,7 +1303,7 @@ function tabLabels(pane: Pane): Map<string, string> {
  * @returns {string}
  */
 function tabTooltip(tab: Tab): string {
-  const base = tab.documentPath || gridTabLabel(tab.id) || "Untitled";
+  const base = tab.documentPath || gridTabLabel(tab.id) || workspaceHomeLabel(tab.id) || "Untitled";
   const origin = tab.session.openedFrom;
   const withOrigin = origin?.documentPath ? `${base}\nOpened from ${origin.documentPath}` : base;
   return tab.preview ? `${withOrigin}\nPreview — double-click to keep open` : withOrigin;

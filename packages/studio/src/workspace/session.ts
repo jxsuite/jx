@@ -25,7 +25,7 @@
  * across versions. Every field is validated on the way in and a bad record restores nothing.
  */
 
-import { PRIMARY_PANE, SECONDARY_PANE, focusPane, workspace } from "./workspace";
+import { PRIMARY_PANE, SECONDARY_PANE, activateTab, focusPane, workspace } from "./workspace";
 import {
   isBoolean,
   isJsonObject,
@@ -307,8 +307,22 @@ export async function restoreSession(
       ui.showLayout = stored.showLayout;
     }
   }
-  // Each pane's active tab, then the pane that had the keyboard — in that order, because activating
-  // A tab in a pane is what makes that pane's strip meaningful and focusing comes last.
+  /*
+   * Each pane's active tab, then the pane that had the keyboard, in that order, because activating
+   * a tab in a pane is what makes that pane's strip meaningful and focusing comes last.
+   *
+   * The focused pane's tab is ACTIVATED, not merely assigned, because the restored tab is the most
+   * recently used one and the workspace switch that follows a restore asks exactly that question.
+   * Every document was reopened without moving the keyboard, so the MRU list was empty, and
+   * `focusPane` adds nothing for the pane that already has the keyboard. Entering the stored
+   * workspace then fell back to that workspace's FIRST tab in the strip: two exhibition entries
+   * restored with the English one active came back on whichever was opened first, and a Design
+   * session left on `/exhibitions` came back on `/`.
+   */
+  const focused = workspace.panes.some((pane) => pane.id === session.focusedPane)
+    ? session.focusedPane
+    : null;
+  let focusedTab: string | null = null;
   for (const stored of session.panes) {
     const pane = workspace.panes.find((p) => p.id === stored.id);
     if (!pane || !stored.activeFile) {
@@ -317,12 +331,19 @@ export async function restoreSession(
     const match = pane.tabOrder.find(
       (tabId) => workspace.tabs.get(tabId)?.documentPath === stored.activeFile,
     );
-    if (match) {
-      pane.activeTabId = match;
+    if (!match) {
+      continue;
+    }
+    if (pane.id === focused) {
+      focusedTab = match;
+    } else {
+      activateTab(match, { focus: false });
     }
   }
-  if (workspace.panes.some((pane) => pane.id === session.focusedPane)) {
-    focusPane(session.focusedPane);
+  if (focusedTab) {
+    activateTab(focusedTab);
+  } else if (focused) {
+    focusPane(focused);
   }
   return opened;
 }

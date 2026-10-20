@@ -6,7 +6,7 @@
  * render) lives in settings-document.test.ts; the end-to-end parser parity in
  * contributed-content-types.test.ts.
  */
-import { flush, installMockPlatform, resetStudioState, surfaceOf } from "./harness";
+import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   deriveSettingsSection,
@@ -15,25 +15,32 @@ import {
   resetExtensionSettingsSections,
   syncExtensionSettingsSections,
 } from "../src/settings/extension-sections";
-import { detachSettingsPane, renderSettingsPane } from "../src/panels/settings-pane";
-import { setSettingsSection, settingsSectionKeys } from "../src/settings/section-registry";
+import { mountSettingsPane } from "../src/panels/settings-pane";
+import {
+  groupedSettingsSections,
+  setSettingsSection,
+  settingsSectionKeys,
+} from "../src/settings/section-registry";
+import type { SettingsPaneMount } from "../src/panels/settings-pane";
 import "../src/settings/settings-document";
 import { refreshFormats } from "../src/format/format-host";
 import type { ExtensionContributionInfo, ExtensionsInfo } from "../src/types";
+import contentClass from "@jxsuite/parser/Content.class.json";
 
 // ─── Environment setup ───────────────────────────────────────────────────────
 
 let host: HTMLElement;
+let pane: SettingsPaneMount | null = null;
 
 /**
- * Mount the settings document on a throwaway host and read its inner nav.
+ * Mount the settings editor on a throwaway host and read its nav.
  *
- * The chrome is a document now (`surfaces/settings-pane.json`) and its list is a real vertical
- * `tablist`, so a row is addressed by `part` and names itself with `label` — and the mount is
+ * The chrome is a document (`surfaces/settings-pane.json`) and its lists are real vertical
+ * `tablist`s, so a row is addressed by `part` and names itself with `label`, and the mount is
  * asynchronous, which is why three turns rather than one.
  */
 async function navLabels(): Promise<(string | undefined)[]> {
-  renderSettingsPane(surfaceOf(host));
+  pane ??= mountSettingsPane(host, { openMoved: () => {} });
   await flush(3);
   return [...host.querySelectorAll('[part="nav-item"]')].map(
     (b) => b.getAttribute("label") ?? undefined,
@@ -42,9 +49,9 @@ async function navLabels(): Promise<(string | undefined)[]> {
 
 /** The island a section renders into. */
 function body(): HTMLElement {
-  const island = host.querySelector('[part="body"]');
+  const island = host.querySelector('[part="section-host"]');
   if (!(island instanceof HTMLElement)) {
-    throw new Error('The settings pane rendered no [part="body"] island');
+    throw new Error('The settings editor rendered no [part="section-host"] island');
   }
   return island;
 }
@@ -78,7 +85,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  detachSettingsPane("primary");
+  pane?.dispose();
+  pane = null;
   host.remove();
   setSettingsSection("overview");
   await flush();
@@ -95,6 +103,24 @@ describe("deriveSettingsSection", () => {
     expect(
       deriveSettingsSection({ className: "X", project: { key: "x" }, studio: { icon: "i" } }),
     ).toBe(null);
+  });
+
+  test("the group defaults to Integrations, and a group the nav does not draw falls back", () => {
+    const base: ExtensionContributionInfo = {
+      className: "X",
+      project: { key: "things" },
+      studio: { settings: {} },
+    };
+    expect(deriveSettingsSection(base)!.group).toBe("integrations");
+    expect(
+      deriveSettingsSection({ ...base, studio: { settings: { group: "advanced" } } })!.group,
+    ).toBe("advanced");
+    expect(
+      deriveSettingsSection({ ...base, studio: { settings: { group: "general" } } })!.group,
+    ).toBe("general");
+    expect(
+      deriveSettingsSection({ ...base, studio: { settings: { group: "billing" } } })!.group,
+    ).toBe("integrations");
   });
 
   test("form layout keeps the whole section schema and defaults order to 100", () => {
@@ -191,6 +217,21 @@ describe("syncExtensionSettingsSections", () => {
     await syncExtensionSettingsSections();
     expect(extensionSectionKeys()).toEqual(["guestbook"]);
     expect(await navLabels()).toContain("Guestbook");
+    // Registered in the group its block named, or Integrations when it named none.
+    const integrations = groupedSettingsSections().find((group) => group.id === "integrations");
+    expect(integrations?.sections.map((section) => section.key)).toContain("guestbook");
+  });
+
+  test("a contribution that names a group is listed under it", async () => {
+    installMockPlatform({
+      listExtensions: async () =>
+        extensionsWith([
+          { ...guestbookContribution, studio: { settings: { group: "advanced", order: 70 } } },
+        ]),
+    });
+    await syncExtensionSettingsSections();
+    const advanced = groupedSettingsSections().find((group) => group.id === "advanced");
+    expect(advanced?.sections.map((section) => section.key)).toContain("guestbook");
   });
 
   test("concurrent callers share one run — the deep-link race, at its source", async () => {
@@ -274,5 +315,43 @@ describe("syncExtensionSettingsSections", () => {
     await flush(8);
     expect(body().querySelector('[part="title"]')?.textContent).toBe("Guestbook");
     expect(body().querySelector('[data-prop="moderation"] [part="checkbox"]')).not.toBeNull();
+  });
+
+  test("a section's own intro opens the body in place of its group's sentence", async () => {
+    installMockPlatform({
+      listExtensions: async () =>
+        extensionsWith([
+          guestbookContribution,
+          {
+            ...guestbookContribution,
+            project: { key: "visitors", title: "Visitors" },
+            studio: { settings: { intro: "Who signed the guestbook, one row each." } },
+          },
+        ]),
+    });
+    resetStudioState({ projectConfig: {} });
+    await syncExtensionSettingsSections();
+    const intro = () => host.querySelector('[part="group-intro"]')?.textContent;
+    // No intro of its own: the Integrations sentence stands.
+    setSettingsSection("guestbook");
+    await navLabels();
+    await flush(4);
+    expect(intro()).toBe(
+      "Turn on what your site needs. Each one adds its own options where you use it.",
+    );
+    setSettingsSection("visitors");
+    await flush(4);
+    expect(intro()).toBe("Who signed the guestbook, one row each.");
+  });
+
+  test("the parser's Content Types section speaks of content types, not the Integrations pitch", () => {
+    // Read from the shipped class descriptor: the words are the extension's, not Studio's.
+    const derived = deriveSettingsSection({
+      ...guestbookContribution,
+      project: { key: "content", title: "Content Types" },
+      studio: contentClass.$studio,
+    });
+    expect(derived?.intro).toContain("collection");
+    expect(derived?.contribution.settings.entry?.noun).toBe("content type");
   });
 });

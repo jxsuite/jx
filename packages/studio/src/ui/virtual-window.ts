@@ -330,13 +330,38 @@ export function scrollerFor(list: HTMLElement): HTMLElement | null {
   if (cached && cached.isConnected && list.isConnected && cached.contains(list)) {
     return cached;
   }
-  const found = nearestScroller(list);
+  const found = declaredScroller(list) ?? nearestScroller(list);
   if (found) {
     scrollerCache.set(list, found);
   } else {
     scrollerCache.delete(list);
   }
   return found;
+}
+
+/**
+ * The attribute a host stamps on the element it KNOWS scrolls the lists drawn inside it.
+ *
+ * `#left-panel` is the one scroller every Navigator panel draws in (its dock's root is `display:
+ * contents`), and the shell says so in `surfaces/shell.json`.
+ */
+export const SCROLLER_ATTR = "data-jx-scroller";
+
+/**
+ * The scroller a host declared for `list`, found by a node walk that reads no layout, or null.
+ *
+ * {@link nearestScroller}'s walk reads `scrollHeight`, `clientHeight` and computed overflow on every
+ * ancestor, and the moment a list is bound is the moment its panel has just been drawn, so the
+ * first read pays a style recalculation of the whole half-written document. The cache cannot help
+ * there: the Files tree and the Outline are new elements each time their panel is shown again, so
+ * every show of either one walked (12 to 32 ms a show in the perf trace). A declared scroller
+ * answers by identity. It carries the memoized answer's one residue: it is the scroller whether or
+ * not its content overflows right now, and a list that fits is windowed to the whole list, which is
+ * what {@link computeWindow} answers for it anyway. Only a CONNECTED list asks: a list still being
+ * built is not inside its scroller yet.
+ */
+function declaredScroller(list: HTMLElement): HTMLElement | null {
+  return list.isConnected ? list.closest<HTMLElement>(`[${SCROLLER_ATTR}]`) : null;
 }
 
 /**

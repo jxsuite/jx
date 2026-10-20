@@ -11,6 +11,7 @@ import { registerPlatform } from "../src/platform";
 import {
   invalidateUsages,
   loadUsages,
+  onUsagesInvalidated,
   peekUsages,
   retryUsages,
   splitUsages,
@@ -101,6 +102,45 @@ describe("loadUsages", () => {
     expect(findReferences).toHaveBeenCalledTimes(2);
   });
 
+  test("an answer asked for before an invalidation is handed back but never cached after it", async () => {
+    const releases: ((value: ReferencesResult) => void)[] = [];
+    const findReferences = mock(
+      () =>
+        new Promise<ReferencesResult>((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+    install(findReferences);
+    const query = { path: "layouts/base.json" };
+    const stale = loadUsages(query);
+    // A page was created while the count was being read: that count describes the old project.
+    invalidateUsages();
+    const fresh = loadUsages(query);
+    expect(findReferences).toHaveBeenCalledTimes(2);
+    releases[1]?.(threeFiles);
+    const freshState = await fresh;
+    expect(freshState.status).toBe("ready");
+    releases[0]?.(result());
+    const staleState = await stale;
+    // The caller that asked gets its answer; the cache keeps the fresh one.
+    expect(staleState).toEqual({ result: result(), status: "ready" });
+    expect(peekUsages(query)).toEqual({ result: threeFiles, status: "ready" });
+  });
+
+  test("tells every listener when the answers are dropped, until it unsubscribes", () => {
+    const heard: string[] = [];
+    const stopA = onUsagesInvalidated(() => heard.push("a"));
+    const stopB = onUsagesInvalidated(() => heard.push("b"));
+    invalidateUsages();
+    expect(heard).toEqual(["a", "b"]);
+    stopA();
+    invalidateUsages();
+    expect(heard).toEqual(["a", "b", "b"]);
+    stopB();
+    invalidateUsages();
+    expect(heard).toEqual(["a", "b", "b"]);
+  });
+
   test("passes only the fields it was given", async () => {
     const findReferences = mock(async () => threeFiles);
     install(findReferences);
@@ -171,7 +211,17 @@ describe("the words", () => {
     );
     expect(
       usageHeadline(result({ files: [{ count: 1, path: "components/b.json", refs: [] }] })),
-    ).toBe("Used on 1 other file");
+    ).toBe("Used in 1 file");
+    expect(
+      usageHeadline(
+        result({
+          files: [
+            { count: 1, path: "components/b.json", refs: [] },
+            { count: 2, path: "layouts/base.json", refs: [] },
+          ],
+        }),
+      ),
+    ).toBe("Used in 2 files");
   });
 
   test("delete and rename say different things about the same count", () => {

@@ -32,7 +32,8 @@
       "tagName": "div",
       "attributes": {
         "id": "left-panel",
-        "data-jx-region": "navigator"
+        "data-jx-region": "navigator",
+        "data-jx-scroller": ""
       }
     },
     {

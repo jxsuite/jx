@@ -20,7 +20,6 @@ import {
 } from "../src/workspace/workspace";
 import * as paneGrid from "../src/panels/pane-grid";
 import * as paneContext from "../src/panels/pane-context";
-import * as frontmatter from "../src/panels/frontmatter-panel";
 import { closeSeoModal, openSeoModal } from "../src/panels/seo-modal";
 import { invalidateMediaCache, mountMediaPicker, unmountMediaPicker } from "../src/ui/media-picker";
 import { resetShellSurfaces } from "../src/shell";
@@ -58,11 +57,11 @@ happyDOM.setURL("http://localhost:3000/");
  * The region grammar's fourth derived family, and the guard that keeps it derived.
  *
  * The manifest's `nonDerivedRegions` budget is at its ceiling (12/12) and seven of the ids it names
- * are drawn by stage CONTENT — `pane.primary/library`, `/entry:*`, `/editor`, `/frontmatter`,
- * `/prop:*`. Every one was the literal string `pane.primary`, emitted from a renderer that could
- * only ever be drawing one pane. The moment two stages exist they resolve to two elements and
- * `resolveRegion` takes the LAST, so a shot cropping "the Library" would photograph the side
- * pane's.
+ * are drawn by stage CONTENT — `pane.primary/library`, `/entry:*`, `/editor`, `/prop:*`, and once
+ * `/frontmatter`, the Document Header card's, which left with the card. Every one was the literal
+ * string `pane.primary`, emitted from a renderer that could only ever be drawing one pane. The
+ * moment two stages exist they resolve to two elements and `resolveRegion` takes the LAST, so a
+ * shot cropping "the Library" would photograph the side pane's.
  *
  * The property that makes the manifest need no edit: for the primary, the derived id is
  * byte-identical to the literal it replaces.
@@ -90,7 +89,6 @@ describe("paneRegion", () => {
     for (const part of [
       "context",
       "zoom",
-      "frontmatter",
       "editor",
       "library",
       "library/dropZone",
@@ -138,12 +136,12 @@ describe("uniqueness with two stages standing", () => {
    * different strings for different panes" — which the block above already proves. No renderer was
    * imported, so nothing it could observe was capable of emitting a literal `pane.primary/…`, which
    * is the regression its own docstring describes. `ui/media-picker.ts` then stamped
-   * `inspector/field:${prop}/browse` on a control the Document Header card draws inside EVERY
-   * pane's stage, and this file was green through all of it.
+   * `inspector/field:${prop}/browse` on a control the Document Header card (since removed) drew
+   * inside EVERY pane's stage, and this file was green through all of it.
    *
-   * So the DOM comes from the app: the real pane grid builds the cells, the real pane chrome draws
-   * the context bar and the zoom pod into each, and the real Document Header card draws into each
-   * stage. Every id in the document is then one some renderer actually emitted.
+   * So the DOM comes from the app: the real pane grid builds the cells, and the real pane chrome
+   * draws the context bar and the zoom pod into each. Every id in the document is then one some
+   * renderer actually emitted.
    */
   const paneCtx = {
     exportFile: () => {},
@@ -151,7 +149,7 @@ describe("uniqueness with two stages standing", () => {
     setCanvasMode: () => {},
   };
 
-  /** A tab with enough head material that the Document Header card draws its SEO block. */
+  /** A tab with enough head material that Search appearance draws its media rows. */
   function openDocTab(id: string, path: string) {
     return openTab({
       document: {
@@ -179,31 +177,11 @@ describe("uniqueness with two stages standing", () => {
     await flush();
 
     paneContext.mount(paneGrid.cellForPane(PRIMARY_PANE)!.chrome, paneCtx);
-    frontmatter.mount();
-    for (const paneId of [PRIMARY_PANE, SECONDARY_PANE]) {
-      const cell = paneGrid.cellForPane(paneId)!;
-      if (paneId !== PRIMARY_PANE) {
-        paneContext.attachPaneChromeHost(paneId, cell.chrome);
-      }
-      /* Only if the stage's own render has not already drawn the card a host. The canvas render
-         a new cell schedules draws one for itself, and attaching a second is how a FIXTURE mints
-         the very ambiguity this file is here to detect. Read off the stage, because that is where
-         the host would be — `surfaces/canvas-stage.json` draws it, and the module that receives it
-         no longer answers questions about where it went. */
-      if (!cell.stage.querySelector('[part="doc-header"]')) {
-        const card = document.createElement("div");
-        cell.stage.append(card);
-        frontmatter.attachDocumentHeaderHost(paneId, card);
-      }
-    }
-    frontmatter.render();
-    // Eight turns rather than four: the Document Header card is a mounted document, so a paint is
-    // The kit's registration plus the runtime's own render rather than one synchronous `litRender`.
+    paneContext.attachPaneChromeHost(SECONDARY_PANE, paneGrid.cellForPane(SECONDARY_PANE)!.chrome);
     await flush(8);
   }
 
   afterEach(() => {
-    frontmatter.unmount();
     paneContext.unmount();
     paneGrid.unmount();
     closeAllTabs();
@@ -228,8 +206,6 @@ describe("uniqueness with two stages standing", () => {
       "pane.secondary/tabs",
       "pane.primary/context",
       "pane.secondary/context",
-      "pane.primary/frontmatter",
-      "pane.secondary/frontmatter",
     ]) {
       expect(ids).toContain(id);
     }
@@ -250,13 +226,12 @@ describe("uniqueness with two stages standing", () => {
        the property, not the old geometry: whatever media controls exist outside `#right-panel`,
        none is stamped. Search appearance is a document now, so its Browse controls are addressed by
        `part` rather than by the picker's class — and so is the STAGE they are counted inside — which is itself the point, since a document may
-       not stamp an id the Inspector derives. The Document Header card is a document too now, so the
-       two cards are counted by the region each stamps on itself rather than by a class. */
+       not stamp an id the Inspector derives. The Document Header card that once drew these pickers
+       in every stage is gone (studio.md §4.2), so no stage carries a `/frontmatter` region at all. */
     await twoRealPanes();
-    expect([...document.querySelectorAll('[data-jx-region$="/frontmatter"]')]).toHaveLength(2);
-    // The card's own pickers are gone; the ones that were there are in Search appearance now. The
-    // Picker is a document, so the control is addressed by its `part` — the same handle the derived
-    // Region resolves through, which is what makes this assertion the one that matters.
+    expect([...document.querySelectorAll('[data-jx-region$="/frontmatter"]')]).toHaveLength(0);
+    // No media control stands in a stage. The picker is a document, so the control is addressed
+    // By its `part` — the same handle the derived region resolves through.
     expect(document.querySelectorAll('[part="pane-stage"] [part="browse"]')).toHaveLength(0);
 
     openSeoModal(activeTab.value!);

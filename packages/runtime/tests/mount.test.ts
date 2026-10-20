@@ -54,6 +54,37 @@ function renderedRoot(parent: Element = host): HTMLElement {
   return el;
 }
 
+/**
+ * Record, for every `data-jx` stamp the runtime takes off an element, whether that element was
+ * still in the document: the release half of `releaseElementStyles`, observed from outside.
+ */
+/** What `onUnmount` saw of the root, or null before it ran. */
+interface UnmountWitness {
+  connected: boolean | null;
+}
+
+interface ReleaseSpy {
+  connectedAtRelease: boolean[];
+  restore: () => void;
+}
+
+function spyOnRelease(): ReleaseSpy {
+  const connectedAtRelease: boolean[] = [];
+  const original = Element.prototype.removeAttribute;
+  Element.prototype.removeAttribute = function removeAttribute(this: Element, name: string) {
+    if (name === "data-jx") {
+      connectedAtRelease.push(this.isConnected);
+    }
+    original.call(this, name);
+  };
+  return {
+    connectedAtRelease,
+    restore: () => {
+      Element.prototype.removeAttribute = original;
+    },
+  };
+}
+
 beforeEach(() => {
   host = document.createElement("div");
   document.body.append(host);
@@ -96,6 +127,79 @@ describe("mount — render, dispose, lifecycle", () => {
 
     m.dispose();
     expect(onUnmount).toHaveBeenCalledTimes(1);
+  });
+
+  /* Detached, THEN stopped (embedding.md §2.2). Stopping releases every element's styles, and the
+     release writes to each element (its `data-jx` stamp, its inline custom properties). On a node
+     still in the document each write is a style invalidation for an element that is leaving; the
+     perf trace charged a Publish tab switch 22 ms for exactly that. */
+  test("dispose takes the root out of the document before it releases a single element", async () => {
+    const { connectedAtRelease, restore } = spyOnRelease();
+    const unmountSaw: UnmountWitness = { connected: null };
+
+    try {
+      const m = await mount(
+        {
+          children: [{ style: { color: "rgb(4, 5, 6)" }, tagName: "span" }],
+          style: { color: "rgb(1, 2, 3)" },
+          tagName: "div",
+        },
+        host,
+        {
+          scope: {
+            onUnmount: () => {
+              unmountSaw.connected = renderedRootIsConnected();
+              return null;
+            },
+          },
+        },
+      );
+      const renderedRootIsConnected = () => m.root.isConnected;
+      m.dispose();
+    } finally {
+      restore();
+    }
+    expect(connectedAtRelease.length).toBeGreaterThan(0);
+    expect(connectedAtRelease.every((connected) => !connected)).toBeTrue();
+    // `onUnmount` runs last, against a root that has left, as a custom element's own does.
+    expect(unmountSaw.connected).toBe(false);
+  });
+
+  test("a keyed $map row and a $switch case leave the document before they are released", async () => {
+    const { connectedAtRelease, restore } = spyOnRelease();
+    try {
+      const m = await mount(
+        {
+          children: [
+            {
+              children: {
+                $prototype: "Array",
+                items: { $ref: "#/state/rows" },
+                key: { $ref: "$map/item/id" },
+                map: { style: { color: "rgb(7, 8, 9)" }, tagName: "li" },
+              },
+              tagName: "ul",
+            },
+            {
+              $switch: { $ref: "#/state/view" },
+              cases: { a: { style: { color: "rgb(9, 9, 9)" }, tagName: "p" }, b: { tagName: "p" } },
+              tagName: "section",
+            },
+          ],
+          state: { rows: [{ id: 1 }, { id: 2 }], view: "a" },
+          tagName: "div",
+        },
+        host,
+      );
+      m.scope.rows = [{ id: 2 }];
+      m.scope.view = "b";
+      await tick();
+      expect(host.querySelectorAll("li")).toHaveLength(1);
+    } finally {
+      restore();
+    }
+    expect(connectedAtRelease.length).toBeGreaterThanOrEqual(2);
+    expect(connectedAtRelease.every((connected) => !connected)).toBeTrue();
   });
 
   test("the rules a mount adopted into the document are released on dispose", async () => {
@@ -311,7 +415,8 @@ describe("mount — events out", () => {
     );
     host.querySelector("button")!.click();
     await tick();
-    expect(seen).toEqual([{ detail: "saved", target: m.root }]);
+    expect(seen.map((entry) => entry.detail)).toEqual(["saved"]);
+    expect(seen[0]?.target).toBe(m.root);
   });
 
   test("a body run from an event dispatches from that event's currentTarget, not the root", async () => {
@@ -334,7 +439,8 @@ describe("mount — events out", () => {
     const button = host.querySelector("button")!;
     button.click();
     await tick();
-    expect(targets).toEqual([button]);
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toBe(button);
   });
 });
 

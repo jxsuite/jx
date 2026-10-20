@@ -1,5 +1,6 @@
 /**
- * The project-level verbs the screenshot manifest names: grids, Settings, the Library, New Project.
+ * The project-level verbs the screenshot manifest names: grids, Settings, the Content home, New
+ * Project.
  *
  * The interesting one is `settings.open`. It replaces THREE manifest verbs (`openSettings`,
  * `openSettings {section}` and the refused `settings.setSection`, whose press-shim mirrored the
@@ -53,7 +54,8 @@ const { registerSettingsCommands, settingsCommands } =
   await import("../src/settings/settings-document");
 const { resetSettingsDocumentState, settingsDocumentSection, settingsSectionKeys } =
   await import("../src/settings/section-registry");
-const { libraryCommands, registerLibraryCommands } = await import("../src/browse/library-commands");
+const { contentViewCommands, registerContentViewCommands } =
+  await import("../src/browse/library-commands");
 const { NEW_PROJECT_TABS, newProjectCommands, registerNewProjectCommands } =
   await import("../src/new-project/new-project-modal");
 
@@ -79,7 +81,12 @@ let ctx: CommandContext = makeContext();
 let registry: CommandRegistry;
 
 function allRecords(): AnyCommand[] {
-  return [...gridCommands(), ...settingsCommands(), ...libraryCommands(), ...newProjectCommands()];
+  return [
+    ...gridCommands(),
+    ...settingsCommands(),
+    ...contentViewCommands(),
+    ...newProjectCommands(),
+  ];
 }
 
 /** Run a command that is expected to refuse, and return the message it refused with. */
@@ -109,7 +116,7 @@ beforeEach(() => {
   registry = createCommandRegistry({ getContext: () => ctx });
   registerGridCommands(registry);
   registerSettingsCommands(registry);
-  registerLibraryCommands(registry);
+  registerContentViewCommands(registry);
   registerNewProjectCommands(registry);
 });
 
@@ -125,13 +132,11 @@ describe("the records themselves", () => {
       "settings.open",
       // The second door over the same `project.json` tab, registered by the same factory.
       "styles.open",
-      "library.open",
-      "library.setCategory",
-      "library.setLayout",
-      "library.setSearch",
-      "library.setLocale",
-      "library.refresh",
-      "library.newEntry",
+      "content.showCollection",
+      "content.setLayout",
+      "content.setSearch",
+      "content.setLocale",
+      "content.refresh",
       "project.new",
     ]);
   });
@@ -199,19 +204,19 @@ describe("data.openGrid", () => {
 });
 
 describe("settings.open", () => {
-  test("opens on Overview with no argument", async () => {
+  test("opens on Overview with no argument, as a dialog rather than a tab", async () => {
     await registry.run("settings.open");
     expect(settingsDocumentSection()).toBe("overview");
-    expect(workspace.tabs.get("project.json")).toBeDefined();
+    expect(workspace.tabs.get("project.json")).toBeUndefined();
   });
 
   test("opens on a built-in section", async () => {
-    await registry.run("settings.open", { section: "cssVars" });
-    expect(settingsDocumentSection()).toBe("cssVars");
+    await registry.run("settings.open", { section: "contexts" });
+    expect(settingsDocumentSection()).toBe("contexts");
   });
 
-  test("RETARGETS an already-open document — the predecessor was open-once-then-inert", async () => {
-    await registry.run("settings.open", { section: "cssVars" });
+  test("RETARGETS an already-open dialog — the predecessor was open-once-then-inert", async () => {
+    await registry.run("settings.open", { section: "contexts" });
     await registry.run("settings.open", { section: "head" });
     expect(settingsDocumentSection()).toBe("head");
   });
@@ -265,50 +270,28 @@ describe("settings.open", () => {
   });
 });
 
-describe("library.open", () => {
-  test("opens the Library tab, and is idempotent", async () => {
-    void registry.run("library.open");
-    await flush();
-    expect(workspace.tabs.has("grid://library")).toBe(true);
-    const before = workspace.tabs.size;
-    void registry.run("library.open");
-    await flush();
-    expect(workspace.tabs.size).toBe(before);
+describe("the Content home's state setters", () => {
+  test("refuse a collection the project does not declare, naming what it does", async () => {
+    expect(await refusal("content.showCollection", { collection: "widgets" })).toContain(
+      "declared: pages",
+    );
   });
 
-  test("the Library tab draws the library editor kind, not the canvas", async () => {
-    void registry.run("library.open");
-    await flush();
-    expect(workspace.tabs.get("grid://library")?.capabilities.modes).toEqual(["manage"]);
+  test("refuse a view that is not one of the four", async () => {
+    expect(await refusal("content.setLayout", { layout: "media" })).toContain(
+      "declared: table, cards, calendar, board",
+    );
+  });
+
+  test("none of them is a toggle — every one names the state it reaches", () => {
+    for (const command of contentViewCommands()) {
+      expect(command.id).not.toMatch(/\.toggle[A-Z]/);
+    }
   });
 
   test("is hidden with no project open", () => {
     ctx = makeContext();
-    expect(registry.isVisible("library.open")).toBe(false);
-  });
-});
-
-describe("the Library's state setters", () => {
-  test("refuse a category the Library does not declare, naming what it does", async () => {
-    expect(await refusal("library.setCategory", { category: "widgets" })).toContain(
-      "declared: all, pages, layouts, components, content, media",
-    );
-  });
-
-  test("refuse a layout that is not one of the five", async () => {
-    expect(await refusal("library.setLayout", { layout: "gallery" })).toContain(
-      "declared: table, cards, media, calendar, board",
-    );
-  });
-
-  test("refuse a new-entry kind the project does not declare, listing what it does", async () => {
-    expect(await refusal("library.newEntry", { type: "widget" })).toContain("collection:comments");
-  });
-
-  test("none of them is a toggle — every one names the state it reaches", () => {
-    for (const command of libraryCommands()) {
-      expect(command.id).not.toMatch(/\.toggle[A-Z]/);
-    }
+    expect(registry.isVisible("content.showCollection")).toBe(false);
   });
 });
 

@@ -1,60 +1,49 @@
 /**
- * Tests for src/browse/library-pane.ts — the Library editor kind.
+ * Tests for src/browse/library-pane.ts — the Content home: one collection, browsed (studio.md
+ * §9.1.2, §22.5).
  *
- * The two claims this file exists to hold to account:
+ * The claims this file holds to account:
  *
- * 1. **"No files found" is never printed for two different reasons.** A scan that could not read a
+ * 1. **A file is in one collection or in none.** Pages are the routed files under `pages/`; an entry
+ *    is in the collection `collection-match.ts` names; a template, a component or a media file is
+ *    in none, and the home never lists one.
+ * 2. **"No files found" is never printed for two different reasons.** A scan that could not read a
  *    directory raises a Problem carrying a Retry command and says the list is INCOMPLETE; a filter
- *    that matched nothing says which filter; a project with no files says that; and none of them is
- *    the sentence shown while the scan is still running.
- * 2. **An upload has a destination the author chose.** With a category that names one it is printed on
- *    the control before the drop; with "All" it is asked for, and cancelling asks nobody's
- *    permission to guess.
+ *    that matched nothing says which filter; an empty collection says that; and none of them is the
+ *    sentence shown while the scan is still running.
+ * 3. **Each collection keeps its own view**, and where its entries are published is read from the page
+ *    whose `$paths.contentType` names it.
  *
- * Everything is addressed by `part`, because the pane is a document (`surfaces/library-pane.json`):
- * there is no `.library-card`, `.library-body` or `.library-empty` to find any more. A reader's
- * choice on the language facet is made on the NATIVE `<select>` inside `jx-select` and their typing
- * on the `<input>` inside `jx-textfield`, because writing the host's property would move a control
- * no reader can move. The per-file menu and the New menu are the `menu` surface, so they are read
- * out of `#layer-popover` and their rows are addressed by command id rather than by their label.
+ * Everything is addressed by `part`, because the pane is a document (`surfaces/library-pane.json`).
+ * A reader's choice on the language facet is made on the NATIVE `<select>` inside `jx-select` and
+ * their typing on the `<input>` inside `jx-textfield`. The per-file menu is the `menu` surface, so
+ * it is read out of `#layer-popover` and its rows are addressed by id rather than by label.
  */
 import {
   answerPromptDialog,
-  dragEvent,
   flush,
   installMockPlatform,
   resetStudioState,
   surfaceOf,
-  testFile,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setFormats } from "../src/format/format-host";
-import { MARKDOWN_FORMAT, mockFormatAction } from "./format-fixture";
 import { initLayers } from "../src/ui/layers";
 import { problems, resetNotifications } from "../src/services/notify";
 import libraryDoc from "../src/surfaces/library-pane.json";
 import { LIBRARY_LAYOUTS } from "../src/browse/library-model";
 import { activities, resetActivities } from "../src/panels/activity-panel";
 import type { DirEntry } from "../src/types";
-import type { NewFileRequest } from "../src/files/files";
-import { isFunction, isJsonObject } from "@jxsuite/schema/guards";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
 import type { LibraryViewKind } from "../src/surfaces/library-pane";
 
 // ─── Seams ───────────────────────────────────────────────────────────────────
 
-const created: NewFileRequest[] = [];
 const opened: string[] = [];
-const uploads: { dir: string | undefined; count: number }[] = [];
+const pagesAdded: string[] = [];
 let deleteAnswer = true;
 
-let createAnswer: string | null = "new-thing.json";
-
 void mock.module("../src/files/files.js", () => ({
-  createFileIn: (request: NewFileRequest) => {
-    created.push(request);
-    return Promise.resolve(createAnswer === null ? null : `${request.dir}/${createAnswer}`);
-  },
   loadDirectory: () => Promise.resolve(),
   openFileInTab: (path: string) => {
     opened.push(path);
@@ -62,17 +51,14 @@ void mock.module("../src/files/files.js", () => ({
   },
 }));
 void mock.module("../src/files/media-upload.js", () => ({
+  DEFAULT_MEDIA_DIR: "public/media",
   MEDIA_EXTENSIONS: new Set([".png", ".jpg", ".svg"]),
-  uploadAccept: () => "image/*",
   extensionOf: (name: string) => {
     const dot = name.lastIndexOf(".");
     return dot === -1 ? "" : name.slice(dot).toLowerCase();
   },
   isImage: (ext: string) => ext === ".png",
-  uploadAssets: (files: File[], opts: { dir?: string }) => {
-    uploads.push({ count: files.length, dir: opts.dir });
-    return Promise.resolve(files.map((f) => ({ path: `${opts.dir ?? "?"}/${f.name}` })));
-  },
+  uploadAccept: () => "image/*",
 }));
 void mock.module("../src/files/file-ops.js", () => ({
   confirmFileDelete: () => Promise.resolve(deleteAnswer),
@@ -82,25 +68,92 @@ void mock.module("../src/files/file-ops.js", () => ({
 void mock.module("../src/services/references.js", () => ({
   invalidateUsages: () => {},
 }));
+/* The witness for **Add one**: the real flow writes the page through Add new's derivation, which
+   `add-new.test.ts` covers; this file asserts the home asks for it, for the collection shown. */
+void mock.module("../src/create/add-new-flow.js", () => ({
+  addCollectionPage: (name: string) => {
+    pagesAdded.push(name);
+    return Promise.resolve(`pages/${name}/[slug].json`);
+  },
+}));
 
 const {
-  createLibraryEntry,
+  collectionCounts,
+  collectionView,
+  contentView,
   detachLibraryPane,
   invalidateLibrary,
-  libraryNewEntries,
   libraryPaneMounted,
   librarySource,
-  libraryView,
+  openLibraryFile,
+  pageLineFor,
   refreshLibrary,
   renderLibraryMode,
+  resetContentView,
   SCAN_ACTIVITY_DELAY_MS,
-  resolveUploadDir,
-  setLibraryCategory,
+  setContentCollection,
+  filterFieldOf,
+  setLibraryFilter,
   setLibraryLayout,
   setLibraryLocale,
   setLibrarySearch,
+  shownCollection,
 } = await import("../src/browse/library-pane");
+const { invalidateCollectionPages } = await import("../src/content/collection-pages");
+const { templateDisplayName } = await import("../src/content/content-collections");
+const { invalidateEntrySummaries } = await import("../src/content/entry-summaries");
+const { invalidatePageSummaries } = await import("../src/content/page-summaries");
+const store = await import("../src/store");
 const { openTab, closeAllTabs } = await import("../src/workspace/workspace");
+const { createCommandRegistry } = await import("../src/commands/registry");
+const { emptyContext } = await import("../src/commands/context");
+const { setActiveRegistry } = await import("../src/commands/active-registry");
+const { argsSchema, stringProperty } = await import("../src/commands/command-args");
+
+/**
+ * What the home's buttons ran. **New** runs `file.new` and **Fields** runs `settings.open`, rather
+ * than flows of their own, so the witnesses are stand-in records in the active registry.
+ */
+const runs: { id: string; args: unknown }[] = [];
+const registry = createCommandRegistry({ getContext: emptyContext });
+registry.register({
+  args: argsSchema(
+    {
+      collection: stringProperty("collection"),
+      kind: stringProperty("kind"),
+      locale: stringProperty("locale"),
+    },
+    [],
+  ),
+  category: "File",
+  id: "file.new",
+  level: "project",
+  run: (_ctx, args) => {
+    runs.push({ args, id: "file.new" });
+  },
+  title: "Add New…",
+});
+registry.register({
+  args: argsSchema({ entry: stringProperty("entry"), section: stringProperty("section") }, []),
+  category: "Project",
+  id: "settings.open",
+  level: "project",
+  run: (_ctx, args) => {
+    runs.push({ args, id: "settings.open" });
+  },
+  title: "Project Settings",
+});
+registry.register({
+  args: argsSchema({ name: stringProperty("name") }),
+  category: "Project",
+  id: "collection.editInGrid",
+  level: "project",
+  run: (_ctx, args) => {
+    runs.push({ args, id: "collection.editInGrid" });
+  },
+  title: "Edit Collection in Grid",
+});
+setActiveRegistry(registry);
 
 // ─── Environment ─────────────────────────────────────────────────────────────
 
@@ -118,24 +171,17 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   return 0;
 };
 
-/**
- * A stand-in clock, typed as the global it replaces.
- *
- * The Library arms its timers only as `setTimeout(callback, delay)`: the scan's Activity delay and
- * the settle pass.
- */
+/** A stand-in clock, typed as the global it replaces. */
 function stubSetTimeout(
   stand: (callback: () => void, ms?: number) => ReturnType<typeof setTimeout>,
 ): typeof setTimeout {
-  /* SAFETY: the stand-in implements the one call shape the pane uses, a callback and a delay. It
-     lacks only Node's `__promisify__` member and the extra-arguments overload, and nothing under
-     test reaches either while the stub is installed. */
+  /* SAFETY: the stand-in implements the one call shape the pane uses, a callback and a delay. */
   return stand as typeof setTimeout;
 }
 
 /* No IntersectionObserver: happy-dom's never fires, so a lazily-mounted preview would simply never
-   load and nothing here could assert on it. Its absence takes `createPreviewObserver`'s documented
-   degraded path, where every card in the window asks for its preview at once. */
+   load. Its absence takes `createPreviewObserver`'s degraded path, where every card in the window
+   asks for its preview at once. */
 // @ts-expect-error -- removing the global is the point
 globalThis.IntersectionObserver = undefined;
 
@@ -145,19 +191,12 @@ function file(name: string, path: string): DirEntry {
   return { name, path, type: "file" };
 }
 
-/**
- * The one content collection the fixture project declares.
- *
- * It carries a real `schema`, because the seeding this file asserts on is derived from it: `draft`
- * has a default, `title` is required with none, and `summary` is optional with neither — one of
- * each of `seedEntry`'s three cases.
- */
+/** The one content collection the fixture project declares. */
 const POSTS = {
-  format: "json",
+  format: "Markdown",
   schema: {
     properties: {
       draft: { default: false, type: "boolean" },
-      summary: { type: "string" },
       title: { type: "string" },
     },
     required: ["title"],
@@ -166,6 +205,10 @@ const POSTS = {
   source: "./content/",
 };
 
+/**
+ * Two pages, one entry, a template and an image: Pages lists the two, Posts lists the one, and the
+ * template and the image are in no collection at all.
+ */
 const TREE = {
   content: [file("2024-01-02-hello.md", "content/2024-01-02-hello.md")],
   layouts: [file("main.json", "layouts/main.json")],
@@ -173,8 +216,7 @@ const TREE = {
   public: [file("logo.png", "public/logo.png")],
 } satisfies Record<string, DirEntry[]>;
 
-/* A detached placeholder until the first mount, so the teardown's `remove()` before it is a no-op
-   rather than a guard on a value that is never absent. */
+/* A detached placeholder until the first mount, so the teardown's `remove()` before it is a no-op. */
 let host: HTMLElement = document.createElement("div");
 
 /** The listing a fixture tree holds for a directory, or `undefined` for one it does not hold. */
@@ -191,19 +233,16 @@ function dirsMappedBy(map: () => Promise<never>[]): string[] {
   return Object.assign(dirs, { map });
 }
 
-/**
- * The body seed a creation request carried. The Library always passes a function, because the tag
- * it seeds depends on the extension and name the reader settles on in the dialog.
- */
-function seedOf(request: NewFileRequest | undefined) {
-  const content = request?.content;
-  if (!isFunction(content)) {
-    throw new Error("the creation request carried no seed function");
-  }
-  return content;
-}
+/** The one file the default platform has bytes for. */
+const INDEX_ONLY = {
+  "pages/index.json": '{"tagName":"div","children":[]}',
+} satisfies Record<string, string>;
 
-function setup(tree: Record<string, DirEntry[]> = TREE, dirs = Object.keys(TREE)) {
+function setup(
+  tree: Record<string, DirEntry[]> = TREE,
+  dirs = Object.keys(TREE),
+  files: Record<string, string> = INDEX_ONLY,
+) {
   installMockPlatform(
     {
       listDirectory: (path: string) => {
@@ -211,12 +250,22 @@ function setup(tree: Record<string, DirEntry[]> = TREE, dirs = Object.keys(TREE)
         return entries ? Promise.resolve(entries) : Promise.reject(new Error(`HTTP 500: ${path}`));
       },
     },
-    { "pages/index.json": '{"tagName":"div","children":[]}' },
+    files,
   );
   resetStudioState({
     projectConfig: { content: { posts: POSTS } },
     projectDirs: dirs,
     projectRoot: "",
+  });
+}
+
+/** The Content home's tab: the workspace home id, in the home's canvas mode. */
+function homeTab() {
+  return openTab({
+    capabilities: { modes: ["content-home"] },
+    document: { children: [], tagName: "div" },
+    documentPath: null,
+    id: "workspace://content",
   });
 }
 
@@ -226,12 +275,7 @@ async function mount(): Promise<HTMLElement> {
   detachLibraryPane("primary");
   host.remove();
   closeAllTabs();
-  const tab = openTab({
-    capabilities: { modes: ["manage"] },
-    document: { children: [], tagName: "div" },
-    documentPath: null,
-    id: "grid://library",
-  });
+  const tab = homeTab();
   host = document.createElement("div");
   document.body.append(host);
   renderLibraryMode(surfaceOf(host), tab);
@@ -254,12 +298,12 @@ function part(name: string): HTMLElement | null {
   return host.querySelector<HTMLElement>(`[part="${name}"]`);
 }
 
-/** The pane's scroller, which is also its drop zone. */
+/** The pane's scroller. */
 function body(): HTMLElement {
   return part("body")!;
 }
 
-/** The rows of whichever menu the Library has up, addressed by command id. */
+/** The rows of whichever menu the home has up, addressed by id. */
 function menuIds(): string[] {
   return [
     ...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item[data-command-id]"),
@@ -277,34 +321,25 @@ function menuRow(id: string): HTMLElement {
   return found;
 }
 
-/** The real `<input type="file">` the Upload label wraps. */
-function uploadInput(): HTMLInputElement {
-  const input = part("upload-input");
-  if (!(input instanceof HTMLInputElement)) {
-    throw new Error("the pane drew no upload input");
-  }
-  return input;
-}
-
 /** The native control inside a kit element — what a reader actually drives. */
 function control<T extends HTMLElement>(name: string, tag: string): T {
   return part(name)!.querySelector<T>(tag)!;
 }
 
 beforeEach(() => {
-  created.length = 0;
+  runs.length = 0;
   opened.length = 0;
-  uploads.length = 0;
+  pagesAdded.length = 0;
   deleteAnswer = true;
-  createAnswer = "new-thing.json";
   resetNotifications();
   resetActivities();
   detachLibraryPane("primary");
-  invalidateLibrary();
-  setLibraryCategory("all");
-  setLibraryLayout("cards");
-  setLibraryLocale("");
-  setLibrarySearch("");
+  resetContentView();
+  invalidateCollectionPages();
+  invalidateEntrySummaries();
+  // Cards, because most of what is asserted here is a card per file.
+  setLibraryLayout("cards", "pages");
+  setLibraryLayout("cards", "posts");
   setup();
 });
 
@@ -342,11 +377,8 @@ describe("the one discriminant", () => {
   }
 
   /**
-   * The nine states, in one place, twice — and this is what holds the two spellings together.
-   *
-   * A `$switch` renders NOTHING for a key it has no case for, silently: adding a tenth kind to the
-   * union and forgetting the case would empty the pane for whatever produces it, which is precisely
-   * the "No files found" failure mode this design exists to end, one level up.
+   * The eight states, in one place, twice — and this is what holds the two spellings together. A
+   * `$switch` renders NOTHING for a key it has no case for, silently.
    */
   const KINDS: LibraryViewKind[] = [
     "loading",
@@ -354,7 +386,6 @@ describe("the one discriminant", () => {
     "empty",
     "nomatch",
     "cards",
-    "media",
     "table",
     "calendar",
     "board",
@@ -364,36 +395,29 @@ describe("the one discriminant", () => {
     expect(slotCases("view-slot").toSorted()).toEqual([...KINDS].toSorted());
   });
 
-  test("every layout the model declares is one of them", () => {
+  test("every layout the model declares is one of them, and Media is no longer one", () => {
     for (const layout of LIBRARY_LAYOUTS) {
       expect(KINDS).toContain(layout);
     }
+    expect(LIBRARY_LAYOUTS).not.toContain("media");
+  });
+
+  test("the header line has a case for each state but hidden, which draws nothing", () => {
+    expect(slotCases("page-slot").toSorted()).toEqual(["loading", "none", "page"]);
   });
 });
 
 // ─── Mounting ────────────────────────────────────────────────────────────────
 
 describe("mounting", () => {
-  test("draws the Library and reports itself mounted for that tab", async () => {
+  test("draws the home and reports itself mounted for that tab", async () => {
     await mount();
-    expect(host.querySelector('[data-jx-region="pane.primary/library"]')).not.toBeNull();
-    expect(host.querySelector('[data-jx-region="pane.primary/library/dropZone"]')).not.toBeNull();
-    const tab = openTab({
-      capabilities: { modes: ["manage"] },
-      document: { children: [], tagName: "div" },
-      documentPath: null,
-      id: "grid://library",
-    });
-    expect(libraryPaneMounted("primary", tab)).toBe(true);
+    expect(host.querySelector('[data-jx-region="pane.primary/content"]')).not.toBeNull();
+    expect(libraryPaneMounted("primary", homeTab())).toBe(true);
   });
 
   test("a second mount for the same tab is a no-op — the pane owns its own reactivity", async () => {
-    const tab = openTab({
-      capabilities: { modes: ["manage"] },
-      document: { children: [], tagName: "div" },
-      documentPath: null,
-      id: "grid://library",
-    });
+    const tab = homeTab();
     host = document.createElement("div");
     document.body.append(host);
     renderLibraryMode(surfaceOf(host), tab);
@@ -408,25 +432,11 @@ describe("mounting", () => {
     await mount();
     detachLibraryPane("primary");
     detachLibraryPane("primary");
-    const tab = openTab({
-      capabilities: { modes: ["manage"] },
-      document: { children: [], tagName: "div" },
-      documentPath: null,
-      id: "grid://library",
-    });
-    expect(libraryPaneMounted("primary", tab)).toBe(false);
+    expect(libraryPaneMounted("primary", homeTab())).toBe(false);
   });
 
   test("a pane torn down before its mount settles leaves no document behind", async () => {
-    // `resetCanvasView` detaches every pane unconditionally, so a tab switch during the mount is
-    // Ordinary rather than exotic — and the mount is asynchronous, because the kit has to be
-    // Defined before a document can render.
-    const tab = openTab({
-      capabilities: { modes: ["manage"] },
-      document: { children: [], tagName: "div" },
-      documentPath: null,
-      id: "grid://library",
-    });
+    const tab = homeTab();
     host = document.createElement("div");
     document.body.append(host);
     renderLibraryMode(surfaceOf(host), tab);
@@ -449,10 +459,6 @@ describe("mounting", () => {
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
     await mount();
     await flush();
-    // The settle pass is the ONE timer a synchronous state change arms once the mount and the scan
-    // Have both landed: `scheduleSettle` coalesces, and the scan's own timer went with the scan.
-    // Hold its callback rather than letting it run, because the pass is written for the task AFTER
-    // The repaint — and by then the pane can be somebody else's.
     const held: (() => void)[] = [];
     const realSetTimeout = globalThis.setTimeout;
     globalThis.setTimeout = stubSetTimeout((fn, ms) => {
@@ -460,18 +466,17 @@ describe("mounting", () => {
       return realSetTimeout(() => {}, ms);
     });
     try {
-      setLibraryCategory("pages");
+      setLibrarySearch("index");
     } finally {
       globalThis.setTimeout = realSetTimeout;
     }
     expect(held.length).toBe(1);
-    // A tab switch: another tab's Library takes the pane, on a fresh stage.
     const stale = host;
     const successor = openTab({
-      capabilities: { modes: ["manage"] },
+      capabilities: { modes: ["content-home"] },
       document: { children: [], tagName: "div" },
       documentPath: null,
-      id: "grid://library-successor",
+      id: "workspace://content-successor",
     });
     host = document.createElement("div");
     document.body.append(host);
@@ -479,19 +484,16 @@ describe("mounting", () => {
     await flush();
     await flush();
     const before = reads.length;
-    // The pass the first pane scheduled now runs. Teardown emptied that pane's record and the stage
-    // Is the successor's, so there is nothing for it to tend: it must neither throw, read a document
-    // For a card that is gone, nor touch the successor's islands.
-    const { revision } = libraryView;
+    const { revision } = contentView;
     expect(() => held[0]!()).not.toThrow();
     await flush();
     expect(reads.length).toBe(before);
-    expect(libraryView.revision).toBe(revision);
+    expect(contentView.revision).toBe(revision);
     expect(libraryPaneMounted("primary", successor)).toBe(true);
     const slot = host.querySelector<HTMLElement>(
       '[part="doc-preview"][data-path="pages/index.json"]',
     );
-    expect(slot?.childElementCount).toBe(1);
+    expect(slot?.shadowRoot?.childElementCount).toBe(1);
     stale.remove();
   });
 
@@ -508,10 +510,7 @@ describe("mounting", () => {
     await mount();
     const first = reads.length;
     expect(first).toBeGreaterThan(0);
-    // Repaint immediately: the settle pass runs over every slot on screen, so a slot whose first
-    // Read is still in flight is offered a second time unless `pendingPaths` refuses it.
     setLibrarySearch("");
-    setLibraryCategory("all");
     await flush();
     expect(reads.length).toBe(first);
   });
@@ -524,36 +523,562 @@ describe("mounting", () => {
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
     await mount();
     await flush();
-    expect(parts("card").length).toBe(5);
-    expect(part("doc-preview")?.firstElementChild ?? null).toBeNull();
+    expect(parts("card").length).toBe(2);
+    expect(part("doc-preview")?.shadowRoot?.firstElementChild ?? null).toBeNull();
   });
 
-  test("scans once and lists the project's files", async () => {
+  test("scans the project once and lists only the shown collection's files", async () => {
     await mount();
     expect(librarySource().files().length).toBe(5);
-    expect(parts("card").length).toBe(5);
+    // Pages are in the order the router matches them, the Site panel's order: Home first.
+    expect(parts("card").map((card) => card.dataset.path)).toEqual([
+      "pages/index.json",
+      "pages/about.json",
+    ]);
   });
 
   test("a card's preview is an island the document renders empty and the host fills", async () => {
     await mount();
     await flush();
-    // `pages/index.json` is the one file the mock platform has bytes for; the rest fail to read and
-    // Keep the empty box, which is the same shape a card in an unscanned project has.
     const slot = host.querySelector<HTMLElement>(
       '[part="doc-preview"][data-path="pages/index.json"]',
     );
     expect(slot).not.toBeNull();
-    expect(slot!.childElementCount).toBe(1);
+    expect(slot!.shadowRoot?.childElementCount).toBe(1);
+    expect(slot!.childElementCount).toBe(0);
+  });
+});
+
+// ─── Collections ─────────────────────────────────────────────────────────────
+
+describe("collections", () => {
+  test("Pages is the built-in collection the home opens on, titled for what it lists", async () => {
+    await mount();
+    expect(shownCollection().key).toBe("pages");
+    expect(part("title")!.textContent).toBe("Pages");
+    expect(part("subtitle")!.textContent).toBe("Every URL on your site.");
+    expect(part("new")!.textContent).toContain("New page");
+  });
+
+  test("showing a collection lists its entries, and never a template, a component or an image", async () => {
+    await mount();
+    setContentCollection("posts");
+    await flush();
+    expect(part("title")!.textContent).toBe("Posts");
+    expect(parts("card").map((card) => card.dataset.path)).toEqual(["content/2024-01-02-hello.md"]);
+    const shown = text();
+    expect(shown).not.toContain("main.json");
+    expect(shown).not.toContain("logo.png");
+  });
+
+  test("the counts are per collection, from the one scan", async () => {
+    await mount();
+    expect(collectionCounts()).toEqual(
+      new Map([
+        ["pages", 2],
+        ["posts", 1],
+      ]),
+    );
+  });
+
+  test("counts before any scan start one and answer null until it lands", async () => {
+    expect(collectionCounts()).toBeNull();
+    await flush();
+    await flush();
+    expect(collectionCounts()?.get("pages")).toBe(2);
+  });
+
+  /* A window restored into Content asks for its rows before the project's directories have loaded.
+     The walk of none was cached as "this project has no pages" until a reload; the next ask that
+     finds the list grown drops it instead. */
+  test("a scan of a list the project has since outgrown is dropped on the next ask", async () => {
+    setup(TREE, []);
+    await mount();
+    expect(collectionCounts()?.get("pages")).toBeUndefined();
+    store.projectState!.projectDirs = Object.keys(TREE);
+    expect(collectionCounts()).toBeNull();
+    await flush();
+    await flush();
+    expect(collectionCounts()?.get("pages")).toBe(2);
+  });
+
+  test("each collection keeps its own view, search and language", async () => {
+    await mount();
+    setLibraryLayout("board");
+    setLibrarySearch("about");
+    setContentCollection("posts");
+    await flush();
+    expect(collectionView().layout).toBe("cards");
+    expect(collectionView().query).toBe("");
+    expect(part("board")).toBeNull();
+    setContentCollection("pages");
+    await flush();
+    expect(collectionView("pages")).toEqual({
+      filter: "",
+      layout: "board",
+      locale: "",
+      query: "about",
+    });
+    expect(part("board")).not.toBeNull();
+  });
+
+  test("a collection the project no longer declares falls back to Pages", async () => {
+    contentView.collection = "gone";
+    expect(shownCollection().key).toBe("pages");
+  });
+
+  test("a stale collection key never receives the view, search or language writes", async () => {
+    await mount();
+    contentView.collection = "gone";
+    setLibraryLayout("board");
+    setLibrarySearch("about");
+    await flush();
+    expect(part("board")).not.toBeNull();
+    setLibraryLocale("fr");
+    expect(contentView.views["gone"]).toBeUndefined();
+    expect(collectionView("pages")).toEqual({
+      filter: "",
+      layout: "board",
+      locale: "fr",
+      query: "about",
+    });
+    expect(collectionView()).toBe(collectionView("pages"));
+  });
+
+  test("a collection shows no subtitle, and Fields; Pages has no Fields", async () => {
+    await mount();
+    expect(part("fields")).toBeNull();
+    setContentCollection("posts");
+    await flush();
+    expect(part("subtitle")!.textContent).toBe("");
+    part("fields")!.click();
+    await flush();
+    expect(runs).toEqual([{ args: { entry: "posts", section: "content" }, id: "settings.open" }]);
+  });
+
+  test("a collection's Table names each entry by its title and status, the file after", async () => {
+    setup(
+      { content: [file("hello.json", "content/hello.json"), file("b.json", "content/b.json")] },
+      ["content"],
+      {
+        "content/b.json": JSON.stringify({ title: "Winter prep" }),
+        "content/hello.json": JSON.stringify({ draft: true, title: "Hello world" }),
+      },
+    );
+    await mount();
+    setContentCollection("posts");
+    setLibraryLayout("table");
+    await flush();
+    await flush();
+    await flush();
+    const head = parts("cell").filter((cell) => cell.getAttribute("role") === "columnheader");
+    expect(head.map((cell) => cell.textContent.trim())).toEqual([
+      "Title",
+      "Status",
+      "Modified",
+      "Path",
+    ]);
+    const rows = parts("table-row").map((row) => row.textContent);
+    expect(rows.some((row) => row.includes("Hello world") && row.includes("Draft"))).toBe(true);
+    expect(rows.some((row) => row.includes("Winter prep") && row.includes("Published"))).toBe(true);
+  });
+
+  test("a collection offers Edit in grid, which opens its grid; Pages does not", async () => {
+    await mount();
+    expect(part("edit-grid")).toBeNull();
+    setContentCollection("posts");
+    await flush();
+    part("edit-grid")!.click();
+    await flush();
+    expect(runs).toEqual([{ args: { name: "posts" }, id: "collection.editInGrid" }]);
+  });
+
+  test("New is named for the collection's item and asks Add new for its kind", async () => {
+    await mount();
+    expect(part("new")!.textContent).toContain("New page");
+    part("new")!.click();
+    await flush();
+    setContentCollection("posts");
+    await flush();
+    expect(part("new")!.textContent).toContain("New post");
+    part("new")!.click();
+    await flush();
+    // The language the view is filtered to is the one the new entry is written in.
+    setLibraryLocale("fr", "posts");
+    await flush();
+    part("new")!.click();
+    await flush();
+    expect(runs.map((run) => run.args)).toEqual([
+      { kind: "page" },
+      { collection: "posts", kind: "entry" },
+      { collection: "posts", kind: "entry", locale: "fr" },
+    ]);
+  });
+
+  test("a click on a page opens it; a click on an entry opens it where it is written", async () => {
+    await mount();
+    host.querySelector<HTMLElement>('[part="card"][data-path="pages/about.json"]')!.click();
+    setContentCollection("posts");
+    await flush();
+    parts("card")[0]!.click();
+    await flush();
+    await flush();
+    expect(opened).toEqual(["pages/about.json", "content/2024-01-02-hello.md"]);
+  });
+
+  test("a card or a row opens on Enter and Space, so the keyboard reaches every entry", async () => {
+    await mount();
+    const card = host.querySelector<HTMLElement>('[part="card"][data-path="pages/about.json"]')!;
+    expect(card.getAttribute("tabindex")).toBe("0");
+    expect(card.getAttribute("role")).toBe("button");
+    card.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    await flush();
+    // Any other key is the reader's, and opens nothing.
+    card.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "a" }));
+    setLibraryLayout("table");
+    await flush();
+    const row = host.querySelector<HTMLElement>('[part="table-row"]')!;
+    expect(row.getAttribute("tabindex")).toBe("0");
+    row.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: " " }));
+    await flush();
+    await flush();
+    expect(opened).toHaveLength(2);
+    expect(opened[0]).toBe("pages/about.json");
+  });
+
+  test("the view switch is named View, not Layout, which in Jx means a template", async () => {
+    await mount();
+    // The group names itself to assistive technology from its `label`.
+    const group = part("layouts")!;
+    /* SAFETY: `$props` writes `label` as a property of the kit element; that is the one member read. */
+    expect((group as HTMLElement & { label?: string }).label).toBe("View");
+  });
+
+  test("a CSV collection is its records: counted, tabled with their fields, opened in the file", async () => {
+    const csv = "content/pricing/prices.csv";
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          path === "content"
+            ? Promise.resolve([{ name: "pricing", path: "content/pricing", type: "directory" }])
+            : path === "content/pricing"
+              ? Promise.resolve([file("prices.csv", csv)])
+              : Promise.resolve([]),
+      },
+      { [csv]: "Title,sku\nTilt Trailer,tilt\nMini Trencher,trencher\n" },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: {
+          pricing: {
+            format: "Csv",
+            schema: { properties: { Title: { type: "string" }, sku: { type: "string" } } },
+            source: "./content/pricing/prices.csv",
+          },
+        },
+      },
+      projectDirs: ["content"],
+      projectRoot: "",
+    });
+    invalidateLibrary();
+    setLibraryLayout("table", "pricing");
+    setContentCollection("pricing");
+    await mount();
+    expect(collectionCounts()?.get("pricing")).toBe(2);
+    const rows = parts("table-row");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Tilt Trailer"),
+      expect.stringContaining("Mini Trencher"),
+    ]);
+    expect(rows[0]!.textContent).toContain("tilt");
+    expect(rows[0]!.textContent).toContain(csv);
+    // Entries are rows of the file: no New, and the header line is drawn as for any collection.
+    expect(part("new")).toBeNull();
+    expect(text()).toContain("Entries have no page of their own");
+    rows[1]!.click();
+    await flush();
+    // A record opens in its entry form over its file (`content/record-entry.ts`), so its file opens.
+    expect(opened).toEqual([csv]);
+    // A record opens its file, and right-clicking one offers no file verbs that would hit the file.
+    rows[1]!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    await flush();
+    expect(menuIds()).toEqual([]);
+    // Edit in grid opens the file's own grid: `collection.editInGrid` grids folders.
+    part("edit-grid")!.click();
+    await flush();
+    expect(opened).toEqual([csv, csv]);
+    expect(runs).toEqual([]);
+  });
+
+  test("a CSV collection's Calendar dates each record by its own date field, not the file's mtime", async () => {
+    const csv = "content/projects.csv";
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          path === "content"
+            ? Promise.resolve([
+                { modified: "2026-10-06T12:00:00Z", name: "projects.csv", path: csv, type: "file" },
+              ])
+            : Promise.resolve([]),
+      },
+      { [csv]: "Title,Date\nKitchen,6/3/2026\nPatio,5/20/2026\nWall,\n" },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: {
+          projects: {
+            format: "Csv",
+            schema: { properties: { Date: { format: "date", type: "string" } } },
+            source: "./content/projects.csv",
+          },
+        },
+      },
+      projectDirs: ["content"],
+      projectRoot: "",
+    });
+    invalidateLibrary();
+    setLibraryLayout("calendar", "projects");
+    setContentCollection("projects");
+    await mount();
+    const shown = text();
+    expect(shown).toContain("2026-06-03");
+    expect(shown).toContain("2026-05-20");
+    // A record with no date of its own falls back to its file's, as an entry file does.
+    expect(shown).toContain("2026-10-06");
+    expect(shown.indexOf("Kitchen")).toBeLessThan(shown.indexOf("Patio"));
+  });
+
+  test("a CSV list field is a Board column per value, and the Filter narrows to one value", async () => {
+    const csv = "content/projects.csv";
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          path === "content"
+            ? Promise.resolve([{ name: "projects.csv", path: csv, type: "file" }])
+            : Promise.resolve([]),
+      },
+      {
+        [csv]:
+          'Title,Categories,Date\nKitchen,"Patios, Stone",6/3/2026\nPatio,Patios,\nWall,Stone,\n',
+      },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: {
+          projects: {
+            format: "Csv",
+            schema: {
+              properties: {
+                Categories: { items: { type: "string" }, type: "array" },
+                Date: { format: "date", type: "string" },
+                Title: { type: "string" },
+              },
+            },
+            source: "./content/projects.csv",
+          },
+        },
+      },
+      projectDirs: ["content"],
+      projectRoot: "",
+    });
+    invalidateLibrary();
+    setLibraryLayout("board", "projects");
+    setContentCollection("projects");
+    await mount();
+    const columns = () =>
+      parts("column").map((column) => [
+        column.querySelector('[part="column-title"] span')?.textContent,
+        parts("list-item")
+          .filter((item) => column.contains(item))
+          .map((item) => item.textContent.trim()),
+      ]);
+    expect(columns()).toEqual([
+      ["Patios", ["Kitchen", "Patio"]],
+      ["Stone", ["Kitchen", "Wall"]],
+    ]);
+    // The Filter offers exactly the Board's columns, and narrows every view to one of them.
+    const filter = part("filter")!;
+    /* SAFETY: `$props` writes `options` onto the kit select as a property; it is the one member read. */
+    const options = (filter as HTMLElement & { options?: { value: string }[] }).options ?? [];
+    expect(options.map((option) => option.value)).toEqual(["all", "Patios", "Stone"]);
+    setLibraryFilter("Stone");
+    await flush();
+    expect(columns()).toEqual([
+      ["Patios", ["Kitchen"]],
+      ["Stone", ["Kitchen", "Wall"]],
+    ]);
+    setLibraryLayout("table", "projects");
+    await flush();
+    expect(parts("table-row").map((row) => row.dataset["path"])).toEqual([`${csv}#1`, `${csv}#3`]);
+    // The declared date is one Date column, and with one language there is no Locale column.
+    const heads = parts("cell")
+      .filter((cell) => cell.getAttribute("role") === "columnheader")
+      .map((cell) => cell.textContent.trim());
+    expect(heads.filter((head) => head === "Date")).toEqual(["Date"]);
+    expect(heads).not.toContain("Locale");
+    // A filter matching nothing names itself; a value the field no longer has filters nothing.
+    setLibrarySearch("zzz");
+    await flush();
+    expect(text()).toContain("filtered to Stone");
+    setLibrarySearch("");
+    setLibraryFilter("Gone");
+    await flush();
+    expect(parts("table-row")).toHaveLength(3);
+  });
+
+  test("filterFieldOf filters by status where entries have one, else by the Board's field", () => {
+    expect(
+      filterFieldOf(
+        [
+          { date: "", status: "Published", title: "a" },
+          { date: "", status: "Draft", title: "b" },
+          undefined,
+        ],
+        null,
+      )?.values,
+    ).toEqual(["Draft", "Published"]);
+    expect(filterFieldOf([{ date: "", status: "", title: "a" }], null)).toBeNull();
+    const course = { name: "course", order: ["Mains", "Desserts"], title: "Course" };
+    const field = filterFieldOf(
+      [
+        { date: "", fields: { course: "Sides" }, status: "", title: "a" },
+        { date: "", fields: { course: "Mains" }, status: "", title: "b" },
+      ],
+      course,
+    );
+    // A declared enum leads, in its order; a value it does not name follows.
+    expect(field?.values).toEqual(["Mains", "Desserts", "Sides"]);
+    expect(
+      field?.matches({ date: "", fields: { course: "Mains" }, status: "", title: "b" }, "Mains"),
+    ).toBe(true);
+    expect(field?.matches(undefined, "Mains")).toBe(false);
+  });
+
+  test("openLibraryFile routes a file in no collection to the ordinary opener", async () => {
+    openLibraryFile({ collection: null, path: "layouts/main.json" });
+    await flush();
+    expect(opened).toEqual(["layouts/main.json"]);
+  });
+});
+
+// ─── Where a collection is published ─────────────────────────────────────────
+
+describe("the header line", () => {
+  test("Pages has none", async () => {
+    await mount();
+    expect(part("page-line")).toBeNull();
+  });
+
+  test("a collection with no page says so, and Add one writes it", async () => {
+    await mount();
+    setContentCollection("posts");
+    await flush();
+    await flush();
+    await flush();
+    expect(part("page-line")!.dataset.state).toBe("none");
+    expect(text()).toContain("Entries have no page of their own");
+    part("add-page")!.click();
+    await flush();
+    await flush();
+    expect(pagesAdded).toEqual(["posts"]);
+  });
+
+  test("a collection with a page names its URL and template, and opens it in Design", async () => {
+    const tree = {
+      ...TREE,
+      pages: [
+        ...TREE.pages,
+        { name: "blog", path: "pages/blog", type: "directory" },
+      ] satisfies DirEntry[],
+      "pages/blog": [file("[slug].json", "pages/blog/[slug].json")],
+    };
+    setup(tree, Object.keys(TREE), {
+      "pages/blog/[slug].json": JSON.stringify({
+        $layout: "./layouts/post.json",
+        $paths: { contentType: "posts", param: "slug" },
+        tagName: "article",
+      }),
+      "pages/index.json": '{"tagName":"div","children":[]}',
+    });
+    await mount();
+    setContentCollection("posts");
+    await flush();
+    await flush();
+    await flush();
+    const line = part("page-line")!;
+    expect(line.dataset.state).toBe("page");
+    expect(line.textContent).toContain("Each post has a page at");
+    expect(part("page-pattern")!.textContent).toBe("/blog/:slug");
+    expect(part("page-template")!.textContent).toBe("using Post");
+    expect(part("design-page")!.textContent).toContain("Design the post page");
+    part("design-page")!.click();
+    await flush();
+    expect(opened).toEqual(["pages/blog/[slug].json"]);
+  });
+
+  test("pageLineFor states each case in words", () => {
+    const pages = {
+      fileBacked: false,
+      item: "page",
+      key: "pages",
+      kind: "pages" as const,
+      title: "Pages",
+    };
+    const posts = {
+      fileBacked: false,
+      item: "post",
+      key: "posts",
+      kind: "collection" as const,
+      title: "Posts",
+    };
+    const csv = { ...posts, fileBacked: true };
+    expect(pageLineFor(pages, null, null).state).toBe("hidden");
+    // A CSV collection's records can have pages too (`$paths` expands over them), so it has the line.
+    expect(pageLineFor(csv, null, null).state).toBe("none");
+    expect(pageLineFor(posts, undefined, null).state).toBe("loading");
+    const page = {
+      field: null,
+      layout: undefined,
+      param: "slug",
+      path: "pages/[slug].json",
+      pattern: "/:slug",
+      locale: null,
+    };
+    expect(pageLineFor(posts, page, "./layouts/base.json").template).toBe("using Base");
+    expect(pageLineFor(posts, page, null).template).toBe("with no template");
+    expect(pageLineFor(posts, { ...page, layout: false }, "./layouts/base.json").template).toBe(
+      "with no template",
+    );
+    expect(templateDisplayName("./layouts/post.json")).toBe("Post");
+    // Under every language, a collection with a page in each names each, in declared order.
+    resetStudioState({
+      projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"] } },
+    });
+    const ar = { ...page, layout: "./layouts/ar.json", locale: "ar", pattern: "/ar/:slug" };
+    const en = { ...page, locale: "en" };
+    const fr = { ...page, locale: "fr-CA", pattern: "/fr-ca/:slug" };
+    const every = pageLineFor(posts, en, "./layouts/base.json", [ar, en, fr]);
+    expect(every).toMatchObject({
+      pattern: "/:slug (en), /fr-ca/:slug (fr-CA), /ar/:slug (ar)",
+      template: "using a template per language",
+      text: "Each post has a page in each language at",
+    });
+    expect(pageLineFor(posts, en, "./layouts/base.json", [en, fr]).template).toBe("using Base");
+    // One page, or pages outside every locale tree, is the single line.
+    expect(pageLineFor(posts, page, null, [page]).pattern).toBe("/:slug");
+    expect(pageLineFor(posts, en, null, [{ ...en, locale: "xx" }, en]).pattern).toContain("(xx)");
   });
 });
 
 // ─── Honest states ───────────────────────────────────────────────────────────
 
 describe("the four states the old view called “No files found”", () => {
-  test("a project with no files says exactly that", async () => {
+  test("an empty collection says exactly that, and how to add the first one", async () => {
     setup({ pages: [] }, ["pages"]);
     await mount();
-    expect(text()).toContain("This project has no files yet");
+    const shown = text();
+    expect(shown).toContain("No pages yet.");
+    expect(shown).toContain("New page adds the first one.");
   });
 
   test("a filter that matched nothing names the filter, and offers to clear it", async () => {
@@ -561,21 +1086,12 @@ describe("the four states the old view called “No files found”", () => {
     setLibrarySearch("zzz");
     await flush();
     const shown = text();
-    expect(shown).toContain("No files match");
+    expect(shown).toContain("No pages match");
     expect(shown).toContain("zzz");
-    expect(shown).toContain("5 file(s) in the project");
+    expect(shown).toContain("2 pages in all.");
     part("reset")!.click();
     await flush();
-    expect(libraryView.query).toBe("");
-    expect(libraryView.category).toBe("all");
-  });
-
-  test("a category with no matches names the category too", async () => {
-    setup({ pages: [file("a.json", "pages/a.json")] }, ["pages"]);
-    await mount();
-    setLibraryCategory("media");
-    await flush();
-    expect(text()).toContain("in Media");
+    expect(collectionView().query).toBe("");
   });
 
   test("a scan that could not read a directory says INCOMPLETE, not empty", async () => {
@@ -598,12 +1114,10 @@ describe("the four states the old view called “No files found”", () => {
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
     await mount();
-    // Everything failed, so both Retries are drawn: the banner's above the body and the empty
-    // State's inside it. Either re-scans.
     parts("retry")[0]!.click();
     await flush();
     await flush();
-    expect(parts("card").length).toBe(5);
+    expect(parts("card").length).toBe(2);
   });
 
   test("a partly-failed scan offers Retry in the banner above the list it did get", async () => {
@@ -631,21 +1145,21 @@ describe("the four states the old view called “No files found”", () => {
     await mount();
     const problem = problems.at(-1)!;
     expect(problem.severity).toBe("error");
-    expect(problem.action).toBe("library.refresh");
+    expect(problem.action).toBe("content.refresh");
     expect(problem.path).toBe("broken");
     expect(problem.detail).toContain("HTTP 500");
-    expect(problem.source).toBe("Library");
+    expect(problem.source).toBe("Content");
   });
 
-  test("a scan that failed entirely does not claim the project is empty", async () => {
+  test("a scan that failed entirely does not claim the collection is empty", async () => {
     setup({}, ["pages", "public"]);
     await mount();
     const shown = text();
     expect(shown).toContain("the scan did not finish");
-    expect(shown).not.toContain("no files yet");
+    expect(shown).not.toContain("No pages yet");
   });
 
-  test("the failure banner's Retry re-scans", async () => {
+  test("the failure's Retry re-scans", async () => {
     let attempt = 0;
     installMockPlatform({
       listDirectory: (path: string) => {
@@ -679,11 +1193,6 @@ describe("the language facet", () => {
     "pages/fr": [file("about.json", "pages/fr/about.json")],
   } satisfies Record<string, DirEntry[]>;
 
-  /**
-   * A project that declares three locales and has files under two directories — plus
-   * `pages/index.json`, which under `prefix-except-default` is the DEFAULT locale's copy and is why
-   * `en` is an option the picker can offer.
-   */
   function setupI18n(locales: string[] = ["en", "fr", "de"]) {
     installMockPlatform({
       listDirectory: (path: string) => {
@@ -698,7 +1207,6 @@ describe("the language facet", () => {
     });
   }
 
-  /* The part is on the `jx-select`; the `<select>` inside it is what a reader drives. */
   function picker(): HTMLSelectElement | null {
     return part("locale")?.querySelector("select") ?? null;
   }
@@ -707,12 +1215,6 @@ describe("the language facet", () => {
     setupI18n();
     await mount();
     const options = [...picker()!.options].map((el) => [el.value, el.textContent.trim()]);
-    /*
-     * `en` has no directory of its own and is still an option, because under
-     * `prefix-except-default` the unprefixed `pages/index.json` IS its copy — and a language filter
-     * that could offer French and German but never English cannot answer the question it is most
-     * often asked. Declaration order, so the default comes first.
-     */
     expect(options).toEqual([
       ["all", "All languages"],
       ["en", "English"],
@@ -722,11 +1224,6 @@ describe("the language facet", () => {
   });
 
   test("draws no picker at all where there is nothing to choose between", async () => {
-    /*
-     * One language present. `fr` and `de` are not declared, so those directories are ordinary path
-     * segments and everything under `pages/` is served as the only language there is — which is
-     * exactly what the build does with them, and a filter with one option is not a filter.
-     */
     setupI18n(["en"]);
     await mount();
     expect(picker()).toBeNull();
@@ -735,12 +1232,11 @@ describe("the language facet", () => {
     expect(picker()).toBeNull();
   });
 
-  test("its options come from every scanned file, not from the filtered ones", async () => {
+  test("its options come from every file of the collection, not from the filtered ones", async () => {
     setupI18n();
     await mount();
     setLibraryLocale("fr");
     await flush();
-    // A picker whose choices collapsed to the choice just made could not be used to make another.
     expect([...picker()!.options]).toHaveLength(4);
   });
 
@@ -751,47 +1247,40 @@ describe("the language facet", () => {
     select.value = "fr";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
-    const filtered = text();
-    expect(filtered).toContain("about.json");
-    expect(filtered).not.toContain("main.json");
+    expect(parts("card").map((card) => card.dataset.path)).toEqual(["pages/fr/about.json"]);
     picker()!.value = "all";
     picker()!.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
-    expect(libraryView.locale).toBe("");
-    expect(text()).toContain("main.json");
+    expect(collectionView().locale).toBe("");
+    expect(parts("card")).toHaveLength(3);
   });
 
   test("the locale is in the render effect's dependency list, not merely in the setter's bump", async () => {
     setupI18n();
     await mount();
-    // Written DIRECTLY, so `bump()` never touches `revision`: the repaint below can only come from
-    // The effect having read `libraryView.locale`. A field missing from that hand-written list is a
-    // Filter the pane applies on the paint that happens to follow it and never again.
-    libraryView.locale = "de";
+    collectionView().locale = "de";
     await flush();
-    const shown = text();
-    expect(shown).not.toContain("about.json");
-    expect(shown).toContain("index.json");
+    expect(parts("card").map((card) => card.dataset.path)).toEqual(["pages/de/index.json"]);
   });
 
   test("a filter that matched nothing names the LANGUAGE too, and Clear filters clears it", async () => {
     setupI18n();
     await mount();
-    setLibraryCategory("layouts");
+    setLibrarySearch("zzz");
     setLibraryLocale("fr");
     await flush();
-    expect(text()).toContain("in Layouts and français");
+    expect(text()).toContain("in français");
     part("reset")!.click();
     await flush();
-    expect(libraryView.locale).toBe("");
-    expect(libraryView.category).toBe("all");
+    expect(collectionView().locale).toBe("");
+    expect(collectionView().query).toBe("");
   });
 });
 
-// ─── Layouts ─────────────────────────────────────────────────────────────────
+// ─── Views ───────────────────────────────────────────────────────────────────
 
-describe("layouts", () => {
-  test("switching layout repaints from the SAME scan — no second read", async () => {
+describe("views", () => {
+  test("switching view repaints from the SAME scan — no second read", async () => {
     let reads = 0;
     installMockPlatform({
       listDirectory: (path: string) => {
@@ -802,7 +1291,7 @@ describe("layouts", () => {
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
     await mount();
     const after = reads;
-    for (const layout of ["table", "media", "calendar", "board"] as const) {
+    for (const layout of ["table", "calendar", "board"] as const) {
       setLibraryLayout(layout);
       await flush();
     }
@@ -810,314 +1299,111 @@ describe("layouts", () => {
     expect(part("board")).not.toBeNull();
   });
 
-  test("each layout draws its own structure", async () => {
+  test("each view draws its own structure; Table carries a page's URL", async () => {
     await mount();
     setLibraryLayout("table");
     await flush();
-    expect(part("table-head")).not.toBeNull();
+    expect(part("table-head")!.textContent).toContain("URL");
+    expect(
+      host.querySelector('[part="table-row"] [part="cell"][data-field="url"]')?.textContent,
+    ).toBe("/");
     setLibraryLayout("calendar");
     await flush();
     expect(part("calendar")).not.toBeNull();
-    setLibraryLayout("media");
-    await flush();
-    expect(host.querySelector('[part="grid"][data-layout="media"]')).not.toBeNull();
   });
 
-  test("a Media tile is an asset thumbnail, never a live document render", async () => {
+  /* The Content-Pages board: Title, URL, Template, Status, Edited, in route order. Two pages are
+     both `index.json` in a real site, so a file name is not a title. */
+  test("the Pages Table names each page as the Site panel does, with its template", async () => {
+    invalidatePageSummaries();
+    setup(TREE, Object.keys(TREE), {
+      "pages/about.json": '{"$layout":"./layouts/main.json","draft":true,"tagName":"div"}',
+      "pages/index.json": '{"tagName":"div"}',
+    });
     await mount();
-    setLibraryLayout("media");
+    setLibraryLayout("table");
     await flush();
-    expect(parts("tile").length).toBe(5);
-    expect(part("doc-preview")).toBeNull();
-  });
-
-  test("a thumbnail that will not load draws the placeholder, not a broken image", async () => {
-    await mount();
-    setLibraryLayout("media");
     await flush();
-    const thumb = host.querySelector<HTMLImageElement>('img[part="thumb"]')!;
-    thumb.dispatchEvent(new Event("error"));
-    expect(thumb.getAttribute("src")).toStartWith("data:image/svg+xml");
-  });
-
-  test("the category buttons run the same state change the command does", async () => {
-    await mount();
-    host.querySelector<HTMLElement>('[part="category"][data-category="pages"]')!.click();
     await flush();
-    expect(libraryView.category).toBe("pages");
-    expect(parts("card").length).toBe(2);
-  });
-
-  test("the layout switcher runs the same state change the command does", async () => {
-    await mount();
-    host.querySelector<HTMLElement>('[part="layout"][data-layout="board"]')!.click();
-    await flush();
-    expect(libraryView.layout).toBe("board");
-    expect(part("board")).not.toBeNull();
-  });
-
-  test("the New menu creates through the same flow the command uses", async () => {
-    await mount();
-    part("new")!.click();
-    await flush();
-    expect(menuIds()).toEqual(["page", "layout", "component", "collection:posts"]);
-    menuRow("layout").click();
-    await flush();
-    /* A layout takes a FIXED `.json`, and that is not a policy: both readers of a layout parse it
-       as JSON and neither dispatches through the format registry (`site/layout-resolver.ts` throws,
-       `site-context.ts` returns null), so a `.md` layout is a file the build cannot load. There is
-       no `"layout"` document kind for a format to declare, so it is stated rather than derived. */
-    expect(created).toEqual([
-      {
-        dir: "layouts",
-        format: { ext: ".json", kind: "fixed" },
-        source: "Library",
-        suggestedName: "untitled",
-        title: "New Layout",
-      },
+    const rows = parts("table-row").map((row) =>
+      [...row.querySelectorAll('[part="cell"]')].map((cell) => cell.textContent),
+    );
+    expect(part("table-head")!.textContent).toBe("TitleURLTemplateStatusEdited");
+    expect(part("table")!.getAttribute("aria-label")).toBe("Pages");
+    expect(rows.map((cells) => cells.slice(0, 4))).toEqual([
+      ["Home", "/", "None", "Published"],
+      ["About", "/about", "Main", "Draft"],
     ]);
   });
 
-  test("the New button is a toggle — a second press closes the menu it opened", async () => {
+  test("Calendar and Board name pages by route and read no page", async () => {
+    invalidatePageSummaries();
+    const reads: string[] = [];
+    installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
+      readFile: (path: string) => {
+        reads.push(path);
+        return Promise.resolve('{"tagName":"div"}');
+      },
+    });
+    resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    setLibraryLayout("board");
     await mount();
-    part("new")!.click();
     await flush();
-    expect(menuIds().length).toBeGreaterThan(0);
-    part("new")!.click();
+    setLibraryLayout("calendar");
     await flush();
-    expect(menuIds()).toEqual([]);
+    expect(text()).toContain("Home");
+    expect(reads).toEqual([]);
+  });
+
+  test("an entry's Table has no URL column of its own", async () => {
+    await mount();
+    setContentCollection("posts");
+    setLibraryLayout("table");
+    await flush();
+    expect(part("table-head")!.textContent).not.toContain("URL");
+  });
+
+  test("Board groups a collection by folder", async () => {
+    setup(
+      {
+        ...TREE,
+        pages: [...TREE.pages, { name: "blog", path: "pages/blog", type: "directory" }],
+        "pages/blog": [file("a.json", "pages/blog/a.json")],
+      },
+      Object.keys(TREE),
+    );
+    await mount();
+    setLibraryLayout("board");
+    await flush();
+    expect(parts("column-title").map((title) => title.firstElementChild?.textContent)).toEqual([
+      "pages",
+      "pages/blog",
+    ]);
+  });
+
+  test("the view switcher runs the same state change the command does", async () => {
+    await mount();
+    host.querySelector<HTMLElement>('[part="layout"][data-layout="board"]')!.click();
+    await flush();
+    expect(collectionView().layout).toBe("board");
+    expect(part("board")).not.toBeNull();
   });
 
   test("scrolling the body repaints — the window is recomputed, not the scan", async () => {
     await mount();
-    const before = libraryView.revision;
+    const before = contentView.revision;
     body().dispatchEvent(new Event("scroll"));
-    expect(libraryView.revision).toBeGreaterThan(before);
+    expect(contentView.revision).toBeGreaterThan(before);
   });
 
   test("the search field filters", async () => {
     await mount();
     const input = control<HTMLInputElement>("search", "input");
-    input.value = "logo";
+    input.value = "about";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     await flush();
     expect(parts("card").length).toBe(1);
-  });
-});
-
-// ─── Uploads ─────────────────────────────────────────────────────────────────
-
-describe("the upload destination", () => {
-  test("a category that names a folder uploads there, and says so before the drop", async () => {
-    setLibraryCategory("media");
-    await mount();
-    expect(part("upload")!.getAttribute("title")).toBe("Upload into public/");
-    expect(await resolveUploadDir()).toBe("public");
-  });
-
-  test("All has no folder of its own, so it ASKS rather than guessing", async () => {
-    setLibraryCategory("all");
-    await mount();
-    expect(part("upload")!.getAttribute("title")).toBe("Upload — asks for a folder");
-    const pending = resolveUploadDir();
-    await flush();
-    await answerPromptDialog("assets/media/");
-    expect(await pending).toBe("assets/media");
-  });
-
-  test("cancelling the destination prompt uploads nothing at all", async () => {
-    setLibraryCategory("all");
-    await mount();
-    const pending = resolveUploadDir();
-    await flush();
-    await answerPromptDialog(null);
-    expect(await pending).toBeNull();
-    expect(uploads).toEqual([]);
-  });
-
-  test("a drop on the body uploads into the named destination and re-scans", async () => {
-    setLibraryCategory("media");
-    await mount();
-    dragEvent(body(), "dragover");
-    await flush();
-    expect(body().dataset.drop).toBe("true");
-    dragEvent(body(), "drop", [testFile("shot.png")]);
-    await flush();
-    expect(body().dataset.drop).toBe("false");
-    expect(uploads).toEqual([{ count: 1, dir: "public" }]);
-  });
-
-  test("dragging away clears the drop affordance", async () => {
-    await mount();
-    dragEvent(body(), "dragover");
-    await flush();
-    expect(body().dataset.drop).toBe("true");
-    dragEvent(body(), "dragleave");
-    await flush();
-    expect(body().dataset.drop).toBe("false");
-  });
-
-  test("a drop carrying no files does nothing", async () => {
-    await mount();
-    dragEvent(body(), "drop");
-    await flush();
-    expect(uploads).toEqual([]);
-  });
-});
-
-// ─── The upload control ──────────────────────────────────────────────────────
-
-describe("the Upload control", () => {
-  test("is the picker itself, and a chosen file uploads to the named folder", async () => {
-    setLibraryCategory("media");
-    await mount();
-    // A LABEL around a real `<input type="file">`, so the click that opens the picker is the
-    // Platform's rather than a `querySelector` and a synthetic `.click()`.
-    const input = uploadInput();
-    expect(input.type).toBe("file");
-    expect(part("upload")!.contains(input)).toBe(true);
-
-    Object.defineProperty(input, "files", { configurable: true, value: [testFile("a.png")] });
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
-    expect(uploads).toEqual([{ count: 1, dir: "public" }]);
-    // Cleared, or the same file cannot be chosen twice in a row.
-    expect(input.value).toBe("");
-  });
-
-  test("a picker dismissed with no file uploads nothing", async () => {
-    await mount();
-    const input = uploadInput();
-    Object.defineProperty(input, "files", { configurable: true, value: [] });
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
-    expect(uploads).toEqual([]);
-  });
-});
-
-// ─── Creation ────────────────────────────────────────────────────────────────
-
-describe("creation", () => {
-  test("offers the three document kinds plus every creatable collection, each with its folder", async () => {
-    await mount();
-    expect(libraryNewEntries()).toEqual([
-      { dir: "pages", key: "page", label: "Page" },
-      { dir: "layouts", key: "layout", label: "Layout" },
-      { dir: "components", key: "component", label: "Component" },
-      { collection: "posts", dir: "content", key: "collection:posts", label: "Posts" },
-    ]);
-  });
-
-  test("offers no row for a collection an entry cannot be created in", async () => {
-    // A collection with no `source` has no entry directory, and one whose source names a FILE has
-    // Rows rather than entry files. The predecessor offered both — deriving `drafts/` from the type
-    // Name, and composing `content/catalog.csv/untitled` for the catalogue — and each created a
-    // File the collection would never load.
-    resetStudioState({
-      projectConfig: {
-        content: {
-          catalogue: { source: "./content/catalog.csv" },
-          drafts: {},
-          posts: { source: "./content/" },
-        },
-      },
-      projectDirs: ["pages"],
-    });
-    expect(libraryNewEntries().filter((row) => row.collection !== undefined)).toEqual([
-      { collection: "posts", dir: "content", key: "collection:posts", label: "Posts" },
-    ]);
-  });
-
-  test("a document kind goes through the SHARED flow and opens the result", async () => {
-    await mount();
-    const path = await createLibraryEntry("page");
-    /* A picker, not a fixed extension: a page may be a `.md` as easily as a `.json` and that is the
-       author's choice to make — now offered rather than typed from memory. `docKind` narrows it to
-       the formats that declare they can BE a page. Contrast the collection row below, whose
-       extension is not a choice at all. */
-    expect(created).toEqual([
-      {
-        dir: "pages",
-        format: { defaultExt: ".json", docKind: "page", kind: "choose" },
-        source: "Library",
-        suggestedName: "untitled",
-        title: "New Page",
-      },
-    ]);
-    expect(path).toBe("pages/new-thing.json");
-    expect(opened).toEqual(["pages/new-thing.json"]);
-  });
-
-  /**
-   * The Library's own seed, and the reason it is not a hand-written `---\ntagName: …\n---`.
-   *
-   * Markdown's `newFileTemplate` carries no `tagName`, so a `.md` component created from it
-   * satisfies neither `$studio.documentMode.componentWhen` nor the build's tag registration — a
-   * file nothing loads, which is the defect `libraryNewEntries` exists to prevent. The seed goes
-   * through the FORMAT's own serializer, because this module knows no format's syntax.
-   */
-  test("a markdown component is seeded with its tag, through the format's own serializer", async () => {
-    await mount();
-    setFormats([MARKDOWN_FORMAT]);
-    installMockPlatform({ formatAction: mockFormatAction });
-    await createLibraryEntry("component");
-    const seed = seedOf(created[0]);
-    expect(await seed(".md", "my-card.md")).toContain("tagName");
-    // `.json` takes the shared blank document; there is no format to ask.
-    expect(await seed(".json", "my-card.json")).toBeUndefined();
-    // A stem that cannot BE a custom-element name carries no tag, and the author names it by hand.
-    expect(await seed(".md", "card.md")).toBeUndefined();
-  });
-
-  test("a serializer that throws is not a reason to refuse the creation", async () => {
-    // The serializer belongs to the PROJECT. Its failure costs the tag, not the file: the format's
-    // Own template still produces something the author can finish by hand.
-    await mount();
-    setFormats([MARKDOWN_FORMAT]);
-    installMockPlatform({ formatAction: () => Promise.reject(new Error("boom")) });
-    await createLibraryEntry("component");
-    const seed = seedOf(created[0]);
-    expect(await seed(".md", "my-card.md")).toBeUndefined();
-  });
-
-  test("a collection row is content/'s createEntry — the collection's extension and a SEEDED body", async () => {
-    await mount();
-    const path = await createLibraryEntry("collection:posts");
-    expect(created).toHaveLength(1);
-    const request = created[0]!;
-    expect(request.dir).toBe("content");
-    expect(request.format).toEqual({ ext: ".json", kind: "fixed" });
-    // "Content", not "Library": the creation really is the content module's, and a Problem from it
-    // Has to name the surface that can explain it.
-    expect(request.source).toBe("Content");
-    // The whole point. `default`s land, a required field with no default gets its type's empty
-    // Value, and an optional one with neither is omitted — so the entry is valid the moment it
-    // Exists instead of arriving as an empty file.
-    expect(JSON.parse(String(request.content))).toEqual({ draft: false, title: "" });
-    expect(path).toBe("content/new-thing.json");
-    // Opened exactly once, by the entry editor. Opening it again here would swap the form for the
-    // Generic editor on the same tab.
-    expect(opened).toEqual(["content/new-thing.json"]);
-  });
-
-  test("an unknown kind creates nothing", async () => {
-    await mount();
-    expect(await createLibraryEntry("widget")).toBeNull();
-    expect(created).toEqual([]);
-  });
-
-  test("a cancelled creation opens nothing", async () => {
-    createAnswer = null;
-    await mount();
-    expect(await createLibraryEntry("page")).toBeNull();
-    expect(opened).toEqual([]);
-  });
-
-  test("a cancelled collection entry opens nothing either", async () => {
-    createAnswer = null;
-    await mount();
-    expect(await createLibraryEntry("collection:posts")).toBeNull();
-    expect(opened).toEqual([]);
   });
 });
 
@@ -1136,8 +1422,6 @@ describe("a slow scan", () => {
       },
     });
     resetStudioState({ projectConfig: null, projectDirs: ["pages"] });
-
-    // The row appears on a timer, so the clock is what is faked — not the platform.
     const realSetTimeout = globalThis.setTimeout;
     globalThis.setTimeout = stubSetTimeout((fn, ms) =>
       realSetTimeout(fn, ms === SCAN_ACTIVITY_DELAY_MS ? 0 : ms),
@@ -1148,8 +1432,6 @@ describe("a slow scan", () => {
       const row = activities.at(-1)!;
       expect(row.title).toBe("Scan project files");
       expect(row.state).toBe("running");
-      // No Cancel: `listDirectory` cannot be aborted, and a button that cannot do what it says is
-      // Exactly the failure the Activity contract exists to end.
       expect(row.cancellable).toBe(false);
       release!();
       await flush();
@@ -1165,8 +1447,6 @@ describe("a slow scan", () => {
     globalThis.setTimeout = stubSetTimeout((fn, ms) =>
       realSetTimeout(fn, ms === SCAN_ACTIVITY_DELAY_MS ? 0 : ms),
     );
-    // A scan that is slow AND then fails: the row is up before the failure arrives, so the failure
-    // Has to land ON it rather than beside it.
     resetStudioState({
       projectConfig: null,
       projectDirs: dirsMappedBy(() => [
@@ -1180,7 +1460,6 @@ describe("a slow scan", () => {
       await flush();
       await flush();
       expect(activities.at(-1)!.state).toBe("failed");
-      // The row failed, so the caller does NOT also notify: `fail()` raises the Problem itself.
       expect(problems.at(-1)!.message).toContain("Could not scan");
     } finally {
       globalThis.setTimeout = realSetTimeout;
@@ -1188,9 +1467,6 @@ describe("a slow scan", () => {
   });
 
   test("a scan that blows up in a way the scanner did not model is still a Problem", async () => {
-    // `scanLibrary` never rejects, so the pane's outer catch only fires when the scan itself is
-    // Unrunnable — a corrupt project record here, a dead platform in the field. It must not take
-    // The pane down with it.
     resetStudioState({
       projectConfig: null,
       projectDirs: dirsMappedBy(() => {
@@ -1200,7 +1476,7 @@ describe("a slow scan", () => {
     await mount();
     const problem = problems.at(-1)!;
     expect(problem.message).toBe("Could not scan the project's files.");
-    expect(problem.action).toBe("library.refresh");
+    expect(problem.action).toBe("content.refresh");
     expect(problem.tier).toBe("problem");
   });
 });
@@ -1208,9 +1484,9 @@ describe("a slow scan", () => {
 // ─── Context menu ────────────────────────────────────────────────────────────
 
 describe("the per-file context menu", () => {
-  async function openContextMenu(): Promise<void> {
+  async function openContextMenu(index = 0): Promise<void> {
     await mount();
-    parts("card")[0]!.dispatchEvent(
+    parts("card")[index]!.dispatchEvent(
       new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
     );
     await flush();
@@ -1252,7 +1528,7 @@ describe("the per-file context menu", () => {
     const written: string[] = [];
     installMockPlatform({
       listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
-      readFile: () => Promise.resolve("# Hello"),
+      readFile: () => Promise.resolve("{}"),
       writeFile: (path: string) => {
         written.push(path);
         return Promise.resolve();
@@ -1263,7 +1539,7 @@ describe("the per-file context menu", () => {
     menuRow("duplicate").click();
     await flush();
     await flush();
-    expect(written).toEqual(["content/2024-01-02-hello-copy.md"]);
+    expect(written).toEqual(["pages/index-copy.json"]);
     expect(problems.length).toBe(0);
   });
 
@@ -1308,7 +1584,7 @@ describe("the per-file context menu", () => {
     await flush();
     const problem = problems.at(-1)!;
     expect(problem.message).toContain("Could not delete");
-    expect(problem.source).toBe("Library");
+    expect(problem.source).toBe("Content");
   });
 
   test("a second right-click replaces the menu rather than stacking one on it", async () => {
@@ -1357,5 +1633,13 @@ describe("the per-file context menu", () => {
     await flush();
     await flush();
     expect(problems.at(-1)!.message).toContain("Could not duplicate");
+  });
+
+  test("invalidating drops the scan; the next paint scans again", async () => {
+    await mount();
+    invalidateLibrary();
+    await flush();
+    await flush();
+    expect(librarySource().scanned()).toBe(true);
   });
 });

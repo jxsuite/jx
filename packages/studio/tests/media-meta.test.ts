@@ -13,10 +13,12 @@ import {
   formatBytes,
   invalidateMediaMeta,
   loadMediaMeta,
+  mediaMetaSettled,
   mediaMetaSummary,
   peekMediaMeta,
   recordImageSize,
   seedMediaMeta,
+  svgIntrinsicSize,
 } from "../src/files/media-meta";
 import type { DirEntry } from "../src/types";
 
@@ -200,5 +202,64 @@ describe("formatBytes / mediaMetaSummary", () => {
     seedMediaMeta([file("public/hero.jpg")]);
     expect(mediaMetaSummary(peekMediaMeta("public/hero.jpg"))).toBe("");
     expect(mediaMetaSummary(null)).toBe("");
+  });
+});
+
+describe("an SVG's own size", () => {
+  const svg = (attrs: string) => `<svg xmlns="http://www.w3.org/2000/svg" ${attrs}></svg>`;
+
+  test("is width and height, else the viewBox, else one length and the viewBox's ratio", () => {
+    expect(svgIntrinsicSize(svg('width="32" height="24px" viewBox="0 0 64 64"'))).toEqual({
+      height: 24,
+      width: 32,
+    });
+    expect(svgIntrinsicSize(svg('viewBox="0 0 64 64"'))).toEqual({ height: 64, width: 64 });
+    expect(svgIntrinsicSize(svg('viewBox="0,0,120,40"'))).toEqual({ height: 40, width: 120 });
+    expect(svgIntrinsicSize(svg('width="60" viewBox="0 0 120 40"'))).toEqual({
+      height: 20,
+      width: 60,
+    });
+    expect(svgIntrinsicSize(svg('height="10" viewBox="0 0 120 40"'))).toEqual({
+      height: 10,
+      width: 30,
+    });
+  });
+
+  test("is unknown when the file declares none, or only sizes relative to its host", () => {
+    expect(svgIntrinsicSize(svg(""))).toBeNull();
+    expect(svgIntrinsicSize(svg('width="100%" height="50%"'))).toBeNull();
+    expect(svgIntrinsicSize(svg('width="2em" viewBox="0 0 0 10"'))).toBeNull();
+    expect(svgIntrinsicSize("<html></html>")).toBeNull();
+  });
+
+  test("an <img> decode is not its size, the file is, read once", async () => {
+    let reads = 0;
+    installMockPlatform({
+      listDirectory: async () => [file("public/favicon.svg", { size: 300 })],
+      readFile: async () => {
+        reads += 1;
+        return svg('viewBox="0 0 64 64"');
+      },
+    });
+    seedMediaMeta([file("public/favicon.svg", { size: 300 })]);
+    // Chromium's default object size for a sizeless vector, which says nothing about the file.
+    expect(recordImageSize("public/favicon.svg", 150, 150)).toBe(false);
+    expect(mediaMetaSettled("public/favicon.svg")).toBe(false);
+    const meta = await loadMediaMeta("public/favicon.svg");
+    expect(mediaMetaSummary(meta)).toBe("64 × 64 · 300 B");
+    expect(mediaMetaSummary(peekMediaMeta("public/favicon.svg"))).toBe("64 × 64 · 300 B");
+    expect(mediaMetaSettled("public/favicon.svg")).toBe(true);
+    await loadMediaMeta("public/favicon.svg");
+    expect(reads).toBe(1);
+  });
+
+  test("an unreadable SVG is settled without dimensions", async () => {
+    installMockPlatform({
+      listDirectory: async () => [file("public/a.svg", { size: 10 })],
+      readFile: () => Promise.reject(new Error("gone")),
+    });
+    const meta = await loadMediaMeta("public/a.svg");
+    expect(meta.width).toBeNull();
+    expect(mediaMetaSettled("public/a.svg")).toBe(true);
   });
 });

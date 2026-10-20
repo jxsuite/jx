@@ -175,7 +175,8 @@ export async function createGithubRepository({ projectName }: { projectName: str
     // Surfaced as a push failure describing the push.
     activity.log(errorMessage(error));
     activity.fail("The repository was created, but the remote could not be added.", {
-      action: "panel.focus.git",
+      action: "view.setWorkspace",
+      actionArgs: { workspace: "publish" },
     });
     return false;
   }
@@ -191,8 +192,8 @@ export async function createGithubRepository({ projectName }: { projectName: str
     return false;
   }
 
-  // Lazy import breaks the github-publish ↔ git-panel module cycle
-  const { refreshGitStatus } = await import("../panels/git-panel");
+  // Lazy import breaks the github-publish ↔ source-control module cycle
+  const { refreshGitStatus } = await import("../publish/source-control");
   await refreshGitStatus();
   activity.done(repo.html_url);
   notify.success(`Repository created: ${repo.html_url}`, { key: "github.repo" });

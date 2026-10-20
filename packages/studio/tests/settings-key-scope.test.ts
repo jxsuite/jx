@@ -1,10 +1,11 @@
 /**
- * Project Settings is not a canvas — the scope resolution, and the paste it used to permit.
+ * The configuration document is not a canvas — the scope resolution, and the paste it used to
+ * permit.
  *
  * The defect this file pins was reproducible with every gate green. `tabs/tab.ts` and
  * `commands/live-context.ts` each held their OWN copy of the mode → editor-kind map, and neither
- * had learned about `settings` when Project Settings became a document (§17.1). Both fell through
- * to `?? "canvas"`, so with the `project.json` tab on screen in its settings editor the command
+ * had learned about the editor Project Settings then drew in the `project.json` tab (§17.1, since a
+ * dialog). Both fell through to `?? "canvas"`, so with the `project.json` tab on screen the command
  * context reported `editor.kind === "canvas"` and `keyScopeStack` returned the CANVAS stack.
  * `edit.paste` — `keyScope: "canvas"`, `when: ctx.document.open` — was therefore both live to the
  * chord and enabled to the palette, and `pasteNode()` with nothing selected pastes into
@@ -15,7 +16,8 @@
  * `createCommandRegistry` → `registerStudioCommands` → `initShortcuts`, with the real
  * `context-menu.ts` clipboard implementation behind `edit.paste`):
  *
- * - The SCOPE: `settings` resolves to the `config` editor kind, so the stack is `global`;
+ * - The SCOPE: `stylebook`, the tab's Project Styles editor, resolves to the `config` editor kind, so
+ *   the stack is `global`;
  * - The AVAILABILITY: a `keyScope` gates the keyboard only, so the canvas verbs also declare the
  *   canvas in their `when` — otherwise the palette, `__jxAutomation` and the assistant walk around
  *   the scope stack entirely.
@@ -60,7 +62,6 @@ const { canvasViewForMode, editorKindForMode, keyScopeStack } =
   await import("../src/commands/context");
 const { createCommandRegistry, CommandUnavailableError } = await import("../src/commands/registry");
 const { createLiveContext } = await import("../src/commands/live-context");
-const { SETTINGS_MODE } = await import("../src/settings/settings-document");
 const { PROJECT_CONFIG_PATH } = await import("../src/tabs/tab");
 const { initLayers, isModalOpen } = await import("../src/ui/layers");
 const { activeTab, closeAllTabs, openTab } = await import("../src/workspace/workspace");
@@ -184,10 +185,10 @@ beforeEach(() => {
   closeAllTabs();
 });
 
-/** The `project.json` tab exactly as `showSettingsDocument()` opens it: settings mode, first. */
+/** The `project.json` tab exactly as `showSettingsDocument()` opens it: Project Styles, first. */
 function openSettingsTab(): Tab {
   return openTab({
-    capabilities: { modes: [SETTINGS_MODE, "stylebook", "source"] },
+    capabilities: { modes: ["stylebook", "source"] },
     document: { name: "demo", version: "1.0.0" },
     documentPath: PROJECT_CONFIG_PATH,
     id: PROJECT_CONFIG_PATH,
@@ -274,15 +275,17 @@ describe("selection.selectAll", () => {
 // ─── The map, in one place ───────────────────────────────────────────────────
 
 describe("mode → editor kind", () => {
-  test("the settings editor is a config editor, not a canvas", () => {
-    expect(editorKindForMode(SETTINGS_MODE)).toBe("config");
-    // Pinned to the module that DECLARES the mode string, so renaming it on one side fails here
-    // Rather than silently restoring the `?? "canvas"` fall-through.
-    expect(SETTINGS_MODE).toBe("settings");
+  test("the Project Styles editor is a config editor, not a canvas", () => {
+    expect(editorKindForMode("stylebook")).toBe("config");
+  });
+
+  test("the retired settings mode is no mode Studio owns any more", () => {
+    // Project Settings is a dialog (§17.1); no tab draws under `settings`, so the map has no row.
+    expect(editorKindForMode("settings")).toBe("canvas");
   });
 
   test("every editor `project.json` opens under is a non-canvas kind", () => {
-    for (const mode of [SETTINGS_MODE, "stylebook", "source"]) {
+    for (const mode of ["stylebook", "source"]) {
       expect(editorKindForMode(mode)).not.toBe("canvas");
     }
   });
@@ -295,8 +298,7 @@ describe("mode → editor kind", () => {
     ["grid", "grid", "design"],
     ["stylebook", "config", "design"],
     ["git-diff", "diff", "design"],
-    ["manage", "library", "design"],
-    ["settings", "config", "design"],
+    ["content-home", "home", "design"],
   ])("%s → kind %s / view %s", (mode, kind, view) => {
     expect(editorKindForMode(mode)).toBe(kind);
     expect(canvasViewForMode(mode)).toBe(view);
@@ -310,8 +312,8 @@ describe("mode → editor kind", () => {
 
 // ─── The scope stack ─────────────────────────────────────────────────────────
 
-describe("keyboard scope over the settings document", () => {
-  test("the settings document resolves to the global stack, not the canvas one", () => {
+describe("keyboard scope over the configuration document", () => {
+  test("the configuration document resolves to the global stack, not the canvas one", () => {
     openSettingsTab();
     const ctx = registry.context();
     expect(ctx.editor.kind).toBe("config");
@@ -333,7 +335,7 @@ describe("keyboard scope over the settings document", () => {
 
 // ─── The reproduction ────────────────────────────────────────────────────────
 
-describe("⌘V over Project Settings", () => {
+describe("⌘V over the configuration document", () => {
   test("does not insert an element node into project.json", async () => {
     const tab = openSettingsTab();
     const before = JSON.stringify(tab.doc.document);
@@ -387,7 +389,7 @@ describe("canvas verbs over a non-canvas editor", () => {
     "canvas.zoomOut",
   ];
 
-  test("none of them is visible to the palette over the settings document", () => {
+  test("none of them is visible to the palette over the configuration document", () => {
     const tab = openSettingsTab();
     // A selection is set, so nothing here passes merely for want of one: the editor kind is the
     // Fact being asserted.
@@ -397,7 +399,7 @@ describe("canvas verbs over a non-canvas editor", () => {
     }
   });
 
-  test("the palette cannot run edit.paste over the settings document", async () => {
+  test("the palette cannot run edit.paste over the configuration document", async () => {
     const tab = openSettingsTab();
     const before = JSON.stringify(tab.doc.document);
     let thrown: unknown;

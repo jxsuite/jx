@@ -217,12 +217,7 @@ jobs:
           # Recorded in the log so a lock whose `fontset` id moved can be explained without guessing.
           fc-list --format '%{family[0]}\n' | sort -u | wc -l
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          # Pinned with the rest of CI (see .github/workflows/test.yml).
-          bun-version: 1.4
-
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup-bun
 
       # The picture must be of the working tree's bundle. The runner asserts bundle freshness and
       # Will refuse a stale dist rather than photograph one.

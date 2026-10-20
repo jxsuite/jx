@@ -308,8 +308,9 @@ describe("the primary cluster", () => {
     const labels = [...root.querySelectorAll('[part="primary"] jx-button')].map((b) =>
       control(b).getAttribute("aria-label"),
     );
-    // Sorted by `group` then title, which is the registry's ordering, not the document's.
-    expect(labels).toEqual(["Save", "Redo", "Undo", "Open in Browser"]);
+    // Sorted by `group`, then `order`, then title: the registry's ordering, not the document's.
+    // Undo states `order: 1` and Redo `2`, because by title alone the bar read Redo, Undo.
+    expect(labels).toEqual(["Save", "Undo", "Redo", "Open in Browser"]);
   });
 
   test("a gate flipped from outside the bar reaches the buttons in place", async () => {
@@ -427,6 +428,39 @@ describe("the Command Center pill", () => {
 
     expect(() => toolbar.selectionSegmentLabel(tab)).not.toThrow();
     expect(toolbar.selectionSegmentLabel(tab)).toBe("div — Hi");
+  });
+
+  test("the Styles Elements view names the specimen's TAG, not the catalogue's root node", () => {
+    const tab = openTestTab("/project/project.json");
+    tab.session.selection = [[]];
+    shell.stylebook.selection = "table th";
+    try {
+      // Outside the Elements view the tag is not what this tab is editing.
+      expect(toolbar.selectionSegmentLabel(tab)).toBe("div");
+      tab.session.ui.canvasMode = "stylebook";
+      expect(toolbar.selectionSegmentLabel(tab)).toBe("table › th");
+      // The Variables view styles no tag, and with nothing selected names nothing.
+      tab.session.ui.canvasMode = "tokens";
+      tab.session.selection = [];
+      expect(toolbar.selectionSegmentLabel(tab)).toBe("");
+    } finally {
+      shell.stylebook.selection = null;
+    }
+  });
+
+  test("the pill repaints when a specimen is picked", async () => {
+    const tab = openTestTab("/project/project.json");
+    tab.session.ui.canvasMode = "stylebook";
+    await mountBar();
+    expect(segments()).not.toContain("h1");
+    shell.stylebook.selection = "h1";
+    await flush();
+    await flush();
+    try {
+      expect(segments().at(-1)).toBe("h1");
+    } finally {
+      shell.stylebook.selection = null;
+    }
   });
 
   test("a batch is not a place, so the address bar names its size (§6.7)", () => {

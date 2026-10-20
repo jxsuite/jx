@@ -20,7 +20,7 @@
 
 import { siteAbsoluteUrl } from "@jxsuite/schema/asset-paths";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
-import type { JxHeadEntry } from "@jxsuite/schema/types";
+import type { JxDocumentValue, JxHeadEntry } from "@jxsuite/schema/types";
 
 /**
  * A `$head` entry as authored JSON can actually hold it, which is wider than {@link JxHeadEntry}: a
@@ -41,6 +41,40 @@ export interface HeadMergeContext {
   pageUrl?: string;
   /** `rel="alternate"` links for this page's translations (site-architecture.md §13.5). */
   alternates?: readonly { hreflang: string; href: string }[];
+}
+
+/**
+ * A page's `$head` with its own `description` property stated as the description meta.
+ *
+ * A page names its description the way it names its title: as a property of the document, which for
+ * a Markdown page is a frontmatter key (`description: …` beside `title: …`). It is the PAGE's
+ * description, so it beats the site's and the layout's, and it is written ahead of the page's own
+ * `$head` so an explicit `<meta name="description">` there still wins, like every entry stated
+ * twice at one level. A value that is not a non-empty string states nothing. The entry goes through
+ * the same template resolution as the rest of the page's head, so a dynamic page's
+ * `"${state.entry.data.summary}"` is filled per route.
+ *
+ * Before this, the build read no such property, so the museum starter's three pages and every
+ * migrated Markdown page carrying `description:` shipped no description at all (site-architecture
+ * §8.4), while Studio showed the value in a field of its own beside the head's empty one.
+ *
+ * @param {AuthoredHeadEntry[]} pageHead - The page's own `$head`
+ * @param {JxDocumentValue | undefined} description - The page document's `description` property, as
+ *   authored JSON holds it
+ * @returns {AuthoredHeadEntry[]} The head the page level merges
+ */
+export function withPageDescription<T extends AuthoredHeadEntry>(
+  pageHead: readonly T[],
+  description: JxDocumentValue | undefined,
+): (T | JxHeadEntry)[] {
+  if (!isString(description) || description.trim() === "") {
+    return [...pageHead];
+  }
+  const entry: JxHeadEntry = {
+    attributes: { content: description, name: "description" },
+    tagName: "meta",
+  };
+  return [entry, ...pageHead];
 }
 
 /**

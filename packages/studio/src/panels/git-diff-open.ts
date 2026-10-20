@@ -130,10 +130,14 @@ export function openDiffTab(path: string): Tab {
  * leave the comparison for Design without reopening anything; a file it cannot gets the stub tab
  * above. Both are keyed by the path, so §14.1 holds either way — one path, one tab.
  *
- * `files/files.ts` is imported dynamically because it imports `cleanupGitPanel` from
- * `panels/git-panel.ts`, which imports this module: a static edge back would close that cycle.
- * `openFileInTab` answers `void` whether it opens a new tab or reveals one that was already open,
- * so the tab is resolved from the workspace by its path.
+ * The document tab opens IN `git-diff`, and an already-open one is moved into it before it is
+ * revealed: a comparison belongs to Publish (studio.md §22.1), and a tab activated in its edit mode
+ * would enter Design, frame and all, for the moment before the mode followed.
+ *
+ * `files/files.ts` is imported dynamically because it imports `cleanupSourceControl` from
+ * `publish/source-control.ts`, which imports this module: a static edge back would close that
+ * cycle. `openFileInTab` answers `void` whether it opens a new tab or reveals one that was already
+ * open, so the tab is resolved from the workspace by its path.
  *
  * Answers null when the file could not be opened at all, which the caller states rather than
  * silently leaving the stage on someone else's document.
@@ -143,6 +147,6 @@ export async function openComparisonTab(path: string): Promise<Tab | null> {
     return openDiffTab(path);
   }
   const files = await import("../files/files");
-  await files.openFileInTab(path, {});
+  await files.openFileInTab(path, { canvasMode: "git-diff" });
   return [...workspace.tabs.values()].find((tab) => tab.documentPath === path) ?? null;
 }

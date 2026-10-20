@@ -554,8 +554,8 @@ const MUTANTS: Mutant[] = [
       },
     ],
     file: "src/canvas/canvas-render.ts",
-    id: "canvas-render.ts · no Document Header in a lens",
-    means: "two frontmatter cards edit one document side by side",
+    id: "canvas-render.ts · no writing banner in a lens",
+    means: "a lens over an entry grows a second writing banner, with a door the lens does not own",
     test: "tests/canvas-render.test.ts",
   },
   {
@@ -964,7 +964,7 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `  if (derived && pane.tabOrder.length === 0) {`,
+        find: `  if (derived && visible.length === 0) {`,
         replace: `  if (derived && derived.kind === "lens") {`,
       },
     ],

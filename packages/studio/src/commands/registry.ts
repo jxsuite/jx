@@ -82,6 +82,12 @@ export interface Command<A = void> {
   /** Menu ordering key: "1_clipboard", "3_structure", "9_danger". */
   group?: string;
   /**
+   * Position within its {@link Command.group}, lower first. A command without one follows the
+   * ordered commands of its group, by title. A group whose members have a reading order of their
+   * own (Undo before Redo) states it here, because the title is an accident of the language.
+   */
+  order?: number;
+  /**
    * How the effect is undone. Also the LEDGER SCOPE of a bridged write:
    * `services/ai-command-tools.ts` records one "Changed N files" entry per path a projected run
    * touched, and it reads this field to know whether there was a write at all and whether ⌘Z can
@@ -371,7 +377,10 @@ export function createCommandRegistry(options: CommandRegistryOptions): CommandR
             (command.menus ?? ["palette"]).includes(placement) && visibleWith(command, ctx),
         )
         .toSorted(
-          (a, b) => (a.group ?? "").localeCompare(b.group ?? "") || a.title.localeCompare(b.title),
+          (a, b) =>
+            (a.group ?? "").localeCompare(b.group ?? "") ||
+            (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY) ||
+            a.title.localeCompare(b.title),
         );
     },
     isVisible(id) {

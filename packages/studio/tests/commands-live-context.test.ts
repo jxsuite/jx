@@ -152,6 +152,13 @@ describe("project and git", () => {
     expect(ctx.project.isRepo).toBe(false);
     expect(ctx.git).toEqual({ ahead: 0, behind: 0, dirtyCount: 0 });
   });
+  test("the workspace on screen comes from the shell record", () => {
+    const before = shell.workspace;
+    shell.workspace = "publish";
+    expect(context().workspace).toEqual({ id: "publish" });
+    shell.workspace = before;
+    expect(context().workspace).toEqual({ id: before });
+  });
 });
 
 // ─── Document, editor, selection ──────────────────────────────────────────────
@@ -241,7 +248,7 @@ describe("document and editor", () => {
     ["grid", "grid", "design"],
     ["source", "code", "design"],
     ["git-diff", "diff", "design"],
-    ["manage", "library", "design"],
+    ["content-home", "home", "design"],
     ["stylebook", "config", "design"],
   ])("canvasMode %s → editor.kind %s / canvas.view %s", (mode, kind, canvasView) => {
     canvasMode = mode;
@@ -442,6 +449,7 @@ describe("collab, ai and capabilities", () => {
       gitClone: false,
       importSite: false,
       openProjectInNewWindow: false,
+      publish: false,
       readFileBytes: false,
       windowControls: false,
     });
@@ -462,10 +470,19 @@ describe("collab, ai and capabilities", () => {
       gitClone: true,
       importSite: false,
       openProjectInNewWindow: false,
+      publish: false,
       // On: the harness's mock ships `readFileBytes`, which is what gates the image editor.
       readFileBytes: true,
       windowControls: true,
     });
+  });
+
+  /* The Publish family's host question: whether it can reach Cloudflare. It is the member it is
+     named after, so a host gains the deploy records by gaining `cfApi` and by nothing else. */
+  test("publish follows cfApi", () => {
+    const { platform } = installMockPlatform({ cfApi: async () => null });
+    const ctx = createLiveContext(sources({ platform: () => platform }))();
+    expect(ctx.capability.publish).toBe(true);
   });
 
   test("findReferences follows its own PAL member, not codeService", () => {
@@ -527,7 +544,7 @@ describe("keyScopeStack", () => {
     // Preview posts no hits, so no element-level chord has anything visible to aim at.
     ["canvas", "preview", ["global"]],
     ["diff", "design", ["global"]],
-    ["library", "design", ["global"]],
+    ["home", "design", ["global"]],
     ["none", "design", ["global"]],
   ])("editor %s / view %s → %p", (kind, view, expected) => {
     const ctx = makeContext({
@@ -546,13 +563,13 @@ describe("keyScopeStack", () => {
   });
 
   /*
-   * The `settings` mode is the entry both copies of the map were missing, and the live projection is
-   * where that mattered: the tab reported `editor.kind === "canvas"`, the stack came back as the
-   * canvas one, and ⌘V pasted an element node into `project.json`. `tests/settings-key-scope.test.ts`
-   * runs the whole reproduction; this asserts the projection itself, which is this file's subject.
+   * The configuration document's editor is the entry both copies of the map were once missing, and
+   * the live projection is where that mattered: the tab reported `editor.kind === "canvas"`, the
+   * stack came back as the canvas one, and ⌘V pasted an element node into `project.json`.
+   * `tests/settings-key-scope.test.ts` runs the whole reproduction; this asserts the projection.
    */
-  test("a settings document projects as a config editor on the global stack", () => {
-    canvasMode = "settings";
+  test("the configuration document projects as a config editor on the global stack", () => {
+    canvasMode = "stylebook";
     const ctx = context();
     expect(ctx.editor.kind).toBe("config");
     expect(keyScopeStack(ctx)).toEqual(["global"]);
@@ -569,9 +586,8 @@ describe("editorKindForMode / canvasViewForMode", () => {
     ["source", "code", "design"],
     ["grid", "grid", "design"],
     ["stylebook", "config", "design"],
-    ["settings", "config", "design"],
     ["git-diff", "diff", "design"],
-    ["manage", "library", "design"],
+    ["content-home", "home", "design"],
   ])("%s → kind %s / view %s", (mode, kind, view) => {
     expect(editorKindForMode(mode)).toBe(kind);
     expect(canvasViewForMode(mode)).toBe(view);

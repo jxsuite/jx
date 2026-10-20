@@ -1,14 +1,21 @@
 /// <reference lib="dom" />
 /**
- * The Outline panel while the pane is showing Project Styles — the element catalogue and the
- * document's own custom properties.
+ * The Outline panel while the pane is showing a document's Elements view — the element catalogue.
+ *
+ * A page or a component offers **Elements** in its Editor control, which styles that file's element
+ * defaults (`docs/studio/design/stylebook.md`), and the Outline beside it lists the catalogue's
+ * tags instead of the document's tree. `project.json` in the Styles workspace has its own
+ * Navigator, the Styles panel (`panels/styles-panel.ts`), which lists the project's CSS custom
+ * properties too; the variables list this body used to draw beside the Variables view went there
+ * with it.
  *
  * **The body is a Jx document** (`surfaces/panel-stylebook-layers.json`, mounted by
  * `surfaces/panel-stylebook-layers.ts`), so this module renders nothing and projects everything.
- * What stays here is what is a DECISION: how the catalogue's recursive `$sections` flatten into a
- * list, how a child's compound path is spelled, which children are duplicates of each other, which
- * tags the open file has already styled, and which row the current selection marks. The surface
- * reads values.
+ * What stays here is what is a DECISION: which tags the open file has already styled, and what each
+ * row is called. The walk itself (how the catalogue's recursive `$sections` flatten into a list,
+ * how a child's compound path is spelled, which children are duplicates of each other, and which
+ * row the current selection marks) is `stylebook-doc.ts`'s `catalogueRows`, which the Styles
+ * panel's Elements section draws from too. The surface reads values.
  *
  * The panel does not own the panel RECORD — `panels/layers-panel.ts` does, because the Outline is
  * one panel with two bodies and only the record can know which the pane is asking for. That module
@@ -23,13 +30,13 @@ import { activeTab } from "../workspace/workspace";
 import { shell } from "../shell";
 import { componentRegistry } from "../files/components";
 import { mountStylebookLayersSurface } from "../surfaces/panel-stylebook-layers";
+import { catalogueRows } from "./stylebook-doc";
 
 import type { StylebookEntry } from "./stylebook-panel";
 import type {
   StylebookLayersSurfaceHandle,
   StylebookLayersValues,
   StylebookRowView,
-  StylebookVariableView,
 } from "../surfaces/panel-stylebook-layers";
 import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxStyle } from "@jxsuite/schema/types";
@@ -56,61 +63,6 @@ function hasTagStyle(rootStyle: JxStyle, tag: string): boolean {
 }
 
 /**
- * The leaf of the current selection.
- *
- * A selection is a compound path (`"ul li"`) and the catalogue draws one row per TAG, so the row
- * that is marked is the one whose tag is the path's last segment. That is what the tree has always
- * done; it is written down here because "selected" meaning something other than "equal" is exactly
- * the kind of thing a reader assumes is a bug.
- */
-function selectedLeaf(selection: string | null): string | null {
-  if (!selection) {
-    return null;
-  }
-  return selection.includes(" ") ? (selection.split(" ").pop() ?? null) : selection;
-}
-
-/**
- * Flatten one catalogue entry and everything under it into rows.
- *
- * Children are deduplicated by tag — a `<ul>` specimen carries two `<li>`s and they are one row,
- * because the row selects a TAG and there is only one `& li` to write.
- */
-function elementRows(
-  entry: StylebookEntry,
-  rootStyle: JxStyle,
-  leaf: string | null,
-  depth: number,
-  parentPath: string,
-  out: StylebookRowView[],
-): void {
-  const { tag } = entry;
-  const fullPath = parentPath ? `${parentPath} ${tag}` : tag;
-  out.push({
-    customized: hasTagStyle(rootStyle, tag),
-    indent: `${INDENT_BASE + depth * INDENT_STEP}px`,
-    key: fullPath,
-    kind: "element",
-    label: entry.text || `<${tag}>`,
-    selected: tag === leaf,
-    tag,
-  });
-  const children = entry.children
-    ? [...new Map(entry.children.map((c: StylebookEntry) => [c.tag, c])).values()]
-    : [];
-  for (const child of children) {
-    elementRows(child, rootStyle, leaf, depth + 1, fullPath, out);
-  }
-}
-
-/** The custom properties the open file declares, in the order it declares them. */
-function variableRows(rootStyle: JxStyle): StylebookVariableView[] {
-  return Object.entries(rootStyle)
-    .filter(([k]) => k.startsWith("--"))
-    .map(([name, value]) => ({ key: name, name, value: String(value) }));
-}
-
-/**
  * What the surface should be showing right now.
  *
  * Exported because it is the whole of this module that is worth testing on its own: it is a pure
@@ -123,14 +75,20 @@ export function stylebookLayersValues(ctx: StylebookLayersCtx): StylebookLayersV
   const tab = activeTab.value;
   const rootStyle: JxStyle = tab?.doc.document?.style || {};
   const { selection } = shell.stylebook;
-  const leaf = selectedLeaf(selection);
 
-  const rows: StylebookRowView[] = [];
-  for (const section of ctx.stylebookMeta.$sections) {
-    for (const entry of section.elements) {
-      elementRows(entry, rootStyle, leaf, 0, "", rows);
-    }
-  }
+  /* The stylebook's own walk (`stylebook-doc.ts` `catalogueRows`), which the Styles panel's
+     Elements section draws from too: the path, the nesting, the deduplication and the leaf mark
+     are one decision, and only the dot and the label are this list's. */
+  const entries = ctx.stylebookMeta.$sections.flatMap((section) => section.elements);
+  const rows: StylebookRowView[] = catalogueRows(entries, selection).map((row) => ({
+    customized: hasTagStyle(rootStyle, row.tag),
+    indent: `${INDENT_BASE + row.depth * INDENT_STEP}px`,
+    key: row.path,
+    kind: "element",
+    label: row.entry.text || `<${row.tag}>`,
+    selected: row.selected,
+    tag: row.tag,
+  }));
   for (const comp of componentRegistry) {
     rows.push({
       customized: false,
@@ -145,13 +103,7 @@ export function stylebookLayersValues(ctx: StylebookLayersCtx): StylebookLayersV
     });
   }
 
-  const variables = variableRows(rootStyle);
-  return {
-    hasVariables: variables.length > 0,
-    rows,
-    tab: shell.stylebook.tab,
-    variables,
-  };
+  return { rows };
 }
 
 /**
@@ -161,7 +113,12 @@ export function stylebookLayersValues(ctx: StylebookLayersCtx): StylebookLayersV
  * one Navigator, so a mount into a DIFFERENT node is the old one being replaced, and holding both
  * would leave the first one's effects running against a scope nobody writes any more.
  */
-let standing: { host: HTMLElement; handle: StylebookLayersSurfaceHandle } | null = null;
+let standing: {
+  /** The latest ctx: the handlers read it, not the one the first mount closed over. */
+  ctx: StylebookLayersCtx;
+  host: HTMLElement;
+  handle: StylebookLayersSurfaceHandle;
+} | null = null;
 
 /**
  * Keep the selected row on screen after a repaint.
@@ -201,12 +158,14 @@ export function mountStylebookLayersPanel(ctx: StylebookLayersCtx, host: HTMLEle
   }
   const values = stylebookLayersValues(ctx);
   if (standing) {
+    standing.ctx = ctx;
     standing.handle.update(values);
   } else {
     standing = {
+      ctx,
       handle: mountStylebookLayersSurface(target, values, {
         selectRow: (path) => {
-          ctx.selectStylebookTag(path, undefined, { panCanvas: true });
+          (standing?.ctx ?? ctx).selectStylebookTag(path, undefined, { panCanvas: true });
         },
       }),
       host: target,
@@ -218,8 +177,8 @@ export function mountStylebookLayersPanel(ctx: StylebookLayersCtx, host: HTMLEle
 /**
  * Take the catalogue down.
  *
- * Called by the Outline's record when the pane is no longer showing Project Styles. Without it the
- * document survives its own irrelevance: lit's branch renders into the range it owns inside
+ * Called by the Outline's record when the pane is no longer showing an Elements view. Without it
+ * the document survives its own irrelevance: lit's branch renders into the range it owns inside
  * `.panel-content` and leaves everything appended after it exactly where it was.
  */
 export function detachStylebookLayers(): void {

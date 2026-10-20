@@ -1,6 +1,8 @@
 /// <reference lib="dom" />
 /**
- * The CSS Variables settings section, as a mounted document.
+ * The CSS Variables editor, as a mounted document: the body of the Styles workspace's Variables
+ * view (`surfaces/styles-variables.json` is its frame). The file keeps the `settings-` name it had
+ * while the editor was a Project Settings section.
  *
  * `settings/css-vars-editor.ts` is the flow — it reads the project's root style block, decides what
  * an edit writes and pushes the result at every live canvas — and this is the surface it draws
@@ -19,11 +21,11 @@
  * inventing one to be photographed is what the screenshot policy forbids. It is the one place a
  * document reaches past the kit, and it reaches for a platform element rather than a Spectrum one.
  *
- * **Keyed by host, not by module.** Project Settings is a pane document and a pane can be split, so
- * two containers may be showing this section at once; a single module-level mount would take the
+ * **Keyed by host, not by module.** The Variables view is a pane document and a pane can be split,
+ * so two containers may be showing this section at once; a single module-level mount would take the
  * first one's surface away from it the moment the second drew.
  *
- * @docs studio/projects/settings
+ * @docs studio/design/tokens
  */
 
 import { reactive } from "../reactivity";
@@ -60,6 +62,8 @@ export interface OverrideRowView {
 export interface TokenRowView {
   /** The custom property. The row's key, and every handler's first argument. */
   name: string;
+  /** Whether this is the token the Outline pointed the view at. Drawn as `aria-current`. */
+  current: boolean;
   label: string;
   value: string;
   removeLabel: string;
@@ -189,4 +193,73 @@ export function renderCssVarsSurface(
   void mountSurface("settings-css-vars", scope, host).then((handle) => {
     record.handle = handle;
   });
+}
+
+/**
+ * Bring one token's row on screen and put the keyboard on its value.
+ *
+ * The adapter's half of pointing the editor at a token: the flow marks the row through the scope
+ * (`current`), and only the surface knows where the row it draws is. It waits a turn, because the
+ * mark is a scope write and the row it marks is drawn by the binding that write schedules, and it
+ * searches the mounted root as it stands then, so a section redrawn since the call is the one
+ * searched. A host with no surface, or a name with no row, moves nothing.
+ *
+ * @param {HTMLElement} host The section container the editor was rendered into.
+ * @param {string} name A custom property, `--accent`.
+ */
+export function revealCssVarsToken(host: HTMLElement, name: string): void {
+  const record = mounts.get(host);
+  if (!record) {
+    return;
+  }
+  setTimeout(() => {
+    const root = record.handle?.root;
+    if (!(root instanceof HTMLElement) || !root.isConnected) {
+      return;
+    }
+    const row = [...root.querySelectorAll<HTMLElement>('[part="token"]')].find(
+      (candidate) => candidate.dataset["token"] === name,
+    );
+    if (!row) {
+      return;
+    }
+    row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // The NATIVE input: the kit's text field does not delegate focus from its host.
+    row.querySelector<HTMLElement>('[part="value"] input')?.focus();
+  }, 0);
+}
+
+/**
+ * Bring one group's heading on screen, and with `add` put the keyboard on its Add row's name field.
+ *
+ * The Styles panel's group headings and its "Add variable" land here. It waits a turn for the
+ * reason {@link revealCssVarsToken} does. A host with no surface, or a group the section does not
+ * draw (an empty Other), moves nothing.
+ *
+ * @param {HTMLElement} host The section container the editor was rendered into.
+ * @param {string} group A token group id: `color`, `font`, `size` or `other`.
+ * @param {boolean} add Whether to focus the group's Add row.
+ */
+export function revealCssVarsGroup(host: HTMLElement, group: string, add: boolean): void {
+  const record = mounts.get(host);
+  if (!record) {
+    return;
+  }
+  setTimeout(() => {
+    const root = record.handle?.root;
+    if (!(root instanceof HTMLElement) || !root.isConnected) {
+      return;
+    }
+    const section = [...root.querySelectorAll<HTMLElement>("[data-group]")].find(
+      (candidate) => candidate.dataset["group"] === group,
+    );
+    if (!section) {
+      return;
+    }
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (add) {
+      // The NATIVE input, for the reason `revealCssVarsToken` gives.
+      section.querySelector<HTMLElement>('[part="add-name"] input')?.focus();
+    }
+  }, 0);
 }

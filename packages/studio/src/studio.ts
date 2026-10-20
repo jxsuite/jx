@@ -26,6 +26,7 @@ import {
   toolbarEl,
   updateSession,
 } from "./store";
+import { getEffectiveRenderLocale } from "./site-context";
 
 import {
   PRIMARY_PANE,
@@ -58,6 +59,7 @@ import { isEditing } from "./editor/inline-edit";
 import { applyTransform, registerCanvasViewCommands } from "./canvas/canvas-utils";
 import { diffCommands, setDiffChromeRepaint } from "./canvas/diff-toolbar";
 import type { CanvasSurface } from "./canvas/canvas-surface";
+import type { InspectorTabId } from "./shell";
 import {
   initCanvasRender,
   registerSelectionSetCommand,
@@ -126,6 +128,7 @@ import {
   openLastSessionOrHome,
   reloadCleanTab,
   reloadTabsIfChanged,
+  setSessionWorkspaceShow,
 } from "./files/files";
 import { resetIgnoreCache } from "./files/gitignore";
 import { resetAssetVersions } from "./files/asset-versions";
@@ -138,8 +141,19 @@ import {
 } from "./collab/collab-session";
 import { invalidateLayoutPickerCache } from "./panels/head-panel";
 import { installAutomationHook } from "./services/automation";
-import { invalidateLibrary } from "./browse/library-pane";
-import { invalidateMediaCache } from "./ui/media-picker";
+import { invalidateLibrary, resetContentView } from "./browse/library-pane";
+import { invalidateCollectionPages, resetCollectionPages } from "./content/collection-pages";
+import { invalidatePageSummaries } from "./content/page-summaries";
+import { invalidateEntrySummaries, noteSavedEntry } from "./content/entry-summaries";
+import { invalidateRepeaterSources } from "./canvas/repeater-sources";
+import { entryFields } from "./content/entry-fields";
+import { contentCacheDrops } from "./content/content-collections";
+import { resetWritingBanners } from "./content/writing-banner";
+import { resetCollectionsPanel } from "./panels/collections-panel";
+import { resetStylesPanel } from "./panels/styles-panel";
+import { resetVariablesFocus } from "./style/variables-focus";
+import { invalidateMediaCache, isMediaScanPath } from "./ui/media-picker";
+import { invalidateSiteIndex, resetSitePanel } from "./panels/site-panel";
 import { setMediaChangedHandler } from "./files/media-upload";
 import { applyFileDrop } from "./editor/file-drop-action";
 import {
@@ -169,12 +183,13 @@ import { autoSyncProjectOnOpen } from "./packages/pull-package-sync";
 import webdata from "../data/webdata.json";
 import { registerDataExplorerCommands } from "./panels/data-explorer";
 import {
-  cleanupGitPanel,
+  cleanupSourceControl,
   cloneRepository,
   loadDiffForLens,
   registerSourceControlCommands,
   noteFileSaved,
-} from "./panels/git-panel";
+  setSourceControlDeps,
+} from "./publish/source-control";
 
 import { registerKit } from "./ui/kit";
 import "./ui/panel-resize.js";
@@ -185,13 +200,12 @@ import { initShortcuts, registerStudioCommands } from "./editor/shortcuts";
 import type { ProjectOpenOutcome, ProjectOpenTarget } from "./editor/shortcuts";
 import { createCommandRegistry } from "./commands/registry";
 import { chordsInScopes } from "./commands/keymap";
-import { FRAME_KEY_SCOPES } from "./canvas/iframe-keys";
+import { FRAME_KEY_SCOPES, HOST_ONLY_COMMANDS } from "./canvas/iframe-keys";
 import { createLiveContext } from "./commands/live-context";
 import { hasAiCredentials } from "./services/ai-models";
 import { mount } from "./surfaces/rail";
 import * as toolbarPanel from "./surfaces/commandbar";
 import * as overlaysPanel from "./panels/overlays";
-import * as frontmatterPanelMod from "./panels/frontmatter-panel";
 import * as rightPanelMod from "./panels/right-panel";
 import * as chatPanelMod from "./panels/chat-panel";
 import { setProjectAdopter } from "./services/project-adoption";
@@ -251,19 +265,36 @@ import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
 import { registerGridCommands } from "./grid/grid-open";
 import { registerExtensionCommands } from "./settings/extension-commands";
-import { registerSettingsCommands } from "./settings/settings-document";
+import {
+  registerSettingsCommands,
+  rememberStylesView,
+  showSettingsDocument,
+} from "./settings/settings-document";
+import {
+  installWorkspaceFollow,
+  revealInPane,
+  switchWorkspace,
+} from "./workspace/workspace-switch";
+import { workspaceBackCommands } from "./workspace/workspace-back";
+import type { HomeWorkspaceId, WorkspaceId } from "./workspace/workspace-ids";
+import { openWorkspaceHome, placeWorkspaceHome } from "./workspace/workspace-home";
 import { registerPreferencesCommands } from "./settings/preferences-dialog";
 import { registerAboutCommands } from "./about/about-modal";
 import { registerCollabCommands } from "./collab/collab-commands";
-import { registerLibraryCommands } from "./browse/library-commands";
+import { registerContentViewCommands } from "./browse/library-commands";
 import { registerFileFormatCommands } from "./format/convert-file";
 import { registerPublishCommands } from "./publish/publish-commands";
 import { registerGridViewCommands } from "./grid/grid-panel";
 import { registerRedirectsCommands } from "./grid/redirects-grid";
 import { registerContentCommands } from "./content/entry-commands";
+import { registerAddNewCommands } from "./create/add-new-commands";
+import { registerMediaCommands } from "./media/media-commands";
+import { focusMediaHome, resetMediaLibrary } from "./media/media-library";
+import { focusPublishHome } from "./publish/publish-workspace";
 import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
+import { PROJECT_CONFIG_PATH } from "./tabs/tab";
 import type { Tab } from "./tabs/tab";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
@@ -296,8 +327,8 @@ setBundleBase(import.meta.url);
  *
  * `loadDiff` is here rather than in `workspace/pane-derive.ts` because that module owns no I/O —
  * which is what lets its whole decision-making half be tested with no platform. It is the same pair
- * of reads `panels/git-panel.ts` makes for a row click; an added file has no `HEAD` copy, so its
- * "original" is the empty string rather than a `gitShow` that would throw.
+ * of reads `publish/source-control.ts` makes for a Before and after; an added file has no `HEAD`
+ * copy, so its "original" is the empty string rather than a `gitShow` that would throw.
  */
 const derivationDeps: DerivationDeps = {
   /*
@@ -370,6 +401,10 @@ function setCanvasMode(tab: Tab | null, mode: string) {
     shell.git.diffState = null;
   }
   tab.session.ui.canvasMode = mode;
+  // The Styles home view follows the author's own switches between Variables and Elements.
+  if (tab.documentPath === PROJECT_CONFIG_PATH) {
+    rememberStylesView(mode);
+  }
 }
 
 // ─── Component registry ───────────────────────────────────────────────────────
@@ -524,11 +559,26 @@ const primaryCell = cellForPane(PRIMARY_PANE);
 
 tabStrip.mount(primaryCell?.strip ?? document.createElement("div"));
 
+/**
+ * Give the keyboard to the home a Back landed on (`workspace/workspace-back.ts`): the media tile
+ * that was opened, the change whose comparison it was. One function for the Back control and for
+ * Escape, so the two land in the same place.
+ */
+function focusWorkspaceHome(paneId: string, id: WorkspaceId): void {
+  if (id === "media") {
+    focusMediaHome(paneId);
+  } else if (id === "publish") {
+    focusPublishHome(paneId);
+  }
+}
+
 paneContext.mount(primaryCell?.chrome ?? document.createElement("div"), {
   exportFile,
   // No `getCanvasMode`: the bar is drawn once per pane and asks its own pane. See `PaneContextCtx`.
   parseMediaEntries,
   setCanvasMode,
+  closeTab: tabStrip.requestClose,
+  focusHome: focusWorkspaceHome,
 });
 /* The diff's Visual/Code switch decides whether the zoom pod is drawn, and the half it writes is
    not reactive — so the switch repaints the chrome as well as the stage. See `setDiffChromeRepaint`. */
@@ -558,6 +608,7 @@ setFileDropHandler(applyFileDrop);
 setMediaChangedHandler(async (dir) => {
   invalidateMediaCache();
   invalidateLibrary();
+  invalidateSiteIndex();
   await loadDirectory(dir);
   renderLeftPanel();
 });
@@ -582,7 +633,7 @@ setStylebookHitHandler((tag, media) => {
    1. Commit-on-parent-click: it ends the live inline-edit session, which the iframe cannot observe
       itself (layers panel, tab strip, right panel…).
    2. The block action bar goes with it. The bar is `position: fixed` and clamped into the window,
-      so it can sit over the Document Header card, the pane context bar and the docks; an author
+      so it can sit over the pane context bar, the Inspector and the docks; an author
       working in the Inspector's Logic tab reported it "blocking a part of the interface that the
       user needs to utilize". It is SUPPRESSED, not dismissed — a plain dismiss flashes back on the
       next snapshot or overlay repaint — and it comes back the moment the canvas takes a pointer or
@@ -774,10 +825,8 @@ function installPaneRenderEffects(paneId: string): void {
       void tab.session.ui.previewProps;
       void tab.session.ui.showLayout;
     }
-    // Project-level render inputs: the stylebook catalogue's filters and the settings section are
-    // Shell state, so a change repaints the canvas with or without a document focused.
-    void shell.settingsTab;
-    void shell.stylebook.tab;
+    // Project-level render inputs: the stylebook catalogue's filters are shell state, so a change
+    // Repaints the canvas with or without a document focused.
     void shell.stylebook.filter;
     void shell.stylebook.customizedOnly;
     scheduleCanvasRender(paneId);
@@ -796,8 +845,11 @@ function installPaneRenderEffects(paneId: string): void {
      * The other half of `i18n.switchLocale`. Without this the control moves a chip and the artboard
      * goes on drawing the same document left-to-right, which makes the verb a label rather than a
      * rendering context. Scoped to THIS pane's stage for the reason the scheme effect above gives.
+     * The document's OWN language when nothing is chosen, so an Arabic file draws right to left
+     * without being asked (`getEffectiveRenderLocale`).
      */
-    const locale = tabOfPane(paneId)?.session.ui.previewLocale ?? null;
+    const tab = tabOfPane(paneId);
+    const locale = getEffectiveRenderLocale(tab?.session.ui.previewLocale, tab?.documentPath);
     postLocaleToLiveHosts(locale, surfaceForPane(paneId).wrap);
   });
 }
@@ -842,10 +894,6 @@ rightPanelMod.mount({
   renderCanvas: () => renderCanvas(),
 });
 
-// The Document Header card — every document with frontmatter or `$head`. It has no host of its own:
-// The stage hands one over (`canvas-render.ts`), and this only starts the reactive subscription.
-frontmatterPanelMod.mount();
-
 // The assistant's create_project tool adopts freshly scaffolded projects through the same
 // Flow as the recent-projects list.
 setProjectAdopter(openRecentProject);
@@ -855,8 +903,20 @@ setImportHandoff(revealImportHandoff);
    one — see services/connection.ts for why only the chromium shell can. */
 watchConnection();
 
+/* What source control needs from the bootstrap: the two writes a comparison makes outside
+   `shell.git` (the Publish workspace's Before and after puts the file's own tab into git-diff), and
+   the clone flow, which ends by opening the project it cloned. */
+setSourceControlDeps({
+  cloneRepository: () => {
+    void cloneRepository({ openRecentProject });
+  },
+  setCanvasMode,
+  setGitDiffState: (state: GitDiffState | null) => {
+    shell.git.diffState = state;
+  },
+});
+
 leftPanelMod.mount({
-  cloneRepository: () => cloneRepository({ openRecentProject }),
   defBadgeLabel,
   defCategory,
   defaultDef,
@@ -888,9 +948,6 @@ leftPanelMod.mount({
   },
   mountSignalsPanel,
   setCanvasMode,
-  setGitDiffState: (state: GitDiffState | null) => {
-    shell.git.diffState = state;
-  },
   webdata,
 });
 
@@ -899,7 +956,6 @@ leftPanelMod.mount({
 registerRenderer("leftPanel", () => leftPanelMod.render());
 registerRenderer("canvas", () => renderCanvas());
 registerRenderer("rightPanel", () => rightPanelMod.render());
-registerRenderer("frontmatterPanel", () => frontmatterPanelMod.render());
 registerRenderer("seoModal", renderSeoModal);
 registerRenderer("chatPanel", () => chatPanelMod.render());
 registerRenderer("overlays", () => overlaysPanel.render());
@@ -945,9 +1001,32 @@ function ensureFsSync() {
        of them wrong, and it is the same event for all four. The bar's memo is separate from
        `page-params`' because it is keyed per DOCUMENT rather than globally; leaving it behind kept
        a stale candidate list in the picker after the collection changed. */
-    invalidateDerivedCaches: () => {
+    invalidateDerivedCaches: (paths, structural = true) => {
       invalidatePageRouteCache();
       invalidateLayoutPickerCache();
+      invalidateSiteIndex(paths);
+      /* The Content workspace's three: the scan its collections are filtered from, the pages that
+         say where each collection is published, and the entry list the Collections panel draws.
+         Each is dropped only by a batch that can make it wrong, so a save does not re-walk the
+         project or blank the Collections panel (`contentCacheDrops`). */
+      const drops = contentCacheDrops(paths, structural);
+      if (drops.scan) {
+        invalidateLibrary();
+      }
+      if (drops.pages) {
+        invalidateCollectionPages();
+        invalidatePageSummaries();
+      }
+      if (drops.entries) {
+        invalidateEntrySummaries();
+        invalidateRepeaterSources();
+      }
+      /* The media listing is a walk of `public/` and every collection's `images/`, so only a batch
+         under one of them (or one that cannot say what changed) can make it wrong: a file added by
+         git, the OS or a Files-panel delete. */
+      if (paths === undefined || paths.some((path) => isMediaScanPath(path))) {
+        invalidateMediaCache();
+      }
       invalidateParamValues();
       paneContext.resetParamValues();
     },
@@ -1256,10 +1335,32 @@ async function openProject(target: ProjectOpenTarget = "thisWindow"): Promise<Pr
   if (!(await tabStrip.confirmCloseAll("Opening another project"))) {
     return "cancelled";
   }
-  const opened = await _openProject({ renderLeftPanel });
+  const opened = await _openProject({ renderLeftPanel, resetProjectCaches });
   ensureFsSync();
   return opened ? "opened" : "cancelled";
 }
+/**
+ * The one project-switch reset of the caches panels keep for the project being left: the Site
+ * panel's index and filter, the media listing it and every image field read, and the Media
+ * workspace's own filter, search and selection. Both open paths run it (this file's
+ * `openRecentProject`, and `files.ts`'s `openProject` behind ⌘O, the toolbar and the welcome
+ * screen), so neither can show the previous project's pages or media.
+ */
+function resetProjectCaches(): void {
+  resetSitePanel();
+  resetContentView();
+  resetCollectionPages();
+  invalidatePageSummaries();
+  invalidateEntrySummaries();
+  invalidateRepeaterSources();
+  resetCollectionsPanel();
+  resetStylesPanel();
+  resetVariablesFocus();
+  resetWritingBanners();
+  invalidateMediaCache();
+  resetMediaLibrary();
+}
+
 async function openRecentProject(root: string) {
   // One entry for the whole sequence, not three surfaces for its three phases. Opening a project
   // Used to chain a blocking spinner (dependencies), a transient status line (git sync) and a
@@ -1317,9 +1418,10 @@ async function openRecentProject(root: string) {
     platform.projectRoot = root;
     // Source control, the stylebook selection and the settings tab describe the project being
     // Left behind; carrying them over showed the previous repository's branch and file count
-    // Under the new project's name. The poll timer is re-armed by the panel's next render.
-    cleanupGitPanel();
+    // Under the new project's name. The poll timer is re-armed by the Publish workspace's next mount.
+    cleanupSourceControl();
     resetProjectShell();
+    resetProjectCaches();
     // The format registry is cached per project — the previous root's registry (often empty on a
     // Fresh desktop launch) must not answer for this project, or non-JSON documents fail with
     // "No format class imported" until a reload. Mirrors openProject in files.ts.
@@ -1358,7 +1460,7 @@ async function openRecentProject(root: string) {
     await loadComponentRegistry();
 
     addRecentProject(requireProjectState().name, root);
-    setActivityTab("files");
+    // The Navigator shows the panel the workspace frame chose as the project opened (§22.3).
     renderLeftPanel();
     // The project's name is now permanent state in the status bar's PROJECT field.
 
@@ -1459,7 +1561,16 @@ registerStudioCommands(
 );
 
 // Tab navigation (⌃Tab MRU cycling, ⌘⇧T reopen-closed) is defined beside the tab model it drives.
-registerTabCommands(commandRegistry, { openFile: openFileInTab, openFileInPane });
+/* `pane.compareWith` opens into the other pane without moving the keyboard; a compared document of
+   another workspace would land hidden by that pane's strip, so it is revealed, which enters its
+   workspace (`workspace/workspace-switch.ts`). */
+registerTabCommands(commandRegistry, {
+  openFile: openFileInTab,
+  openFileInPane: async (paneId, path) => {
+    await openFileInPane(paneId, path);
+    revealInPane(paneId, path);
+  },
+});
 
 /* The derivation's own two verbs (§18.4), beside the `PaneDerivation` they read and write rather
    than in `paneCommands()`. `tests/app-commands-composition.test.ts` is the guard that this line
@@ -1475,6 +1586,28 @@ commandRegistry.registerAll(derivationCommands(derivationDeps));
  * available or what it does — that would be the second definition site the design exists to prevent
  * (§13).
  */
+/* The workspace's two halves (`workspace/workspace-switch.ts`): the follow, which enters a tab's
+   workspace whenever a tab is activated, and the switch `view.setWorkspace` runs, which puts a
+   workspace's tabs (or its home) on screen. The homes are handed in, so the switch imports
+   neither the homes' surfaces nor the settings document. */
+const workspaceDeps = {
+  openHome: (id: HomeWorkspaceId) => {
+    openWorkspaceHome(id);
+  },
+  // The Styles home: the view it was left in, Variables on a first visit (§7.1).
+  openStyles: () => {
+    showSettingsDocument();
+  },
+  placeHome: placeWorkspaceHome,
+  setInspectorTab: (tab: InspectorTabId) => rightPanelMod.setInspectorTab(tab),
+};
+installWorkspaceFollow(workspaceDeps);
+/** Show a workspace with the bootstrap's homes: what `view.setWorkspace` and a reopen both run. */
+function showWorkspaceWithHomes(id: WorkspaceId): void {
+  switchWorkspace(id, workspaceDeps);
+}
+// A project reopens in the workspace it was left in, once its documents are open (§22.1).
+setSessionWorkspaceShow(showWorkspaceWithHomes);
 registerShellViewCommands(commandRegistry, {
   // The registry's own answer, so a gated-off panel cannot be persisted as a showing tab.
   panelAvailable: (id) => {
@@ -1482,8 +1615,20 @@ registerShellViewCommands(commandRegistry, {
     return panel ? (panel.when?.(commandRegistry.context()) ?? true) : true;
   },
   inspectorTab: () => rightPanelMod.inspectorTab(),
+  restingInspectorTab: () => rightPanelMod.restingInspectorTab(),
   setInspectorTab: (tab) => rightPanelMod.setInspectorTab(tab),
+  showWorkspace: showWorkspaceWithHomes,
 });
+/* Back to a strip-less workspace's home (Media, Styles, Publish): the pane context bar's Back
+   control and Escape. The close goes through the strip's guarded close, so a view with unsaved
+   work still asks first. */
+commandRegistry.registerAll(
+  workspaceBackCommands({
+    closeTab: tabStrip.requestClose,
+    focusHome: focusWorkspaceHome,
+    setCanvasMode,
+  }),
+);
 registerCanvasViewCommands(commandRegistry, {
   getCanvasMode,
   renderPane: renderCanvas,
@@ -1494,7 +1639,7 @@ registerCanvasViewCommands(commandRegistry, {
 });
 /* A save moves the working tree under any comparison of that file, and nothing about a
    comparison notices on its own — see `noteFileSaved`. Injected rather than imported: `file-ops`
-   must not pull the Source Control panel into its graph. */
+   must not pull source control into its graph. */
 /* The second listener is the live chrome lane: a saved surface document or kit component re-mounts
    the roots it draws in THIS shell (studio-ui-guidelines.md §9.3). Inert for every project but the
    two the chrome comes from, by the saved path alone. */
@@ -1507,8 +1652,14 @@ const liveChrome = createLiveSurfaceSaver({
    Component Settings and the Library read the props the file has now rather than the ones the scan
    saw when the project opened. The Content tab and the Library are told, because neither reads the
    registry reactively. */
-setDocumentSavedListener((path, doc) => {
+setDocumentSavedListener((path, doc, tab) => {
   void noteFileSaved(path);
+  // Any saved file can be data a repeater on the canvas reads; the next render asks again.
+  invalidateRepeaterSources();
+  // An entry's new title or status reaches the Collections panel and the Content home at once.
+  if (noteSavedEntry(path, entryFields(tab))) {
+    renderLeftPanel();
+  }
   /* SAFETY: The listener fires for a tab's saved ROOT document, and a root document is a
      JxDocument held in the editor's mutable node form; `liveChrome` only acts on surface paths. */
   void liveChrome(path, doc as JxDocument);
@@ -1525,8 +1676,8 @@ commandRegistry.registerAll(diffCommands());
 ensurePopoverRevealWatch();
 registerSelectionSetCommand(commandRegistry);
 registerInspectorCommands(commandRegistry);
-/* Search appearance, behind one record with two buttons: the Document Header card's and the Page
-   panel's. A surface that IS the capability is one the palette cannot reach. */
+/* Search appearance, behind one record the Page tab's button runs: a surface that IS the capability
+   is one the palette cannot reach. */
 registerSeoCommands(commandRegistry);
 registerA11yCommands(commandRegistry);
 registerPopoverCommands(commandRegistry);
@@ -1547,9 +1698,11 @@ registerGridCommands(commandRegistry);
 registerSettingsCommands(commandRegistry);
 registerExtensionCommands(commandRegistry);
 registerPreferencesCommands(commandRegistry);
-registerLibraryCommands(commandRegistry);
+registerContentViewCommands(commandRegistry);
 registerFileFormatCommands(commandRegistry);
 registerContentCommands(commandRegistry);
+registerAddNewCommands(commandRegistry);
+registerMediaCommands(commandRegistry);
 /* The four translation verbs: open a sibling translation, create the missing one, show the
    Languages panel, declare a language. `i18n.switchLocale` is deliberately not among them — it sets
    a rendering context, so it lives with the other axis-3 verbs in `canvasViewCommands`. */
@@ -1593,7 +1746,7 @@ initShortcuts(commandRegistry, stageContext);
    which is what makes Preferences › Keyboard reach inside the page. */
 setKeymapSource(
   () => ({
-    chords: chordsInScopes(commandRegistry.keymap, FRAME_KEY_SCOPES),
+    chords: chordsInScopes(commandRegistry.keymap, FRAME_KEY_SCOPES, HOST_ONLY_COMMANDS),
     mac: commandRegistry.keymap.mac,
   }),
   (listener) => commandRegistry.keymap.onChange(listener),

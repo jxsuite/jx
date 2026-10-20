@@ -22,22 +22,28 @@
 import {
   buildScope,
   renderNode,
+  runScoped,
   setCanvasAssetResolver,
+  setNpmModuleResolver,
   setResolveToken,
   setSkipServerFunctions,
+  setTemplateErrorHandler,
 } from "@jxsuite/runtime";
-import { isFunction } from "@jxsuite/schema/guards";
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canvas/asset-refs";
-import { documentBase, hostResolveToken } from "../canvas/canvas-origin";
+import { canvasBaseOrigin, documentBase, hostResolveToken } from "../canvas/canvas-origin";
+import { npmModuleUrl } from "../canvas/npm-modules";
 import { projectState } from "../store";
 import { assetVersionsSnapshot } from "../files/asset-versions";
 import { componentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
 import { loadFormats, formatForPath } from "../format/format-host";
 import { parseSourceForPath } from "../files/file-ops";
-import { renderComponentPreview } from "../panels/component-preview";
+import { defineComponent, renderComponentPreview } from "../panels/component-preview";
+import { componentExampleProps, componentSampleRow } from "./component-examples";
+import { loadProjectPreviewSheets } from "./preview-style";
 import type { ComponentEntry } from "../files/components";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 /**
  * How many rendered previews stay alive at once.
@@ -151,28 +157,126 @@ export async function renderDocPreview(filePath: string): Promise<HTMLElement | 
          JSON or a shape renderNode cannot draw throws into the catch below, which is "no preview". */
       document_ = JSON.parse(content) as JxDocument;
     }
-    /* The document's own URL, as the canvas spells it, and the canvas's dev-proxy token. With the
-       shell's `location.href` as base, a page's `"$src": "../../scripts/x.class.json"` resolved
-       against `/__studio__/`, and without the token the proxy refused it before reading it. */
-    setResolveToken(hostResolveToken());
-    const scope = await buildScope(document_, {}, previewBase(filePath));
-    /* This render lands in the PARENT document, so an `<img src="/hero.jpg">` inside it resolves
-       against `index.html` — which is the shell, not the site. Same hook the canvas installs, same
-       context, restored afterwards because the next preview is a different document and a stale
-       `documentDir` would resolve its relative refs against the wrong entry. The version map is
-       read as the render starts, after the reads above: the Library is the many-images screen,
-       and a versioned src is what lets its cards repaint from the browser cache. */
-    const assets = context && { ...context, versions: assetVersionsSnapshot() };
-    setCanvasAssetResolver((value) => resolveAssetRef(value, assets));
-    try {
-      const element = renderNode(document_, scope);
-      return element instanceof HTMLElement ? element : null;
-    } finally {
-      setCanvasAssetResolver(null);
-    }
+    return await renderDocument(document_, filePath, context);
   } catch {
     return null;
   }
+}
+
+/**
+ * Render a document as the file `filePath` holds it would be drawn: its refs resolved from that
+ * file's URL, its media through the canvas's resolver. Throws what the render throws.
+ */
+async function renderDocument(
+  document_: JxDocument,
+  filePath: string,
+  context = assetContextFor(filePath, hostAssetDeclarations()),
+): Promise<HTMLElement | null> {
+  setSkipServerFunctions(true);
+  /* The document's own URL, as the canvas spells it, and the canvas's dev-proxy token. With the
+     shell's `location.href` as base, a page's `"$src": "../../scripts/x.class.json"` resolved
+     against `/__studio__/`, and without the token the proxy refused it before reading it. */
+  setResolveToken(hostResolveToken());
+  const scope = await buildScope(document_, {}, previewBase(filePath));
+  /* This render lands in the PARENT document, so an `<img src="/hero.jpg">` inside it resolves
+     against `index.html` — which is the shell, not the site. Same hook the canvas installs, same
+     context, restored afterwards because the next preview is a different document and a stale
+     `documentDir` would resolve its relative refs against the wrong entry. The version map is
+     read as the render starts, after the reads above: the Library is the many-images screen,
+     and a versioned src is what lets its cards repaint from the browser cache. */
+  const assets = context && { ...context, versions: assetVersionsSnapshot() };
+  setCanvasAssetResolver((value) => resolveAssetRef(value, assets));
+  try {
+    const element = renderNode(document_, scope);
+    return element instanceof HTMLElement ? element : null;
+  } finally {
+    setCanvasAssetResolver(null);
+  }
+}
+
+/**
+ * A project component's preview: an instance given its sample props when it renders with them, else
+ * the first row of a list that draws it (`component-examples.ts`), else none.
+ */
+async function projectComponentPreview(
+  component: ComponentEntry,
+  path: string,
+): Promise<HTMLElement | null> {
+  const definition = await readDefinition(path);
+  if (!definition) {
+    return null;
+  }
+  const props = await componentExampleProps(definition, path);
+  if (props.size > 0 && (await rendersWith(definition, path, props))) {
+    return renderComponentPreview(component, props);
+  }
+  const sample = await componentSampleRow(definition, path);
+  if (sample && (await defineComponent(component))) {
+    return renderDocument(sample.doc, sample.file);
+  }
+  return (await rendersWith(definition, path, props))
+    ? renderComponentPreview(component, props)
+    : null;
+}
+
+/** A project component's definition, or null when its file is not one. */
+export async function readDefinition(path: string): Promise<JxDocument | null> {
+  try {
+    const parsed: unknown = JSON.parse(await getPlatform().readFile(path));
+    /* SAFETY: a project component's `.json` is its definition, a Jx element document; a shape
+       renderNode cannot draw throws into `rendersWith`'s catch, which is "does not render". */
+    return isNonNullObject(parsed) && !Array.isArray(parsed) ? (parsed as JxDocument) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `definition` renders given `props` (its sample props, `component-examples.ts`), tried on
+ * a detached copy before a live instance is made.
+ *
+ * A definition may not render with the values it is given: the museum starter's
+ * `<mu-exhibition-card>` formats a `date` that defaults to `""`, and `Intl/formatDate` of an empty
+ * date is a `RangeError`, exactly as `new Intl.DateTimeFormat().format(new Date(""))` is (`spec.md`
+ * §19.4c). An instance renders in its own async `connectedCallback`, where the throw is reported on
+ * the console once per card per paint. The same render, made here synchronously into an element
+ * nobody sees, can be caught, and a definition that cannot render gets no instance preview.
+ */
+export async function rendersWith(
+  definition: JxDocument,
+  path: string,
+  props: ReadonlyMap<string, JsonValue>,
+): Promise<boolean> {
+  let stopRender: (() => void) | null = null;
+  try {
+    setSkipServerFunctions(true);
+    setResolveToken(hostResolveToken());
+    const scope = await buildScope(definition, {}, previewBase(path));
+    for (const [name, value] of props) {
+      scope[name] = value;
+    }
+    /* A template binding that throws no longer unwinds the render (spec.md §6.1): it draws nothing
+       and waits for its data. The trial still has to see it, so the throw is collected for the one
+       synchronous render, as the render critic collects it. */
+    let bindingThrew = false;
+    setTemplateErrorHandler(() => {
+      bindingThrew = true;
+    });
+    // Its own tag would make an instance, and the instance's render is the one that cannot be caught.
+    const { stop } = runScoped(() => renderNode({ ...definition, tagName: "div" }, scope));
+    stopRender = stop;
+    return !bindingThrew;
+  } catch {
+    return false;
+  } finally {
+    setTemplateErrorHandler(null);
+    stopRender?.();
+  }
+}
+
+/** A component whose definition is a JSON file in the project, which is what can be tried first. */
+function isProjectDefinition(component: ComponentEntry): boolean {
+  return component.source !== "npm" && (component.path?.endsWith(".json") ?? false);
 }
 
 /**
@@ -189,8 +293,17 @@ export async function previewFor(
   }
   let rendered: HTMLElement | null | undefined;
   try {
+    /* A component's `npm:` sidecar, from where the project's packages are served: a preview is a
+       live render in this window, and the runtime would otherwise hand `import()` the `npm:` URL. */
+    setNpmModuleResolver((specifier) => npmModuleUrl(specifier, `${canvasBaseOrigin()}/`));
+    // The project's stylesheet, ready for the box this preview is shown in (`preview-style.ts`).
+    await loadProjectPreviewSheets();
     const component = componentRegistry.find((c: ComponentEntry) => c.path === path);
-    rendered = component ? await renderComponentPreview(component) : await renderDocPreview(path);
+    if (component && isProjectDefinition(component)) {
+      rendered = await projectComponentPreview(component, path);
+    } else {
+      rendered = component ? await renderComponentPreview(component) : await renderDocPreview(path);
+    }
   } catch {
     return undefined;
   }

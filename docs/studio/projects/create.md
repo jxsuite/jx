@@ -54,7 +54,7 @@ The second screen (**Name your project**) shows which source you picked, then as
 
 Under **Location** and **Directory**, Studio shows exactly where the project will land (`/home/you/Sites/my-site`) before you commit to it.
 
-Nothing else is asked at creation time. The site's production URL, its deployment adapter, and its colors, fonts and breakpoints are all **project settings** you can change as often as you like. Set them from **[Project settings](/docs/studio/projects/settings)** once the project is open.
+Nothing else is asked at creation time. The site's production URL, its deployment adapter, its colors and fonts, and its breakpoints are all configuration you can change as often as you like once the project is open: the URL and breakpoints in **[Project settings](/docs/studio/projects/settings)**, colors and fonts in the **Styles** workspace, and the adapter under **How it is built** in **Publish › Hosting**.
 
 ### On Jx Cloud
 
@@ -136,7 +136,7 @@ Under those, a **Model** picker and a box asking what the assistant should do wi
 
 The dialog closes as soon as you click **Import Site**. The import doesn't run in the wizard. It runs in the [AI assistant](/docs/studio/ai), which opens in the Inspector on a fresh chat and reports as it goes. If the assistant was in the middle of a reply, that reply is stopped first and the import begins as soon as it has.
 
-**The project opens straight away**, a few seconds in, long before the crawl finishes. That's deliberate: an import takes minutes, and watching a log against an empty welcome screen tells you very little. Instead the destination is created and opened immediately, and the Files panel fills up as the pipeline works: `public/assets/` gains the images and fonts it downloads, then `pages/`, `layouts/` and `components/` appear as it writes them. You can click into any of it while the run continues.
+**The project opens straight away**, a few seconds in, long before the crawl finishes. That's deliberate: an import takes minutes, and watching a log against an empty welcome screen tells you very little. Instead the destination is created and opened immediately, and the Site panel fills up as the pipeline works: its **Media** section gains the images and fonts it downloads into `public/assets/`, then pages, templates and components appear as it writes them. You can click into any of it while the run continues.
 
 When it finishes, the assistant tells you how many pages it captured, what it had to skip, which pages didn't render faithfully, and, when the fidelity check ran, what those pages failed to load.
 
@@ -148,6 +148,7 @@ A garbled line in the import's stream doesn't stop the run; the pages already cr
 
 ## Next
 
+- **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components#create-one)**: add to the project with **Add new** (:kbd[⌘N])
 - **[Projects](/docs/studio/projects)**: the other ways to get a project, by opening a folder or cloning a repository
-- **[The Library](/docs/studio/projects/browse)**: find your way around what was just created
+- **[The Content workspace](/docs/studio/projects/browse)**: find your way around the pages and entries just created
 - **[Starter templates](/docs/studio/projects/starters)**: the full starter gallery

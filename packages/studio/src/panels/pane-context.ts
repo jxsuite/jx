@@ -45,6 +45,7 @@
  * the document it is warning you about.
  */
 
+import { writesEntryOnCanvas } from "../content/content-collections";
 import { projectState, updateUi } from "../store";
 import { effect, effectScope } from "../reactivity";
 import { PRIMARY_PANE, focusPane, workspace } from "../workspace/workspace";
@@ -68,6 +69,8 @@ import { openMenu } from "../surfaces/menu";
 import { emptyPaneContextView, mountPaneContextSurface } from "../surfaces/pane-context";
 import { PANE_SELECTOR } from "../surfaces/pane-grid";
 import { diffShowsCode } from "../canvas/diff-view";
+import { backTargetOf, goBack } from "../workspace/workspace-back";
+import type { WorkspaceId } from "../workspace/workspace-ids";
 import { canRenderComparison } from "./git-diff-open";
 import { shell } from "../shell";
 import { paneRegion } from "../ui/regions";
@@ -89,7 +92,12 @@ import {
 import { editorKindOf, editorKindsOf, modeForEditorKind } from "../tabs/tab";
 import { collabState } from "../collab/collab-state";
 import { activeRegistry } from "../commands/active-registry";
-import { getEffectiveLayoutPath, getEffectiveLocales, getEffectiveMedia } from "../site-context";
+import {
+  getEffectiveLayoutPath,
+  getEffectiveLocales,
+  getEffectiveMedia,
+  getEffectiveRenderLocale,
+} from "../site-context";
 import { localeLabel, localeOfPath } from "@jxsuite/schema/locale";
 import { isSchemeQuery } from "../utils/canvas-media";
 import { dynamicRouteParams, loadParamValues, pagePathsDef } from "../page-params";
@@ -143,6 +151,14 @@ export interface PaneContextCtx {
    * Editor picker a control over the primary's document.
    */
   setCanvasMode: (tab: Tab, mode: string) => void;
+  /**
+   * Close a tab through the strip's guarded close (`panels/tab-strip.ts` `requestClose`): what the
+   * Back control does to a media viewer or a comparison. Absent (a test's partial bootstrap), the
+   * control runs `pane.backToHome` instead, whose bootstrap deps carry the same close.
+   */
+  closeTab?: (tabId: string) => void | Promise<void>;
+  /** Give the keyboard to the home a Back landed on (`WorkspaceBackDeps.focusHome`). */
+  focusHome?: (paneId: string, id: WorkspaceId) => void;
   parseMediaEntries: (media: Record<string, string> | null | undefined) => {
     sizeBreakpoints: {
       name: string;
@@ -219,8 +235,49 @@ export function attachPaneChromeHost(paneId: string, host: HTMLElement | null): 
 
 /** Take one pane's document down and forget it. Idempotent. */
 function disposePane(paneId: string): void {
+  _bandWatches.get(paneId)?.observer.disconnect();
+  _bandWatches.delete(paneId);
   _surfaces.get(paneId)?.dispose();
   _surfaces.delete(paneId);
+}
+
+/**
+ * Each pane's band, as the observer that keeps the stage offset in step with it watches it.
+ *
+ * The offset used to be MEASURED on every projection, synchronously, right after the update that
+ * may have changed the band. A projection runs inside whatever changed the pane (a tab activation,
+ * a workspace switch, a mode change) with the rest of that change still to be written, so the read
+ * paid a style recalculation of the whole half-written document every time: 12 to 18 ms per tab
+ * activation in the perf trace, the hottest forced recalculation once the tab strip stopped
+ * reading. A `ResizeObserver` reports the band's height after the frame's own layout, when it is
+ * free to read, and only when it actually changed.
+ */
+const _bandWatches = new Map<string, { band: HTMLElement; observer: ResizeObserver }>();
+
+/**
+ * Keep `paneId`'s stage offset following its band: measure it once now, and again whenever it
+ * resizes. Re-binds when the document has drawn a new band element; a no-op for the one it holds.
+ * Without `ResizeObserver` (a DOM with no layout engine) every call measures, as before.
+ */
+function watchBand(paneId: string, host: HTMLElement, surface: PaneContextSurfaceHandle): void {
+  const band = surface.band();
+  const held = _bandWatches.get(paneId);
+  if (held && held.band === band) {
+    return;
+  }
+  held?.observer.disconnect();
+  _bandWatches.delete(paneId);
+  applyPaneContextOffset(topBandHeight(surface), host);
+  if (!band || typeof ResizeObserver === "undefined") {
+    return;
+  }
+  const observer = new ResizeObserver(() => {
+    if (_surfaces.get(paneId) === surface) {
+      applyPaneContextOffset(topBandHeight(surface), host);
+    }
+  });
+  observer.observe(band);
+  _bandWatches.set(paneId, { band, observer });
 }
 
 /**
@@ -333,21 +390,6 @@ function topBandHeight(surface: PaneContextSurfaceHandle): number {
   return Math.max(surface.band()?.offsetHeight ?? 0, PANE_CONTEXT_HEIGHT);
 }
 
-/**
- * Whether this tab's editor has any of the bar's three axes to offer.
- *
- * Project Settings has none: it declares one editor kind, no canvas view, and no rendering context
- * — and the one control the bar WOULD contribute, "Manage contexts…", routes to a section of the
- * very document on screen. A bar of three inert controls above the definition site they point at is
- * chrome that says nothing, so the stage takes the whole pane.
- *
- * @param {Tab} tab
- * @returns {boolean}
- */
-function wantsContextBar(tab: Tab): boolean {
-  return tab.session.ui.canvasMode !== "settings";
-}
-
 /** Project every attached pane's chrome. */
 export function render() {
   for (const [paneId, host] of _hosts) {
@@ -362,8 +404,7 @@ function renderPane(paneId: string, host: HTMLElement) {
   }
   try {
     const tab = tabOfPane(paneId);
-    const show = tab !== null && wantsContextBar(tab);
-    if (!show) {
+    if (tab === null) {
       disposePane(paneId);
       applyPaneContextOffset(0, host);
       return;
@@ -382,13 +423,15 @@ function renderPane(paneId: string, host: HTMLElement) {
       void surface.ready.then(() => {
         const live = _surfaces.get(paneId);
         if (live) {
-          applyPaneContextOffset(topBandHeight(live), host);
+          watchBand(paneId, host, live);
         }
       });
       return;
     }
     surface.update(view);
-    applyPaneContextOffset(topBandHeight(surface), host);
+    /* No read here: the band's observer writes the offset once the frame has laid the band out
+       ({@link watchBand}). Only a band element the update REPLACED is re-measured now. */
+    watchBand(paneId, host, surface);
   } catch (error) {
     console.error("pane-context render error:", error);
   }
@@ -663,9 +706,26 @@ function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView
     view.summary = lensSummary(paneId);
     return view;
   }
+  /* The way out of a view in a workspace with no tab strip: named for where it leads. Never in a
+     lens, whose tab is the source pane's, and whose own exit is the derivation's. */
+  const back = backTargetOf(tab);
+  if (back) {
+    view.backState = "shown";
+    view.backLabel = back.label;
+    view.backHint = back.hint;
+  }
   Object.assign(view, editorAxis(tab));
   if (editorKindOf(tab) === "canvas") {
     Object.assign(view, viewAxis(tab));
+  }
+  /* A workspace home (the Content, Media or Publish home) draws its workspace's own surface over a
+     stub document, so there is no rendering context to choose: "Context: Base" over the Publish
+     workspace was a control that could change nothing on screen. The ⟲ menu goes for the same
+     reason: every projection it offers is of the document, and a home has none to project. */
+  if (editorKindOf(tab) === "home") {
+    view.contextState = "hidden";
+    view.presetState = "hidden";
+    return view;
   }
   Object.assign(view, contextAxis(tab, paneId, ctx));
   /* THIS tab's effective mode. `ctx.getCanvasMode()` answered for the focused pane, so a document
@@ -810,10 +870,8 @@ interface PaneLocale {
  * A single declared locale is the same as none for this control — there is nothing to switch TO,
  * and "groups a document declares nothing for are absent" is the rule the whole popover follows.
  *
- * The fallback chain is what makes the control honest about a file it has not been told about:
- * `previewLocale` is the author's explicit choice, the path is the file's own language
- * (`site-architecture.md` §13.3 puts a translation in its own directory), and the default locale is
- * what an unprefixed page renders as.
+ * The language itself is `getEffectiveRenderLocale`'s answer (`site-context.ts`), the rule every
+ * artboard draws by: the choice, else the file's own language, else the default locale.
  */
 function localeOf(tab: Tab | null): PaneLocale | null {
   const i18n = getEffectiveLocales();
@@ -821,8 +879,10 @@ function localeOf(tab: Tab | null): PaneLocale | null {
     return null;
   }
   const pathLocale = localeOfPath(tab.documentPath ?? "", i18n);
-  const own = pathLocale ?? i18n.defaultLocale;
-  const effective = tab.session.ui.previewLocale ?? own;
+  /* The artboard's own rule, so the segment and the canvas cannot name two languages; a stored
+     choice the project no longer declares is not reported, because it is not drawn. */
+  const own = getEffectiveRenderLocale(null, tab.documentPath) ?? i18n.defaultLocale;
+  const effective = getEffectiveRenderLocale(tab.session.ui.previewLocale, tab.documentPath) ?? own;
   return { effective, i18n, overridden: effective !== own, pathLocale };
 }
 
@@ -848,7 +908,12 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
   ]
     .filter((part) => part !== null)
     .join(" · ");
-  const hasLayout = isPageDoc(tab) && Boolean(getEffectiveLayoutPath(tab.doc.document.$layout));
+  /* An entry written on the canvas is wrapped in its template's layout like a page (§22.5), so it
+     offers the same "show layout" choice. Whether a layout resolves for it is read asynchronously
+     by the canvas; the project default is the answer this bar can give synchronously. */
+  const hasLayout =
+    (isPageDoc(tab) && Boolean(getEffectiveLayoutPath(tab.doc.document.$layout))) ||
+    (Boolean(projectState?.isSiteProject) && writesEntryOnCanvas(tab.documentPath));
   const page = isPageDoc(tab);
   const params = page ? paramRows(tab) : [];
   const props = page ? [] : propRows(tab, paneId);
@@ -927,8 +992,9 @@ function sizeRows(
  * cannot and must not claim to translate the page. What it does change is real: the artboard's
  * `lang` and its `dir`, and an RTL locale mirrors the layout on the stage. A control that let an
  * author believe it had translated anything would be worse than no control — which is also why the
- * sentence stops there: the build's `$page.locale` is not injected into the canvas render today, so
- * a tooltip promising it would be describing the site rather than the pane.
+ * sentence stops there: the page's `$page.locale` comes from its route on the canvas as in the
+ * build (studio.md §4.1), so this control does not change it, and a tooltip promising otherwise
+ * would describe something the pane does not do.
  *
  * Labelled with each locale's AUTONYM, for the reason `localeLabel` gives: a reader looking for
  * their own language scans for their own word for it.
@@ -1098,6 +1164,22 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       }
     },
     exportFile: ctx.exportFile,
+    /* The flow directly rather than `pane.backToHome`: the command's `when` keeps Escape away from
+       a text field and the code editor, and the CONTROL must work in both (Back from Code is the
+       Styles case). The pane is focused first, because the view going back is this pane's. */
+    goBack: () => {
+      focusPane(paneId);
+      const { closeTab } = ctx;
+      if (!closeTab) {
+        runContextCommand(paneId, "pane.backToHome", {});
+        return;
+      }
+      void goBack(paneId, {
+        closeTab,
+        setCanvasMode: ctx.setCanvasMode,
+        ...(ctx.focusHome && { focusHome: ctx.focusHome }),
+      });
+    },
     manageContexts: () => {
       void activeRegistry()?.run("settings.open", { section: "contexts" });
     },

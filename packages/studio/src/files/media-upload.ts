@@ -3,15 +3,18 @@
  * Media upload core — the single path every upload surface goes through.
  *
  * Four surfaces feed it: the image field's Upload button (ui/media-picker), a file dropped on the
- * canvas (editor/file-drop-action), a file dropped on the Files tree (files/files), and the Manage
- * view's drop zone / Upload button (browse/browse). They differ only in how the destination
- * directory is chosen; naming, collision handling, the platform call, and cache invalidation are
- * shared here.
+ * canvas (editor/file-drop-action), a file dropped on the Files tree (files/files), and the Media
+ * workspace's drop zone and Upload button (media/media-library, and Add new › Media). They differ
+ * only in how the destination directory is chosen; naming, collision handling, the platform call,
+ * and cache invalidation are shared here.
  *
- * Destination (specs/site-architecture.md §9.1/§9.3): a document inside a content collection keeps
- * its media co-located in `content/<collection>/images/` — the entry references it file-relatively
- * and the collection loader rewrites it to the asset mount. Everything else goes to `public/`,
- * which is served from the site root.
+ * Destination (specs/site-architecture.md §9.1/§9.4, studio.md §9.3): a document inside a content
+ * collection keeps its media co-located in `content/<collection>/images/` — the entry references it
+ * file-relatively and the collection loader rewrites it to the asset mount. Everything else goes to
+ * {@link DEFAULT_MEDIA_DIR}, `public/media/`, which is served from the site root as `/media/`.
+ *
+ * {@link replaceAsset} is the one door that writes over an existing file, and it is asked for by
+ * name: the Media workspace's **Replace** (studio.md §9.3).
  *
  * @docs studio/projects/media
  */
@@ -19,37 +22,22 @@
 import { errorMessage } from "@jxsuite/schema/parse";
 import { getPlatform, hasPlatform } from "../platform";
 import { notify } from "../services/notify";
+import { invalidateUsages } from "../services/references";
 import { activeTab } from "../workspace/workspace";
 import { forgetVersions, notedListing } from "./asset-versions";
+import {
+  AUDIO_EXTENSIONS,
+  IMAGE_EXTENSIONS,
+  MEDIA_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  extensionOf,
+} from "./media-types";
 
 // ─── File classification ─────────────────────────────────────────────────────
 
-/** Extensions rendered as a thumbnail (media picker, Manage cards, file-tree icons). */
-export const IMAGE_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".svg",
-  ".webp",
-  ".avif",
-  ".ico",
-]);
-
-/** Every extension Studio treats as project media. Superset of {@link IMAGE_EXTENSIONS}. */
-export const MEDIA_EXTENSIONS = new Set([
-  ...IMAGE_EXTENSIONS,
-  ".mp4",
-  ".webm",
-  ".mp3",
-  ".wav",
-  ".ogg",
-  ".pdf",
-  ".woff",
-  ".woff2",
-  ".ttf",
-  ".otf",
-]);
+/* The classification lives in `media-types.ts`, which imports nothing; it is re-exported here so
+   every existing caller of the upload core keeps one import. */
+export { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, extensionOf, isImage } from "./media-types";
 
 /** A byte count as a person reads it, for a refusal that names the limit. */
 function formatBytes(bytes: number): string {
@@ -104,24 +92,10 @@ export interface UploadedAsset {
   kind: AssetKind;
 }
 
-/** Lowercased extension including the dot, or `""` when the name carries none. */
-export function extensionOf(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot).toLowerCase() : "";
-}
-
-/** Whether a file extension (with or without the leading dot) is a previewable image. */
-export function isImage(ext: string): boolean {
-  return IMAGE_EXTENSIONS.has(ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`);
-}
-
 /** Whether a filename is project media. */
 export function isMediaFile(name: string): boolean {
   return MEDIA_EXTENSIONS.has(extensionOf(name));
 }
-
-const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".m4v"]);
-const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".flac"]);
 
 /**
  * Classify a file by MIME type, falling back to its extension. A drop from the OS usually carries a
@@ -151,18 +125,59 @@ export function mediaKind(file: { name: string; type?: string }): AssetKind {
   return "file";
 }
 
+/** The font extensions, which a browser shows as a specimen rather than as a file. */
+export const FONT_EXTENSIONS: ReadonlySet<string> = new Set([".woff", ".woff2", ".ttf", ".otf"]);
+
+/**
+ * What a media file IS, as the Media workspace's filters name it: one of five kinds.
+ *
+ * Distinct from {@link AssetKind}, which answers "what element does this become" and so has no word
+ * for a font or a PDF (both become an `<a href>`). Decided by extension alone, because a file
+ * already on disk carries no MIME type: a font first, then the three a browser has an element for,
+ * and everything else (a PDF) is a document.
+ */
+export type MediaFileKind = "image" | "video" | "audio" | "font" | "document";
+
+/** The {@link MediaFileKind} of a file, by its name. */
+export function mediaFileKind(name: string): MediaFileKind {
+  if (FONT_EXTENSIONS.has(extensionOf(name))) {
+    return "font";
+  }
+  const kind = mediaKind({ name });
+  return kind === "file" ? "document" : kind;
+}
+
 // ─── Destination resolution ──────────────────────────────────────────────────
 
 /** Matches a path inside a content collection: `content/<collection>/…`. */
 const CONTENT_ENTRY = /^content\/([^/]+)\//;
 
 /**
+ * Where media with no context lands: `public/media/`, referenced from the site root as `/media/…`.
+ *
+ * A default and not a rule (site-architecture.md §9.4): a file under any other `public/` path is
+ * published and listed exactly the same. Its one definition, so the Media workspace, Add new ›
+ * Media and the Library's All view cannot disagree about it.
+ */
+export const DEFAULT_MEDIA_DIR = "public/media";
+
+/**
  * The directory an upload lands in when the caller doesn't name one. A document inside a content
- * collection gets `content/<collection>/images`; everything else gets `public`.
+ * collection gets `content/<collection>/images`; everything else gets {@link DEFAULT_MEDIA_DIR}.
  */
 export function uploadDirFor(documentPath: string | null): string {
   const match = documentPath ? CONTENT_ENTRY.exec(documentPath.replaceAll("\\", "/")) : null;
-  return match ? `content/${match[1]}/images` : "public";
+  return match ? `content/${match[1]}/images` : DEFAULT_MEDIA_DIR;
+}
+
+/**
+ * Whether `dir` is a folder {@link uploadDirFor} answers: `public/media`, or a collection's
+ * `content/<collection>/images`. An upload creates these on its own, so they are the folders a
+ * media delete takes away again once it has emptied them (`media/media-library.ts`).
+ */
+export function isUploadDestination(dir: string): boolean {
+  const normalized = dir.replaceAll("\\", "/");
+  return normalized === DEFAULT_MEDIA_DIR || /^content\/[^/]+\/images$/.test(normalized);
 }
 
 /**
@@ -223,7 +238,60 @@ export function setMediaChangedHandler(fn: ((dir: string) => void | Promise<void
   mediaChangedHandler = fn;
 }
 
+/**
+ * Say that the media in `dir` changed by some door other than {@link uploadAssets} — a replace, or
+ * the Media workspace's delete — so every cache keyed on the listing is dropped the same way.
+ */
+export async function announceMediaChanged(dir: string): Promise<void> {
+  await mediaChangedHandler?.(dir);
+}
+
+/** The directory part of a project path, `.` for a file at the root. */
+function parentDir(path: string): string {
+  const normalized = path.replaceAll("\\", "/");
+  const slash = normalized.lastIndexOf("/");
+  return slash > 0 ? normalized.slice(0, slash) : ".";
+}
+
 // ─── Upload ──────────────────────────────────────────────────────────────────
+
+/**
+ * What a media surface may upload: any file the media listing shows (`media`), or only pictures
+ * (`image`, a picker for a field that holds one).
+ *
+ * A file input's `accept` narrows only the chooser; a drop carries whatever the OS hands over, and
+ * `image/*` admits types (`.heic`, `.bmp`) no listing names. A surface that selects what it just
+ * uploaded must not upload a file it will then fail to show.
+ */
+export type UploadOnly = "media" | "image";
+
+/** The files `only` admits; the rest are named in one warning rather than written unseen. */
+function keepListable(files: File[], only: UploadOnly): File[] {
+  const admits = (file: File): boolean =>
+    only === "image" ? IMAGE_EXTENSIONS.has(extensionOf(file.name)) : isMediaFile(file.name);
+  const kept: File[] = [];
+  const skipped: string[] = [];
+  for (const file of files) {
+    if (admits(file)) {
+      kept.push(file);
+    } else {
+      skipped.push(file.name);
+    }
+  }
+  if (skipped.length > 0) {
+    notify.warn(
+      skipped.length === 1 ? `Skipped ${skipped[0]}` : `Skipped ${skipped.length} files`,
+      {
+        detail:
+          only === "image"
+            ? `Only images can be used here: ${skipped.join(", ")}.`
+            : `Studio lists images, video, audio, PDFs and fonts as media, so ${skipped.join(", ")} would not appear in it.`,
+        source: "Media",
+      },
+    );
+  }
+  return kept;
+}
 
 /**
  * Upload files into the project and report what landed.
@@ -235,9 +303,9 @@ export function setMediaChangedHandler(fn: ((dir: string) => void | Promise<void
  */
 export async function uploadAssets(
   files: Iterable<File>,
-  opts: { dir?: string } = {},
+  opts: { dir?: string; only?: UploadOnly } = {},
 ): Promise<UploadedAsset[]> {
-  const list = [...files];
+  const list = opts.only === undefined ? [...files] : keepListable([...files], opts.only);
   if (list.length === 0) {
     return [];
   }
@@ -296,4 +364,93 @@ export async function uploadAssets(
     await mediaChangedHandler?.(dir);
   }
   return uploaded;
+}
+
+/** Extensions that name one format, so either may stand in for the other. */
+const SAME_FORMAT: readonly ReadonlySet<string>[] = [
+  new Set([".jpg", ".jpeg"]),
+  new Set([".tif", ".tiff"]),
+];
+
+/** Every extension that names the same format as `ext` (itself included). */
+function formatSiblings(ext: string): ReadonlySet<string> {
+  return SAME_FORMAT.find((group) => group.has(ext)) ?? new Set([ext]);
+}
+
+/**
+ * The `accept` for a Replace of the file at `path`: its own format, and only that.
+ *
+ * The path is what every document names, and the server answers it with the type its EXTENSION
+ * implies, so bytes of another format under it are a broken picture on every page that uses it.
+ */
+export function replaceAccept(path: string): string {
+  return [...formatSiblings(extensionOf(path))].join(",");
+}
+
+/** Whether `file` may replace the file at `path`: the same format, by extension. */
+export function canReplaceWith(path: string, file: { name: string }): boolean {
+  return formatSiblings(extensionOf(path)).has(extensionOf(file.name));
+}
+
+/**
+ * Write `file`'s bytes over the existing media file at `path` — the Media workspace's **Replace**.
+ *
+ * The only overwrite in this module, and asked for by name (studio.md §9.3): every reference to
+ * `path` keeps resolving and now shows the new bytes. Nothing about the path tells a cache that the
+ * file changed, so this forgets the path's content version (§3.4) and announces the change, which
+ * drops the media listing, its metadata and the usage answers derived from it.
+ *
+ * A backend that reports a DIFFERENT path did not replace anything: it wrote a second file beside
+ * the first, and the references still name the old bytes. That is said rather than called success.
+ *
+ * @returns Whether the bytes now at `path` are the new ones.
+ */
+export async function replaceAsset(path: string, file: File): Promise<boolean> {
+  const name = path.split("/").pop() ?? path;
+  /* An `accept` narrows only the chooser (and a backend's own picker may ignore it), so the format is
+     checked here too: same path, other format, is every reference broken at once. */
+  if (!canReplaceWith(path, file)) {
+    notify.error(`${file.name} cannot replace ${name}.`, {
+      detail: `${name} is ${extensionOf(path) || "a file with no extension"} and ${file.name} is ${extensionOf(file.name) || "a file with no extension"}. Every page that uses ${name} would get bytes its address does not describe; choose a file of the same type, or upload it as a new file.`,
+      path,
+      source: "Media",
+    });
+    return false;
+  }
+  const maxBytes = hasPlatform() ? getPlatform().assetCapabilities?.maxUploadBytes : undefined;
+  if (maxBytes !== undefined && file.size > maxBytes) {
+    notify.error(`${file.name} is too large.`, {
+      detail: `This backend accepts at most ${formatBytes(maxBytes)}; that file is ${formatBytes(file.size)}.`,
+      source: "Media",
+    });
+    return false;
+  }
+  let written: string;
+  try {
+    ({ path: written } = await getPlatform().uploadFile(path, file));
+  } catch (error) {
+    notify.error(`Could not replace ${name}.`, {
+      detail: errorMessage(error),
+      path,
+      source: "Media",
+    });
+    return false;
+  }
+  forgetVersions([path, written]);
+  // The answers were about the old bytes' place in the project; the place is the same, but a stale
+  // "Used on" is a list the reader acts on, so it is asked again rather than trusted.
+  invalidateUsages();
+  await announceMediaChanged(parentDir(path));
+  if (written !== path) {
+    notify.warn(`${name} was not replaced.`, {
+      detail: `The backend stored the new file as ${written}, so every reference still shows the old one.`,
+      path,
+      source: "Media",
+      // A Problem rather than a toast: two files now exist, and the reader has a decision to make.
+      tier: "problem",
+    });
+    return false;
+  }
+  notify.success(`Replaced ${name}`);
+  return true;
 }

@@ -514,8 +514,8 @@ export function mountAiChatSurface(
     }
   }
 
-  /* There is no `connected()` here, where `doc-header.ts` and `panel-stylebook-layers.ts` both
-     have one. Those two mount into a node LIT repaints, so "is my root still where I put it" is a
+  /* There is no `connected()` here, where `panel-stylebook-layers.ts` has one. That one mounts
+     into a node LIT repaints, so "is my root still where I put it" is a
      live question. The assistant's container is built once for the life of the window
      (`right-panel.ts`'s `_ensureContainers`) and nothing else ever writes into it, so the answer
      would be a constant — and a constant nobody reads is a second thing to keep in step. */

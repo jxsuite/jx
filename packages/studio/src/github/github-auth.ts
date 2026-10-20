@@ -15,8 +15,8 @@
  * **This flow fails, and until now it failed silently.** `https://github.com/login/device/code`
  * sends no `Access-Control-Allow-Origin`, so a browser cannot call it: in Studio-in-a-browser the
  * very first request rejects with a bare `TypeError`. That rejection used to become a thrown
- * `Error` out of {@link authenticateGithub}, into `void createGithubRepository(…)` in
- * `panels/git-panel.ts`, and from there into an unhandled promise rejection — the user clicked
+ * `Error` out of {@link authenticateGithub}, into `void createGithubRepository(…)` in the Source
+ * Control panel of the time, and from there into an unhandled promise rejection — the user clicked
  * "Create GitHub repository" and the app did nothing at all, forever, with no message anywhere.
  *
  * Three failures now reach a surface, each as the kind of record §16 says it is:

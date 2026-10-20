@@ -287,9 +287,9 @@ describe("block action bar gaps", () => {
     expect(isOffscreen()).toBe(false);
   });
 
-  /* Inside the STAGE is not on screen once Edit docks the Document Header card above its scroller:
-     the band and the page share one stage cell, so a node scrolled up under the band is inside the
-     one and covered by the other. Clipping against the stage left the bar floating over the card,
+  /* Inside the STAGE is not on screen while Edit stands the writing banner above its scroller over a
+     collection entry: the band and the page share one stage cell, so a node scrolled up under the
+     band is inside the one and covered by the other. Clipping against the stage left the bar over the band,
      pointing at a node nobody could see. Wherever the pane has a scroller, that is the viewport. */
   test("an anchor above the Edit scroller's top is offscreen even while it is inside the stage", async () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);

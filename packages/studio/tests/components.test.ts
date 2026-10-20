@@ -156,6 +156,29 @@ describe("computeRelativePath", () => {
     );
   });
 
+  test("a document outside the project climbs back in through the project's own folders", () => {
+    // The jxsuite.com docs collection is `../../docs`, so an entry sits two folders above the site.
+    expect(
+      computeRelativePath(
+        "../../docs/extending/x.md",
+        "components/site-toolbar.json",
+        "/repo/sites/jxsuite.com",
+      ),
+    ).toBe("../../sites/jxsuite.com/components/site-toolbar.json");
+  });
+
+  test("dot segments are walked, not counted", () => {
+    expect(computeRelativePath("pages/./a/../index.json", "components/x.json", null)).toBe(
+      "../components/x.json",
+    );
+  });
+
+  test("a document outside the project with no known root keeps the counted answer", () => {
+    expect(computeRelativePath("../docs/x.md", "components/x.json", null)).toBe(
+      "../../components/x.json",
+    );
+  });
+
   test("null fromDocPath returns ./ prefix", () => {
     expect(computeRelativePath(null, "components/button.json")).toBe("./components/button.json");
   });
@@ -239,5 +262,70 @@ describe("the bootstrap wires the registry into the save", () => {
     expect(body).toContain("noteComponentSaved(path, doc)");
     expect(body).toContain("renderPropertiesPanel();");
     expect(body).toContain("renderLeftPanel();");
+  });
+});
+
+// ─── loadComponentRegistry ──────────────────────────────────────────────────
+
+describe("loadComponentRegistry", () => {
+  const entry = (tagName: string) => ({
+    $id: null,
+    hasElements: false,
+    path: `components/${tagName}.json`,
+    props: [],
+    tagName,
+  });
+  type Entry = ReturnType<typeof entry>;
+
+  /** A platform whose scans resolve only when the test releases them, in the order it chooses. */
+  function heldScans(): ((value: Entry[]) => void)[] {
+    const releases: ((value: Entry[]) => void)[] = [];
+    installMockPlatform({
+      discoverComponents: () =>
+        new Promise<Entry[]>((resolve) => {
+          releases.push(resolve);
+        }),
+    });
+    return releases;
+  }
+
+  test("the newest scan wins when an older one resolves after it", async () => {
+    const releases = heldScans();
+    const older = loadComponentRegistry();
+    const newer = loadComponentRegistry();
+    releases[1]!([entry("new-card")]);
+    await newer;
+    releases[0]!([entry("old-card")]);
+    await older;
+    // The older scan read the project being closed: what it found must not land.
+    expect(componentRegistry.map((comp) => comp.tagName)).toEqual(["new-card"]);
+  });
+
+  test("a superseded scan resolves only once the newest has written the registry", async () => {
+    const releases = heldScans();
+    let olderDone = false;
+    const older = loadComponentRegistry().then(() => {
+      olderDone = true;
+    });
+    const newer = loadComponentRegistry();
+    releases[0]!([entry("old-card")]);
+    await Bun.sleep(0);
+    expect(olderDone).toBe(false);
+    releases[1]!([entry("fresh-card")]);
+    await Promise.all([older, newer]);
+    expect(olderDone).toBe(true);
+    expect(componentRegistry.map((comp) => comp.tagName)).toEqual(["fresh-card"]);
+  });
+
+  test("a failed scan leaves the registry as it was", async () => {
+    installMockPlatform({ discoverComponents: async () => [entry("kept-card")] });
+    await loadComponentRegistry();
+    installMockPlatform({
+      discoverComponents: async () => {
+        throw new Error("backend down");
+      },
+    });
+    await loadComponentRegistry();
+    expect(componentRegistry.map((comp) => comp.tagName)).toEqual(["kept-card"]);
   });
 });

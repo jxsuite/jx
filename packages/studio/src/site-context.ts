@@ -13,7 +13,7 @@ import { projectState } from "./store";
 import { getPlatform } from "./platform";
 import { commitProjectConfig } from "./tabs/project-config";
 
-import { resolveI18n } from "@jxsuite/schema/locale";
+import { canonicalizeLocale, localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
 import type {
   JxElement,
@@ -22,6 +22,7 @@ import type {
   JxStyle,
   ProjectConfig,
 } from "@jxsuite/schema/types";
+import type { ExtensionsInfo } from "./types";
 
 /**
  * Merge site $media with document $media. Document keys win on conflict.
@@ -71,15 +72,35 @@ export function getEffectiveStyle(docStyle?: JxStyle) {
  *   undefined)
  * @returns {Record<string, string>}
  */
-export function getEffectiveImports(docImports?: Record<string, string>) {
-  const siteImports = projectState?.projectConfig?.imports;
-  if (!siteImports) {
-    return docImports || {};
-  }
-  if (!docImports) {
-    return { ...siteImports };
-  }
-  return { ...siteImports, ...docImports };
+export function getEffectiveImports(
+  docImports?: Record<string, string>,
+  extensions: readonly ExtensionsInfo[] = [],
+) {
+  /* The enabled extensions' manifest classes come last in the order the build resolves a bare
+     `$prototype` in (spec.md §12.5: the document's `imports`, then the project's, then the
+     extension registry), so they are the base the other two are spread over. Without them a
+     layout's `{ "$prototype": "ContentEntry" }` named a class the build knows and the canvas did
+     not, and the canvas warned of an unknown prototype and drew the layout with no data. The
+     first extension to declare a name keeps it, as the registry's `byName` answers. */
+  return {
+    ...extensionClassPaths(extensions),
+    ...projectState?.projectConfig?.imports,
+    ...docImports,
+  };
+}
+
+/**
+ * The enabled extensions' manifest classes, by name, as descriptor paths: the last step of the
+ * build's bare-`$prototype` resolution (spec.md §12.5). The first extension to declare a name keeps
+ * it, as the registry's `byName` answers.
+ */
+export function extensionClassPaths(extensions: readonly ExtensionsInfo[]) {
+  const classes = extensions.flatMap((extension) =>
+    (extension.classes ?? [])
+      .filter((cls) => cls.path.endsWith(".class.json"))
+      .map((cls): [string, string] => [cls.name, cls.path]),
+  );
+  return Object.fromEntries(classes.toReversed());
 }
 
 /**
@@ -157,6 +178,39 @@ export function getEffectiveHead(docHead?: JxHeadEntry[]) {
 export function getEffectiveLocales(): ResolvedI18n | null {
   const config = projectState?.projectConfig;
   return config ? resolveI18n(config).i18n : null;
+}
+
+/**
+ * The language a pane renders in (studio.md §20.2), the one answer the context bar's Language
+ * segment, every artboard's `render` and the live push all read.
+ *
+ * The author's choice while the project declares it, else the document's own: the locale its path
+ * sits under (`site-architecture.md` §13.3 puts a translation in its own directory, so
+ * `pages/ar/about.json` and `content/exhibitions/ar/x.md` are Arabic), else the default locale,
+ * which is what an unprefixed page renders as. Null for a project that declares no locales.
+ *
+ * A stored choice the project no longer declares answers as if none were made, the counterpart of
+ * `i18n.switchLocale` refusing one on the way in; the stored value is left alone, so a locale that
+ * is declared again comes back. Answering with the document's own language when nothing is chosen
+ * is what makes an Arabic translation mirror as soon as it is opened: before, the artboard drew it
+ * left to right until the author picked Arabic from a control already showing Arabic.
+ *
+ * @param previewLocale - The pane's choice (`session.ui.previewLocale`), or null.
+ * @param documentPath - The project-relative path of the document being drawn.
+ */
+export function getEffectiveRenderLocale(
+  previewLocale: string | null | undefined,
+  documentPath: string | null | undefined,
+): string | null {
+  const i18n = getEffectiveLocales();
+  if (i18n === null) {
+    return null;
+  }
+  const chosen = canonicalizeLocale(previewLocale);
+  if (chosen !== null && i18n.locales.includes(chosen)) {
+    return chosen;
+  }
+  return localeOfPath(documentPath ?? "", i18n) ?? i18n.defaultLocale;
 }
 
 // ─── Layout resolution ──────────────────────────────────────────────────────

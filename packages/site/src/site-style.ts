@@ -63,6 +63,23 @@ export type SiteStyleValueResolver = (
 ) => string | null;
 
 /**
+ * Where a site-style sheet puts what `project.json` addresses to the page itself: its custom
+ * properties and `color-scheme` on `root`, its plain properties on `body`.
+ *
+ * A host that IS the page (the canvas iframe, a preview tab, the build) uses the page's own
+ * {@link PAGE_ROOTS}. A host drawing a part of a page inside its own window has no `:root` or
+ * `body` of the page's to style: Studio's live previews render inside a shadow root, where both are
+ * `:host`, the box the preview is drawn in.
+ */
+export interface SiteStyleRoots {
+  root: string;
+  body: string;
+}
+
+/** The page's own root and body. */
+export const PAGE_ROOTS: SiteStyleRoots = { body: "body", root: ":root" };
+
+/**
  * Build the site-style sheet text: custom properties on `:root`, plain properties on `body`,
  * selector-keyed blocks (`"h1, h2"`, `a`, `.card`) as rules of their own, `&`-keyed blocks as
  * states of `:root`, conditional `@`-blocks resolved against `mediaQueries` (scheme queries
@@ -85,6 +102,8 @@ export type SiteStyleValueResolver = (
  * @param {(value: string) => string} transpose - Unit transposer (canvas vh→cqh etc.)
  * @param {SiteStyleValueResolver} [resolveValue] - What a reactive declaration becomes; absent, it
  *   is dropped, which is what every host does
+ * @param {SiteStyleRoots} [roots] - The selectors that stand for the page's root and body; the
+ *   page's own `:root` and `body` unless the sheet styles a page drawn inside something else
  * @returns {string}
  * @docs studio/interface/canvas
  */
@@ -93,6 +112,7 @@ export function buildSiteStyleCSS(
   mediaQueries: Record<string, string>,
   transpose: (value: string) => string,
   resolveValue?: SiteStyleValueResolver,
+  roots: SiteStyleRoots = PAGE_ROOTS,
 ): string {
   const rules: string[] = [];
   const push = (style: JxStyle, selector: string | null) => {
@@ -153,14 +173,14 @@ export function buildSiteStyleCSS(
   }
 
   // Base rules precede conditional blocks so equal-specificity overrides win by source order.
-  push(rootProps, ":root");
-  push(bodyProps, "body");
+  push(rootProps, roots.root);
+  push(bodyProps, roots.body);
 
   for (const [key, block] of selectorBlocks) {
     if (key.startsWith("&")) {
       /* `&` is spliced onto `:root`, so `&[data-theme="light"]` emits `:root[data-theme="light"]`.
          The runtime resolves `&` against a scope and a project block has none but the root. */
-      push({ [key]: block }, ":root");
+      push({ [key]: block }, roots.root);
     } else {
       // A top-level selector key IS the selector — `.card` styles `.card`, not `:root .card`.
       push(block, key);
@@ -192,8 +212,8 @@ export function buildSiteStyleCSS(
         condBody[k] = v;
       }
     }
-    push({ [atKey]: condRoot }, ":root");
-    push({ [atKey]: condBody }, "body");
+    push({ [atKey]: condRoot }, roots.root);
+    push({ [atKey]: condBody }, roots.body);
     for (const [sel, sub] of condSubs) {
       push({ [atKey]: sub }, sel);
     }
@@ -211,9 +231,9 @@ export function buildSiteStyleCSS(
     !("colorScheme" in siteStyle)
   ) {
     rules.push(
-      ":root { color-scheme: light dark }",
-      `:root:where([${COLOR_SCHEME_ATTR}="light"]) { color-scheme: light }`,
-      `:root:where([${COLOR_SCHEME_ATTR}="dark"]) { color-scheme: dark }`,
+      `${roots.root} { color-scheme: light dark }`,
+      `${roots.root}:where([${COLOR_SCHEME_ATTR}="light"]) { color-scheme: light }`,
+      `${roots.root}:where([${COLOR_SCHEME_ATTR}="dark"]) { color-scheme: dark }`,
     );
   }
 

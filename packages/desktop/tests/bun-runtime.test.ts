@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readPinnedBunVersion } from "@jxsuite/test-support/bun-pin";
 import { bunRuntimeFor, matchesChecksum } from "../scripts/lib/bun-runtime";
 
 describe("bunRuntimeFor", () => {
@@ -15,6 +16,14 @@ describe("bunRuntimeFor", () => {
     expect(runtime.url).toBe(
       `https://github.com/oven-sh/bun/releases/download/bun-v${runtime.version}/${file}.zip`,
     );
+  });
+
+  test("carries exactly the Bun CI tests against, the repository's .bun-version", () => {
+    /* The repository's `.bun-version` is the one pin every workflow installs (.github/actions/setup-bun
+       reads it), so the backend a user runs is the Bun the test matrix ran. Bump the two together. */
+    const pinned = readPinnedBunVersion();
+    expect(pinned).toBeDefined();
+    expect(bunRuntimeFor("linux", "x64").version).toBe(pinned ?? "");
   });
 
   test("a platform with no pinned release is an error, not an app that cannot start its backend", () => {

@@ -9,17 +9,17 @@ You already think in boxes, breakpoints, reusable components, and CMS collection
 
 ## The concept map
 
-| Webflow / Framer      | Jx                                | Where to look                                             |
-| --------------------- | --------------------------------- | --------------------------------------------------------- |
-| Style panel + classes | Style inspector                   | [Style inspector](/docs/studio/design/style-inspector)    |
-| Variables             | Design tokens                     | [Design tokens](/docs/studio/design/tokens)               |
-| Tag-level styles      | Project Styles                    | [Project Styles](/docs/studio/design/stylebook)           |
-| Symbols / components  | Components                        | [Working with components](/docs/studio/design/components) |
-| CMS collections       | Content types                     | [Content types](/docs/studio/projects/content-types)      |
-| Collection lists      | Repeaters                         | [Repeaters](/docs/studio/design/repeaters)                |
-| Interactions          | Events, state, and formulas       | [Logic](/docs/studio/logic)                               |
-| Breakpoint bar        | A live canvas per breakpoint      | [Design mode](/docs/studio/design)                        |
-| Site plan + publish   | Commit and sync; your host builds | [Publish](/docs/studio/publish)                           |
+| Webflow / Framer      | Jx                             | Where to look                                             |
+| --------------------- | ------------------------------ | --------------------------------------------------------- |
+| Style panel + classes | Style inspector                | [Style inspector](/docs/studio/design/style-inspector)    |
+| Variables             | Design tokens                  | [Design tokens](/docs/studio/design/tokens)               |
+| Tag-level styles      | Project Styles                 | [Project Styles](/docs/studio/design/stylebook)           |
+| Symbols / components  | Components                     | [Working with components](/docs/studio/design/components) |
+| CMS collections       | Content types                  | [Content types](/docs/studio/projects/content-types)      |
+| Collection lists      | Repeaters                      | [Repeaters](/docs/studio/design/repeaters)                |
+| Interactions          | Events, state, and formulas    | [Logic](/docs/studio/logic)                               |
+| Breakpoint bar        | A live canvas per breakpoint   | [Design mode](/docs/studio/design)                        |
+| Site plan + publish   | Publish live; your host builds | [Publish](/docs/studio/publish)                           |
 
 ## Styling, without class anxiety
 
@@ -67,7 +67,7 @@ Collections cover the content you author. Data that arrives while the site is ru
 
 ## Interactions, honestly
 
-Behavior in Jx comes from three surfaces working together: **[State](/docs/studio/logic/data)** declares what a page knows, the Inspector's **Logic** tab (:kbd[⌘⇧3]) binds **[events](/docs/studio/logic/events)** to clicks, typing, and submits, and **[formulas](/docs/studio/logic/formulas)** compute values live. Logic is also where a `$switch` picks between variants and where a repeater is pointed at its list, so everything about how one element behaves is in one place. The logic side of interactions is covered, often more directly than a timeline can express it: toggles, tabs, filtered lists, form behavior.
+Behavior in Jx comes from three surfaces working together: **[State](/docs/studio/logic/data)** declares what a page knows, the Inspector's **Logic** tab (:kbd[⌘⇧4]) binds **[events](/docs/studio/logic/events)** to clicks, typing, and submits, and **[formulas](/docs/studio/logic/formulas)** compute values live. Logic is also where a `$switch` picks between variants and where a repeater is pointed at its list, so everything about how one element behaves is in one place. The logic side of interactions is covered, often more directly than a timeline can express it: toggles, tabs, filtered lists, form behavior.
 
 What Jx doesn't have is Webflow's scroll-driven animation timeline. Hover and focus effects with CSS transitions come through [States and selectors](/docs/studio/design/states-and-selectors), but choreographed scroll animation isn't a built-in surface today.
 

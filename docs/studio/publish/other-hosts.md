@@ -11,11 +11,11 @@ A Jx site doesn't need a special host. The build turns your project into an ordi
 
 ## The recipe
 
-1. **Pick the deployment adapter.** In _Settings > General_, set **Platform Adapter** for your target. **Static** is the choice for a site made only of pages and content. It works on any host that serves files. If the project has a database, sign-ins, or `timing: "server"` functions, pick **Node**, **Bun**, **Cloudflare Workers**, or **Cloudflare Pages** instead: those also package the worker that serves your `/_jx/*` routes. A database or sign-ins make that mandatory, because the build stops with an error on **Static**. Server functions don't stop the build, but on **Static** nothing ends up serving them, so they need an adapter just the same. See **[Project settings](/docs/studio/projects/settings)**.
+1. **Pick the deployment adapter.** Pick the adapter for your target under **How it is built** in **Publish › Hosting**; it is `build.adapter` in `project.json`. **Static** is the choice for a site made only of pages and content. It works on any host that serves files. If the project has a database, sign-ins, or `timing: "server"` functions, pick **Node**, **Bun**, **Cloudflare Workers**, or **Cloudflare Pages** instead: those also package the worker that serves your `/_jx/*` routes. A database or sign-ins make that mandatory, because the build stops with an error on **Static**. Server functions don't stop the build, but on **Static** nothing ends up serving them, so they need an adapter just the same. See **[Publish](/docs/studio/publish)**.
 2. **Put the project on GitHub** (or another repository host) so your host can see it. **[GitHub](/docs/studio/publish/github)** does this from inside Studio.
 3. **Tell the host two things**: the build command is `bunx jx build`, and the folder to publish is `dist`.
 
-That's it. From then on, every **Commit and sync** in **[Source control](/docs/studio/publish/source-control)** pushes your changes, the host runs the build, and the fresh site goes live, the flow described in **[Publish](/docs/studio/publish)**.
+That's it. From then on, every publish from **[Review changes](/docs/studio/publish/source-control)** pushes your changes, the host runs the build, and the fresh site goes live, the flow described in **[Publish](/docs/studio/publish)**.
 
 ## Netlify
 

@@ -101,6 +101,12 @@ export interface CanvasSurface {
    */
   prevStylebookFilter: string | null;
   prevStylebookCustomizedOnly: boolean | null;
+  /**
+   * The breakpoint this stage's catalogue was drawn at. The sheet is ONE artboard at the active
+   * breakpoint, so a size switch changes which board exists and must rebuild it, exactly as a
+   * filter change does. `undefined` is "never drawn"; `null` is the base.
+   */
+  prevStylebookMedia?: string | null | undefined;
   /** Teardown for this stage's source-mode collab binding (unbind + release the lock). */
   sourceCollabCleanup: (() => void) | null;
   /**

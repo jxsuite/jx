@@ -99,6 +99,19 @@ export function isModalOpen(): boolean {
   return Boolean(_dialogLayer?.querySelector(UNDERLAID) || _modalLayer?.querySelector(UNDERLAID));
 }
 
+/**
+ * Whether a popover is showing anywhere in the chrome: a kit `jx-popover`, a menu, any element in
+ * the platform's popover top layer.
+ *
+ * A popover leaves Escape to the platform, which closes it as the keystroke's default action, so an
+ * app chord on bare Escape has to stand down while one is up: cancelling the keystroke would cancel
+ * the close as well, and whatever the chord did would happen under a popover that stays open. Asked
+ * of the live DOM for the reason {@link isModalOpen} is.
+ */
+export function isPopoverOpen(): boolean {
+  return document.querySelector(":popover-open") !== null;
+}
+
 /*
  * `showDialog` was here, with `openOverlaySlot`, `focusOverlay`, `focusablesIn` and
  * `BODY_FOCUSABLE` under it — and all five are GONE together.

@@ -442,6 +442,8 @@ export function registerPackagesPanel(): void {
     level: "document",
     dock: "navigator",
     icon: "cube",
+    // A developer panel (§5.1): on the rail only with **Show developer panels** on.
+    rail: "developer",
     requiresDocument: "Open a page to choose which components it can use.",
     render: () => nothing,
     afterRender: (ctx, host) => {

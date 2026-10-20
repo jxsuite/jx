@@ -127,6 +127,7 @@ function siblingPath(documentPath: string, locale: string): string | null {
   if (i18n === null || !i18n.locales.includes(locale)) {
     notify.error(`This project does not declare ${localeLabel(locale)}.`, {
       action: "settings.open",
+      actionArgs: { section: "locales" },
       detail: "Add it in Settings › Locales, or with the Add Language command.",
       source: "Languages",
     });
@@ -321,7 +322,7 @@ export function i18nCommands(): AnyCommand[] {
       when: (ctx) => ctx.project.isMultilingual,
       /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: the panel is a surface
          for a person. */
-      /* The panel is off the rail — it spends no rail slot and shifts no ⌘1-8 chord — so this
+      /* The panel is off the rail — it spends no rail slot — so this
          command and the generated `panel.focus.i18n` are its only two doors, and both open the
          same one. The TITLES must differ even though the behaviour does not: the palette is a flat
          searchable list where "View: Show Languages" twice is two rows a reader cannot choose

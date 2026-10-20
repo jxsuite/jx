@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioLibraryPane",
-  "$description": "The Library: the pane that BROWSES a project's files, as a Jx document over the kit. The adapter (`browse/library-pane.ts`) keeps every decision — which files the scan found, which the filter kept, which of them the window renders, where an upload lands and what a row's context menu offers — and hands this document one projection: a discriminant naming which of nine things to draw, the toolbar's chips already marked, and rows that are already strings. Nothing here asks what a file is, how big the viewport is, or whether the scan finished. The nine cases of `view` are the four honest empty states the Manage view collapsed into “No files found” — a scan still running, a scan that could not finish, a project with no files, and a filter that matched nothing — followed by the five layouts, so “what is on screen” has exactly one source. A card's live preview is an ISLAND: the document renders `doc-preview` and nothing inside it, and the adapter fills it through `onNodeCreated` when the card comes into view.",
+  "$description": "The Content home (studio.md §22.5): one collection, browsed, as a Jx document over the kit. The adapter (`browse/library-pane.ts`) keeps every decision — which collection is shown, which of its files the filter kept, which of them the window renders, where the collection is published, and what a row's context menu offers — and hands this document one projection: a discriminant naming which of eight things to draw, the view switch already marked, a header line that is one of four states, and rows that are already strings. Nothing here asks what a file is, how big the viewport is, or whether the scan finished. The eight cases of `view` are the four honest empty states the Manage view collapsed into “No files found” — a scan still running, a scan that could not finish, a collection with nothing in it, and a filter that matched nothing — followed by the four views, so “what is on screen” has exactly one source. A card's live preview is an ISLAND: the document renders `doc-preview` and nothing inside it, and the adapter fills it through `onNodeCreated` when the card comes into view.",
   "tagName": "div",
   "attributes": {
     "part": "library",
@@ -17,18 +17,46 @@
     "fontFamily": "var(--jx-font-sans)",
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
-    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
+    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"filter-slot\"], & [part=\"fields-slot\"], & [part=\"new-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
       "$description": "A `$switch` renders its own container, and none of these six is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
       "display": "contents"
     },
-    "& [part=\"toolbar\"]": {
-      "$description": "It wraps rather than scrolls: the categories, the language facet, the filter, the two verbs and the layout switch are all equally reachable, and a toolbar that hid half of them behind an overflow would put the Library's own state somewhere the reader has to go looking for it.",
+    "& [part=\"head\"]": {
+      "$description": "The collection's title over its toolbar: the Content-Collection and Content-Pages boards' heading row. It does not scroll with the list.",
       "display": "flex",
-      "alignItems": "center",
-      "gap": "var(--jx-space-4)",
-      "padding": "var(--jx-space-3) var(--jx-space-5)",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-4) var(--jx-space-5) var(--jx-space-3)",
       "background": "var(--bg-panel)",
       "borderBottom": "1px solid var(--border)",
+      "flexShrink": "0"
+    },
+    "& [part=\"heading\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"subtitle\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"subtitle\"]:empty": {
+      "$description": "Only Pages carries a line under its title; a collection's own line is the header bar below the toolbar.",
+      "display": "none"
+    },
+    "& [part=\"toolbar\"]": {
+      "$description": "It wraps rather than scrolls: the view switch, the search, the language facet, Fields and New are all equally reachable, and a toolbar that hid half of them behind an overflow would put the collection's own state somewhere the reader has to go looking for it.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "0",
       "flexShrink": "0",
       "flexWrap": "wrap"
     },
@@ -39,41 +67,15 @@
       "$description": "Narrow on purpose: it holds one language name, and the toolbar wraps before it grows.",
       "width": "160px"
     },
-    "& [part=\"upload\"]": {
-      "$description": "A LABEL around the file picker, not a button that clicks a hidden one. The picker is the control — it takes focus, Enter opens it, and a screen reader announces it as a file upload — so the button, the `.library-upload-input` class it looked for and the `querySelector` that found it all go together. Drawn as a plain element rather than a `jx-action-button` because a label is what forwards a click to the input it contains, and a custom element between the two would break the forwarding the whole arrangement rests on.",
-      "display": "inline-flex",
-      "alignItems": "center",
-      "gap": "6px",
-      "height": "24px",
-      "padding": "0 var(--jx-space-3)",
-      "borderRadius": "var(--radius)",
-      "color": "var(--fg)",
-      "font": "inherit",
-      "cursor": "pointer",
-      ":hover": {
-        "background": "var(--hover-bg)"
-      },
-      ":has(:focus-visible)": {
-        "outline": "var(--jx-focus-ring)",
-        "outlineOffset": "2px"
-      }
-    },
-    "& [part=\"upload-input\"]": {
-      "$description": "Out of the way but still FOCUSABLE. `display: none` — what the class it replaces did — takes the control out of the tab order, which is why there had to be a button clicking it from the side; a one-pixel transparent box leaves the keyboard path intact and the label above draws the focus ring for it.",
-      "position": "absolute",
-      "width": "1px",
-      "height": "1px",
-      "opacity": "0",
-      "pointerEvents": "none"
-    },
-    "& [part=\"upload-glyph\"]": {
-      "--jx-icon-size": "16px"
+    "& [part=\"filter\"]": {
+      "$description": "Narrow like the language facet: it holds one value of one field.",
+      "width": "160px"
     },
     "& [part=\"spacer\"]": {
       "flex": "1"
     },
     "& [part=\"layouts\"]": {
-      "marginLeft": "auto"
+      "flexShrink": "0"
     },
     "& [part=\"banner\"]": {
       "$description": "The banner an INCOMPLETE listing carries. The Problem in the dock is the durable record; this is the same fact on the surface it is about, because a reader looking at a short list needs to know it is short for a reason without going anywhere to find out.",
@@ -90,13 +92,8 @@
     "& [part=\"body\"]": {
       "flex": "1",
       "minHeight": "0",
-      "overflowY": "auto",
+      "overflow": "auto",
       "position": "relative"
-    },
-    "& [part=\"body\"][data-drop=\"true\"]": {
-      "$description": "The drop affordance is a STATE the adapter holds, not a class the handler adds and forgets to take off. It was the latter, and the two removals — dragleave and drop — were the only things standing between a cancelled drag and an outline that never went away.",
-      "outline": "2px dashed var(--accent)",
-      "outlineOffset": "-4px"
     },
     "& [part=\"empty\"]": {
       "padding": "48px var(--jx-space-6)",
@@ -130,9 +127,6 @@
     "& [part=\"grid\"][data-layout=\"cards\"]": {
       "gridTemplateColumns": "repeat(auto-fill, minmax(188px, 1fr))"
     },
-    "& [part=\"grid\"][data-layout=\"media\"]": {
-      "gridTemplateColumns": "repeat(auto-fill, minmax(120px, 1fr))"
-    },
     "& [part=\"card\"], & [part=\"tile\"]": {
       "cursor": "pointer",
       "overflow": "hidden",
@@ -157,16 +151,11 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"doc-preview\"]": {
-      "$description": "The island. The document renders this box and nothing inside it; the adapter mounts a real runtime render of the file into it when the card comes into view, and the scale below is what makes a page-sized document readable as a thumbnail without rendering it at thumbnail size.",
+      "$description": "The island. The document renders this box and nothing inside it; the adapter mounts a real runtime render of the file into a shadow root of the island's own when the card comes into view (`mountPreview` in `browse/library-preview.ts`, which keeps the document's ids out of Studio's), and the zoom is what makes a page-sized document readable as a thumbnail without rendering it at thumbnail size: the render is laid out in a box two and a half times as wide and drawn at 0.4. It is `inert`, so a page's own links and buttons are neither focusable nor named inside the card.",
       "width": "100%",
       "height": "100%",
+      "zoom": "0.4",
       "overflow": "hidden"
-    },
-    "& [part=\"doc-preview\"] > *": {
-      "transform": "scale(0.4)",
-      "transformOrigin": "top left",
-      "width": "250%",
-      "height": "250%"
     },
     "& [part=\"thumb\"]": {
       "maxWidth": "100%",
@@ -190,6 +179,7 @@
       "$description": "A windowed list rather than a table component: the rows have to be sliceable, and every table widget wants the whole set.",
       "display": "flex",
       "flexDirection": "column",
+      "minWidth": "min-content",
       "padding": "0 var(--jx-space-5) var(--jx-space-5)"
     },
     "& [part=\"table-head\"], & [part=\"table-row\"]": {
@@ -214,19 +204,23 @@
       "background": "var(--hover-bg)"
     },
     "& [part=\"cell\"]": {
+      "$description": "Every column keeps a floor: with a collection's six field columns beside the file facts, a cell that may shrink to nothing is a column of ellipses. When the floors outgrow the pane, the table scrolls sideways instead. Each cell's text is kept out of its intrinsic width (`contain: inline-size`), so the table's `min-content` is the sum of those floors rather than of every full title.",
       "flex": "1",
-      "minWidth": "0",
+      "minWidth": "80px",
+      "contain": "inline-size",
       "overflow": "hidden",
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap",
       "fontSize": "var(--jx-text-md)"
     },
-    "& [part=\"cell\"][data-field=\"name\"]": {
+    "& [part=\"cell\"][data-field=\"name\"], & [part=\"cell\"][data-field=\"title\"]": {
+      "$description": "What a row is called keeps a readable width however many field columns stand beside it.",
       "flex": "3",
+      "minWidth": "220px",
       "fontWeight": "500"
     },
     "& [part=\"cell\"][data-field=\"path\"]": {
-      "flex": "3",
+      "flex": "2",
       "color": "var(--fg-dim)",
       "fontFamily": "var(--font-mono)",
       "fontSize": "var(--jx-text-sm)"
@@ -301,104 +295,148 @@
     },
     "& [part=\"list-item\"]:hover": {
       "background": "var(--hover-bg)"
+    },
+    "& [part=\"page-line\"]": {
+      "$description": "One line saying where the collection's entries are published, the Content-Collection board's bar under the toolbar. Its action is quiet: it opens another workspace, and it must not compete with New.",
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2) var(--jx-space-5)",
+      "background": "var(--bg-panel)",
+      "borderBottom": "1px solid var(--border)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)",
+      "flexShrink": "0"
+    },
+    "& [part=\"page-pattern\"]": {
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"design-page\"], & [part=\"add-page\"]": {
+      "marginLeft": "auto"
+    },
+    "& [part=\"card\"]:focus-visible, & [part=\"table-row\"]:focus-visible, & [part=\"list-item\"]:focus-visible": {
+      "$description": "Rows and cards open on Enter or Space as well as a click, so the keyboard reaches an entry; the ring says which one it is on.",
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
     }
   },
   "children": [
     {
       "tagName": "div",
       "attributes": {
-        "part": "toolbar"
+        "part": "head"
       },
       "children": [
         {
-          "tagName": "jx-action-group",
+          "tagName": "div",
           "attributes": {
-            "part": "categories"
-          },
-          "$props": {
-            "selects": "single",
-            "compact": true,
-            "label": "Category"
+            "part": "heading"
           },
           "children": [
             {
-              "$prototype": "Array",
-              "items": {
-                "$ref": "#/state/categories"
+              "tagName": "h2",
+              "attributes": {
+                "part": "title"
               },
-              "key": {
-                "$ref": "$map/item/key"
+              "textContent": "${state.title}"
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "subtitle"
               },
-              "map": {
-                "tagName": "jx-action-button",
-                "attributes": {
-                  "part": "category",
-                  "data-category": "${$map.item.key}"
-                },
-                "$props": {
-                  "size": "sm",
-                  "checked": {
-                    "$ref": "$map/item/checked"
-                  }
-                },
-                "onclick": {
-                  "$prototype": "Function",
-                  "body": [
-                    {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/setCategory"
-                      },
-                      "value": [
-                        {
-                          "$ref": "$map/item/key"
-                        }
-                      ]
-                    }
-                  ]
-                },
-                "children": [
-                  {
-                    "tagName": "span",
-                    "textContent": "${$map.item.label}"
-                  }
-                ]
-              }
+              "textContent": "${state.subtitle}"
             }
           ]
         },
         {
           "tagName": "div",
           "attributes": {
-            "part": "locale-slot",
-            "role": "none"
+            "part": "toolbar"
           },
-          "$switch": {
-            "$ref": "#/state/localeState"
-          },
-          "cases": {
-            "shown": {
-              "tagName": "jx-select",
+          "children": [
+            {
+              "tagName": "jx-action-group",
               "attributes": {
-                "part": "locale"
+                "part": "layouts"
               },
               "$props": {
-                "label": "Language",
-                "size": "sm",
-                "options": {
-                  "$ref": "#/state/localeOptions"
-                },
-                "value": {
-                  "$ref": "#/state/localeValue"
-                }
+                "selects": "single",
+                "compact": true,
+                "label": "View"
               },
-              "onchange": {
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/layouts"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "layout",
+                      "data-layout": "${$map.item.key}"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "hint": "${$map.item.label}",
+                      "checked": {
+                        "$ref": "$map/item/checked"
+                      }
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/setLayout"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "textContent": "${$map.item.label}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "jx-textfield",
+              "attributes": {
+                "part": "search"
+              },
+              "$props": {
+                "label": "${state.searchLabel}",
+                "placeholder": "${state.searchLabel}…",
+                "size": "sm",
+                "value": {
+                  "$ref": "#/state/query"
+                },
+                "type": "search"
+              },
+              "oninput": {
                 "$prototype": "Function",
                 "body": [
                   {
                     "operator": "call",
                     "target": {
-                      "$ref": "#/state/setLocale"
+                      "$ref": "#/state/search"
                     },
                     "value": [
                       {
@@ -406,189 +444,366 @@
                       }
                     ]
                   }
-                ],
-                "description": "The facet's options come from ALL scanned files, never from the filtered ones: a picker whose choices collapse to the choice just made cannot be used to make another."
-              }
-            }
-          }
-        },
-        {
-          "tagName": "jx-textfield",
-          "attributes": {
-            "part": "search"
-          },
-          "$props": {
-            "label": "Filter files",
-            "placeholder": "Filter files…",
-            "size": "sm",
-            "value": {
-              "$ref": "#/state/query"
-            }
-          },
-          "oninput": {
-            "$prototype": "Function",
-            "body": [
-              {
-                "operator": "call",
-                "target": {
-                  "$ref": "#/state/search"
-                },
-                "value": [
-                  {
-                    "$ref": "event#/target/value"
-                  }
                 ]
               }
-            ]
-          }
-        },
-        {
-          "tagName": "jx-action-button",
-          "attributes": {
-            "part": "new"
-          },
-          "$props": {
-            "size": "sm",
-            "icon": "plus",
-            "haspopup": "menu"
-          },
-          "onclick": {
-            "$prototype": "Function",
-            "body": [
-              {
-                "operator": "call",
-                "target": {
-                  "$ref": "#/state/openNewMenu"
-                },
-                "value": [
-                  {
-                    "$ref": "event#/currentTarget"
-                  }
-                ]
-              }
-            ],
-            "description": "Creation is somebody else's flow: a page, layout or component is `files.ts`'s, a collection entry is `content/entry-commands.ts`'s. The menu only names which."
-          },
-          "children": [
+            },
             {
-              "tagName": "span",
-              "textContent": "New"
-            }
-          ]
-        },
-        {
-          "tagName": "label",
-          "attributes": {
-            "part": "upload",
-            "title": "${state.uploadHint}"
-          },
-          "children": [
-            {
-              "tagName": "input",
+              "tagName": "div",
               "attributes": {
-                "part": "upload-input",
-                "type": "file",
-                "multiple": true,
-                "accept": "${state.uploadAccept}"
+                "part": "locale-slot",
+                "role": "none"
               },
-              "onchange": {
-                "$prototype": "Function",
-                "body": [
-                  {
-                    "operator": "call",
-                    "target": {
-                      "$ref": "#/state/upload"
+              "$switch": {
+                "$ref": "#/state/localeState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "locale"
+                  },
+                  "$props": {
+                    "label": "Language",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/localeOptions"
                     },
-                    "value": [
+                    "value": {
+                      "$ref": "#/state/localeValue"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
                       {
-                        "$ref": "event#/target"
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setLocale"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ],
+                    "description": "The facet's options come from ALL scanned files, never from the filtered ones: a picker whose choices collapse to the choice just made cannot be used to make another."
+                  }
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "filter-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/filterState"
+              },
+              "cases": {
+                "shown": {
+                  "$description": "The Filter: one value of what groups the entries, their status or the field the Board groups by, so it offers exactly the Board's columns.",
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "filter"
+                  },
+                  "$props": {
+                    "label": "Filter",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/filterOptions"
+                    },
+                    "value": {
+                      "$ref": "#/state/filterValue"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setFilter"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
                       }
                     ]
                   }
-                ],
-                "description": "The picker itself, so the destination in the label's tooltip is visible BEFORE the files are chosen. The adapter takes the element rather than the file list because a file input that is not cleared refuses the same file twice."
-              }
-            },
-            {
-              "tagName": "jx-icon",
-              "attributes": {
-                "part": "upload-glyph"
-              },
-              "$props": {
-                "name": "upload-simple"
+                }
               }
             },
             {
               "tagName": "span",
-              "textContent": "Upload"
-            }
-          ]
-        },
-        {
-          "tagName": "span",
-          "attributes": {
-            "part": "spacer"
-          }
-        },
-        {
-          "tagName": "jx-action-group",
-          "attributes": {
-            "part": "layouts"
-          },
-          "$props": {
-            "selects": "single",
-            "compact": true,
-            "label": "Layout"
-          },
-          "children": [
+              "attributes": {
+                "part": "spacer"
+              }
+            },
             {
-              "$prototype": "Array",
-              "items": {
-                "$ref": "#/state/layouts"
+              "tagName": "div",
+              "attributes": {
+                "part": "grid-slot",
+                "role": "none"
               },
-              "key": {
-                "$ref": "$map/item/key"
+              "$switch": {
+                "$ref": "#/state/fieldsState"
               },
-              "map": {
-                "tagName": "jx-action-button",
-                "attributes": {
-                  "part": "layout",
-                  "data-layout": "${$map.item.key}"
-                },
-                "$props": {
-                  "size": "sm",
-                  "hint": "${$map.item.label}",
-                  "checked": {
-                    "$ref": "$map/item/checked"
-                  }
-                },
-                "onclick": {
-                  "$prototype": "Function",
-                  "body": [
+              "cases": {
+                "shown": {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "edit-grid"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "icon": "rows",
+                    "hint": "Edit every entry of this collection in a grid"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/openGrid"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "The collection's grid (`collection.editInGrid { name }`): the one visible door to it, since the palette cannot prompt for a free-text name."
+                  },
+                  "children": [
                     {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/setLayout"
-                      },
-                      "value": [
-                        {
-                          "$ref": "$map/item/key"
-                        }
-                      ]
+                      "tagName": "span",
+                      "textContent": "Edit in grid"
                     }
                   ]
-                },
-                "children": [
-                  {
-                    "tagName": "span",
-                    "textContent": "${$map.item.label}"
-                  }
-                ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "fields-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/fieldsState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "fields"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "icon": "sliders-horizontal",
+                    "hint": "Edit this collection's fields in Project Settings",
+                    "haspopup": "dialog"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/openFields"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Project Settings › Content types, on this collection (`settings.open { section: \"content\", entry }`)."
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Fields"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "new-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/newState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "new"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "variant": "accent"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/openNew"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Creation is somebody else's flow: `file.new` opens Add new on this collection's kind, a page for Pages and an entry for a collection."
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.newLabel}"
+                    }
+                  ]
+                }
               }
             }
           ]
         }
       ]
+    },
+    {
+      "$description": "The header line: where this collection's entries are published, derived from the page whose `$paths.contentType` names it. Pages draw nothing here.",
+      "tagName": "div",
+      "attributes": {
+        "part": "page-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/page/state"
+      },
+      "cases": {
+        "loading": {
+          "tagName": "div",
+          "attributes": {
+            "part": "page-line"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "page-text"
+              },
+              "textContent": "${state.page.text}"
+            }
+          ]
+        },
+        "page": {
+          "tagName": "div",
+          "attributes": {
+            "part": "page-line",
+            "data-state": "page"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "page-text"
+              },
+              "textContent": "${state.page.text}"
+            },
+            {
+              "tagName": "code",
+              "attributes": {
+                "part": "page-pattern"
+              },
+              "textContent": "${state.page.pattern}"
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "page-template"
+              },
+              "textContent": "${state.page.template}"
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "design-page"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/designPage"
+                    },
+                    "value": []
+                  }
+                ],
+                "description": "Opening the page is activating it, which enters Design (studio.md §22.1)."
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "${state.page.designLabel}"
+                }
+              ]
+            }
+          ]
+        },
+        "none": {
+          "tagName": "div",
+          "attributes": {
+            "part": "page-line",
+            "data-state": "none"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "page-text"
+              },
+              "textContent": "${state.page.text}"
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "add-page"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/addPage"
+                    },
+                    "value": []
+                  }
+                ],
+                "description": "Writes the collection's page exactly as Add new's own-page option does."
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Add one"
+                }
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "tagName": "div",
@@ -645,54 +860,7 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "body",
-        "data-jx-region": "${state.dropRegion}",
-        "data-drop": "${state.dropActive}"
-      },
-      "ondragover": {
-        "$prototype": "Function",
-        "body": [
-          {
-            "preventDefault": true
-          },
-          {
-            "operator": "call",
-            "target": {
-              "$ref": "#/state/dragOver"
-            }
-          }
-        ],
-        "description": "An upload has a NAMED destination, shown before the drop — the label's tooltip carries it — and asked for when the active category does not name one."
-      },
-      "ondragleave": {
-        "$prototype": "Function",
-        "body": [
-          {
-            "operator": "call",
-            "target": {
-              "$ref": "#/state/dragOut"
-            }
-          }
-        ]
-      },
-      "ondrop": {
-        "$prototype": "Function",
-        "body": [
-          {
-            "preventDefault": true
-          },
-          {
-            "operator": "call",
-            "target": {
-              "$ref": "#/state/drop"
-            },
-            "value": [
-              {
-                "$ref": "event#/dataTransfer/files"
-              }
-            ]
-          }
-        ]
+        "part": "body"
       },
       "onscroll": {
         "$prototype": "Function",
@@ -783,14 +951,14 @@
               "children": [
                 {
                   "tagName": "p",
-                  "textContent": "This project has no files yet."
+                  "textContent": "${state.emptyMessage}"
                 },
                 {
                   "tagName": "p",
                   "attributes": {
                     "part": "empty-detail"
                   },
-                  "textContent": "Use New to create a page, layout, component or entry."
+                  "textContent": "${state.emptyDetail}"
                 }
               ]
             },
@@ -866,7 +1034,9 @@
                     "tagName": "div",
                     "attributes": {
                       "part": "card",
-                      "data-path": "${$map.item.path}"
+                      "data-path": "${$map.item.path}",
+                      "tabindex": "0",
+                      "role": "button"
                     },
                     "onclick": {
                       "$prototype": "Function",
@@ -881,6 +1051,50 @@
                               "$ref": "$map/item/path"
                             }
                           ]
+                        }
+                      ]
+                    },
+                    "onkeydown": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "$switch": {
+                            "$ref": "event#/key"
+                          },
+                          "cases": {
+                            "Enter": [
+                              {
+                                "preventDefault": true
+                              },
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/openFile"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/path"
+                                  }
+                                ]
+                              }
+                            ],
+                            " ": [
+                              {
+                                "preventDefault": true
+                              },
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/openFile"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/path"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
                         }
                       ]
                     },
@@ -942,7 +1156,8 @@
                                 "tagName": "div",
                                 "attributes": {
                                   "part": "doc-preview",
-                                  "data-path": "${$map.item.path}"
+                                  "data-path": "${$map.item.path}",
+                                  "inert": ""
                                 }
                               },
                               "glyph": {
@@ -978,129 +1193,12 @@
                 }
               ]
             },
-            "media": {
-              "tagName": "div",
-              "attributes": {
-                "part": "grid",
-                "data-layout": "media",
-                "style": "${state.pad}"
-              },
-              "children": [
-                {
-                  "$prototype": "Array",
-                  "items": {
-                    "$ref": "#/state/rows"
-                  },
-                  "key": {
-                    "$ref": "$map/item/path"
-                  },
-                  "map": {
-                    "tagName": "div",
-                    "attributes": {
-                      "part": "tile",
-                      "data-path": "${$map.item.path}",
-                      "title": "${$map.item.path}"
-                    },
-                    "onclick": {
-                      "$prototype": "Function",
-                      "body": [
-                        {
-                          "operator": "call",
-                          "target": {
-                            "$ref": "#/state/openFile"
-                          },
-                          "value": [
-                            {
-                              "$ref": "$map/item/path"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    "oncontextmenu": {
-                      "$prototype": "Function",
-                      "body": [
-                        {
-                          "preventDefault": true
-                        },
-                        {
-                          "stopPropagation": true
-                        },
-                        {
-                          "operator": "call",
-                          "target": {
-                            "$ref": "#/state/contextMenu"
-                          },
-                          "value": [
-                            {
-                              "$ref": "$map/item/path"
-                            },
-                            {
-                              "$ref": "event#/clientX"
-                            },
-                            {
-                              "$ref": "event#/clientY"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    "children": [
-                      {
-                        "tagName": "div",
-                        "attributes": {
-                          "part": "tile-art"
-                        },
-                        "children": [
-                          {
-                            "tagName": "div",
-                            "attributes": {
-                              "part": "art-slot",
-                              "role": "none"
-                            },
-                            "$switch": {
-                              "$ref": "$map/item/art"
-                            },
-                            "cases": {
-                              "image": {
-                                "tagName": "img",
-                                "attributes": {
-                                  "part": "thumb",
-                                  "loading": "lazy",
-                                  "src": "${$map.item.src}",
-                                  "alt": ""
-                                }
-                              },
-                              "glyph": {
-                                "tagName": "jx-icon",
-                                "attributes": {
-                                  "part": "file-glyph"
-                                },
-                                "$props": {
-                                  "name": "file-text"
-                                }
-                              }
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "tagName": "div",
-                        "attributes": {
-                          "part": "tile-label"
-                        },
-                        "textContent": "${$map.item.name}"
-                      }
-                    ]
-                  }
-                }
-              ]
-            },
             "table": {
               "tagName": "div",
               "attributes": {
                 "part": "table",
-                "role": "table"
+                "role": "table",
+                "aria-label": "${state.title}"
               },
               "children": [
                 {
@@ -1150,7 +1248,8 @@
                     "attributes": {
                       "part": "table-row",
                       "role": "row",
-                      "data-path": "${$map.item.path}"
+                      "data-path": "${$map.item.path}",
+                      "tabindex": "0"
                     },
                     "onclick": {
                       "$prototype": "Function",
@@ -1165,6 +1264,50 @@
                               "$ref": "$map/item/path"
                             }
                           ]
+                        }
+                      ]
+                    },
+                    "onkeydown": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "$switch": {
+                            "$ref": "event#/key"
+                          },
+                          "cases": {
+                            "Enter": [
+                              {
+                                "preventDefault": true
+                              },
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/openFile"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/path"
+                                  }
+                                ]
+                              }
+                            ],
+                            " ": [
+                              {
+                                "preventDefault": true
+                              },
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/openFile"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/path"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
                         }
                       ]
                     },
@@ -1293,7 +1436,8 @@
                               "attributes": {
                                 "part": "list-item",
                                 "data-path": "${$map.item.path}",
-                                "title": "${$map.item.path}"
+                                "title": "${$map.item.path}",
+                                "tabindex": "0"
                               },
                               "textContent": "${$map.item.name}",
                               "onclick": {
@@ -1309,6 +1453,50 @@
                                         "$ref": "$map/item/path"
                                       }
                                     ]
+                                  }
+                                ]
+                              },
+                              "onkeydown": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "$switch": {
+                                      "$ref": "event#/key"
+                                    },
+                                    "cases": {
+                                      "Enter": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/openFile"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/path"
+                                            }
+                                          ]
+                                        }
+                                      ],
+                                      " ": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/openFile"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/path"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
                                   }
                                 ]
                               },
@@ -1426,7 +1614,8 @@
                               "attributes": {
                                 "part": "list-item",
                                 "data-path": "${$map.item.path}",
-                                "title": "${$map.item.path}"
+                                "title": "${$map.item.path}",
+                                "tabindex": "0"
                               },
                               "textContent": "${$map.item.name}",
                               "onclick": {
@@ -1442,6 +1631,50 @@
                                         "$ref": "$map/item/path"
                                       }
                                     ]
+                                  }
+                                ]
+                              },
+                              "onkeydown": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "$switch": {
+                                      "$ref": "event#/key"
+                                    },
+                                    "cases": {
+                                      "Enter": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/openFile"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/path"
+                                            }
+                                          ]
+                                        }
+                                      ],
+                                      " ": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/openFile"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/path"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
                                   }
                                 ]
                               },

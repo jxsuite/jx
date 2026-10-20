@@ -86,6 +86,16 @@ describe("gitStatus", () => {
     expect(untracked!.staged).toBe(false);
     rmSync(join(FIXTURES, "untracked.txt"));
   });
+
+  test("an untracked folder is listed file by file, not as the folder", async () => {
+    mkdirSync(join(FIXTURES, "fresh", "deep"), { recursive: true });
+    writeFileSync(join(FIXTURES, "fresh", "a.txt"), "a");
+    writeFileSync(join(FIXTURES, "fresh", "deep", "b.txt"), "b");
+    const result = await gitStatus();
+    const paths = result.files.map((f) => f.path).toSorted();
+    expect(paths).toEqual(["fresh/a.txt", "fresh/deep/b.txt"]);
+    rmSync(join(FIXTURES, "fresh"), { force: true, recursive: true });
+  });
 });
 
 // ─── gitBranches ────────────────────────────────────────────────────────────
@@ -121,6 +131,20 @@ describe("gitLog", () => {
     const limited = await gitLog({ limit: 1 });
     expect(limited.length).toBe(1);
     expect(limited[0].message).toBe("second commit");
+  });
+
+  test("a repository with no commits yet has an empty history", async () => {
+    const fresh = join(FIXTURES, "..", "_fixtures_git_unborn");
+    rmSync(fresh, { force: true, recursive: true });
+    mkdirSync(fresh, { recursive: true });
+    Bun.spawnSync(["git", "init"], { cwd: fresh });
+    setProjectRoot(fresh);
+    try {
+      expect(await gitLog({})).toEqual([]);
+    } finally {
+      setProjectRoot(FIXTURES);
+      rmSync(fresh, { force: true, recursive: true });
+    }
   });
 });
 

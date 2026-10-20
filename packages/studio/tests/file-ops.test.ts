@@ -136,6 +136,29 @@ describe("openFile", () => {
     expect<FileSystemFileHandle | typeof mockHandle | null>(tab!.fileHandle).toEqual(mockHandle);
   });
 
+  test("a Markdown file saved through its handle is what the next save keeps the spelling of", async () => {
+    const written: string[] = [];
+    const mockHandle = {
+      createWritable: async () => ({
+        close: async () => {},
+        write: async (text: string) => {
+          written.push(text);
+        },
+      }),
+      getFile: async () => ({ text: async () => '---\nphone: "1"\n---\n\n_Hi_\n' }),
+      name: "note.md",
+    };
+    Object.assign(window, { showOpenFilePicker: async () => [mockHandle] });
+    await openFile();
+    const tab = activeTab.value!;
+    expect(tab.doc.source).toBe('---\nphone: "1"\n---\n\n_Hi_\n');
+    tab.doc.content.frontmatter = { ...tab.doc.content.frontmatter, title: "T" };
+    tab.doc.dirty = true;
+    await saveFile();
+    expect(written).toEqual(['---\nphone: "1"\ntitle: T\n---\n\n_Hi_\n']);
+    expect(tab.doc.source).toBe(written[0] ?? "");
+  });
+
   test("handles AbortError silently", async () => {
     const error = new Error("User cancelled");
     error.name = "AbortError";
@@ -236,6 +259,43 @@ describe("saveFile", () => {
 
     expect(writtenContent).toBeDefined();
     expect(isString(writtenContent)).toBe(true);
+  });
+
+  test("saving a Markdown tab keeps the spelling of everything the edit did not touch", async () => {
+    let writtenContent = "";
+    registerPartialPlatform({
+      writeFile: async (_path, content) => {
+        writtenContent = content;
+      },
+    });
+    const source = [
+      "---",
+      'phone: "717-669-8739"',
+      "summary: wrapped over",
+      "  two lines",
+      "title: Old",
+      "---",
+      "",
+      "Some _emphasis_ here.",
+      "",
+    ].join("\n");
+    const parsed = await parseSourceForPath("pages/fidelity.md", source);
+    const tab = openTab({
+      document: parsed.document,
+      documentPath: "pages/fidelity.md",
+      frontmatter: parsed.frontmatter,
+      id: "test-md-fidelity",
+      source,
+      sourceFormat: "Markdown",
+    });
+    tab.doc.content.frontmatter = { ...tab.doc.content.frontmatter, title: "New" };
+    tab.doc.dirty = true;
+
+    await saveFile();
+
+    expect(writtenContent).toBe(source.replace("title: Old", "title: New"));
+    // The written text is what the next save keeps the spelling of.
+    expect(tab.doc.source).toBe(writtenContent);
   });
 
   test("component with duplicate default slots still saves (warn, not block)", async () => {

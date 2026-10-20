@@ -32,6 +32,7 @@ import { cloneValue } from "@jxsuite/schema/doc-ops";
 import { notePreviewOverlayEdit } from "../preview/preview-overlay";
 import { recordDocOp } from "../tabs/patch-ops";
 import { mutateUpdateFrontmatter, transactDoc } from "../tabs/transact";
+import { commitRecordFields, isRecordTab, recordFields } from "./record-entry";
 import type { JxDocumentValue } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import type { JsonValue } from "../types";
@@ -64,6 +65,10 @@ function fieldsAreDocument(tab: Tab): boolean {
  * `tab.doc.document` to see which store answered.
  */
 export function entryFields(tab: Tab): EntryFields {
+  // A record of a file-backed collection keeps its fields in a row of its file's grid.
+  if (isRecordTab(tab)) {
+    return recordFields(tab);
+  }
   return fieldsAreDocument(tab) ? tab.doc.document : tab.doc.content.frontmatter;
 }
 
@@ -105,7 +110,9 @@ function mutateDocumentField(tab: Tab, field: string, value?: JsonValue): void {
  * step.
  */
 export function mutateEntryField(tab: Tab, field: string, value?: JsonValue): void {
-  if (fieldsAreDocument(tab)) {
+  if (isRecordTab(tab)) {
+    commitRecordFields(tab, { [field]: value });
+  } else if (fieldsAreDocument(tab)) {
     mutateDocumentField(tab, field, value);
   } else {
     mutateUpdateFrontmatter(tab, field, value);
@@ -119,6 +126,11 @@ export function mutateEntryField(tab: Tab, field: string, value?: JsonValue): vo
  * on the undo stack as several steps — and an author who changed one thing expects one ⌘Z.
  */
 export function commitEntryFields(tab: Tab, patch: Record<string, JsonValue | undefined>): void {
+  // A record's edit is the grid buffer's, whose own undo group is the one ⌘Z reverts.
+  if (isRecordTab(tab)) {
+    commitRecordFields(tab, patch);
+    return;
+  }
   transactDoc(tab, (t) => {
     for (const [field, value] of Object.entries(patch)) {
       mutateEntryField(t, field, value);

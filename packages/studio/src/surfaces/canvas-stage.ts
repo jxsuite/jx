@@ -23,7 +23,7 @@
  *
  * **Every island stays an island** (specs/studio-ui-guidelines.md §9.4). The document draws each
  * host empty and this module announces it the moment it is CREATED, one reconcile step before it is
- * in the page; Monaco, the artboard iframes, the Document Header card, the Compare bar and the
+ * in the page; Monaco, the artboard iframes, the writing-mode banner, the Compare bar and the
  * Project Styles bar are all attached by the modules that own them.
  *
  * @docs studio/interface/canvas
@@ -66,11 +66,11 @@ export interface CanvasStageView {
   /** Whether Edit's column hugs its content — a component definition rather than a page. */
   hug: boolean;
   /**
-   * What stands over the frame, and only ever one of the three: the Document Header card docked
-   * above Edit's scrolling column, the Compare bar over a comparison, or the Project Styles bar
-   * over the catalogue.
+   * What stands over the frame: the writing-mode banner above Edit's scrolling column for a
+   * collection entry (`banner`), the Compare bar over a comparison, or the Project Styles bar over
+   * the catalogue. Edit draws nothing over an ordinary page (studio.md §4.2).
    */
-  lead: "none" | "header" | "toolbar" | "chrome";
+  lead: "none" | "banner" | "toolbar" | "chrome";
   /** Whether the column has its two width handles. */
   handles: "hidden" | "shown";
   panels: CanvasStagePanelItem[];

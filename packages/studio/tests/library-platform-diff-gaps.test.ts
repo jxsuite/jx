@@ -1,10 +1,10 @@
 /**
  * Diff-gap tests for three surfaces the existing suites leave unexercised.
  *
- * - **`src/browse/library-pane.ts`** — the context menu's outside-click dismissal, which is the
- *   platform popover's light dismissal rather than anything this module binds; a drop whose
- *   destination prompt is cancelled; the EMPTY state's own Retry, which is a different button from
- *   the incomplete-scan banner's and sits below it in the DOM; and the click that opens a card.
+ * - **`src/browse/library-pane.ts`** (the Content home) — the context menu's outside-click dismissal,
+ *   which is the platform popover's light dismissal rather than anything this module binds; the
+ *   EMPTY state's own Retry, which is a different button from the incomplete-scan banner's and sits
+ *   below it in the DOM; and the click that opens a card.
  * - **`src/platforms/devserver.ts`** — `buildSite`, including the sentence it falls back to when the
  *   backend named no error at all.
  * - **`src/platforms/cloud.ts`** — `cfConnect`'s poll RE-ARMING itself: the popup is still open and
@@ -14,16 +14,7 @@
  *   now begin one fetch later than they used to: the flow reads a baseline connection before it
  *   opens the popup, and nothing it installs exists until that read lands.
  */
-import {
-  answerPromptDialog,
-  dragEvent,
-  flush,
-  installMockPlatform,
-  resetStudioState,
-  surfaceOf,
-  testFile,
-  topDialog,
-} from "./harness";
+import { flush, installMockPlatform, resetStudioState, surfaceOf } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import { resetNotifications } from "../src/services/notify";
@@ -36,13 +27,11 @@ import type { JsonValue } from "@jxsuite/schema/types";
 // ─── Seams ───────────────────────────────────────────────────────────────────
 
 const opened: string[] = [];
-const uploads: { dir: string | undefined; count: number }[] = [];
 
-// Only two seams are replaced — opening a tab and writing bytes. Everything else in these two
-// Modules (extension tables, `isImage`, the media-kind probe) is real, because the layouts and the
-// Category model read it and a hand-written stand-in would be a second source of truth.
+// Only one seam is replaced — opening a tab. Everything else (extension tables, `isImage`, the
+// Collection matcher) is real, because the layouts and the collection model read it and a
+// Hand-written stand-in would be a second source of truth.
 const realFiles = await import("../src/files/files");
-const realUpload = await import("../src/files/media-upload");
 
 void mock.module("../src/files/files.js", () => ({
   ...realFiles,
@@ -51,21 +40,13 @@ void mock.module("../src/files/files.js", () => ({
     return Promise.resolve();
   },
 }));
-void mock.module("../src/files/media-upload.js", () => ({
-  ...realUpload,
-  uploadAssets: (files: File[], opts: { dir?: string }) => {
-    uploads.push({ count: files.length, dir: opts.dir });
-    return Promise.resolve(files.map((f) => ({ path: `${opts.dir ?? "?"}/${f.name}` })));
-  },
-}));
 
 const {
   detachLibraryPane,
   invalidateLibrary,
   renderLibraryMode,
-  setLibraryCategory,
+  resetContentView,
   setLibraryLayout,
-  setLibrarySearch,
 } = await import("../src/browse/library-pane");
 const { closeAllTabs, openTab } = await import("../src/workspace/workspace");
 
@@ -122,10 +103,10 @@ async function mount(): Promise<HTMLElement> {
   host.remove();
   closeAllTabs();
   const tab = openTab({
-    capabilities: { modes: ["manage"] },
+    capabilities: { modes: ["content-home"] },
     document: { children: [], tagName: "div" },
     documentPath: null,
-    id: "grid://library",
+    id: "workspace://content",
   });
   host = document.createElement("div");
   document.body.append(host);
@@ -151,17 +132,15 @@ function menus(): number {
 
 // ─── Library pane ────────────────────────────────────────────────────────────
 
-describe("the Library pane", () => {
+describe("the Content home", () => {
   beforeEach(() => {
     opened.length = 0;
-    uploads.length = 0;
     resetNotifications();
     resetActivities();
     detachLibraryPane("primary");
     invalidateLibrary();
-    setLibraryCategory("all");
+    resetContentView();
     setLibraryLayout("cards");
-    setLibrarySearch("");
     setup((path) => Promise.resolve(listingIn(TREE, path) ?? []));
   });
 
@@ -172,11 +151,11 @@ describe("the Library pane", () => {
 
   test("a click on a card opens THAT card's path, not the first one drawn", async () => {
     await mount();
-    const card = drawn('[part="card"][data-path="public/logo.png"]');
+    const card = drawn('[part="card"][data-path="pages/index.json"]');
     expect(card).not.toBeNull();
     card.click();
     await flush();
-    expect(opened).toEqual(["public/logo.png"]);
+    expect(opened).toEqual(["pages/index.json"]);
   });
 
   test("the EMPTY state carries its own Retry, and pressing it re-scans", async () => {
@@ -196,32 +175,8 @@ describe("the Library pane", () => {
     retry.click();
     await flush();
     await flush();
-    expect(host.querySelectorAll('[part="card"]').length).toBe(5);
+    expect(host.querySelectorAll('[part="card"]').length).toBe(2);
     expect(host.querySelector('[part="empty"]')).toBeNull();
-  });
-
-  test("a drop into All whose destination prompt is cancelled uploads nothing", async () => {
-    setLibraryCategory("all");
-    await mount();
-    const body = drawn('[part="body"]');
-    dragEvent(body, "drop", [testFile("shot.png")]);
-    await flush();
-    // The drop really did reach the upload flow — it is waiting on the destination.
-    expect(topDialog()).not.toBeNull();
-    await answerPromptDialog(null);
-    await flush();
-    expect(uploads).toEqual([]);
-  });
-
-  test("…and the same drop, answered, uploads into the folder the author named", async () => {
-    setLibraryCategory("all");
-    await mount();
-    const body = drawn('[part="body"]');
-    dragEvent(body, "drop", [testFile("shot.png")]);
-    await flush();
-    await answerPromptDialog("assets/media/");
-    await flush();
-    expect(uploads).toEqual([{ count: 1, dir: "assets/media" }]);
   });
 
   test("an outside mousedown dismisses the context menu, and the next right-click reopens one", async () => {

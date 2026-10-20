@@ -5,15 +5,13 @@
  * Every test here is about a refusal rather than a happy path — the entry editor's door out of a
  * document that belongs to no collection, a saved view that was never saved, a CSV row with nothing
  * on it, a grid tab that is already open, a turn whose ledger summarises to nothing, the Logic
- * tab's Close, and a repaint that lands after the stage has taken its host away. Each one is paired
- * with the positive case it is the negation of, so inverting the guard in the source fails a test
- * in BOTH directions.
+ * tab's Close. Each one is paired with the positive case it is the negation of, so inverting the
+ * guard in the source fails a test in BOTH directions.
  */
 import {
   flush,
   installMockPlatform,
   pointer,
-  registerPrimaryStage,
   resetStudioState,
   resetWorkspaceWithTab,
   surfaceOf,
@@ -80,8 +78,6 @@ void mock.module("../src/panels/editors.js", () => ({
 const { logicTarget, syncLogicPanel } = await import("../src/panels/formula-workspace");
 const { bottomPanelRegion } = await import("../src/ui/regions");
 const { projectRows } = await import("../src/panels/ai-chat/chat-view");
-const { initShellRefs, registerRenderer } = await import("../src/store");
-const frontmatterPanel = await import("../src/panels/frontmatter-panel");
 
 /** What the click handlers under test asked the registry to run, in order. */
 const ran: [string, unknown][] = [];
@@ -450,75 +446,5 @@ describe("closing the function body in the Logic tab", () => {
     // Down the way the dock takes it down: a repaint whose body is not Logic's.
     delete dock.dataset["jxRegion"];
     syncLogicPanel(dock);
-  });
-});
-
-// ─── The Document Header card's host ─────────────────────────────────────────
-
-describe("a Document Header repaint that lands after the host is gone", () => {
-  const realRaf = globalThis.requestAnimationFrame;
-  let frameErrors: unknown[] = [];
-
-  beforeEach(() => {
-    frameErrors = [];
-    // Happy-dom has no frames; the card's scheduler is driven off a timer instead, and the errors
-    // A frame would swallow are captured so a repaint that threw is an assertable fact.
-    // The handle is the timer's numeric id: nothing on this path cancels a frame, so only its shape
-    // Has to match what `requestAnimationFrame` promises.
-    globalThis.requestAnimationFrame = (callback) =>
-      Number(
-        setTimeout(() => {
-          try {
-            callback(0);
-          } catch (error) {
-            frameErrors.push(error);
-          }
-        }, 0),
-      );
-    installMockPlatform();
-    registerRenderer("frontmatterPanel", () => {
-      frontmatterPanel.render();
-    });
-  });
-
-  afterEach(() => {
-    frontmatterPanel.unmount();
-    globalThis.requestAnimationFrame = realRaf;
-  });
-
-  test("paints the card while the stage hosts one, and nothing once it does not", async () => {
-    resetStudioState({ projectConfig: {} });
-    document.body.innerHTML = `<div id="app">
-      <div class="pane-stage" data-jx-region="pane.primary">
-        <div part="doc-header"></div>
-      </div>
-    </div>`;
-    initShellRefs();
-    registerPrimaryStage();
-    const tab = resetWorkspaceWithTab(undefined, {
-      documentPath: "pages/index.json",
-      id: "c7-fm-tab",
-    });
-    tab.doc.document.title = "Hello";
-
-    const el = document.querySelector<HTMLElement>('[part="doc-header"]')!;
-    frontmatterPanel.attachDocumentHeaderHost("primary", el);
-    await flush(8);
-    expect(el.querySelector('[part="card"]')).not.toBeNull();
-    expect(el.hidden).toBeFalse();
-
-    // The stage asks for a repaint and then redraws itself without a header slot before the frame
-    // Lands. The queued repaint still runs, and it has nowhere to paint.
-    frontmatterPanel.render();
-    frontmatterPanel.attachDocumentHeaderHost("primary", null);
-    await flush(8);
-
-    expect(frameErrors).toEqual([]);
-    /* The stage's own node is left as it found it — nothing hides it and nothing else is written
-       into it — but the CARD goes with the hand-back. It is a mounted document now, and a document
-       owns runtime effects: leaving one bound to a tree the stage has taken away is a subscription
-       to a document nobody can see, which is exactly the leak the lit card had no way to have. */
-    expect(el.hidden).toBeFalse();
-    expect(el.querySelector('[part="card"]')).toBeNull();
   });
 });

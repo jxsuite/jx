@@ -24,15 +24,16 @@ import { projectState, updateSession } from "../store";
 import { createStylebookChromeSurface } from "../surfaces/stylebook-chrome";
 import type { StylebookChromeSurface } from "../surfaces/stylebook-chrome";
 import type { CanvasSurface } from "../canvas/canvas-surface";
-import { tabOfPane } from "../canvas/canvas-surface";
+import { activeMediaOfPane, tabOfPane } from "../canvas/canvas-surface";
 import { activeTab } from "../workspace/workspace";
 import { shell } from "../shell";
 import { componentRegistry } from "../files/components";
-import { getEffectiveMedia, getEffectiveStyle } from "../site-context";
+import { getEffectiveHead, getEffectiveMedia, getEffectiveStyle } from "../site-context";
 import { parseMediaEntries } from "../utils/canvas-media";
 import { mediaDisplayName } from "./shared";
 import { buildStylebookDoc } from "./stylebook-doc";
 import { PROJECT_STYLES_TITLE } from "../style/project-styles";
+import { loadStylebookSpecimens } from "../style/stylebook-specimens";
 import { mountStylebookCanvas, panToStylebookTag } from "../canvas/iframe-host";
 import stylebookMeta from "../../data/stylebook-meta.json";
 import type { CanvasPanelEntry } from "../canvas/canvas-utils";
@@ -124,11 +125,29 @@ function chromeBar(surface: CanvasSurface): HTMLElement {
  * a lit template: the hand-over used to be a `TemplateResult` per artboard, which meant the boards
  * could only be drawn by whoever was already rendering with lit. It is a mount seam instead — the
  * catalogue's bar is a node this module owns, placed in the empty box the stage draws for it, the
- * same way the Compare bar and the Document Header card are.
+ * same way the Compare bar and the writing banner are.
  *
  * @param {StylebookCtx} ctx
  * @returns {Promise<void>} Settles once the artboards are in the page
  */
+/**
+ * The one breakpoint the specimen sheet is drawn at: the one the Context bar's size switcher names
+ * (its `activeMedia`, or the lens a split pane derives), else the base.
+ *
+ * It drew every declared breakpoint side by side, as Design does for a page, and fitting four
+ * artboards into one pane put a 1280px sheet at 24%, where no heading or paragraph can be read; a
+ * sheet of type specimens is read, not compared at a glance. One artboard at the breakpoint being
+ * styled is what the Styles workspace's board shows (Desktop · Tablet · Phone, one at a time), and
+ * it is the breakpoint a style edit lands on, because selecting a specimen writes `activeMedia`.
+ */
+export function stylebookBoards<T extends { name: string }>(
+  boards: readonly T[],
+  active: string | null,
+): T[] {
+  const named = boards.filter((board) => board.name === (active ?? "base"));
+  return named.length > 0 ? named : boards.slice(0, 1);
+}
+
 export async function renderStylebookMode(
   surface: CanvasSurface,
   ctx: StylebookCtx,
@@ -142,6 +161,9 @@ export async function renderStylebookMode(
   const tab = tabOfPane(surface.paneId);
   const filter = shell.stylebook.filter.toLowerCase();
   const { customizedOnly } = shell.stylebook;
+  const generation = surface.renderGeneration;
+  const registry = componentRegistry;
+  const specimensPending = loadStylebookSpecimens(registry);
 
   const effectiveMedia = getEffectiveMedia(tab?.doc.document?.$media);
   const { sizeBreakpoints, baseWidth } = parseMediaEntries(effectiveMedia);
@@ -185,7 +207,7 @@ export async function renderStylebookMode(
       ),
     ];
   } else {
-    panelEntries = allPanelDefs.map((def) =>
+    panelEntries = stylebookBoards(allPanelDefs, activeMediaOfPane(surface.paneId)).map((def) =>
       ctx.canvasPanelEntry(def.name, `${def.displayName} (${def.width}px)`, false, def.width),
     );
   }
@@ -220,11 +242,21 @@ export async function renderStylebookMode(
     chromeHost.replaceChildren(chromeBarNode);
   }
 
+  /* What each component card is drawn with (started before the stage was drawn), asked once per
+     registry, so only the first paint after the project's components are read waits for it. A
+     render that began while it was being asked owns the stage now, and this one stops. */
+  const specimens = await specimensPending;
+  if (surface.renderGeneration !== generation) {
+    return;
+  }
+
   // ONE generated doc shared by every panel — per-panel @media differentiation comes from each
   // Iframe's real viewport width, not from a per-panel style flatten.
   const generated = buildStylebookDoc({
-    components: componentRegistry,
+    components: registry,
+    specimens,
     customizedOnly: Boolean(customizedOnly),
+    effectiveHead: getEffectiveHead(tab?.doc.document?.$head),
     effectiveMedia,
     effectiveStyle: getEffectiveStyle(tab?.doc.document?.style),
     filter,
@@ -255,18 +287,23 @@ export async function renderStylebookMode(
  * @param {string | null} [media]
  */
 export function selectStylebookTag(tag: string, media?: string | null, { panCanvas = false } = {}) {
-  shell.stylebook.selection = tag;
   const ui: Partial<TabUi> = { activeSelector: tag, rightTab: "style" };
   if (media !== undefined) {
     ui.activeMedia = media;
   }
+  // The session is written BEFORE the stylebook selection moves: writing `shell.stylebook.selection`
+  // Re-runs the Style panel's effect synchronously, and it should find `activeSelector` and the
+  // Breakpoint already in place.
   updateSession(activeTab.value, {
-    // The ROOT path, not an empty selection: stylebook mode has always parked the selection on the
-    // Document element while the Style tab edits a TAG, and widening the field to a list changed
-    // Which literal spells that — `[[]]` is one selected path, the root — not what it means.
-    selection: [[]],
+    // EMPTY, not the root. A specimen is not a node of the document, so no document path names
+    // What is selected; `stylebookTarget` is how the chrome learns the tag. Parking on the root
+    // `[[]]` made every reader of the document selection (the command bar, the Inspector header)
+    // Name the catalogue's root `div` while `h1` was being edited, and it is what a canvas hit on
+    // A specimen already left behind, so the Outline and the canvas now agree.
+    selection: [],
     ui,
   });
+  shell.stylebook.selection = tag;
 
   if (tag && panCanvas) {
     panToStylebookTag(tag);

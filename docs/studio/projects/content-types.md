@@ -2,12 +2,20 @@
 title: "Content types"
 description: "Define content types in Jx Studio (a source folder, a format, and a field schema), then create seeded entries and edit their fields as a form."
 code:
+  - packages/studio/src/create/add-new.ts
   - packages/studio/src/settings/contributed-section.ts
   - packages/studio/src/settings/schema-field-ui.ts
   - packages/studio/src/content/entry-model.ts
   - packages/studio/src/content/entry-editor.ts
   - packages/studio/src/surfaces/entry-editor.ts
+  - packages/studio/src/content/entry-open.ts
+  - packages/studio/src/content/entry-inspector.ts
+  - packages/studio/src/surfaces/entry-inspector.ts
+  - packages/studio/src/content/writing-banner.ts
+  - packages/studio/src/surfaces/writing-banner.ts
   - packages/studio/src/content/entry-fields.ts
+  - packages/studio/src/content/record-entry.ts
+  - packages/studio/src/ui/schema-form.ts
   - packages/studio/src/content/entry-commands.ts
   - packages/studio/src/content/collection-match.ts
   - packages/studio/src/browse/library-model.ts
@@ -19,13 +27,22 @@ code:
 
 Content types are your site's CMS schema. Each one describes a collection (blog posts, team members, projects) by naming the folder its entries live in, the file format they use, and the fields every entry carries. Once a type exists, Studio can create entries against it and draw their fields as a form.
 
-The builder is a section of your project's configuration document. Pick **Open Project Settings › Content Types** from the **Settings** menu at the foot of the rail. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Content Types** from the section list: your types are listed on the left, and selecting one opens its editor on the right. Like every other section of that document, what you do here is recorded as a step you can take back with :kbd[⌘Z]; see **[Project settings](/docs/studio/projects/settings)**.
+The builder is a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations** because the parser extension contributes it. Pick **Open Project Settings › Content Types** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Content Types** from the section list: the section opens with one sentence on what a content type is, your types are listed on the left, and selecting one opens its editor on the right. Like every other section, what you change here is written to `project.json` as you make it.
 
 ![The Content Types section with a type selected and its field schema open in the builder](../../images/content-type-builder.png)
 
 ## Create a content type
 
-1. Click **New Entry** at the bottom of the type list.
+The quickest way is **Add new** (:kbd[⌘N], or :kbd[⌘⌥N] in a browser): choose **Collection** and type a name such as `Recipes`.
+
+- **Each recipe has** offers the fields most collections start with: **Title**, **Image**, **Rich text** (the entry's body, when your project writes Markdown), **Date**, **Tags**, **Number** and **Link**. Title, Image and Rich text start chosen; click a chip to add or drop it. You can change the fields here afterwards.
+- **Give each recipe its own page** (on by default) also creates the page every entry opens at, `/recipes/:slug`, using the template you pick. It is the same page a blog starter ships: the entry's title, image and body, bound to whichever entry the address names.
+
+**Create collection** adds the `recipes` type to `project.json`, a `content/recipes/` folder with a first entry, and the page `pages/recipes/[slug].json`. The dialog says all of that before you click.
+
+You can also start a type here, from scratch:
+
+1. Click **New content type** at the bottom of the type list.
 2. Type a name ("Blog Posts" becomes `blog-posts`) and click **Create**.
 
 The new type starts with a matching source folder (`content/blog-posts/`) and an empty field schema, and is selected ready to edit.
@@ -56,13 +73,15 @@ With a type selected, edit its name in the editor's header to rename it, or clic
 
 ## Create an entry
 
-The [Library](/docs/studio/projects/browse)'s **New** menu lists a row for every content type you have defined, each naming the folder its entries live in. Pick the type, type a file name carrying the collection's extension (`spring-menu.md`), and Studio writes the file into that folder and opens it. Entries then appear in the Library under the **Content** category, labeled with the type they belong to.
+Open **Add new** (:kbd[⌘N], or **New menu** in the [Content workspace](/docs/studio/projects/browse) with the collection showing), choose **Entry**, pick the collection, and type a name such as `Spring menu`. Studio writes `content/menus/spring-menu.md` and opens it where it is written: a Markdown entry on the canvas inside its template, with its fields in the Inspector's **Entry** tab ([below](#edit-an-entrys-fields)); a JSON entry in the entry form. Entries then appear in the Content workspace under their collection.
 
-**New Entry** (`content.newEntry`) is the collection-scoped version of the same thing, and it does two things the generic route cannot: it names the file with the collection's **own extension**, so the entry is actually matched by the collection it was created in, and it **seeds the fields from the schema**, so the entry is valid the moment it exists rather than being a pile of absent required fields. It opens the new entry in the form below.
+Two things make an entry different from a blank file: it is named with the collection's **own extension**, so the entry is actually matched by the collection it was created in, and its fields are **seeded from the schema**, so it is valid the moment it exists rather than being a pile of absent required fields. When the schema has a `title`, it starts as the name you typed.
 
-**The Files tree knows about this too.** Right-click a content type's folder and choose **New File…**: because that folder belongs to a collection, you get the New Entry flow (the collection's extension, the seeded fields, and the entry form) rather than a blank document. In a **subfolder** of it the format picker is locked to the collection's extension instead, because a document there is still one of its entries but the images and notes beside them are not; the picker's **Other…** row still creates those. What it will not accept is a document of a different format, which the collection would discover as an entry it cannot read.
+**The Files tree knows about this too.** Right-click a content type's folder and choose **New File…**: because that folder belongs to a collection, you get the New Entry flow (the collection's extension and the seeded fields, opened where the entry is written) rather than a blank document. In a **subfolder** of it the format picker is locked to the collection's extension instead, because a document there is still one of its entries but the images and notes beside them are not; the picker's **Other…** row still creates those. What it will not accept is a document of a different format, which the collection would discover as an entry it cannot read.
 
-A **localized** collection (a `{locale}` in its source) has no single folder to create into, so **New Entry** asks you to open the folder for the language you are writing in and create the entry there.
+A **localized** collection (a `{locale}` in its source) keeps one folder per language, so Add new asks which **Language** the entry is written in. It starts on the language the Content workspace is filtered to (or the language of the entry you are writing, from **+ New** in the entries list), else on the site's default, and the entry is saved in that language's folder: `content/exhibitions/fr-CA/night-tide.md`.
+
+In a multilingual project a new **Collection** is localized too, with **One folder per language** checked: its source is `./content/<name>/{locale}`, its first entry goes in the default language's folder, and with **Give each item its own page** on it gets a template page in every language (`pages/<name>/[slug].json`, `pages/fr-ca/<name>/[slug].json`, and so on), each drawn in its language's own template when your project has one named for the language (`layouts/fr-ca.json`). Uncheck it for a collection whose entries are the same in every language, which is then served under every language's URLs.
 
 An entry is also not something you can convert: **Convert Format…** is not offered inside a content type's folder, in either direction. Changing the format of one entry would remove it from the collection; the collection's format belongs to the type, and you change it here.
 
@@ -74,25 +93,31 @@ Seeded means:
 
 ## Edit an entry's fields
 
-Right-click an entry in the Files tree and choose **Open Entry Form**. The row offers it only for a file that belongs to a collection, because an ordinary file has no schema to draw. The form opens on the same tab, so :kbd[⌘Z] and :kbd[⌘S] behave as they do anywhere else.
+Open an entry from the [Content workspace](/docs/studio/projects/browse), or right-click it in the Files tree and choose **Open Entry** (the row is offered only for a file that belongs to a collection). Where its fields appear depends on whether it has a body:
 
-The entry form is your schema, drawn as a form: one control per field, in the order the schema declares them, with the collection's name in the header.
+- **An entry with a body** (a Markdown post) is written on the canvas inside its template, and its fields are the Inspector's **Entry** tab, beside its status, the URL its page publishes it at (with a **Search appearance** button beside it), and the file it is stored in. A page that lists the entries it publishes (`$paths.values`, as a taxonomy page does) gives a URL only to those; the Entry tab of any other entry says it is not published. See **[Write an entry](/docs/studio/projects/browse#write-an-entry)**.
+- **An entry that is only fields** (a JSON entry) opens in the **entry form**, on the same tab, so :kbd[⌘Z] and :kbd[⌘S] behave as they do anywhere else.
+- **A record of a CSV collection** (one row of its file) opens in the same entry form, headed by its place in the file with **Previous** and **Next**. Its fields are written into the file's own grid, so :kbd[⌘S] saves the file and only the cells you changed are rewritten. See **[A collection stored in one file](/docs/studio/projects/browse#a-collection-stored-in-one-file)**.
+
+Both are the same form: your schema, drawn as one control per field, the title field first and the rest in the order the schema declares them.
 
 - **Where the fields live depends on the format.** A Markdown entry keeps them in frontmatter above its body; a JSON entry _is_ its fields, with no body to separate. The form is identical either way, so you should not be able to tell from using it which shape the file has.
-- **The field's type and format choose the control.** Text, numbers, yes/no switches, dates, colors and the [media picker](/docs/studio/projects/media) for image fields.
+- **The field's type and format choose the control.** Text, numbers, yes/no switches, dates, colors and the [media picker](/docs/studio/projects/media) for image fields. An image stored as an object (`featuredImage: { src, alt, width, height }`, as a site imported from WordPress keeps one) gets the media picker too, over its `src`, with its alt text as a field of its own. Picking a new picture keeps the alt text and drops the old picture's width and height.
+- **A list is one row per item.** A list of text, numbers or choices (`categories`, `tags`) is a row for each item, with **Add** below and a remove button beside each; a list of pictures (a gallery) gives every row the media picker. Clearing an item's text keeps its row until you remove it. A CSV collection's list column works the same way, and its cell in the grid shows the change.
 - **A reference field is a picker**, listing the entries of the collection it targets, so pointing a post at its author is a choice from a list, not an id you have to remember.
 - **A required field the file does not have** is marked "Required — this entry does not have one." A required field that is present but empty is not an error: you have not done anything wrong by not having typed it yet.
 - **Edits are ordinary document edits.** :kbd[⌘S] saves, :kbd[⌘Z] takes one back, and a collaborator sees the change as they would any other.
+- **Saving changes only what you edited.** Every frontmatter field you did not touch is written back exactly as it was in the file: its quotes (`"717-669-8739"`), a value wrapped over several lines, a `|` block, comments. The body keeps its own emphasis and list markers (`_emphasis_` stays `_emphasis_`), so a one-word edit is a one-line change in your version history.
 
 Open a file that belongs to no collection and the form says exactly that, and offers a button through to the Content Types section rather than drawing an empty form.
 
-A Markdown entry's frontmatter is reachable while you write, too, from the Document Header card. See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
+A Markdown entry's frontmatter is reachable while you write it on the canvas, too, from the Inspector's **Entry** tab, the one place an entry's fields are edited (the canvas shows only the writing banner above the entry). See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
 
 ## Drafts
 
 Give a type a boolean field named `draft` and its entries get a draft workflow:
 
-- a **Draft** switch in the entry form's header;
+- a **Draft** switch in the Inspector's **Entry** tab, and in the entry form's header;
 - a **Draft** or **Published** pill on the document's tab, so the state is visible while you are looking at the tab strip and not only while you are looking at the form;
 - the **Set Draft** command (:kbd[⌘K], **Set Draft**, then **on** or **off**), which writes `draft: true` or `draft: false` on the open entry;
 - a **Draft** column in the collection's grid: right-click the collection's folder in the Files panel and choose **Edit Collection in Grid**, where every schema field is a column you can sort and group by. See **[The grid](/docs/studio/editing/grid)**.
@@ -111,5 +136,5 @@ Studio stores your types in the `content` section of `project.json`, one entry p
 
 ## Next
 
-- **[The Library](/docs/studio/projects/browse)**: where entries are listed and created
+- **[The Content workspace](/docs/studio/projects/browse)**: where entries are listed, created and written
 - **[Project settings](/docs/studio/projects/settings)**: the rest of the configuration document

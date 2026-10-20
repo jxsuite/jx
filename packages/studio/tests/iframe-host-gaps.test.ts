@@ -395,6 +395,34 @@ describe("stylebook message gates", () => {
     expect(renders[1]).toMatchObject({ gen: 2, mode: "stylebook" });
   });
 
+  test("a render that resolves late never replaces a newer queued one before ready", async () => {
+    // A reload restoring two tabs: the active tab's render (gen 2) resolved first, the other tab's
+    // Older render (gen 1) after it, and the frame had not said `ready` for either.
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    await mountIframeCanvas(2, { tagName: "main" }, canvasEl, null, "tab-active");
+    await mountIframeCanvas(1, { tagName: "aside" }, canvasEl, null, "tab-other");
+    const ch = channels.at(-1)!;
+    ch.deliver({ kind: "ready" });
+    const renders = postsOfKind(ch, "render");
+    expect(renders.map((r) => r.gen)).toEqual([2]);
+    ch.deliver({ gen: 2, kind: "renderComplete" });
+    const host = hostForCanvas(canvasEl)!;
+    expect(host.tabId).toBe("tab-active");
+    // The dropped render is not left waiting for an ack it can never get.
+    expect([...host.pendingTabIds.keys()]).toEqual([]);
+  });
+
+  test("a newer render still replaces an older queued one before ready", async () => {
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    await mountIframeCanvas(1, { tagName: "aside" }, canvasEl, null, "tab-old");
+    await mountIframeCanvas(2, { tagName: "main" }, canvasEl, null, "tab-new");
+    const ch = channels.at(-1)!;
+    ch.deliver({ kind: "ready" });
+    expect(postsOfKind(ch, "render").map((r) => r.gen)).toEqual([2]);
+  });
+
   test("panToStylebookTag is inert for a non-stylebook active panel", async () => {
     const canvasEl = await mountReady();
     canvasPanels.push(artboard({ canvas: canvasEl, mediaName: "base" }));

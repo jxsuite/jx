@@ -15,8 +15,8 @@
  * region table, because `registerPanel()` did not exist. It does now, so the two `rail/*` rows are
  * a QUERY over `railDeclarations()` ({@link dockTabs}) and adding a ninth rail panel fails this
  * check without anyone remembering to update a list. The two rows that remain declared are the two
- * docks whose tab sets this module cannot see from a bare Bun process: the Inspector's four come
- * from `commands/defaults.ts`'s `INSPECTOR_TABS` (a query in all but name), and the Bottom dock's
+ * docks whose tab sets this module cannot see from a bare Bun process: the Inspector's three come
+ * from `commands/defaults.ts`'s `INSPECTOR_STRIP` (a query in all but name), and the Bottom dock's
  * four are records in `panels/bottom-dock.ts`, which renders lit templates and therefore cannot be
  * imported here. `tests/bottom-dock.test.ts` asserts the declared row and the registered set are
  * the same four titles, so the copy cannot drift — the same bargain `tests/right-panel.test.ts`
@@ -24,7 +24,7 @@
  * joins them the way it already joins the rail.
  */
 
-import { INSPECTOR_TABS } from "./defaults";
+import { INSPECTOR_STRIP } from "./defaults";
 
 /** The caps. Raising either one is a design decision, so it happens here, in one place. */
 export const CHROME_BUDGET = {
@@ -65,10 +65,12 @@ export interface DockDeclaration {
 /**
  * The tabbed regions that are still WRITTEN DOWN rather than observed.
  *
- * The Inspector's row is a query in all but name — `INSPECTOR_TABS` is the list `right-panel.ts`
- * renders and `⌘⇧1–4` address, so a fifth inspector tab fails this check in the commit that adds
- * it. The Bottom dock's row is the same shape: the four ids live in `shell.ts`'s `BOTTOM_TAB_IDS`
- * (so `view.setBottomTab`'s enum can be read in a bare Bun process) and the four RECORDS live in
+ * The Inspector's row is a query in all but name — `INSPECTOR_STRIP` is the strip `right-panel.ts`
+ * renders (Page · Element · Assistant), so a fifth strip tab fails this check in the commit that
+ * adds it. Element's Content · Style · Logic sub-switch lives inside a tab's body and is not
+ * counted: it is three views of one target, not three places (`studio-ui-guidelines.md` §12.2). The
+ * Bottom dock's row is the same shape: the four ids live in `shell.ts`'s `BOTTOM_TAB_IDS` (so
+ * `view.setBottomTab`'s enum can be read in a bare Bun process) and the four RECORDS live in
  * `panels/bottom-dock.ts`. It inherited this cap before it existed, which is why Deploy folded into
  * Activity rather than becoming a fifth tab.
  *
@@ -78,7 +80,7 @@ export interface DockDeclaration {
  * those could disagree.
  */
 export const DECLARED_DOCK_TABS: readonly DockDeclaration[] = [
-  { dock: "inspector", tabs: INSPECTOR_TABS.map((tab) => tab.title) },
+  { dock: "inspector", tabs: INSPECTOR_STRIP.map((tab) => tab.title) },
   { dock: "bottom", tabs: ["Problems", "Logic", "Activity"] },
 ];
 

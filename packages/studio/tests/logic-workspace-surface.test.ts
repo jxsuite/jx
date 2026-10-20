@@ -9,6 +9,7 @@
  */
 import { flush } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { emptyLogicWorkspaceView, mountLogicWorkspace } from "../src/surfaces/logic-workspace";
 import { mountsOf, resetSurfaceRegistry } from "../src/services/surface-registry";
 import type {
@@ -156,7 +157,7 @@ describe("the controls", () => {
     const catalog = host.querySelector<HTMLElement>('[part="catalog"]')!;
     catalog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     // Anchored on the control that asked: the palette opens under the button, not under the tab.
-    expect(anchors).toEqual([catalog]);
+    expect(identities(anchors)).toEqual(identities([catalog]));
 
     host
       .querySelector<HTMLElement>('[part="close"]')!

@@ -23,6 +23,7 @@
  */
 import { flush, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { componentRegistry } from "../src/files/components";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
@@ -471,7 +472,7 @@ describe("the drag handle across a re-render", () => {
     const first = handle();
     expect(first).not.toBeNull();
     expect(dnd.log).toEqual(["install#0"]);
-    expect(dnd.elements).toEqual([first!]);
+    expect(identities(dnd.elements)).toEqual(identities([first!]));
 
     /* The document reconciles by assignment, so the handle's node is the one it was and its
        registration is untouched. The lit bar re-created the node on every pass and had to release

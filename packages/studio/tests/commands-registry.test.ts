@@ -555,6 +555,32 @@ describe("forPlacement", () => {
     ).toEqual(["Alpha", "Zeta", "Later"]);
   });
 
+  test("an order puts its command ahead of its group's unordered ones, lowest first", () => {
+    const { registry } = harness();
+    registry.registerAll([
+      command({ id: "a.title", title: "Alpha", menus: ["commandbar/primary"], group: "1_history" }),
+      command({
+        id: "edit.redo",
+        title: "Redo",
+        menus: ["commandbar/primary"],
+        group: "1_history",
+        order: 2,
+      }),
+      command({
+        id: "edit.undo",
+        title: "Undo",
+        menus: ["commandbar/primary"],
+        group: "1_history",
+        order: 1,
+      }),
+    ]);
+    expect(registry.forPlacement("commandbar/primary").map((c) => c.title)).toEqual([
+      "Undo",
+      "Redo",
+      "Alpha",
+    ]);
+  });
+
   test("a command with no menus defaults into the palette and nowhere else", () => {
     const { registry } = harness();
     registry.register(command({ id: "a.one", title: "One" }));

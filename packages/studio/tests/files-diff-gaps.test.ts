@@ -68,8 +68,13 @@ void mock.module("../src/grid/grid-controller", () => ({
   getGridController: (tab: Tab | null) => (tab === null ? null : (gridTabs.get(tab) ?? null)),
 }));
 
-const { mountFilesPanel, openFileInTab, openLastSessionOrHome, unmountFilesPanel } =
-  await import("../src/files/files");
+const {
+  mountFilesPanel,
+  openFileInTab,
+  openLastSessionOrHome,
+  setSessionWorkspaceShow,
+  unmountFilesPanel,
+} = await import("../src/files/files");
 const { saveFile } = await import("../src/files/file-ops");
 const { serializeDocument } = await import("../src/files/serialize-document");
 
@@ -203,6 +208,41 @@ describe("openLastSessionOrHome", () => {
 
     expect(documentsIn(PRIMARY_PANE)).toEqual(["pages/index.json"]);
     expect(paneById(SECONDARY_PANE)).toBeUndefined();
+  });
+
+  /* §22.1: the workspace persists per project root. Restoring activates tabs, and activating a tab
+     enters ITS workspace, which is persisted over the stored one; so the stored id is read before
+     anything opens and handed to the switch once everything has. A project left in Media, whose
+     home is no document a session records, otherwise reopened in Design every time. */
+  test("the workspace the project was left in is shown once its documents are open", async () => {
+    installFsPlatform({ "pages/index.json": JSON.stringify({ children: [], tagName: "main" }) });
+    siteState({ projectRoot: "/abs/media" });
+    setWorkspaceProject("/abs/media");
+    localStorage.setItem(
+      "jx-studio-project::/abs/media",
+      JSON.stringify({
+        session: {
+          focusedPane: PRIMARY_PANE,
+          panes: [
+            { activeFile: "pages/index.json", files: ["pages/index.json"], id: PRIMARY_PANE },
+          ],
+          ui: {},
+        },
+        workspace: "media",
+      }),
+    );
+    const shown: string[] = [];
+    setSessionWorkspaceShow((id) => {
+      // What the open had already done when the switch was asked: the session is on screen.
+      expect(documentsIn(PRIMARY_PANE)).toEqual(["pages/index.json"]);
+      shown.push(id);
+    });
+    try {
+      expect(await openLastSessionOrHome()).toBe(true);
+    } finally {
+      setSessionWorkspaceShow(null);
+    }
+    expect(shown).toEqual(["media"]);
   });
 });
 

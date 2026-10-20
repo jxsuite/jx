@@ -8,7 +8,7 @@
  *
  * - **Repeater · Switch · Observed Attributes · CSS Properties · CSS Parts → the Logic tab.** Wiring
  *   a `$switch` and wiring a click handler are the same task (`panels/events-panel.ts`).
- * - **The Page section → the Document Header card.** `panels/head-panel.ts` owns the one layout
+ * - **The Page section → the Inspector's Page tab.** `panels/head-panel.ts` owns the one layout
  *   picker; this panel drew a second one that could disagree with it.
  * - **Media breakpoint DEFINITIONS → Project Settings › Contexts** (§17.1). Nothing remains here: the
  *   only reason adding a breakpoint used to cost you your element selection.
@@ -1583,7 +1583,9 @@ function componentPropRows(
     if (isMediaFormat(prop.format)) {
       row.kind = "control";
       plan.control = (host) =>
-        mountMediaPicker(host, prop.name, staticVal, (v: string) => onChange(v));
+        mountMediaPicker(host, prop.name, staticVal, (v: string) => onChange(v), {
+          images: prop.format === "image",
+        });
     } else if (prop.format === "color") {
       row.kind = "color";
       row.tokens = colorTokens();
@@ -1784,7 +1786,9 @@ function attributeRow(
     row.kind = "control";
     const staticVal = isRef(value) ? "" : String(value || "");
     plan.control = (host) =>
-      mountMediaPicker(host, attr, staticVal, (v: string) => commitAttr(v || undefined));
+      mountMediaPicker(host, attr, staticVal, (v: string) => commitAttr(v || undefined), {
+        images: entry.format === "image",
+      });
   } else if (type === "select") {
     row.kind = "select";
     row.value = isRef(value) ? "" : String(value || "");

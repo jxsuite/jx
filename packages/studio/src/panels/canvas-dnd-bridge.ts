@@ -25,7 +25,7 @@
  */
 
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isString } from "@jxsuite/schema/guards";
 import {
   beginDragSession,
   clearDropIndicator,
@@ -101,7 +101,10 @@ function cursorOf(location: MonitorDragArgs["location"]): ViewportPoint {
  */
 function dragSrcOf(data: ElementDragPayload["data"]): DragSrcKind | null {
   if (data.type === "block") {
-    return { type: "block" };
+    /* SAFETY: every minter of a "block" payload sets `fragment` to the JxMutableNode it inserts;
+       only a string tag is read off it, and anything else crosses as no tag (placed as a block). */
+    const tag = (data.fragment as JxMutableNode | undefined)?.tagName;
+    return isString(tag) ? { tag, type: "block" } : { type: "block" };
   }
   if (data.type === "tree-node" && Array.isArray(data.path)) {
     /* SAFETY: both minters of a "tree-node" payload, an Outline row's `getInitialData` and the block

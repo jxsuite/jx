@@ -166,9 +166,14 @@ export async function Jx(
 
 /**
  * A lifecycle hook a document's state supplies (`onMount`, `onUnmount`, `onAdopted`) as the runtime
- * calls it: with the scope, plus the host element for a defined element's `onMount`.
+ * calls it: with the scope, plus the host element for a defined element's `onMount`, which also
+ * receives the host as `this`.
  */
-type ScopeHook = (scope: JxScope, host?: HTMLElement) => void;
+type ScopeHook = (
+  this: HTMLElement | JxScope | undefined,
+  scope: JxScope,
+  host?: HTMLElement,
+) => void;
 
 /**
  * Whether a scope member can be called as a {@link ScopeHook}. Being a function is the whole
@@ -284,12 +289,18 @@ export async function mount<S extends JxHostScope<S> = JxScope>(
     }
     disposed = true;
     options.signal?.removeEventListener("abort", dispose);
+    /* The root leaves the document BEFORE its effects stop (embedding.md §2.2). Stopping releases
+       each element's styles, and on a connected subtree every one of those inline-property and
+       `data-jx` writes schedules a style invalidation for a node that is leaving anyway: a
+       Publish tab switch spent 22 ms there, and a dialog's close forced a recalculation of the
+       subtree it was removing. It is also the order a custom element's own `onUnmount` sees,
+       which runs from `disconnectedCallback` (spec.md §16.4). */
+    root.remove();
     stop();
     // Called as a method, so a hook that reads `this` sees the scope, as it always has.
     if (mounted && isScopeHook(scope.onUnmount)) {
       scope.onUnmount(scope);
     }
-    root.remove();
   };
 
   if (options.signal?.aborted) {
@@ -1060,28 +1071,46 @@ function hasSchemaKeywords(obj: Readonly<Record<string, JxDocumentValue | undefi
 export { hasSchemaKeywords };
 
 /**
+ * The names a template may read without a `state.` prefix, in the order {@link templateArgs}
+ * supplies them.
+ *
+ * `$site` and `$page` are here for the reason `evaluateStaticTemplate` in the compiler binds them:
+ * every example in site-architecture.md §8.2 and §13.4 writes the bare `${$page.locale}`, and
+ * `injectContext` (or the Studio canvas) puts the two on the document's state, not in the
+ * template's lexical scope. Without them the live runtime threw `ReferenceError: $page is not
+ * defined` on a template the build renders, so a page that prerendered correctly drew nothing where
+ * it hydrated or rendered live.
+ */
+const TEMPLATE_PARAMS = ["state", "$map", "item", "index", "$site", "$page"] as const;
+
+/** The values {@link TEMPLATE_PARAMS} name, read from one scope. */
+function templateArgs(state: JxScope): Parameters<TemplateFn<unknown>> {
+  const $map = rowContext(state);
+  return [state, $map, $map?.item, $map?.index, state.$site, state.$page];
+}
+
+/**
  * Evaluate a template string in the context of state and optional $map. Templates use
- * `state.varName` and `$map.item` syntax.
+ * `state.varName`, `$map.item` (or `item`) and the page context `$page` / `$site`.
  *
  * @param {string} str
  * @param {JxScope} state
  * @returns {string}
  */
 function evaluateTemplate(str: string, state: JxScope): string {
-  const $map = rowContext(state);
   let fn = textTemplates.get(str);
   if (!fn) {
-    /* SAFETY: `new Function` compiles exactly these four named parameters, and its body returns a
-       template literal, so every call answers a string (or throws, which the caller sees). */
-    fn = new Function("state", "$map", "item", "index", `return \`${str}\``) as TemplateFn<string>;
+    /* SAFETY: `new Function` compiles exactly the TEMPLATE_PARAMS, and its body returns a template
+       literal, so every call answers a string (or throws, which the caller sees). */
+    fn = new Function(...TEMPLATE_PARAMS, `return \`${str}\``) as TemplateFn<string>;
     remember(textTemplates, str, fn);
   }
-  return fn(state, $map, $map?.item, $map?.index);
+  return fn(...templateArgs(state));
 }
 
 /**
  * Compiled templates, by source. A compiled template closes over nothing — everything it reads
- * arrives as one of its four parameters — so one function per distinct source serves every binding
+ * arrives as one of its TEMPLATE_PARAMS — so one function per distinct source serves every binding
  * that spells it. Compiling is the expensive half: a `$map` row re-bound to a fresh item re-runs
  * each of its template effects, and a 40-row window re-binding on every scroll step spent seconds
  * in `new Function` alone. A source that fails to compile throws before it is stored, so it throws
@@ -1165,12 +1194,14 @@ function bindTemplate(source: string, run: () => void, fallback?: () => void): v
   });
 }
 
-/** A compiled template: the scope, the row context, and that context's item and index. */
+/** A compiled template: the scope, the row context, its item and index, and the page context. */
 type TemplateFn<R> = (
   state: JxScope,
   $map: JxRowContext | undefined,
   item: JxRowContext["item"],
   index: JxRowContext["index"] | undefined,
+  $site: JxScopeValue,
+  $page: JxScopeValue,
 ) => R;
 
 /**
@@ -1245,22 +1276,18 @@ function evaluateValueTemplate(str: string, state: JxScope): JxScopeValue {
   if (!isSingleExpression(str)) {
     return evaluateTemplate(str, state);
   }
-  const $map = rowContext(state);
   let fn = valueTemplates.get(str);
   if (!fn) {
-    /* SAFETY: `new Function` compiles exactly these four named parameters; the body returns one
+    /* SAFETY: `new Function` compiles exactly the TEMPLATE_PARAMS; the body returns one
        expression's value, which is whatever the scope it reads holds, so it is typed as a scope
        member and narrowed by the attribute writer. */
     fn = new Function(
-      "state",
-      "$map",
-      "item",
-      "index",
+      ...TEMPLATE_PARAMS,
       `return (${str.slice(2, -1)})`,
     ) as TemplateFn<JxScopeValue>;
     remember(valueTemplates, str, fn);
   }
-  return fn(state, $map, $map?.item, $map?.index);
+  return fn(...templateArgs(state));
 }
 
 // ─── Step 2b: Function resolution (Shape 4) ─────────────────────────────────
@@ -1284,6 +1311,54 @@ interface ImportedModule {
  * @param {string} specifier
  * @returns {Promise<ImportedModule>}
  */
+/**
+ * How the host serves the package an `npm:` specifier names, or null for none.
+ *
+ * `npm:@jxsuite/search/client` is a package specifier (spec.md §5.3, 4c), and the build bundles it
+ * (`compiler/src/site/bundler.ts`). The interpreter had no answer for it: `new URL()` reads `npm:`
+ * as a URL scheme, so it was handed to `import()` verbatim and the browser refused it as a
+ * cross-origin request to a scheme it does not fetch. A host that renders documents live knows
+ * where its packages are served (the dev server bundles `/node_modules/<package>/<subpath>` on
+ * demand), so it says so here. With no resolver the bare specifier is imported, which an import map
+ * can answer.
+ */
+let _npmModuleResolver: ((specifier: string) => string) | null = null;
+
+/**
+ * Install (or with `null`, remove) the host's resolver for `npm:` specifiers.
+ *
+ * @param {((specifier: string) => string) | null} resolver - Package specifier → importable URL
+ */
+export function setNpmModuleResolver(resolver: ((specifier: string) => string) | null): void {
+  _npmModuleResolver = resolver;
+}
+
+/** The scheme a package specifier is written with. */
+const NPM_SCHEME = "npm:";
+
+/**
+ * Import a module a document names by `$src`: an `npm:` package through the host's resolver, and
+ * anything else from the document's base (then as written).
+ *
+ * @param {string} src - The `$src` as the document spells it
+ * @param {string} [base] - The document's URL
+ * @returns {Promise<ImportedModule>}
+ */
+async function importSource(src: string, base?: string): Promise<ImportedModule> {
+  if (src.startsWith(NPM_SCHEME)) {
+    const specifier = src.slice(NPM_SCHEME.length);
+    return importModule(_npmModuleResolver?.(specifier) ?? specifier);
+  }
+  if (base) {
+    try {
+      return await importModule(new URL(src, base).href);
+    } catch {
+      return importModule(src);
+    }
+  }
+  return importModule(src);
+}
+
 function importModule(specifier: string): Promise<ImportedModule> {
   /* SAFETY: trust boundary — a module exports whatever it exports. `import()` resolves to the
      module namespace object, whose keys are its export names, and every export is typed as the scope
@@ -1460,16 +1535,7 @@ async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, 
     } else if (seeded) {
       mod = seeded;
     } else {
-      if (base) {
-        const resolvedSrc = new URL(src, base).href;
-        try {
-          mod = await importModule(resolvedSrc);
-        } catch {
-          mod = await importModule(src);
-        }
-      } else {
-        mod = await importModule(src);
-      }
+      mod = await importSource(src, base);
       _moduleCache.set(src, mod);
     }
     const candidate = mod[exportName] ?? mod.default?.[exportName];
@@ -1593,6 +1659,21 @@ function elementProperties(el: HTMLElement): ElementProperties {
   /* SAFETY: every element is an ordinary extensible object, so any string key can be read (a
      missing one is undefined) and written; the added index signature claims nothing more. */
   return el as ElementProperties;
+}
+
+/**
+ * The reactive state a connected Jx instance renders from, or null for any other element (and for
+ * an instance that has not connected yet).
+ *
+ * @param {HTMLElement} el
+ * @returns {JxScope | null}
+ */
+function instanceStateOf(el: HTMLElement): JxScope | null {
+  const state = elementProperties(el)._state;
+  /* SAFETY: `_state` is written by one writer, the Jx element class's `connectedCallback`, which
+     stores the scope `buildScope` answered; on any other element the expando is absent, and a
+     non-object is refused below. */
+  return isNonNullObject(state) ? (state as JxScope) : null;
 }
 
 /**
@@ -2833,9 +2914,13 @@ function renderMappedArrayInto(
   /** The rows currently rendered, in DOM order. */
   let rows: MappedRow[] = [];
 
+  /* Out of the document FIRST, then stopped: stopping releases every element's styles
+     (`releaseElementStyles`), and on a connected node each of those inline-property and `data-jx`
+     writes schedules a style invalidation for a node that is about to leave. Detached, they are
+     plain writes. See `dispose` in `mount`. */
   const teardown = (row: MappedRow): void => {
-    row.scope.stop();
     row.node.remove();
+    row.scope.stop();
   };
 
   const createRow = (
@@ -3082,8 +3167,9 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
 
   effect(() => {
     if (!isRefValue(def.$switch)) {
-      retire();
+      // Detached before it is stopped, for the reason `teardown` in `renderMappedArray` gives.
       container.replaceChildren();
+      retire();
       generation += 1;
       return;
     }
@@ -3092,12 +3178,13 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
       return;
     }
     renderedKey = key;
-    retire();
     /* `replaceChildren()` rather than `innerHTML = ""`: identical semantics, and it is not a
        Trusted Types injection sink — under `require-trusted-types-for 'script'` an innerHTML write
        needs a policy even when the string is empty. Four sinks that were never injecting anything
-       is four fewer things a policy has to be permissive about. */
+       is four fewer things a policy has to be permissive about. Detached BEFORE the case is
+       stopped, for the reason `teardown` in `renderMappedArray` gives. */
     container.replaceChildren();
+    retire();
     generation += 1;
     const caseDef = def.cases?.[key];
     if (!caseDef) {
@@ -4488,6 +4575,30 @@ const ROOT_INSTANCE_PATH: InstancePath = { expansion: 0, frames: [] };
 let _instancePath: InstancePath = ROOT_INSTANCE_PATH;
 
 /**
+ * Say that an instance was not rendered, on the two surfaces a host can reach (spec §16.4, §16.9):
+ * the console, and a bubbling, composed `jx-error` `ErrorEvent` from the element carrying the
+ * error. Nothing is said for a host no longer in the document, whose replacement reports for it.
+ *
+ * @param {HTMLElement} host - The instance
+ * @param {string} tagName - Its tag, for the console line
+ * @param {Error} error - Why
+ */
+function reportUnrendered(host: HTMLElement, tagName: string, error: Error): void {
+  if (!host.isConnected) {
+    return;
+  }
+  console.error(`Jx: <${tagName}> was not rendered:`, error);
+  host.dispatchEvent(
+    new ErrorEvent("jx-error", {
+      bubbles: true,
+      composed: true,
+      error,
+      message: error.message,
+    }),
+  );
+}
+
+/**
  * Run `fn` with `path` as the chain, so every instance that CONNECTS during it reads that chain.
  *
  * Restored rather than cleared afterwards: the enclosing render's chain is what was there, and a
@@ -4804,18 +4915,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         ownPath = extendInstancePath(enclosingPath, { props: supplied, tag: tagName });
       } catch (error) {
         this.replaceChildren();
-        if (!this.isConnected) {
-          return;
-        }
-        console.error(`Jx: <${tagName}> was not rendered:`, error);
-        this.dispatchEvent(
-          new ErrorEvent("jx-error", {
-            bubbles: true,
-            composed: true,
-            error,
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        );
+        reportUnrendered(this, tagName, error instanceof Error ? error : new Error(String(error)));
         return;
       }
       /*
@@ -4877,35 +4977,108 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         bindProperty(this, "textContent", def.textContent, state);
       }
       const children = Array.isArray(def.children) ? def.children : [];
-      /* An instance the studio stamped is part of the page being edited, so everything the
-         definition draws inside it is too — and the de-link rules cannot see that from the nodes
-         themselves. Restored rather than cleared, because one definition may render another. */
-      const wasInside = _canvasInsideStampedHost;
-      _canvasInsideStampedHost ||= this.dataset.jxPath !== undefined;
-      /* And the chain, for the same span: an instance this definition draws connects inside
-         `this.append` below and reads it there ({@link underInstancePath}). */
-      try {
-        underInstancePath(ownPath, () => {
-          for (const childDef of children) {
-            this.append(renderNode(childDef, state));
-          }
-        });
-      } finally {
-        _canvasInsideStampedHost = wasInside;
-      }
-
-      // Slot distribution (light DOM)
-      distributeSlots(this, slottedChildren);
+      /* A render that throws is reported the way a refusal is (§16.4), for the same reason: thrown
+         onward from this async callback it is an unhandled rejection naming no element. The
+         children drawn before the throw stay; the one that threw, its later siblings and `onMount`
+         do not happen, and slot content is still distributed into the slots that were drawn. */
+      const draw = (): Error | null => {
+        /* An instance the studio stamped is part of the page being edited, so everything the
+           definition draws inside it is too — and the de-link rules cannot see that from the nodes
+           themselves. Restored rather than cleared, because one definition may render another. */
+        const wasInside = _canvasInsideStampedHost;
+        _canvasInsideStampedHost ||= this.dataset.jxPath !== undefined;
+        /* And the chain, for the same span: an instance this definition draws connects inside
+           `this.append` below and reads it there ({@link underInstancePath}). */
+        let failure: Error | null = null;
+        try {
+          underInstancePath(ownPath, () => {
+            for (const childDef of children) {
+              this.append(renderNode(childDef, state));
+            }
+          });
+        } catch (error) {
+          failure = error instanceof Error ? error : new Error(String(error));
+        } finally {
+          _canvasInsideStampedHost = wasInside;
+        }
+        // Slot distribution (light DOM)
+        distributeSlots(this, slottedChildren);
+        return failure;
+      };
 
       /* Lifecycle: onMount, with the HOST as its second argument.
          A sidecar that must reach the element it belongs to had no way to: the runtime handed it
          the scope alone, so elements resorted to dispatching a `jx-ready` event at themselves and
          catching it with a root handler purely to learn `currentTarget`. The host is what the
-         callback needed; the event round trip was the workaround. */
-      const { onMount } = state;
-      if (isScopeHook(onMount)) {
-        queueMicrotask(() => onMount(state, this));
+         callback needed; the event round trip was the workaround.
+         And with the host as its RECEIVER, which is how the compiled element calls it: there a
+         state function is an arrow inside the element class, so a body's `this` is the element.
+         Called bare here, a body written for the built site (jxsuite.com's search reads
+         `const host = this`) read the window instead, and threw on every page that drew it live. */
+      const mounted = (): void => {
+        const { onMount } = state;
+        if (isScopeHook(onMount)) {
+          queueMicrotask(() => onMount.call(this, state, this));
+        }
+      };
+
+      let attempt = runScoped(draw);
+      const failure = attempt.result;
+      if (!failure) {
+        mounted();
+        return;
       }
+      reportUnrendered(this, tagName, failure);
+      /* …and it is drawn again when what it was given changes (§16.4). A prop bound to data that
+         arrives later (a collection the page resolves after its first render, a row a list fills
+         in) reaches the instance AFTER it connected, so the render that threw was a render of
+         the empty values, not of the instance. Without a retry it stayed blank for good even once
+         every value it needed was there. The watch reads the definition's authored entries only,
+         the ones a prop can write: a computed entry is what threw, and reading it here would
+         throw again. Writes are coalesced into one microtask, because a parent sets its props one
+         at a time. The same error is reported once, not once per attempt. */
+      const inputs = [...declaredDefaults(def).keys()].filter((key) => !isPrivateStateKey(key));
+      let lastMessage = failure.message;
+      let queued = false;
+      const watch = effect(
+        () => {
+          for (const key of inputs) {
+            void state[key];
+          }
+        },
+        {
+          scheduler: () => {
+            if (queued) {
+              return;
+            }
+            queued = true;
+            queueMicrotask(() => {
+              queued = false;
+              if (!this.isConnected) {
+                watch.effect.stop();
+                return;
+              }
+              watch();
+              attempt.stop();
+              this.replaceChildren();
+              pauseTracking();
+              try {
+                attempt = runScoped(draw);
+              } finally {
+                resetTracking();
+              }
+              const again = attempt.result;
+              if (!again) {
+                watch.effect.stop();
+                mounted();
+              } else if (again.message !== lastMessage) {
+                lastMessage = again.message;
+                reportUnrendered(this, tagName, again);
+              }
+            });
+          },
+        },
+      );
     }
 
     disconnectedCallback() {
@@ -4972,9 +5145,22 @@ function renderCustomElementWithProps(
        wrote it — a media prop the component forwards into its own `<img>` is resolved separately,
        inside the component's render, against the same context. */
     const write = (resolved: JxScopeValue): void => {
-      elementProperties(el)[key] = isString(resolved)
-        ? canvasAssetValue(el.tagName, key, resolved)
-        : resolved;
+      const value = isString(resolved) ? canvasAssetValue(el.tagName, key, resolved) : resolved;
+      elementProperties(el)[key] = value;
+      /* A declared prop that shares its name with an `HTMLElement` property (`title`, `lang`) gets
+         no forwarding accessor (§16.2), so the write above lands on the element and never reaches
+         the instance's state. Connection reads it once; a binding that changes AFTER connection
+         (a row whose data arrives later) was lost, and the instance went on drawing the value it
+         connected with. The binding is the parent's `$props`, addressed to the definition's prop,
+         so it writes that prop's state. */
+      const instanceState = instanceStateOf(el);
+      if (
+        instanceState &&
+        key in HTMLElement.prototype &&
+        Object.hasOwn(toRaw(instanceState), key)
+      ) {
+        instanceState[key] = value;
+      }
     };
     if (isRefValue(val)) {
       const refVal = val;

@@ -13,6 +13,7 @@ code:
   - packages/schema/src/json-layout.ts
   - packages/studio/src/commands/context.ts
   - packages/studio/src/tabs/tab.ts
+  - packages/studio/src/tabs/bare-repeaters.ts
   - packages/studio/src/tabs/project-config.ts
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/pane-context.ts
@@ -22,6 +23,8 @@ code:
   - packages/studio/src/studio.ts
   - packages/studio/src/panels/tab-drop.ts
   - packages/studio/src/panels/pane-grid.ts
+  - packages/studio/src/workspace/workspace-back.ts
+  - packages/studio/src/workspace/workspace-switch.ts
 ---
 
 # Documents and panes
@@ -32,9 +35,13 @@ Every document you open in Jx Studio belongs to a **pane**. A pane is one editor
 
 ## Opening and switching
 
-Open documents from the **Files** panel, the **[Library](/docs/studio/projects/browse)**, or the Command Center (:kbd[⌘K], or :kbd[⌘P] straight into file search). Click a document in the strip to switch to it; the Files tree follows along, so the strip and the tree never disagree about where you are.
+Open documents from the **Site** panel, the **[Content workspace](/docs/studio/projects/browse)**, or the Command Center (:kbd[⌘K], or :kbd[⌘P] straight into file search). Click a document in the strip to switch to it; the Files tree follows along, so the strip and the tree never disagree about where you are.
 
-Media files open too. An image, a video, a font or a PDF gets a document of its own, with the same strip, the same label rules and the same :kbd[⌘W], showing the file in the [Media viewer](/docs/studio/projects/media#open-a-media-file) rather than an editor.
+**The strip shows the workspace you are in.** Every document belongs to one of the five [workspaces](/docs/studio/interface#workspaces): a page to Design, an entry to Content, an image to Media, Project Styles to Styles, a comparison to Publish. Each pane's strip shows only the current workspace's documents, and :kbd[⌃Tab] moves only between them. The others stay open in their places and come back when you switch back. Opening a document from another workspace switches to it, and closing a workspace's last document leaves the pane empty rather than switching you somewhere else.
+
+**Only Design and Content show a strip.** They are where you keep several documents open and move between them. Media, Styles and Publish each show their own home (the media library, your project's styles, Review changes) without one. When something opens beside that home, such as a picture in the media viewer, a before-and-after comparison, or your project file as **Code**, the pane's context bar starts with a **Back** button that names where it leads: **Back to Media**, **Back to Publish**, **Back to Variables**. Press it to return to the home; a viewer or a comparison closes on the way, and the keyboard lands back on the picture or the change you opened. :kbd[Esc] does the same from a viewer or a comparison. In the **Code** view :kbd[Esc] belongs to the code editor, so leave Code with the Back button. Closing a viewer or a comparison with :kbd[⌘W] lands on the home too. These workspaces keep one view beside the home: opening another picture replaces the viewer you had open, unless you pinned it or it holds unsaved changes, and :kbd[⌃Tab] moves between the home and that view. These workspaces never leave you on an empty pane: closing the home itself shows it again. A side pane you opened in Design (a lens such as **Layout**, say) keeps its own row in every workspace, naming what it shows, with the ✕ that closes it.
+
+Media files open too. An image, a video, a font or a PDF gets a document of its own, in the Media workspace, with the same :kbd[⌘W], showing the file in the [Media viewer](/docs/studio/projects/media#open-a-media-file) rather than an editor. **Back to Media** returns you to the library.
 
 - Switch back and forth with :kbd[⌃Tab] / :kbd[⌃⇧Tab], which walk your documents in most-recently-used order.
 - Close one with its **×**, by middle-clicking it, or with :kbd[⌘W].
@@ -71,7 +78,7 @@ Undo and redo are per document as well: each keeps its own history, so :kbd[⌘Z
 Saving writes the file in place, in your project folder, as plain Markdown, JSON, or CSV. Nothing is held in a database; what you save is what git sees. See [Publish](/docs/studio/publish).
 :::
 
-**A save keeps the file's layout.** A JSON document goes back to disk the way it was written: an object you kept on one line stays on one line while it fits, a blank line you left between two keys stays, and a character you spelt as an escape stays an escape. Studio reads those facts when it opens the file and honours them when it writes, so changing one value changes one line of the file, and a project kept in Prettier's or oxfmt's layout is still in it after a save. Something the edit created, a new element or a new object, is laid out the way the formatter would lay it out: a short array on one line, a new object opened up. The Code view shows exactly the bytes a save writes, and a change you make there is saved in the layout you typed.
+**A save keeps the file's layout.** A JSON document goes back to disk the way it was written: an object you kept on one line stays on one line while it fits, a blank line you left between two keys stays, and a character you spelt as an escape stays an escape. Studio reads those facts when it opens the file and honours them when it writes, so changing one value changes one line of the file, and a project kept in Prettier's or oxfmt's layout is still in it after a save. Something the edit created, a new element or a new object, is laid out the way the formatter would lay it out: a short array on one line, a new object opened up. A repeater written as an element's whole `children` is saved that way too, even though Studio edits it as the one member of a list, so a save never rewrites a list you did not touch. The Code view shows exactly the bytes a save writes, and a change you make there is saved in the layout you typed.
 
 ## Each document remembers its view
 
@@ -81,10 +88,10 @@ A document keeps its own view state while it's open. Switch from a Markdown page
 - its canvas position, and the zoom, but only once you have set one yourself; until then Design keeps fitting the canvas to the pane,
 - its selected element and active Inspector tab.
 
-New documents open in their natural editor: Markdown in **Edit**, spreadsheets in **Grid**, the project file in **Project Styles**.
+New documents open in their natural editor: Markdown in **Edit**, spreadsheets in **Grid**, the project file in **Variables** the first time, and after that in whichever of **Variables** and **Elements** you were last in.
 
 :::doc-note
-**Your project's configuration is one of these documents.** `project.json` opens in the strip like any file, and **Open Project Settings** shows it in its settings editor. That means the settings you change there are edits: an unsaved dot, :kbd[⌘Z] to take one back, :kbd[⌘S] to write it. Reaching it from the Files tree and reaching it from **Open Project Settings** land on the same document, so there is only ever one history and one unsaved state for it.
+**Your project's configuration is one of these documents.** `project.json` opens like any file, in the Styles workspace, with **Elements**, **Variables** and **Code** as its editors: an unsaved dot, :kbd[⌘Z] to take a change back, :kbd[⌘S] to write it. **Open Project Settings** is a dialog that writes the same file as you change it, through the same document, so while the tab is open a settings change is a step in its history too.
 :::
 
 ## Reopening a project
@@ -138,11 +145,13 @@ In the middle of the status bar, along the foot of the window, a breadcrumb trai
 
 ## The pane context bar
 
-Under the strip, a labelled row states three things about the document in that pane, and only those three:
+Under the strip (at the top of the pane, in a workspace without one), a labelled row states three things about the document in that pane, and only those three:
 
-- **Editor** is which editor is open on it: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Library** or **Project Styles**. It offers only the editors this file actually supports, so it never holds an entry that cannot be picked, and a document with one editor prints its name as text, with no dropdown to open. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
+- **Editor** is which editor is open on it: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Home**, **Elements** or **Variables**. It offers only the editors this file actually supports, so it never holds an entry that cannot be picked, and a document with one editor prints its name as text, with no dropdown to open. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
 - **View**, for the Canvas editor, offers **Edit │ Design** with a **Preview** toggle beside them. See [Modes and views](/docs/studio/interface/modes).
 - **Context** is what the page is being rendered _with_: the breakpoint, the color scheme, any feature queries, the rendering [language](/docs/studio/interface/languages) on a multilingual project, and whether the layout's own elements are shown. The summary reads at a glance (`Base · Auto`); open it for the full set, and for **Manage contexts…**, which takes you to where breakpoints and schemes are defined. Beside it, a second popover headed **resolving with** carries the document's own data, stacked one per line: a picker per URL parameter on a dynamic page, a small field per option on a component. Its summary counts the values you have set (`2 set`, or `Defaults` when you have set none).
+
+A workspace's home tab (the Content, Media or Publish home) shows only **Editor: Home**. It draws its workspace's own page rather than a document at a breakpoint, so there is no **Context** to choose and no **⟲** menu.
 
 Opening a formula or a function body in the Bottom dock's **[Logic](/docs/studio/logic/formula-workspace)** tab changes nothing here. The bar keeps its three controls and the zoom pod, because the document they describe is still on the stage above the dock. The only way out of the editor is the **Close** in its own header. There is one exit and one address.
 
@@ -150,9 +159,7 @@ Opening a formula or a function body in the Bottom dock's **[Logic](/docs/studio
 
 Editor-specific actions sit at the right of the bar: **Export**, in the **Code** editor.
 
-The bar is there when it has something to say. The settings editor takes the whole pane instead: a form has no canvas view to pick and no rendering context to resolve against, and contexts are _defined_ in a section of the very document it is showing.
-
 ## Next
 
 - Find any file fast with **[Quick Access](/docs/studio/interface/quick-access)**
-- Browse the whole project visually in **[the Library](/docs/studio/projects/browse)**
+- Browse pages and entries visually in **[the Content workspace](/docs/studio/projects/browse)**

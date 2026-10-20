@@ -9,6 +9,8 @@ import {
   applyCanvasDialogOpen,
   applyCanvasPopoverOpen,
   applyPreviewColorScheme,
+  applyPreviewLocale,
+  captureLocaleBaseline,
   applySiteStyle,
   CANVAS_OVERLAY_STYLE_ID,
   EDIT_PLACEHOLDER_STYLE_ID,
@@ -606,6 +608,37 @@ describe("applySiteStyle", () => {
   });
 });
 
+describe("applyPreviewLocale", () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute("lang");
+    document.documentElement.removeAttribute("dir");
+  });
+
+  test("captureLocaleBaseline reads the root as it booted", () => {
+    document.documentElement.setAttribute("lang", "en");
+    expect(captureLocaleBaseline(document)).toEqual({ dir: null, lang: "en" });
+  });
+
+  test("an RTL language sets both; an LTR one restores the booted dir", () => {
+    const baseline = { dir: null, lang: "en" };
+    applyPreviewLocale(document, { dir: "rtl", locale: "ar" }, baseline);
+    expect(document.documentElement.getAttribute("lang")).toBe("ar");
+    expect(document.documentElement.getAttribute("dir")).toBe("rtl");
+    applyPreviewLocale(document, { dir: "ltr", locale: "fr" }, baseline);
+    expect(document.documentElement.getAttribute("lang")).toBe("fr");
+    expect(document.documentElement.hasAttribute("dir")).toBe(false);
+  });
+
+  test("null restores the baseline, with values or without", () => {
+    applyPreviewLocale(document, null, { dir: "ltr", lang: "en" });
+    expect(document.documentElement.getAttribute("lang")).toBe("en");
+    expect(document.documentElement.getAttribute("dir")).toBe("ltr");
+    applyPreviewLocale(document, null, { dir: null, lang: null });
+    expect(document.documentElement.hasAttribute("lang")).toBe(false);
+    expect(document.documentElement.hasAttribute("dir")).toBe(false);
+  });
+});
+
 describe("applyPreviewColorScheme", () => {
   afterEach(() => {
     delete document.documentElement.dataset.colorScheme;
@@ -946,6 +979,8 @@ describe("syncStylebookCss", () => {
     expect(sheet()!.textContent).toContain(".sb-section");
     // The parent grid disabled preview hits; the iframe must NOT — clicks select specimens.
     expect(sheet()!.textContent).not.toContain("pointer-events: none");
+    // A list specimen keeps the padding its markers are drawn in; every other specimen sits flush.
+    expect(sheet()!.textContent).toContain(".element-card-preview > :not(ol, ul, menu) {");
     syncStylebookCss(document, "stylebook");
     expect(document.head.querySelectorAll(`#${STYLEBOOK_STYLE_ID}`)).toHaveLength(1);
   });

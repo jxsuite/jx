@@ -76,12 +76,30 @@ jobs:
       - uses: ./.github/actions/setup-bun
       - name: Test with coverage
         shell: bash
+        # A per-run deadline well under the job's, for the same liveness reason the job has one,
+        # but with a cause attached. On 20 Oct one failing `toBe(liveElement)` in studio printed
+        # 2.8 million lines of the element's reactive graph and then the job sat silent until the
+        # job cap killed it, which reads as "the runners are too slow" rather than "a test failed".
+        # The flood itself is fixed at its source for studio and ui (their bunfig preload prints a
+        # DOM node as one line; the other happy-dom workspaces mount no kit elements, whose reactive
+        # state is what floods). This deadline is what turns any future hang, in any workspace,
+        # into a red X naming it about twice the slowest suite's normal run in. The Codecov
+        # uploads after it still run (`always()` / `!cancelled()`); the coverage-manifest check is
+        # skipped, as after any failed run. `timeout` rather than step `timeout-minutes` because a
+        # killed step cannot say why it died. The step cap is the backstop for a run that ignores
+        # both signals.
+        timeout-minutes: 14
         run: |
           set -o pipefail
           status=0
-          bun test --isolate --coverage \
+          started=$SECONDS
+          timeout --kill-after=30s 12m bun test --isolate --coverage \
             --reporter=junit --reporter-outfile=junit.xml \
             2>&1 | tee /tmp/test-output.txt || status=$?
+          if [ "$status" -eq 124 ] || { [ "$status" -eq 137 ] && [ $((SECONDS - started)) -ge 720 ]; }; then
+            echo "::error::bun test in ${{ matrix.package.dir }} was still running after 12 minutes (about twice the slowest suite's normal run) and was stopped. The last test file in the log above is where it stalled; look for a failure whose message never finished printing."
+            exit "$status"
+          fi
           # An exit status above 128 is a SIGNAL: the test RUNNER died, and the counts above it
           # are the files that happened to finish first, not a verdict on the suite. Bun has
           # trapped this way on main three times since 14 Aug (133 = SIGTRAP, ~10s in, studio,

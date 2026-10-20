@@ -21,7 +21,7 @@ Everything in Jx Studio happens in one window. This page is your map: what each 
 
 ## The Command Bar
 
-The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **layout tabs** (**Write · Design · Build · Ship**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Read more in **[The workspace](/docs/studio/interface)**.
+The top row. It holds the **Studio menu** (the ≡ button: opening and creating projects, Preferences, and everything else without a permanent button), the **workspace tabs** (**Design · Content · Media · Styles · Publish**), the **Command Center pill**, the four buttons worth keeping in reach (**Save**, **Open in Browser**, **Undo**, **Redo**), the **Settings** gear, and a toggle for each of the three docks. **Open in Browser** shows the page you're editing in your own browser, at the address it will really have, updating as you type. Each workspace tab sets the window up for one job: **Styles**, for example, is where your site's CSS variables and the default look of every element live, in its **Variables** and **Elements** views, with the **Styles** panel listing both (see **[Project Styles](/docs/studio/design/stylebook)**). Read more in **[The workspace](/docs/studio/interface)**.
 
 ## The Command Center
 
@@ -29,17 +29,17 @@ The pill in the middle of the Command Bar reads `◈ project › document › se
 
 ## The Navigator
 
-The labelled rail on the far left, and the panel it opens beside it. The rail is in two groups. **Project**: **Files** (:kbd[⌘1]) and **Source** (the Source Control panel, :kbd[⌘3]). **Document**: **Outline** (:kbd[⌘4]), **Page** (:kbd[⌘5]), **Data** (:kbd[⌘6]) and **Packages** (:kbd[⌘7]). One panel shows at a time, under a header naming it and the level it works at, so you always know what you're looking at. At its foot, the **Settings** button opens a menu holding three entries, each with a submenu that jumps straight to a section: **Preferences…** for the app, **Open Project Settings** and **Open Project Styles** for this project. Each panel is described in **[The workspace](/docs/studio/interface)**.
+The labelled rail on the far left, and the panel it opens beside it. The rail belongs to the **Design** workspace and is in two groups. **Project**: **Site**, your pages by address with the templates, components and media they are made of; it is where the Navigator opens. **Document**: **Outline** and **Data**. **Files** and **Packages** join them when you turn on **Show developer panels** in Preferences. One panel shows at a time, under a header naming it and the level it works at, so you always know what you're looking at. The **Settings** gear in the Command Bar opens a menu holding two entries, each with a submenu that jumps straight to a section: **Preferences…** for the app and **Open Project Settings** for this project. Both open as dialogs over whatever you are doing. Each panel is described in **[The workspace](/docs/studio/interface)**.
 
 ## The panes and the canvas
 
 The center of the window holds one editor pane, or two side by side when :kbd[⌘\] gives the open document a pane of its own, so you can keep a page on screen while you work on its source, its layout or the same page at another size. A pane renders your page or component live, exactly as it will look in production, and you select, edit and rearrange elements directly on it. See **[The canvas](/docs/studio/interface/canvas)**, **[Edit mode](/docs/studio/editing)** and **[Design mode](/docs/studio/design)**.
 
-Above the pane sits its strip of open documents. Under that, a context bar states which **Editor** is open on the file, which **View** of the canvas is showing (**Edit**, **Design** or **Preview**), and the **Context** it's being rendered in. Details in **[Documents and panes](/docs/studio/interface/tabs)** and **[Editors and views](/docs/studio/interface/modes)**.
+In Design and Content, the pane has a strip of open documents along its top; Media, Styles and Publish show their own page without one, and a **Back** button on the context bar returns you to it from anything opened beside it. Under the strip, a context bar states which **Editor** is open on the file, which **View** of the canvas is showing (**Edit**, **Design** or **Preview**), and the **Context** it's being rendered in. Details in **[Documents and panes](/docs/studio/interface/tabs)** and **[Editors and views](/docs/studio/interface/modes)**.
 
 ## The Inspector
 
-The dock on the right, in four tabs: **Content** (the selected element's settings), **Style** (the visual inspector), **Logic** (what happens on click, input and so on), and **Assistant** (the AI chat). **[Design mode](/docs/studio/design)** covers the Style tab, and **[Logic](/docs/studio/logic)** covers the Logic tab.
+The dock on the right, in three tabs. **Page** is the open document's own settings: title, address, template, and search and sharing. **Element** is the selected element, in three views: **Content** (its settings), **Style** (the visual inspector) and **Logic** (what happens on click, input and so on). **Assistant** is the AI chat. Select an element and the Inspector switches to Element; select nothing and it goes back to Page. **[Design mode](/docs/studio/design)** covers Style, and **[Logic](/docs/studio/logic)** covers Logic.
 
 ## The Bottom dock
 

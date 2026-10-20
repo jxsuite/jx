@@ -37,7 +37,7 @@ import { classifyRenderNode, jxPathSelector, serializeJxPath } from "./path-mapp
 import { elementForPath } from "./iframe-position";
 import type { AssetContext } from "./asset-resolve";
 import { SITE_STYLE_ID, buildSiteStyleCSS } from "@jxsuite/site/site-style";
-import type { CanvasMode, WireDiffMarks } from "./iframe-protocol";
+import type { CanvasMode, WireDiffMarks, WireLocale } from "./iframe-protocol";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
@@ -631,6 +631,10 @@ export const STYLEBOOK_CSS = `
 .element-card-preview > * {
   max-width: 100%;
   margin: 0;
+}
+/* A list keeps its inline-start padding: its markers are drawn in it, and with none they are
+   clipped by the card ("1." shows as "."). Every other specimen sits flush in its card. */
+.element-card-preview > :not(ol, ul, menu) {
   padding: 0;
 }
 .element-card-preview > hr {
@@ -726,6 +730,49 @@ export function applyPreviewColorScheme(doc: Document, scheme: "light" | "dark" 
   } else {
     delete doc.documentElement.dataset.colorScheme;
   }
+}
+
+/** The `lang` and `dir` a frame's root booted with, which a frame with no language goes back to. */
+export interface LocaleBaseline {
+  lang: string | null;
+  dir: string | null;
+}
+
+/** Read the root's `lang` and `dir` as the frame booted them (`canvas.html` is `lang="en"`). */
+export function captureLocaleBaseline(doc: Document): LocaleBaseline {
+  const root = doc.documentElement;
+  return { dir: root.getAttribute("dir"), lang: root.getAttribute("lang") };
+}
+
+/** Write one root attribute, or remove it for null. */
+function setRootAttribute(root: Element, name: string, value: string | null): void {
+  if (value === null) {
+    root.removeAttribute(name);
+  } else {
+    root.setAttribute(name, value);
+  }
+}
+
+/**
+ * Set the artboard's language (studio.md §20.2): `lang` and `dir` on the frame's root, the only
+ * writer of either. `dir` is what makes an RTL document actually mirror, and `lang` is what CSS's
+ * `:lang()` and the font stack select on. The root survives a render, which replaces only the
+ * container's children, so the value holds until the next one arrives.
+ *
+ * `null`, a project that declares no locales, restores the language the frame booted with rather
+ * than removing it, so applying the value on every render does not strip `canvas.html`'s
+ * `lang="en"` from every canvas of a monolingual project. A left-to-right language writes no
+ * `dir="ltr"`, as the built page never does (`site-architecture.md` §13.4): it restores the booted
+ * `dir`.
+ */
+export function applyPreviewLocale(
+  doc: Document,
+  locale: WireLocale | null,
+  baseline: LocaleBaseline,
+): void {
+  const root = doc.documentElement;
+  setRootAttribute(root, "lang", locale?.locale ?? baseline.lang);
+  setRootAttribute(root, "dir", locale?.dir === "rtl" ? "rtl" : baseline.dir);
 }
 
 /**

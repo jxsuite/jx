@@ -50,9 +50,9 @@ export type DockId = "navigator" | "inspector" | "bottom";
 export type PaletteMode = "picker" | "files" | "commands" | "nodes" | "projects";
 
 /**
- * One panel, as the ⌘1–8 direct keys address it.
+ * One panel, as its `panel.focus.<id>` record addresses it.
  *
- * Structurally the part of `panels/panel-registry.ts`'s `PanelRecord` a chord needs, declared here
+ * Structurally the part of `panels/panel-registry.ts`'s `PanelRecord` a record needs, declared here
  * rather than imported so this module keeps its one load-bearing property: it imports no state and
  * no DOM, which is what lets the three CI checks load the command set in a bare Bun process. The
  * ROSTER arrives by injection ({@link CommandDeps.panelRoster}) from the panel registry, so there
@@ -64,30 +64,52 @@ export interface RailPanel {
   /** The panel's human name, which is also the command's title after "Show ". */
   title: string;
   /** `false` for a panel with no rail button — reachable by name, not by number. */
-  rail?: boolean;
+  rail?: boolean | "developer";
   /** The panel's own visibility predicate, composed into the command's. */
   when?: (ctx: CommandContext) => boolean;
 }
 
-/** How many rail panels get a ⌘N: the Navigator rail (§5.1) spends four per level group. */
-export const RAIL_CHORD_LIMIT = 8;
+/** The Inspector strip's three tabs (§6): Page · Element · Assistant. */
+export type InspectorStripId = "page" | "element" | "assistant";
 
 /**
- * The Inspector's four tabs, in the order §6 names them — which is the order ⌘⇧1–4 follow.
+ * One Inspector LEAF — a view the dock can show — in the order §6 names them, which is the order
+ * ⌘⇧1–5 follow: Page, Element's Content · Style · Logic, then Assistant.
  *
- * `"assistant"` is the fourth tab, not a dock of its own (there is no assistant column, §3.1), so
- * it is one of `shell.ts`'s `INSPECTOR_TAB_IDS` like the other three.
+ * `"assistant"` is a leaf, not a dock of its own (there is no assistant column, §3.1), so it is one
+ * of `shell.ts`'s `INSPECTOR_TAB_IDS` like the others. `strip` says which of the three strip tabs
+ * hosts the leaf: the three node views share Element, behind a sub-switch, because they share one
+ * target.
  */
 export interface InspectorTab {
-  /** The stored `session.ui.rightTab` value, or `"assistant"` for the assistant dock. */
+  /** The stored `session.ui.rightTab` value. */
   id: string;
   title: string;
+  strip: InspectorStripId;
 }
 
 export const INSPECTOR_TABS: readonly InspectorTab[] = [
-  { id: "properties", title: "Content" },
-  { id: "style", title: "Style" },
-  { id: "events", title: "Logic" },
+  { id: "page", strip: "page", title: "Page" },
+  { id: "properties", strip: "element", title: "Content" },
+  { id: "style", strip: "element", title: "Style" },
+  { id: "events", strip: "element", title: "Logic" },
+  { id: "assistant", strip: "assistant", title: "Assistant" },
+];
+
+/** One tab of the strip, and the leaves it hosts. */
+export interface InspectorStripTab {
+  id: InspectorStripId;
+  title: string;
+}
+
+/**
+ * The strip, in order. Three tabs, under the four-per-dock cap (`studio-ui-guidelines.md` §12.2):
+ * Element's sub-switch is inside a tab's body and is not a dock tab. The Page tab's title is
+ * contextual on screen (Page, Template, Component, Entry or Document, §6); this is its name.
+ */
+export const INSPECTOR_STRIP: readonly InspectorStripTab[] = [
+  { id: "page", title: "Page" },
+  { id: "element", title: "Element" },
   { id: "assistant", title: "Assistant" },
 ];
 
@@ -119,7 +141,8 @@ export interface CommandDeps {
    */
   newWindow: () => void | Promise<void>;
   /**
-   * The rail's panels in rail order, then the rail-less ones — the roster ⌘1–8 is generated from.
+   * The rail's panels in rail order, then the rail-less ones — the roster `panel.focus.*` is
+   * generated from.
    *
    * Every entry is a Navigator panel: the rail is the Navigator's, and a Bottom-dock tab is
    * addressed by `view.setBottomTab` instead — one door per surface. `panels/navigator-panels.ts`'s
@@ -131,8 +154,8 @@ export interface CommandDeps {
   panelRoster: readonly RailPanel[];
   /**
    * Toggle-FOCUS a panel: reveal it and take focus, or — when it already has focus — collapse the
-   * dock hosting it and hand focus back to the pane. Deliberately not toggle-visible: ⌘1 pressed
-   * from the canvas must land you in Files, not close it.
+   * dock hosting it and hand focus back to the pane. Deliberately not toggle-visible: running it
+   * from the canvas must land you in the panel, not close it.
    */
   focusPanel: (panelId: string) => void;
   /** Show an Inspector tab and focus the dock. `"assistant"` addresses the assistant dock. */
@@ -305,6 +328,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       keybinding: "mod+z",
       menus: ["commandbar/primary", "palette"],
       group: "1_history",
+      order: 1,
       when: documentOpen,
       enablement: (ctx) => ctx.document.canUndo,
       requires: "a change to undo",
@@ -319,6 +343,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       keybinding: ["mod+shift+z", "mod+y"],
       menus: ["commandbar/primary", "palette"],
       group: "1_history",
+      order: 2,
       when: documentOpen,
       enablement: (ctx) => ctx.document.canRedo,
       requires: "a change to redo",
@@ -601,40 +626,39 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
 }
 
 /**
- * ⌘1–8 — one record per panel, generated from {@link CommandDeps.panelRoster}.
+ * One `panel.focus.<id>` record per Navigator panel, generated from
+ * {@link CommandDeps.panelRoster}.
  *
- * Generated rather than written out eight times for the reason the whole registry exists: the rail,
- * the chord, the palette row and the generated shortcut sheet are then four renderings of one list.
- * Only the first eight get a chord; a ninth panel keeps its name and its palette row, which is the
- * cost studio-ui-guidelines.md §12.2 puts on chrome.
+ * Generated rather than written out once per panel for the reason the whole registry exists: the
+ * rail, the palette row and the generated command sheet are then three renderings of one list.
+ *
+ * **No chords.** ⌘1–8 used to follow the rail here. The digit row now switches WORKSPACES (⌘1–5,
+ * `view.setWorkspace`), because the rail is Design's alone and a chord that reached a panel from
+ * Publish would open a column the workspace does not draw. The records stay, in the palette and
+ * bindable in Preferences › Keyboard, and the rail is the pointer's way to them.
  */
 export function panelFocusCommands(deps: CommandDeps): AnyCommand[] {
-  let chordsSpent = 0;
-  return deps.panelRoster.map((panel) => {
-    const command: AnyCommand = {
-      id: `panel.focus.${panel.id}`,
-      title: `Show ${panel.title}`,
-      category: "View",
-      // Application, like `view.setActivity`: revealing a panel arranges the workspace. What the
-      // PANEL acts on is the panel record's own level, and that is `registerPanel()`'s field.
-      level: "application",
-      menus: ["palette"],
-      group: "4_docks",
-      requires: "an open project",
-      // The panel's OWN `when` composes in, so a declared-but-unbuilt surface (Search, Problems)
-      // Has no palette row and no live chord — the record exists, the affordance does not.
-      when: (ctx: CommandContext) => ctx.project.open && (panel.when?.(ctx) ?? true),
-      run: () => deps.focusPanel(panel.id),
-    };
-    if (panel.rail !== false && chordsSpent < RAIL_CHORD_LIMIT) {
-      chordsSpent += 1;
-      command.keybinding = `mod+${chordsSpent}`;
-    }
-    return command;
-  });
+  return deps.panelRoster.map((panel): AnyCommand => ({
+    id: `panel.focus.${panel.id}`,
+    title: `Show ${panel.title}`,
+    category: "View",
+    // Application, like `view.setActivity`: revealing a panel arranges the workspace. What the
+    // PANEL acts on is the panel record's own level, and that is `registerPanel()`'s field.
+    level: "application",
+    menus: ["palette"],
+    group: "4_docks",
+    requires: "an open project",
+    // The panel's OWN `when` composes in, so a declared-but-unbuilt surface (Search, Problems)
+    // Has no palette row — the record exists, the affordance does not.
+    when: (ctx: CommandContext) => ctx.project.open && (panel.when?.(ctx) ?? true),
+    run: () => deps.focusPanel(panel.id),
+  }));
 }
 
-/** ⌘⇧1–4 — one record per Inspector tab, generated from {@link INSPECTOR_TABS}. */
+/**
+ * ⌘⇧1–5 — one record per Inspector leaf, generated from {@link INSPECTOR_TABS}, so the chords
+ * follow the strip left to right: Page, Element › Content, Style, Logic, then Assistant.
+ */
 export function inspectorFocusCommands(deps: CommandDeps): AnyCommand[] {
   return INSPECTOR_TABS.map((tab, index) => {
     const command: AnyCommand = {

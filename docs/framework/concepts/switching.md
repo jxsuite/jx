@@ -7,7 +7,7 @@ spec:
 
 # Dynamic switching
 
-> **Studio writes this format for you.** Add the node in the [Code editor](/docs/studio/logic/code); from then on the Inspector's **[Logic tab](/docs/studio/logic/events)** (:kbd[⌘⇧3]) shows a **Condition** section for it, holding the value it switches on and a row per case.
+> **Studio writes this format for you.** Add the node in the [Code editor](/docs/studio/logic/code); from then on the Inspector's **[Logic tab](/docs/studio/logic/events)** (:kbd[⌘⇧4]) shows a **Condition** section for it, holding the value it switches on and a row per case.
 
 A `$switch` node swaps what renders in one spot based on a state value: the node binds `$switch` to a [reference](/docs/framework/concepts/references), and `cases` maps each possible value to what should render. When the state changes, the old case is torn down and the new one renders in its place. That covers view switching, wizard steps, and a client-side router, in pure JSON.
 
@@ -75,7 +75,7 @@ The runtime renders the `$switch` node as a container element (its `tagName`, or
 
 ## In Studio
 
-Select the node and open the **[Logic tab](/docs/studio/logic/events)** (:kbd[⌘⇧3]). Its **Condition** section is the node's two halves:
+Select the node and open the **[Logic tab](/docs/studio/logic/events)** (:kbd[⌘⇧4]). Its **Condition** section is the node's two halves:
 
 - **Expression** is what the node switches on. Its value-source chip offers **From data…** (a signal) and **Mixed text**; there is no fixed-value rung, because a literal `$switch` does not render.
 - **Cases** is one row per key. Edit a row's text to rename that case, click **→** to select what it renders, click the dot on its label to remove it, and **+ Add case** appends another.

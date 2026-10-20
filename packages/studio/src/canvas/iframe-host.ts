@@ -23,7 +23,7 @@ import {
 import { canvasRectToParent, createOverlayLayer } from "./iframe-overlay";
 import { serializeJxPath } from "./path-mapping";
 import { getActivePanel, panelMediaToActiveMedia } from "./canvas-helpers";
-import { panToParentRect } from "./canvas-utils";
+import { panToParentRect, revealParentRect } from "./canvas-utils";
 import { clearDragGhost, moveDragGhost } from "../panels/drag-ghost";
 import { applyDropInstruction } from "../panels/dnd";
 import { rectOf } from "../utils/geometry";
@@ -67,7 +67,9 @@ import type {
   SerializableRect,
   SerializedKey,
   SyncedChord,
+  WireLocale,
 } from "./iframe-protocol";
+import { getEffectiveRenderLocale } from "../site-context";
 import type { JxDocOp } from "../tabs/patch-ops";
 import type { IframeChannel } from "./iframe-channel";
 import type { OverlayLayer, OverlayPlacement } from "./iframe-overlay";
@@ -153,7 +155,21 @@ export interface HostState {
   selectionPath: (string | number)[] | null;
   /** The whole selection this host last measured, so a re-measure redraws every box. */
   selectionPaths: readonly JxPath[];
-  /** Id of the most recent selection `measure` request, so stale `geometry` replies are dropped. */
+  /**
+   * The allocator every `measure` request this host posts draws its id from: selection, presence,
+   * pan-to-card and {@link measureCanvasPath}. One counter keeps the ids disjoint, so the `geometry`
+   * handler can dispatch on the id alone.
+   */
+  measureSeq: number;
+  /**
+   * Id of the most recent SELECTION `measure` request, so a stale selection reply is dropped.
+   *
+   * It names the request, not the counter. It used to be both, so any other measure posted while a
+   * selection measure was in flight superseded it: picking a tag in the Styles Outline posts the
+   * selection measure and then a pan-to-card measure in the same tick, the pan took the newer id,
+   * and the selection reply arrived to find itself stale. The specimen was centred and never
+   * outlined. A live peer's presence measure did the same to the page selection.
+   */
   selReqId: number;
   /**
    * The NON-primary selected paths the in-flight selection `measure` covers, serialized. The
@@ -161,7 +177,7 @@ export interface HostState {
    * selected node leaves it empty, so nothing but the selection box is ever drawn.
    */
   coSelectionKeys: Set<string>;
-  /** Id of the most recent presence `measure` request (allocated from the selReqId counter). */
+  /** Id of the most recent presence `measure` request (allocated from {@link HostState.measureSeq}). */
   presenceReqId: number;
   /** Serialized peer path → presence box meta for the in-flight presence measure. */
   presenceMeta: Map<string, { color: string; label: string }>;
@@ -269,8 +285,8 @@ export interface HostState {
   /**
    * Resolvers for {@link measureCanvasPath} requests, keyed by the `measure` reqId.
    *
-   * Allocated from the same `selReqId` counter as the selection and presence measures, so the three
-   * can never collide and the `geometry` handler can dispatch on the id alone.
+   * Allocated from the same `measureSeq` counter as the selection and presence measures, so the
+   * three can never collide and the `geometry` handler can dispatch on the id alone.
    */
   pendingMeasures: Map<number, (hits: NodeHit[]) => void>;
   /**
@@ -771,8 +787,8 @@ function measureIn(
   path: readonly (string | number)[],
 ): Promise<CanvasPoint | null> {
   return new Promise((resolve) => {
-    host.selReqId += 1;
-    const reqId = host.selReqId;
+    host.measureSeq += 1;
+    const reqId = host.measureSeq;
     const timer = setTimeout(() => {
       host.pendingMeasures.delete(reqId);
       resolve(null);
@@ -1715,8 +1731,8 @@ function requestPresence(host: HostState): void {
     host.overlay.setPresence([]);
     return;
   }
-  host.selReqId += 1;
-  host.presenceReqId = host.selReqId;
+  host.measureSeq += 1;
+  host.presenceReqId = host.measureSeq;
   host.channel.post({ kind: "measure", paths, reqId: host.presenceReqId });
 }
 
@@ -1740,6 +1756,8 @@ function requestSelection(host: HostState, sel: readonly JxPath[]): void {
     return;
   }
   if (!primary) {
+    // Nothing selected, so a reply still in flight answers a question nobody is asking any more.
+    host.selReqId = -1;
     host.coSelectionKeys.clear();
     host.overlay.setSelection(null);
     host.overlay.setCoSelection([]);
@@ -1752,7 +1770,8 @@ function requestSelection(host: HostState, sel: readonly JxPath[]): void {
   // Cross the postMessage boundary.
   const others = cloneSelection(sel.slice(0, -1));
   host.coSelectionKeys = new Set(others.map((path) => JSON.stringify(path)));
-  host.selReqId += 1;
+  host.measureSeq += 1;
+  host.selReqId = host.measureSeq;
   host.channel.post({
     kind: "measure",
     paths: [[...primary], ...others],
@@ -1773,13 +1792,15 @@ function requestStylebookSelection(host: HostState): void {
   const tag = shell.stylebook.selection;
   const cardPath = tag ? host.stylebook?.tagToCardPath.get(tag) : undefined;
   if (!tag || !cardPath) {
+    host.selReqId = -1;
     host.overlay.setSelection(null);
     return;
   }
   if (!host.ready) {
     return;
   }
-  host.selReqId += 1;
+  host.measureSeq += 1;
+  host.selReqId = host.measureSeq;
   host.channel.post({ kind: "measure", paths: [[...cardPath]], reqId: host.selReqId });
 }
 
@@ -1964,6 +1985,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     lastHover: null,
     lastSelectionRect: null,
     lastSnapshotSeq: 0,
+    measureSeq: 0,
     overlay,
     panReqId: -1,
     pending: null,
@@ -1979,7 +2001,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     ready: false,
     selectionPath: null,
     selectionPaths: [],
-    selReqId: 0,
+    selReqId: -1,
     snapshot: null,
     stylebook: null,
     tabId: null,
@@ -2374,7 +2396,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         const [hit] = msg.hits;
         if (hit) {
           const { rect: ifr, scale } = hostDragGeometry(state);
-          panToParentRect({ height: hit.rect.height * scale, top: hit.rect.y * scale + ifr.top });
+          revealParentRect({ height: hit.rect.height * scale, top: hit.rect.y * scale + ifr.top });
         }
         return;
       }
@@ -2861,6 +2883,7 @@ function onDomUpdated(state: HostState, gen: number): void {
   requestSelection(state, state.selectionPaths);
   requestPresence(state);
   hideInsertZoneNow(state);
+  servePendingStylebookPan(state);
   if (state.pendingEnterEdit && gen >= state.pendingEnterEdit.minGen) {
     const { offset, path, prop } = state.pendingEnterEdit;
     state.pendingEnterEdit = null;
@@ -2985,7 +3008,7 @@ function drawHover(state: HostState, hit: NodeHit | null): void {
  */
 type PreparedRender = Omit<
   Extract<ParentToIframe, { kind: "render" }>,
-  "colorScheme" | "gen" | "kind"
+  "colorScheme" | "gen" | "kind" | "locale"
 >;
 
 /** One render pass's prepared payloads, by document IDENTITY. */
@@ -3214,6 +3237,8 @@ export async function mountIframeCanvas(
     colorScheme: schemeWireFor(viewTab),
     gen,
     kind: "render",
+    // The language this artboard draws in, per tab and at post time like the scheme.
+    locale: localeWireFor(viewTab),
     // Read at POST time for the same reason `colorScheme` is: a render replaces the DOM, so a panel
     // The author opened before this pass would close under them without it.
     popoverOpen: viewTab?.session.ui.openPopover ?? null,
@@ -3244,14 +3269,27 @@ export async function mountIframeCanvas(
  * until it says `ready`. Counted either way: the message is this pass's work for this host whether
  * or not the frame has finished loading.
  */
-function deliverRender(state: HostState, message: ParentToIframe): void {
+function deliverRender(state: HostState, message: RenderMsg): void {
   canvasPerf.hostRenderPosts += 1;
   if (state.ready) {
     syncAssetVersions(state);
     state.channel.post(message);
-  } else {
-    state.pending = message;
+    return;
   }
+  /* The queue holds ONE render, and it must be the NEWEST, not the last to arrive. A page render
+     awaits its own resolution, so two renders started in order can finish out of order: on a
+     reload that restores two tabs, the frame is still booting, the first-opened tab's render (an
+     older gen) can resolve after the active tab's, and overwriting the slot posted the stale one
+     on `ready`. The frame drew the other tab's document, the ack adopted that tab's identity, and
+     the active tab's render was lost. A ready frame drops a stale gen itself (`latestGen`); the
+     queue has to make the same call. */
+  const queued = state.pending;
+  if (queued?.kind === "render" && queued.gen > message.gen) {
+    // Never posted, so never acked: its identity must not wait for an ack that cannot come.
+    state.pendingTabIds.delete(message.gen);
+    return;
+  }
+  state.pending = message;
 }
 
 /**
@@ -3281,13 +3319,15 @@ export function mountStylebookCanvas(
   // (and fake test channels pass messages by reference, so sharing one object would alias them).
   const cloneableDoc = plainCopy(generated.doc);
   const cloneableShadow = plainCopy(generated.doc);
-  const message: ParentToIframe = {
+  const message: RenderMsg = {
     // The specimen carries no tab identity, but the STAGE it is mounted into does: a stylebook is
     // Opened as a tab like anything else, and its `previewColorScheme` is that tab's.
     /* A stylebook specimen is generated, not a project document, so it references no project
        media and needs no resolution. */
     assets: null,
     colorScheme: schemeWireFor(tabOfContainer(canvasEl)),
+    // And its language, for the same reason: a stylebook draws `:lang()` rules and `dir` too.
+    locale: localeWireFor(tabOfContainer(canvasEl)),
     doc: cloneableDoc,
     docBase: `${canvasBaseOrigin()}/`,
     gen,
@@ -3369,6 +3409,21 @@ export function postColorSchemeToLiveHosts(
  * `dir` is computed here and sent with the tag: `localeDirection` is CLDR's answer through
  * `Intl.Locale`, and a frame deriving it again is a second copy of the RTL script list to keep.
  */
+/** A locale tag as the frame applies it, with its direction; null stays null. */
+function localeWire(locale: string | null): WireLocale | null {
+  return locale === null ? null : { dir: localeDirection(locale), locale };
+}
+
+/**
+ * The language a TAB's artboard draws in, as wire data (studio.md §20.2): the one rule
+ * `getEffectiveRenderLocale` answers, read at post time for `schemeWireFor`'s reason.
+ */
+function localeWireFor(tab: Tab | null): WireLocale | null {
+  return localeWire(
+    tab ? getEffectiveRenderLocale(tab.session.ui.previewLocale, tab.documentPath) : null,
+  );
+}
+
 export function postLocaleToLiveHosts(locale: string | null, root?: HTMLElement | null): void {
   const dir = localeDirection(locale);
   for (const host of liveHosts) {
@@ -3381,6 +3436,12 @@ export function postLocaleToLiveHosts(locale: string | null, root?: HTMLElement 
     }
     if (host.ready) {
       host.channel.post({ dir, kind: "setLocale", locale });
+    } else if (host.pending?.kind === "render") {
+      /* A host still booting draws the render it is waiting for, so THAT is what learns the
+         language: a restored session writes `previewLocale` after its files have opened, by which
+         time a pane's render may already be pending with the old value, and no render follows. A
+         host with nothing pending is skipped; its render reads the value when it is posted. */
+      host.pending = { ...host.pending, locale: localeWire(locale) };
     }
   }
 }
@@ -3462,22 +3523,56 @@ export function postStyleUpdateToStylebookHosts(style: JxStyle): number {
 }
 
 /**
- * Pan the canvas so the selected tag's card is centered (layers-panel "locate" affordance). The
- * card lives inside the iframe, so it is measured over the bridge and the reply pans by the
- * converted parent-viewport rect (see the `geometry` handler's panReqId branch).
+ * A pan asked for before any stylebook canvas could serve it: the tag, served by the next stylebook
+ * render that draws its card while it is still the selection ({@link servePendingStylebookPan}).
  */
-export function panToStylebookTag(tag: string): void {
-  const host = hostForActivePanel();
+let pendingStylebookPan: string | null = null;
+
+/** Post the measure that pans `host` to `tag`'s card. `false` when the host cannot serve it yet. */
+function postStylebookPan(host: HostState | null, tag: string): boolean {
   if (!host?.stylebook || !host.ready) {
-    return;
+    return false;
   }
   const cardPath = host.stylebook.tagToCardPath.get(tag);
   if (!cardPath) {
+    return false;
+  }
+  host.measureSeq += 1;
+  host.panReqId = host.measureSeq;
+  host.channel.post({ kind: "measure", paths: [[...cardPath]], reqId: host.panReqId });
+  return true;
+}
+
+/**
+ * Pan the canvas so the selected tag's card is centered (layers-panel "locate" affordance). The
+ * card lives inside the iframe, so it is measured over the bridge and the reply pans by the
+ * converted parent-viewport rect (see the `geometry` handler's panReqId branch).
+ *
+ * A pan the canvas cannot serve yet is KEPT, not dropped. The Styles panel switches the pane to the
+ * Elements view and selects a tag in one tick, from the Variables view, where no stylebook frame
+ * exists: the frame that will draw the card has not been mounted. The request waits for it.
+ */
+export function panToStylebookTag(tag: string): void {
+  pendingStylebookPan = postStylebookPan(hostForActivePanel(), tag) ? null : tag;
+}
+
+/**
+ * Serve a kept pan on a stylebook render that has just landed: on the canvas the author is in, and
+ * only while its tag is still the selection, so a request the author has since moved past is
+ * forgotten rather than served late.
+ */
+function servePendingStylebookPan(state: HostState): void {
+  const tag = pendingStylebookPan;
+  if (tag === null || !state.stylebook) {
     return;
   }
-  host.selReqId += 1;
-  host.panReqId = host.selReqId;
-  host.channel.post({ kind: "measure", paths: [[...cardPath]], reqId: host.selReqId });
+  if (shell.stylebook.selection !== tag) {
+    pendingStylebookPan = null;
+    return;
+  }
+  if (state === hostForActivePanel() && postStylebookPan(state, tag)) {
+    pendingStylebookPan = null;
+  }
 }
 
 // ─── Format-toolbar bridge (Phase 4b-2) ─────────────────────────────────────────

@@ -205,13 +205,17 @@ describe("runActiveReported", () => {
 // ─── The sweep ────────────────────────────────────────────────────────────────
 
 /**
- * The two callers that read the refusal themselves: the automation harness hands it to the script,
- * the tool loop hands it to the model. Neither is a surface, so neither files it.
+ * The callers that read the refusal themselves: the automation harness hands it to the script, the
+ * tool loop hands it to the model, and `styles.open` and `publish.open` (each an alias of
+ * `view.setWorkspace` with a view of its own) hand it to whoever ran the alias, by rejecting with
+ * it. None is a surface, so none files it.
  */
 const OWNS_ITS_REFUSAL = new Set([
   "commands/run-reported.ts",
   "services/ai-command-tools.ts",
   "services/automation.ts",
+  "publish/publish-commands.ts",
+  "settings/settings-document.ts",
 ]);
 
 /**
@@ -225,7 +229,6 @@ const NOT_YET_CONVERTED = new Set([
   "canvas/iframe-host.ts",
   "content/entry-editor.ts",
   "editor/context-menu.ts",
-  "panels/frontmatter-panel.ts",
   "panels/head-panel.ts",
   "panels/pane-context.ts",
   "panels/properties-panel.ts",
@@ -233,7 +236,6 @@ const NOT_YET_CONVERTED = new Set([
   "panels/style-panel.ts",
   "publish/deploy-checklist.ts",
   "publish/publish-panel.ts",
-  "settings/general-settings.ts",
 ]);
 
 /** `registry.run(`, `registry?.run(`, `activeRegistry()?.run(`, `contextMenuRegistry().run(`. */

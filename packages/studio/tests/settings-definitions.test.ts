@@ -20,6 +20,7 @@ describe("the key table", () => {
       "jx.cf.token": "",
       "jx.files.showIgnored": "",
       "jx.keybindings": "",
+      "jx.panels.developer": "",
     });
   });
 

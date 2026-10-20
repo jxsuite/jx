@@ -25,7 +25,7 @@
 import { compareRoutes, fileToRoute, isRoutedPageFile, matchRoute } from "./routes.ts";
 import type { FileRoute } from "./routes.ts";
 import { resolveLayout } from "./layout.ts";
-import { mergeHead } from "./head-merger.ts";
+import { mergeHead, withPageDescription } from "./head-merger.ts";
 import type { HeadMergeContext } from "./head-merger.ts";
 import { injectContext } from "./context.ts";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
@@ -337,7 +337,10 @@ export async function composePage(
 
   /* SAFETY: `_pageHead` is no authored key; `resolveLayout` is its only writer and stores a page's
      (or a nested layout's) `$head` array in it, which is the `JxHeadEntry[]` asserted here. */
-  const pageHead = (pageDoc.$head ?? merged._pageHead ?? []) as JxHeadEntry[];
+  const pageHead = withPageDescription(
+    (pageDoc.$head ?? merged._pageHead ?? []) as JxHeadEntry[],
+    pageDoc.description,
+  );
   const layoutHead = merged.$head ?? [];
   const siteHead = config.$head ?? [];
   /* SAFETY: `pageDoc.title` and `config.name` are declared strings, and `_pageTitle` is no authored

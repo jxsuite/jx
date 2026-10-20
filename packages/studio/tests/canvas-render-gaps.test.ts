@@ -152,6 +152,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   postApplyFormat: () => {},
   postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => 0,
+  postSiteStyleToLiveHosts: () => 0,
   requestCanvasEval: () => Promise.resolve(null),
   /* The non-lazy way out of `liveHosts`: `panels/pane-grid.ts` calls it as a cell is
      disposed, so it is on the import graph of anything that mounts the shell. */
@@ -372,7 +373,10 @@ describe("grid mode", () => {
     renderCanvas();
     await flush(); // The source editor mounts behind the lazy Monaco import.
     // Still the one hand-over, to this pane's stage for this tab: the repaint drew nothing new.
-    expect(renderGridMode.mock.calls).toEqual([[surfaceForPane("primary"), activeTab.value!]]);
+    expect(renderGridMode).toHaveBeenCalledTimes(1);
+    const [[handedSurface, handedTab] = []] = renderGridMode.mock.calls;
+    expect(handedSurface).toBe(surfaceForPane("primary"));
+    expect(handedTab).toBe(activeTab.value!);
   });
 });
 

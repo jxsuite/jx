@@ -579,6 +579,16 @@ export interface StudioPlatform {
   gitClone?: (url: string) => Promise<{ ok: boolean; root: string }>;
   gitInit: () => Promise<void>;
   /**
+   * True on a host whose git is the remote's: a commit lands on GitHub as it is made, a push is
+   * only a check that it did, and each branch is a session of its own, so a checkout reloads the
+   * window into that branch's session (the cloud). Absent means an ordinary working tree, where a
+   * commit is local until it is pushed and a checkout swaps files in place.
+   *
+   * A declaration rather than a method, because what differs is the meaning of the verbs every host
+   * has: the Publish workspace reads it to say what a verb will do (studio.md §22.8).
+   */
+  gitHosted?: boolean;
+  /**
    * Build the site to its output directory, so a reader opens what the author is looking at.
    *
    * `View: Open in Browser` runs this first and reports what it says. Optional because it is a
@@ -869,6 +879,8 @@ export interface ContentSectionEntry {
   source?: string;
   format?: string;
   schema?: ContentTypeSchema;
+  /** The field a file-backed collection's records are identified by (the loader's `idField`). */
+  idField?: string;
   $elements?: unknown[];
 }
 

@@ -1,0 +1,5 @@
+{
+  "$comment": "Absolute ceilings for scenarios the A/B gate cannot compare: one new in the change under review, or one that fails on the base build. Judged on the head build's median repetition. Generous on purpose: a CI runner is two to three times slower than a dev machine, and this catches a catastrophe (a multi-second interaction, a frame-freezing task), not a drift. Once the scenario exists on main, the A/B comparison judges it instead.",
+  "default": { "wallMs": 8000, "longTaskMs": 500 },
+  "scenarios": {}
+}

@@ -14,11 +14,11 @@ Your content collections are files in your project, right for pages, posts, and 
 
 You don't need to have run a database before. The default setup is a single file inside your project (nothing to install, no account to create), and the same table definitions carry over unchanged when you later point them at a hosted service.
 
-![The Settings modal open on the Data Tables section with a table selected and its field schema visible](../images/data-tables-section.png)
+![Project settings open on the Data Tables section with a table selected and its field schema visible](../images/data-tables-section.png)
 
 ## Where it lives
 
-Open **[Project settings](/docs/studio/projects/settings)** from the **Settings** menu at the foot of the rail, by pressing :kbd[⌘K] and running **Open Project Settings**, or from the **⬢ menu** in the Command Bar. Projects with the connector extension enabled get two extra sections in the list:
+Open **[Project settings](/docs/studio/projects/settings)** from the **Settings** menu in the Command Bar, by pressing :kbd[⌘K] and running **Open Project Settings**, or from the **⬢ menu** in the Command Bar. Projects with the connector extension enabled get two extra sections in the list:
 
 - **[Connections](/docs/studio/data/connections)**: which database (or databases) the project talks to.
 - **[Data Tables](/docs/studio/data/tables)**: the tables inside them, with their fields, ids, and access rules.

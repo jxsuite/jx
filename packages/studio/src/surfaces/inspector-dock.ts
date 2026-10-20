@@ -2,17 +2,18 @@
 /**
  * The Inspector dock's chrome as a mounted document.
  *
- * `panels/right-panel.ts` is the flow — which tab is selected (per document, or detached when
- * nothing is open), what the selection is called, and which of the four seams a body host is handed
- * to — and this is the surface it draws into.
+ * `panels/right-panel.ts` is the flow — which leaf is selected (per document, or detached when
+ * nothing is open), what the Page tab and the selection are called, and which of the five seams a
+ * body host is handed to — and this is the surface it draws into.
  *
- * **The four bodies are islands, and they are created once.** `inspector-dock.json` keys its tab
- * panels on the tab id, and that list is `INSPECTOR_TABS`: a constant. A keyed `$map` over a
- * constant list creates every row on the first render and never tears one down, so the empty
- * `[part="panel-body"]` inside each panel is exactly the permanent container the old module built
- * by hand — without a second module having to promise it will not rebuild them. Each is announced
- * through `onNodeCreated` as it is CREATED, one reconcile step before it is in the page, so
- * connectedness is deliberately not consulted here (studio-ui-guidelines.md §9.4).
+ * **Three tabs, five bodies, and every body is an island created once.** The strip is Page ·
+ * Element · Assistant (§6), and Element hosts three leaves (Content, Style, Logic) behind a
+ * sub-switch. `inspector-dock.json` keys the tab panels on the strip id and each panel's leaves on
+ * the leaf id, and both lists are CONSTANTS (`INSPECTOR_STRIP`, `INSPECTOR_TABS`). A keyed `$map`
+ * over a constant list creates every row on the first render and never tears one down, so the empty
+ * `[part="panel-body"]` of each leaf is exactly the permanent container the old module built by
+ * hand. Each is announced through `onNodeCreated` as it is CREATED, one reconcile step before it is
+ * in the page, so connectedness is deliberately not consulted here (studio-ui-guidelines.md §9.4).
  *
  * **No scheduler.** `panels/panel-scheduler.ts` withheld a repaint while a text field in the dock
  * had focus, because a lit repaint replaces the node the caret is in. This document paints a title,
@@ -33,42 +34,68 @@ import type { SurfaceHandle } from "../ui/surface";
 
 registerSurface("inspector-dock", inspectorDockDoc);
 
-/** One tab of the dock, as the document draws it. Every field is a value. */
+/** One leaf of a tab — a body the dock can show. Every field is a value. */
+export interface InspectorLeafView {
+  /** The leaf id (`shell.ts`'s `INSPECTOR_TAB_IDS`) — the row's identity, and `data-tab`. */
+  key: string;
+  /** The sub-switch label: Content, Style, Logic. Unused on a tab with one leaf. */
+  title: string;
+  /** `inspector/tab:<id>` — stamped on the body host the screenshot pipeline crops. */
+  region: string;
+  /** Whether this is the leaf on screen. Exactly one, across every tab, is true. */
+  active: boolean;
+  /**
+   * {@link InspectorLeafView.active} as the `data-active` string the style block keys on. A boolean
+   * renders as a bare attribute, which `[data-active="false"]` cannot match. It is also the
+   * sub-switch segment's `checked`: the kit's radio segment takes the STRING `"true"`/`"false"`,
+   * and a boolean there leaves an unselected segment a plain button inside the radiogroup.
+   */
+  shown: "true" | "false";
+  /** The sentence the leaf shows instead of a body, or empty when it has a body to show. */
+  empty: string;
+  hasEmpty: boolean;
+}
+
+/** One tab of the strip, as the document draws it. Every field is a value. */
 export interface InspectorTabView {
-  /** The tab id — the row's identity, the strip's `selected` value, and `data-tab`. */
+  /** The strip id — the row's identity, the strip's `selected` value, and `data-tab`. */
   key: string;
   title: string;
   /** The tab element's own id, which is also its panel's `aria-labelledby`. */
   tabId: string;
   /** The tab panel element's own id, which is also the tab's `aria-controls`. */
   panelId: string;
-  /** `inspector/tab:<id>` — stamped on the body host the screenshot pipeline crops. */
-  region: string;
   /** Whether this is the tab on screen. Exactly one is true. */
   active: boolean;
+  /** Whether the tab draws a sub-switch — Element alone, which hosts three leaves. */
+  hasLeaves: boolean;
+  leaves: InspectorLeafView[];
 }
 
 /** What the dock says right now. */
 export interface InspectorDockValues {
-  /** The selected tab's title, drawn in the header. */
+  /** The showing tab's title, drawn in the header: contextual for Page (§6). */
   title: string;
   /** What the tab is pointed at, in the fewest words that are true. */
   target: string;
-  /** The selected tab id — what `jx-tabs` compares each tab's `value` against. */
+  /** The showing STRIP id — what `jx-tabs` compares each tab's `value` against. */
   tab: string;
   tabs: InspectorTabView[];
 }
 
 export interface InspectorDockActions {
-  /** A tab was activated. The flow decides whether that is a per-document or a detached write. */
+  /**
+   * A tab or a sub-switch leaf was activated: a strip id (`page`, `element`, `assistant`) from the
+   * strip, a leaf id from Element's switch. The flow decides what each means.
+   */
   selectTab: (id: string) => void;
 }
 
 export interface InspectorDockOptions {
   /**
-   * One tab's body host, announced once, as it is created.
+   * One leaf's body host, announced once, as it is created.
    *
-   * @param tabId The tab the host belongs to
+   * @param tabId The leaf the host belongs to
    * @param host The empty `[part="panel-body"]`
    */
   onBody: (tabId: string, host: HTMLElement) => void;
