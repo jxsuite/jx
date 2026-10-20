@@ -14,18 +14,20 @@ Jx Studio is a desktop application: you run it on your own machine, against your
 
 Grab an installer for your platform from the [latest release](https://github.com/jxsuite/jx/releases/latest):
 
-| Platform              | Download                                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| macOS (Apple Silicon) | [`JxStudio.dmg`](https://github.com/jxsuite/jx/releases/latest/download/macos-arm64-JxStudio.dmg)             |
-| Windows (x64)         | [`JxStudio.msi`](https://github.com/jxsuite/jx/releases/latest/download/JxStudio.msi)                         |
-| Linux (x64)           | [`JxStudio.tar.gz`](https://github.com/jxsuite/jx/releases/latest/download/linux-x64-JxStudio-Setup.tar.gz)   |
-| Linux (ARM64)         | [`JxStudio.tar.gz`](https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio-Setup.tar.gz) |
+| Platform              | Download                                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| macOS (Apple Silicon) | [`JxStudio.dmg`](https://github.com/jxsuite/jx/releases/latest/download/macos-arm64-JxStudio.dmg)           |
+| Windows (x64)         | [`JxStudio-Setup.exe`](https://github.com/jxsuite/jx/releases/latest/download/win-x64-JxStudio-Setup.exe)   |
+| Linux (x64)           | [`JxStudio.AppImage`](https://github.com/jxsuite/jx/releases/latest/download/linux-x64-JxStudio.AppImage)   |
+| Linux (ARM64)         | [`JxStudio.AppImage`](https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio.AppImage) |
 
 The macOS build is notarized, so it opens without a Gatekeeper prompt. The Windows installer is not yet code-signed, so SmartScreen warns on first run. Choose **More info → Run anyway**. The [Download page](/download) has the same links plus checksums and release notes.
 
 :::doc-note
-Jx Studio is Apple Silicon only. Intel Macs can still run the last release built before Jx Studio moved to Electrobun 2, which publishes no macOS x64 build; that older release no longer receives automatic updates.
+Jx Studio is Apple Silicon only. There is no macOS x64 build, so Intel Macs can still run the last release that had one, which no longer receives automatic updates.
 :::
+
+On Linux, make the AppImage executable (`chmod +x JxStudio.AppImage`) and run it. It needs FUSE 2, which recent Ubuntu releases no longer install by default: `sudo apt install libfuse2t64` on 24.04, `libfuse2` before that. Ubuntu 24.04 and later also restrict the sandbox Electron relies on for apps that are not installed from a package, so on Ubuntu the snap below is the better route.
 
 ## Ubuntu (Snap Store)
 
@@ -35,7 +37,7 @@ On Ubuntu, and on any distribution with snapd, install Jx Studio from the Snap S
 sudo snap install jx-studio
 ```
 
-The snap runs Studio in a Chromium app window, draws natively on Wayland, and uses your system's graphics drivers for hardware acceleration. It updates itself through the Snap Store rather than through Studio's own update prompt.
+The snap runs the same Studio application as every other platform, with the window frame and buttons Studio draws itself, and draws natively on Wayland. It updates through the Snap Store rather than through Studio's own update prompt.
 
 The snap is confined, so it reaches the folders in your home directory and on removable media. To open a project on removable media, connect that interface once:
 
@@ -45,7 +47,7 @@ sudo snap connect jx-studio:removable-media
 
 ## NixOS
 
-On NixOS the same desktop app is packaged as a Nix derivation rather than an installer, because its bundler cannot run in a Nix sandbox. It runs Studio in a Chromium app window and presents the identical editor.
+On NixOS the same desktop app is packaged as a Nix derivation rather than an installer, because its bundler cannot run in a Nix sandbox. It runs Studio in an Electron window from nixpkgs with the same title bar and window buttons as the other platforms, and presents the identical editor.
 
 ```bash
 nix run github:jxsuite/jx/release
@@ -59,11 +61,11 @@ To install it instead of running it once:
 nix profile install github:jxsuite/jx/release
 ```
 
-Either form takes an optional project directory, as in `nix run github:jxsuite/jx/release -- ~/sites/my-site`, and opens the project picker without one.
+Either form takes an optional project directory, as in `nix run github:jxsuite/jx/release -- ~/sites/my-site`, and opens the project picker without one. Running it again while Studio is open does not start a second copy: it opens that project in the running app, or brings its window forward if it is already open.
 
 ### Fetch it instead of building it
 
-Released builds are published to a public [Cachix](https://cachix.org) cache, so the commands above can download Studio without compiling the monorepo on your machine. The rest of the closure, Chromium and Bun, already comes from `cache.nixos.org`.
+Released builds are published to a public [Cachix](https://cachix.org) cache, so the commands above can download Studio without compiling the monorepo on your machine. The rest of the closure (Electron, Chromium for site import, and Bun) already comes from `cache.nixos.org`.
 
 The flake names the cache itself, so Nix offers to use it the first time you run one of the commands above. Answer `y`, or pass `--accept-flake-config` to skip the prompt:
 

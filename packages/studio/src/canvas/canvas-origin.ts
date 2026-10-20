@@ -1,20 +1,20 @@
 /// <reference lib="dom" />
 /**
- * Canvas origin derivation. The canvas iframe may load same-origin (dev server / chromium /
- * electrobun gate-off, where the platform canvasUrl is a relative path) or cross-origin (electrobun
- * loopback, where canvasUrl is an absolute http://127.0.0.1:<port> URL).
+ * Canvas origin derivation. The canvas iframe may load same-origin (dev server / chromium / cloud,
+ * where the platform canvasUrl is a relative path) or cross-origin (a host whose canvasUrl is an
+ * absolute http://127.0.0.1:<port> URL).
  *
  * CanvasBaseOrigin() returns the origin the canvas document lives on, so callers that build
  * absolute asset/doc URLs target the right server. For a relative canvasUrl this resolves to
- * location.origin — IDENTITY for the same-origin paths, so dev/chromium/electrobun-gate-off are
- * byte-identical to before.
+ * location.origin — IDENTITY for the same-origin paths, so dev/chromium/cloud are byte-identical to
+ * before.
  */
 
 import { getPlatform, hasPlatform } from "../platform";
 
 /**
- * The origin serving the canvas document. When the platform registers an absolute canvasUrl
- * (electrobun loopback), this is that URL's origin; otherwise it falls back to the parent's own
+ * The origin serving the canvas document. When the platform registers an absolute canvasUrl (an
+ * absolute loopback URL), this is that URL's origin; otherwise it falls back to the parent's own
  * origin (a relative canvasUrl resolves against location.href to location.origin).
  */
 export function canvasBaseOrigin(): string {
@@ -35,8 +35,9 @@ export function canvasBaseOrigin(): string {
  * drew a 403. The token is read off the same canvas URL rather than a second channel, so there is
  * one place it is handed out.
  *
- * Same-origin only. A cross-origin canvas (electrobun loopback) is not where the shell's relative
- * dev-proxy fetches go, so its token would authenticate nothing and is better not spread around.
+ * Same-origin only. A cross-origin canvas (an absolute loopback canvasUrl) is not where the shell's
+ * relative dev-proxy fetches go, so its token would authenticate nothing and is better not spread
+ * around.
  *
  * @returns {string | null} The token, or null on a host with no token or a cross-origin canvas.
  */
@@ -93,11 +94,11 @@ export function documentBase(projectRoot?: string): string {
  * the desktop MutationObserver only rewrites asynchronously. Rendering the src loopback-absolute up
  * front eliminates that race for direct-parent <img> sites.
  *
- * Guarded: this ONLY rewrites when a real cross-origin http(s) loopback is registered (electrobun
- * loopback, canvasUrl set to an absolute http URL) whose origin differs from location.origin.
- * Otherwise — dev server, chromium, electrobun gate-off, and the pre-activate window — it returns
- * the ORIGINAL relative path unchanged, keeping those cases byte-identical (an absolute
- * ${location.origin}/... on the shell would just reintroduce views://... — the exact bug).
+ * Guarded: this ONLY rewrites when a real cross-origin http(s) loopback is registered (canvasUrl
+ * set to an absolute http URL) whose origin differs from location.origin. Otherwise — dev server,
+ * chromium, cloud, and the pre-activate window — it returns the ORIGINAL relative path unchanged,
+ * keeping those cases byte-identical (an absolute ${location.origin}/... on the shell would just
+ * reintroduce views://... — the exact bug).
  *
  * Only for PROJECT asset srcs; NEVER call it for shell-packaged views:// assets (sp-icons, bundled
  * chrome). Already-absolute inputs (data:/blob:/http/views://) are returned untouched, so it is

@@ -57,7 +57,7 @@ function dataPath(name: string): string {
 
 /** A pid that certainly names nothing: spawned, waited for, and reaped. */
 function deadPid(): number {
-  return Bun.spawnSync(["true"]).pid;
+  return Bun.spawnSync([process.execPath, "-e", "0"]).pid;
 }
 
 function entry(pid: number, root: string | null, profileDir = `/profiles/${pid}`) {

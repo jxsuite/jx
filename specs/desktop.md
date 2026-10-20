@@ -17,9 +17,9 @@
 4. [Project Loading](#4-project-loading)
 5. [Backend API Contract](#5-backend-api-contract)
 6. [Component Scoping](#6-component-scoping)
-7. [ElectroBun Integration](#7-electrobun-integration)
+7. [Desktop Application](#7-desktop-application)
 8. [Chrome Development Mode](#8-chrome-development-mode)
-9. [NixOS Chromium App-Mode](#9-nixos-chromium-app-mode)
+9. [Launchers: Chromium App-Mode and the Electron Application](#9-launchers-chromium-app-mode-and-the-electron-application)
 10. [SaaS / Cloud Mode](#10-saas--cloud-mode)
 11. [Implementation Roadmap](#11-implementation-roadmap)
 12. [Standards Alignment](#12-standards-alignment)
@@ -30,23 +30,22 @@
 
 Jx Studio is designed for three deployment targets that share a single core codebase:
 
-| Target            | Runtime                           | Backend                       | Storage                   | Status                            |
-| ----------------- | --------------------------------- | ----------------------------- | ------------------------- | --------------------------------- |
-| **Desktop app**   | ElectroBun (Bun + native webview) | Bun process (local)           | Filesystem                | All platforms except NixOS        |
-| **NixOS desktop** | Chromium `--app` + Bun            | `@jxsuite/server` (localhost) | Filesystem via dev server | NixOS only (via `nix build`)      |
-| **Snap**          | Chromium `--app` + Bun            | `@jxsuite/server` (localhost) | Filesystem via dev server | Ubuntu, via the Snap Store (§9.6) |
-| **Dev mode**      | Chrome                            | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (Studio development)       |
-| **SaaS/PaaS**     | Browser                           | Session gateway over git      | Git repository            | Shipped (see §10)                 |
+| Target          | Runtime                       | Backend                       | Storage                   | Status                            |
+| --------------- | ----------------------------- | ----------------------------- | ------------------------- | --------------------------------- |
+| **Desktop app** | Electron + Bun backend (§9.7) | Bun process (local)           | Filesystem                | macOS, Windows, Linux, NixOS      |
+| **Snap**        | Electron + Bun backend (§9.6) | Bun process (local)           | Filesystem                | Ubuntu, via the Snap Store (§9.6) |
+| **Dev mode**    | Chrome                        | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (Studio development)       |
+| **SaaS/PaaS**   | Browser                       | Session gateway over git      | Git repository            | Shipped (see §10)                 |
 
 ### 1.1a Platform Strategy
 
 The desktop runtime is chosen at **build time**, not runtime:
 
-- **NixOS** → Chromium app-mode exclusively. ElectroBun cannot be built in a Nix sandbox, and Chromium provides superior Wayland support.
-- **Snap Store (Ubuntu)** → the same Chromium app-mode launcher and Nix-built app tree, run by Canonical's Chromium build in a strict snap (§9.6), because the ElectroBun CEF build cannot run as a native Wayland client.
-- **All other platforms** (macOS, Windows, non-NixOS Linux) → ElectroBun exclusively. Provides native CEF webview with embedded Bun process.
+- **macOS, Windows, Linux (x64 and arm64)** → the Electron application of §9.7, packaged by electron-builder (§7): Electron is the root process and a Bun backend is its child, carried inside the application.
+- **NixOS** → the same application, built by Nix (§9.3), with nixpkgs Chromium kept as the site import's headless browser.
+- **Snap Store (Ubuntu)** → the same Electron application, unpacked from electron-builder and confined in a strict snap (§9.6), with Canonical's Chromium copied in only as the site import's browser.
 
-The studio package (`@jxsuite/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxsuite/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
+The studio package (`@jxsuite/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxsuite/server`) is one such implementation; the Electron application's Bun backend is another; a cloud API server is a third.
 
 ### 1.1 Relationship to Other Specs
 
@@ -68,7 +67,7 @@ The studio package is the heart of every deployment. It imports no platform-spec
 
 ### 2.3 Flexibility
 
-Studio must run in Chrome during its own development (the current workflow). It must also run inside ElectroBun's native webview. And eventually inside a plain browser against a cloud API. No deployment target may require capabilities that break the others — platform-specific features (native dialogs, filesystem access) are accessed exclusively through the PAL.
+Studio must run in Chrome during its own development (the current workflow). It must also run inside the desktop application's Electron window. And eventually inside a plain browser against a cloud API. No deployment target may require capabilities that break the others — platform-specific features (native dialogs, filesystem access) are accessed exclusively through the PAL.
 
 ---
 
@@ -101,7 +100,7 @@ The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — r
 
 **`readFile` decodes; `readFileBytes` does not, and the difference is not a convenience.** `readFile` answers a `string`, which means UTF-8, which means every byte sequence that is not valid UTF-8 is replaced with U+FFFD on the way through. That is invisible and irreversible: a JPEG read this way is not a damaged JPEG, it is a run of replacement characters no decoder will turn back into an image. So a caller that must DECODE a project file reads `readFileBytes` instead, and gets an `ArrayBuffer`.
 
-**The `<img>` route is not an alternative on the desktop, which is the platform that needs it most.** A preview `src` resolves to the per-window loopback origin while the shell document sits on `views://`, so an image drawn from it TAINTS a canvas and `toBlob()` throws; and `server.md` §4.2 bans CORS outright, because the whole loopback containment rests on the browser refusing cross-origin reads. Bytes that arrive through the PAL become a same-origin `Blob`, so tainting stops being a hazard to work around and becomes one that cannot arise. The RPC launchers carry them base64-encoded, for the same reason `uploadFile` accepts base64: their params and results are JSON, and a JPEG is not a string.
+**The `<img>` route is not an alternative wherever the shell and the project's files are different origins.** A preview `src` that resolves to another origin than the shell document TAINTS a canvas and `toBlob()` throws; and `server.md` §4.2 bans CORS outright, because the whole loopback containment rests on the browser refusing cross-origin reads. Bytes that arrive through the PAL become a same-origin `Blob`, so tainting stops being a hazard to work around and becomes one that cannot arise. The desktop application serves its shell and the project's files from one per-window loopback origin, so it does not meet the hazard itself, but a platform whose shell sits on a custom scheme or a shared editor origin does, and the RPC adapters carry the bytes base64-encoded for the same reason `uploadFile` accepts base64: their params and results are JSON, and a JPEG is not a string.
 
 **User settings are written as PATCHES, never as the whole map.** `patchSettings({ set, remove })` must leave a key named by neither exactly as it found it, and answers with the store as it then stands. A whole-map write cannot express "change this one thing", so every writer implicitly claims the whole store: on the chromium launcher, where each window is its own process with its own browser profile and therefore its own `localStorage`, a welcome window holding no settings overwrote the credentials another window had just stored — and a `settings.json` was left holding one key of the three its owner had configured. The rule also preserves keys the writing build does not know: one written by a newer version, or by hand. A backend applies the patch under a lock that spans the read and the write, so two concurrent patches compose rather than one overwriting the other.
 
@@ -115,7 +114,7 @@ The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — r
 
 **The converse holds too: an optional route need not be an interface member.** A route can exist purely so an adapter can serve the members it already has more cheaply, with nothing for Studio to feature-detect and no caller that knows it is there. `filesRead` (`POST /__studio/files/read`) is the first: the PAL keeps `readFile(path)` as the only text read, and an adapter whose backend is a network hop away coalesces the reads issued in one tick into one batch request itself (§10.1). Such a route's `degradation` is always the per-member route it stands in for (here, one `fileRead` per path), so a backend that omits it costs latency and nothing else, and an adapter that cannot reach it falls back without any caller noticing. Adding a member for it would have been the wrong trade: every caller that reads many files would have had to learn a second read API and its partial-answer rules, and every backend would have had to implement it to stay conformant, for a saving only remote backends need.
 
-**Launcher-only extras are not interface members.** A platform may carry capabilities that only one shell can have — the desktop's `updater` and `windowControls` are the two today. These deliberately stay **out** of `StudioPlatform`: Studio reaches them by feature-detecting `globalThis.__jxPlatform` against its own local shape (see `resize-edges.ts`, `panels/toolbar.ts`), which is what lets the same shell code run unchanged where they do not exist. The consequence for adapter authors is that a factory annotated `(): StudioPlatform` **erases its own extras** — every caller, including its tests, then sees an object without them. Let the return type be inferred and assert conformance instead (`return platform satisfies StudioPlatform`), which also keeps the optional members the launcher does implement from reading as possibly-absent at the call site.
+**Launcher-only extras are not interface members.** A platform may carry capabilities that only one shell can have — the desktop's `windowControls` is the one today: present when the Electron shell drew the window frameless, so the command bar draws the buttons and the drag region (§9.5). It deliberately stays **out** of `StudioPlatform`: Studio reaches it by feature-detecting `globalThis.__jxPlatform` against its own local shape (see `resize-edges.ts`, `surfaces/commandbar.ts`), which is what lets the same shell code run unchanged where it does not exist. The updater is not one of them at all: it lives in the Electron main process (§7.5) and reaches the page only as a line on the About screen. The consequence for adapter authors is that a factory annotated `(): StudioPlatform` **erases its own extras** — every caller, including its tests, then sees an object without them. Let the return type be inferred and assert conformance instead (`return platform satisfies StudioPlatform`), which also keeps the optional members the launcher does implement from reading as possibly-absent at the call site.
 
 ### 3.2 Types
 
@@ -123,7 +122,7 @@ The wire shapes the interface exchanges (`DirEntry`, `ComponentMeta`, `GitStatus
 
 ### 3.3 Registration
 
-> **Status: Partial.** Registration and all three rules below ship: `registerPlatform` in `packages/studio/src/platform.ts`, the launcher signal in `packages/desktop/src/boot.ts`, the build's refusal in `packages/desktop/scripts/init-bundle.ts` and `verify-bundle.ts`, and `resolveDefaultPlatform` with `PlatformUnavailableError` in `packages/studio/src/platforms/default-platform.ts`. Nothing boots a packaged window in CI on any OS to observe the desktop adapter register: the `bundle-desktop-*.yml` lanes are release-only and stop at a static check of the bundle's content.
+> **Status: Partial.** Registration and all three rules below ship: `registerPlatform` in `packages/studio/src/platform.ts`, the launcher signal in `packages/desktop/src/boot.ts`, the build's refusal in `packages/desktop/scripts/pre-build-rpc.ts`, and `resolveDefaultPlatform` with `PlatformUnavailableError` in `packages/studio/src/platforms/default-platform.ts`. The packaged BACKEND is started and exercised in CI (`bun run smoke`, §7.2), but nothing boots a packaged WINDOW on any OS to observe the desktop adapter register.
 
 Registration lives in `packages/studio/src/platform.ts` and stores the adapter on `globalThis.__jxPlatform` — a global rather than a module-level variable, so a separate init bundle (e.g. the desktop `init.js`) can register the platform **before** the studio bundle loads, without needing to share module instances with it:
 
@@ -149,13 +148,13 @@ export function hasPlatform() {
 
 Each deployment target either pre-registers its adapter before Studio initializes, or hands Studio a signal to build one itself. The desktop init bundle pre-registers the RPC-backed adapter on `__jxPlatform`.
 
-**Where the init bundle is loaded from is a declared slot, not a string replace.** `studioShellHtml({ boot })` (studio.md §11.2) emits the module tags ahead of the studio entry. Both hosts used to obtain this by an exact-string `replace()` on the shipped `index.html`'s script tag; only the cloud's checked that the replace had matched, so a whitespace change upstream would have produced a packaged desktop app with no platform registered at all — which then self-registers the dev-server adapter and fetches `/__studio/*` against a `views://` origin. The ordering constraint below is unchanged and is why `boot` is a list rather than a single hook. The cloud shell (the platform repo's `edit-init`) instead publishes a `window.__jxCloud` signal — the bound project, or `null` for the project-less hub — and lets the studio entry construct the adapter, so the cloud adapter (and the collab WebSocket client's `yjs` instance) lives **inside** the studio bundle rather than the shell; a second bundled `yjs` in the shell would break collab's cross-module `instanceof` checks. When nothing pre-registered, the studio entry resolves the default adapter: cloud when `__jxCloud` was signalled, the dev server only when the document declared **no** boot module and no launcher announced itself, and otherwise **none** (below):
+**Where the init bundle is loaded from is a declared slot, not a string replace.** `studioShellHtml({ boot })` (studio.md §11.2) emits the module tags ahead of the studio entry. Both hosts used to obtain this by an exact-string `replace()` on the shipped `index.html`'s script tag; only the cloud's checked that the replace had matched, so a whitespace change upstream would have produced a packaged desktop app with no platform registered at all — which then self-registers the dev-server adapter and fetches `/__studio/*` against an origin no dev server is behind. The ordering constraint below is unchanged and is why `boot` is a list rather than a single hook. The cloud shell (the platform repo's `edit-init`) instead publishes a `window.__jxCloud` signal — the bound project, or `null` for the project-less hub — and lets the studio entry construct the adapter, so the cloud adapter (and the collab WebSocket client's `yjs` instance) lives **inside** the studio bundle rather than the shell; a second bundled `yjs` in the shell would break collab's cross-module `instanceof` checks. When nothing pre-registered, the studio entry resolves the default adapter: cloud when `__jxCloud` was signalled, the dev server only when the document declared **no** boot module and no launcher announced itself, and otherwise **none** (below):
 
 ```javascript
 // Desktop (init bundle, loaded before studio.js) — announces itself FIRST, then pre-registers
 import { bootLauncher } from "./boot"; // first import: publishes globalThis.__jxLauncher
 import { createDesktopPlatform } from "./platform";
-await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "electrobun" });
+await bootLauncher({ create: createDesktopPlatform, hydrateGithubToken, launcher: "chromium" });
 
 // Cloud shell (edit-init, loaded before studio.js) — publishes a signal, not an adapter
 globalThis.__jxCloud = { project }; // project: CloudProject | null
@@ -171,13 +170,13 @@ if (!hasPlatform()) {
 }
 ```
 
-**A launcher that declared itself never falls back to the dev server.** The boot slot closed one way to reach the dev-server adapter inside a launcher; a boot module that throws is the other, and it shipped. Desktop 5.0.0 through 5.1.3 built `init.js` with `bun build` through `packages/desktop/tsconfig.json`, whose `paths` send `electrobun/view` into the `vendor/electrobun` submodule, and no release lane checked that submodule out. Bun resolved `node_modules/electrobun` instead, whose every export is a module that throws on import, so `init.js` threw before its body ran, and `studio.js` (a separate module script) found nothing registered and built the dev-server adapter against `views://`. Every window was an editor whose backend calls all failed: the New Project gallery offered only Start from scratch (the starters fetch is non-fatal), **Create Project** reported "Failed to fetch" verbatim, and **Browse…** opened Chromium's picker (its button says "Select"; the native dialog says "Open") and swallowed the failed lookup, so the Location never changed. Three rules now hold:
+**A launcher that declared itself never falls back to the dev server.** The boot slot closed one way to reach the dev-server adapter inside a launcher; a boot module that throws is the other, and it shipped. Desktop 5.0.0 through 5.1.3 built an `init.js` that threw on import, because a module the bundler had inlined threw while it evaluated, so the shim's own body never ran, and `studio.js` (a separate module script) found nothing registered and built the dev-server adapter against an origin with no dev server behind it. Every window was an editor whose backend calls all failed: the New Project gallery offered only Start from scratch (the starters fetch is non-fatal), **Create Project** reported "Failed to fetch" verbatim, and **Browse…** opened Chromium's picker (its button says "Select"; the native dialog says "Open") and swallowed the failed lookup, so the Location never changed. Three rules now hold:
 
-- **The build refuses the bundle.** `packages/desktop/scripts/pre-build.ts` runs `check-electrobun-vendor.ts --init` before it bundles, and it and `verify-bundle.ts` reject an `init.js` that resolved `node_modules/electrobun`, lacks the inlined `Electroview`, or lacks the launcher signal. Every bundle lane also runs `--init` explicitly.
+- **The build refuses the bundle.** `packages/desktop/scripts/pre-build-rpc.ts` rejects an `init.js` that lacks the launcher signal, and every build starts there: the Nix derivation, the checkout runners and `stage-app.ts` all run it.
 - **A launcher announces itself before anything can throw.** `packages/desktop/src/boot.ts` is the FIRST import of both launcher shims, and its only runtime dependency is `@jxsuite/studio/platform`, so its body evaluates ahead of every other module the bundler inlines. It publishes `globalThis.__jxLauncher` (a `LauncherSignal`), records the first page `error` event on it (an import-time throw raises one), and `bootLauncher()` records the adapter factory's own throw.
 - **The entry refuses rather than guesses.** `resolveDefaultPlatform()` throws `PlatformUnavailableError` when a launcher announced itself (this beats `__jxCloud`), when the document carries the `<meta name="jx-boot" content="launcher">` marker that `studioShellHtml` writes for a non-empty `boot` and no cloud signal arrived, or when the origin is `views:` or `file:`, which no dev server can serve. Studio then renders the §3.4 boot-failure state. A document with no boot module (the dev-server session, an embedder serving the HTTP protocol) keeps the fallback.
 
-Nothing yet boots a packaged window in CI (the `bundle-desktop-*.yml` lanes are release-only), so these rules are held by the build refusal, the resolver's unit tests, each shim's tests, and an end-to-end test that boots the studio entry under an announced launcher and asserts the failure state, no registered adapter, and no backend call.
+Nothing yet boots a packaged window in CI, so these rules are held by the build refusal, the resolver's unit tests, each shim's tests, and an end-to-end test that boots the studio entry under an announced launcher and asserts the failure state, no registered adapter, and no backend call.
 
 ### 3.4 Studio Startup Sequence
 
@@ -197,9 +196,9 @@ Nothing yet boots a packaged window in CI (the `bundle-desktop-*.yml` lanes are 
 
 **Leaving the webview is one-way.** Nothing on this side can bring a browser tab back: no page can raise a background tab, and handing the OS opener a URL it already has open opens a DUPLICATE rather than switching to the existing one. That is why a live preview retargets its own tab over its reload channel (specs/studio.md §10.1) instead of asking the opener a second time, and why doing so reports where to look rather than pretending to raise anything.
 
-The Bun side hands the URL over in two steps, and the second is not redundancy. ElectroBun's `Utils.openExternal` comes from `electrobun/bun` — the module the chromium launcher is defined by never loading — so when that is the only path, **every** URL on that build is silently dropped: a preview click did nothing at all and sign-in reported "Could not open a browser". The fallback hands the URL to the desktop's own opener (`xdg-open`, `open`, `rundll32 url.dll,FileProtocolHandler`) as a single argument with no shell, and only for `http`, `https` and `mailto`. The scheme restriction is the point of having a list at all: an opener resolves a scheme to whatever handler the desktop registered for it, and the pages whose links arrive here are a project's own content.
+The Bun side hands the URL to the desktop's own opener (`xdg-open`, `open`, `rundll32 url.dll,FileProtocolHandler`) as a single argument with no shell, and only for `http`, `https` and `mailto`. The scheme restriction is the point of having a list at all: an opener resolves a scheme to whatever handler the desktop registered for it, and the pages whose links arrive here are a project's own content. The backend is a Bun process, so it does this itself rather than asking Electron (`packages/desktop/src/open-external.ts`).
 
-Refusal is a **return value**, not an exception — `{ ok: false }` — because both steps can decline without anything going wrong. A caller that branches only on a rejection loses the click, which is what both platform adapters did before. On a genuine refusal Studio's own `window.open` default applies.
+Refusal is a **return value**, not an exception — `{ ok: false }` — because the opener can decline without anything going wrong. A caller that branches only on a rejection loses the click, which is what both platform adapters did before. On a genuine refusal Studio's own `window.open` default applies.
 
 ### 3.6 Signing In
 
@@ -276,7 +275,7 @@ User clicks "Open Project"
         ▼
 platform.openProject()
         │
-        ├─── Desktop: Utils.openFileDialog({ allowedFileTypes: "json", canChooseFiles: true })
+        ├─── Desktop: the shell's native open dialog (dialog.showOpenDialog), filtered to JSON
         │    → user picks project.json → read + parse → derive project root from parent dir
         │
         └─── Dev server: showDirectoryPicker()
@@ -335,7 +334,7 @@ on every branch above.
 
 **The outcome is reported, never the intent.** The three results — opened here, opened in a new window, raised an existing window — are distinguishable, and a cancelled picker is silent. Announcing the chosen target instead produces reports of things that did not happen: "Opening the project in a new window…" over a dismissed file dialog, or over a window that merely came to the front.
 
-**An empty window is its own verb.** `newWindow` opens a welcome window with no project, and it is the `view.newWindow` command (`Cmd/Ctrl+Shift+N`, gated on the same multi-window capability every member above is) — not a menu item. It was a menu item, and only ElectroBun's native application menu had it, so on a launcher whose window has no menu bar the member existed on the platform and could not be run. The native menu keeps the item and **claims no accelerator**: a chord with two owners fires twice, which is two welcome windows from one press.
+**An empty window is its own verb.** `newWindow` opens a welcome window with no project, and it is the `view.newWindow` command (`Cmd/Ctrl+Shift+N`, gated on the same multi-window capability every member above is) — not a menu item. It was a menu item, and only a native application menu had it, so on a launcher whose window has no menu bar the member existed on the platform and could not be run. The macOS menu keeps the item and **claims no accelerator**: a chord with two owners fires twice, which is two welcome windows from one press.
 
 ### 4.3 Single File Mode
 
@@ -388,8 +387,8 @@ User fills the Parameters step (name, destination, slug)
         ├─── createDestination: "path"
         │    Location field, prefilled by nothing — required.
         │    Browse… renders only when the platform implements pickDirectory()
-        │      ├── Electrobun desktop: native Utils.openFileDialog
-        │      ├── NixOS chromium desktop: native XDG desktop portal
+        │      ├── Electron desktop: native dialog.showOpenDialog (the XDG desktop portal on Linux)
+        │      ├── Development launcher: native XDG desktop portal
         │      ├── Dev server: showDirectoryPicker(), path recovered via a marker file (§8.2.1)
         │      └── A browser without the File System Access API: omitted — the path is typed
         │    null = the user cancelled → Location unchanged; a rejection → its message under Location
@@ -469,7 +468,7 @@ A live preview under the fields shows the resolved destination (`/home/you/Sites
 
 > **Status: Implemented.** Both halves are specified. The route table is canonical and complete, and the failure shape is RFC 9457 `application/problem+json` from the `PROBLEM_TYPES` registry in `@jxsuite/protocol` — one table, generated into the docs beside the routes, so a backend implementer reads the failure vocabulary in the same breath as the success one. `server.md` §4.3 holds the reasoning, including the three surfaces that deliberately stay 200.
 
-The Backend API Contract defines the operations that any Studio backend must support. The current `@jxsuite/server` endpoints map directly to these operations. Other backends (ElectroBun Bun process, cloud API) implement the same operations through their own transport.
+The Backend API Contract defines the operations that any Studio backend must support. The current `@jxsuite/server` endpoints map directly to these operations. Other backends (the Electron application's Bun backend, cloud API) implement the same operations through their own transport.
 
 ### 5.1 Canonical Route Table
 
@@ -523,7 +522,7 @@ A few illustrative rows (see the table for the rest):
 | Resolve $prototype/$src | `POST /__jx_resolve__`     | The runtime (direct POST) |
 | Execute server function | `POST /__jx_server__`      | The runtime (direct POST) |
 
-These are **not** PAL methods — the runtime POSTs to `/__jx_resolve__` and `/__jx_server__` directly, on every platform. The dev server and the loopback project server (which token-gates them) serve the routes as plain HTTP. In the ElectroBun shell there is no HTTP backend for the webview, so the desktop adapter bridges them by patching `window.fetch` (`packages/desktop/src/platform.ts`): POSTs to those two paths are intercepted and forwarded over RPC to the Bun process (`jxResolve` / `jxServerFunction` handlers), and every other request falls through to the original fetch. The only PAL member in this area is the optional `resolveClass?`, which **Studio itself** (not the runtime) uses to resolve class-prototype configs through the same `/__jx_resolve__` pipeline (e.g. the pane context bar's route-param picker, in its "resolving with" popover).
+These are **not** PAL methods — the runtime POSTs to `/__jx_resolve__` and `/__jx_server__` directly, on every platform. The dev server and the loopback project server (which token-gates them) serve the routes as plain HTTP. The desktop shell's page is served by its window's own loopback project server, so those POSTs reach `/__jx_resolve__` and `/__jx_server__` as plain HTTP there too, token-gated, and no adapter has to bridge them; the `jxResolve` / `jxServerFunction` RPC handlers remain for callers that reach the session without a page. The only PAL member in this area is the optional `resolveClass?`, which **Studio itself** (not the runtime) uses to resolve class-prototype configs through the same `/__jx_resolve__` pipeline (e.g. the pane context bar's route-param picker, in its "resolving with" popover).
 
 Optional PAL members may not exist on all platforms. Studio feature-detects them by presence before calling:
 
@@ -606,174 +605,152 @@ When the user navigates into a sub-component (via `pushDocument()` in the state 
 
 ---
 
-## 7. ElectroBun Integration
+## 7. Desktop Application
+
+The packaged application is the Electron application of §9.7: Electron is the root process and a Bun backend is its child. This section is how it is built, what a packaged one is made of, and how it reaches users; §9.7 is how it runs.
 
 ### 7.1 Architecture
 
+> **Status: Implemented.** `packages/desktop/src/electron-shell/`, `packages/desktop/src/hub/`.
+
 ```
-┌─────────────────────────────────────────────────────┐
-│                   ElectroBun App                     │
-│                                                      │
-│  ┌─────────────────┐    RPC    ┌──────────────────┐ │
-│  │   Bun Process    │◄────────►│  Native Webview   │ │
-│  │                  │          │                    │ │
-│  │  - File I/O      │          │  - @jxsuite/studio  │ │
-│  │  - Utils.*       │          │  - @jxsuite/runtime │ │
-│  │  - Code services │          │  - @jxsuite/ui     │ │
-│  │  - Build / SSG   │          │  - Monaco          │ │
-│  └─────────────────┘          └──────────────────┘ │
-│                                                      │
-└─────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│  Electron main process            Bun backend (resources/bun)  │
+│  · windows, menu, dialogs   IPC   · one hub, N windows         │
+│  · single-instance lock    ◄────► · ProjectSession + server    │
+│  · updater                        · git, packages, compiler    │
+└───────┬───────────────────────────────────────┬───────────────┘
+        │ one BrowserWindow per window           │ http + ws, loopback, token
+        ▼                                        ▼
+   Studio page  ◄──────── RPC (a window's own server) ──────────┘
+   @jxsuite/studio · @jxsuite/runtime · @jxsuite/ui · Monaco
 ```
 
-The Bun process owns all filesystem and OS operations. The webview contains Studio's UI. Communication happens via ElectroBun's RPC bridge.
+The Bun backend owns every project and all filesystem and OS-adjacent work: file I/O, Git, package management, the compiler. The Electron main process owns everything only an application can: windows, the menu bar, native dialogs, the single-instance lock, file associations and the updater. The two speak the protocol of §9.7 over the IPC channel Electron opens when it spawns the backend, and project I/O never crosses it.
 
-**Toolchain boundary (ElectroBun 2).** Build orchestration belongs to **Hutch**, ElectroBun's build CLI, but nothing installs it by hand: the `electrobun` devDependency is a dependency-free bootstrap whose version selects the whole toolchain — it downloads the paired Hutch, verifies it against the release's published digest, and caches it. Hutch, Cottontail and ElectroBun therefore all ride the workspace lockfile, and a machine-wide Hutch is only a fallback. `electrobun.config.ts` describes the application and the build Hutch produces; `hutch.config.ts` only names tasks. ElectroBun 2 publishes no SDK to npm — `electrobun prepare` copies the release's SDK out of its platform core archive into a generated, gitignored `.hutch/devkit` sysroot, and that is what a BUILD resolves `electrobun/*` from. `electrobun/main` is the runtime-neutral main-process namespace (`electrobun/bun` remains a deprecated alias); `electrobun/view` is unchanged.
+**Why the backend is still Bun, and why Bun ships inside the application.** The backend's module graph is Bun-native throughout: `Bun.serve`, `Bun.$`, `Bun.spawn`, `Bun.Glob`. Electron brings Node, not Bun, so the application carries the official Bun binary in `resources/bun`, pinned by version and SHA-256 per platform (`packages/desktop/bun-runtime.json`) and verified when it is downloaded. The backend uses `process.execPath` for every child Bun it starts (a dependency install, for one), which inside the application is that same binary, so nothing depends on a Bun being on the user's `PATH`.
 
-**Typechecking resolves elsewhere, and must.** A projection is a network download, so nothing a clone, an editor or a CI job can do on its own produces one — and the npm package resolves every specifier, types included, to a module that throws. Typechecking therefore reads the SDK's TypeScript sources out of `vendor/electrobun`, a git submodule pinned to the exact release the `electrobun` devDependency names, which `packages/desktop/tsconfig.json` maps `electrobun/*` into directly.
-
-The two sysroots are one release, not two sources of truth: the projected devkit is a verbatim copy of the same directories the submodule carries. `bun run electrobun:verify` asserts that the submodule and the version pin agree and fails when they do not, which is the check that keeps a dependency bump from moving one without the other. It compares versions rather than bytes deliberately — an upstream release artifact and its git tag may differ in ways that carry no type surface, and policing that is not this repository's job.
-
-ElectroBun 2 defaults its main process to Cottontail. Jx Studio selects `build.mainProcess: "bun"` explicitly, because the main-process module graph is Bun-native throughout — `Bun.serve`, `Bun.$`, `Bun.spawn`, `Bun.Glob`. Hutch itself runs project TypeScript with Cottontail regardless, so the `preBuild` and `postBuild` hook scripts stay on portable APIs rather than Bun's shell.
+**Toolchain boundary.** electron-builder packages the application from what `scripts/stage-app.ts` assembles (§7.4). Electron itself is pinned in `electron-builder.yml` and equals nixpkgs' `electron`, which the Nix package runs; the npm `electron` package is deliberately not a dependency, because its postinstall downloads a ~100 MB binary and electron-builder fetches the same release itself. electron-updater is bundled into the main process, so the asar carries no `node_modules`.
 
 ### 7.2 Desktop Platform Adapter
 
-The desktop platform adapter runs in the **webview** and translates PAL calls into RPC calls to the Bun process:
+> **Status: Implemented.** `packages/desktop/src/chromium/platform.ts`, `packages/desktop/src/chromium/init.ts`.
+
+The desktop platform adapter runs in the **webview** and translates PAL calls into requests to the backend over a WebSocket, the one transport every desktop shell uses:
 
 ```javascript
-// packages/studio-desktop/platform.js (runs in webview)
+// packages/desktop/src/chromium/platform.ts (runs in the page)
 export function createDesktopPlatform() {
+  // The window's own server hands its token to the shell URL; the socket and every privileged
+  // route are gated on it.
+  const token = new URLSearchParams(location.search).get("token");
+  const request = (method, params) =>
+    rpcOverSocket(`ws://${location.host}/?token=${token}`, method, params);
   return {
     id: "desktop",
-
-    async openProject() {
-      // RPC to Bun process → Utils.openFileDialog()
-      const result = await rpc.openProject();
-      if (!result) return null;
-      return { config: result.config, handle: result.handle };
-    },
-
-    async listDirectory(dir) {
-      return rpc.listDirectory(dir);
-    },
-
-    async readFile(path) {
-      return rpc.readFile(path);
-    },
-
-    async writeFile(path, content) {
-      return rpc.writeFile(path, content);
-    },
-
-    // ... etc
+    windowControls: globalThis.__jxShell?.windowControls, // present when Electron drew the window frameless
+    openProject: () => request("openProject"),
+    listDirectory: (dir) => request("listDirectory", { dir }),
+    readFile: (path) => request("readFile", { path }),
+    // ... one member per PAL operation
   };
 }
 ```
 
-**Construction needs the preload, and the SDK has to be in the bundle.** `createDesktopPlatform()` constructs `Electroview`, which writes its handlers onto `window.__electrobun`, the global the Electrobun preload defines (on macOS CEF the native layer splices that preload in after the literal `<head>` of the main-frame document, so `studioShellHtml` keeps one). The SDK itself is compiled into `init.js` from the vendored submodule, not from `node_modules` (§3.3). Either failure is recorded on the launcher signal and ends in the §3.4 boot-failure state rather than a window running the wrong adapter. `pickDirectory` unwraps the RPC's `{ path: string | null }`: `null` is a cancel, and a rejected request propagates to the modal (§4.5).
+**Construction needs no native bridge, and the init bundle is the only thing that must not throw.** The adapter is a plain WebSocket client, so it needs nothing the Electron preload provides except the optional `windowControls`. What must hold is §3.3's rule: the init bundle announces its launcher before anything can throw, records the failure when something does, and Studio draws the boot-failure state rather than falling back to a backend that is not there. `pickDirectory` unwraps the RPC's `{ path: string | null }`: `null` is a cancel, and a rejected request propagates to the modal (§4.5).
 
-### 7.3 Bun-Side Handlers
+### 7.3 Backend Handlers
+
+> **Status: Implemented.** `packages/desktop/src/hub/handlers.ts`, `packages/desktop/src/project-session.ts`.
 
 The Bun process implements the actual operations. Every file operation is contained in the project root (lexically and after resolving symlinks), with one widening the dev server shares: a declared collection whose `source` resolves outside the project (`sites/jxsuite.com`'s `content.docs.source: "../../docs"`) is reachable for listing, reading, writing, uploading, renaming and deleting, its paths reported relative to the project (`../../docs/start/intro.md`). The sources are read from `project.json` on each call, a `{locale}` source is reached from the directory above its first `{locale}` segment, and a single-file source is that file alone; nothing else beside the project is reachable.
 
-```javascript
-// src/bun/studio-handlers.js (runs in Bun process)
-import { Utils } from "electrobun/main";
-import { readdir, readFile, writeFile, unlink, rename, stat } from "fs/promises";
-import { resolve, relative, join, basename } from "path";
+The backend answers each window's requests from a handler map built over that window's own `ProjectSession`:
 
-let projectRoot = null;
-
-export async function handleOpenProject() {
-  const paths = await Utils.openFileDialog({
-    startingFolder: projectRoot || homedir(),
-    allowedFileTypes: "json",
-    canChooseFiles: true,
-    canChooseDirectory: false,
-    allowsMultipleSelection: false,
-  });
-
-  if (!paths || paths.length === 0) return null;
-
-  const filePath = paths[0];
-  if (basename(filePath) !== "project.json") return null;
-
-  const raw = await readFile(filePath, "utf8");
-  const config = JSON.parse(raw);
-  projectRoot = resolve(filePath, "..");
-
+```typescript
+// hub/handlers.ts — one map per window
+export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
+  const { session } = window;
   return {
-    config,
-    handle: {
-      root: projectRoot,
-      name: config.name || basename(projectRoot),
-      projectConfig: config,
+    readFile: wire(session.handleReadFile),
+    listDirectory: wire(session.listDirectory),
+    openProject: async () => {
+      const result = await session.openProject(); // asks the shell for a dialog (protocol.ts)
+      if (result) hub.retitle(window);
+      return result;
     },
-  };
+    // ... one entry per request in rpc-schema.ts
+  } satisfies Record<string, RpcHandler>;
 }
-
-export async function handleListDirectory(dir) {
-  const absDir = resolve(projectRoot, dir);
-  assertUnderRoot(absDir, projectRoot);
-  const entries = await readdir(absDir, { withFileTypes: true });
-  return entries.map((e) => ({
-    name: e.name,
-    path: relative(projectRoot, join(absDir, e.name)),
-    type: e.isDirectory() ? "directory" : "file",
-  }));
-}
-
-// ... readFile, writeFile, deleteFile, renameFile, discoverComponents
 ```
+
+A session resolves every path against its own project root and refuses one that escapes it. `tests/hub-handlers.test.ts` holds the map's names to `rpc-schema.ts`, so a request declared and never answered fails there rather than reaching Studio as a silent empty result.
 
 ### 7.3a Shared Services Server
 
-> **Status: Implemented.** `packages/desktop/src/index.ts`.
-
-The Electrobun launcher runs one process-wide loopback HTTP server beside the per-window project servers, for the two surfaces that stream: the AI proxy (`/__studio/ai/*`) and the site import (`/__studio/import-site`). Both are privileged. The import writes to the filesystem, and the AI proxy forwards to a provider on the user's own key, so an ungated one is an open relay for any process on the machine.
-
-- **One per-process random token gates every route**, compared in constant time, and the webview receives it inside the URL it is handed over RPC (`aiChatUrl`, `importSiteUrl`). The token rides in the query rather than `Authorization`, because the AI proxy already reads that header as the provider key.
-- **A non-loopback `Host` is refused before any route is consulted**, so a DNS-rebound page cannot reach a route by name.
-- **The advertised origin is the literal the server binds**, `http://127.0.0.1:<port>`. `localhost` is not equivalent: on a resolver that answers `::1` first it reaches nothing, because the bind is IPv4-only.
-
-The chromium launcher has no shared server. Its AI and import routes live on the project server under the same token as the rest of it (`server.md` §4.2).
+> **Status: Removed.** The ElectroBun launcher stood up one process-wide loopback server beside its per-window ones for the two surfaces that stream, the AI proxy (`/__studio/ai/*`) and the site import (`/__studio/import-site`). Each window's own project server now serves both, behind the same per-process token as everything else on it (`server.md` §4.2), so there is no second server and no `aiChatUrl` / `importSiteUrl` request to hand a webview a URL for.
 
 ### 7.4 App Structure
 
-> **Status: Partial.** The prose below ships: distribution names in `packages/desktop/release-assets.json`, `build.copy` in `packages/desktop/electrobun.config.ts`, and the `postBuild` check in `packages/desktop/scripts/verify-bundle.ts`. The tree does not match the package: the entry is `packages/desktop/src/index.ts`, the PAL handlers are `project-session.ts` (re-exported by `handlers.ts`) beside `window-manager.ts`, the webview init is `src/init.ts` bundled by `scripts/pre-build.ts` and staged to `views/studio/dist/init.js`, and no code-services module exists (§5.3).
+> **Status: Implemented.** `packages/desktop/electron-builder.yml`, `packages/desktop/scripts/stage-app.ts`, `packages/desktop/scripts/package-app.ts`, `packages/desktop/release-assets.json`.
 
 ```
-jx-studio-app/
-├── hutch.config.ts              # Project task names only (the npm dep selects the toolchain)
-├── electrobun.config.ts         # App identity, main process, views, copy, signing, release
+packages/desktop/
+├── electron-builder.yml          # Installer ids and targets, signing, the update feed, the file association
+├── build-resources/              # Committed inputs: macOS entitlements, the Store's logos
+├── bun-runtime.json              # The pinned Bun carried in resources/bun
+├── scripts/
+│   ├── stage-app.ts              # Assembles build/ for electron-builder
+│   ├── package-app.ts            # Stage, then electron-builder
+│   └── smoke-backend.ts          # Starts the staged backend and exercises it
 ├── src/
-│   ├── bun/
-│   │   ├── main.js              # App entry: create window, register RPC handlers
-│   │   ├── studio-handlers.js   # PAL implementation (filesystem, dialogs)
-│   │   └── code-services.js     # oxfmt, oxlint, Bun.Transpiler
-│   └── views/
-│       └── studio/
-│           ├── index.html        # Studio HTML shell
-│           └── init.js           # bootLauncher(): announce, then registerPlatform(createDesktopPlatform()) or record why not (§3.3)
-├── package.json
-├── .hutch/devkit/               # Generated: the pinned release's SDK, where a BUILD resolves electrobun/*
-└── node_modules/
-    ├── @jxsuite/studio/           # UI package (the studio itself)
-    └── @jxsuite/runtime/          # Canvas rendering
+│   ├── electron-shell/           # Main process: app.ts, shell.ts, updater.ts, layout.ts, preload.ts
+│   ├── hub/                      # Backend: window hub, per-window handlers, the IPC protocol
+│   └── chromium/                 # The webview adapter and the development launcher
+└── build/, artifacts/            # Generated, gitignored: the staged tree, and what electron-builder writes
 ```
 
-`.hutch/devkit` is written by Hutch and gitignored — never edited or committed. The `electrobun` package under `node_modules` carries neither runtime nor SDK: it is the bootstrap that resolves and invokes the paired Hutch, which is why it belongs in `devDependencies` rather than `dependencies`.
-
-Typechecking resolves from the repository root instead, out of a sibling of this package:
+A packaged application is laid out as `app.asar` (what Electron itself loads) beside a `resources` directory of files that must stay real files, because a child process cannot be started from inside an archive. `src/electron-shell/layout.ts` is the one place the application learns where each is:
 
 ```
-vendor/electrobun/            # Submodule, pinned to the release the electrobun pin names
-└── package/src/              # The SDK's TypeScript sources, where TYPECHECKING resolves electrobun/*
+Resources/
+├── app.asar                 # app-main.js (with electron-updater inlined), preload.js, package.json
+├── backend/
+│   ├── index.js             # The backend, one Bun bundle
+│   ├── template/ templates/ registry.json sites/ catalog.json   # Data the inlined modules read
+│   └── node_modules/        # lit-html, @vue/reactivity, @vue/shared: resolved by name at run time
+├── studio/                  # The studio assets each window's server serves
+├── bun/bun                  # The pinned Bun (bun.exe on Windows)
+└── icon.png                 # The window icon, off macOS (the bundle's own icon is macOS's)
 ```
 
-**Distribution names.** A stable build's INSTALLER carries no channel prefix (`macos-arm64-JxStudio.dmg`), while its updater metadata and update archive keep one (`stable-macos-arm64-update.json`) — the same feed name ElectroBun 1.x used, so an installed 1.x app still finds its updates. ElectroBun 2 publishes no macOS x64 core archive, so that target is not built.
+**Distribution names.** The installers carry the names `electron-builder.yml`'s `artifactName` patterns give them, and `packages/desktop/release-assets.json` is the single list of which are downloads and which are signed: `macos-arm64-JxStudio.dmg` (with the `.zip` electron-updater applies), `win-x64-JxStudio-Setup.exe`, `linux-x64-JxStudio.AppImage` and `linux-arm64-JxStudio.AppImage`, plus the Microsoft Store's `win-x64-JxStudio.appx`, which is submitted rather than downloaded. `scripts/desktop-build-lanes.test.ts` holds the two lists equal. There is no macOS x64 build: no Intel Mac has had one since the 1.18 toolchain. The Windows installer is NSIS rather than the WiX `.msi` the previous pipeline shipped, because NSIS is what electron-updater replaces in place.
 
-**Packaged static data.** In a packaged build, ElectroBun inlines the whole bun-side JS graph into `app/bun/index.js`, so `import.meta.dirname` in every inlined module resolves to `app/bun/` at runtime. Static data directories read relative to it — `@jxsuite/create`'s `template/` and `templates/`, and `@jxsuite/starters`' `registry.json` and `sites/` — must therefore be staged to those exact paths by `build.copy` in `electrobun.config.ts`. The `postBuild` hook verifies the staged bundle (including the studio view assets) and fails the build on any omission.
+**A bundle is a different program from its sources.** The backend is one Bun bundle, `resources/backend/index.js`, and inlined modules find their own data and their dependencies by path (`import.meta.dirname`, `createRequire`), none of which survives bundling by accident. Two kinds of thing are therefore staged beside the bundle, listed in `scripts/lib/backend-bundle.ts` and nowhere else: static data (`BACKEND_DATA`: `@jxsuite/create`'s `template` and `templates`, `@jxsuite/starters`' `registry.json` and `sites`, and `@jxsuite/catalog`'s `catalog.json`) and packages the compiler resolves BY NAME from the backend's own directory because what it finds is files to serve (`BACKEND_MODULES`: `lit-html`, `@vue/reactivity`, `@vue/shared`, which a built site's import map needs locally or falls back to a third-party CDN that a `default-src 'self'` policy blocks). That list was found by starting the result, not by reading code, and `bun run smoke` is what keeps it true: it starts the STAGED backend under the Bun that ships beside it, through the same IPC the Electron main process uses, and asks it to create a project, read the catalog, build a site, preview it and resolve the client runtime. It runs on every pull request that reaches the package and in every release lane.
+
+**Bun folds module-identity globals, so a bundle cannot ask for its own path.** `__filename`, `module.filename` and `import.meta.filename` become the SOURCE file's name at build time, `import.meta` is a syntax error in the CommonJS main-process bundle, and `require.main` is Electron's own internal module. The application finds its directory with `app.getAppPath()`, and `tests/electron-shell-bundle.test.ts` fails if the bundle relies on any of them or carries a source path at all.
+
+### 7.5 Self-Updates
+
+> **Status: Implemented.** `packages/desktop/src/electron-shell/updater.ts`, `packages/desktop/src/electron-shell/app.ts`.
+
+The updater is electron-updater, running in the Electron main process, which is the only process that can replace the application and restart it. Its feed is `publish.url` in `electron-builder.yml`: the `latest*.yml` files and installers of the latest GitHub release, which is why the desktop release is forced to be GitHub's "latest". It checks five seconds after start and every four hours, downloads what it finds, and asks once per version, with a native dialog, whether to restart now; choosing Later installs it the next time the application quits.
+
+It runs only where it can replace the running application: not in a checkout, not in a Microsoft Store install (the Store updates those), and on Linux only for the AppImage (a package manager updates anything else; the Nix package and the snap are unpackaged here and their own tools replace them). What it last found reaches Studio's About screen as one line: the shell tells the backend (`update-status`, §9.7), and `appInfo` returns it as `updateStatus`.
+
+Installed ElectroBun builds cannot update into this application: their updater applies archives of its own format. Those users reinstall once from the download page, and the About screen of the last ElectroBun release says nothing about it.
+
+### 7.6 Signing and Release
+
+> **Status: Partial.** The lanes are written, and what can run without a signing identity was run on macOS: the staged backend, the unpacked application, the DMG and update zip, and `latest-mac.yml`. Not yet run anywhere: macOS signing and notarization, the Windows lane (the NSIS installer, the appx, and its smoke test) and the Linux AppImages. The unpacked Linux arm64 application was also built and run on Ubuntu 24.04 under Xvfb, with its staged backend passing the smoke test.
+
+`bundle-desktop-macos.yml`, `bundle-desktop-windows.yml` and `bundle-desktop-linux.yml` each build natively for their platform with `bun run package --target <os> --arch <arch> -- --publish never`, smoke-test the packaged backend, upload the installers and their update metadata, and attach them to the desktop release. They run only from `release-please.yml` at a release tag, so nothing else exercises them before one.
+
+**macOS** is signed with the hardened runtime and notarized with an App Store Connect API key, from the secrets the previous lane used (`APPLE_CERTIFICATE_BASE64` and its password as `CSC_LINK` / `CSC_KEY_PASSWORD`; `APPLE_API_KEY_BASE64`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER_ID` for notarization). The same entitlements file is the application's and every nested executable's, because the Bun inside `resources` is signed with it too: hardened runtime forbids what a JavaScript engine does for a living, so it grants `allow-jit` and `allow-unsigned-executable-memory` (Electron's V8 and Bun's JavaScriptCore both JIT) and `disable-library-validation` (the backend loads native addons signed by their publishers, not by this identity). Without the certificate the build is unsigned, and without the API key it is not notarized; electron-builder says so and carries on.
+
+**Windows** builds the NSIS installer and the Store's appx in one run. Neither is signed in CI: the Store signs its package, and the installer is unsigned today (`release-assets.json` says so). The Store lane (`store-publish.yml`) downloads the appx from the release and waits for the Windows lane that builds it. The package's identity is the Partner Center publisher, written once in `scripts/msix-identity.ts` and held equal to `electron-builder.yml`'s `appx` block by a test.
+
+**Linux** ships an AppImage per architecture, the one Linux package electron-updater replaces in place. It needs FUSE 2, and on Ubuntu 24.04 and later the system restricts the sandbox Electron relies on for apps that are not installed from a package, so the snap is the recommended Ubuntu channel. There is no `.deb`: the snap and the Nix package already cover the package-manager channels, and the tool electron-builder needs for one does not ship for arm64.
 
 ---
 
@@ -871,7 +848,7 @@ For the **desktop app**, `Utils.openFileDialog` with `canChooseFiles: true` and 
 
 Choosing where a **new** project goes (§4.5) cannot use any of the three steps above: the folder is empty by definition, so there is no `project.json` to read and nothing for `/__studio/sites` to match. The handle still carries no path.
 
-**This applies only to the plain dev-server browser session.** Every packaged build already has a real native folder dialog that returns a filesystem path directly, and keeps it — electrobun uses `Utils.openFileDialog`, and the NixOS chromium build uses the XDG desktop portal. A browser page has no such option, so it gets the fallback below rather than no **Browse…** button at all. A launcher window whose own adapter failed no longer falls back to this path (§3.3); desktop 5.0.0 through 5.1.3 did, which is how a packaged macOS window showed Chromium's picker in place of its native dialog and then did nothing with the answer.
+**This applies only to the plain dev-server browser session.** Every packaged build already has a real native folder dialog that returns a filesystem path directly, and keeps it — the Electron application uses `dialog.showOpenDialog` (the XDG desktop portal on Linux), and the development launcher uses the portal directly. A browser page has no such option, so it gets the fallback below rather than no **Browse…** button at all. A launcher window whose own adapter failed no longer falls back to this path (§3.3); desktop 5.0.0 through 5.1.3 did, which is how a packaged macOS window showed Chromium's picker in place of its native dialog and then did nothing with the answer.
 
 There, the handle is made to identify itself. Using the `readwrite` grant the picker just issued, `pickDirectoryPath` (`@jxsuite/studio/directory-picker`) tags the folder with a hidden `LOCATION_ID_FILE` — `.jx-loc-id`, defined in `@jxsuite/protocol` because the writer and the reader must agree on it — whose **contents** are a freshly generated 128-bit id, and asks the backend which directory carries that id:
 
@@ -891,11 +868,11 @@ A cancel (`AbortError`) resolves `null`, and the modal leaves the Location field
 
 ---
 
-## 9. NixOS Chromium App-Mode
+## 9. Launchers: Chromium App-Mode and the Electron Application
 
 > **Status: Implemented.** Available via `nix build` and `bun run desktop:chromium`.
 
-On NixOS, ElectroBun cannot be built in a Nix sandbox, and system Chromium provides superior Wayland support. The desktop app therefore uses Chromium in `--app` mode, which provides a frameless, app-like window.
+Every packaged build, the Nix package and the Ubuntu snap included, runs the Electron application of §9.7. A development checkout (`bun run chromium`) runs a Bun launcher of its own (this section), and so does any machine with no Electron available, in one of two window shells: a frameless **Electron** window when `ELECTRON_BIN` names one, so Studio draws its own titlebar as it does everywhere, or Chromium in `--app` mode otherwise. §9.5 records why the browser alone cannot give this build Studio's titlebar.
 
 ### 9.1 Architecture
 
@@ -904,10 +881,10 @@ On NixOS, ElectroBun cannot be built in a Nix sandbox, and system Chromium provi
 │  One window = one launcher process                            │
 │                                                               │
 │  ┌────────────────────────┐  HTTP + WS  ┌───────────────────┐ │
-│  │  Bun launcher          │◄───────────►│  Chromium --app   │ │
-│  │  createProjectServer() │             │  @jxsuite/studio  │ │
-│  │  one ProjectSession    │             │  chromium/        │ │
-│  │  fs watcher            │             │   platform.ts     │ │
+│  │  Bun launcher          │◄───────────►│  Electron shell   │ │
+│  │  createProjectServer() │             │  or Chromium --app│ │
+│  │  one ProjectSession    │             │  @jxsuite/studio, │ │
+│  │  fs watcher            │             │  chromium/platform│ │
 │  └───────────┬────────────┘             └───────────────────┘ │
 └──────────────┼────────────────────────────────────────────────┘
                │  <data>/jx-studio/windows/<pid>.json
@@ -917,7 +894,7 @@ On NixOS, ElectroBun cannot be built in a Nix sandbox, and system Chromium provi
       └────────────────────┘
 ```
 
-The backend is `createProjectServer()` from `@jxsuite/server` — the same loopback-bound factory each ElectroBun window stands up (§7.1), with the same token gate, the same `/__studio__/` asset namespace and the same WS-RPC dispatch. It is **not** the dev server, and Studio does **not** register the dev-server adapter: `packages/desktop/src/chromium/platform.ts` is this launcher's own PAL implementation, translating each member into a WS request against `chromium/index.ts`'s handler map. `packages/desktop/tests/_rpc-parity.ts` reads the request names back out of `rpc-schema.ts` and fails when either launcher declares one it does not answer.
+The backend is `createProjectServer()` from `@jxsuite/server` — the same loopback-bound factory each window of the Electron application stands up (§9.7), with the same token gate, the same `/__studio__/` asset namespace and the same WS-RPC dispatch. It is **not** the dev server, and Studio does **not** register the dev-server adapter: `packages/desktop/src/chromium/platform.ts` is this launcher's own PAL implementation, translating each member into a WS request against `chromium/index.ts`'s handler map. `packages/desktop/tests/_rpc-parity.ts` reads the request names back out of `rpc-schema.ts` and fails when either launcher declares one it does not answer.
 
 The WS carries traffic in both directions. Frames with an `id` answer something the shell asked; frames with a `method` and **no** `id` are the launcher speaking first (`ProjectServerHandle.push`), which is how filesystem events reach the sidebar and how a focus request reaches a window.
 
@@ -927,41 +904,41 @@ The entry point performs, in order:
 
 1. Resolves the project root: the first positional argument, else `JSONSX_PROJECT_ROOT`, else the working directory **but only when it holds a `project.json`** — unless `JX_STUDIO_NO_PROJECT` marks it a welcome window (§9.4). A root that was named is taken at its word; the one nobody typed has to prove itself, because the launcher is also started from a desktop entry and from a shell sitting anywhere. Adopting a directory that is not a project bought nothing — the shell shows the welcome screen either way, since `probeRootProject` reads the same `project.json` — and cost a recursive filesystem watch of, in the reported case, the whole home directory (what such a watcher will and will not descend into is `server.md` §3.1)
 2. **Raises an existing window instead of opening a second one** for a project already open (§9.4)
-3. Locates a Chromium binary via `CHROMIUM_BIN` or PATH (`chromium`, `chromium-browser`, `google-chrome`, `google-chrome-stable`); this binary is also the import pipeline's browser
+3. Locates its binaries: Electron only through `ELECTRON_BIN` (never discovered on PATH, because the two shells look different and a developer who has `electron` installed should not find their window changed), and Chromium via `CHROMIUM_BIN` or PATH (`chromium`, `chromium-browser`, `google-chrome`, `google-chrome-stable`), then, on macOS only, the standard Google Chrome and Chromium app bundles under `/Applications`. Chromium is the import pipeline's browser whichever shell draws the window: puppeteer cannot open a page in Electron, which answers `Target.createTarget` with "Not supported" (measured on Electron 43). The launcher exits only when it found neither
 4. Starts `createProjectServer()` on an ephemeral loopback port, and hosts the sign-in redirect on it
 5. Points the session's filesystem-event sink at the server's push channel, so the sidebar is live. **Registering the sink is what starts the watcher, and the session watches a project or nothing at all:** with no `project.json` at the root it logs one line and declines, because that is the same root `probeRootProject` reports as "no project" — a recursive watch of it would be a scan of a user's directory tree on behalf of a project the window is not showing. Nothing is lost by waiting, since every way a project can arrive (`openProject`, `createProject`, `setWindowProject`) re-roots the session and arms the watcher then
 6. Publishes itself in the window registry and starts watching for focus requests
-7. Launches Chromium with app-mode flags:
-   - `--app=<serverUrl>/__studio__/index.html?token=<rpcToken>` — frameless window, gated surface
+7. Launches the window's shell (`chromium/shell-command.ts`). With Electron, it first bundles `electron-shell/main.ts` and `preload.ts` to CommonJS (`electron/` left external) into a directory of its own that is removed at exit, then runs `electron [platform flags] [--class=jx-studio] <main.js> --jx-url=<shell URL> --jx-preload=<preload.js> --jx-user-data-dir=<profile> [--jx-icon=<icon.png>]`. `--class` is passed on Linux only: it is X11's `WM_CLASS`, and macOS's Electron hands an unknown leading switch to Node, which exits on "bad option". The shell is started without `ELECTRON_RUN_AS_NODE`, which any Electron host that spawns the launcher (VS Code's extension host sets it for every process) would otherwise pass on, making Electron run `main.js` as plain Node with no window. Without it, Chromium with app-mode flags:
+   - `--app=<serverUrl>/__studio__/index.html?token=<rpcToken>` — gated surface
    - `--no-first-run --no-default-browser-check` — suppress first-run prompts
    - `--window-size=1400,900`
    - `--user-data-dir=<profile>` — this window's profile (§9.4)
-   - `--ozone-platform=wayland --enable-features=UseOzonePlatform` — when `WAYLAND_DISPLAY` is set
-8. Leaves the registry and exits when the browser window closes
+   - `--ozone-platform=wayland --enable-features=UseOzonePlatform` — when `WAYLAND_DISPLAY` is set (both shells take these)
+8. Leaves the registry and exits when the shell's window closes
 
 ### 9.3 Nix Package
 
-> **Status: Partial.** The package, its desktop entry, the cache and the release gate ship (`packages/desktop/package.nix`, `packages/desktop/jx-studio.desktop`, `.github/workflows/nix.yml`), but three statements below are stale. The build phase runs `scripts/pre-build-rpc.ts`, not `pre-build.ts`; `src` is `lib.cleanSourceWith` over `lib.cleanSource` with `vendor` filtered out, not a plain `lib.cleanSource ../..`; and `nix.yml` has no pull-request trigger: `test.yml` calls it only on `release-please--` branches, and the path list survives only on its push-to-`main` cache trigger.
+> **Status: Implemented.** `packages/desktop/package.nix` (the derivation), `packages/desktop/jx-studio.desktop` (the entry), and `.github/workflows/nix.yml` (the build), which `test.yml` calls on the release pull request and `release-please.yml` calls at the tag.
 
 The flake's `packages.default` produces a fully sandboxed NixOS package:
 
-- **Build dependencies** are fetched via [bun2nix](https://github.com/nix-community/bun2nix), which generates a `bun.nix` lockfile mapping all packages to fixed-output derivations — no network access needed during build
-- **`bun.nix` auto-refresh:** The root `package.json` postinstall script runs `bun2nix -o bun.nix` after every `bun install`, keeping the nix lockfile in sync with `bun.lock`
-- **Build phase** runs `bun run build` (compiler, runtime, studio, schema) and `pre-build.ts` (bundles the studio init bridge and copies assets)
+- **Build dependencies** are the tarballs `bun.nix` pins, each a fixed-output derivation that [bun2nix](https://github.com/nix-community/bun2nix) generates from `bun.lock`, trimmed to the host's `os` and `cpu` (`forThisHost`). `bun install --frozen-lockfile` reads them from a registry shim on loopback (`packages/desktop/scripts/registry-shim.ts`) that answers manifest requests from `bun.lock` and serves those tarballs. That is needed because Bun re-resolves a workspace's directly declared dependencies against a registry even with a full cache. The build needs no network access.
+- **`bun.nix` matches `bun.lock` at every release, not at every commit.** It is a pure function of the lockfile. Locally, the root `postinstall` regenerates it after every `bun install` (not under `CI`), and `bun run nix:sync` does it on demand. A Dependabot update cannot, so `main` may carry a stale `bun.nix` between releases. `nix.yml` regenerates it in the working tree before every build that is not a release, `.github/workflows/release-bun-nix.yml` commits the regenerated file to the release pull request, and the release leg runs the same check bare (`scripts/check-bun-nix.ts`, `bun run nix:check`), so a drift that reaches the tag fails the build and `release` does not advance.
+- **Build phase** runs `bun run build` (parser, search, compiler, runtime and studio, then the schema artifacts), then `packages/desktop/scripts/pre-build-rpc.ts`, which builds Studio, bundles `src/chromium/init.ts` to `assets/studio/dist/init.js`, refuses a bundle that lacks the launcher signal (§3.3), and stages Studio's assets. It then bundles the Electron application's main process and preload into `assets/electron` (§9.7), where the workspace's full tree still resolves them.
 - **Runtime install.** The build needs the whole workspace's dependencies, the app does not. After building, the tree's `node_modules` are deleted and reinstalled with `--production --filter '@jxsuite/desktop'` from the same lockfile and registry shim, so the store path carries `@jxsuite/desktop`'s production graph and none of the repository's dev tooling. `monaco-editor` and `tabulator-tables` are then removed (the studio build has bundled them into its assets, and the launcher never loads them), as are `tests/` directories. Measured on x86_64-linux at 5.2.0, that took the app's own store path from 947.2 MiB to 326.3 MiB, and the runtime closure from 2.7 GiB to 2.1 GiB, most of the remainder being nixpkgs Chromium. Because nothing then supplies an undeclared import by accident, **the app declares what it reaches without importing**: all five first-party extensions are runtime dependencies of `@jxsuite/desktop`, since the schema loader resolves their schemas from the app and never from the project. The **install check** bundles `chromium/index.ts` against the installed tree, so a missing runtime dependency fails `nix build` rather than a user's launch
 - **Install phase** copies `packages/`, `extensions/` and `node_modules` into the nix store with plain `cp -r`, then deletes dangling symlinks (`find … -xtype l -delete`) rather than dereferencing with `cp -rL`. The prune is why `packages/desktop/tests/nix-bundle-completeness.test.ts` exists: it reads the copied directories back out of `package.nix` and asserts every `@jxsuite/*` dependency of the desktop app lands under one of them, after `extensions/parser` was once pruned out of the bundle silently
-- **Wrapper** creates a `jx-studio` binary that runs `bun run packages/desktop/src/chromium/index.ts` with `CHROMIUM_BIN` and `JX_STUDIO_ASSETS` pre-set to nix store paths. The first positional argument is the **project root**; there is no flag surface
+- **Wrapper** creates a `jx-studio` binary that starts Electron on the application's bundle (§9.7), naming the Bun that runs the backend, the backend's entry, the preload and the icon as `--jx-*` switches, with `CHROMIUM_BIN` and `JX_STUDIO_ASSETS` pre-set to nix store paths, so nixpkgs Chromium serves only the site import. The bundle (`app-main.js` and `preload.js`) is made in the build phase, where the workspace's full tree still resolves it, and needs nothing from `node_modules` at runtime; the backend is not bundled and runs from source against the production install. The install check proves the backend's imports resolve against that tree, and that the bundle is non-empty and requires nothing but `electron` and Node's builtins. The first positional argument is the **project root**; there is no flag surface
 
 **The desktop entry and the window have to agree.** A taskbar or dock does not read the process, the title or `--class`: it takes the window's Wayland `app_id` (X11: `WM_CLASS`) and looks for an entry claiming it. Two things were in the way, and each hid the other:
 
 - The entry was installed through `desktopItems`, which takes the **store path's basename** — so it shipped as `<hash>-jx-studio.desktop`, an id that changed with every rebuild. It is installed by hand at a fixed name now.
 - Chromium derives an `--app` window's id from the shell URL and the profile directory and **ignores `--class`** — measured across two ports and two `--user-data-dir` values, all producing `chrome-127.0.0.1____studio___index.html-Default`, and there is no switch to override it (`--wm-class-name` / `--wm-class-class` are Electron's, and absent from the binary).
 
-So the entry declares that derived string in `StartupWMClass`, which makes a file in `packages/desktop/` depend on a URL composed in `chromium/index.ts`. `chromium/app-id.ts` owns the derivation and the shell path the launcher builds the URL from, and the test beside it asserts the entry carries exactly what the launcher produces — because the failure mode is silent. Nothing errors; the icon is a generic square, and everything else about the app still works, which is why it survived in the app launcher (which reads the file, never the window) while the taskbar showed nothing.
+The Electron shell sidesteps both: it calls `app.setDesktopName("jx-studio.desktop")`, so its window's Wayland `app_id` is `jx-studio`, the entry's own id, and `--class=jx-studio` sets the X11 `WM_CLASS` (measured on niri: `app_id` `jx-studio`, Jx icon in the taskbar, with no `StartupWMClass` involved). What follows is the `--app` shell's case, which the snap still runs. There the entry declares the derived string in `StartupWMClass`, which makes a file in `packages/desktop/` depend on a URL composed in `chromium/index.ts`. `chromium/app-id.ts` owns the derivation and the shell path the launcher builds the URL from, and the test beside it asserts the entry carries exactly what the launcher produces — because the failure mode is silent. Nothing errors; the icon is a generic square, and everything else about the app still works, which is why it survived in the app launcher (which reads the file, never the window) while the taskbar showed nothing.
 
 **That is the taskbar/dock icon, and it is a different mechanism from the window's own icon.** A window's title bar and alt-tab thumbnail are not drawn from `StartupWMClass` or the `.desktop` entry at all — a system `chromium --app` process has no native app icon of its own to give them, so Chromium falls back to the loaded page's favicon. `studioShellHtml()` now links one (`STUDIO_FAVICON`, studio.md §11.2), which is what lets the window itself show the Jx icon rather than a generic one; the two icons can drift independently, and fixing one does not touch the other.
 
-**Which ref a consumer gets.** `packages/desktop/package.nix` builds `src = lib.cleanSource ../..` — whatever tree was fetched — so the ref names the release. `main` is the development trunk and gives the tip; **`release` holds only released code**, advanced by CI to each `desktop-v*` tag once that tag has both produced its installers and passed a real `nix build`. A NixOS user therefore pins the branch, not the trunk:
+**Which ref a consumer gets.** `packages/desktop/package.nix` builds whatever tree was fetched, so the ref names the release. `main` is the development trunk and gives the tip; **`release` holds only released code**, advanced by CI to each `desktop-v*` tag once a real `nix build` at that tag has succeeded. The tag's installer builds finish first but do not hold the branch back: a missing installer marks that GitHub release a pre-release and opens an issue instead. A NixOS user therefore pins the branch, not the trunk:
 
 ```
 $ nix run github:jxsuite/jx/release
@@ -970,23 +947,27 @@ $ nix build github:jxsuite/jx/release && ./result/bin/jx-studio [project-root]
 
 Locally, `nix build` (no ref) builds the working tree, which is what a contributor wants.
 
+**One commit, one store path, however it was fetched.** `src` is `lib.cleanSource` of the repository root, so `$out` is a function of the tree's content and not of the fetcher. CI builds a git checkout and a consumer of `github:jxsuite/jx/release` builds GitHub's tarball, and the two must be byte-identical or one commit gets two store paths and the cache is complete at an address nobody asks for: `desktop-v5.0.0` published the one no consumer asks for, when an uninitialised submodule's gitlink made the two trees differ by two empty directories. `nix.yml`'s publish step evaluates the tag's `github:` reference and refuses to push any other path, and `verify-cache` asks again of the ref a consumer actually names.
+
 **And the consumer downloads it.** The release publishes `packages.<system>.default` to `https://jxsuite.cachix.org`, and the flake's own `nixConfig` names that cache, so `nix run github:jxsuite/jx/release` fetches the app rather than producing it. What is published is essentially one store path. Everything else in the runtime closure — Chromium, Bun, glibc — is already on `cache.nixos.org`, and any path carrying a cache's signature is filtered out of the push, so what remains is precisely the `bun install` plus `bun run build` a user would otherwise run. Their build-time inputs are never fetched either: Nix does not realise the inputs of a derivation whose output it can substitute, which is why the ~1000 npm tarball derivations `bun.nix` pins do not have to be published for the substitution to be complete.
 
-The push is best-effort by design — a cache is an optimisation, and failing it must not fail the job `release` advances behind, whose worst case is the behaviour that preceded the cache. What is not best-effort is **noticing**. `verify-cache` runs after the branch moves and asks two things of the released ref: does the cache hold the path evaluation produces, and does `nix build --max-jobs 0` — substitute or fail — succeed against `github:jxsuite/jx/release`. Either answering no opens an issue. The second question is also the only check anywhere that the store path CI published is the one a consumer's flake fetch evaluates to; CI builds a git checkout and a user builds a GitHub tarball, and nothing else in the pipeline would notice if those stopped agreeing.
+The push is best-effort by design — a cache is an optimisation, and failing it must not fail the job `release` advances behind, whose worst case is the behaviour that preceded the cache. What is not best-effort is **noticing**. `verify-cache` runs after the branch moves and asks two things of the released ref: does the cache hold the path evaluation produces, and does `nix build --max-jobs 0` — substitute or fail — succeed against `github:jxsuite/jx/release`. Either answering no opens an issue, and dispatching `nix.yml` on `release` with `publish` set backfills the cache.
 
 Nix honours a flake's `nixConfig` substituters only for a user in `trusted-users`, so an unprivileged NixOS account ignores the cache and builds from source anyway. That is a property of Nix rather than of this packaging, and the install page carries the `nix.settings` form that survives it.
 
-`release` never advances to a commit whose flake does not build: `.github/workflows/nix.yml` builds `.#default` at the tag and asserts the wrapper's `CHROMIUM_BIN` and `JX_STUDIO_ASSETS` resolve, and the branch moves only if that succeeds. When it does not, the branch stays where it is and an issue is opened — a stale ref that works beats a fresh one that does not. The same workflow runs on any pull request touching `flake.nix`, `bun.nix`, `bun.lock` or `packages/desktop/**`, which is the first time the flake has been built by CI at all.
+`release` never advances to a commit whose flake does not build: `.github/workflows/nix.yml`, called by `release-please.yml` at the tag, builds `.#default` and asserts the wrapper's `CHROMIUM_BIN` and `JX_STUDIO_ASSETS` resolve, and the branch moves only if that succeeds. When it does not, the branch stays where it is and an issue is opened — a stale ref that works beats a fresh one that does not.
+
+**Of all pull requests, only the release pull request builds the flake.** `nix.yml` has no `pull_request` trigger. A path-filtered workflow that does not fire leaves a required check pending forever, so it could never be one. The pull-request leg is instead the `nix` job of `.github/workflows/test.yml`, which has no path filter. It calls `nix.yml` only when the head branch starts with `release-please--`, and it reports into the `ci` aggregate that `main` requires. On every other pull request the job is skipped, and a skipped job leaves `ci` green. The cost is accepted: a dependency update that breaks packaging no longer blocks its own auto-merge. It surfaces on the release pull request, where `ci` still requires the build and a maintainer is reading the diff, and behind that the release leg still refuses to advance `release`.
 
 **Both architectures are built; only one is a gate.** `meta.platforms` has always claimed `aarch64-linux`, and nothing had ever built it — the `forThisHost` filter that trims `bun.nix` to the host's `os`/`cpu` had only been exercised on x86_64. The release therefore runs a second leg on an arm runner, and that leg is **advisory**: it is absent from `advance-release-branch`'s `needs`, because a first-ever aarch64 failure freezing `release` would strand every x86 user over an architecture nobody has received yet. It becomes a gate once it has been green across several releases.
 
-**The workflow also runs on pushes to `main`, and that trigger is about the cache rather than the check.** A GitHub Actions cache is branch-scoped: a pull request may read the default branch's cache, never another pull request's. With no run on `main` there is no base cache to inherit, so each PR would refetch from scratch the roughly one thousand fixed-output npm tarball derivations `bun.nix` pins — the half of the closure `cache.nixos.org` does not carry and never will, because those derivations exist only here. A release-PR merge consequently builds twice, once through the `push` trigger and once through release-please's `workflow_call`; they sit in different concurrency groups, and the `push` leg is what leaves `main` warm for the next PR.
+**The workflow also runs on pushes to `main` and nightly, and those triggers are about the cache rather than the check.** A GitHub Actions cache is branch-scoped: a pull request may read the default branch's cache, never another pull request's. With no run on `main` there is no base cache to inherit, so each PR would refetch from scratch the roughly one thousand fixed-output npm tarball derivations `bun.nix` pins — the half of the closure `cache.nixos.org` does not carry and never will, because those derivations exist only here. The `push` trigger carries the Nix build's one remaining path list (`flake.nix`, `flake.lock`, `bun.nix`, `bun.lock`, `packages/desktop/**` and the workflow itself); it decides when `main` refreshes the cache, not whether anything is checked. The nightly `schedule` exists because an auto-merged dependency update merges as `GITHUB_TOKEN`, which raises no `push` event, and without it the cache would go cold on the branch every pull request reads. A release-PR merge consequently builds twice, once through the `push` trigger and once through release-please's `workflow_call`; they sit in different concurrency groups, and the `push` leg is what leaves `main` warm for the next PR.
 
 ### 9.4 Windows Are Processes
 
 > **Status: Implemented.**
 
-An ElectroBun window is a `BrowserWindow` inside one process, so its window manager is a `Map` (§7.1). Chromium owns its own browser process, and the only thing that lives exactly as long as one `--app` window is the launcher that started it — so **on this build a window is a process**, and `newWindow` / `openProjectInNewWindow` spawn another launcher rather than another object.
+In the Electron application a window is a `BrowserWindow` the hub knows about (§9.7), so its window list is a `Map`. Chromium owns its own browser process, and the only thing that lives exactly as long as one `--app` window is the launcher that started it — so **on this build a window is a process**, and `newWindow` / `openProjectInNewWindow` spawn another launcher rather than another object.
 
 That makes the window list the one thing a `Map` cannot be: an answer that spans processes. It is a directory of one small owner-only file per window, named for its pid:
 
@@ -999,9 +980,9 @@ That makes the window list the one thing a `Map` cannot be: an answer that spans
 
 **A focus request is a file, not a signal.** A pid the OS has recycled would receive a signal meant for a process that no longer exists, and `SIGUSR2` terminates a process that installed no handler. A file only the real launcher watches for is inert to anyone else. The request is consumed before the window is raised, so a window asked twice comes forward twice.
 
-**Raising is the page's job.** Nothing on the Bun side can bring a Chromium `--app` window forward, so the launcher relays the request to its shell as a `focusWindow` push and the page calls `window.focus()`. A window manager that refuses the raise leaves the window where it is.
+**Raising is the page's job.** Nothing on the Bun side can bring a Chromium `--app` window forward, so the launcher relays the request to its shell as a `focusWindow` push and the page calls `window.focus()`. Under the Electron shell the page asks the shell instead, which restores a minimized window, shows it and focuses it. A window manager that refuses the raise leaves the window where it is.
 
-**Every window needs a profile directory of its own**, because Chromium's process singleton is keyed on it: two windows sharing one directory would be one browser process, and the second launcher's window would be handed to the first launcher's browser pointing at a server about to die. A project's window uses `<root>/.jx/chromium-profile`, so its Studio layout, theme and open tabs survive a restart; a welcome window has no project to key on and takes the lowest `welcome-<n>` slot no live window is using. The parent chooses the child's directory (`JX_STUDIO_PROFILE_DIR`) because only the parent can see which ones are taken.
+**Every window needs a profile directory of its own**, because Chromium's process singleton is keyed on it (the Electron shell takes the same directory as its `userData`, which keeps each window's storage apart the same way): two windows sharing one directory would be one browser process, and the second launcher's window would be handed to the first launcher's browser pointing at a server about to die. A project's window uses `<root>/.jx/chromium-profile`, so its Studio layout, theme and open tabs survive a restart; a welcome window has no project to key on and takes the lowest `welcome-<n>` slot no live window is using. The parent chooses the child's directory (`JX_STUDIO_PROFILE_DIR`) because only the parent can see which ones are taken.
 
 **Dedupe is by normalized root** — resolved, symlinks followed, case-folded on Windows — and it applies at three points: launching for a project already open (which raises that window and exits), `openProjectInNewWindow`, and `setWindowProject`. The third excludes the calling window, so re-rooting never dedupes against itself.
 
@@ -1009,39 +990,82 @@ That makes the window list the one thing a `Map` cannot be: an answer that spans
 
 Two PAL families are absent on purpose, and their absence is a claim recorded in `CHROMIUM_RPC_EXEMPT`:
 
-- **The self-updater.** This build is installed and replaced by whatever packaged it. It has no feed to check, so it answers the About screen through `appInfo` — version, channel (`snap` under snap confinement (§9.6), `system` when the Nix wrapper's `JX_STUDIO_ASSETS` is set, `development` otherwise), commit — and reports **no** update status rather than an "Up to date" it never verified. ElectroBun answers the same request from its updater, so the About screen has one shape and each launcher fills in only what it knows.
-- **Client-side window decorations.** Studio draws minimize/maximize/close only when the launcher exposes `windowControls`, which ElectroBun does because its `BrowserWindow` is frameless. A Chromium `--app` window is decorated by the desktop environment, and a second set of buttons inside the page would minimize and close nothing.
+- **The self-updater.** This build is installed and replaced by whatever packaged it. It has no feed to check, so it answers the About screen through `appInfo` — version, channel (`snap` under snap confinement (§9.6), `system` when the Nix wrapper's `JX_STUDIO_ASSETS` is set, `development` otherwise), commit — and reports **no** update status rather than an "Up to date" it never verified. The Electron application answers the same request with an update status of its own (§7.5), so the About screen has one shape and each build fills in only what it knows.
+- **Client-side window decorations, under the `--app` shell only.** Studio draws minimize/maximize/close only when the launcher exposes `windowControls`. A Chromium `--app` window is decorated by the browser and the desktop environment, and a second set of buttons inside the page would minimize and close nothing, so that shell exposes none.
 
-Everything else the ElectroBun launcher implements, this one implements: `previewSite` and the overlay pair behind `View: Open in Browser`, `buildSite` behind `Build Site`, `subscribeFileEvents` behind the live sidebar, `findReferences`, `importSite`, the data and secrets surfaces, the native folder and project pickers (via the XDG desktop portal, §8.2.1), and sign-in (§3.6).
+**The Electron shell is how this build has them.** `electron-shell/shell.ts` opens one `BrowserWindow` with `frame: false`, and its preload (`bridge.ts`, sandboxed, context-isolated, no Node) publishes `globalThis.__jxShell`: `windowControls` (`minimize`, `maximize`, which toggles against the window's real `isMaximized()`, and `close`) plus `focus`, each an IPC call the main process applies to the window that sent it. `chromium/platform.ts` exposes those controls as its `windowControls` extra (§3.1), and Studio's command bar then draws the same buttons and drag region it draws on every platform. There is no `getFrame`/`setFrame`: the window system resizes a frameless Electron window from its own edges, so Studio's page-drawn resize edges stay off. Project I/O never crosses the bridge; it stays on the token-gated WebSocket. The shell keeps the page on the launcher's origin (another navigation is cancelled, and a web or mail link goes to the user's browser; `window.open` never opens a window), installs no application menu so Studio's keymap receives Ctrl+W, Ctrl+R and the zoom keys, restores Ctrl+Shift+I for DevTools, and answers a `beforeunload` that Studio cancelled with a native unsaved-changes prompt, because Electron would otherwise refuse the close silently.
+
+**The same shell runs on macOS**, opt-in through `ELECTRON_BIN`; the packaged macOS application is the one of §9.7, which does not use this launcher. The window is the same frameless one, and Studio draws its macOS-style window buttons in it (`csd: "mac"`). Three things differ, each because macOS requires it. The shell installs an application menu built from Electron's roles (app, Edit, View with DevTools at ⌥⌘I, Window), because Cut, Copy, Paste, Select All and Quit are menu items on macOS rather than browser behaviour; it does not pre-empt Studio's keymap, since Electron offers a key equivalent to the menu only after the page leaves it unhandled (`PlatformHandleKeyboardEvent` in `electron_api_web_contents_mac.mm`). It names the app `Jx Studio` and sets the Dock icon in place of `setDesktopName`, which Electron defines on Linux only. And the launcher's project and folder pickers use the system open panel through AppleScript's `choose file` / `choose folder`, since the freedesktop portal does not exist there. Each window remains a process (§9.4), so on macOS each window is also its own Dock tile.
+
+**Why not the browser's own window controls.** Chrome 155 ships Additional Windowing Controls (`window.minimize()`, `maximize()`, `restore()`, `setResizable()`, the `display-state` and `resizable` media features). Measured on Chrome 155.0.8059.39 on Linux (niri, Wayland), they cannot give this build its titlebar: the methods are absent unless Chrome starts with `--enable-features=DesktopPWAsAdditionalWindowingControls`; with it they reject an `--app` window ("API is only supported in web apps") and work only in an installed web app; installing one without UI is possible only over `--remote-debugging-pipe` (`PWA.install` answers "wasn't found" over a debugging port), and doing so writes a desktop entry into the user's `~/.local/share/applications` whose id hashes an origin that includes this launcher's ephemeral port. Even installed, Chromium keeps drawing its own caption buttons: Window Controls Overlay is a per-app user toggle no flag, policy or protocol command sets (and its toggle did not render on niri), and the Unframed display mode that would hide the buttons is ChromeOS-only, for Isolated Web Apps. An embedder owns its window, so it can open one without a frame.
+
+Everything else the Electron application implements, this launcher implements: `previewSite` and the overlay pair behind `View: Open in Browser`, `buildSite` behind `Build Site`, `subscribeFileEvents` behind the live sidebar, `findReferences`, `importSite`, the data and secrets surfaces, the native folder and project pickers (via the XDG desktop portal, §8.2.1), and sign-in (§3.6).
 
 ### 9.6 Snap Package
 
-> **Status: Implemented.** `packages/desktop/snap/snapcraft.yaml`, `.github/workflows/build-snap.yml`, `.github/workflows/snap-publish.yml`, `scripts/snap-publish.ts`.
+> **Status: Implemented.** `packages/desktop/snap/snapcraft.yaml`, `packages/desktop/snap/local/jx-studio`, `packages/desktop/snap/gui/`, `.github/workflows/build-snap.yml`, `.github/workflows/snap-publish.yml`, `scripts/snap-publish.ts`.
 
-Ubuntu users get this build, not the ElectroBun one, from the Snap Store as `jx-studio`. The choice is Wayland: ElectroBun's Linux native wrapper embeds CEF in GTK through an X11 window id, so it runs only under XWayland, while this launcher selects Chromium's Ozone Wayland backend in a Wayland session (§9.2).
+Ubuntu users get this build from the Snap Store as `jx-studio`. It runs the same Electron application as every other channel (§9.7): electron-builder's unpacked Linux build, which brings its own Electron and the pinned Bun that runs its backend. Nothing in the snap is the Nix tree, and there is no Bun part of the snap's own.
 
-**Three ingredients, each from where it is built best.**
+**Two ingredients.**
 
-| Ingredient | Source                                                                                                                                                                                                                                                                                                                  |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App tree   | The Nix package's `lib/jx-studio` (§9.3), staged into the snap unchanged. It is the production install the install check has already resolved, and it names no `/nix/store` path a runtime would follow: JavaScript, assets, and npm's prebuilt native modules.                                                         |
-| Chromium   | Canonical's build, copied from the official `chromium` snap at build time (`usr/lib/chromium-browser` and the libraries it stages beside it; `chromedriver` dropped). It is compiled against the same Ubuntu userspace as the gnome runtime's GTK and the `gpu-2404` graphics stack, which is what the next row is for. |
-| Bun        | The official release binary, pinned by version and SHA-256 to the series CI runs. Nix's Bun loads its glibc from `/nix/store`.                                                                                                                                                                                          |
+| Ingredient | Source                                                                                                                                                                                                                                                                                                                                                                |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App        | `bun run --cwd packages/desktop package --target linux --arch <x64\|arm64> -- --dir --publish never` (§7), staged in `packages/desktop/snap-stage` and dumped under `$SNAP/app/`. The executable is `jx-studio`. Electron's setuid `chrome-sandbox` is removed, because the store refuses a setuid file and the sandbox it helps is the one this snap does not start. |
+| Chromium   | Canonical's build, copied from the official `chromium` snap at build time (`usr/lib/chromium-browser` and the libraries it stages beside it; `chromedriver` and the setuid sandbox helper dropped). It is not the shell. It is the site import's browser (`CHROME_PATH`), because puppeteer cannot open a page in Electron (§9.2).                                    |
 
-The snap cannot use the Chromium snap a user already has: a strictly confined snap cannot execute another snap's binaries, and the Chromium snap offers no slot to plug into. So the build carries its own copy, which means a Chromium update reaches Jx Studio users when Jx Studio is next released. That is accepted: the browser loads only the user's own projects from a loopback server.
+The snap cannot use the Chromium snap a user already has: a strictly confined snap cannot execute another snap's binaries, and the Chromium snap offers no slot to plug into. So the build carries its own copy, which means a Chromium update reaches Jx Studio users when Jx Studio is next released. That is accepted: the browser loads only the sites a user chooses to import.
 
-| Property    | Value                                                                                                                                                                                                                                                                                                           |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Base        | `core24`, with snapcraft's `gnome` extension: GTK from `gnome-46-2404`, and host-matched Mesa (plus the host's NVIDIA driver, through snapd) from `gpu-2404`. That is the hardware-accelerated path; nixpkgs Chromium looked for drivers only where NixOS installs them and rendered in software inside a snap. |
-| Confinement | `strict`, grade `stable`, architectures `amd64` and `arm64`, each built natively on a 24.04 runner.                                                                                                                                                                                                             |
-| Plugs       | The gnome extension's (`desktop`, `desktop-legacy`, `gsettings`, `opengl`, `wayland`, `x11`), plus `browser-support`, `home`, `network`, `network-bind` and `removable-media`.                                                                                                                                  |
-| Entry       | `bin/jx-studio` runs the Nix tree's `chromium/index.ts` with the snap's Bun, after the gnome extension's command chain has set up the display, GTK and GPU environment. `CHROMIUM_BIN` and `JX_STUDIO_ASSETS` are set in `snapcraft.yaml`.                                                                      |
+| Property    | Value                                                                                                                                                                                                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Base        | `core24`, with snapcraft's `gnome` extension: GTK from `gnome-46-2404`, and host-matched Mesa (plus the host's NVIDIA driver, through snapd) from `gpu-2404`. `stage-packages` carries the libraries Electron links against that neither the runtime nor Chromium's set has. |
+| Confinement | `strict`, grade `stable`, architectures `amd64` and `arm64`, each built natively on a 24.04 runner.                                                                                                                                                                          |
+| Plugs       | The gnome extension's (`desktop`, `desktop-legacy`, `gsettings`, `opengl`, `wayland`, `x11`), plus `browser-support`, `home`, `network`, `network-bind` and `removable-media`.                                                                                               |
+| Entry       | `bin/jx-studio` (`snap/local/jx-studio`) execs `$SNAP/app/jx-studio --no-sandbox --class=jx-studio`, after the gnome extension's command chain has set up the display, GTK and GPU environment. `snap/gui/jx-studio.desktop` is the launcher entry.                          |
 
-**Chromium's own sandbox is off inside the snap.** It needs `browser-support` with `allow-sandbox: true`, which the Snap Store grants only to trusted publishers after manual review. The launcher passes `--no-sandbox` when `$SNAP` is set (`chromiumPlatformArgs`), so snap confinement is the boundary, around a window that loads only this launcher's own loopback studio. Requesting `allow-sandbox` and dropping the flag is the upgrade path. The same branch passes the two flags Canonical's own Chromium launcher gives that binary: `--password-store=basic`, because the snap has no `password-manager-service` plug, and `--gtk-version=3`.
+**Electron's own sandbox is off inside the snap.** It needs `browser-support` with `allow-sandbox: true`, which the Snap Store grants only to trusted publishers after manual review. The launcher passes `--no-sandbox`, so snap confinement is the boundary, around windows that load only this application's own loopback studios. Requesting `allow-sandbox` and dropping the flag is the upgrade path. `--class=jx-studio` is X11's `WM_CLASS`, as on every Linux build (§9.7).
 
-**Updates belong to the store.** Like every packaged build (§9.5) it has no feed of its own and reports channel `snap`.
+**Hardware acceleration is unmeasured.** The snap carries the gnome extension's `gpu-2404` stack so that a host-matched driver is on offer, and Canonical's Chromium was the proven renderer there. Whether the official Electron prebuilt renders with hardware acceleration through it has not been measured, and the first store build is where that shows. This is a verification item, not a known defect: the snap runs the application either way, and a measured software-rendering result would be recorded here.
 
-**Publishing.** On a desktop release, `build-snap.yml` builds the app tree with Nix and packs it with `snapcraft pack --destructive-mode` for both architectures from the tag, runs the store's `snap-review` over each, and attaches them to the GitHub release; `snap-publish.yml` uploads them with `scripts/snap-publish.ts`. That script is a no-op until `SNAPCRAFT_STORE_CREDENTIALS` exists, treats a byte-identical re-upload and a manual-review hold as success, and warns when the exported login is within 30 days of expiring. Neither job gates the `release` branch.
+**Updates belong to the store.** Like every packaged build (§9.5) it has no feed of its own: the updater is off for a packaged Linux build that is not an AppImage, and the channel reports `snap`.
+
+**Publishing.** On a desktop release, `build-snap.yml` packages the unpacked Electron application and packs it with `snapcraft pack --destructive-mode` for both architectures from the tag, runs the store's `snap-review` over each, and attaches them to the GitHub release; `snap-publish.yml` uploads them with `scripts/snap-publish.ts`. That script is a no-op until `SNAPCRAFT_STORE_CREDENTIALS` exists, treats a byte-identical re-upload and a manual-review hold as success, and warns when the exported login is within 30 days of expiring. Neither job gates the `release` branch.
+
+### 9.7 The Electron Application
+
+> **Status: Implemented.** `packages/desktop/src/electron-shell/app.ts`, `packages/desktop/src/hub/`. The application, its hub and its protocol ship and are what every installer (§7), the Nix package and the snap (§9.6) run.
+
+§9.5's Electron shell is one window in a process of its own, started by the Bun launcher of §9.2. This is the other arrangement: **Electron is the root process and owns every window, and a Bun backend is its child and owns every project.** It is the shape a packaged application has to have, because an application bundle's executable is Electron, not Bun, and it is the shape the single-framework goal needs. Nothing in the webview changes: the adapter is `chromium/platform.ts`, and a window's page talks to its own server over the same token-gated WebSocket.
+
+```
+┌──────────────────────────────┐   JSON IPC    ┌──────────────────────────────────┐
+│  Electron main process       │◄─────────────►│  Bun backend (hub/main.ts)       │
+│  windows · menu · dialogs    │  protocol.ts  │  one hub, N windows:             │
+│  single-instance lock        │               │   ProjectSession + server + token│
+│  file associations           │               │   each                           │
+└──────────────┬───────────────┘               └─────────────────┬────────────────┘
+               │ one BrowserWindow per window                    │ http + ws, loopback
+               ▼                                                 ▼
+        Studio page ◄──────────── token-gated WebSocket RPC ─────┘
+```
+
+**The two processes speak a small protocol** (`hub/protocol.ts`), over the IPC channel Electron opens when it spawns the backend, JSON-serialized because Bun is not Node and the two agree on framing only in that mode. Backend to shell: `ready`, `open-window`, `focus-window`, `set-title`, `dialog` and `quit`. Shell to backend: `open-project`, `window-closed` and `dialog-result`. Project I/O never crosses it. Each side validates what it receives against a guard at the channel (`isBackendMessage`, `isShellMessage`), so nothing past the boundary handles an untyped frame, and a frame that is not one of the protocol's messages is dropped rather than guessed at.
+
+**A window is a `ProjectSession`, a loopback server and a token.** The hub (`hub/window-hub.ts`) never draws a window: it asks the shell to. Each window has a server of its own rather than a route on a shared one, so a canvas iframe, which is cross-origin by construction and carries its window's token in its URL, can drive its own project and no other. `hub/handlers.ts` builds the RPC map for one window over that window's session, and `tests/hub-handlers.test.ts` holds its names to `rpc-schema.ts`, as it does the per-window launcher's, because the webview side is the same adapter. Window ids are not reused.
+
+**Dedupe is by normalized root**, as in §9.4, and it is now a lookup in memory: opening a project that is open raises that window and answers `focused: true`, `setWindowProject` raises the window that holds the project and binds nothing, and a window is never a duplicate of itself. The page storage of a window is an Electron partition rather than a profile directory: a project's is `persist:project-<hash of its normalized root>`, so one project's layout and settings stay apart from another's and survive the window, and a welcome window takes the lowest free `persist:welcome-<n>`.
+
+**One application instance, and one profile.** The shell pins the application's name and its user-data directory (`Jx Studio` under the platform's application-data directory) before it does anything else, because the single-instance lock lives in that directory and an unpackaged Electron is named `Electron`: left alone, every unpackaged Electron application on the machine would share one lock and one profile with this one. It then takes the lock before it reads anything else, so a second launch has no backend of its own to describe: it hands its project to the first instance and exits, in a quarter of a second as measured. The first instance opens that project, or raises its window. A launch names its project with `--jx-project=<path>` or with a bare argument (`jx-studio ./site`), and the bare argument works whether or not the application is packaged: an unpackaged argv is `electron <switches> <script> …`, so no position in it is the user's, and what is known instead is where the application lives (`app.getAppPath()`), so the script is the one bare argument inside that directory. A bundle cannot ask for its own path: Bun folds `__filename`, `module.filename` and `import.meta.filename` to the source file's name at build time, and `require.main` is Electron's own internal module. Failing both, `JSONSX_PROJECT_ROOT`, then the working directory when it holds a `project.json`; a directory nobody typed has to prove itself, so a launch from `$HOME` is a welcome window. On macOS a `project.json` the user opens with the application arrives as an `open-file` event, possibly before the application is ready, and is queued until the backend says `ready`.
+
+**The shell does the native work.** Pickers are Electron's `dialog.showOpenDialog`, sheet-modal on the focused window, which is the desktop portal on Linux and the system panel elsewhere; that is why this arrangement needs neither the D-Bus portal client nor the AppleScript fallback the per-window launcher carries. The backend asks (`dialog`) and the shell answers (`dialog-result`), and a cancelled or failed dialog is `null`. On macOS the application menu gains a File menu with New Window and Open Project…, without accelerators: both chords are the commands' `keybinding`, which Studio's keymap dispatches, and a chord with two owners fires twice.
+
+**The site import still needs a Chromium-family browser**, found by `CHROMIUM_BIN`, the `PATH`, or on macOS the standard Chrome and Chromium bundles. Without one the application is whole and the import route is not served; with one it is served behind the window's token. Electron cannot stand in, for the reason §9.2 gives.
+
+**Environment.** The Electron binary comes from `ELECTRON_BIN`, never from `node_modules`, since the npm package downloads one of about 100 MB. Neither process is started with `ELECTRON_RUN_AS_NODE`: the checkout's runner removes it before starting Electron, and the application removes it before starting the backend, because an Electron host that spawns either (VS Code's extension host sets it for every process) passes it on, and Electron would then run its entry as plain Node and open no window.
+
+**Linux.** Electron 38 and later default `--ozone-platform` to `auto`, so the application is a native Wayland client in a Wayland session with no flag from this repository; the old launcher's Ozone arguments are not carried over, and setting them from JavaScript would be too late to matter. The wrapper passes `--class=jx-studio` for X11's `WM_CLASS`, and the application sets the Wayland `app_id` itself, as §9.3 explains. File pickers are Chromium's xdg-desktop-portal client, the same FileChooser portal the launcher's D-Bus client called, and Chromium's own non-portal chooser when no portal is running.
+
+**Not covered here.** Packaging, signing, the updater and the release lanes are §7, whose own status (§7.6) says what has and has not yet run. The snap (§9.6) packs the same unpacked build, and what remains open for it is a measurement, not a build: whether this Electron renders with hardware acceleration under the snap's `gpu-2404` interface.
 
 ---
 
@@ -1156,7 +1180,7 @@ Both are absent on a platform that has nothing to say, and every surface draws n
 
 ## 12. Standards Alignment
 
-External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). ElectroBun and Chromium are implementations rather than standards, so §7–§9 cite nothing.
+External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). Electron, electron-builder and Chromium are implementations rather than standards, so §7–§9 cite nothing.
 
 | Standard                                           | Class        | Binds | Evidence                                                                                                                                                                                            | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | -------------------------------------------------- | ------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

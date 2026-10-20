@@ -739,45 +739,6 @@ describe("mountIframeCanvas", () => {
     }
   });
 
-  /* Electrobun resolves its canvasUrl over RPC inside activate(), and the fallback must NOT be
-     mounted while it waits. Before the fallback was anchored it did not matter — the old literal
-     resolved to nothing servable under views://, so an early frame just failed. Now it resolves,
-     to a canvas.html electrobun really stages, and an early frame would boot the canvas bundle
-     inside the shell's app-privileged origin in a CEF instance running
-     disable-site-isolation-trials. The cross-origin loopback canvas exists so that cannot happen. */
-  test("a platform that defers its canvasUrl gets about:blank, not the bundle-relative default", async () => {
-    const saved = globalThis.__jxPlatform;
-    installMockPlatform({ canvasUrlDeferred: true, id: "desktop" });
-    try {
-      const canvasEl = document.createElement("div");
-      document.body.append(canvasEl);
-      await mountIframeCanvas(42, { tagName: "div" }, canvasEl);
-      const src = canvasEl.querySelector("iframe")!.getAttribute("src")!;
-      expect(src.startsWith("about:blank")).toBe(true);
-      expect(src).not.toContain("canvas.html");
-    } finally {
-      globalThis.__jxPlatform = saved;
-    }
-  });
-
-  test("a deferred platform that has since resolved its url uses it", async () => {
-    const saved = globalThis.__jxPlatform;
-    installMockPlatform({
-      canvasUrl: "http://127.0.0.1:5111/__studio__/canvas.html",
-      canvasUrlDeferred: true,
-      id: "desktop",
-    });
-    try {
-      const canvasEl = document.createElement("div");
-      document.body.append(canvasEl);
-      await mountIframeCanvas(43, { tagName: "div" }, canvasEl);
-      const src = canvasEl.querySelector("iframe")!.getAttribute("src")!;
-      expect(src.startsWith("http://127.0.0.1:5111/__studio__/canvas.html?")).toBe(true);
-    } finally {
-      globalThis.__jxPlatform = saved;
-    }
-  });
-
   test("a relative canvasUrl keeps the iframe same-origin (channel origin === location.origin)", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
@@ -812,7 +773,7 @@ describe("mountIframeCanvas", () => {
       expect(u.searchParams.get("win")).toBe("7");
       expect(u.searchParams.get("parentOrigin")).toBe(location.origin);
       expect(u.searchParams.get("token")).toBeTruthy();
-      // Channel accepts/targets the loopback origin, NOT the parent's views:// origin.
+      // Channel accepts/targets the loopback origin, NOT the parent's own origin.
       expect(channels[0]!.opts.acceptOrigin).toBe("http://127.0.0.1:54321");
       expect(channels[0]!.opts.targetOrigin).toBe("http://127.0.0.1:54321");
     } finally {
@@ -831,7 +792,7 @@ describe("mountIframeCanvas", () => {
   });
 
   test("a NON-http(s) parent (views://) OMITS parentOrigin so the iframe falls to '*'+token", async () => {
-    // Simulate the electrobun shell: the parent doc is on a custom scheme (views://) whose origin may
+    // Simulate a custom-scheme shell: the parent doc is on a custom scheme (views://) whose origin may
     // Not surface as a postMessage event.origin. The host must OMIT parentOrigin so the iframe falls
     // Back to acceptOrigin '*' + the shared token rather than silently stalling. The parent side here
     // Stays STRICT — it accepts/targets the real loopback iframeOrigin (asserted below).

@@ -29,10 +29,6 @@
  * - `schemas.yml` has NO actor refusal, on purpose (its header, item 3): it terminates on a FIXED
  *   POINT. The generators are deterministic, so the approved run regenerates the same bytes from
  *   the same tree and pushes nothing.
- * - `electrobun-vendor.yml` terminates on a fixed point as well: once its commit has moved the
- *   `vendor/electrobun` gitlink to the pinned tag, the run its own push triggers has nothing to
- *   move and pushes nothing. It has no actor refusal either, and its concurrency group is the
- *   bot-versus-human one, for the reason `schemas.yml`'s is.
  * - `release-specs.yml` terminates on a fixed point too: it mints the spec release fragments under
  *   `specs/changes/` and pushes only when there was one, so the run its own push triggers finds the
  *   directory empty and pushes nothing. It differs from `schemas.yml` in one thing this script must

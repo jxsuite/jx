@@ -80,6 +80,16 @@ function getHighlighter(): HighlighterCore {
     ],
     themes: [githubLight, githubDark],
   });
+  /* The first tokenization in a process comes out wrong in the dark theme (a space after `a` takes
+     the identifier blue, `=` loses its keyword red) and every later one of the same code is right,
+     on macOS and on Linux alike, so the first block of a build differed from every copy of it. The
+     cause is inside Shiki's first use of its JavaScript regex engine; one throwaway call before
+     anything is returned makes the first real call the second. */
+  _highlighter.codeToTokens("const a = 1;", {
+    defaultColor: false,
+    lang: "javascript",
+    themes: THEMES,
+  });
   return _highlighter;
 }
 

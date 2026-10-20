@@ -84,30 +84,22 @@ jobs:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
     secrets: inherit
 
-  build-msix:
-    needs: release-please
-    if: needs.release-please.outputs.desktop_released == 'true'
-    uses: ./.github/workflows/build-msix.yml
-    with:
-      tag_name: ${{ needs.release-please.outputs.desktop_tag }}
-    secrets: inherit
-
-  # Needs build-msix specifically (not just release-please) because it downloads the .msix THAT
+  # Needs desktop-windows specifically (not just release-please) because it downloads the .appx THAT
   # job attaches to the release — there is nothing to submit until it exists. `if: always()` isn't
-  # used here on purpose: a build-msix failure means there is no asset to fetch, so this should
+  # used here on purpose: a desktop-windows failure means there is no asset to fetch, so this should
   # skip rather than fail on a missing file. See store-publish.yml and packages/desktop/AGENTS.md's "Microsoft Store
   # Publishing" section for what happens once it runs — including that it's a clean no-op until the
   # five STORE_* secrets are configured, so merging this is safe before that setup is done.
   store-publish:
-    needs: [release-please, build-msix]
-    if: needs.release-please.outputs.desktop_released == 'true' && needs.build-msix.result == 'success'
+    needs: [release-please, desktop-windows]
+    if: needs.release-please.outputs.desktop_released == 'true' && needs.desktop-windows.result == 'success'
     uses: ./.github/workflows/store-publish.yml
     with:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
     secrets: inherit
 
-  # The Ubuntu twin of build-msix -> store-publish. The snap is built from the Nix flake rather
-  # than the Electrobun bundle (build-snap.yml says why), and neither job gates the `release`
+  # The Ubuntu twin of desktop-windows -> store-publish. The snap packs the same unpacked Electron
+  # application as every other channel (build-snap.yml says how), and neither job gates the `release`
   # branch: a Store upload is a distribution channel, not part of what the tag is.
   build-snap:
     needs: release-please
@@ -134,7 +126,7 @@ jobs:
   # build no longer leaves dead download links. Idempotent: strips any prior
   # Downloads section before re-appending, so re-runs don't stack duplicate tables.
   release-notes-downloads:
-    needs: [release-please, desktop-linux, desktop-macos, desktop-windows, build-msix]
+    needs: [release-please, desktop-linux, desktop-macos, desktop-windows]
     if: always() && needs.release-please.outputs.desktop_released == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -151,7 +143,7 @@ jobs:
 
           # Names of assets currently attached to the release.
           assets="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
-          has() { printf '%s\n' "$assets" | grep -qxF "$1"; }
+          has() { [ -n "$1" ] && printf '%s\n' "$assets" | grep -qxF "$1"; }
           # A markdown link cell for $2 (asset filename) labelled $1, or an em dash.
           cell() { if has "$2"; then printf '[%s](%s/%s)' "$1" "$base" "$2"; else printf '—'; fi; }
           # Emit a table row only when at least one of its two assets exists.
@@ -160,17 +152,13 @@ jobs:
               printf '| %s | %s | %s | %s |\n' "$1" "$2" "$(cell "$3" "$4")" "$(cell "$5" "$6")"
             fi
           }
-          # The MSIX filename embeds the version, so match it by suffix.
-          msix_name="$(printf '%s\n' "$assets" | grep -F '.msix' | head -n1 || true)"
 
           rows="$(
-            emit_row 'macOS'   'Apple Silicon' 'DMG'    'stable-macos-arm64-JxStudio.dmg'       'tar.zst' 'stable-macos-arm64-JxStudio.app.tar.zst'
-            emit_row 'macOS'   'Intel'         'DMG'    'stable-macos-x64-JxStudio.dmg'         'tar.zst' 'stable-macos-x64-JxStudio.app.tar.zst'
-            emit_row 'Linux'   'x64'           'tar.gz' 'stable-linux-x64-JxStudio-Setup.tar.gz' 'tar.zst' 'stable-linux-x64-JxStudio.tar.zst'
-            emit_row 'Windows' 'x64'           'MSI'    'JxStudio.msi'                          'ZIP'     'stable-win-x64-JxStudio-Setup.zip'
-            if [ -n "$msix_name" ]; then
-              printf '| %s | %s | [MSIX](%s/%s) | — |\n' 'Windows' 'Store (MSIX)' "$base" "$msix_name"
-            fi
+            emit_row 'macOS'   'Apple Silicon' 'DMG'       'macos-arm64-JxStudio.dmg'       'ZIP' 'macos-arm64-JxStudio.zip'
+            emit_row 'Linux'   'x64'           'AppImage'  'linux-x64-JxStudio.AppImage'    ''    ''
+            emit_row 'Linux'   'arm64'         'AppImage'  'linux-arm64-JxStudio.AppImage'  ''    ''
+            emit_row 'Windows' 'x64'           'Installer' 'win-x64-JxStudio-Setup.exe'     ''    ''
+            emit_row 'Windows' 'Store (APPX)'  'APPX'      'win-x64-JxStudio.appx'          ''    ''
           )"
 
           # Drop any existing Downloads section, then re-append a fresh one (if we
@@ -190,7 +178,7 @@ jobs:
           } > notes.md
           gh release edit "$TAG" --notes-file notes.md
 
-  # The Electrobun updater fetches relatively off `releases/latest/download/`, so the
+  # electron-updater fetches relatively off `releases/latest/download/`, so the
   # desktop release MUST be GitHub's "latest". Every component release created this run
   # shares the merge commit's created_at, so default "latest" selection is
   # non-deterministic. The bundlers force `make_latest: true`, but on a batch that bumps
@@ -201,7 +189,7 @@ jobs:
   # (from packages/desktop/release-assets.json) are actually present; on a gap it marks the release
   # pre-release (so pin-desktop-latest doesn't advertise a hole) and opens a tracking issue.
   verify-desktop-assets:
-    needs: [release-please, desktop-linux, desktop-macos, desktop-windows, build-msix]
+    needs: [release-please, desktop-linux, desktop-macos, desktop-windows]
     if: always() && needs.release-please.outputs.desktop_released == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -291,7 +279,6 @@ jobs:
         desktop-linux,
         desktop-macos,
         desktop-windows,
-        build-msix,
         verify-desktop-assets,
       ]
     if: always() && needs.release-please.outputs.desktop_released == 'true'
@@ -530,15 +517,7 @@ jobs:
           exit 1
 
   pin-desktop-latest:
-    needs:
-      [
-        release-please,
-        desktop-linux,
-        desktop-macos,
-        desktop-windows,
-        build-msix,
-        verify-desktop-assets,
-      ]
+    needs: [release-please, desktop-linux, desktop-macos, desktop-windows, verify-desktop-assets]
     if: always() && needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     permissions:

@@ -126,7 +126,7 @@ The two declarations MUST be made together or not at all. A session-less shell h
 Three platform targets:
 
 - **DevServer** (`platforms/devserver.ts`) — Wraps `/__studio/*` fetch calls for Chrome-based development.
-- **Desktop** (`@jxsuite/desktop`) — ElectroBun app with RPC to Bun process for native file I/O.
+- **Desktop** (`@jxsuite/desktop`) — Electron application whose windows talk, over a token-gated WebSocket RPC, to a Bun backend for native file I/O.
 - **Cloud** (`platforms/cloud.ts`) — Hosted sessions over the platform's session API; the backend composes per-project schemas in-Worker (extensions.md §5.5), so §4.2.1 holds there too.
 
 Registration: `registerPlatform(impl)` at startup, `getPlatform()` for access. A host that declared a boot module or announced a launcher and registered nothing gets the boot-failure state, never the DevServer adapter (desktop.md §3.3, §3.4).
@@ -1244,7 +1244,7 @@ An ambiguous component (two or more image props) falls through to an insert rath
 
 #### Transport
 
-`StudioPlatform.uploadFile` accepts `string | File | Blob | ArrayBuffer`. The HTTP platforms (dev server, cloud) post the binary body directly; the RPC platforms (electrobun, chromium) JSON-serialize their params, so they base64-encode binary before the call and the backend decodes it. A `string` payload is already base64 and passes through untouched.
+`StudioPlatform.uploadFile` accepts `string | File | Blob | ArrayBuffer`. The HTTP platforms (dev server, cloud) post the binary body directly; the RPC platforms (the desktop launchers) JSON-serialize their params, so they base64-encode binary before the call and the backend decodes it. A `string` payload is already base64 and passes through untouched.
 
 It answers `UploadResult` — `{ path, size? }` — and **`path` is the answer, not an echo.** A backend MUST report where the bytes actually landed, and Studio MUST build the document's reference from that rather than from the path it asked for. A store that de-duplicates by content hash, appends a collision suffix, or normalizes a name writes somewhere else, and a reference built from the request names a file that is not there. A backend that writes exactly where it was told still reports it, so no caller has to know which kind of backend it is talking to.
 
@@ -1462,7 +1462,7 @@ A host serves the tree and supplies a platform. Both halves are the package's to
 
 **The package names no backend.** `@jxsuite/studio` may contain PAL adapters — `platforms/cloud.ts` ships inside the bundle because it owns the collab client's `Y.Doc`, and a second bundled `yjs` breaks cross-module `instanceof` — but it must not depend on a backend _package_. A dependency on `@jxsuite/server` would make the abstraction depend on one of its implementations, and would put the compiler, the scaffolder and the starters into every studio install, the cloud's included. `scripts/check-dep-rules.ts` cannot see this (it forbids only core-to-extension edges, and both are core), so `scripts/check-studio-package.ts` enforces it, along with the rule that only the staging module may import `node:` — the manifest and the document generators are pure so a Worker build, a Vite plugin or a Deno host can read them.
 
-**`canvasUrl` may be deferred.** A platform that resolves it asynchronously — electrobun fetches this window's loopback port over RPC inside `activate()` — declares `canvasUrlDeferred`, and the iframe host shows `about:blank` until the real URL lands. Without it the bundle-relative fallback resolves to a `canvas.html` the packaged app really stages, and an early frame would boot the canvas inside the shell's app-privileged origin, which is what the cross-origin loopback canvas exists to prevent.
+**`canvasUrl` may be deferred.** A platform that resolves it asynchronously, such as one that fetches its window's loopback port over RPC inside `activate()`, declares `canvasUrlDeferred`, and the iframe host shows `about:blank` until the real URL lands. Without it the bundle-relative fallback resolves to a `canvas.html` the packaged app really stages, and an early frame would boot the canvas inside the shell's app-privileged origin, which is what the cross-origin loopback canvas exists to prevent.
 
 ---
 

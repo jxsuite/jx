@@ -34,6 +34,7 @@ One local team for everything that keeps your home comfortable — repairs, new-
 
 [View all services →](/services/)
 :::
+
 :::Array{items.ref="#/state/featured"}
 ::hs-service-card{props.icon="${item.data.icon}" props.name="${item.data.name}" props.summary="${item.data.summary}" props.cta="Learn more" props.href="/services/"}
 :::

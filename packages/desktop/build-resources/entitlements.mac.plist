@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Hardened runtime, which notarization requires, forbids what a JavaScript engine does for a
+         living. Electron's V8 and the Bun that runs the backend (JavaScriptCore) both JIT. The
+         same file is the main app's entitlements and what every nested executable inherits, because
+         the Bun binary in Resources is signed with them too. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- The backend loads native addons (oxfmt, oxlint, sharp) that are signed by their publishers,
+         not by this app's identity. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

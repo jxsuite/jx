@@ -97,7 +97,7 @@ size: M
       - `& [part="table-window"]` takes the old gutter as `padding-inline: var(--jx-space-5)` and `marginBlockEnd: var(--jx-space-5)`, because the inline pad owns the block padding.
       - `& [part="table"]` becomes `tableLayout: fixed`. Its `$description` becomes: the rows are the window, a `jx-table`'s rows are its own children so a slice of them is still a table, and `rowcount`/`rowindex` tell a reader where the slice sits.
       - The row rule keeps only `height: 32px`, which must match `LAYOUT_METRICS`. It must lose `display: flex`, `alignItems` and `gap`: a surface rule outranks the kit's `display: table-row`, so a leftover `display` breaks the table. The row border goes to the kit's cells.
-      - The head row's sticky `position`, `top`, `zIndex` and `background` move to `& [part="table-head"] > [part="cell"]`. A sticky table cell works in every engine Electrobun can use, and a sticky table row cannot be assumed to.
+      - The head row's sticky `position`, `top`, `zIndex` and `background` move to `& [part="table-head"] > [part="cell"]`. A sticky table cell works in every engine the desktop shells can use, and a sticky table row cannot be assumed to.
     - Style, the cells:
       - `cell` drops `flex` and `minWidth` and keeps the ellipsis.
       - Widths go on `data-field`: `name` and `path` 26%, `size` and `modified` 10%, `locale` 9%. `category` and `type` share the remaining 19%. These percentages give today's pixel widths at a 968px table and, like flex, never overflow. The `locale` `$description` is reworded to match.

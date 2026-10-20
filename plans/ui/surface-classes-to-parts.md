@@ -33,7 +33,7 @@ The rule is line 55: "A `class` attribute in a document is legal for one reason:
 
 **One dead class selector.** `canvas-stage.json` line 113, `& [part="doc-header"][data-placement="pinned"] .doc-header`, calls `.doc-header` "the frontmatter card's own root". Nothing writes that class any more. The card is a Jx document, `src/surfaces/doc-header.json`, whose root is `section[part="card"]`, and it draws the pinned band itself: its `&[data-placement="pinned"]` (lines 21 to 25) sets the same `borderWidth: 0 0 1px` and `borderRadius: 0`. `tests/frontmatter-panel.test.ts` (lines 359 to 362) records that move.
 
-**What legitimately stays.** Classes appear in 4 of the 89 surface documents. The two not named above are `electrobun-webkit-app-region-drag` in `boot-failure.json` (1) and `-no-drag` in `commandbar.json` (13), plus the one adapter write, `src/surfaces/commandbar.ts` line 815. Those are the platform contract. One live surface style selects classes, on markup no document draws: `grid-panel.json` (lines 132 to 151) selects Tabulator's own `.tabulator*` names and the `jx-grid-row--*` and `jx-grid-cell--*` state that `grid/grid-view.ts` (lines 127 to 137) toggles on the rows and cells Tabulator hands its formatters.
+**What legitimately stays.** Classes appear in 4 of the 89 surface documents. The two not named above are `app-region-drag` in `boot-failure.json` (1) and `-no-drag` in `commandbar.json` (13), plus the one adapter write, `src/surfaces/commandbar.ts` line 815. Those are the platform contract. One live surface style selects classes, on markup no document draws: `grid-panel.json` (lines 132 to 151) selects Tabulator's own `.tabulator*` names and the `jx-grid-row--*` and `jx-grid-cell--*` state that `grid/grid-view.ts` (lines 127 to 137) toggles on the rows and cells Tabulator hands its formatters.
 
 **The gates.** Neither covers the rule:
 
@@ -79,7 +79,7 @@ The rule is line 55: "A `class` attribute in a document is legal for one reason:
 - **Decided:** the gate is a third rule in `check-surface-purity.ts`, built on the scanners in `check-styles.ts`:
   - ui.md §2's marker already credits that script with "a surface is a document", and it runs in `checks` (`.github/workflows/test.yml` line 311).
   - `check-styles.ts` already owns the parsers (`surfaceClasses`, `extractEmittedClasses`, `jsonStyleBlocks`, `stripComments`) and the third-party list (`VENDOR_CLASS_PREFIXES`). The gate reuses the list through an exported `isVendorClass` rather than keeping a second `tabulator` entry.
-  - The platform allow-list holds only the two Electrobun names. Tabulator's names are admitted by §3.1 but written by no surface, and an allow-list here names only what is written.
+  - The platform allow-list holds only the two window-drag names. Tabulator's names are admitted by §3.1 but written by no surface, and an allow-list here names only what is written.
 - **Decided:** the gate reads surface documents and adapters, not `styles/shell-frame.json`. The frame's sheet also selects `src/resize-edges.ts`'s imperative `.resize-edge.top` (nine names, eight of them bare edge words) and `shell/tree.ts`'s lit `.jx-layer--*` (five), all markup no document draws, so a frame branch would carry a fourteen-name allow-list to guard one attribute rename. The frame's attribute selectors are pinned by `tests/build-styles.test.ts` instead.
 
 ## Implementation
@@ -139,7 +139,7 @@ One pull request. Paths are under `packages/studio/`.
     - In `surfaceClasses`'s doc comment, "this exists to make an exception VISIBLE" gains "and `check-surface-purity.ts` refuses one outside a platform contract".
 13. `scripts/check-surface-purity.ts`:
     - Import `extractEmittedClasses`, `isVendorClass`, `stripComments`, `surfaceClasses` and `surfaceSelectedClasses` from `./check-styles`.
-    - `export const CLASS_CONTRACTS: ReadonlySet<string>` holds `electrobun-webkit-app-region-drag` and `electrobun-webkit-app-region-no-drag`. Its comment cites ui.md §3.1 and the writers (`surfaces/commandbar.json`, `boot-failure.json`, `commandbar.ts`).
+    - `export const CLASS_CONTRACTS: ReadonlySet<string>` holds `app-region-drag` and `app-region-no-drag`. Its comment cites ui.md §3.1 and the writers (`surfaces/commandbar.json`, `boot-failure.json`, `commandbar.ts`).
     - `export const ISLAND_CLASS_PREFIXES: readonly string[]` holds `["jx-grid-"]`, with an owner comment: `grid/grid-view.ts`'s row and cell state on the rows Tabulator hands its formatters, styled by `surfaces/grid-panel.json`. If the Open decision goes the strict way, the list is empty and stays exported for the next island.
     - `const SURFACE_JSON = /^src\/surfaces\/[^/]+\.json$/`, `const COMPUTED_CLASS = /"class(?:Name)?"\s*:\s*(?:[{[]|"[^"]*\$\{)/g` for documents, and `const COMPUTED_CLASS_WRITE` for adapters: a `classList.add|remove|toggle|replace(`, a `.className =` or `+=` (not a `==` comparison), or a `setAttribute("class", …)` whose first class argument is not a plain quoted literal (`extractEmittedClasses` drops a computed name silently, which is the shape `DOCK_CLASS[id]` had).
     - `surfacePurityFindings` gains a branch for `SURFACE_JSON` paths ahead of the `STUDIO_TS` guard, ending in `continue`. It finds three things:
@@ -170,12 +170,12 @@ One pull request. Paths are under `packages/studio/`.
 New cases:
 
 - `tests/check-surface-purity.test.ts`:
-  - "a class in a surface document is a finding, and a platform contract is not": `"class": "resize-handle"` yields one finding with its file and line. `electrobun-webkit-app-region-no-drag` yields none.
+  - "a class in a surface document is a finding, and a platform contract is not": `"class": "resize-handle"` yields one finding with its file and line. `app-region-no-drag` yields none.
   - "a computed class in a surface document is a finding": `"class": "tab-${state.kind}"` and `"class": { "$ref": "#/state/c" }` yield one finding each.
   - "an adapter that writes a class onto its document is a finding, and a platform contract or a comment is not":
     - `src/surfaces/x.ts` with `el.classList.add("is-open")` yields a finding;
     - `el.classList.toggle(DOCK_CLASS[id], on)` yields one "computes a class" finding;
-    - `rootEl.classList.add("electrobun-webkit-app-region-drag")` yields none;
+    - `rootEl.classList.add("app-region-drag")` yields none;
     - `// classList.add("is-open")` yields none;
     - the same writes in `src/panels/x.ts` yield none.
   - "a surface style that selects a class is a finding unless the markup is third-party or an island's": `"& [part=\"edit-column\"].is-resizing::after"` and `"& [part=\"doc-header\"] .doc-header"` yield a finding each. `"& .tabulator .tabulator-row"` and `"& .tabulator-cell.jx-grid-cell--dirty"` yield none, and so does a `$description` that mentions `.is-resizing`.
@@ -247,7 +247,7 @@ The orphan rule only asks that a class have CSS, so the old sentence credited it
 
 ## Acceptance
 
-- `grep -rhoE '"class(Name)?": *"[^"]*"' packages/studio/src/surfaces/*.json | sort -u` prints only the two Electrobun names.
+- `grep -rhoE '"class(Name)?": *"[^"]*"' packages/studio/src/surfaces/*.json | sort -u` prints only the two window-drag names.
 - These print nothing:
   - `grep -rnE 'resize-handle|is-resizing|[^-](left|right|bottom)-collapsed' packages/studio/src packages/studio/styles` (the `[^-]` lets `data-left-collapsed` through);
   - `grep -nE 'element-card|components-section' packages/studio/styles/*.css`.

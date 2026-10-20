@@ -1,12 +1,12 @@
 /**
  * Cross-process registry of open Studio windows.
  *
- * On electrobun a window is a `BrowserWindow` inside one Bun process, so the window manager is a
- * `Map` and every question about "which windows are open" is answered from memory. This launcher
- * has no such process: a Chromium `--app` window belongs to a browser Chromium owns, and the only
- * thing that reliably lives exactly as long as one window is the launcher that started it. **A
- * window here IS a process.** Multi-window therefore needs the one thing a Map cannot give — an
- * answer that spans processes — and this file is it.
+ * In the Electron application a window is a `BrowserWindow` the hub knows about, so every question
+ * about "which windows are open" is answered from memory (`hub/window-hub.ts`). This launcher has
+ * no such process: a Chromium `--app` window belongs to a browser Chromium owns, and the only thing
+ * that reliably lives exactly as long as one window is the launcher that started it. **A window
+ * here IS a process.** Multi-window therefore needs the one thing a Map cannot give — an answer
+ * that spans processes — and this file is it.
  *
  * The store is a directory of one small JSON file per window, named for its pid:
  *

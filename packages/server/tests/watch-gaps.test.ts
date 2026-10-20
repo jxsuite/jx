@@ -372,13 +372,22 @@ describe("createWatcher — SSE reconnection", () => {
       const reader = streamReader(handleSSE(new Request("http://127.0.0.1/__reload")));
       expect(await readFrame(reader)).toBe(`retry: ${RECONNECT_MS}\n\n`);
       // Reloading a page that just loaded is a reload loop; an absent Last-Event-ID must be inert.
-      const raced = await Promise.race([
-        readFrame(reader),
-        new Promise((r) => {
-          setTimeout(() => r("__none__"), 300);
-        }),
-      ]);
-      expect(raced).toBe("__none__");
+      /* File-change frames are not reloads: macOS's FSEvents reports the writes that built the
+         fixture just before the watch began, so they are skipped rather than asserted absent. */
+      const deadline = Date.now() + 300;
+      const reloads: string[] = [];
+      while (Date.now() < deadline) {
+        const frame = await Promise.race([
+          readFrame(reader),
+          new Promise<string>((r) => {
+            setTimeout(() => r("__none__"), Math.max(0, deadline - Date.now()));
+          }),
+        ]);
+        if (frame.includes("data: reload")) {
+          reloads.push(frame);
+        }
+      }
+      expect(reloads).toEqual([]);
       void reader.cancel();
       await watcher.close();
       await sleep(50);

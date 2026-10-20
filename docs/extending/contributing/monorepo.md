@@ -6,7 +6,6 @@ code:
   - scripts/docs/check-plans.ts
   - scripts/ci/approve-held-runs.ts
   - scripts/check-schema-freshness.ts
-  - scripts/check-electrobun-vendor.ts
   - packages/test-support/src/preload.ts
   - packages/test-support/src/dom-equality.ts
   - packages/test-support/src/bun-pin.ts
@@ -27,7 +26,7 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 
 ## Everyday commands
 
-- `bun install`: set up the workspace. It also checks out `vendor/electrobun` (see below); run `bun run electrobun:sync` by hand if you cloned without submodules.
+- `bun install`: set up the workspace.
 - `bun run dev`: start the dev server and open Studio in a browser.
 - `bun test --isolate` (per package): the supported test mode; plain `bun test` has known order-dependent failures.
 - `bun run typecheck`, `bun run lint`, `bun run format`: tsgo, oxlint (all categories at error), oxfmt.
@@ -60,7 +59,7 @@ git diff --name-only origin/main... | bun scripts/ci/affected.ts --stdin
 Three rules decide the scope:
 
 - **A changed package retests its dependents.** Every `@jxsuite/*` package resolves to its `src/` and CI never builds first, so a change to `schema` is observable in every suite downstream of it.
-- **Some suites read files outside their own workspace.** Those edges cannot be seen in a `package.json`, so they are declared in `scripts/ci/affected.ts`, each one naming the test file that proves it. Such an edge retests only that one suite, not everything downstream of it. `vendor/electrobun` is one: it belongs to no workspace, but `packages/desktop` typechecks against it.
+- **Some suites read files outside their own workspace.** Those edges cannot be seen in a `package.json`, so they are declared in `scripts/ci/affected.ts`, each one naming the test file that proves it. Such an edge retests only that one suite, not everything downstream of it. The ones that exist today are listed in that file.
 - **An unrecognised path runs everything.** A new top-level directory costs one full run until someone classifies it, which is the safe direction to be wrong in.
 
 Pushes to `main`, the nightly cron, and manual dispatch are never gated: they always run the full matrix. That is the safety net if a rule above has gone stale, and it keeps each package's coverage baseline current.
@@ -109,26 +108,6 @@ bun run catalog:sync    # regenerate it
 ```
 
 It is its own gate rather than part of `schema:verify`, which derives its file set from tracked `*schema.json` and would never see this artifact. It also refuses to build at all when a package's `exports` map omits `./jx-extension.json`, or when the first-party docs page does not document an extension: both are conditions that would ship a catalogue entry nobody could act on.
-
-## The Electrobun SDK is a submodule, not a dependency
-
-`packages/desktop` is built on Electrobun, and Electrobun 2 publishes **no SDK to npm**. The `electrobun` package you get from `bun install` is a command bootstrap: every import specifier it exports, types included, resolves to a module whose whole body throws and tells you to run Hutch. The real SDK reaches a project only when Hutch downloads that release's core archive over the network and copies it into a gitignored `.hutch/devkit`.
-
-That would leave a plain clone unable to typecheck, so the SDK's TypeScript sources are vendored instead, as a git submodule pinned to the exact release the `electrobun` devDependency names:
-
-```bash
-bun run electrobun:verify   # is the submodule present and at the pinned release?
-bun run electrobun:sync     # check it out, pin it, narrow it, and write the generated stub
-```
-
-`bun install` runs the sync for you. `packages/desktop/tsconfig.json` maps `electrobun/*` straight into `vendor/electrobun/package/src`, so `bun run --cwd packages/desktop typecheck` works offline with no Hutch involved.
-
-Two consequences follow:
-
-- **Hutch builds the app, and the submodule builds its webview bundle.** `.hutch/devkit` is the sysroot for the main process Hutch bundles. The desktop's `init.js` is compiled by a plain `bun build` through `packages/desktop/tsconfig.json`, so it takes `electrobun/view` from the submodule. Without the submodule it silently took the throwing module from `node_modules` instead, and desktop 5.0.0 through 5.1.3 shipped a window that could not reach its backend. So `pre-build.ts` and every bundle lane run `bun scripts/check-electrobun-vendor.ts --init` first, and the build refuses an `init.js` that still contains that module. The two sysroots are the same release rather than two sources of truth: the projected devkit is a verbatim copy of the same directories, and `electrobun:verify` fails when the submodule and the version pin disagree.
-- **Bumping Electrobun takes two moves, and CI makes the second.** Dependabot bumps the version pin and the submodule does not follow it, so the gate goes red on that commit. The Electrobun vendor workflow then runs `bun run electrobun:sync` on the pull request and pushes a commit that moves the gitlink to the matching tag, and the pushed head re-runs green. If you bump the pin by hand, or the workflow could not push (a fork's pull request), run `bun run electrobun:sync` yourself and commit the moved gitlink alongside the pin.
-
-The checkout is sparse, keeping only the five directories the SDK's entry points reach across and excluding upstream's own test files and markdown. That is 1 MB instead of 26 MB, and it keeps a dependency's suite out of `bun test` and its prose out of the docs gates.
 
 ## Releases, branches, and template versions
 

@@ -1042,11 +1042,11 @@ const _urlParams = new URLSearchParams(location.search);
 const _projectParam = _urlParams.get("project") || _urlParams.get("open");
 
 if (!_projectParam) {
-  // Electrobun (and other non-?project= hosts) load their project over RPC, so the ?project= branch
+  // The desktop app (and other non-?project= hosts) load their project over RPC, so the ?project= branch
   // Below — which is the only place that calls platform.activate() — is skipped. Kick off activate()
-  // Here UNCONDITIONALLY so this window's loopback canvasUrl is fetched on boot (the canvas iframe
-  // Needs it); a render() once it resolves lets ensureHost swap an early default iframe for the
-  // Loopback one (see iframe-host ensureHost's canvasUrl-changed rebuild).
+  // Here UNCONDITIONALLY so this window's canvasUrl is fetched on boot (the canvas iframe
+  // Needs it); a render() once it resolves lets ensureHost rebuild against it if it differs from
+  // The default (see iframe-host ensureHost's canvasUrl-changed rebuild).
   const _bootPlatform = getPlatform();
   // oxlint-disable-next-line unicorn/prefer-top-level-await -- fire-and-forget: must not block the initial render
   void _bootPlatform

@@ -4,7 +4,7 @@
  * Handles POST /__studio/import-site: runs @jxsuite/import's importSite pipeline in the backend
  * (headless Chrome + filesystem) and streams progress back as NDJSON lines over the POST response —
  * the same streaming-fetch transport the AI chat proxy uses, so every platform (dev server,
- * Electrobun services server, Chromium loopback server) can mount it unchanged.
+ * Electron hub's loopback servers, Chromium loopback server) can mount it unchanged.
  *
  * Stream protocol (one JSON object per line):
  *

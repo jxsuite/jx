@@ -311,25 +311,9 @@ export interface StudioPlatform {
   /**
    * URL of the canvas iframe document. Optional: when set (chromium serves it from the project
    * server under the studio namespace), the iframe host uses it; otherwise the host falls back to
-   * the default dev-server path. Not keyed on `id` — chromium and electrobun both report `id:
-   * "desktop"`, but only chromium sets this.
+   * the default dev-server path. Not keyed on `id`.
    */
   canvasUrl?: string;
-  /**
-   * True when this platform resolves {@link canvasUrl} ASYNCHRONOUSLY.
-   *
-   * Electrobun does: the url is this window's loopback port, fetched over RPC inside `activate()`.
-   * Until the canvas fallback was anchored to the bundle it did not matter — the old literal
-   * `/packages/studio/canvas.html` resolved to nothing servable under `views://`, so an early frame
-   * simply failed and the host rebuilt when the real url landed. Now the fallback RESOLVES:
-   * `views://studio/canvas.html` is a document electrobun really stages. An early frame would boot
-   * the whole canvas bundle inside the SHELL's app-privileged origin, in a CEF instance running
-   * `disable-site-isolation-trials` — and the cross-origin loopback canvas exists precisely so that
-   * cannot happen. Declaring it makes the host wait instead.
-   *
-   * Not keyed on `id`: chromium and electrobun both report `"desktop"`, and only electrobun defers.
-   */
-  canvasUrlDeferred?: boolean;
   /**
    * Base URL the canvas fetches PROJECT FILES from — component `$ref`s, `$src` modules, images.
    *
@@ -408,12 +392,11 @@ export interface StudioPlatform {
    * image. So a caller that must DECODE a project file — the image editor — needs this instead.
    *
    * **The `<img>` route is not an alternative, on the one platform that matters most.** A preview
-   * `src` from `files/media-paths.ts` is a cross-origin loopback URL on the electrobun desktop
-   * while the shell sits on `views://`, so drawing it into a canvas taints the canvas and
-   * `toBlob()` throws; and `server.md` §4.2 bans CORS outright, because the whole loopback security
-   * model rests on the browser refusing cross-origin reads. Bytes through the PAL become a
-   * same-origin `Blob`, so tainting stops being a thing that can happen rather than a thing that is
-   * worked around.
+   * `src` from `files/media-paths.ts` can be a cross-origin loopback URL while the shell sits on
+   * another origin, so drawing it into a canvas taints the canvas and `toBlob()` throws; and
+   * `server.md` §4.2 bans CORS outright, because the whole loopback security model rests on the
+   * browser refusing cross-origin reads. Bytes through the PAL become a same-origin `Blob`, so
+   * tainting stops being a thing that can happen rather than a thing that is worked around.
    *
    * Optional, and feature-detected like every optional member: a backend without it simply does not
    * offer the image editor, which is the honest degradation `specs/desktop.md` §3.1 asks for.
@@ -874,9 +857,9 @@ export interface StudioPlatform {
    * Watch the backend connection, on platforms whose transport can lose one.
    *
    * Only a socket-based launcher implements this: the dev server talks over `fetch` and has nothing
-   * to lose, and the electrobun launcher's RPC times a request out rather than dropping it. The
-   * chromium launcher holds one long-lived WebSocket, and when it died every call after it hung
-   * with no error anywhere — so the transport reports the state, and the studio says it out loud.
+   * to lose, The chromium launcher holds one long-lived WebSocket, and when it died every call
+   * after it hung with no error anywhere — so the transport reports the state, and the studio says
+   * it out loud.
    *
    * The handler is called on each transition, never repeatedly for one state.
    */

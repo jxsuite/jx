@@ -570,7 +570,7 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
        * The other half of multi-window, and the half that had no door.
        *
        * "Open a project ELSEWHERE" is reachable from Open Project and from Recents
-       * (desktop.md §4.2a); "open an EMPTY window" was reachable only from the ElectroBun
+       * (desktop.md §4.2a); "open an EMPTY window" was reachable only from the desktop
        * launcher's native application menu — so on a launcher whose window has no menu bar,
        * `newWindow` existed on the platform and could not be run. Gated on the same capability
        * every other multi-window verb is, so a host with one window does not offer it.

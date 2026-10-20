@@ -138,9 +138,8 @@ export interface HostState {
   canvasEl: HTMLElement;
   channel: IframeChannel<ParentToIframe, IframeToParent>;
   /**
-   * The resolved canvasUrl this iframe was built with — so a host built early with the default URL
-   * is rebuilt once the platform's loopback canvasUrl becomes available (electrobun resolves it
-   * async).
+   * The resolved canvasUrl this iframe was built with — so a host built with one URL is rebuilt if
+   * the platform later reports a different one.
    */
   canvasUrl: string;
   ready: boolean;
@@ -1810,9 +1809,9 @@ function requestStylebookSelection(host: HostState): void {
  *
  * This was the literal `/packages/studio/canvas.html` — a repo dev-server path baked into a browser
  * bundle, correct on exactly one host out of four. It happened to work because every other host
- * overrides `canvasUrl`: the chromium launcher builds one from its token, electrobun fetches one
- * over RPC, and the cloud adapter hard-codes its own. So the default was never the default; it was
- * the dev server's URL with nothing saying so.
+ * overrides `canvasUrl`: the chromium launcher builds one from its token and the cloud adapter
+ * hard-codes its own. So the default was never the default; it was the dev server's URL with
+ * nothing saying so.
  *
  * `bundleUrl` resolves it against the ENTRY's directory, which is the one fact every host agrees on
  * (see services/bundle-base.ts), so the fallback is now correct everywhere rather than accidentally
@@ -1821,12 +1820,6 @@ function requestStylebookSelection(host: HostState): void {
 function defaultCanvasUrl(): string {
   return bundleUrl("../canvas.html");
 }
-
-/**
- * Loads nothing, deliberately: what a platform that resolves its canvasUrl LATER gets in the
- * meantime. See {@link StudioPlatform.canvasUrlDeferred}.
- */
-const DEFERRED_CANVAS_URL = "about:blank";
 
 /**
  * Release one host: its channel, its overlay, its frame, and everything awaiting a reply from it.
@@ -1873,27 +1866,12 @@ function releaseHost(host: HostState): void {
   liveHosts.delete(host);
 }
 
-/**
- * Which document this pane's canvas iframe should load.
- *
- * The `canvasUrlDeferred` branch is the one that needs saying. Electrobun resolves its canvasUrl
- * asynchronously — it is this window's loopback port, fetched over RPC inside `activate()` — and
- * until the fix above, the bundle-relative default resolved to nothing servable under `views://`,
- * so an early frame simply failed and `ensureHost` rebuilt against the real URL when it landed. Now
- * that default RESOLVES: `views://studio/canvas.html` is a document electrobun really does stage.
- * An early frame would therefore boot the whole canvas bundle inside the SHELL's app-privileged
- * origin, in a CEF instance running `disable-site-isolation-trials` — and the cross-origin loopback
- * canvas exists precisely so that never happens.
- */
+/** Which document this pane's canvas iframe should load. */
 function resolveCanvasUrl(): string {
   if (!hasPlatform()) {
     return defaultCanvasUrl();
   }
-  const platform = getPlatform();
-  if (platform.canvasUrl) {
-    return platform.canvasUrl;
-  }
-  return platform.canvasUrlDeferred ? DEFERRED_CANVAS_URL : defaultCanvasUrl();
+  return getPlatform().canvasUrl || defaultCanvasUrl();
 }
 
 /**
@@ -1933,9 +1911,8 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     if (existing.canvasUrl === canvasUrl) {
       return existing;
     }
-    // The platform's loopback canvasUrl arrived after this host was built with the default URL
-    // (electrobun resolves it async over RPC) — tear the early iframe down and rebuild against the
-    // Right cross-origin origin.
+    // The platform now reports a different canvasUrl than this host was built with — tear the
+    // Iframe down and rebuild against the right origin.
     releaseHost(existing);
   }
   // ParentOrigin is the parent's real origin, passed into the iframe URL so the cross-origin iframe
@@ -1943,8 +1920,8 @@ function ensureHost(canvasEl: HTMLElement): HostState {
   const parentOrigin = location.origin;
   const token = crypto.randomUUID();
   // IframeOrigin is the iframe's own origin. For a RELATIVE canvasUrl (dev / chromium) it resolves to
-  // The parent's location.origin (same-origin). For an absolute loopback canvasUrl (electrobun) it is
-  // The loopback origin, so the channel accepts/targets the right cross-origin peer.
+  // The parent's location.origin (same-origin). For an absolute canvasUrl it is
+  // That URL's origin, so the channel accepts/targets the right cross-origin peer.
   const iframeOrigin = new URL(canvasUrl, location.href).origin;
   const iframe = document.createElement("iframe");
   iframe.className = "jx-canvas-iframe";
@@ -1953,16 +1930,16 @@ function ensureHost(canvasEl: HTMLElement): HostState {
   iframe.title = "Canvas — live page render";
   iframe.style.cssText =
     "width:100%;min-height:480px;height:100%;border:0;display:block;background:#fff";
-  // Preserve any query already on canvasUrl (e.g. electrobun's ?win=7) and append the token (always)
+  // Preserve any query already on canvasUrl (e.g. a per-window `?win=7`) and append the token (always)
   // Plus parentOrigin (conditionally — see below).
   const srcUrl = new URL(canvasUrl, location.href);
   srcUrl.searchParams.set("token", token);
   // Pass parentOrigin into the iframe src ONLY when the PARENT is served over http(s) (dev / chromium
   // — same-origin, so the origin round-trips and the iframe can keep its acceptOrigin STRICT). For a
-  // Non-http(s) parent (electrobun views://) OMIT it: a custom scheme may not surface as a postMessage
+  // Non-http(s) parent (a custom scheme) OMIT it: a custom scheme may not surface as a postMessage
   // Origin (event.origin), so the iframe falls back to acceptOrigin '*' + the shared token (it logs
   // The warn) rather than silently stalling. The PARENT side here stays STRICT — acceptOrigin /
-  // TargetOrigin are the real (loopback) iframeOrigin below, a gateable origin.
+  // TargetOrigin are the real iframeOrigin below, a gateable origin.
   if (location.protocol === "http:" || location.protocol === "https:") {
     srcUrl.searchParams.set("parentOrigin", parentOrigin);
   }

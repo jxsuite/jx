@@ -549,9 +549,9 @@ function windowControls(): WindowControls | undefined {
   if (platform == null || !("windowControls" in platform)) {
     return undefined;
   }
-  /* SAFETY: the PAL interface deliberately leaves `windowControls` undeclared; the one adapter that
-     adds it is the desktop launcher's (`packages/desktop/src/platform.ts`), whose object carries the
-     `close`, `maximize` and `minimize` functions this bar calls. */
+  /* SAFETY: the PAL interface deliberately leaves `windowControls` undeclared; the adapters that add
+     it is the desktop launcher's (`chromium/platform.ts` under the Electron shell), whose objects carry the `close`,
+     `maximize` and `minimize` functions this bar calls. */
   return platform.windowControls as WindowControls | undefined;
 }
 
@@ -847,7 +847,7 @@ export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}): void {
   unmount();
   _rootEl = rootEl;
   if (windowControls()) {
-    rootEl.classList.add("electrobun-webkit-app-region-drag");
+    rootEl.classList.add("app-region-drag");
   }
   _scope = effectScope();
   _scope.run(() => {

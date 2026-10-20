@@ -280,7 +280,7 @@
               },
               "attributes": {
                 "data-control": "close",
-                "class": "electrobun-webkit-app-region-no-drag"
+                "class": "app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -305,7 +305,7 @@
               },
               "attributes": {
                 "data-control": "minimize",
-                "class": "electrobun-webkit-app-region-no-drag"
+                "class": "app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -330,7 +330,7 @@
               },
               "attributes": {
                 "data-control": "maximize",
-                "class": "electrobun-webkit-app-region-no-drag"
+                "class": "app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -373,7 +373,7 @@
           },
           "attributes": {
             "data-menu": "studio",
-            "class": "electrobun-webkit-app-region-no-drag"
+            "class": "app-region-no-drag"
           },
           "onclick": {
             "$prototype": "Function",
@@ -444,7 +444,7 @@
               "attributes": {
                 "part": "workspaces",
                 "selected": "${state.workspace}",
-                "class": "electrobun-webkit-app-region-no-drag"
+                "class": "app-region-no-drag"
               },
               "$props": {
                 "label": "Workspaces",
@@ -543,7 +543,7 @@
                   "$description": "`publish.quick`, drawn beside the Publish tab rather than inside it (studio.md §22.2): a tab that sometimes opened a dialog would be a tab whose activation means two things. It sits after the tablist, which ends on Publish, so it is the control beside that tab.",
                   "attributes": {
                     "part": "quick-publish",
-                    "class": "electrobun-webkit-app-region-no-drag",
+                    "class": "app-region-no-drag",
                     "data-command": "publish.quick"
                   },
                   "$props": {
@@ -590,7 +590,7 @@
         "part": "center",
         "role": "group",
         "aria-label": "Command Center",
-        "class": "electrobun-webkit-app-region-no-drag"
+        "class": "app-region-no-drag"
       },
       "onclick": {
         "$prototype": "Function",
@@ -658,7 +658,7 @@
                   "type": "button",
                   "data-segment": "${$map.item.key}",
                   "title": "${$map.item.title}",
-                  "class": "electrobun-webkit-app-region-no-drag"
+                  "class": "app-region-no-drag"
                 },
                 "textContent": "${$map.item.label}",
                 "onclick": {
@@ -744,7 +744,7 @@
             },
             "attributes": {
               "data-command-id": "${$map.item.id}",
-              "class": "electrobun-webkit-app-region-no-drag"
+              "class": "app-region-no-drag"
             },
             "onclick": {
               "$prototype": "Function",
@@ -926,7 +926,7 @@
           },
           "attributes": {
             "data-menu": "settings",
-            "class": "electrobun-webkit-app-region-no-drag"
+            "class": "app-region-no-drag"
           },
           "onclick": {
             "$prototype": "Function",
@@ -1017,7 +1017,7 @@
             },
             "attributes": {
               "data-command-id": "${$map.item.id}",
-              "class": "electrobun-webkit-app-region-no-drag"
+              "class": "app-region-no-drag"
             },
             "onchange": {
               "$prototype": "Function",
@@ -1067,7 +1067,7 @@
               },
               "attributes": {
                 "data-control": "minimize",
-                "class": "electrobun-webkit-app-region-no-drag"
+                "class": "app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -1092,7 +1092,7 @@
               },
               "attributes": {
                 "data-control": "maximize",
-                "class": "electrobun-webkit-app-region-no-drag"
+                "class": "app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
@@ -1117,7 +1117,7 @@
               },
               "attributes": {
                 "data-control": "close",
-                "class": "electrobun-webkit-app-region-no-drag"
+                "class": "app-region-no-drag"
               },
               "onclick": {
                 "$prototype": "Function",
