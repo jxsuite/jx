@@ -104,7 +104,7 @@ describe("main.ts", () => {
       process.send = ((message: BackendMessage) => {
         sent.push(message);
         return true;
-      }) as typeof process.send;
+      }) as NonNullable<typeof original>;
       process.emit("message", { root, type: "open-project" }, null);
       expect(sent.at(-1)).toMatchObject({ title: "site — Jx Studio", type: "open-window" });
       // A frame that is not one of the shell's messages is dropped at the channel.
