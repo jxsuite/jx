@@ -82,10 +82,10 @@ export interface BootEnvironment {
  * the HTTP protocol reuses the stock dev-server adapter unchanged, and a third-party shell may well
  * serve it through a custom scheme — `tauri://localhost` proxies to a real server. Refusing every
  * scheme that is not `http:` would break that host to cover a case the meta and the launcher signal
- * already cover for every host this repository ships. `views:` is Electrobun's own bundle scheme
- * and `file:` is a document opened from disk; neither can be proxying anything. happy-dom's
- * `about:` is absent for the same reason, which is also what lets a test import the entry without
- * inventing a URL.
+ * already cover for every host this repository ships. `views:` is a custom bundle scheme and
+ * `file:` is a document opened from disk; neither can be proxying anything. happy-dom's `about:` is
+ * absent for the same reason, which is also what lets a test import the entry without inventing a
+ * URL.
  */
 const BACKENDLESS_SCHEMES: ReadonlySet<string> = new Set(["views:", "file:"]);
 

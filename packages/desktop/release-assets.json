@@ -1,5 +1,5 @@
 {
-  "$comment": "Single source of truth for GitHub release asset filenames and their signing status. Consumed by scripts/docs/check-site-claims.ts (download-link + 'signed' claim verification) and the desktop build scripts. Update filenames HERE first. `signed` reflects whether the shipped artifact is actually code-signed/notarized today. Electrobun 2 drops the channel prefix from STABLE INSTALLER names (verified against a real build: `win-x64-JxStudio-Setup.zip`) while the updater feed keeps it (`stable-win-x64-update.json`) — so these download links carry no `stable-`, and existing 1.18 installs still find the same update feed. macOS x64 is absent because Electrobun 2 publishes no macos-x64 core archive.",
+  "$comment": "Single source of truth for GitHub release asset filenames and their signing status. Consumed by scripts/docs/check-site-claims.ts (download-link + 'signed' claim verification), the release workflows (release-please.yml's download table and verify-desktop-assets) and scripts/desktop-build-lanes.test.ts, which holds these names equal to the artifactName patterns in electron-builder.yml. Update filenames HERE first. `signed` reflects whether the shipped artifact is actually code-signed/notarized today. The Windows Store package (win-x64-JxStudio.appx) is built beside the installer but is submitted to the Store rather than downloaded, so it is not listed. macOS x64 is absent: there has been no Intel Mac build since the 1.18 toolchain.",
   "assets": [
     {
       "file": "macos-arm64-JxStudio.dmg",
@@ -8,19 +8,19 @@
       "downloadable": true
     },
     {
-      "file": "JxStudio.msi",
+      "file": "win-x64-JxStudio-Setup.exe",
       "platform": "windows",
       "signed": false,
       "downloadable": true
     },
     {
-      "file": "linux-x64-JxStudio-Setup.tar.gz",
+      "file": "linux-x64-JxStudio.AppImage",
       "platform": "linux",
       "signed": false,
       "downloadable": true
     },
     {
-      "file": "linux-arm64-JxStudio-Setup.tar.gz",
+      "file": "linux-arm64-JxStudio.AppImage",
       "platform": "linux",
       "signed": false,
       "downloadable": true

@@ -22,7 +22,7 @@ updates:
   # Cheap: `.github/**` reaches no test workspace, so these run `checks` and nothing else. Daily
   # and grouped into one pull request; "daily" is weekdays-only in Dependabot's vocabulary.
   #
-  # KNOWN GAP, accepted deliberately: bundle-desktop-{linux,macos,windows}.yml, build-msix.yml and
+  # KNOWN GAP, accepted deliberately: bundle-desktop-{linux,macos,windows}.yml and
   # publish.yml are `workflow_call`-only, reachable exclusively from release-please.yml at a release
   # tag. No pull request check ever executes them, so an action bump inside those files is first
   # exercised during a real release. The release pipeline is built for that — a failed bundler

@@ -17,7 +17,7 @@
  * @module @jxsuite/parser/content-loader
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, extname, relative, resolve } from "node:path";
 import {
   assetUrlFor,
@@ -183,6 +183,25 @@ export function localesForExpansion(projectConfig: ProjectConfig | undefined): s
 }
 
 /**
+ * Whether `path` (relative to `root`) exists with exactly this spelling.
+ *
+ * `existsSync` alone answers "is there a directory called `fr-ca`" with yes when only `fr-CA`
+ * exists, on a case-insensitive filesystem (macOS and Windows by default), so the spelling that
+ * wins would depend on the machine. The filesystem's own name for the entry, from `realpath`, is
+ * compared segment for segment instead, which is the same answer everywhere.
+ */
+function existsWithSpelling(root: string, path: string): boolean {
+  const full = resolve(root, path);
+  if (!existsSync(full)) {
+    return false;
+  }
+  const wanted = full.split(/[\\/]/).filter(Boolean);
+  const actual = realpathSync.native(full).split(/[\\/]/).filter(Boolean);
+  const tail = actual.slice(-wanted.length);
+  return wanted.every((segment, index) => segment === tail[index]);
+}
+
+/**
  * The directory a locale's entries live in, out of the spellings that can legitimately be on disk.
  *
  * A locale directory is matched **case-insensitively**, because two writers name it and they
@@ -204,7 +223,7 @@ export function localeSource(root: string, source: string, locale: string): stri
   const candidates = [locale, locale.toLowerCase()];
   for (const spelling of candidates) {
     const path = source.split(LOCALE_PLACEHOLDER).join(spelling);
-    if (existsSync(resolve(root, path))) {
+    if (existsWithSpelling(root, path)) {
       return path;
     }
   }

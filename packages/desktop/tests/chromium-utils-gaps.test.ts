@@ -92,7 +92,7 @@ describe("openFileDialog (chromium / D-Bus portal)", () => {
     config.respond = (fire) => {
       fire(0, [["uris", ["as", ["file:///home/user/projects/site/project.json"]]]]);
     };
-    const result = await openFileDialog();
+    const result = await openFileDialog(undefined, "linux");
     expect(result).toBe("/home/user/projects/site/project.json");
   });
 
@@ -100,13 +100,13 @@ describe("openFileDialog (chromium / D-Bus portal)", () => {
     config.respond = (fire) => {
       fire(0, { uris: ["file:///tmp/demo/project.json"] });
     };
-    const result = await openFileDialog();
+    const result = await openFileDialog(undefined, "linux");
     expect(result).toBe("/tmp/demo/project.json");
   });
 
   test("passes title, modal options and a handle token to OpenFile", async () => {
     config.respond = (fire) => fire(0, { uris: ["file:///a/b.json"] });
-    await openFileDialog();
+    await openFileDialog(undefined, "linux");
     const { parent, title, options } = lastOpenFile();
     expect(parent).toBe("");
     expect(title).toBe("Open project.json");
@@ -120,43 +120,43 @@ describe("openFileDialog (chromium / D-Bus portal)", () => {
   test("listens on the Request object at the handle returned by OpenFile", async () => {
     config.openFileHandle = "/org/fdo/portal/request/custom_42";
     config.respond = (fire) => fire(0, { uris: ["file:///a/b.json"] });
-    await openFileDialog();
+    await openFileDialog(undefined, "linux");
     expect(requestPath).toBe("/org/fdo/portal/request/custom_42");
   });
 
   test("returns null when the user cancels (non-zero response code)", async () => {
     config.respond = (fire) => fire(1, { uris: ["file:///ignored.json"] });
-    const result = await openFileDialog();
+    const result = await openFileDialog(undefined, "linux");
     expect(result).toBeNull();
   });
 
   test("returns null when the response contains no uris", async () => {
     config.respond = (fire) => fire(0, { uris: [] });
-    const result = await openFileDialog();
+    const result = await openFileDialog(undefined, "linux");
     expect(result).toBeNull();
   });
 
   test("returns null when the response results are an empty object", async () => {
     config.respond = (fire) => fire(0, {});
-    const result = await openFileDialog();
+    const result = await openFileDialog(undefined, "linux");
     expect(result).toBeNull();
   });
 
   test("returns null when the uri is not a parseable URL", async () => {
     config.respond = (fire) => fire(0, { uris: ["not a valid url"] });
-    const result = await openFileDialog();
+    const result = await openFileDialog(undefined, "linux");
     expect(result).toBeNull();
   });
 
   test("closes the bus connection after a successful selection", async () => {
     config.respond = (fire) => fire(0, { uris: ["file:///x/y.json"] });
-    await openFileDialog();
+    await openFileDialog(undefined, "linux");
     expect(endCalls).toBe(1);
   });
 
   test("closes the bus connection even when OpenFile fails", async () => {
     config.openFileError = new Error("portal unavailable");
-    await expect(openFileDialog()).rejects.toThrow("portal unavailable");
+    await expect(openFileDialog(undefined, "linux")).rejects.toThrow("portal unavailable");
     expect(endCalls).toBe(1);
   });
 
@@ -164,14 +164,14 @@ describe("openFileDialog (chromium / D-Bus portal)", () => {
     config.respond = (fire) => {
       setTimeout(() => fire(0, { uris: ["file:///delayed/project.json"] }), 5);
     };
-    const result = await openFileDialog();
+    const result = await openFileDialog(undefined, "linux");
     expect(result).toBe("/delayed/project.json");
   });
 
   test("resolves null via the cancel timeout when the portal never responds", async () => {
     // Config.respond stays unset: the Request registers its handler but "Response" never fires,
     // So only the cancel timeout (shortened from its 60s default) can settle the promise.
-    const result = await openFileDialog(5);
+    const result = await openFileDialog(5, "linux");
     expect(result).toBeNull();
     expect(endCalls).toBe(1);
   });
@@ -180,13 +180,13 @@ describe("openFileDialog (chromium / D-Bus portal)", () => {
 describe("openDirectoryDialog (chromium / D-Bus portal)", () => {
   test("resolves the chosen folder path", async () => {
     config.respond = (fire) => fire(0, { uris: ["file:///home/user/projects"] });
-    const result = await openDirectoryDialog();
+    const result = await openDirectoryDialog("linux");
     expect(result).toBe("/home/user/projects");
   });
 
   test("requests a directory and omits the *.json filter", async () => {
     config.respond = (fire) => fire(0, { uris: ["file:///home/user/x"] });
-    await openDirectoryDialog();
+    await openDirectoryDialog("linux");
     const { title, options } = lastOpenFile();
     expect(title).toBe("Choose a folder for your new project");
     const directoryEntry = options.find(([key]) => key === "directory");
@@ -196,6 +196,6 @@ describe("openDirectoryDialog (chromium / D-Bus portal)", () => {
 
   test("returns null when the user cancels", async () => {
     config.respond = (fire) => fire(1, {});
-    expect(await openDirectoryDialog()).toBeNull();
+    expect(await openDirectoryDialog("linux")).toBeNull();
   });
 });

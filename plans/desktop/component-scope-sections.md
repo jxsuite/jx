@@ -142,7 +142,7 @@ No other spec changes: studio.md §5.4's deferral to desktop.md §6.2–§6.5 an
 - No change: `docs/studio/design/layers.md` (lists `dnd.ts`; the Outline's drag is untouched), `docs/start/first-component.md` ("your components appear at the top" holds), `docs/studio/design/components.md`, `docs/studio/interface/canvas.md`. No docs page cites a `desktop.md#6.*` anchor today.
 - The screenshots lane re-captures `elements-panel` and `counter-elements`; re-read `docs/studio/design/elements.md` and `docs/start/first-component.md` against the new pictures.
 
-No graduation: desktop.md keeps §3.1, §3.3, §3.6, §4.3, §5.3, §6.1, §7.4, §9.3 and §10.2 open.
+No graduation: desktop.md keeps §3.1, §3.3, §3.6, §4.3, §5.3, §6.1, §7.6, §9.7 and §10.2 open.
 
 ## Acceptance
 

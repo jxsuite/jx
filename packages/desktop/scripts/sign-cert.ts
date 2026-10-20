@@ -9,7 +9,7 @@ const certPath = join(certDir, DEV_CERT_FILENAME);
 const certPassword = DEV_CERT_PASSWORD;
 
 // Publisher in AppxManifest.xml Identity must exactly match the cert Subject, so both read the same
-// Constant. See scripts/msix-identity.ts for why this is not derived from electrobun.config.ts.
+// Constant. See scripts/msix-identity.ts.
 const publisher = MSIX_PUBLISHER;
 
 if (!existsSync(certDir)) {

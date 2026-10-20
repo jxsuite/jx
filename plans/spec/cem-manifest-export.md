@@ -122,7 +122,7 @@ New `packages/compiler/tests/site-build-cem-manifest.test.ts` (the `writeJSON` f
 
 `packages/studio`: `tests/cem-export.test.ts` becomes `tests/component-slots.test.ts` holding the eight `validateComponentSlots` cases unchanged, without the `./with-dom.js` import the module no longer needs; the `collectSlots` and `exportCemManifest` blocks are deleted (slot walking is `collectSlotDefs`'s, covered in schema). `reachability.test.ts` passes without the entry.
 
-Both typechecks: `bun run typecheck`, and `bun run --cwd packages/desktop typecheck` after `bun scripts/check-electrobun-vendor.ts --init`.
+Both typechecks: `bun run typecheck`, and `bun run --cwd packages/desktop typecheck`.
 
 ## Specs & docs
 

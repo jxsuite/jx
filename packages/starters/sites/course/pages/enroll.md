@@ -19,7 +19,7 @@ Not sure if it's the right fit? Book a call with our admissions team and we'll w
 - **✓** Six monthly payment plans available
 - **✓** Need-based scholarships for eligible students
 - **✓** 7-day full refund, no questions asked
-  :::
+:::
 
 :::co-pricing{props.badge="Fall cohort · 24 seats" props.plan="Full Program" props.price="$8,900" props.period="or 6 monthly payments" props.description="14 weeks of live instruction, mentorship, and career support — end to end." props.cta="Apply Now" props.ctaHref="#apply" props.note="7-day full refund · scholarships available"}
 
@@ -28,9 +28,9 @@ Not sure if it's the right fit? Book a call with our admissions team and we'll w
 - Deployed full-stack capstone project
 - Career coaching & interview prep
 - Lifetime access to course materials
-  :::
-  ::::
-  :::::
+:::
+::::
+:::::
 
 :::::section{id="apply" style.maxWidth="var(--max-width-narrow)" style.margin="0 auto" style.padding="clamp(3rem, 6vw, 4.5rem) 1.5rem"}
 ::co-section-header{props.eyebrow="apply" props.heading="Start your application" props.subheading="Tell us a little about yourself and admissions will be in touch within two business days."}

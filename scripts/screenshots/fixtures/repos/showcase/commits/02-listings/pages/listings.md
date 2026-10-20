@@ -10,4 +10,5 @@ title: "Listings"
 
 ::sc-listing-card{props.title="Old Mill Barn" props.meta="4 bed · 3 bath" props.price="$720,000"}
 ::::
+
 :::

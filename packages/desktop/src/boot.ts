@@ -4,11 +4,11 @@
  *
  * @docs extending/embedding/platform-adapter
  *
- * Desktop 5.0.0 through 5.1.3 shipped an Electrobun init bundle that threw on IMPORT: a module Bun
- * had inlined into `views/studio/dist/init.js` threw while it evaluated, so the shim's own body —
+ * Desktop 5.0.0 through 5.1.3 shipped an init bundle that threw on IMPORT: a module Bun had inlined
+ * into `dist/init.js` threw while it evaluated, so the shim's own body —
  * `registerPlatform(createDesktopPlatform())` — never ran. Nothing recorded why. Studio is a
  * separate module script, so it booted anyway, found no adapter, and quietly registered the
- * dev-server one against a `views://` origin with nothing behind it. Every window was a Studio that
+ * dev-server one against an origin with no dev server behind it. Every window was a Studio that
  * could not open a file, and the only trace was one console line nobody was looking at.
  *
  * So a launcher now ANNOUNCES itself before anything else in its bundle can throw, and records the
@@ -117,7 +117,10 @@ export interface BootablePlatform extends StudioPlatform {
 }
 
 export interface BootLauncherOptions<P extends BootablePlatform> {
-  /** Which launcher this is (`"electrobun"`, `"chromium"`); Studio names it on the failure screen. */
+  /**
+   * Which launcher this is (`"chromium"` for every desktop build today); Studio names it on the
+   * failure screen.
+   */
   launcher: string;
   /** The launcher's adapter factory. It may throw, and the throw is recorded rather than lost. */
   create: () => P;

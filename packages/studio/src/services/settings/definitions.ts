@@ -2,23 +2,23 @@
  * The settings registry — every application setting Studio holds, declared once.
  *
  * Before this table the answer to "which settings roam, and what is each one's default" lived in
- * four places: a `PERSISTED_SETTINGS_KEYS` array, a private `const` per key in each `*-settings.ts`,
- * a bespoke getter/setter pair beside it, and whatever the getter's `||` happened to fall back to.
- * Adding a roaming setting meant editing all four and hoping; the key strings themselves were
- * duplicated between the array and the module that owned them.
+ * four places: a `PERSISTED_SETTINGS_KEYS` array, a private `const` per key in each
+ * `*-settings.ts`, a bespoke getter/setter pair beside it, and whatever the getter's `||` happened
+ * to fall back to. Adding a roaming setting meant editing all four and hoping; the key strings
+ * themselves were duplicated between the array and the module that owned them.
  *
  * Two properties of this table are load-bearing rather than tidy:
  *
- * 1.  **Scope is declared, not inferred.** {@link USER_SETTINGS} is DERIVED from it, so a setting
- *     roams because it says `scope: "user"` — not because someone remembered to add its key to a
- *     second list. `device` is the honest name for the rest: panel geometry and a palette's MRU
- *     describe *this window*, and a user with two windows open wants them to differ.
- * 2.  **A default is not a value.** The default is what a *reader* sees when nothing is stored; it
- *     is never itself stored. `getModel()` used to mask unset as `"gpt-4o"` with `||`, a form
- *     prefilled from it, and Save wrote the mask back — which is how an install whose owner had
- *     configured an entirely different provider was left holding `jx.ai.model: "gpt-4o"` and
- *     nothing else. {@link readSetting} and {@link readStoredSetting} in `kernel.ts` are two
- *     functions for exactly this reason.
+ * 1. **Scope is declared, not inferred.** {@link USER_SETTINGS} is DERIVED from it, so a setting roams
+ *    because it says `scope: "user"` — not because someone remembered to add its key to a second
+ *    list. `device` is the honest name for the rest: panel geometry and a palette's MRU describe
+ *    _this window_, and a user with two windows open wants them to differ.
+ * 2. **A default is not a value.** The default is what a _reader_ sees when nothing is stored; it is
+ *    never itself stored. `getModel()` used to mask unset as `"gpt-4o"` with `||`, a form prefilled
+ *    from it, and Save wrote the mask back — which is how an install whose owner had configured an
+ *    entirely different provider was left holding `jx.ai.model: "gpt-4o"` and nothing else.
+ *    {@link readSetting} and {@link readStoredSetting} in `kernel.ts` are two functions for exactly
+ *    this reason.
  *
  * @license MIT
  */

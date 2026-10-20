@@ -9,7 +9,7 @@ The core packages are the Jx framework itself. [`extensions/*`](../extensions/RE
 | [`@jxsuite/compiler`](./compiler) | Static HTML compiler, island detector, site builder, plus the `jx` CLI         |
 | [`@jxsuite/server`](./server)     | Bun dev server: live reload, proxy resolution, Studio backend                  |
 | [`@jxsuite/studio`](./studio)     | The visual builder, as a backend-agnostic browser application                  |
-| [`@jxsuite/desktop`](./desktop)   | Studio packaged as a desktop app on Electrobun (an app, not a library)         |
+| [`@jxsuite/desktop`](./desktop)   | Studio packaged as a desktop app on Electron (an app, not a library)           |
 | [`@jxsuite/protocol`](./protocol) | Studio Backend Protocol: wire types and the canonical route table              |
 | [`@jxsuite/collab`](./collab)     | Co-editing primitives: Y.Doc schema, op bridge, differ, wire envelope          |
 | [`@jxsuite/ai`](./ai)             | Streaming LLM client, tool registry, reactive chat state                       |
@@ -33,7 +33,7 @@ The core packages are the Jx framework itself. [`extensions/*`](../extensions/RE
 Each directory is a Bun workspace member through the root `packages/*` glob and carries the same furniture: `package.json`, `README.md`, `LICENSE`, `CHANGELOG.md`, `bunfig.toml`, `src/` and `tests/`. Three exceptions are worth knowing before a typecheck surprises you:
 
 - `create` and `starters` keep their sources at the package root (`starters/index.ts`, `create/generate.ts`), which is outside the root tsconfig's `packages/**/src/**/*` include, so they carry their own `tsconfig.json`. They declare no `typecheck` script, so root `bun run typecheck` covers only their tests.
-- `desktop` is excluded from the root tsconfig entirely (electrobun ships raw `.ts` in its dist) and runs its own `typecheck` script as a separate CI step.
+- `desktop` is excluded from the root tsconfig and runs its own `typecheck` script as a separate CI step.
 - `packages/*/coverage` and `packages/*/dist` are gitignored, as is `packages/starters/sites/*/bun.lock` (the stray install left behind by opening a starter in Studio).
 
 ## Testing

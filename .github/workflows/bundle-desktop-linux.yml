@@ -17,10 +17,12 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x64
-          # Electrobun 2 publishes a linux-arm64 core archive, which 1.18 did not. Hutch builds for
-          # the host only, so this needs a native arm64 runner rather than a cross-compile flag.
+            arch: x64
+          # electron-builder packages for the host's architecture, so arm64 needs a native runner
+          # rather than a cross-compile flag.
           - os: ubuntu-24.04-arm
             platform: linux-arm64
+            arch: arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -42,55 +44,42 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      # Electrobun 2 builds through Hutch, which the `electrobun` devDependency downloads and
-      # verifies on first use — no machine-wide install. The build prepares the SDK implicitly; this
-      # only warms the shared store so every lane is not re-downloading the core and CEF.
-      - name: Cache the Hutch store
-        uses: ./.github/actions/cache-hutch-store
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            build-essential \
-            cmake \
-            pkg-config
-
       - name: Build workspace packages
         run: bun run build
 
-      # The desktop init bundle compiles `electrobun/view` out of the vendored submodule, which a
-      # bare checkout leaves empty; without this the release shipped an init.js that throws on
-      # import (5.0.0-5.1.3). pre-build.ts runs it too, so this is the lane saying so up front.
-      - name: Prepare the vendored Electrobun SDK
-        run: bun scripts/check-electrobun-vendor.ts --init
+      # The AppImage is the one Linux package electron-updater can replace in place. The snap
+      # (build-snap.yml) and the Nix package are separate channels with their own updaters.
+      - name: Build the AppImage
+        run: bun run --cwd packages/desktop package --target linux --arch ${{ matrix.arch }} -- --publish never
 
-      - name: Build desktop installer
-        run: bun run desktop:stable
+      # What was packaged, not the sources (packages/desktop/scripts/smoke-backend.ts).
+      - name: Smoke-test the packaged backend
+        run: bun run --cwd packages/desktop smoke
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: release-linux-x64
-          path: packages/desktop/artifacts/
+          name: release-${{ matrix.platform }}
+          path: |
+            packages/desktop/artifacts/*.AppImage
+            packages/desktop/artifacts/latest*.yml
           if-no-files-found: error
           retention-days: 7
 
       - name: Attach to release
-        # Run even when the build step failed, so any artifacts that DID land in
-        # packages/desktop/artifacts/ still reach the release. action-gh-release
-        # no-ops on an empty glob (fail_on_unmatched_files defaults false), so a
-        # total build failure leaves the job red without adding a spurious error.
+        # Run even when a step failed, so any artifacts that DID land in packages/desktop/artifacts/
+        # still reach the release. action-gh-release no-ops on an empty glob
+        # (fail_on_unmatched_files defaults false), so a total build failure leaves the job red
+        # without adding a spurious error.
         if: ${{ !cancelled() }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag_name }}
           draft: false
-          # Force the desktop release to be GitHub's "latest" so the Electrobun
-          # updater's releases/latest/download/ feed resolves here. Idempotent
-          # across the concurrent bundler attach jobs.
+          # Force the desktop release to be GitHub's "latest" so electron-updater's
+          # releases/latest/download/ feed resolves here. Idempotent across the concurrent bundler
+          # attach jobs.
           make_latest: true
-          files: packages/desktop/artifacts/*
+          files: |
+            packages/desktop/artifacts/*.AppImage
+            packages/desktop/artifacts/latest*.yml

@@ -41,8 +41,7 @@
     // `packages/studio/src/commands/*`, which pulls a slice of studio's source graph into THIS
     // program by transitive import — including `grid-view.ts`, whose `tabulator-tables` import
     // only resolves via the ambient shim below. An ambient `.d.ts` only takes effect when it is
-    // part of the program as a ROOT, not merely by living next to a file that is (the same gap the
-    // root tsconfig's own comment documents for the electrobun vendor submodule), so it is named
+    // part of the program as a ROOT, not merely by living next to a file that is so it is named
     // here explicitly rather than left for whichever script happens to reach that corner of studio.
     "../packages/studio/src/grid/tabulator-tables.d.ts"
   ]

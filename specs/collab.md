@@ -13,7 +13,7 @@
 
 ## 1. Overview
 
-> **Status: Partial.** `/__studio/collab` is served by the dev server (`packages/server/src/collab.ts`, wired in `server.ts`) and, under its session prefix, by the cloud gateway Studio reaches through `packages/studio/src/platforms/cloud.ts`, which this section does not name. Neither desktop launcher serves it: the Electrobun app's adapter (`packages/desktop/src/platform.ts`), the Chromium launcher's (`packages/desktop/src/chromium/platform.ts`) and the project server both start (`packages/server/src/project-server.ts`) implement no `collab`, so collaboration is `unavailable` on desktop.
+> **Status: Partial.** `/__studio/collab` is served by the dev server (`packages/server/src/collab.ts`, wired in `server.ts`) and, under its session prefix, by the cloud gateway Studio reaches through `packages/studio/src/platforms/cloud.ts`, which this section does not name. Neither desktop launcher serves it: the desktop adapter (`packages/desktop/src/chromium/platform.ts`, shared by the Electron application and the Chromium launcher) and the project server both start (`packages/server/src/project-server.ts`) implement no `collab`, so collaboration is `unavailable` on desktop.
 
 `@jxsuite/collab` provides multi-participant, real-time co-editing of a Jx project. Documents are modeled as [Yjs](https://github.com/yjs/yjs) shared types; edits converge via CRDT merge, so concurrent editors do not clobber each other. The transport is a WebSocket route on the dev/desktop server (`/__studio/collab`), which also answers a capability probe when collab is disabled.
 

@@ -3,9 +3,9 @@
  * Base64 encoding for binary payloads that cross an RPC boundary.
  *
  * `StudioPlatform.uploadFile` accepts `string | File | Blob | ArrayBuffer`, but the RPC platforms
- * (electrobun, chromium) JSON-serialize their params — a `File`/`Blob` becomes `{}` on the wire.
- * Those platforms encode here before the call; the HTTP platforms (dev server, cloud) post the
- * binary body directly and must NOT use this.
+ * (the chromium desktop shell) JSON-serialize their params — a `File`/`Blob` becomes `{}` on the
+ * wire. Those platforms encode here before the call; the HTTP platforms (dev server, cloud) post
+ * the binary body directly and must NOT use this.
  *
  * {@link base64ToBytes} is the same boundary in the other direction, for `readFileBytes`: the RPC
  * backends answer a base64 string for the same reason they accept one, and the caller wants bytes.

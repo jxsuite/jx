@@ -56,10 +56,9 @@ const ESCAPED_INNER_UNDERSCORE = /(\w)\\_(?=\w)/g;
  * Paths the sweep never touches, mirroring `.oxfmtrc.json`'s `ignorePatterns`.
  *
  * A CHANGELOG is written by release-please and a fixture is an exact input: both are files whose
- * bytes belong to something other than a formatter. `vendor/` is the pinned Electrobun SDK, which
- * is a tracked path and therefore ignored by nothing implicitly (see packages/desktop/AGENTS.md).
+ * bytes belong to something other than a formatter.
  */
-const NEVER = [/(?:^|\/)CHANGELOG\.md$/, /(?:^|\/)_[a-z_]*fixtures?[a-z_]*\//, /^vendor\//];
+const NEVER = [/(?:^|\/)CHANGELOG\.md$/, /(?:^|\/)_[a-z_]*fixtures?[a-z_]*\//];
 
 /**
  * Remove the escapes a visual Markdown editor inserts.

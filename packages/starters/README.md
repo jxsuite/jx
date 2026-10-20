@@ -67,7 +67,7 @@ bun create @jxsuite my-site --template restaurant
 - **`package.json` is rebuilt from scratch** with current dependency ranges, so a clone never inherits whatever the in-repo starter pinned.
 - `--template` resolves built-in template ids first, then registry starter ids; an unknown id falls back to `blank`.
 
-Two other consumers read the registry live: the dev server exposes it to Studio's picker at `GET /__studio/starters`, returning `listStarters()` verbatim (specs/server.md §4.1), and the desktop app imports `listStarters` directly in both its Electrobun and Chromium window layers.
+Two other consumers read the registry live: the dev server exposes it to Studio's picker at `GET /__studio/starters`, returning `listStarters()` verbatim (specs/server.md §4.1), and the desktop app imports `listStarters` directly in its Chromium window layer and its Electron hub.
 
 ## Authoring or modifying a starter
 
@@ -95,7 +95,7 @@ Adding a starter needs **no** desktop config change: `packages/desktop/scripts/v
 
 **Do not hand-edit the `@jxsuite/*` ranges in `sites/*/package.json`.** release-please rewrites them inside its release commit via `extra-files`; the gate is `bun run templates:check` (`templates:sync` to repair).
 
-**Packaged-desktop path contract.** ElectroBun inlines the bun-side JS graph, so `import.meta.dirname` resolves to `app/bun/` at runtime. `registry.json` and `sites/` must therefore be staged to `bun/registry.json` and `bun/sites` by `build.copy` in `packages/desktop/electrobun.config.ts` (specs/desktop.md §7.4).
+**Packaged-desktop path contract.** The packaged application's Bun backend is a single bundle, so `import.meta.dirname` no longer resolves to this package. `registry.json` and `sites/` are staged beside the bundle (`BACKEND_DATA` in `packages/desktop/scripts/lib/backend-bundle.ts`), and `bun run smoke` in `packages/desktop` fails if the staged copy cannot list the starters (specs/desktop.md §7).
 
 **The screenshot lane ignores this package's source.** It watches only `registry.json` and the six starter roots a shot actually opens (`.github/workflows/screenshots.yml`); a registry change arms exactly one shot, `new-project`, because that modal's gallery _is_ `listStarters()`.
 

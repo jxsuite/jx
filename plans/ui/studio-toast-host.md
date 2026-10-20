@@ -21,7 +21,7 @@ size: M
 
 The `jx-toast-host` row (line 213) lists "the hand-drawn stack in `surfaces/toasts.json`" under Replaces, and it is the one replacement in the table that has not happened. The `jx-popover` row (line 209) is a text fix that sits under the same marker. Verified against the tree on 2026-09-27.
 
-**The kit's side is built and tested.** `packages/ui/components/jx-toast.json` and `jx-toast-host.json`, `packages/ui/src/behaviors/toast.ts` (the clock, the named holds `pointer`/`focus`/`stack`, `closeToast` with `detail.reason`), `packages/ui/src/behaviors/toast-host.ts` (`live`, `aria-atomic="false"`, the document-level `hotkey`, and the exported `focusStack` and `returnFocus`), with `packages/ui/tests/jx-toast.test.ts` and `jx-toast-host.test.ts`. `packages/desktop/src/platform.ts` (`showUpdateToast`) already uses both, with `hotkey=""` on the premise that "Studio's own toast stack … owns `F8`". That premise is false today.
+**The kit's side is built and tested.** `packages/ui/components/jx-toast.json` and `jx-toast-host.json`, `packages/ui/src/behaviors/toast.ts` (the clock, the named holds `pointer`/`focus`/`stack`, `closeToast` with `detail.reason`), `packages/ui/src/behaviors/toast-host.ts` (`live`, `aria-atomic="false"`, the document-level `hotkey`, and the exported `focusStack` and `returnFocus`), with `packages/ui/tests/jx-toast.test.ts` and `jx-toast-host.test.ts`. The desktop update toast (`showUpdateToast`) used both, with `hotkey=""` on the premise that "Studio's own toast stack … owns `F8`". That premise is false today.
 
 **Studio's side** (paths under `packages/studio/src/`):
 
@@ -81,7 +81,7 @@ Paths under `packages/studio/src/` unless stated. Code comments cite qualified s
    - In `dispatchKey`, compute `const ctx = registry.context()`. Resolve against `["global"]` when `inToastLayer(event.target) && !ctx.modal.open`, and against `keyScopeStack(ctx)` otherwise. Extend the docblock with the reason.
 6. **Nothing else changes.**
    - `services/notify.ts`, `services/announce.ts` and `services/idle.ts` are untouched.
-   - `packages/desktop/src/platform.ts`'s comment becomes true as written, and desktop is not edited.
+   - A shell toast that sets `hotkey=""` on that premise becomes correct as written, and desktop is not edited.
    - studio.md §13.5's "`ui/layers.ts` holds a toast open instead of retiring it on its timer" stays true, since the timer is now the element's and `layers.ts` passes 0.
 
 **Integration contract.** No plan requires this one. Once it lands:

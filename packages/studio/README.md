@@ -54,11 +54,11 @@ Immutable state tree with 100-entry undo/redo history. All mutations produce a n
 
 Studio is backend-agnostic. Platform bindings (filesystem access, native dialogs, Git, package management) are injected at startup via `registerPlatform()`. Three targets share a single codebase:
 
-| Target               | Backend                        |
-| -------------------- | ------------------------------ |
-| Desktop (Electrobun) | `@jxsuite/desktop` Bun process |
-| Dev mode (Chrome)    | `@jxsuite/server` (localhost)  |
-| SaaS                 | Cloud API (future)             |
+| Target             | Backend                        |
+| ------------------ | ------------------------------ |
+| Desktop (Electron) | `@jxsuite/desktop` Bun process |
+| Dev mode (Chrome)  | `@jxsuite/server` (localhost)  |
+| SaaS               | Cloud API (future)             |
 
 ## API
 

@@ -1127,7 +1127,7 @@ export function bootCanvasIframe(win: BootWindow): () => void {
   setResolveToken(params.get("rpcToken"));
   // ParentOrigin authenticates the parent peer. The host (iframe-host.ts) passes it ONLY for an
   // Http(s) parent (dev / chromium — same-origin, the origin round-trips). It OMITS it for a
-  // Non-http(s) parent (electrobun views://), whose custom scheme may not surface as a postMessage
+  // Non-http(s) parent (a custom scheme), whose custom scheme may not surface as a postMessage
   // Origin: a missing value here means fall back to "*" — token-gated, NOT a silent omission — and
   // Log it loudly so the looser origin check is visible.
   const explicitParentOrigin = params.get("parentOrigin");

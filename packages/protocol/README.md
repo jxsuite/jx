@@ -7,11 +7,11 @@ The **Studio Backend Protocol**: the wire types and canonical route table that e
 
 ## Who implements this
 
-| Backend                         | Transport                                                                                                 |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `@jxsuite/server` (dev server)  | The literal `/__studio/*` HTTP routes (the reference implementation)                                      |
-| Desktop (Electrobun / Chromium) | Typed RPC / WebSocket JSON-RPC dispatching into the same handlers                                         |
-| Cloud platforms                 | HTTP behind a session gateway (e.g. `/api/v1/p/:owner/:repo/:branch/studio/*`), same sub-paths and shapes |
+| Backend                        | Transport                                                                                                 |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `@jxsuite/server` (dev server) | The literal `/__studio/*` HTTP routes (the reference implementation)                                      |
+| Desktop (Electron / Chromium)  | Typed RPC / WebSocket JSON-RPC dispatching into the same handlers                                         |
+| Cloud platforms                | HTTP behind a session gateway (e.g. `/api/v1/p/:owner/:repo/:branch/studio/*`), same sub-paths and shapes |
 
 A backend is free to change the transport and path prefix; the **sub-path, method, and body shapes are the contract**. `STUDIO_PROTOCOL_VERSION` bumps when any shape changes incompatibly.
 

@@ -7,31 +7,28 @@ on:
         description: Tag to build and attach artifacts to.
         required: true
         type: string
+  # A manual run builds, signs, notarizes and verifies from the branch it is started on, then
+  # uploads the installers as a workflow artifact. With no tag it attaches nothing to any release.
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build (${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Apple Silicon only. Electrobun 2's release matrix publishes core archives for
-          # macos-arm64, win-x64, linux-x64 and linux-arm64 — there is no macOS x64 artifact — so
-          # the macos-15-intel lane that produced stable-macos-x64-JxStudio.dmg was removed with
-          # the 1.18 toolchain. Intel Mac users stay on the last 1.18-built release.
-          #
-          # Pinned to macos-15 (arm64 GA image), NOT macos-latest. On 2026-06-15 `macos-latest`
-          # migrated to the macOS 26 beta image, where posix_spawn of electrobun 1.x's
-          # ad-hoc/linker-signed arm64 CLI failed with ENOEXEC. Electrobun 2 no longer ships that
-          # CLI (Hutch replaced it), so this pin is a candidate for removal — but only after a
-          # green run on the newer image, not on the reasoning alone.
-          - os: macos-15
-            platform: macos-arm64
-
-    runs-on: ${{ matrix.os }}
+    name: Build (macos-arm64)
+    # Apple Silicon only: there has been no Intel Mac build since the 1.18 toolchain, and Intel users
+    # stay on the last release built with it.
+    #
+    # Pinned to macos-15 (arm64 GA image), NOT macos-latest: on 2026-06-15 `macos-latest` migrated to
+    # the macOS 26 beta image, which a release should not be the first thing to run on.
+    runs-on: macos-15
 
     permissions:
       contents: write
+
+    env:
+      # A step's `if` cannot read the secrets context, so what is configured is decided once, here.
+      # Without the certificate the build is unsigned, and without the API key it is not notarized;
+      # electron-builder says so and carries on, so a fork or a first run still produces a dmg.
+      HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_BASE64 != '' }}
 
     steps:
       - name: Checkout
@@ -48,104 +45,90 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      # Electrobun 2 builds through Hutch, which the `electrobun` devDependency downloads and
-      # verifies on first use — no machine-wide install. The build prepares the SDK implicitly; this
-      # only warms the shared store so every lane is not re-downloading the core and CEF.
-      - name: Cache the Hutch store
-        uses: ./.github/actions/cache-hutch-store
-
-      - name: Free disk space
-        run: |
-          echo "Disk space before cleanup:"
-          df -h /
-          sudo rm -rf /Applications/Xcode*.app
-          sudo rm -rf /Developer/MonoTouch
-          sudo rm -rf /Library/Frameworks/Mono.framework
-          sudo rm -rf /Library/Frameworks/Xamarin.iOS.framework
-          sudo rm -rf /Library/Frameworks/Xamarin.Mac.framework
-          sudo rm -rf /opt/homebrew/Cellar || true
-          sudo rm -rf /opt/homebrew/lib/node_modules || true
-          sudo rm -rf /Users/runner/.dotnet || true
-          sudo rm -rf /Users/runner/Library/Android
-          sudo rm -rf /Users/runner/Library/Caches/Homebrew || true
-          sudo rm -rf /usr/local/Cellar || true
-          sudo rm -rf /usr/local/lib/node_modules || true
-          sudo rm -rf /usr/local/share/powershell || true
-          echo "Disk space after cleanup:"
-          df -h /
-
       - name: Build workspace packages
         run: bun run build
 
-      - name: Import code signing certificate
-        if: env.CERTIFICATE_BASE64 != ''
-        env:
-          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          echo "$CERTIFICATE_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          rm $RUNNER_TEMP/certificate.p12
-
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-      - name: Write Apple API Key File
-        if: env.APPLE_API_KEY_BASE64 != ''
+      # notarytool reads an App Store Connect API key from a file; electron-builder is told where.
+      - name: Write the Apple API key file
+        if: env.HAS_APPLE_API_KEY == 'true'
         env:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
         run: |
           mkdir -p ~/.apple/keys
           echo "$APPLE_API_KEY_BASE64" | base64 --decode > ~/.apple/keys/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
 
-      # The desktop init bundle compiles `electrobun/view` out of the vendored submodule, which a
-      # bare checkout leaves empty; without this the release shipped an init.js that throws on
-      # import (5.0.0-5.1.3). pre-build.ts runs it too, so this is the lane saying so up front.
-      - name: Prepare the vendored Electrobun SDK
-        run: bun scripts/check-electrobun-vendor.ts --init
-
-      - name: Build desktop installer
+      # electron-builder imports CSC_LINK (a base64 .p12) into a keychain of its own, signs the
+      # application and the Bun inside it with the hardened runtime, notarizes, and staples.
+      - name: Build the installers
         env:
-          ELECTROBUN_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-          ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
-          ELECTROBUN_APPLEAPIKEYPATH: /Users/runner/.apple/keys/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
-          ELECTROBUN_APPLEAPIKEY: ${{ secrets.APPLE_API_KEY_ID }}
-          ELECTROBUN_APPLEAPIISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
-        run: bun run desktop:stable
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: /Users/runner/.apple/keys/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID }}
+        # Apple's stapler downloads the ticket from CloudKit after notarization has already been
+        # accepted, and that fetch drops now and then (NSURLErrorDomain -1005, stapler error 68).
+        # A rerun re-notarizes and staples, so only that failure shape is retried: a signing or
+        # notarization error is real and fails on the first attempt.
+        run: |
+          set -o pipefail
+          for attempt in 1 2 3; do
+            if bun run --cwd packages/desktop package --target mac --arch arm64 -- --publish never 2>&1 | tee "$RUNNER_TEMP/package.log"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ] && grep -q -E "Failed to staple|staple and validate action failed|NSURLErrorDomain" "$RUNNER_TEMP/package.log"; then
+              echo "::warning::Stapling failed on a network error; retrying (attempt $((attempt + 1)) of 3)"
+              sleep 30
+            else
+              exit 1
+            fi
+          done
+
+      # What was packaged, not the sources: the backend starts under the Bun that ships beside it
+      # and does the things a bundle can lose (packages/desktop/scripts/smoke-backend.ts).
+      - name: Smoke-test the packaged backend
+        run: bun run --cwd packages/desktop smoke
+
+      - name: Verify the signature
+        if: env.HAS_APPLE_API_KEY == 'true'
+        run: |
+          app="packages/desktop/artifacts/mac-arm64/Jx Studio.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=4 "$app"
 
       - name: Clean up signing materials
         if: always()
-        run: |
-          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
-          rm -f ~/.apple/keys/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
+        run: rm -f ~/.apple/keys/AuthKey_*.p8
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.platform }}
-          path: packages/desktop/artifacts/
+          name: release-macos-arm64
+          path: |
+            packages/desktop/artifacts/*.dmg
+            packages/desktop/artifacts/*.zip
+            packages/desktop/artifacts/*.blockmap
+            packages/desktop/artifacts/latest*.yml
           if-no-files-found: error
           retention-days: 7
 
       - name: Attach to release
-        # Run even when the build step failed, so any artifacts that DID land in
-        # packages/desktop/artifacts/ still reach the release. action-gh-release
-        # no-ops on an empty glob (fail_on_unmatched_files defaults false), so a
-        # total build failure leaves the job red without adding a spurious error.
-        if: ${{ !cancelled() }}
+        # Run even when a step failed, so any artifacts that DID land in packages/desktop/artifacts/
+        # still reach the release. action-gh-release no-ops on an empty glob
+        # (fail_on_unmatched_files defaults false), so a total build failure leaves the job red
+        # without adding a spurious error.
+        if: ${{ !cancelled() && inputs.tag_name != '' }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag_name }}
           draft: false
-          # Force the desktop release to be GitHub's "latest" so the Electrobun
-          # updater's releases/latest/download/ feed resolves here. Idempotent
-          # across the concurrent bundler attach jobs.
+          # Force the desktop release to be GitHub's "latest" so electron-updater's
+          # releases/latest/download/ feed resolves here. Idempotent across the concurrent bundler
+          # attach jobs.
           make_latest: true
-          files: packages/desktop/artifacts/*
+          files: |
+            packages/desktop/artifacts/*.dmg
+            packages/desktop/artifacts/*.zip
+            packages/desktop/artifacts/*.blockmap
+            packages/desktop/artifacts/latest*.yml

@@ -118,7 +118,7 @@ Let `bun run format:md` (oxfmt) pad the table.
 
 **Docs** (no em dashes; none changes). No page's `spec:` cites `desktop.md#10` or `desktop.md#10.2`, and no page lists `cloud.ts` or `cloud-platform.test.ts` in `code:`, so `bun run docs:sync` names nothing. `docs/extending/embedding.md` names `cloud.ts` in its table as the cloud adapter's path, which stays true. `docs/extending/embedding/backend-protocol.md` already says a cloud backend may make commit and push atomic and treat `git/push` as a sync check. `docs/studio/projects.md` and `docs/studio/projects/create.md` already say a cloud project is a GitHub repository.
 
-This plan does not graduate desktop.md: §3.1, §3.3, §3.6, §4.3, §5.3, §6.1 to §6.5, §7.4 and §9.3 stay open.
+This plan does not graduate desktop.md: §3.1, §3.3, §3.6, §4.3, §5.3, §6.1 to §6.5, §7.6 and §9.7 stay open.
 
 ## Acceptance
 

@@ -65,7 +65,7 @@ Windows
 Unsigned installer, so Windows SmartScreen warns on first run. Windows 10 or later, x64.
 :::
 
-::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/JxStudio.msi" props.label="Download .msi" props.variant="primary" props.newTab="true"}
+::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/win-x64-JxStudio-Setup.exe" props.label="Download installer" props.variant="primary" props.newTab="true"}
 ::::
 
 ::::div{style.display="flex" style.flexDirection="column" style.gap="1rem" style.padding="2rem" style.borderRadius="var(--radius-lg)" style.border="1px solid var(--color-border)" style.backgroundColor="var(--color-bg-surface)" style.textAlign="center"}
@@ -78,12 +78,12 @@ Linux
 :::
 
 :::p{style.fontSize="0.875rem" style.color="var(--color-text-secondary)" style.margin="0" style.lineHeight="1.6"}
-Portable archive. Runs on most modern distros.
+AppImage: make it executable and run it. Runs on most modern distros.
 :::
 
-::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/linux-x64-JxStudio-Setup.tar.gz" props.label="x64" props.variant="primary" props.newTab="true"}
+::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/linux-x64-JxStudio.AppImage" props.label="x64" props.variant="primary" props.newTab="true"}
 
-::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio-Setup.tar.gz" props.label="ARM64" props.variant="secondary" props.newTab="true"}
+::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio.AppImage" props.label="ARM64" props.variant="secondary" props.newTab="true"}
 ::::
 
 :::::
@@ -113,7 +113,8 @@ Scaffold a project and run it locally with live reload from your own machine. Fo
 :::span{style.color="var(--color-text-muted)"}
 $
 :::
- bun create @jxsuite my-site\
+
+bun create @jxsuite my-site\
 :span[$]{style.color="var(--color-text-muted)"} cd my-site &amp;&amp; bun run dev
 ::::
 

@@ -1,13 +1,13 @@
 /**
- * The customer's desktop window, end to end: the studio entry booting inside Electrobun's
- * `views://` shell after the launcher's init bundle threw on import.
+ * The customer's desktop window, end to end: the studio entry booting inside a custom-scheme
+ * (`views://`) shell after the launcher's init bundle threw on import.
  *
  * That is exactly desktop 5.0.0-5.1.3. The bundle's first import published the launcher signal, the
- * next one (`electrobun/view`, resolved to a module whose whole body throws) took the rest of the
- * bundle down before any adapter registered, and `studio.js` then booted with nothing on
- * `__jxPlatform`. It registered the dev-server adapter, drew the whole frame, and every action
- * failed against an origin with no server behind it — "Failed to fetch" on Create Project, a Browse
- * button that did nothing. Nobody saw an error, because nothing had one.
+ * next one (a framework module resolved to one whose whole body throws) took the rest of the bundle
+ * down before any adapter registered, and `studio.js` then booted with nothing on `__jxPlatform`.
+ * It registered the dev-server adapter, drew the whole frame, and every action failed against an
+ * origin with no server behind it — "Failed to fetch" on Create Project, a Browse button that did
+ * nothing. Nobody saw an error, because nothing had one.
  *
  * This file reproduces that boot and pins the other outcome: the import REJECTS with
  * `PlatformUnavailableError`, the boot-failure screen is the only thing in the shell root and it
@@ -24,8 +24,8 @@ import { hasPlatform } from "../src/platform";
 import { PlatformUnavailableError } from "../src/platforms/default-platform";
 import { flush } from "./harness";
 
-const HUTCH =
-  "Electrobun 2.x APIs come from the Hutch devkit, not node_modules. Run `hutch dev` or `hutch build`.";
+const IMPORT_FAILURE =
+  "Framework APIs are provided by the launcher runtime, not node_modules. Run the launcher's dev or build command.";
 
 /* SAFETY: @happy-dom/global-registrator (loaded by ./with-dom.js) copies the window's members onto
    globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
@@ -44,7 +44,10 @@ document.head.append(meta);
    purpose: the import that threw came BEFORE the shim's body, so the body that names the launcher
    never ran — only the signal's first import and its page-error watch did. */
 globalThis.__jxLauncher = {
-  error: { message: HUTCH, stack: `Error: ${HUTCH}\n    at views://studio/dist/init.js:36:11` },
+  error: {
+    message: IMPORT_FAILURE,
+    stack: `Error: ${IMPORT_FAILURE}\n    at views://studio/dist/init.js:36:11`,
+  },
 };
 
 // Every way the dev-server adapter talks to its origin, counted.
@@ -95,7 +98,9 @@ test("a launcher that registered no adapter gets the boot-failure screen, not th
   expect(alert).not.toBeNull();
   expect(alert!.textContent).toContain("Jx Studio couldn't connect to its backend");
   // The recorded error, verbatim — the sentence that names the actual defect.
-  expect(alert!.querySelector('[part="detail"]')?.textContent).toContain("Hutch devkit");
+  expect(alert!.querySelector('[part="detail"]')?.textContent).toContain(
+    "Framework APIs are provided",
+  );
   expect(alert!.querySelector('[part="facts"]')?.textContent).toContain(
     "views://studio/index.html",
   );

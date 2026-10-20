@@ -1,5 +1,4 @@
-// oxlint-disable typescript/no-invalid-void-type -- Electrobun RPCSchema uses `void` to mark no-payload params/responses
-import type { RPCSchema } from "electrobun/main";
+// oxlint-disable typescript/no-invalid-void-type -- `void` marks a request with no payload or no reply
 import type { JsonObject, JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import type { FsEventPayload, ReferencesResult, RenameReport } from "@jxsuite/server/refactor";
 import type { StarterMeta } from "@jxsuite/starters";
@@ -94,23 +93,11 @@ export type {
   PackageVersionInfo,
 } from "@jxsuite/protocol";
 
-// ─── Update types ────────────────────────────────────────────────────────────
-
-export interface UpdateLocalInfo {
-  version: string;
-  hash: string;
-  baseUrl: string;
-  channel: string;
-  name: string;
-  identifier: string;
-}
-
-export interface UpdateStatus {
-  version: string | null;
-  updateAvailable: boolean;
-  updateReady: boolean;
-  error: string | null;
-}
+/**
+ * The shape of one side's half of the RPC: the requests it answers, and the messages it sends
+ * unprompted. An identity type, kept so the schema below reads as what it declares.
+ */
+type RPCSchema<Declared> = Declared;
 
 // ─── RPC Schema ───────────────────────────────────────────────────────────────
 
@@ -458,69 +445,17 @@ export interface StudioRPC {
         response: StarterMeta[];
       };
       /**
-       * Build info for the About screen — version, channel, commit, and (where the launcher has an
+       * Build info for the About screen — version, channel, commit, and (where the app has an
        * updater) a human-readable update status.
        *
        * Composed on the Bun side rather than in the webview, because what it can truthfully say
-       * differs per launcher and only the launcher knows which one it is: the electrobun build
-       * checks its own update feed, while the system-packaged build has no feed to check and says
-       * nothing rather than guessing.
+       * differs per build and only the backend knows which one it is: the packaged application
+       * reports what its updater last found, while a system-packaged build has no feed to check and
+       * says nothing rather than guessing.
        */
       appInfo: {
         params: void;
         response: AppInfo;
-      };
-      // Updates
-      updaterGetLocalInfo: {
-        params: void;
-        response: UpdateLocalInfo;
-      };
-      updaterCheckForUpdate: {
-        params: void;
-        response: UpdateStatus;
-      };
-      updaterDownloadUpdate: {
-        params: void;
-        response: UpdateStatus;
-      };
-      updaterApplyUpdate: {
-        params: void;
-        response: void;
-      };
-      updaterGetStatus: {
-        params: void;
-        response: UpdateStatus;
-      };
-      // Window controls
-      windowMinimize: {
-        params: void;
-        response: void;
-      };
-      windowMaximize: {
-        params: void;
-        response: void;
-      };
-      windowClose: {
-        params: void;
-        response: void;
-      };
-      windowGetFrame: {
-        params: void;
-        response: { x: number; y: number; width: number; height: number };
-      };
-      windowSetFrame: {
-        params: { x: number; y: number; width: number; height: number };
-        response: void;
-      };
-      // AI Assistant (Stack B)
-      aiChatUrl: {
-        params: void;
-        response: string;
-      };
-      // AI-guided site import: the token-gated NDJSON endpoint on the shared services server.
-      importSiteUrl: {
-        params: void;
-        response: string;
       };
       // Native directory picker (New Project import destination).
       pickDirectory: {
@@ -551,11 +486,6 @@ export interface StudioRPC {
       getProjectRoot: {
         params: void;
         response: { root: string | null };
-      };
-      // Phase 7: the cross-origin loopback canvas URL for this window, or null on the views:// path.
-      getCanvasUrl: {
-        params: void;
-        response: { canvasUrl: string | null };
       };
       listOpenWindows: {
         params: void;
@@ -612,7 +542,6 @@ export interface StudioRPC {
       /** The user-level settings changed — in this window, another window, or by hand. */
       settingsChanged: { settings: Record<string, string> };
       fileChanged: { path: string };
-      updateReady: { version: string };
       onFileEvents: { events: FsEventPayload[] };
     };
   }>;

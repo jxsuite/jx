@@ -1,7 +1,7 @@
 {
   "name": "@jxsuite/desktop",
   "version": "5.4.8",
-  "description": "Jx Studio — standalone desktop application built with Electrobun",
+  "description": "Jx Studio — standalone desktop application built with Electron",
   "license": "MIT",
   "author": "Avunu LLC <support@jxsuite.com> (https://jxsuite.com)",
   "repository": {
@@ -11,13 +11,12 @@
   },
   "type": "module",
   "scripts": {
-    "build": "electrobun build",
-    "build:msix": "electrobun build --env=stable && bun run scripts/build-msix.ts",
-    "build:release": "electrobun build --env=canary",
-    "build:stable": "electrobun build --env=stable && bun run scripts/build-msi.ts",
     "chromium": "bun run scripts/pre-build-rpc.ts && bun run src/chromium/index.ts",
-    "dev": "electrobun dev",
-    "sync": "electrobun prepare",
+    "electron": "bun run scripts/pre-build-rpc.ts && bun run scripts/run-electron-app.ts",
+    "dev": "bun run electron",
+    "stage": "bun run scripts/stage-app.ts",
+    "package": "bun run scripts/package-app.ts",
+    "smoke": "bun run scripts/smoke-backend.ts",
     "sign:cert": "bun run scripts/sign-cert.ts",
     "sign:trust": "powershell -ExecutionPolicy Bypass -File scripts/trust-cert.ps1",
     "upgrade": "bun update --latest && bun install",
@@ -46,7 +45,7 @@
     "@happy-dom/global-registrator": "^21.0.3",
     "@jxsuite/server": "workspace:^",
     "@jxsuite/ui": "workspace:^",
-    "electrobun": "2.0.4",
-    "rcedit": "^5.0.2"
+    "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9"
   }
 }

@@ -85,9 +85,9 @@ Your tuition covers 14 weeks of live instruction, one-on-one mentorship, and car
 - Deployed full-stack capstone project
 - Career coaching & interview prep
 - Lifetime access to course materials
-  ::::
-  :::::
-  ::::::
+::::
+:::::
+::::::
 
 :::::section{style.padding="clamp(3.5rem, 8vw, 6rem) 1.5rem" style.backgroundColor="var(--color-bg-cream)"}
 ::co-section-header{props.eyebrow="faq" props.heading="Questions, answered"}

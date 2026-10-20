@@ -109,8 +109,8 @@ export function studioShellHtml(options: DocumentOptions = {}): string {
   const boot = (options.boot ?? []).map((mod) => `    ${scriptTag(mod)}`).join("\n");
   /* Only when there IS a boot module: `packages/studio/index.html` is generated with none and CI
      diffs it byte for byte, and the dev server it is served by is the one host that should fall
-     back. The `<head>` below stays a literal, attribute-free tag — Electrobun's macOS CEF path
-     injects its preload by splicing after that exact string. */
+     back. The `<head>` below stays a literal, attribute-free tag — a host that
+     injects a preload splices it in after that exact string. */
   const bootMeta = boot
     ? `    <meta name="${BOOT_META.name}" content="${BOOT_META.content}" />\n`
     : "";

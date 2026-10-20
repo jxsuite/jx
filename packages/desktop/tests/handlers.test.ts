@@ -8,11 +8,7 @@ import { expectStudioSchema } from "./_studio-schema";
 
 const mockOpenExternal = mock((url: string) => url.startsWith("https://"));
 
-void mock.module("electrobun/main", () => ({
-  BrowserWindow: class {},
-  Electrobun: { start: () => {} },
-  Utils: { openExternal: mockOpenExternal, openFileDialog: async () => [] },
-}));
+void mock.module("../src/open-external", () => ({ openExternal: mockOpenExternal }));
 
 const {
   setProjectRoot,
@@ -963,8 +959,8 @@ describe("fetchPluginSchema", () => {
 
 // ─── handleReadFileBytes ────────────────────────────────────────────────────
 
-/* The mirror of handleUploadFile, and the only way the electrobun shell can read a project image:
-   its own origin is `views://`, the loopback serving project files is cross-origin, and CORS is
+/* The mirror of handleUploadFile, and the way a shell whose own origin differs from the loopback that
+   serves project files can read a project image: the loopback is cross-origin, and CORS is
    banned repo-wide (server.md §4.2) — so an <img> taints a canvas and a fetch is refused. */
 describe("handleReadFileBytes", () => {
   /* Bytes that are NOT valid UTF-8 — a JPEG's SOI/APP0 marker. This is the whole point: through
@@ -1431,19 +1427,15 @@ process.on("exit", () => {
 
 // ─── openExternal ────────────────────────────────────────────────────────────
 
-/* The shim's own function rather than a session method: opening a URL is a shell capability with no
+/* The shim's own function rather than a session method: opening a URL is an OS capability with no
    project state. Studio's Preview link handler is the only caller (specs/desktop.md §3.5). */
 describe("openExternal", () => {
-  test("forwards the url to the shell and wraps the result", async () => {
-    const { init } = await import("../src/utils");
-    await init();
+  test("forwards the url to the OS opener and wraps the result", async () => {
     expect(await openExternal({ url: "https://example.com/docs" })).toEqual({ ok: true });
     expect(mockOpenExternal).toHaveBeenCalledWith("https://example.com/docs");
   });
 
-  test("reports ok: false when the shell refuses", async () => {
-    const { init } = await import("../src/utils");
-    await init();
+  test("reports ok: false when the opener refuses", async () => {
     expect(await openExternal({ url: "ftp://example.com" })).toEqual({ ok: false });
   });
 });

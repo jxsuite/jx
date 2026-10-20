@@ -14,8 +14,8 @@
  * does not stay on the Problems list (§16.1's second and third rules: a record is retired when what
  * it names is fixed, and a repeat is not a new row).
  *
- * A platform without `subscribeConnection` — the dev server, electrobun — installs nothing. There
- * is no connection to lose there, and a notice about one would be a lie.
+ * A platform without `subscribeConnection` — the dev server — installs nothing. There is no
+ * connection to lose there, and a notice about one would be a lie.
  *
  * @docs studio/interface/problems-and-progress
  */

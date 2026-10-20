@@ -9,12 +9,6 @@ import type { ComponentMeta } from "../src/rpc-schema";
 import type { StudioSchema } from "../src/handlers";
 import { expectStudioSchema } from "./_studio-schema";
 
-void mock.module("electrobun/main", () => ({
-  BrowserWindow: class {},
-  Electrobun: { start: () => {} },
-  Utils: { openFileDialog: async () => [] },
-}));
-
 // ─── Format-host mock ────────────────────────────────────────────────────────
 
 // A capability method answers with a parsed document or serialized text, both JSON values.

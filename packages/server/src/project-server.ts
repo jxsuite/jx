@@ -1,7 +1,6 @@
 /**
  * Shared project server factory. Generalizes the chromium variant's ad-hoc in-process Bun.serve
- * into one createProjectServer() used by the chromium desktop launcher (and, in Phase 7,
- * electrobun).
+ * into one createProjectServer() used by the chromium desktop launcher and the Electron hub.
  *
  * It serves three surfaces from a single loopback-bound Bun.serve:
  *
@@ -77,9 +76,10 @@ export interface ProjectServerSession {
 
 export interface CreateProjectServerOptions {
   /**
-   * Resolve the session for a given window id (the `win` query param / stashed socket data).
-   * chromium passes `() => defaultSession`; electrobun (Phase 7) swaps it for a per-window lookup.
-   * A missing/unknown window returns `null`, which the routes treat as a 404 fail-closed.
+   * Resolve the session for a given window id (the `win` query param / stashed socket data). the
+   * single-window launcher passes `() => defaultSession`; the Electron hub swaps it for a
+   * per-window lookup. A missing/unknown window returns `null`, which the routes treat as a 404
+   * fail-closed.
    */
   resolveSession: (winId: string | null) => ProjectServerSession | null;
   /** Absolute dir holding the studio shell + canvas.html + dist/. */

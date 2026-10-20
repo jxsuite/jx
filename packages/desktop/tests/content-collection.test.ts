@@ -1,24 +1,18 @@
 /**
  * Regression coverage for the desktop's integration with the parser's ContentCollection class.
  *
- * Two paths previously broke in the electrobun build:
+ * Two paths previously broke in the desktop build:
  *
  * 1. The class-driven config form — fetchPluginSchema() could not resolve a bare specifier like
  *    "@jxsuite/parser/ContentCollection.class.json", so the studio showed an empty form.
  * 2. The data sidebar — the runtime resolves the class by POSTing to /**jx_resolve**, which the
  *    desktop now serves via the jxResolve handler (loading content types + injecting _project).
  */
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
-
-void mock.module("electrobun/main", () => ({
-  BrowserWindow: class {},
-  Electrobun: { start: () => {} },
-  Utils: { openFileDialog: async () => [] },
-}));
 
 const { setProjectRoot, fetchPluginSchema, fetchProjectSchemas, jxResolve, listExtensions } =
   await import("../src/handlers");

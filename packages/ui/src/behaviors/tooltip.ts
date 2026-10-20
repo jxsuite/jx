@@ -18,18 +18,18 @@
  * authors to prefer, and on Firefox and Safari it is the shape that shows nothing at all without
  * this module.
  *
- * "AN OLDER ENGINE" INCLUDES THE DESKTOP APP. Studio ships inside Electrobun's CEF, and the pinned
- * release is Chromium 147 (`vendor/electrobun/package/src/shared/cef-version.ts`) — five releases
- * short of the attribute. So until that bump reaches 152 the ONLY end-user path to Studio runs the
- * fallback for every hinted button in its chrome, several hundred of them, and this module is not a
- * corner for other people's browsers but the behaviour a user sees. Three consequences are designed
- * for rather than tolerated: focus opens the tip only when it is KEYBOARD focus, the way the
- * platform's interest-on-focus does, so a click does not pin a tip open; Escape is ONE listener per
- * root shared by every bound tip, not one per tip on the document, so a keystroke in Studio walks
- * one handler rather than one per button; and a tip that is MOVED — a keyed `$map` reordering its
- * rows, a button re-parented into a toolbar — keeps its binding, because the runtime fires
- * `disconnectedCallback` for a move and never re-runs `onMount`, so an unmount that disposed at
- * once would strip a reordered row of its tooltip for good.
+ * "AN OLDER ENGINE" INCLUDES THE DESKTOP APP. Studio ships inside Electron, whose bundled Chromium
+ * trails the stable channel and can sit releases short of the attribute. Until Electron's Chromium
+ * reaches it the ONLY end-user path to Studio runs the fallback for every hinted button in its
+ * chrome, several hundred of them, and this module is not a corner for other people's browsers but
+ * the behaviour a user sees. Three consequences are designed for rather than tolerated: focus opens
+ * the tip only when it is KEYBOARD focus, the way the platform's interest-on-focus does, so a click
+ * does not pin a tip open; Escape is ONE listener per root shared by every bound tip, not one per
+ * tip on the document, so a keystroke in Studio walks one handler rather than one per button; and a
+ * tip that is MOVED — a keyed `$map` reordering its rows, a button re-parented into a toolbar —
+ * keeps its binding, because the runtime fires `disconnectedCallback` for a move and never re-runs
+ * `onMount`, so an unmount that disposed at once would strip a reordered row of its tooltip for
+ * good.
  *
  * IT ADDS LISTENERS TO AN ELEMENT THE KIT DOES NOT OWN, and that is said out loud rather than left
  * to be discovered in review. specs/ui.md §2 principle 5 forbids WRITING ATTRIBUTES or styles on

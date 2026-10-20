@@ -57,8 +57,9 @@ const readJson = (path: string): JsonValue => JSON.parse(readFileSync(path, "utf
  * (blocking in CI) compiles every pattern and walks every allow entry of the committed file. */
 const claims = JSON.parse(readFileSync(CLAIMS_PATH, "utf8")) as Claims;
 /* SAFETY: release-assets.json is the committed single source of truth for release asset names,
- * also read by packages/desktop/scripts/build-msix.ts; its `assets` entries carry the
- * `ReleaseAsset` members, which the download-link checks below read on every `docs:claims` run. */
+ * also read by the release workflows and scripts/desktop-build-lanes.test.ts; its `assets` entries
+ * carry the `ReleaseAsset` members, which the download-link checks below read on every
+ * `docs:claims` run. */
 const releaseAssets = (
   JSON.parse(readFileSync(RELEASE_ASSETS_PATH, "utf8")) as { assets: ReleaseAsset[] }
 ).assets;

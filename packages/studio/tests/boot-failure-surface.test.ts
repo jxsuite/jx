@@ -71,12 +71,12 @@ afterEach(() => {
 
 describe("bootFailureView", () => {
   test("a failed launcher: the bridge failed to start, and the fix is a reinstall", () => {
-    const view = bootFailureView({ kind: "launcher", launcher: "electrobun" }, PAGE);
+    const view = bootFailureView({ kind: "launcher", launcher: "chromium" }, PAGE);
     expect(view.title).toBe("Jx Studio couldn't connect to its backend");
     expect(view.lead).toContain("desktop app's bridge to its backend failed to start");
     expect(view.lead).toContain("reinstalling the latest release from the download page");
     expect(view.facts).toBe(
-      `${APP_NAME} bundle ${VERSION} (${GIT_COMMIT}) · launcher electrobun · views://studio/index.html`,
+      `${APP_NAME} bundle ${VERSION} (${GIT_COMMIT}) · launcher chromium · views://studio/index.html`,
     );
   });
 
@@ -98,18 +98,18 @@ describe("bootFailureView", () => {
     // Recorded AFTER the refusal was decided: the view still sees it.
     g.__jxLauncher = {
       error: {
-        message: "Electrobun 2.x APIs come from the Hutch devkit, not node_modules.",
+        message: "Framework APIs are provided by the launcher runtime, not node_modules.",
         stack:
-          "Error: Electrobun 2.x APIs come from the Hutch devkit, not node_modules.\n    at init.js:13222",
+          "Error: Framework APIs are provided by the launcher runtime, not node_modules.\n    at init.js:13222",
       },
-      launcher: "electrobun",
+      launcher: "chromium",
     };
     const view = bootFailureView(refusal, PAGE);
     expect(view.hasDetail).toBe(true);
     // The V8 stack already opens with the message, so it is printed once.
     expect(view.detail).toBe(g.__jxLauncher.error!.stack!);
     // The refusal carried no name; the signal's own is used.
-    expect(view.facts).toContain("· launcher electrobun ·");
+    expect(view.facts).toContain("· launcher chromium ·");
   });
 
   test("a stack that does not contain the message gets the message above it", () => {
@@ -168,14 +168,12 @@ describe("the boot-failure document", () => {
     expect(part(host, "reload")?.textContent.trim()).toBe("Reload");
     expect(part(host, "copy")?.textContent.trim()).toBe("Copy details");
     // The window's handle, since the desktop window hides its title bar.
-    expect(part(host, "drag-strip")?.classList.contains("electrobun-webkit-app-region-drag")).toBe(
-      true,
-    );
+    expect(part(host, "drag-strip")?.classList.contains("app-region-drag")).toBe(true);
   });
 
   test("draws the recorded error when there is one", async () => {
-    g.__jxLauncher = { error: { message: "boom" }, launcher: "electrobun" };
-    const host = await draw({ kind: "launcher", launcher: "electrobun" });
+    g.__jxLauncher = { error: { message: "boom" }, launcher: "chromium" };
+    const host = await draw({ kind: "launcher", launcher: "chromium" });
     expect(part(host, "detail")?.textContent).toBe("boom");
   });
 

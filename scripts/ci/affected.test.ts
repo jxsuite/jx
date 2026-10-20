@@ -139,9 +139,8 @@ describe("the nix build", () => {
     // The whole value of moving it: skipped is green, failed is not. `ci` is the one name branch
     // Protection points at, and a nix job it does not depend on could not block anything.
     const workflow = await Bun.file(".github/workflows/test.yml").text();
-    expect(workflow).toContain(
-      "needs: [changes, test, checks, lens-mutants, studio-dist, nix, coverage-comment]",
-    );
+    const list = /^ {2}ci:\n(?:.*\n)*? {4}needs: \[([^\]]*)\]/m.exec(workflow)?.[1] ?? "";
+    expect(list.split(",").map((name) => name.trim())).toContain("nix");
   });
 
   test("the derivation's inputs still cost NOTHING in the test matrix", () => {

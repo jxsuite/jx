@@ -62,8 +62,8 @@ The section was unmarked before the census. Its last prose sentence (line 77) sa
    const COMPONENT_TAG = /.+-.+/;
 
    /**
-    * Whether a markdown source is a Jx component rather than content markdown: its parsed
-    * frontmatter `tagName` is a string matching the rule `Markdown.class.json` declares as
+    * Whether a markdown source is a Jx component rather than content markdown: its parsed frontmatter
+    * `tagName` is a string matching the rule `Markdown.class.json` declares as
     * `$studio.documentMode.componentWhen` (specs/jx-markdown.md §3.1). A source that does not
     * transpile is not a component.
     */

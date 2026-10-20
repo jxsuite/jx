@@ -8,7 +8,8 @@
  * `searchFiles` shipped unhandled and made ⌘P Quick Access look like an empty project.
  *
  * So the names are read back out of the source here, and both launchers' maps are checked against
- * them: window-manager.ts (electrobun, one map per window) and chromium/index.ts.
+ * them: hub/handlers.ts (the Electron application, one map per window) and chromium/index.ts (the
+ * per-window launcher).
  */
 
 import { readFileSync } from "node:fs";
@@ -103,55 +104,11 @@ export function declaredRpcRequests(): string[] {
 }
 
 /**
- * Requests the chromium launcher deliberately does NOT answer over RPC, each mapped to where it is
- * answered instead. The electrobun window-manager map has no exemptions — it must handle all of
- * them. Adding an entry here is a claim that must stay true: the parity test fails both when an
- * exempt request turns up in the map and when it disappears from the schema.
- */
-export const CHROMIUM_RPC_EXEMPT = {
-  aiChatUrl:
-    "chromium/platform.ts aiChatUrl() returns the local /__studio__/ai/chat path directly, with the project server's token",
-  getCanvasUrl: "chromium/platform.ts builds `canvasUrl` from location.search; no round trip",
-  importSiteUrl: "chromium/platform.ts importSite() posts to /__studio__/import-site directly",
-  /*
-   * The two families below are NOT gaps — they are things this build would have to lie about.
-   *
-   * The updater: this build is installed and replaced by whatever packaged it (`nix build`, a
-   * distro package). It has no feed to check, so it answers the one question the About screen
-   * actually renders — the channel — through `appInfo`, and reports no update status rather than an
-   * "Up to date" it never verified.
-   *
-   * The window controls: Studio draws client-side decorations only when the launcher exposes them,
-   * which electrobun does because its BrowserWindow is frameless. A Chromium `--app` window is
-   * decorated by the desktop environment, and a second set of buttons inside the page would
-   * minimize and close nothing.
-   */
-  updaterApplyUpdate: "no self-updater outside electrobun; the system package manager owns updates",
-  updaterCheckForUpdate:
-    "no self-updater outside electrobun; the system package manager owns updates",
-  updaterDownloadUpdate:
-    "no self-updater outside electrobun; the system package manager owns updates",
-  updaterGetLocalInfo:
-    "no self-updater outside electrobun; `appInfo` answers the About screen instead",
-  updaterGetStatus: "no self-updater outside electrobun; there is no feed to have a status from",
-  windowClose: "the desktop environment decorates the --app window; no client-side window controls",
-  windowGetFrame:
-    "the desktop environment decorates the --app window; no client-side window controls",
-  windowMaximize:
-    "the desktop environment decorates the --app window; no client-side window controls",
-  windowMinimize:
-    "the desktop environment decorates the --app window; no client-side window controls",
-  windowSetFrame:
-    "the desktop environment decorates the --app window; no client-side window controls",
-} satisfies Record<string, string>;
-
-/**
  * Compare a launcher's registered method names against the declared schema.
  *
  * @param registered — the launcher's handler-map keys
- * @param exempt — declared requests this launcher answers elsewhere (see CHROMIUM_RPC_EXEMPT)
  */
-export function rpcParity(registered: string[], exempt: Record<string, string> = {}) {
+export function rpcParity(registered: string[]) {
   const declared = declaredRpcRequests();
   // A parse regression would silently make every assertion below vacuous.
   if (declared.length < 50) {
@@ -161,13 +118,9 @@ export function rpcParity(registered: string[], exempt: Record<string, string> =
   const registeredSet = new Set(registered);
   return {
     declared,
-    /** Declared, not exempt, and no handler — the bug class this guard exists for. */
-    unhandled: declared.filter((name) => !registeredSet.has(name) && !(name in exempt)),
+    /** Declared and no handler — the bug class this guard exists for. */
+    unhandled: declared.filter((name) => !registeredSet.has(name)),
     /** Registered but never declared — a handler the typed schema cannot reach. */
     undeclared: registered.filter((name) => !declaredSet.has(name)),
-    /** Exempt yet handled anyway — the exemption's justification has gone stale. */
-    staleExempt: Object.keys(exempt).filter((name) => registeredSet.has(name)),
-    /** Exempt but no longer in the schema — the exemption should be deleted. */
-    orphanExempt: Object.keys(exempt).filter((name) => !declaredSet.has(name)),
   };
 }

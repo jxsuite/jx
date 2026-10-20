@@ -1,5 +1,9 @@
 #!/bin/sh
-# The snap's command: the same Chromium app-mode launcher the Nix package runs, with Canonical's
-# Chromium build and the official Bun binary from this snap (snapcraft.yaml has the why). Display,
-# GTK and GPU setup happen before this, in the gnome extension's command chain.
-exec "$SNAP/bin/bun" run "$SNAP/lib/jx-studio/packages/desktop/src/chromium/index.ts" "$@"
+# The snap's command: the same Electron application every other channel ships (electron-builder's
+# unpacked Linux build, staged by build-snap.yml), with its own Bun beside it. Display, GTK and GPU
+# setup happen before this, in the gnome extension's command chain.
+#
+# --no-sandbox: Chromium's sandbox needs the browser-support interface's allow-sandbox, which the
+# store grants only to trusted publishers (snapcraft.yaml, the plugs). Everything the app loads is
+# the user's own project from loopback.
+exec "$SNAP/app/jx-studio" --no-sandbox --class=jx-studio "$@"

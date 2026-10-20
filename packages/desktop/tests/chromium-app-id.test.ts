@@ -19,6 +19,7 @@ import {
   STUDIO_SHELL_HOST,
   STUDIO_SHELL_PATH,
 } from "../src/chromium/app-id";
+import { chromiumShellCommand } from "../src/chromium/shell-command";
 
 const DESKTOP_ENTRY = join(import.meta.dir, "../jx-studio.desktop");
 
@@ -90,8 +91,14 @@ describe("jx-studio.desktop", () => {
 describe("the launcher's shell URL", () => {
   test("is what the id is derived from", () => {
     // Both halves of the URL Chromium sees, and neither may drift from app-id.ts unnoticed.
-    const launcher = readFileSync(join(import.meta.dir, "../src/chromium/index.ts"), "utf8");
-    expect(launcher).toContain("`--app=${serverUrl}${STUDIO_SHELL_PATH}?token=${rpcToken}`");
+    const { args } = chromiumShellCommand("/bin/chromium", {
+      platformArgs: [],
+      serverUrl: `http://${STUDIO_SHELL_HOST}:4321`,
+      token: "TOK",
+      userDataDir: "/profile",
+    });
+    expect(args[0]).toBe(`--app=http://${STUDIO_SHELL_HOST}:4321${STUDIO_SHELL_PATH}?token=TOK`);
+    expect(chromiumAppId(args[0]!.slice("--app=".length))).toBe(JX_STUDIO_APP_ID);
     expect(STUDIO_SHELL_PATH).toBe("/__studio__/index.html");
     // The bind address `createProjectServer` defaults to — the host half of the derived id.
     expect(STUDIO_SHELL_HOST).toBe("127.0.0.1");

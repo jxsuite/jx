@@ -115,12 +115,12 @@ describe("bootLauncher", () => {
     const pending = boot.bootLauncher({
       create: () => platform,
       hydrateGithubToken: hydrate,
-      launcher: "electrobun",
+      launcher: "chromium",
     });
     // Studio's module script may run the moment this shim yields: the adapter must already be there.
     expect(hasPlatform()).toBe(true);
     expect(g.__jxPlatform).toBe(platform);
-    expect(g.__jxLauncher).toEqual({ launcher: "electrobun" });
+    expect(g.__jxLauncher).toEqual({ launcher: "chromium" });
     expect(await pending).toBe(platform);
   });
 
@@ -141,7 +141,7 @@ describe("bootLauncher", () => {
     const result = await boot.bootLauncher({
       create: () => platform,
       hydrateGithubToken: hydrate,
-      launcher: "electrobun",
+      launcher: "chromium",
     });
     expect(result).toBe(platform);
     expect(hydrate).not.toHaveBeenCalled();
@@ -156,17 +156,17 @@ describe("bootLauncher", () => {
         throw thrown;
       },
       hydrateGithubToken: hydrate,
-      launcher: "electrobun",
+      launcher: "chromium",
     });
     expect(result).toBeNull();
     expect(hasPlatform()).toBe(false);
     expect(hydrate).not.toHaveBeenCalled();
-    expect(g.__jxLauncher?.launcher).toBe("electrobun");
+    expect(g.__jxLauncher?.launcher).toBe("chromium");
     expect(g.__jxLauncher?.error?.message).toBe(BRIDGE_ERROR);
     expect(g.__jxLauncher?.error?.stack).toBeString();
     expect(g.__jxLauncher?.error?.stack).not.toBe("");
     expect(consoleError).toHaveBeenCalledTimes(1);
-    expect(consoleError.mock.calls[0]?.[0]).toContain("[electrobun]");
+    expect(consoleError.mock.calls[0]?.[0]).toContain("[chromium]");
     expect(consoleError.mock.calls[0]?.[1]).toBe(thrown);
   });
 

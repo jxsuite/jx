@@ -37,7 +37,7 @@ export interface LauncherBootError {
  * window ran the dev-server adapter against a `views://` origin with nothing behind it.
  */
 export interface LauncherSignal {
-  /** Which launcher announced (`"electrobun"`, `"chromium"`), once its boot module's body ran. */
+  /** Which launcher announced (`"chromium"`), once its boot module's body ran. */
   launcher?: string | undefined;
   /** The first error the page raised during boot, or the adapter factory's own throw. */
   error?: LauncherBootError | undefined;
