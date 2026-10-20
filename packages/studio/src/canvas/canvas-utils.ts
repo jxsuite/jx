@@ -257,8 +257,10 @@ export function centerCanvas(surface: CanvasSurface) {
   const wrapWidth = surface.wrap.clientWidth;
   const contentWidth = surface.panzoomWrap.scrollWidth;
   const zoom = zoomOf(surface);
-  const scaledWidth = contentWidth * zoom;
-  surface.panX = Math.max(16, (wrapWidth - scaledWidth) / 2);
+  const free = wrapWidth - contentWidth * zoom;
+  /* Content that fits is centred, however little room is left over: a 16px floor on a fitted page
+     pushed its right edge 16px past the pane. Content wider than the pane starts 16px in. */
+  surface.panX = free >= 0 ? free / 2 : 16;
   surface.panY = 0;
 }
 
@@ -483,6 +485,14 @@ export function requestEditZoom(
   );
 }
 
+/** The screen pixels a stage reserves above its boards (`--boards-inset`), or 0 for none. */
+export function boardsInset(panzoomWrap: HTMLElement): number {
+  // The inset is declared in px (`--boards-inset:40px`); unset reads as "", which is no inset.
+  const declared = getComputedStyle(panzoomWrap).getPropertyValue("--boards-inset").trim();
+  const inset = Number(declared.replace(/px$/, ""));
+  return Number.isFinite(inset) ? inset : 0;
+}
+
 /**
  * Compute and apply a geometric fit. Pure arithmetic — it declares nothing.
  *
@@ -495,7 +505,9 @@ function applyGeometricFit(surface: CanvasSurface, axis: "width" | "page", maxZo
     return;
   }
   const wrapWidth = surface.wrap.clientWidth;
-  const wrapHeight = surface.wrap.clientHeight;
+  // The boards' own top clearance (`--boards-inset`, the Project Styles bar) is screen space the
+  // Artboards cannot use, so the page is fitted into what is left below it.
+  const wrapHeight = surface.wrap.clientHeight - boardsInset(surface.panzoomWrap);
   const gap = 24;
   const padding = 32;
   let totalPanelWidth = 0;
@@ -763,11 +775,12 @@ export function resetZoom(surface: CanvasSurface = activeCanvasSurface()) {
  * hands a rect back), so one arithmetic serves a rect measured from a parent DOM element and a rect
  * measured inside a canvas iframe alike.
  *
- * **The viewport is the box that SCROLLS, not the stage.** Edit docks the Document Header card
- * above its scroller, inside the same stage cell, so there the stage is the band plus the page and
- * its centre is half a band too high: a reveal would land the node that far above the middle of
- * what the author can actually see. {@link revealScroller} is that box wherever there is one, and
- * where there is none (Design, Stylebook, a comparison) the stage is still the viewport.
+ * **The viewport is the box that SCROLLS, not the stage.** Over a collection entry Edit stands the
+ * writing banner above its scroller, inside the same stage cell, so there the stage is the banner
+ * plus the page and its centre is half a banner too high: a reveal would land the node that far
+ * above the middle of what the author can actually see. {@link revealScroller} is that box wherever
+ * there is one, and where there is none (Design, Stylebook, a comparison) the stage is still the
+ * viewport.
  */
 function centeringOffset(surface: CanvasSurface, rect: { top: number; height: number }): number {
   const viewport = rectOf(revealScroller(surface) ?? surface.wrap);
@@ -840,6 +853,37 @@ export function panToParentRect(
   revealBy(surface, centeringOffset(surface, rect), false);
 }
 
+/**
+ * Bring a PARENT-VIEWPORT rect into view on a pan/zoom stage, moving as little as it must: not at
+ * all when the rect is already wholly in view, and never so far that the boards' top edge comes
+ * down past where it stands now.
+ *
+ * {@link panToParentRect} always centres, which is right for a jump to a diff change or a node the
+ * author asked to see. The stylebook's Outline is a list the author clicks DOWN, and centring its
+ * first rows meant the h1 at the very top of a fitted catalogue pulled every board half a pane
+ * down, leaving an empty band above them and no specimen that had moved into view.
+ */
+export function revealParentRect(
+  rect: { top: number; height: number },
+  surface: CanvasSurface = activeCanvasSurface(),
+) {
+  const viewport = rectOf(surface.wrap);
+  if (rect.top >= viewport.top && rect.top + rect.height <= viewport.top + viewport.height) {
+    return;
+  }
+  const offset = centeringOffset(surface, rect);
+  const ceiling = Math.max(surface.panY, 0) - surface.panY;
+  const step = Math.min(offset, ceiling);
+  if (step !== 0) {
+    /* A reveal is a pan somebody asked for, so the entry's centring stands down as a user's pan
+       makes it: a frame still growing to its height would otherwise re-centre the stage (top
+       aligned) under the card just brought on screen, which is what a reveal on a fresh stylebook
+       canvas did. */
+    surface.needsCenter = false;
+    animatePanBy(surface, step);
+  }
+}
+
 /** Animate a stage's `panY` by `offsetY` with the shared 250ms ease-out. */
 function animatePanBy(surface: CanvasSurface, offsetY: number) {
   const startY = surface.panY;
@@ -874,6 +918,7 @@ export const CANVAS_MODES = [
   "preview",
   "source",
   "stylebook",
+  "tokens",
   "grid",
   "git-diff",
 ] as const;
@@ -1144,7 +1189,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         description:
           "Switch the active document's editor mode. edit and design put its element tree on " +
           "the canvas, where the document tools work; preview renders it as a visitor sees it; " +
-          "source shows the JSON; stylebook, grid and git-diff open other editors. Use it to " +
+          "source shows the JSON; stylebook, tokens, grid and git-diff open other editors. Use it to " +
           "return a document to edit or design when the tree tools are refused.",
         name: "set_canvas_mode",
         /* `after.editor.kind` rather than the tab's own field: it is the gate's read (`treeEditable`
@@ -1411,9 +1456,9 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
      * preset owns it. What is left over is genuinely a rendering context, and it is the half of
      * site-architecture.md §13.4 the canvas can show today: the artboard root's `lang` and `dir`.
      * That is why this is a verb and not a label — an RTL locale mirrors the layout on screen.
-     * (That section's other half, `$page.locale` in the rendered state, is injected by the
-     * compiler and not by the canvas's `substitutePreviewParams`; previewing it is a separate
-     * change to the render path.)
+     * (That section's other half, `$page.locale`, is injected into the canvas render from the
+     * page's route, as the build injects it (studio.md §4.1). This verb leaves it alone: the
+     * pane's language is a rendering context, not the page's (§20.2).)
      *
      * It lives in this file rather than in `i18n/i18n-commands.ts` because `contextTab`, `paneArg`
      * and `repaint` are local closures here, and every rendering-context verb needs all three: the

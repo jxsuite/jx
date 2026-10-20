@@ -116,7 +116,7 @@ const KNOWN_UNREACHABLE = {
   },
   "browse/library-model.ts": {
     isLibraryLayout:
-      "the type guard behind `library.setLayout`'s argument. The command validates through its " +
+      "the type guard behind `content.setLayout`'s argument. The command validates through its " +
       "JSON-Schema `args` enum instead, so the guard is a second spelling of the same rule",
   },
   "canvas/canvas-perf.ts": { resetCanvasPerf: TEST_RESET },
@@ -240,7 +240,6 @@ const KNOWN_UNREACHABLE = {
       "a one-line re-export of `dataSurfaceAvailable()`; callers ask the underlying predicate",
     resetDataGridState: TEST_RESET,
   },
-  "panels/frontmatter-panel.ts": { unmount: PANEL_TEARDOWN },
   "panels/left-panel.ts": { unmount: PANEL_TEARDOWN },
   "panels/navigator-panels.ts": { resetNavigatorPanels: TEST_RESET },
   "panels/overlays.ts": { unmount: PANEL_TEARDOWN },
@@ -284,13 +283,7 @@ const KNOWN_UNREACHABLE = {
   "surfaces/commandbar.ts": { setMacPlatformForTests: TEST_SEAM },
   "project-list.ts": { resetProjectList: TEST_RESET },
   "publish/deploy-checklist.ts": {
-    forgetDeployment: "test reset, and the project-close half of the memory below",
-    observedDeployment:
-      "the READ half of the deployment memory: `noteDeployment` writes and nothing reads back, so " +
-      "the checklist recomputes its `unknown` branch instead of remembering the deployment it " +
-      "already observed. Nine of this file's eleven entries were that original shape and are wired; " +
-      "these two are the remainder, and what a remembered deployment entitles the checklist to " +
-      "skip is a Publish decision",
+    forgetDeployment: "test reset, and the project-close half of the deployment memory",
   },
   "services/announce.ts": { resetAnnouncer: TEST_RESET },
   "services/bundle-base.ts": { resetBundleBase: TEST_RESET },
@@ -377,11 +370,6 @@ const KNOWN_UNREACHABLE = {
   },
   "settings/section-registry.ts": { resetSettingsDocumentState: TEST_RESET },
   "settings/settings-document.ts": {
-    activeSettingsSection:
-      "which section the settings editor shows, or null when it is not the active editor. " +
-      "Composed from two live functions and read by nobody",
-    settingsDocumentOpen:
-      "internal-only now: `activeSettingsSection` is its one caller and is itself unreachable",
     settingsSectionsReady:
       '"the readiness `probe.idle()` and the command both need" — and `services/idle.ts` does ' +
       "not list it. Contributed settings sections can still be syncing when a capture is taken " +
@@ -457,12 +445,13 @@ const KNOWN_UNREACHABLE = {
 /**
  * Modules under `src/` that nothing imports at all — dead in the same way, one level up.
  *
- * Empty, and it must stay that way: a module nothing imports is not debt to schedule, it is a file
- * to delete. `canvas/canvas-diff.ts` (a document-tree visual diff — the shipped Diff is the
- * `git-diff` editor kind, a text diff) and `canvas/nested-site-style.ts` (a nested-style-object CSS
- * builder with no producer of nested style objects) were the two, and both are gone.
+ * A module nothing imports is not debt to schedule, it is a file to delete, with one exception: a
+ * finished surface between two hosts. `canvas/canvas-diff.ts` (a document-tree visual diff — the
+ * shipped Diff is the `git-diff` editor kind, a text diff) and `canvas/nested-site-style.ts` (a
+ * nested-style-object CSS builder with no producer of nested style objects) were deleted under that
+ * rule. The set is empty: the last exception, the CSS Variables editor between Project Settings and
+ * the Styles workspace's Variables view, was imported again when that view landed.
  */
-/** Modules nothing imports yet, each with its reason in {@link KNOWN_UNREACHABLE}. */
 const KNOWN_UNREACHABLE_MODULES = new Set<string>();
 
 const LEDGER = new Map<string, string>(

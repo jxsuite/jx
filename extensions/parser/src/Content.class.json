@@ -18,9 +18,11 @@
     "settings": {
       "icon": "grid-four",
       "label": "Content Types",
+      "intro": "Each content type is a collection, such as blog posts, team members or events: a folder of entries that share the fields you define here.",
       "order": 50,
       "layout": "map",
       "entry": {
+        "noun": "content type",
         "ui": { "schema": { "control": "schema-builder" } },
         "newEntry": {
           "source": "./content/${key}/",

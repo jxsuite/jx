@@ -80,6 +80,7 @@ import { runActiveReported, runReported } from "../commands/run-reported";
 import { collectionOfPath } from "../content/entry-model";
 import { confirmFileDelete, parseSourceForPath, renamePromptMessage } from "./file-ops";
 import { parseJsonDocument } from "@jxsuite/schema/json-layout";
+import { normalizeDocument } from "../tabs/bare-repeaters";
 // The pure half of the differ: order-insensitive equality with no Yjs behind it.
 import { deepEqual } from "@jxsuite/collab/diff-core";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
@@ -94,14 +95,27 @@ import {
   refreshFormats,
 } from "../format/format-host";
 import { convertTargets, creationFormats, knownDocumentExtensions } from "../format/format-choices";
+import {
+  composeNewFileName,
+  extensionOfName,
+  OTHER_FORMAT,
+  validateNewFileName,
+} from "./new-file-name";
+import type { FormatChoice, NewFileNameCheck } from "./new-file-name";
 import { collectionForDirectory } from "../content/collection-match";
-import { markSessionRestored, persistedSession, resetProjectShell, setActivityTab } from "../shell";
+import {
+  markSessionRestored,
+  persistedSession,
+  persistedWorkspace,
+  resetProjectShell,
+} from "../shell";
+import type { WorkspaceId } from "../workspace/workspace-ids";
 import { restoreSession } from "../workspace/session";
-import { cleanupGitPanel } from "../panels/git-panel";
+import { cleanupSourceControl } from "../publish/source-control";
 import { addRecentProject, trackRecentFile } from "../recent-projects";
 import { listWindow, revealListRow, watchListWindow } from "../ui/virtual-window";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
-import { isFunction, isString } from "@jxsuite/schema/guards";
+import { isString } from "@jxsuite/schema/guards";
 import type { CommandArgValues } from "../commands/command-args";
 import type { FormatFrontmatter } from "../format/format-host";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
@@ -174,6 +188,29 @@ export async function loadProjectDirectories(): Promise<void> {
     }
   }
   projectState.projectDirs = found;
+}
+
+/**
+ * Re-read the project's directories when a write created a conventional one the list lacks.
+ *
+ * The list is read as the project opens, so a project that had no `pages/` or `content/` then does
+ * not grow one in the list when Add new writes its first page or collection, and the Content scan
+ * walks only what the list names. Resolves `true` when the list was re-read, so the caller knows a
+ * repaint is due; `false` (and no listing at all) when every written path was already covered.
+ *
+ * @param paths Project-relative paths just written.
+ */
+export async function refreshProjectDirectoriesFor(paths: readonly string[]): Promise<boolean> {
+  const known = new Set(projectState?.projectDirs);
+  const missing = paths.some((path) => {
+    const top = path.replaceAll("\\", "/").replace(/^\.\//, "").split("/")[0] ?? "";
+    return path.includes("/") && CONVENTIONAL_DIRS.has(top) && !known.has(top);
+  });
+  if (!missing) {
+    return false;
+  }
+  await loadProjectDirectories();
+  return true;
 }
 
 /**
@@ -256,13 +293,19 @@ export async function loadProject() {
  * the window on the project it already had, and the caller announces the outcome — "Opening the
  * project…" over a dialog the user just dismissed is a report of something that did not happen.
  *
- * @param {{ renderLeftPanel: () => void }} ctx
+ * @param ctx.renderLeftPanel Repaint the Navigator.
+ * @param ctx.resetProjectCaches Drop the caches panels above this module keep for the project being
+ *   left (the Site panel's index, the media listing). Injected for the reason `fs-events.ts` takes
+ *   `invalidateDerivedCaches`: those panels import from the file layer, so reaching up is a cycle,
+ *   and `studio.ts`'s `openRecentProject` runs the same reset.
  * @returns {Promise<boolean>} Whether the window changed project.
  */
 export async function openProject({
   renderLeftPanel,
+  resetProjectCaches,
 }: {
   renderLeftPanel: () => void;
+  resetProjectCaches?: () => void;
 }): Promise<boolean> {
   try {
     const platform = getPlatform();
@@ -312,10 +355,13 @@ export async function openProject({
     await loadComponentRegistry();
 
     // Source control, the stylebook selection and the settings tab describe the project being
-    // Left behind. The poll timer goes with them; the panel re-arms it on its next render.
-    cleanupGitPanel();
+    // Left behind. The poll timer goes with them; the Publish workspace re-arms it on its next mount.
+    cleanupSourceControl();
     resetProjectShell();
-    setActivityTab("files");
+    resetProjectCaches?.();
+    /* The Navigator's panel is the workspace frame's, applied as the project opened (§22.3): Design
+       opens on the Site panel. Forcing Files here put a developer panel with no rail button on
+       screen and re-opened a Navigator the frame had hidden. */
     addRecentProject(requireProjectState().name, requireProjectState().projectRoot);
     renderLeftPanel();
     // The project's name is permanent state in the status bar's PROJECT field now.
@@ -424,6 +470,31 @@ export async function openLastSessionOrHome(): Promise<boolean> {
   // `projectState.projectRoot`, the recent-list entry. One reader of one field cannot disagree with
   // The writer; three callers passing three spellings silently restore nothing.
   const session = persistedSession(workspace.projectRoot);
+  /* The workspace it was left in, read BEFORE anything opens: every tab the restore activates
+     enters its own workspace, and that entry is persisted over the stored one. */
+  const left = persistedWorkspace(workspace.projectRoot);
+  const restored = await restoreSessionOrHome(session);
+  _showWorkspace?.(left);
+  return restored;
+}
+
+/**
+ * How a project open shows the workspace it was left in, once its documents are open. Installed by
+ * the bootstrap (`workspace/workspace-switch.ts`'s `switchWorkspace`), because the switch opens
+ * homes this module must not import; unset, the restore leaves the workspace wherever its tabs
+ * did.
+ */
+let _showWorkspace: ((id: WorkspaceId) => void) | null = null;
+
+/** Install (or with `null`, remove) what {@link openLastSessionOrHome} shows the workspace with. */
+export function setSessionWorkspaceShow(show: ((id: WorkspaceId) => void) | null): void {
+  _showWorkspace = show;
+}
+
+/** The body of {@link openLastSessionOrHome}: the session, or the home page. */
+async function restoreSessionOrHome(
+  session: ReturnType<typeof persistedSession>,
+): Promise<boolean> {
   // Read first, THEN allow writes: the persist effect fires the moment `workspace.projectRoot` is
   // Set, and an empty workspace captured at that instant would overwrite the very record this line
   // Reads. See `markSessionRestored`.
@@ -1699,29 +1770,6 @@ const BLANK_DOCUMENT = JSON.stringify(
 );
 
 /**
- * The picker row meaning "I will type the whole name myself".
- *
- * It is what keeps the format picker from being a cage. `New File…` is the only generic
- * file-creation affordance in Studio and both backends create intermediate directories on write, so
- * without this row `styles/main.css`, `public/robots.txt`, `.gitignore` and a `credits.txt` beside
- * a collection's images all become uncreatable — and the picker would have taken away more than it
- * gave. The picker stays the authority on the extension; this is one of its answers.
- */
-export const OTHER_FORMAT = "__other__";
-
-/** How the extension of a new file is settled. */
-export type FormatChoice =
-  /** Picker over every creatable format, plus Other…. The field is a NAME, taken verbatim. */
-  | { kind: "choose"; defaultExt?: string; docKind?: "page" | "component" | "content" }
-  /**
-   * Picker holding ONE format, plus Other… — the collection's own extension. The field is a NAME.
-   * `because` is the sentence a refusal quotes when Other… would smuggle a foreign document in.
-   */
-  | { kind: "locked"; ext: string; because: string }
-  /** No picker. The field is a DISPLAY NAME, slugified, and `ext` is appended. */
-  | { kind: "fixed"; ext: string };
-
-/**
  * One creation, named.
  *
  * `dir` is required and has no default. That is the whole point of the type: the Library used to
@@ -1742,32 +1790,10 @@ export interface NewFileRequest {
    * (`i18n.createTranslation` composes `about.json` from the file it is translating).
    */
   format?: FormatChoice;
-  /**
-   * Body to write. A function is called with the extension the reader settled on and the composed
-   * file name, which is the only way a caller can seed a body whose FORMAT — or whose own tag name
-   * — it does not know until the dialog resolves. Defaults to the resolved format's
-   * `newFileTemplate`.
-   */
-  content?:
-    | string
-    | ((ext: string, fileName: string) => string | undefined | Promise<string | undefined>);
+  /** Body to write. Defaults to the resolved format's `newFileTemplate`. */
+  content?: string;
   /** Who is creating, for the Problem's `source` line. Defaults to "Files". */
   source?: string;
-}
-
-/** A display name, reduced to a file stem. Lowercase by design: this is a slug. */
-function slugify(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replaceAll(/\s+/g, "-")
-    .replaceAll(/[^a-z\d-]/g, "");
-}
-
-/** The extension of a file name, including the dot, or `""`. */
-function extensionOfName(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot) : "";
 }
 
 /** The two picker modes — the ones where the field asks for a NAME and the picker owns the suffix. */
@@ -1831,14 +1857,7 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
   await loadFormats();
 
   // One listing, before the field opens: the names it must refuse are known while typing.
-  let taken = new Set<string>();
-  try {
-    const listing = await getPlatform().listDirectory(dir);
-    taken = new Set(listing.map((entry) => entry.name.toLowerCase()));
-  } catch {
-    // A directory that cannot be listed is usually one that does not exist yet — the write below
-    // Is the authority on whether that is a problem, and it reports with the real reason.
-  }
+  const taken = await listTakenNames(dir);
 
   const picker = choice !== undefined && choice.kind !== "fixed" ? choice : null;
   const rows = picker === null ? null : formatRowsFor(picker);
@@ -1847,73 +1866,8 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
       ? ""
       : initialPickFor(picker, rows, request.suggestedName ?? "");
 
-  /**
-   * The file name a field value and a pick compose to — three modes, not two.
-   *
-   * The verbatim STEM mode is not a convenience. The slugifier lowercases and strips everything
-   * outside `[a-z0-9-]`, which turns `[slug]` into `slug` — and eight shipped starters carry
-   * `pages/[slug].json`, `[sku].json`, `[...slug].json`. A picker that slugified would make a
-   * dynamic route uncreatable and would say nothing about it.
-   */
-  const fileNameFor = (input: string, picked: string) => {
-    const trimmed = input.trim();
-    if (choice === undefined || picked === OTHER_FORMAT) {
-      return trimmed;
-    }
-    if (choice.kind === "fixed") {
-      const slug = slugify(trimmed);
-      return slug === "" ? "" : `${slug}${choice.ext}`;
-    }
-    return trimmed.toLowerCase().endsWith(picked.toLowerCase()) ? trimmed : `${trimmed}${picked}`;
-  };
-
-  const known = knownDocumentExtensions();
-
-  const validate = (value: string, picked: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return choice?.kind === "fixed" ? "Enter a name." : "Enter a file name.";
-    }
-    if (choice?.kind === "fixed" && slugify(trimmed) === "") {
-      return "Enter at least one letter or number.";
-    }
-    const normalized = trimmed.replaceAll("\\", "/");
-    if (normalized.startsWith("/") || normalized.endsWith("/")) {
-      return "Enter a name, not a path that starts or ends with a slash.";
-    }
-    if (normalized.split("/").includes("..")) {
-      return "A name cannot step outside the destination folder.";
-    }
-    // A slash is the tree's ONLY way to make a directory — both backends create them on write — so
-    // It is allowed exactly where the field is a whole file name, and refused where it is a name.
-    if (normalized.includes("/") && choice !== undefined && picked !== OTHER_FORMAT) {
-      return `Pick Other… to create a file in a subfolder of ${dir === "." ? "the project root" : dir}.`;
-    }
-    /* A name whose extension MATCHES the pick is fine and is composed once, never doubled;
-       refusing every trailing extension would reject this dialog's own `untitled.json` default.
-       A name ending in an extension no format claims is a stem that happens to have a dot. */
-    const typedExt = extensionOfName(normalized);
-    if (
-      picked !== "" &&
-      picked !== OTHER_FORMAT &&
-      typedExt !== "" &&
-      typedExt.toLowerCase() !== picked.toLowerCase() &&
-      known.has(typedExt.toLowerCase())
-    ) {
-      const label = rows?.find((row) => row.value === picked)?.label ?? picked;
-      return `You picked ${label}; this name ends in ${typedExt}.`;
-    }
-    if (choice?.kind === "locked" && picked === OTHER_FORMAT) {
-      const foreign = typedExt !== "" && typedExt.toLowerCase() !== choice.ext.toLowerCase();
-      if (foreign && known.has(typedExt.toLowerCase())) {
-        return choice.because;
-      }
-    }
-    /* No emptiness check here: every way `fileNameFor` can answer "" is already refused above — a
-       blank field by the first rule, a display name that slugifies to nothing by the second. */
-    const candidate = fileNameFor(value, picked);
-    return taken.has(candidate.toLowerCase()) ? `${candidate} already exists in ${dir}/.` : "";
-  };
+  const check: NewFileNameCheck = { choice, dir, known: knownDocumentExtensions(), rows, taken };
+  const validate = (value: string, picked: string) => validateNewFileName(value, picked, check);
 
   let picked = initialPick;
   const promptOptions: PromptDialogOptions = {
@@ -1942,13 +1896,10 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
     return null;
   }
 
-  const fileName = fileNameFor(entered, picked);
+  const fileName = composeNewFileName(entered, picked, choice);
   const path = dir === "." ? fileName : `${dir}/${fileName}`;
-  markLocalMutation(path);
   const format = formatForPath(fileName);
-  const suppliedBody = isFunction(request.content)
-    ? await request.content(extensionOfName(fileName), fileName)
-    : request.content;
+  const suppliedBody = request.content;
   /*
    * What a new file starts as, in precedence order.
    *
@@ -1968,16 +1919,59 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
           ? BLANK_DOCUMENT
           : "{}\n"
         : "");
+  return writeNewFile(path, content, { dir, source });
+}
+
+/**
+ * The names already in `dir`, lower-cased — what a new name there must not collide with.
+ *
+ * A directory that cannot be listed answers empty: it is usually one that does not exist yet, and
+ * the write that follows is the authority on whether that is a problem, reporting with the real
+ * reason.
+ */
+export async function listTakenNames(dir: string): Promise<Set<string>> {
+  try {
+    const listing = await getPlatform().listDirectory(dir);
+    return new Set(listing.map((entry) => entry.name.toLowerCase()));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Write one new file: the second half of every creation flow, after its name has been judged.
+ *
+ * The local mutation is marked first, so the watcher's echo of this write is not mistaken for an
+ * edit made outside Studio. The destination is re-listed so the tree shows the file, the success is
+ * a toast, and a failure is a Problem carrying the path, since the thing the author must do next is
+ * about that path. It does NOT open the file: what a new file opens in is the caller's to say.
+ *
+ * @param path Project-relative path of the file to create.
+ * @param content Its first bytes.
+ * @param opts `dir` is re-listed afterwards (defaults to the path's parent); `source` names the
+ *   flow in the Problem; `quiet` skips the success toast for a write that is one step of a larger
+ *   creation that reports once for all of them.
+ * @returns The path, or `null` when the write failed.
+ */
+export async function writeNewFile(
+  path: string,
+  content: string,
+  opts: { dir?: string; source?: string; quiet?: boolean } = {},
+): Promise<string | null> {
+  const dir = opts.dir ?? (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ".");
+  markLocalMutation(path);
   try {
     await getPlatform().writeFile(path, content);
     await loadDirectory(dir);
-    notify.success(`Created ${path}`);
+    if (opts.quiet !== true) {
+      notify.success(`Created ${path}`);
+    }
     return path;
   } catch (error) {
     notify.error(`Could not create ${path}.`, {
       detail: errorMessage(error),
       path,
-      source,
+      source: opts.source ?? "Files",
     });
     return null;
   }
@@ -2241,6 +2235,13 @@ export interface OpenFileOpts {
   preview?: boolean;
   /** False leaves the keyboard where it is. Defaults to true. */
   focus?: boolean;
+  /**
+   * The canvas mode the tab is in when it becomes active, for an open that is not an edit: a
+   * comparison opens straight into `git-diff`. Set BEFORE activation, because a tab's mode decides
+   * which workspace it belongs to (`workspace/tab-workspace.ts`) and activation enters that
+   * workspace; a mode set afterwards would visit the edit mode's workspace on the way.
+   */
+  canvasMode?: string;
 }
 
 /**
@@ -2293,6 +2294,9 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
   const follows = opts.focus !== false;
   for (const [id, tab] of workspace.tabs.entries()) {
     if (tab.documentPath === path) {
+      if (opts.canvasMode !== undefined) {
+        tab.session.ui.canvasMode = opts.canvasMode;
+      }
       revealOpenTab(id, opts);
       // The tree's cursor answers "where is the author", so a side-open that deliberately left the
       // Keyboard behind must not move it.
@@ -2392,10 +2396,12 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
       document,
       ...(frontmatter != null && { frontmatter }),
       layout,
+      source: format ? content : null,
       sourceFormat: format?.name ?? null,
       ...(opts.paneId !== undefined && { paneId: opts.paneId }),
       ...(opts.preview === true && { preview: true }),
       ...(opts.focus === false && { focus: false }),
+      ...(opts.canvasMode !== undefined && { canvasMode: opts.canvasMode }),
     });
     if (follows) {
       requireProjectState().selectedPath = path;
@@ -2508,16 +2514,21 @@ export async function reloadFileInTab(path: string, opts: { onlyIfChanged?: bool
           }
           tab.doc.document = document;
           tab.doc.content.frontmatter = frontmatter;
+          tab.doc.source = content;
         } else if (path.endsWith(".json")) {
           // The file changed under the tab, so its layout is whatever the new text says.
           const parsed = parseJsonDocument(content);
           tab.doc.layout = parsed.layout;
-          if (opts.onlyIfChanged && deepEqual(parsed.document, tab.doc.document)) {
-            return;
-          }
           /* SAFETY: this tab was opened on this `.json` path as a Jx document, and the file's schema
              Makes its top-level object a node — the object `parseJsonDocument` states it returns. */
-          tab.doc.document = parsed.document as JxMutableNode;
+          const document = parsed.document as JxMutableNode;
+          // The same member form the tab was opened in, so the comparison and every edit after it
+          // Read one shape, and the record of what the file wrote is the new text's.
+          tab.doc.bareRepeaters = normalizeDocument(document);
+          if (opts.onlyIfChanged && deepEqual(document, tab.doc.document)) {
+            return;
+          }
+          tab.doc.document = document;
         }
         tab.doc.dirty = false;
       } catch (error) {
@@ -2548,6 +2559,10 @@ export function registerFilesPanel(): void {
     level: "project",
     dock: "navigator",
     icon: "folder",
+    /* A developer panel (§5.1): the Site panel lists the project by what its files ARE, so the tree
+       of where they are stored is on the Design rail only with **Show developer panels** on. With it
+       off the panel is still `view.setActivity { tab: "files" }` and a palette row away. */
+    rail: "developer",
     // The body is a document, so lit draws nothing and the mount happens against the painted DOM.
     // `afterRender` runs on every repaint; {@link mountFilesPanel} is idempotent.
     render: () => nothing,
@@ -2603,16 +2618,15 @@ let _lastValues: FilesPanelValues | null = null;
  * Draw the panel — mounting the document the first time, and re-projecting into it every time
  * after.
  *
- * The document goes into `.panel-content`, not into the `.panel-body` this is handed, for the
- * reason `panels/git-panel.ts` states: only one of them is the node lit renders this panel's body
- * into, and appending to the other would leave the panel drawn under whatever the Navigator paints
- * next.
+ * The document goes into `.panel-content`, not into the `.panel-body` this is handed, because only
+ * one of them is the node lit renders this panel's body into, and appending to the other would
+ * leave the panel drawn under whatever the Navigator paints next.
  *
- * The repaint stays the NAVIGATOR'S. Source Control owns an `effect()` because its inputs are the
- * reactive `shell.git` record; the tree's inputs are a `Map` of directory listings, a `Set` of
- * expanded paths and a roaming setting, none of which is reactive — so `ctx.rerender` is what this
- * surface has always been redrawn by, and it stays that way rather than growing a second scheduler
- * that could disagree with it.
+ * The repaint stays the NAVIGATOR'S. The Publish workspace owns an `effect()` because its inputs
+ * are the reactive `shell.git` record; the tree's inputs are a `Map` of directory listings, a `Set`
+ * of expanded paths and a roaming setting, none of which is reactive — so `ctx.rerender` is what
+ * this surface has always been redrawn by, and it stays that way rather than growing a second
+ * scheduler that could disagree with it.
  *
  * @param host - The painted `.panel-body`
  * @param rerender - The Navigator's repaint
@@ -2647,7 +2661,7 @@ export function mountFilesPanel(host: HTMLElement, rerender: () => void): void {
  * Take the panel down: the document, the drag registrations, the scroll watch and the row handles.
  *
  * Exported because a project close has to reach it — the tree it is showing belongs to the project
- * being left behind, exactly as `cleanupGitPanel` is for the working tree.
+ * being left behind, exactly as `cleanupSourceControl` is for the working tree.
  */
 export function unmountFilesPanel(): void {
   dismissFileContextMenu();

@@ -6,6 +6,7 @@ spec:
   - parser.md#3.3
   - parser.md#3.4
   - parser.md#3.5
+  - parser.md#5
 code:
   - extensions/parser/src/transpile.ts
   - extensions/parser/src/serialize.ts
@@ -153,6 +154,8 @@ Every heading gets an `id` built from its own text, so `## Getting started` beco
 ## Standard Markdown
 
 Plain Markdown maps to the elements you'd expect: headings to `h1`–`h6`, paragraphs to `p`, emphasis to `em`/`strong`, links to `a`, images to `img`, lists to `ul`/`ol` + `li`, fenced code to `pre` > `code`, tables to `table` structures. Mixing prose and directives in one file is the normal case, not a special one.
+
+When Studio saves a file it writes each element back in the form that keeps all of it. An element is written as plain Markdown only when Markdown can say everything it carries: an image with a `width` and `height` stays `::img{src="…" alt="…" width="1600" height="1067"}`, because `![alt](src)` has nowhere to put them, and a table without a header row stays the directive table it was written as, because a pipe table always has one. The frontmatter keeps long values on one line and keeps a value like `date: "2024-07-26T17:39:36Z"` quoted, so a date you wrote as text is still text for every tool that reads the file. Saving a file you have not edited changes none of its values.
 
 Fenced code with a recognized language tag is syntax-highlighted at build time. The set is `json`, `jsonc`, `ts`, `js`, `bash`, `html`, `xml`, `css`, `yaml`, `toml`, `ini`, `md`, `sql`, `php`, `python`, `ruby`, `nix`, `nginx`, `caddyfile`, `diff` and `dockerfile`, with their usual aliases (`sh`, `py`, `rb`, `yml`): each token becomes a `span` carrying its light and dark colors as `--shiki-light`/`--shiki-dark` CSS variables, so highlighting follows the site's [color scheme](/docs/framework/concepts/color-schemes) automatically. Unknown languages fall back to plain text, and no fence ever breaks.
 

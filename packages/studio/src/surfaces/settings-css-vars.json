@@ -1,28 +1,29 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioSettingsCssVars",
-  "$description": "Project Settings › CSS Variables: the project's design tokens, grouped by what they name, each editable in place and each able to carry a different value in any rendering context the project declares. The adapter (`surfaces/settings-css-vars.ts`) hands in the groups already grouped, each token already resolved — its swatch colour, the chip it wears when its value follows another token, the override rows it has and the contexts it could still be given one in — and the document draws them. Nothing here reads `project.json` and nothing here decides what a token IS: `style/project-styles.ts` owns the vocabulary and `settings/css-vars-editor.ts` owns the writes. A context is DEFINED in Contexts and only overridden here, which is why the one thing the colour group says when no scheme exists is where to go and say it.",
+  "$description": "The Styles workspace's Variables view, its editor (studio.md §7.1): the project's design tokens, grouped by what they name, each editable in place and each able to carry a different value in any rendering context the project declares. The view's own frame (`surfaces/styles-variables.json`) draws the heading and mounts this document into its `editor` island. The adapter (`surfaces/settings-css-vars.ts`) hands in the groups already grouped, each token already resolved — its swatch colour, the chip it wears when its value follows another token, the override rows it has, the contexts it could still be given one in and whether it is the token the Outline pointed at — and the document draws them. Nothing here reads `project.json` and nothing here decides what a token IS: `style/project-styles.ts` owns the vocabulary and `settings/css-vars-editor.ts` owns the writes. A context is DEFINED in Project Settings › Contexts and only overridden here, which is why the one thing the colour group says when no scheme exists is where to go and say it.",
   "tagName": "section",
   "attributes": {
     "part": "cssvars"
   },
   "style": {
-    "$description": "This section's whole look, keyed on `part`. Six of the rules it used to borrow are gone rather than moved: `.settings-section` never had a rule anywhere (it was on the orphan ledger), and `.css-var-swatch input[type=\"color\"]` plus the two chip spans are drawn here now because the lit helper that emitted them is drawn here now. Every `--spectrum-font-size-*` reference is re-pointed at the kit's scale: a document is mounted in the pane rather than inside `<sp-theme>`, so each of those would have silently taken its hard-coded fallback.",
+    "$description": "This section's whole look, keyed on `part`. Six of the rules it used to borrow are gone rather than moved: `.settings-section` never had a rule anywhere (it was on the orphan ledger), and `.css-var-swatch input[type=\"color\"]` plus the two chip spans are drawn here now because the lit helper that emitted them is drawn here now. Every `--spectrum-font-size-*` reference is re-pointed at the kit's scale: a document is mounted in the pane rather than inside `<sp-theme>`, so each of those would have silently taken its hard-coded fallback. Two part names are this document's own on purpose: the colour well is `well` and a font token's specimen is `font-preview`, because `swatch` and `preview` are parts INSIDE `jx-select` (its options' colour chip and its closed-state value), and this section draws a `jx-select` per token. The kit is light DOM, so `& [part=\"preview\"]` reached the Add override picker's own value and gave it this sheet's 108px indent, bottom padding and 13px type: a 36px control under a 20px field. The name column is a fixed width (`--name-col`) so every value field in a group starts at the same x, and the override list indents to that same column rather than to a literal that guessed it.",
+    "--name-col": "12rem",
     "display": "block",
-    "& [part=\"title\"]": {
-      "margin": "0 0 16px",
-      "fontSize": "16px",
-      "fontWeight": "600",
-      "color": "var(--fg)"
-    },
     "& [part=\"section-error\"]": {
       "$description": "A write that failed, said under the section title rather than pinned to a control. This section saves on change and the predecessor dropped every rejection on the floor, so a read-only file made each edit look as though it had been taken and then quietly forgotten. It is `section-error` rather than `error` because every text field and select in the section draws a permanent `[part=\"error\"]` of its own in this same light-DOM tree, and a rule on that name would give their refusal sentences this margin and size too.",
       "margin": "0 0 12px",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--danger)"
     },
-    "& [part=\"group\"]": {
+    "& [part=\"token-group\"]": {
       "marginBottom": "24px"
+    },
+    "& [part=\"token\"][aria-current=\"true\"]": {
+      "$description": "The token the Outline pointed the view at: a tinted band with the accent edge the Outline's own selected row wears, so the two say the same thing about one property.",
+      "borderRadius": "var(--radius)",
+      "background": "var(--accent-20)",
+      "boxShadow": "inset 2px 0 0 var(--accent)"
     },
     "& [part=\"group-title\"]": {
       "margin": "0 0 8px",
@@ -39,14 +40,18 @@
       "padding": "4px 0"
     },
     "& [part=\"name\"]": {
+      "$description": "A fixed column, not a minimum: with `minWidth` the value field started wherever its name ended, so a long name pushed its field out of line with every field above it. A name longer than the column is cut with an ellipsis and carries its whole self in `title`.",
+      "flex": "0 0 var(--name-col)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
       "fontSize": "var(--jx-text-md)",
-      "color": "var(--fg-dim)",
-      "minWidth": "100px"
+      "color": "var(--fg-dim)"
     },
     "& [part=\"swatch-slot\"], & [part=\"chip-slot\"]": {
       "display": "contents"
     },
-    "& [part=\"swatch\"]": {
+    "& [part=\"well\"]": {
       "$description": "The colour well. Its background is the value the token RESOLVES to, so an alias token is a colour rather than a blank square, and the native input over it is transparent — the well is what the reader sees and the input is only what they operate.",
       "position": "relative",
       "width": "24px",
@@ -66,15 +71,14 @@
       "cursor": "pointer"
     },
     "& [part=\"value\"]": {
-      "flex": "1",
+      "flex": "0 1 16rem",
       "minWidth": "0"
     },
     "& [data-group=\"color\"] [part=\"value\"]": {
-      "maxWidth": "160px"
+      "flexBasis": "10rem"
     },
     "& [data-group=\"size\"] [part=\"value\"]": {
-      "flex": "none",
-      "maxWidth": "120px"
+      "flexBasis": "8rem"
     },
     "& [part=\"chip\"]": {
       "$description": "A value that is exactly `var(--token)` is a reference, and raw text is the one rendering that hides both which token and what it currently is. The chip says both. It is a span, not a button: it states, it does not navigate. Same border, same size and same radius as the provenance chips in the Inspector, because \"this value comes from somewhere else\" is the same sentence in both places.",
@@ -103,15 +107,19 @@
       "overflow": "hidden",
       "textOverflow": "ellipsis"
     },
-    "& [part=\"preview\"]": {
-      "$description": "A font token is the one kind whose value cannot be read: `'Georgia', serif` is a name for a shape, so the shape is drawn. Indented to the value column, because it belongs to the field above it rather than to the section.",
-      "padding": "4px 0 12px 108px",
+    "& [part=\"font-preview\"]": {
+      "$description": "A font token is the one kind whose value cannot be read: `'Georgia', serif` is a name for a shape, so the shape is drawn. Indented to the value column (the name column and the gap after it), because it belongs to the field above it rather than to the section.",
+      "padding": "4px 0 12px calc(var(--name-col) + 8px)",
       "fontSize": "13px",
       "color": "var(--fg-dim)"
     },
     "& [part=\"overrides\"]": {
-      "paddingLeft": "108px",
+      "$description": "Indented to the value column: past the name column and its gap, and in the colour group past the well too, so an override value sits under the base value it overrides.",
+      "paddingLeft": "calc(var(--name-col) + 8px)",
       "marginBottom": "8px"
+    },
+    "& [data-group=\"color\"] [part=\"overrides\"]": {
+      "paddingLeft": "calc(var(--name-col) + 40px)"
     },
     "& [part=\"override\"]": {
       "display": "flex",
@@ -138,6 +146,11 @@
       "alignItems": "center",
       "padding": "2px 0"
     },
+    "& [part=\"add-picker\"]": {
+      "$description": "As compact as the fields beside it: sized to its own label rather than stretched, since it is a verb on the list above it and not a value of its own.",
+      "flex": "none",
+      "width": "auto"
+    },
     "& [part=\"add\"]": {
       "display": "flex",
       "alignItems": "center",
@@ -162,13 +175,6 @@
     }
   },
   "children": [
-    {
-      "tagName": "h3",
-      "attributes": {
-        "part": "title"
-      },
-      "textContent": "CSS Variables"
-    },
     {
       "tagName": "div",
       "attributes": {
@@ -200,12 +206,12 @@
       "map": {
         "tagName": "div",
         "attributes": {
-          "part": "group",
+          "part": "token-group",
           "data-group": "${$map.item.id}"
         },
         "children": [
           {
-            "tagName": "h4",
+            "tagName": "h3",
             "attributes": {
               "part": "group-title"
             },
@@ -223,7 +229,8 @@
               "tagName": "div",
               "attributes": {
                 "part": "token",
-                "data-token": "${$map.item.name}"
+                "data-token": "${$map.item.name}",
+                "aria-current": "${$map.item.current ? 'true' : null}"
               },
               "children": [
                 {
@@ -245,7 +252,7 @@
                         "swatch": {
                           "tagName": "div",
                           "attributes": {
-                            "part": "swatch"
+                            "part": "well"
                           },
                           "style": {
                             "background": {
@@ -290,7 +297,8 @@
                     {
                       "tagName": "span",
                       "attributes": {
-                        "part": "name"
+                        "part": "name",
+                        "title": "${$map.item.label}"
                       },
                       "textContent": "${$map.item.label}"
                     },
@@ -433,7 +441,7 @@
                     "font": {
                       "tagName": "div",
                       "attributes": {
-                        "part": "preview"
+                        "part": "font-preview"
                       },
                       "style": {
                         "fontFamily": {
@@ -498,7 +506,7 @@
                                   "swatch": {
                                     "tagName": "div",
                                     "attributes": {
-                                      "part": "swatch"
+                                      "part": "well"
                                     },
                                     "style": {
                                       "background": {
@@ -788,7 +796,7 @@
                 "children": [
                   {
                     "tagName": "span",
-                    "textContent": "No colour scheme is defined yet, so these tokens have one value each."
+                    "textContent": "No color scheme is defined yet, so these tokens have one value each."
                   },
                   {
                     "tagName": "jx-action-button",
@@ -797,7 +805,7 @@
                     },
                     "$props": {
                       "size": "sm",
-                      "hint": "Define a colour scheme in Project Settings › Contexts"
+                      "hint": "Define a color scheme in Project Settings › Contexts"
                     },
                     "onclick": {
                       "$ref": "#/state/manageContexts"

@@ -81,6 +81,16 @@ export interface SlashCommand {
   label: string;
   tag: string;
   description: string;
+  /**
+   * The heading the offer is listed under. Absent for the HTML elements, which are the menu's
+   * first, unheaded group; `"Components"` for the project's components (§5.7).
+   */
+  group?: string;
+  /**
+   * Whether `tag` names a project component: the pick inserts `buildComponentInstance` and imports
+   * the component (`editor/insert-component.ts`) rather than an element's default definition.
+   */
+  component?: boolean;
 }
 
 export interface JxContentResult {

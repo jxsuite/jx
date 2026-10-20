@@ -29,9 +29,16 @@
 
 import { effect, effectScope } from "../reactivity";
 import { paneRegion } from "../ui/regions";
+import { localDay } from "../utils/local-day";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
-import { formatBytes, loadMediaMeta, peekMediaMeta, recordImageSize } from "../files/media-meta";
-import { extensionOf, mediaKind } from "../files/media-upload";
+import {
+  formatBytes,
+  loadMediaMeta,
+  mediaMetaSettled,
+  peekMediaMeta,
+  recordImageSize,
+} from "../files/media-meta";
+import { FONT_EXTENSIONS, extensionOf, mediaKind } from "../files/media-upload";
 import { loadMediaUsages, mediaUsageHeadline, peekMediaUsages } from "../files/media-usage";
 import { mountMediaSurface } from "../surfaces/media-pane";
 import type { MediaStage, MediaSurfaceHandle, MediaView } from "../surfaces/media-pane";
@@ -42,9 +49,6 @@ import type { CanvasSurface } from "../canvas/canvas-surface";
 
 /** The `canvasMode` the media viewer draws under. */
 export const MEDIA_MODE = "media";
-
-/** Extensions the viewer renders as a font specimen rather than as a file it cannot show. */
-const FONT_EXTENSIONS = new Set([".woff", ".woff2", ".ttf", ".otf"]);
 
 /** The pangram the font specimen is set in — short, and every letter of the alphabet once. */
 const SPECIMEN = "The quick brown fox jumps over the lazy dog";
@@ -97,9 +101,11 @@ export function detachMediaPane(paneId: string): void {
  * Which element the stage should draw this file in.
  *
  * A font is decided by extension before anything else: `mediaKind` calls a `.woff2` a plain file,
- * and a file the browser cannot render is the last answer here rather than the first.
+ * and a file the browser cannot render is the last answer here rather than the first. Exported
+ * because the Media workspace's detail pane (`media/media-library.ts`) asks the same question, and
+ * two answers to it would drift.
  */
-function stageFor(path: string): MediaStage {
+export function mediaStageFor(path: string): MediaStage {
   const ext = extensionOf(path);
   if (FONT_EXTENSIONS.has(ext)) {
     return "font";
@@ -112,7 +118,7 @@ function stageFor(path: string): MediaStage {
 }
 
 /** Kind, dimensions, size and modified time — each omitted rather than zeroed when unknown. */
-function factsLine(path: string, meta: MediaMeta | null): string {
+export function factsLine(path: string, meta: MediaMeta | null): string {
   const facts: string[] = [mediaKind({ name: path })];
   if (meta?.width != null && meta.height != null) {
     facts.push(`${meta.width} × ${meta.height}`);
@@ -121,7 +127,8 @@ function factsLine(path: string, meta: MediaMeta | null): string {
     facts.push(formatBytes(meta.bytes));
   }
   if (meta?.modified) {
-    facts.push(`modified ${meta.modified.slice(0, 10)}`);
+    // The local day it was modified on (`utils/local-day.ts`), not the UTC one.
+    facts.push(`modified ${localDay(new Date(meta.modified))}`);
   }
   return facts.join(" · ");
 }
@@ -131,8 +138,30 @@ function specimenFamily(path: string): string {
   return `jx-specimen-${path.replaceAll(/[^a-zA-Z0-9]/g, "-")}`;
 }
 
+/** What a font specimen draws: its scoped face, the custom property naming it, and the pangram. */
+export interface FontSpecimen {
+  /** A `@font-face` rule for the generated family, loading the file from its preview src. */
+  fontFace: string;
+  /** `--jx-specimen-family: "<family>"`, the one inline declaration a specimen element carries. */
+  specimenFamily: string;
+  specimen: string;
+}
+
+/**
+ * The specimen for a font file, shared by the viewer and the Media workspace's detail pane, so a
+ * font is shown by being USED in both and the face is scoped the same way in both.
+ */
+export function specimenOf(path: string): FontSpecimen {
+  const family = specimenFamily(path);
+  return {
+    fontFace: `@font-face { font-family: "${family}"; src: url("${previewFileSrc(path)}"); }`,
+    specimen: SPECIMEN,
+    specimenFamily: `--jx-specimen-family: "${family}"`,
+  };
+}
+
 /** Which documents reference this file, or the honest reason there is no list. */
-function usageOf(
+export function usageOf(
   usage: UsageState | null,
 ): Pick<MediaView, "usageState" | "usageHeadline" | "usageFiles"> {
   const headline = mediaUsageHeadline(usage);
@@ -179,11 +208,10 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
   detachMediaPane(paneId);
 
   const path = tab.documentPath ?? "";
-  const family = specimenFamily(path);
   const src = previewFileSrc(path);
   const ref = mediaSiteUrl(path);
   const ext = extensionOf(path);
-  const kind = stageFor(path);
+  const kind = mediaStageFor(path);
 
   let panel: ActiveMediaPane | null = null;
   const redraw = () => {
@@ -197,25 +225,25 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
     const usage = peekMediaUsages(path);
     /* Asked on the first paint that finds it missing, never on every paint: both loaders cache and
        de-duplicate in flight, and both repaint through `redraw` when they land. */
-    if (meta === null) {
+    if (!mediaMetaSettled(path)) {
       void loadMediaMeta(path).then(redraw);
     }
     if (usage === null || usage.status === "pending") {
       void loadMediaUsages(path).then(redraw);
     }
+    /* The face is scoped to the generated family name, so two specimens open side by side cannot
+       claim the same one. Written only for a font: every other stage carries an empty sheet. */
+    const specimen = specimenOf(path);
     return {
       extLabel: ext || "this file",
       facts: factsLine(path, meta),
-      /* The face is scoped to the generated family name, so two specimens open side by side cannot
-         claim the same one. Written only for a font: every other stage carries an empty sheet. */
-      fontFace:
-        kind === "font" ? `@font-face { font-family: "${family}"; src: url("${src}"); }` : "",
+      fontFace: kind === "font" ? specimen.fontFace : "",
       kind,
       name: path.split("/").pop() ?? "",
       ref,
       region: paneRegion(paneId, "media"),
-      specimen: SPECIMEN,
-      specimenFamily: `--jx-specimen-family: "${family}"`,
+      specimen: specimen.specimen,
+      specimenFamily: specimen.specimenFamily,
       src,
       ...usageOf(usage),
     };

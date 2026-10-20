@@ -1,8 +1,14 @@
 [test]
+# Before every file: the shared guards (packages/test-support/src/preload.ts). DOM nodes print as
+# one line in failure output, deep equality on a DOM node is refused before Bun's diff printer can
+# hang on it, and a local Bun other than CI's pin says so once.
+preload = ["@jxsuite/test-support/preload"]
 coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
 coveragePathIgnorePatterns = [
   "**/tests/**",
+  # The shared preload is gated by packages/test-support's own run, at 100%.
+  "../test-support/**",
   "./result/**",
   # Transient /tmp modules some tests import (portability worker copy, importImplementation
   # fixtures, the bundled locale worker) — loaded artifacts, not compiler source. Each is a

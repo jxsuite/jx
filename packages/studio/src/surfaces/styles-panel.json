@@ -1,0 +1,735 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioStylesPanel",
+  "$description": "The Styles panel (specs/studio.md §7.1): the Styles workspace's Navigator, and the way into everything the workspace edits. Three sections, in the order a visit usually needs them. VARIABLES lists every CSS custom property in project.json's root style block, by its real name, grouped as the Variables view groups them (Colors, Fonts, Sizes & Spacing, and Other when anything lands there), each group with its count and each colour with a swatch of what it resolves to; a group heading or a variable shows it in the Variables view, and Add variable focuses the view's own add row. ELEMENTS lists the element defaults by tag name, the specimen catalogue's tags and the project's components, with a dot on every tag project.json already styles; a row selects that tag on the Elements view's canvas, with the Inspector on its style. COLOR SCHEMES lists the schemes the project declares, with Manage color schemes leading to Project Settings › Contexts, where they are defined. `panels/styles-panel.ts` keeps every decision; this document draws rows whose every field is already a string.",
+  "tagName": "div",
+  "attributes": {
+    "part": "styles"
+  },
+  "style": {
+    "$description": "The Styles panel's own look, keyed on `part`. Rows are native buttons, because a row opens one thing and a button is the element that says so to every reader, and they are the Outline's 24px row so the Navigator reads as one family. A group heading is a row too, at the section's weight, carrying its count. The swatch is the one value this document takes from data: its colour is the variable's resolved value, written as the swatch's background by the binding, never by a style attribute. THE INDENT IS A VARIABLE for the reason `panel-data.json` gives: one shared rule reads `--row-indent`.",
+    "display": "flex",
+    "flexDirection": "column",
+    "minHeight": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"sections\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-2) 0 var(--jx-space-4)"
+    },
+    "& [part=\"section\"]": {
+      "display": "flex",
+      "flexDirection": "column"
+    },
+    "& [part=\"section-head\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2) var(--jx-space-3) var(--jx-space-1)"
+    },
+    "& [part=\"section-title\"]": {
+      "flex": "1",
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "600",
+      "letterSpacing": "0.04em",
+      "textTransform": "uppercase",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"section-count\"], & [part=\"row-count\"]": {
+      "flexShrink": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "fontVariantNumeric": "tabular-nums"
+    },
+    "& [part=\"rows\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none"
+    },
+    "& [part=\"group-row\"], & [part=\"variable-row\"], & [part=\"element-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "width": "100%",
+      "blockSize": "24px",
+      "boxSizing": "border-box",
+      "margin": "0",
+      "padding": "0 var(--jx-space-3)",
+      "paddingInlineStart": "var(--row-indent, var(--jx-space-3))",
+      "border": "none",
+      "borderInlineStart": "2px solid transparent",
+      "background": "none",
+      "color": "inherit",
+      "font": "inherit",
+      "textAlign": "start",
+      "whiteSpace": "nowrap",
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"group-row\"]": {
+      "fontWeight": "600"
+    },
+    "& [part=\"variable-row\"]": {
+      "paddingInlineStart": "calc(var(--jx-space-3) + var(--jx-space-4))"
+    },
+    "& [aria-current=\"true\"]": {
+      "background": "var(--accent-20)",
+      "borderInlineStartColor": "var(--accent)"
+    },
+    "& [part=\"row-label\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"var-name\"], & [part=\"tag\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"var-value\"]": {
+      "flexShrink": "1",
+      "maxWidth": "90px",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"swatch\"]": {
+      "$description": "What the colour resolves to, drawn as a 12px chip with a hairline so a white or transparent value still reads as a chip.",
+      "flexShrink": "0",
+      "width": "12px",
+      "height": "12px",
+      "borderRadius": "var(--jx-radius-xs)",
+      "border": "1px solid var(--border)",
+      "boxSizing": "border-box"
+    },
+    "& [part=\"element-group-label\"]": {
+      "padding": "var(--jx-space-1) var(--jx-space-3) 0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"dot\"]": {
+      "$description": "project.json already styles this tag. The kit's neutral disc in the accent.",
+      "background": "var(--accent)"
+    },
+    "& [part=\"scheme-row\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-1) var(--jx-space-3)"
+    },
+    "& [part=\"scheme-query\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"note\"], & [part=\"no-project\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-1) var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "1.5",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"foot\"]": {
+      "padding": "var(--jx-space-1) var(--jx-space-2) 0"
+    },
+    "@(forced-colors: active)": {
+      "& [aria-current=\"true\"]": {
+        "$description": "The current row, redrawn: in forced colours the accent wash collapses into the page and the leading edge is the marker left.",
+        "borderInlineStartColor": "Highlight"
+      },
+      "& [part=\"swatch\"]": {
+        "forcedColorAdjust": "none"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/body"
+      },
+      "cases": {
+        "none": {
+          "tagName": "p",
+          "attributes": {
+            "part": "no-project"
+          },
+          "textContent": "Open a project to edit its styles."
+        },
+        "styles": {
+          "tagName": "div",
+          "attributes": {
+            "part": "sections"
+          },
+          "children": [
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "section",
+                "data-section": "variables",
+                "aria-labelledby": "styles-panel-variables"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-head"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-title",
+                        "id": "styles-panel-variables"
+                      },
+                      "textContent": "Variables"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "section-count"
+                      },
+                      "textContent": "${state.variableCount}"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "variables-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/variablesState"
+                  },
+                  "cases": {
+                    "empty": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "Every CSS custom property in project.json's root style block is listed here, by its name. Add the first one with Add variable."
+                    },
+                    "listed": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "groups",
+                        "role": "none"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/groups"
+                          },
+                          "key": {
+                            "$ref": "$map/item/id"
+                          },
+                          "map": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "group",
+                              "data-group": "${$map.item.id}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "button",
+                                "attributes": {
+                                  "part": "group-row",
+                                  "type": "button",
+                                  "title": "Show ${$map.item.title} in the Variables view"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/showGroup"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/id"
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "description": "Switches the pane to the Variables view and scrolls this group's heading into view."
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-label"
+                                    },
+                                    "textContent": "${$map.item.title}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "row-count",
+                                      "aria-label": "${$map.item.countLabel}"
+                                    },
+                                    "textContent": "${$map.item.count}"
+                                  }
+                                ]
+                              },
+                              {
+                                "tagName": "ul",
+                                "attributes": {
+                                  "part": "rows",
+                                  "aria-label": "${$map.item.title}"
+                                },
+                                "children": [
+                                  {
+                                    "$prototype": "Array",
+                                    "items": {
+                                      "$ref": "$map/item/variables"
+                                    },
+                                    "key": {
+                                      "$ref": "$map/item/name"
+                                    },
+                                    "map": {
+                                      "tagName": "li",
+                                      "attributes": {
+                                        "part": "item"
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "button",
+                                          "attributes": {
+                                            "part": "variable-row",
+                                            "type": "button",
+                                            "data-token": "${$map.item.name}",
+                                            "aria-current": "${$map.item.selected ? 'true' : null}",
+                                            "title": "Edit ${$map.item.name} in the Variables view"
+                                          },
+                                          "onclick": {
+                                            "$prototype": "Function",
+                                            "body": [
+                                              {
+                                                "operator": "call",
+                                                "target": {
+                                                  "$ref": "#/state/selectVariable"
+                                                },
+                                                "value": [
+                                                  {
+                                                    "$ref": "$map/item/name"
+                                                  }
+                                                ]
+                                              }
+                                            ],
+                                            "description": "Switches the pane to the Variables view, scrolls this custom property's row into view and puts the keyboard on its value."
+                                          },
+                                          "children": [
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "swatch-slot",
+                                                "role": "none"
+                                              },
+                                              "style": {
+                                                "display": "contents"
+                                              },
+                                              "$switch": {
+                                                "$ref": "$map/item/swatchState"
+                                              },
+                                              "cases": {
+                                                "swatch": {
+                                                  "tagName": "span",
+                                                  "attributes": {
+                                                    "part": "swatch",
+                                                    "aria-hidden": "true"
+                                                  },
+                                                  "style": {
+                                                    "background": {
+                                                      "$ref": "$map/item/swatch"
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "var-name"
+                                              },
+                                              "textContent": "${$map.item.name}"
+                                            },
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "var-value"
+                                              },
+                                              "textContent": "${$map.item.value}"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "foot"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "add-variable"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "plus",
+                        "hint": "Add a CSS custom property in the Variables view"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/addVariable"
+                            },
+                            "value": []
+                          }
+                        ],
+                        "description": "Switches the pane to the Variables view and puts the keyboard on the add row of the current group (Colors when none is current)."
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Add variable"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "section",
+                "data-section": "elements",
+                "aria-labelledby": "styles-panel-elements"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-head"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-title",
+                        "id": "styles-panel-elements"
+                      },
+                      "textContent": "Elements"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "section-count",
+                        "aria-label": "${state.customizedLabel}"
+                      },
+                      "textContent": "${state.customizedCount}"
+                    }
+                  ]
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/elementGroups"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "element-group",
+                      "data-group": "${$map.item.key}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "element-group-label"
+                        },
+                        "textContent": "${$map.item.label}"
+                      },
+                      {
+                        "tagName": "ul",
+                        "attributes": {
+                          "part": "rows",
+                          "aria-label": "${$map.item.label}"
+                        },
+                        "children": [
+                          {
+                            "$prototype": "Array",
+                            "items": {
+                              "$ref": "$map/item/rows"
+                            },
+                            "key": {
+                              "$ref": "$map/item/key"
+                            },
+                            "map": {
+                              "tagName": "li",
+                              "attributes": {
+                                "part": "item"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "button",
+                                  "attributes": {
+                                    "part": "element-row",
+                                    "type": "button",
+                                    "data-path": "${$map.item.key}",
+                                    "aria-current": "${$map.item.selected ? 'true' : null}",
+                                    "title": "Style every ${$map.item.tag} on the site"
+                                  },
+                                  "style": {
+                                    "--row-indent": {
+                                      "$ref": "$map/item/indent"
+                                    }
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/selectElement"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/key"
+                                          }
+                                        ]
+                                      }
+                                    ],
+                                    "description": "Switches the pane to the Elements view, selects this tag on its canvas and shows its style in the Inspector."
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "attributes": {
+                                        "part": "tag"
+                                      },
+                                      "textContent": "${$map.item.tag}"
+                                    },
+                                    {
+                                      "tagName": "span",
+                                      "attributes": {
+                                        "part": "dot-slot",
+                                        "role": "none"
+                                      },
+                                      "style": {
+                                        "display": "contents"
+                                      },
+                                      "$switch": {
+                                        "$ref": "$map/item/customized"
+                                      },
+                                      "cases": {
+                                        "true": {
+                                          "tagName": "jx-dot",
+                                          "attributes": {
+                                            "part": "dot",
+                                            "role": "img",
+                                            "aria-label": "Styled in project.json"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "section",
+                "data-section": "schemes",
+                "aria-labelledby": "styles-panel-schemes"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-head"
+                  },
+                  "children": [
+                    {
+                      "tagName": "h3",
+                      "attributes": {
+                        "part": "section-title",
+                        "id": "styles-panel-schemes"
+                      },
+                      "textContent": "Color schemes"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "schemes-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/schemesState"
+                  },
+                  "cases": {
+                    "empty": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "note"
+                      },
+                      "textContent": "The light and dark schemes declared in Contexts are listed here, and each lets a color variable take a value of its own in it."
+                    },
+                    "listed": {
+                      "tagName": "ul",
+                      "attributes": {
+                        "part": "rows",
+                        "aria-label": "Color schemes"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/schemes"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "li",
+                            "attributes": {
+                              "part": "scheme-row",
+                              "data-scheme": "${$map.item.key}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "row-label"
+                                },
+                                "textContent": "${$map.item.label}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "scheme-query"
+                                },
+                                "textContent": "${$map.item.query}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "foot"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "manage-schemes"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "haspopup": "dialog",
+                        "hint": "Open Project Settings on Contexts, where color schemes are declared"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/manageSchemes"
+                            },
+                            "value": []
+                          }
+                        ],
+                        "description": "Project Settings on Contexts (`settings.open { section: \"contexts\" }`)."
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Manage color schemes…"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

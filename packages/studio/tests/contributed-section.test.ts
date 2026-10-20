@@ -49,6 +49,7 @@ void mock.module("../src/services/jx-validate.js", () => ({
 }));
 
 const {
+  entryWords,
   renderContributedSection,
   resetContributedDiagnostics,
   resetContributedSectionState,
@@ -317,16 +318,37 @@ describe("map layout", () => {
     renderContributedSection(container, mapContribution);
     await settle();
     expect(entryKeys(container)).toEqual(["main"]);
-    expect(part(container, "empty").textContent).toContain("Select or create an entry");
+    expect(part(container, "empty").textContent).toContain("Select an entry or create one");
     expect(container.querySelector('[part="editor"]')).toBeNull();
   });
 
+  test("a section that names its entries says so in the column instead of 'New Entry'", async () => {
+    renderContributedSection(container, {
+      ...mapContribution,
+      settings: { ...mapContribution.settings, entry: { noun: "Data Table" } },
+    });
+    await settle();
+    expect(part(container, "empty").textContent).toBe("Select a data table or create one");
+    expect(part(container, "new-open").textContent.trim()).toBe("New data table");
+  });
+
+  test("entryWords defaults to 'entry' and slugs the placeholder", () => {
+    expect(entryWords()).toEqual({
+      emptyText: "Select an entry or create one",
+      newFieldLabel: "Entry name",
+      newLabel: "New entry",
+      newPlaceholder: "entry-name",
+    });
+    expect(entryWords("content type").newPlaceholder).toBe("content-type-name");
+  });
+
   test("an entry row and the editor carry the region a shot names them by", async () => {
+    // Under the settings dialog's own region, which is where a contributed section is drawn (§17.1).
     renderContributedSection(container, mapContribution);
     await settle();
-    expect(entryRow(container, "main").dataset.jxRegion).toBe("pane.primary/entry:main");
+    expect(entryRow(container, "main").dataset.jxRegion).toBe("overlay.dialog:settings/entry:main");
     await selectEntry(container, "main");
-    expect(part(container, "editor").dataset.jxRegion).toBe("pane.primary/editor");
+    expect(part(container, "editor").dataset.jxRegion).toBe("overlay.dialog:settings/editor");
   });
 
   test("selecting an entry renders its form; edits persist to the entry", async () => {
@@ -628,6 +650,7 @@ describe("the section's mount", () => {
       newName: "",
       newState: "closed",
       title: "Islands",
+      ...entryWords(),
     });
     await handle.ready;
     await settle();

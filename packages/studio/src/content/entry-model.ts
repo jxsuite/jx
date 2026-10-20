@@ -14,9 +14,9 @@
  *    fill in and "absent" is a validation failure they did not cause.
  * 2. **Where the entry files are** is `collectionInfo`'s answer, imported rather than recomputed.
  *    Three copies of "which collection owns this path, and what extension do its entries carry"
- *    already exist (`utils/studio-utils.ts`'s `findContentTypeSchema`, `grid/sources/content-
- *    source.ts`'s `collectionInfo`, `browse/library-model.ts`'s `contentTypeFor`); this module adds
- *    no fourth and calls the two that are exported.
+ *    existed when this was written (`utils/studio-utils.ts`'s `findContentTypeSchema`,
+ *    `grid/sources/content-source.ts`'s `collectionInfo`, and `browse/library-model.ts`'s
+ *    `contentTypeFor`, since deleted); this module adds no fourth and calls the exported ones.
  *
  * **The draft axis is NOT here.** `content/draft-state.ts` owns what a draft is and whether drafts
  * are listed, because this module imports `content-source.ts` and the grid source must be able to
@@ -97,6 +97,20 @@ export function entryCollections(): EntryCollection[] {
 export function collectionOfPath(path: string | null): EntryCollection | null {
   const matched = findContentTypeSchema(path ?? null, projectState?.projectConfig);
   return matched ? entryCollection(matched.name) : null;
+}
+
+/**
+ * The collection a file-backed collection's FILE holds the records of (`content/projects.csv`), or
+ * null. {@link entryCollection} refuses one, rightly, for everything that makes a new entry FILE; a
+ * record's form only reads its schema and its name, and `dir` is the file itself.
+ */
+export function recordCollectionOfPath(path: string | null): EntryCollection | null {
+  const matched = findContentTypeSchema(path ?? null, projectState?.projectConfig);
+  const info = matched ? collectionInfo(matched.name) : null;
+  if (!matched || !info) {
+    return null;
+  }
+  return { def: info.def, dir: info.dir, ext: info.ext, name: info.name, schema: matched.schema };
 }
 
 // ─── Seeding a new entry ─────────────────────────────────────────────────────

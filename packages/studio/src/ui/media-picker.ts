@@ -1,11 +1,18 @@
 /// <reference lib="dom" />
 /**
- * Media Picker — the project's media, and the two surfaces that offer them.
+ * Media Picker — the project's media, and the compact surfaces that offer them.
  *
  * The FIELD (`surfaces/media-field.json`) is a control a row draws: a thumbnail of what the value
  * names, the value itself, an Upload button that adds a new file to the project and assigns it, and
- * a Browse button. The BROWSER (`surfaces/media-browser.json`) is the panel Browse opens: a search
- * box over the files under `public/`, with thumbnail previews for images.
+ * a Browse button. The BROWSER (`surfaces/media-browser.json`) is the compact panel Browse opens: a
+ * search box over the project's media, with thumbnail previews for images, and a last row, **Browse
+ * all media…**, that opens the Media workspace's own surface in a dialog in pick mode
+ * (`media/media-library.ts`, studio.md §9.3). One picker, two sizes.
+ *
+ * **What media the project has is answered here, once.** {@link projectMediaFiles} walks
+ * `public/**` and every collection's `content/<collection>/images/**`, and the Media workspace, the
+ * Site panel's Media section, both pickers and the search-appearance dialog all read that one
+ * listing, so "what media does this project have" cannot have two answers in two choosers.
  *
  * **This module is the flow, not the markup.** Both surfaces are Jx documents now; what is left
  * here is which files count as media, what a row's caption says, how long a keystroke waits before
@@ -20,13 +27,13 @@
  * `<img>` has finished by the time `load` fires, so the caption is a read of work already done
  * rather than a second fetch per row. What is NOT here is a usage count: `findReferences` sweeps
  * every document in the project per query, and fifty of those to caption a list is the wrong trade.
- * Usage is asked once, about one file, where it changes a decision — the delete confirmation
- * (`files/media-usage.ts`).
+ * Usage is asked about one file where it changes a decision (the delete confirmation, the Media
+ * workspace's detail pane), and about every file only when the reader asks for **Unused**.
  *
  * @docs studio/projects/media
  */
 
-import { getPlatform } from "../platform";
+import { getPlatform, hasPlatform } from "../platform";
 import { debouncedStyleCommit, renderOnly } from "../store";
 import { mountMediaFieldSurface } from "../surfaces/media-field";
 import { openMediaBrowserSurface } from "../surfaces/media-browser";
@@ -35,12 +42,15 @@ import { previewAssetSrc } from "../canvas/asset-refs";
 import {
   IMAGE_EXTENSIONS,
   MEDIA_EXTENSIONS,
-  uploadAccept,
   extensionOf,
+  mediaFileKind,
+  uploadAccept,
   uploadAssets,
 } from "../files/media-upload";
 import {
   invalidateMediaMeta,
+  loadMediaMeta,
+  mediaMetaSettled,
   mediaMetaSummary,
   peekMediaMeta,
   recordImageSize,
@@ -48,27 +58,50 @@ import {
 } from "../files/media-meta";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
 import { notedListing } from "../files/asset-versions";
+import type { MediaFileKind } from "../files/media-upload";
 import type {
   MediaBrowserRow,
   MediaBrowserSurfaceHandle,
   MediaBrowserView,
 } from "../surfaces/media-browser";
 import type { MediaFieldHandle, MediaFieldView } from "../surfaces/media-field";
+import type * as MediaLibraryModule from "../media/media-library";
 
 // ─── Media file cache ────────────────────────────────────────────────────────
 
-/** One browsable media file: the ref a pick writes, and the file that ref names. */
-interface MediaEntry {
-  /** The value committed to the field — the site URL, which is the authored form. */
-  path: string;
-  /** Project-relative path on disk, the key everything in `media-meta` is stored under. */
+/** One media file of the project, as every browsing surface lists it. */
+export interface ProjectMediaFile {
+  /** The project-relative path on disk, the key everything in `media-meta` is stored under. */
   file: string;
   name: string;
+  /** The site URL a document authors for it, which is what a pick commits. */
+  ref: string;
   isImage: boolean;
+  /** What the file is, as the Media workspace's filters name it. */
+  kind: MediaFileKind;
 }
 
-let mediaCache: MediaEntry[] = [];
+let mediaCache: ProjectMediaFile[] = [];
 let mediaCacheLoaded = false;
+
+/**
+ * The directory every collection co-locates its uploads in (`files/media-upload.ts`
+ * `uploadDirFor`).
+ */
+const COLLECTION_IMAGES = "images";
+
+/**
+ * Whether a project path is inside the media scan: under `public/`, or under a collection's
+ * `content/<collection>/images/`. A filesystem batch that touches neither cannot change what
+ * {@link projectMediaFiles} lists, so the listing is kept.
+ */
+export function isMediaScanPath(path: string): boolean {
+  const normalized = path.replaceAll("\\", "/");
+  return (
+    normalized.startsWith("public/") ||
+    new RegExp(`^content/[^/]+/${COLLECTION_IMAGES}/`).test(normalized)
+  );
+}
 
 /**
  * Recursively collect media files from a directory, seeding {@link seedMediaMeta} with the listing
@@ -77,8 +110,8 @@ let mediaCacheLoaded = false;
 async function collectMedia(
   dir: string,
   platform: ReturnType<typeof getPlatform>,
-): Promise<MediaEntry[]> {
-  const results: MediaEntry[] = [];
+): Promise<ProjectMediaFile[]> {
+  const results: ProjectMediaFile[] = [];
   try {
     const entries = await notedListing(() => platform.listDirectory(dir));
     seedMediaMeta(entries);
@@ -92,10 +125,11 @@ async function collectMedia(
           results.push({
             file: entry.path,
             isImage: IMAGE_EXTENSIONS.has(ext),
+            kind: mediaFileKind(entry.name),
             name: entry.name,
             // The site URL is what production serves and therefore what a document should say.
-            // Media-paths holds the one definition of that mapping.
-            path: mediaSiteUrl(entry.path),
+            // Media-paths holds the one definition of that mapping, a collection's mount included.
+            ref: mediaSiteUrl(entry.path),
           });
         }
       }
@@ -106,16 +140,141 @@ async function collectMedia(
   return results;
 }
 
-async function loadMediaCache() {
-  if (mediaCacheLoaded) {
-    return;
+/**
+ * Every collection's co-located `images/` folder: `content/<collection>/images/**`.
+ *
+ * Listed from `content/` itself rather than from `project.json`'s declarations, because the folder
+ * is where an upload from an entry lands whatever its collection's `source` says, and a picker that
+ * could not see it could not choose a cover image the author had just uploaded to an entry.
+ */
+async function collectCollectionImages(
+  platform: ReturnType<typeof getPlatform>,
+): Promise<ProjectMediaFile[]> {
+  let collections: string[];
+  try {
+    const entries = await platform.listDirectory("content");
+    collections = entries.filter((entry) => entry.type === "directory").map((entry) => entry.path);
+  } catch {
+    return [];
   }
-  const platform = getPlatform();
-  mediaCache = await collectMedia("public", platform);
-  mediaCacheLoaded = true;
-  // Re-render the host panels so the browse panel has entries to show once the async listing
-  // Resolves. Mirrors loadLayoutEntries()'s renderOnly() in head-panel.
-  renderOnly("leftPanel", "rightPanel", "frontmatterPanel");
+  const results: ProjectMediaFile[] = [];
+  for (const dir of collections) {
+    /* Descend only into an `images/` the collection actually holds: most collections have none,
+       and asking the backend to list a directory that does not exist is a 404 in the console. */
+    let holdsImages = false;
+    try {
+      const entries = await platform.listDirectory(dir);
+      holdsImages = entries.some(
+        (entry) => entry.type === "directory" && entry.name === COLLECTION_IMAGES,
+      );
+    } catch {
+      // An unreadable collection folder has no images to offer.
+    }
+    if (holdsImages) {
+      results.push(...(await collectMedia(`${dir}/${COLLECTION_IMAGES}`, platform)));
+    }
+  }
+  return results;
+}
+
+/**
+ * Which of the two scan roots, `public` and `content`, the project root holds as folders. A root
+ * listing that fails says nothing either way, so both are then walked, each tolerating its own
+ * absence as it always has.
+ */
+async function projectScanRoots(platform: ReturnType<typeof getPlatform>): Promise<Set<string>> {
+  try {
+    const entries = await platform.listDirectory(".");
+    return new Set(
+      entries
+        .filter((entry) => entry.type === "directory")
+        .map((entry) => entry.name)
+        .filter((name) => name === "public" || name === "content"),
+    );
+  } catch {
+    return new Set(["public", "content"]);
+  }
+}
+
+/** The walk in flight, so every caller that asks while it runs shares it instead of starting one. */
+let _mediaLoading: Promise<void> | null = null;
+/** Bumped by {@link invalidateMediaCache}, so a walk that started before it cannot land after it. */
+let _mediaEpoch = 0;
+
+/** Surfaces that own their own repaint and want to hear when the listing moves. */
+const _listeners = new Set<() => void>();
+
+/**
+ * Hear about every change to the listing: a walk landing, or an invalidation dropping it.
+ *
+ * For a surface that is not one of the named panels {@link loadMediaCache} repaints — the Media
+ * workspace's library, which owns its own reactivity the way the Library pane does.
+ *
+ * @returns The unsubscribe.
+ */
+export function onProjectMediaChange(listener: () => void): () => void {
+  _listeners.add(listener);
+  return () => {
+    _listeners.delete(listener);
+  };
+}
+
+function announce(): void {
+  for (const listener of _listeners) {
+    listener();
+  }
+}
+
+function loadMediaCache(): Promise<void> {
+  if (mediaCacheLoaded) {
+    return Promise.resolve();
+  }
+  if (_mediaLoading) {
+    return _mediaLoading;
+  }
+  if (!hasPlatform()) {
+    // No backend to list (a window still booting): nothing is known, and nothing is claimed.
+    return Promise.resolve();
+  }
+  const epoch = _mediaEpoch;
+  const walk = (async () => {
+    const platform = getPlatform();
+    /* Descend only into the scan roots the project actually has: a project with no `content/` (a
+       site of pages alone) or no `public/` would otherwise ask the backend to list a folder that
+       does not exist, which is a 404 in the console on every visit to Media. */
+    const roots = await projectScanRoots(platform);
+    const [published, collections] = await Promise.all([
+      roots.has("public") ? collectMedia("public", platform) : [],
+      roots.has("content") ? collectCollectionImages(platform) : [],
+    ]);
+    if (epoch !== _mediaEpoch) {
+      // Superseded: this listing is older than the invalidation, and a newer walk owns the cache.
+      return;
+    }
+    mediaCache = [...published, ...collections];
+    mediaCacheLoaded = true;
+    _mediaLoading = null;
+    // Re-render the host panels so the browse panel has entries to show once the async listing
+    // Resolves. Mirrors loadLayoutEntries()'s renderOnly() in head-panel.
+    renderOnly("leftPanel", "rightPanel");
+    announce();
+  })();
+  _mediaLoading = walk;
+  return walk;
+}
+
+/**
+ * The project's media, or `null` while the listing is still being read — the same cache the picker
+ * browses, so the Site panel's Media section, the Media workspace and the image field cannot
+ * disagree about what exists. Asking starts the read; it repaints the panels that read it when it
+ * lands, and tells every {@link onProjectMediaChange} listener.
+ */
+export function projectMediaFiles(): readonly ProjectMediaFile[] | null {
+  if (!mediaCacheLoaded) {
+    void loadMediaCache();
+    return null;
+  }
+  return mediaCache;
 }
 
 /**
@@ -127,30 +286,74 @@ async function loadMediaCache() {
 export function invalidateMediaCache() {
   mediaCache = [];
   mediaCacheLoaded = false;
+  _mediaEpoch += 1;
+  _mediaLoading = null;
   invalidateMediaMeta();
+  announce();
+}
+
+// ─── The full-size picker ────────────────────────────────────────────────────
+
+/** What a chooser offers: every media file, or only images, for a field whose value is a picture. */
+export interface MediaPickOptions {
+  images?: boolean;
+}
+
+/**
+ * The library flow, imported on the first **Browse all media…**. One cached promise, because two
+ * dynamic imports of a module in flight at once is the shape that loses its coverage record, and a
+ * field nobody opened the big picker from should not load the workspace's surface.
+ */
+let _library: Promise<typeof MediaLibraryModule> | null = null;
+
+function mediaLibrary(): Promise<typeof MediaLibraryModule> {
+  _library ??= import("../media/media-library");
+  return _library;
+}
+
+/**
+ * Open the Media workspace's surface in a dialog, in pick mode, and commit what is chosen.
+ *
+ * @param {(val: string) => void} onCommit - What a pick writes: the file's site URL
+ * @param {MediaPickOptions} options - Images only, for a field that holds a picture
+ */
+export async function openFullMediaPicker(
+  onCommit: (val: string) => void,
+  options: MediaPickOptions = {},
+): Promise<void> {
+  const library = await mediaLibrary();
+  library.openMediaPickDialog({ images: options.images === true, onPick: onCommit });
 }
 
 // ─── The browser ─────────────────────────────────────────────────────────────
 
-/** The most rows the panel lists. Everything past it is counted rather than drawn. */
+/**
+ * How many rows the panel lists at first, and how many more each **Show N more** adds. Past the cap
+ * the rows are counted, and the count is the control that lists them, so every file the Media
+ * workspace has can be reached from here: the cap bounds the first paint, never the answer.
+ */
 const BROWSE_LIMIT = 50;
 
 /** The open panel, and what a pick in it commits. One at a time. */
 let _browser: MediaBrowserSurfaceHandle | null = null;
 let _browserCommit: ((value: string) => void) | null = null;
 let _browserFilter = "";
+/** How many rows the open panel lists; raised by Show more, and never lowered while it is open. */
+let _browserLimit = BROWSE_LIMIT;
+let _browserOptions: MediaPickOptions = {};
 /** Where the panel was opened, kept so a filter keystroke does not move it. */
 let _browserOrigin = { x: 0, y: 0 };
 
 /** What the panel shows for the filter that stands now. */
 function browserView(): MediaBrowserView {
   const query = _browserFilter.toLowerCase();
+  const offered = _browserOptions.images ? mediaCache.filter((m) => m.isImage) : mediaCache;
   const filtered = query
-    ? mediaCache.filter(
-        (m) => m.path.toLowerCase().includes(query) || m.name.toLowerCase().includes(query),
+    ? offered.filter(
+        (m) => m.ref.toLowerCase().includes(query) || m.name.toLowerCase().includes(query),
       )
-    : mediaCache;
-  const listed = filtered.slice(0, BROWSE_LIMIT);
+    : offered;
+  const listed = filtered.slice(0, _browserLimit);
   const rows: MediaBrowserRow[] = listed.map((m) => {
     const caption = mediaMetaSummary(peekMediaMeta(m.file));
     return {
@@ -159,16 +362,24 @@ function browserView(): MediaBrowserView {
       file: m.file,
       key: m.file,
       name: m.name,
-      path: m.path,
+      path: m.ref,
       thumbSrc: m.isImage ? previewFileSrc(m.file) : "",
       thumbState: m.isImage ? "shown" : "hidden",
     };
   });
   return {
-    emptyLabel: "No matches",
+    browseAllLabel: _browserOptions.images ? "Browse all images…" : "Browse all media…",
+    /* An empty project says so, rather than "No matches" over a search nobody typed: the Upload
+       beside the field and the row below are what to do about it. */
+    emptyLabel:
+      offered.length > 0
+        ? "No matches"
+        : _browserOptions.images
+          ? "No images in this project yet"
+          : "No media in this project yet",
     filter: _browserFilter,
-    moreLabel: `…${filtered.length - BROWSE_LIMIT} more`,
-    moreState: filtered.length > BROWSE_LIMIT ? "shown" : "hidden",
+    moreLabel: `Show ${Math.min(filtered.length - _browserLimit, BROWSE_LIMIT)} more`,
+    moreState: filtered.length > _browserLimit ? "shown" : "hidden",
     rows,
     rowsState: rows.length > 0 ? "listed" : "empty",
     x: _browserOrigin.x,
@@ -182,6 +393,7 @@ function dismissMediaPickerPopover() {
   _browser = null;
   _browserCommit = null;
   _browserFilter = "";
+  _browserLimit = BROWSE_LIMIT;
   open?.close();
 }
 
@@ -198,7 +410,14 @@ let _sizeRepaint = 0;
  * because the measurement has not changed.
  */
 function noteImageSize(file: string, width: number, height: number) {
-  if (!recordImageSize(file, width, height) || _sizeRepaint !== 0) {
+  if (!recordImageSize(file, width, height)) {
+    if (!mediaMetaSettled(file)) {
+      // An SVG's decode is not its size: the file says what it is, read once.
+      void loadMediaMeta(file).then(() => _browser?.update(browserView()));
+    }
+    return;
+  }
+  if (_sizeRepaint !== 0) {
     return;
   }
   _sizeRepaint = requestAnimationFrame(() => {
@@ -212,14 +431,23 @@ function noteImageSize(file: string, width: number, height: number) {
  *
  * Exported because the panel is a SURFACE OF ITS OWN — it renders into the popover layer, not into
  * the field that opened it — so a converted surface can offer the same browser without
- * re-implementing it. `surfaces/doc-header.ts`'s Browse button is the first such caller.
+ * re-implementing it. The Inspector's Page tab's Browse button is one such caller, and the
+ * search-appearance dialog's image rows another: the panel is a top-layer `jx-popover`, so it
+ * paints over the modal that opened it.
  *
  * @param {HTMLElement} anchorEl
  * @param {(val: string) => void} onCommit
+ * @param {MediaPickOptions} options - Images only, for a field that holds a picture
  */
-export function showMediaPickerPopover(anchorEl: HTMLElement, onCommit: (val: string) => void) {
+export function showMediaPickerPopover(
+  anchorEl: HTMLElement,
+  onCommit: (val: string) => void,
+  options: MediaPickOptions = {},
+) {
   dismissMediaPickerPopover();
+  void loadMediaCache().then(() => _browser?.update(browserView()));
   _browserCommit = onCommit;
+  _browserOptions = options;
   const box = rectOf(anchorEl);
   /* Where it opens, once. `jx-popover` clamps a freshly shown panel into the viewport itself, so
      nothing here measures the panel or flips it above a low anchor — that was the layer-div
@@ -228,16 +456,29 @@ export function showMediaPickerPopover(anchorEl: HTMLElement, onCommit: (val: st
   _browser = openMediaBrowserSurface(
     browserView(),
     {
+      browseAll: () => {
+        const commit = _browserCommit;
+        const chosen = _browserOptions;
+        dismissMediaPickerPopover();
+        if (commit) {
+          void openFullMediaPicker(commit, chosen);
+        }
+      },
       dismissed: () => {
         _browser = null;
         _browserCommit = null;
         _browserFilter = "";
+        _browserLimit = BROWSE_LIMIT;
       },
       measure: noteImageSize,
       pick: (path: string) => {
         const commit = _browserCommit;
         dismissMediaPickerPopover();
         commit?.(path);
+      },
+      showMore: () => {
+        _browserLimit += BROWSE_LIMIT;
+        _browser?.update(browserView());
       },
       setFilter: (value: string) => {
         _browserFilter = value;
@@ -301,6 +542,7 @@ const FIELD_DEBOUNCE_MS = 400;
 interface FieldBinding {
   prop: string;
   commit: (value: string) => void;
+  options: MediaPickOptions;
 }
 
 interface FieldEntry extends FieldBinding {
@@ -339,12 +581,14 @@ function fieldView(prop: string, value: string): MediaFieldView {
  * @param {string} prop - The attribute or prop being edited; the field's accessible name
  * @param {string} value - What it holds now
  * @param {(val: string) => void} onCommit - What a pick or a settled keystroke writes
+ * @param {MediaPickOptions} options - Images only, for a field whose value is a picture
  */
 export function mountMediaPicker(
   host: HTMLElement,
   prop: string,
   value: string,
   onCommit: (val: string) => void,
+  options: MediaPickOptions = {},
 ): void {
   // Kick off async load (won't block the mount)
   void loadMediaCache();
@@ -352,14 +596,14 @@ export function mountMediaPicker(
   if (existing) {
     existing.prop = prop;
     existing.commit = onCommit;
+    existing.options = options;
     existing.handle.update(fieldView(prop, value));
     return;
   }
-  const entry: FieldBinding = { commit: onCommit, prop };
+  const entry: FieldBinding = { commit: onCommit, options, prop };
   const handle = mountMediaFieldSurface(host, fieldView(prop, value), {
     browse: (anchor: HTMLElement) => {
-      void loadMediaCache();
-      showMediaPickerPopover(anchor, (val: string) => entry.commit(val));
+      showMediaPickerPopover(anchor, (val: string) => entry.commit(val), entry.options);
     },
     /* Debounced under the prop's own key, so the canvas follows the typing without a document write
        per keystroke and two fields never share a timer. */

@@ -22,6 +22,10 @@ void mock.module("../src/services/references", () => ({
   peekUsages: () => usage,
   usageFiles: (result: { files: unknown[] }) => result.files,
 }));
+// The Project Styles cards' sample props read usages through the module mocked above.
+void mock.module("../src/style/stylebook-specimens", () => ({
+  loadStylebookSpecimens: async () => new Map(),
+}));
 
 const { bindStyleHost, resetAffectedDisclosure } = await import("../src/panels/style-panel");
 const { initCssData } = await import("../src/panels/style-utils");

@@ -19,7 +19,7 @@ Both halves are one list. A row tells you how an entry is **defined**; expand it
 
 ## Open it
 
-Click **Data** in the **Document** group of the Navigator rail, or press :kbd[⌘6].
+Click **Data** in the **Document** group of the Navigator rail, or run **Show Data** from :kbd[⌘K].
 
 The panel opens under a **DATA · document** header. Declaring data writes the open file, so the panel is about the document in front of you. With nothing open it says so, and asks you to open a page to give it data: values the page can read, compute or fetch.
 

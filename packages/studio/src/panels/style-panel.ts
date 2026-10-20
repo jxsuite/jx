@@ -91,6 +91,7 @@ import { showPromptDialog } from "../ui/layers";
 import { parseMediaEntries, schemeOfQuery } from "../utils/canvas-media";
 import { getEffectiveMedia, getEffectiveStyle } from "../site-context";
 import { computeInheritedSources } from "../utils/inherited-style";
+import { tagAncestorSources } from "../style/tag-inheritance";
 import { loadUsages, peekUsages, usageFiles } from "../services/references";
 import { mediaDisplayName } from "./shared";
 import {
@@ -125,6 +126,7 @@ import type { CssFontPreset, CssLonghand, CssMetaEntry } from "./style-utils";
 import { UNIT_RE } from "../ui/unit-selector";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
 import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
+import { PROJECT_VARIABLES_VIEW } from "../style/project-styles";
 import { mountStylePanelSurface } from "../surfaces/style-panel";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
@@ -1382,6 +1384,11 @@ function shorthandPlaceholder(
 
 // ─── The whole view ──────────────────────────────────────────────────────────
 
+/** What the Style tab says beside the Variables view, where there is no element to style. */
+export const VARIABLES_INSPECTOR_MESSAGE =
+  "Variables are edited in the view itself. Switch the view to Elements and pick a tag to style " +
+  "its default here.";
+
 /** The three teaching states, and the one that offers a button. */
 function emptyView(message: string, withOpen: boolean): StylePanelView {
   return {
@@ -1400,6 +1407,12 @@ function buildView(canvasMode: () => string): StylePanelView {
   const tab = activeTab.value;
   if (!tab) {
     return emptyView("Open a page to style what you click.", true);
+  }
+  /* The Styles workspace's Variables view has no canvas to click and edits its custom properties in
+     the pane itself, so the canvas teaching line would ask for something impossible. Say where the
+     Inspector's half of the workspace is instead. */
+  if (canvasMode() === PROJECT_VARIABLES_VIEW) {
+    return emptyView(VARIABLES_INSPECTOR_MESSAGE, false);
   }
   if (canvasMode() === "stylebook" && shell.stylebook.selection) {
     const node = tab.doc.document;
@@ -1442,9 +1455,10 @@ function buildEditor(
   opts: { effectiveStyle?: JxStyle | undefined; stylebookSelector?: string | null },
 ): StylePanelView {
   const { effectiveStyle, stylebookSelector = null } = opts;
-  /* SAFETY: `buildView` calls this with a primary selection it has checked, or in Stylebook, where
-     `selectStylebookTag` parks the selection on the root path `[[]]` rather than emptying it. */
-  const sel = primarySelection(tab.session.selection) as JxPath;
+  /* `buildView` calls this with a primary selection it has checked, or in Stylebook, where the
+     edit targets a TAG and the selection is only parked on the root. A Stylebook tab whose session
+     was never parked (or was cleared since) therefore means the root too, rather than a throw. */
+  const sel: JxPath = primarySelection(tab.session.selection) ?? [];
   /** The document's OWN style — what a commit writes into. */
   const ownRootStyle: JxStyle = node.style || {};
   const style = effectiveStyle ?? ownRootStyle;
@@ -1618,6 +1632,14 @@ function buildEditor(
         donor: source.donor === null ? "Base" : mediaDisplayName(source.donor),
         jump: () => updateUi(activeTab.value, "activeMedia", source.donor),
       };
+    }
+  }
+  // A Project Styles tag rule also inherits from the rules above it in this same file (`body`,
+  // Then each ancestor tag in its path), which is what its specimen is drawn with. The context walk
+  // Above outranks it: a value the tag itself sets at Base is nearer than anything it inherits.
+  if (stylebookPath) {
+    for (const [p, source] of Object.entries(tagAncestorSources(style, stylebookPath, editMedia))) {
+      inheritedInfo[p] ??= { donor: source.donor, value: source.value };
     }
   }
   const inheritedStyle: Record<string, string | number> = {};

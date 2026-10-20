@@ -11,7 +11,7 @@ code:
 
 The document assistant is what the **[AI assistant](/docs/studio/ai/chat)** becomes when a page or component is open on the canvas: the same chat, now scoped to that document. It isn't a separate panel. Opening a document simply hands the assistant that page's full structure and a set of precise editing abilities it doesn't have otherwise. This is the mode to use when you want to _see_ the assistant work and be able to take it back.
 
-The assistant is the fourth tab of the Inspector: show it with :kbd[⌘⇧4] (macOS) or :kbd[Ctrl+Shift+4] (Windows/Linux), or by clicking **Assistant**. Provider setup lives in **[Preferences › Assistant](/docs/studio/interface/preferences)**, not in the panel itself. A provider key belongs to Studio rather than to one panel, and the panel that is missing one is the wrong place to go looking for it.
+The assistant is the last tab of the Inspector, after Page and Element: show it with :kbd[⌘⇧5] (macOS) or :kbd[Ctrl+Shift+5] (Windows/Linux), or by clicking **Assistant**. Provider setup lives in **[Preferences › Assistant](/docs/studio/interface/preferences)**, not in the panel itself. A provider key belongs to Studio rather than to one panel, and the panel that is missing one is the wrong place to go looking for it.
 
 ![The Inspector with an assistant reply carrying edit chips beside the open page on the canvas](../../images/ai-document-assistant.png)
 

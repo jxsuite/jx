@@ -50,7 +50,18 @@ void mock.module("../src/canvas/iframe-host", () => ({
   },
 }));
 
-const { renderStylebookMode, selectStylebookTag } = await import("../src/panels/stylebook-panel");
+/* The specimen answers read component files and usages; the panel only needs to hand them on. */
+let specimenAnswers = new Map<string, { kind: "none" }>();
+let specimenGate: Promise<void> = Promise.resolve();
+void mock.module("../src/style/stylebook-specimens", () => ({
+  loadStylebookSpecimens: async () => {
+    await specimenGate;
+    return specimenAnswers;
+  },
+}));
+
+const { renderStylebookMode, selectStylebookTag, stylebookBoards } =
+  await import("../src/panels/stylebook-panel");
 const { bindCanvasPanels, canvasPanelEntry } = await import("../src/canvas/canvas-utils");
 const { initShellRefs } = await import("../src/store");
 const { activeCanvasSurface } = await import("../src/canvas/canvas-surface");
@@ -195,14 +206,62 @@ describe("renderStylebookMode", () => {
     expect(observeCenterUntilStable).toHaveBeenCalled();
   });
 
-  test("$media breakpoints → base + one panel per breakpoint, SAME generated doc for all", async () => {
-    makeTab({ $media: { "--": "320px", md: "(min-width: 768px)" } });
+  /* Four artboards fitted into one pane put a 1280px sheet at 24%, where no specimen can be read.
+     The sheet is ONE board, at the breakpoint the Context bar's size switcher names. */
+  test("$media breakpoints → one board, at the active breakpoint, else the base", async () => {
+    const tab = makeTab({ $media: { "--": "320px", md: "(min-width: 768px)" } });
     await renderStylebookMode(stage, ctx);
-    expect(canvasPanels.map((panel) => panel.mediaName)).toEqual(["base", "md"]);
-    expect(mounts).toHaveLength(2);
-    expect(mounts[0]!.generated).toBe(mounts[1]!.generated);
-    expect(mounts[1]!.widthPx).toBe(768);
+    expect(canvasPanels.map((panel) => panel.mediaName)).toEqual(["base"]);
+    expect(mounts).toHaveLength(1);
     expect(updateActivePanelHeaders).toHaveBeenCalled();
+
+    canvasPanels.length = 0;
+    mounts.length = 0;
+    tab.session.ui.activeMedia = "md";
+    await renderStylebookMode(stage, ctx);
+    expect(canvasPanels.map((panel) => panel.mediaName)).toEqual(["md"]);
+    expect(mounts[0]!.widthPx).toBe(768);
+  });
+
+  test("component cards are drawn with the specimens the registry's components answer", async () => {
+    makeTab();
+    componentRegistry.push({ path: "components/x-card.json", tagName: "x-card" });
+    specimenAnswers = new Map([["x-card", { kind: "none" }]]);
+    try {
+      await renderStylebookMode(stage, ctx);
+      const doc = JSON.stringify(mounts[0]!.generated.doc);
+      // `none` is the placeholder box, never a live instance that would throw.
+      expect(doc).toContain("sb-fallback");
+      expect(doc).not.toContain('"tagName":"x-card"');
+    } finally {
+      specimenAnswers = new Map();
+    }
+  });
+
+  test("a render superseded while specimens are asked mounts nothing", async () => {
+    makeTab();
+    let open = (): void => {};
+    specimenGate = new Promise((resolve) => {
+      open = resolve;
+    });
+    try {
+      const pending = renderStylebookMode(stage, ctx);
+      await flush();
+      stage.renderGeneration = 8;
+      open();
+      await pending;
+      expect(mounts).toHaveLength(0);
+    } finally {
+      specimenGate = Promise.resolve();
+    }
+  });
+
+  test("stylebookBoards keeps the named board, falls back to the first, and never empties", () => {
+    const boards = [{ name: "base" }, { name: "md" }, { name: "sm" }];
+    expect(stylebookBoards(boards, null)).toEqual([{ name: "base" }]);
+    expect(stylebookBoards(boards, "sm")).toEqual([{ name: "sm" }]);
+    expect(stylebookBoards(boards, "gone")).toEqual([{ name: "base" }]);
+    expect(stylebookBoards([], "md")).toEqual([]);
   });
 
   test("the chrome bar filter narrows the generated doc; Customized toggles the session flag", async () => {
@@ -372,14 +431,37 @@ describe("the Project Styles chrome bar", () => {
 // ─── selectStylebookTag ───────────────────────────────────────────────────────
 
 describe("selectStylebookTag", () => {
-  test("writes the stylebook selection session state (selection stays a path-empty [])", () => {
+  test("writes the stylebook selection session state and clears the document selection", () => {
     const tab = makeTab();
+    tab.session.selection = [["children", 0]];
     selectStylebookTag("table th", "md");
     expect(shell.stylebook.selection).toBe("table th");
     expect(tab.session.ui.activeSelector).toBe("table th");
     expect(tab.session.ui.rightTab).toBe("style");
     expect(tab.session.ui.activeMedia).toBe("md");
-    expect(tab.session.selection).toEqual([[]]);
+    // No document path names a specimen, so none is selected: not the root, which every reader
+    // Of the document selection would have named as the catalogue's `div`.
+    expect(tab.session.selection).toEqual([]);
+  });
+
+  test("the session is written before the stylebook selection moves", async () => {
+    // The Style panel rebuilds synchronously when `shell.stylebook.selection` changes, so whatever
+    // Watches it must already find the tab's session cleared and its selector in place.
+    const { effect, effectScope } = await import("../src/reactivity");
+    const tab = makeTab();
+    tab.session.selection = [["children", 0]];
+    const seen: string[] = [];
+    const scope = effectScope();
+    scope.run(() => {
+      effect(() => {
+        if (shell.stylebook.selection === "h1") {
+          seen.push(`${JSON.stringify(tab.session.selection)} ${tab.session.ui.activeSelector}`);
+        }
+      });
+    });
+    selectStylebookTag("h1");
+    scope.stop();
+    expect(seen).toEqual(["[] h1"]);
   });
 
   test("omitting media leaves the current breakpoint context untouched", () => {

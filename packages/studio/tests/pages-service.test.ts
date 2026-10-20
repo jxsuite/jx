@@ -14,6 +14,7 @@ const {
   getPagesProject,
   latestDeployment,
   listAccounts,
+  listDeployments,
   platformSupportsPublish,
   writeDeployConfig,
 } = await import("../src/publish/pages-service");
@@ -184,6 +185,49 @@ describe("Cloudflare API wrappers", () => {
     });
     withCfApi({ "/deployments": [] });
     expect(await latestDeployment(DEPLOY)).toBeNull();
+  });
+
+  /* Publish › Deploys draws its history and its branch previews from this one list, so every row
+     comes back, in Cloudflare's order, and a row's branch is carried only when the trigger names
+     one (an absent branch is not the empty string, which would read as a branch called nothing). */
+  test("listDeployments returns every row, with the branch when Cloudflare names it", async () => {
+    withCfApi({
+      "/deployments": [
+        {
+          id: "d2",
+          url: "https://def.my-site.pages.dev",
+          environment: "preview",
+          latest_stage: { name: "build", status: "active" },
+          created_on: "2026-07-07T00:00:00Z",
+          deployment_trigger: { metadata: { branch: "studio/pricing" } },
+        },
+        {
+          id: "d1",
+          url: "https://abc.my-site.pages.dev",
+          environment: "production",
+          created_on: "2026-07-06T00:00:00Z",
+        },
+      ],
+    });
+    expect(await listDeployments(DEPLOY)).toEqual([
+      {
+        branch: "studio/pricing",
+        createdOn: "2026-07-07T00:00:00Z",
+        environment: "preview",
+        id: "d2",
+        stage: "build",
+        status: "active",
+        url: "https://def.my-site.pages.dev",
+      },
+      {
+        createdOn: "2026-07-06T00:00:00Z",
+        environment: "production",
+        id: "d1",
+        stage: "unknown",
+        status: "unknown",
+        url: "https://abc.my-site.pages.dev",
+      },
+    ]);
   });
 });
 

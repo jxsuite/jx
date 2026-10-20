@@ -25,6 +25,7 @@ import { flush, key, pointer } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   builtinFormControls,
+  mediaControl,
   referenceControl,
   resetFormControlUiState,
   schemaBuilderControl,
@@ -252,8 +253,9 @@ describe("registration", () => {
    * that each is reachable through the registry is asserted by the dispatch tests below,
    * `reference-control.test.ts` and `secret-commit.test.ts`.
    */
-  test("all three built-ins are registered on import, and every one is a mount", () => {
-    expect(builtinFormControls).toEqual(["schema-builder", "secret", "reference"]);
+  test("all four built-ins are registered on import, and every one is a mount", () => {
+    expect(builtinFormControls).toEqual(["schema-builder", "secret", "reference", "media"]);
+    expect(mediaControl.mount).toBeInstanceOf(Function);
     expect(schemaBuilderControl.mount).toBeInstanceOf(Function);
     expect(secretControl.mount).toBeInstanceOf(Function);
     expect(referenceControl.mount).toBeInstanceOf(Function);
@@ -1087,5 +1089,49 @@ describe("secret control", () => {
     expect(drawn).not.toBeNull();
     expect(control(part(drawn!, "field")).getAttribute("placeholder")).toBe("Stored as TOKEN_ENV");
     resetSchemaForms();
+  });
+});
+
+// ─── The media control ───────────────────────────────────────────────────────
+
+describe("an image field", () => {
+  test("is the media field, with Upload and Browse, wherever a form draws it", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    hosts.push(host);
+    const form = mountSchemaForm(
+      "media-dispatch",
+      { properties: { image: { format: "image", type: "string" } }, type: "object" },
+      { image: "/media/tiramisu.jpg" },
+      { context: inertCtx, onChange: () => {} },
+    );
+    host.append(form);
+    await settle();
+    expect(form.querySelector('[part="media-field"]')).not.toBeNull();
+    expect(form.querySelector('[part="upload"]')).not.toBeNull();
+    expect(form.querySelector('[part="browse"]')).not.toBeNull();
+  });
+
+  test("commits a picked path, clears to absent, and follows the host's repaint", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    hosts.push(host);
+    const changes: (JsonValue | undefined)[] = [];
+    const args = (value: JsonValue | undefined, label = "image"): SchemaFormControlArgs => ({
+      ctx: inertCtx,
+      key: label,
+      onChange: (next) => changes.push(next),
+      schema: { format: "image", type: "string" },
+      value,
+    });
+    const handle = mediaControl.mount(host, args(null));
+    await settle();
+    expect(part(host, "value")).not.toBeNull();
+    handle.update(args("/media/a.jpg", "cover"));
+    await settle();
+    expect(part(host, "thumb-slot")).not.toBeNull();
+    handle.dispose();
+    expect(host.querySelector('[part="media-field"]')).toBeNull();
+    expect(changes).toEqual([]);
   });
 });

@@ -3,14 +3,16 @@
  * Layers panel — the Outline: the document tree, with collapse, selection, drag-and-drop
  * reordering, and per-row actions that are RENDERINGS of the command registry.
  *
- * **One panel, two bodies, and both of them are documents now.** The tree is
- * `surfaces/panel-outline.json`; the Project Styles catalogue is
+ * **One panel, two bodies, and both of them are documents.** The tree is
+ * `surfaces/panel-outline.json`; the element catalogue a document's Elements view lists is
  * `surfaces/panel-stylebook-layers.json` (`panels/stylebook-layers-panel.ts`). This module renders
- * neither. It owns the record — only the record can know which body the pane is asking for — and
+ * neither. It owns the record (only the record can know which body the pane is asking for) and
  * everything that is a DECISION: which rows exist and in what order, what a row is called, what the
  * window onto them is, which verbs the registry places on which row, and the whole of the keyboard
  * model. The surface reads values. The two bodies are appended into the same `.panel-content`, so
- * each mode takes the other's document down on the way in; that symmetry is the whole of the seam.
+ * each mode takes the other's document down on the way in. The Variables view has no body here:
+ * `project.json`'s custom properties are listed by the Styles workspace's own Navigator panel
+ * (`panels/styles-panel.ts`, §7.1).
  *
  * Four things this file is deliberate about.
  *
@@ -87,6 +89,7 @@ import {
   mountStylebookLayersPanel,
 } from "./stylebook-layers-panel";
 import { selectStylebookTag, stylebookMeta } from "./stylebook-panel";
+import { PROJECT_STYLES_VIEW } from "../style/project-styles";
 import { isInlineElement } from "../editor/inline-edit";
 import { showContextMenu } from "../editor/context-menu";
 import { revealPathInCanvas } from "../canvas/popover-state";
@@ -1143,9 +1146,9 @@ export function outlineValues(): OutlineValues {
 /**
  * The surface standing in the Navigator, and the node it was mounted into.
  *
- * One slot rather than a per-host map, for the reason `panels/stylebook-layers-panel.ts` gives:
- * there is one Navigator, so a mount into a DIFFERENT node is the old one being replaced, and
- * holding both would leave the first one's effects running against a scope nobody writes any more.
+ * One slot rather than a per-host map, for the reason `panels/elements-panel.ts` gives: there is
+ * one Navigator, so a mount into a DIFFERENT node is the old one being replaced, and holding both
+ * would leave the first one's effects running against a scope nobody writes any more.
  */
 let standing: { host: HTMLElement; handle: OutlineSurfaceHandle } | null = null;
 /** Re-register drag-and-drop once the rows the projection asked for are actually in the DOM. */
@@ -1354,7 +1357,7 @@ export function mountOutlinePanel(
 /**
  * Take the tree down.
  *
- * Called by the record when the pane starts showing Project Styles. Without it the document
+ * Called by the record when the pane starts showing an Elements view. Without it the document
  * survives its own irrelevance: both bodies are appended into the same `.panel-content`, so the one
  * nobody took down sits under the one that replaced it for the rest of the session.
  */
@@ -1389,18 +1392,20 @@ export function registerLayersPanel(): void {
     requiresDocument: "Open a page to see the elements it is built from.",
     /*
      * One panel, two bodies, and neither of them is lit's. The body is a document either way, so
-     * there is nothing for lit to draw here — a document CLEARS nothing and is APPENDED, and lit's
+     * there is nothing for lit to draw here: a document CLEARS nothing and is APPENDED, and lit's
      * own comment markers inside `.panel-content` are what it finds its (empty) content by.
      */
     render: (): PanelBody => nothing,
     /*
-     * `afterRender` runs on every repaint, and both mounts are idempotent — the standing surface is
+     * `afterRender` runs on every repaint, and both mounts are idempotent: the standing surface is
      * updated where it is still there and re-mounted only where something has taken it out. The
      * detach on each side is not symmetry for its own sake: the two documents are appended into the
      * same node, so a body nobody took down would sit under the one that replaced it.
      */
     afterRender: (ctx, host) => {
-      if (ctx.deps.getCanvasMode() === "stylebook") {
+      /* A document's Elements view lists the element catalogue; every other view draws the tree,
+         Variables and Code included. */
+      if (ctx.deps.getCanvasMode() === PROJECT_STYLES_VIEW) {
         detachOutline();
         mountStylebookLayersPanel({ selectStylebookTag, stylebookMeta }, host);
         return;

@@ -74,17 +74,30 @@
       "steps": [
         {
           "args": {
-            "tab": "files"
+            "workspace": "content"
           },
-          "cmd": "view.setActivity"
+          "cmd": "view.setWorkspace"
         },
         {
-          "cmd": "library.open"
+          "args": {
+            "collection": "pages"
+          },
+          "cmd": "content.showCollection"
+        },
+        {
+          "args": {
+            "layout": "cards"
+          },
+          "cmd": "content.setLayout"
         }
       ],
       "expect": [
         {
-          "region": "pane.primary"
+          "state": {
+            "editor": {
+              "kind": "home"
+            }
+          }
         }
       ],
       "capture": [
@@ -219,27 +232,24 @@
       "steps": [
         {
           "args": {
-            "tab": "git"
+            "tab": "review"
           },
-          "cmd": "view.setActivity"
+          "cmd": "publish.open"
         }
       ],
       "expect": [
         {
-          "region": "navigator/panel:git"
-        },
-        {
-          "region": "navigator/panel:git/commit"
+          "region": "pane.primary/publish/commit"
         }
       ],
       "capture": [
         {
           "image": "git-panel",
-          "of": "navigator"
+          "of": "pane.primary"
         },
         {
           "image": "git-commit",
-          "of": "navigator/panel:git/commit",
+          "of": "pane.primary/publish/commit",
           "padding": 16
         }
       ]
@@ -311,10 +321,16 @@
       "docs": ["studio/design"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listing-card.json",
-        "view": "stylebook"
+        "file": "pages/index.md",
+        "view": "edit"
       },
       "steps": [
+        {
+          "args": {
+            "view": "elements"
+          },
+          "cmd": "styles.open"
+        },
         {
           "args": {
             "zoom": 0.6
@@ -393,7 +409,7 @@
       ],
       "expect": [
         {
-          "region": "pane.primary"
+          "region": "overlay.dialog:settings"
         }
       ],
       "capture": [
@@ -413,14 +429,14 @@
       "steps": [
         {
           "args": {
-            "section": "cssVars"
+            "view": "variables"
           },
-          "cmd": "settings.open"
+          "cmd": "styles.open"
         }
       ],
       "expect": [
         {
-          "region": "pane.primary"
+          "region": "pane.primary/variables"
         }
       ],
       "capture": [
@@ -547,7 +563,7 @@
       "docs": ["studio/editing/frontmatter"],
       "open": {
         "project": "packages/starters/sites/blog",
-        "file": "content/posts/designing-for-slowness.md",
+        "file": "pages/about.md",
         "view": "edit"
       },
       "steps": [
@@ -555,18 +571,18 @@
           "args": {
             "tab": "page"
           },
-          "cmd": "view.setActivity"
+          "cmd": "view.setRightTab"
         }
       ],
       "expect": [
         {
-          "region": "navigator/panel:page"
+          "region": "inspector/tab:page"
         }
       ],
       "capture": [
         {
           "image": "document-panel",
-          "of": "navigator"
+          "of": "inspector"
         }
       ]
     },
@@ -1164,11 +1180,7 @@
         {
           "input": "type",
           "region": "inspector/field:image/browse",
-          "text": "",
-          "unstable": {
-            "reason": "\"media.browse\" has no command record; P7.5 lands it as a registry verb",
-            "until": "P7.5"
-          }
+          "text": ""
         }
       ],
       "expect": [
@@ -1515,13 +1527,13 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:posts"
+          "region": "overlay.dialog:settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "blog-content-type",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         }
       ]
     },
@@ -1554,13 +1566,13 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:posts"
+          "region": "overlay.dialog:settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "blog-schema-fields",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         }
       ]
     },
@@ -1575,9 +1587,9 @@
       "steps": [
         {
           "args": {
-            "tab": "files"
+            "workspace": "content"
           },
-          "cmd": "view.setActivity"
+          "cmd": "view.setWorkspace"
         },
         {
           "args": {
@@ -1734,7 +1746,7 @@
           "region": "overlay.menu:block-action-bar/insertData",
           "text": "",
           "unstable": {
-            "reason": "the SUBJECT of this shot is the open merge-tag list, and a list is a control — \"insert.data\" (P5) is the ITEM, and running it photographs a token spliced into the middle of the heading's existing text instead. Either the shot is deleted and docs/start/first-collection.md §12 becomes prose, or block-action-bar.ts grows an idempotent verb that opens the list; both are calls the docs owner makes, not the manifest.",
+            "reason": "the SUBJECT of this shot is the open merge-tag list, and a list is a control \u2014 \"insert.data\" (P5) is the ITEM, and running it photographs a token spliced into the middle of the heading's existing text instead. Either the shot is deleted and docs/start/first-collection.md \u00a712 becomes prose, or block-action-bar.ts grows an idempotent verb that opens the list; both are calls the docs owner makes, not the manifest.",
             "until": "P7"
           }
         }
@@ -1842,13 +1854,13 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:posts"
+          "region": "overlay.dialog:settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "content-type-builder",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         }
       ]
     },
@@ -2070,17 +2082,17 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:comments"
+          "region": "overlay.dialog:settings/entry:comments"
         }
       ],
       "capture": [
         {
           "image": "data-tables-section",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         },
         {
           "image": "data-table-editor",
-          "of": "pane.primary/editor"
+          "of": "overlay.dialog:settings/editor"
         }
       ]
     },
@@ -2113,13 +2125,13 @@
       ],
       "expect": [
         {
-          "region": "pane.primary/entry:main"
+          "region": "overlay.dialog:settings/entry:main"
         }
       ],
       "capture": [
         {
           "image": "connections-section",
-          "of": "pane.primary"
+          "of": "overlay.dialog:settings"
         }
       ]
     },
@@ -2302,47 +2314,25 @@
       },
       "steps": [
         {
-          "cmd": "library.open"
+          "args": {
+            "workspace": "media"
+          },
+          "cmd": "view.setWorkspace"
         },
         {
           "input": "dragOver",
-          "region": "pane.primary/library/dropZone"
+          "region": "pane.primary/media-library"
         }
       ],
       "expect": [
         {
-          "region": "pane.primary/library/dropZone"
+          "region": "pane.primary/media-library"
         }
       ],
       "capture": [
         {
           "image": "media-upload",
-          "of": "pane.primary/library/dropZone"
-        }
-      ]
-    },
-    {
-      "name": "properties-bar",
-      "docs": ["studio/editing/frontmatter"],
-      "open": {
-        "project": "packages/starters/sites/blog",
-        "file": "content/posts/designing-for-slowness.md",
-        "view": "edit",
-        "viewport": {
-          "width": 1920,
-          "height": 1400
-        }
-      },
-      "expect": [
-        {
-          "region": "pane.primary/frontmatter"
-        }
-      ],
-      "capture": [
-        {
-          "image": "properties-bar",
-          "of": "pane.primary/frontmatter",
-          "padding": 8
+          "of": "pane.primary/media-library"
         }
       ]
     }

@@ -27,6 +27,7 @@
       "order": 55,
       "layout": "map",
       "entry": {
+        "noun": "table",
         "ui": {
           "schema": { "control": "schema-builder" },
           "connection": { "enum": { "$ref": "#/$context/connections" } }

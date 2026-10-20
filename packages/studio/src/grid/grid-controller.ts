@@ -144,9 +144,13 @@ export function createGridController(tab: Tab, source: GridSource): GridControll
 
   const reloadRows = async () => {
     const result = await source.rows(state.query);
+    /* Index BEFORE the rows are published. The index is not reactive, and assigning `state.rows`
+       runs the effects that read it at once: a record's entry form (`content/record-entry.ts`)
+       resolves its row key from the new rows and reads that row's cells through the baseline,
+       which with the index still empty drew every field blank until something else re-ran it. */
+    indexRows(result.rows);
     state.rows = result.rows;
     state.total = result.total;
-    indexRows(result.rows);
   };
 
   /** Missing required cells block the save (marked as row/cell errors, like a failed commit). */

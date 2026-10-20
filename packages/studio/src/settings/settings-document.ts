@@ -1,84 +1,94 @@
 /// <reference lib="dom" />
 /**
- * Project Settings — a **document**, not a modal.
+ * Project Settings: the built-in sections, the `project.json` tab's editors, and the two commands
+ * that reach them.
  *
- * Its predecessor (`settings-modal.ts`) was an `inset: 40px` overlay with a scrim, which meant that
- * while you tuned a design token that pushes live to the canvas, the canvas was behind the thing
- * you were tuning it in, ⌘S/⌘Z/⌘P were suspended, and "Open Data Grid" opened a tab you could not
- * see. §17.1 replaces it with a document in the pane whose sections are INNER NAV, and lists them.
+ * **Settings is a dialog; the configuration DOCUMENT is still a tab.** `project.json` is a real Tab
+ * under the transaction log with one write chokepoint (`tabs/project-config.ts`, §17.1), and it has
+ * three editors, the Styles workspace's three views: Elements (`stylebook`), Variables (`tokens`,
+ * `style/variables-view.ts`) and Code (`source`). Project Settings is neither of them: it is a
+ * dialog in the dialog layer (`./settings-dialog.ts`) hosting the section list, reachable from
+ * every workspace, and every section in it writes through the same chokepoint the tab's editors do,
+ * so the file has one history whichever door changed it.
  *
- * **The document is the `project.json` tab.** `project.json` is a real Tab under the transaction
- * log with one write chokepoint (`tabs/project-config.ts`, §17.1); this module opens that same tab
- * — same id, same document object — in the `settings` canvas mode. So the settings form, the
- * Project Styles catalogue and the raw JSON are three editors over ONE document, and undo, the
- * dirty flag and ⌘S are the ordinary document verbs rather than three bespoke ones. That is the
- * whole of the residual the shell redesign's configuration phase disclosed ("⌘Z reaches config
- * history only when the `project.json` tab is focused"): the settings surface now IS that tab.
- *
- * **`settings.open` did not change what it means.** The deliverable was a near-zero manifest diff:
- * the command still means "reach project settings, optionally at a named section", its args schema
- * still declares `section`, and every shot step that names it is untouched. What changed is the
- * `run` — a Tab instead of a modal — and the frame the seven region crops are taken in.
+ * **`settings.open` did not change what it means.** It still means "reach project settings,
+ * optionally at a named section and entry", its args schema still declares `section` and `entry`,
+ * and a key nobody registered still fails the call. What changed is the `run`: a dialog instead of
+ * a tab mode.
  *
  * @docs studio/projects/settings
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
-import { optionalStringArg, stringProperty } from "../commands/command-args";
+import {
+  argsSchema,
+  enumArg,
+  enumProperty,
+  optionalStringArg,
+  stringProperty,
+} from "../commands/command-args";
 import { notify } from "../services/notify";
 import { projectState } from "../state";
 import { PROJECT_CONFIG_PATH } from "../tabs/tab";
 import { lendProjectConfigLayout } from "../tabs/project-config";
-import { activeTab, focusPane, openTab, workspace } from "../workspace/workspace";
+import { focusPane, openTab, workspace } from "../workspace/workspace";
 import {
   notifySettingsDocument,
   registerSettingsSection,
-  settingsDocumentSection,
   setSettingsSection,
   settingsSectionKeys,
 } from "./section-registry";
 import { renderContextsSection } from "./contexts-section";
-import { renderCssVarsEditor } from "./css-vars-editor";
 import { renderDefsEditor } from "./defs-editor";
 import { renderDependenciesEditor } from "./dependencies-editor";
 import { renderExtensionsSection } from "./extensions-section";
-import { renderDeploySection, renderRawJsonSection } from "./project-sections";
+import { renderRawJsonSection } from "./project-sections";
 import { renderGeneralSettings } from "./general-settings";
 import { renderHeadEditor } from "./head-editor";
 import { renderLocalesSection } from "./locales-section";
 import { selectContributedEntry } from "./contributed-section";
+import { closeSettingsDialog, openSettingsDialog } from "./settings-dialog";
 // The NAME and the wire value, kept apart by that module on purpose — see its docstring.
-import { PROJECT_STYLES_TITLE, PROJECT_STYLES_VIEW } from "../style/project-styles";
+import {
+  PROJECT_STYLES_TITLE,
+  STYLES_TAB_MODES,
+  STYLES_VIEWS,
+  STYLES_VIEW_MODES,
+} from "../style/project-styles";
+import { activeRegistry } from "../commands/active-registry";
+import { shell } from "../shell";
 import type { Tab } from "../tabs/tab";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
+import type { CommandArgValues } from "../commands/command-args";
+
+/** The Code editor's mode, `source`, which `commands/context.ts` maps to the `code` kind. */
+const SOURCE_MODE = STYLES_VIEW_MODES.code;
 
 /**
- * The canvas mode the settings editor draws under.
- *
- * `project.json` already declared `["stylebook", "source"]` (`tabs/tab.ts`'s `inferModes`); this is
- * the third editor over the same document and it leads, because reaching configuration through a
- * form is what "Settings" means to everyone who is not reading the file.
+ * The `project.json` tab's editors, in the order its Editor control offers them: Elements,
+ * Variables and Code, the Styles workspace's three views.
  */
-export const SETTINGS_MODE = "settings";
-
-/** The tab's mode list when Project Settings opens it. Settings first, so it is the initial mode. */
-const SETTINGS_TAB_MODES = [SETTINGS_MODE, "stylebook", "source"];
+const PROJECT_TAB_MODES = STYLES_TAB_MODES;
 
 // ─── Built-in sections ────────────────────────────────────────────────────────
-/* Orders leave gaps so a contribution can land between two built-ins. Content Types is NOT here —
+/* Orders leave gaps so a contribution can land between two built-ins. Content Types is NOT here:
    the parser extension contributes it (order 50) through its Content class descriptor's
    `$studio.settings` block, registered via ./extension-sections, which is the same path any
-   extension's section takes.
+   extension's section takes, and it is listed under Integrations because that is the default
+   group for a contribution.
 
-   `icon` is a KEY into the kit's glyph manifest (`@jxsuite/ui/icons`), not a tag — `studio.md`
+   Two sections that used to be here are not, and their renderers are not deleted: CSS Variables
+   (`./css-vars-editor.ts`) belongs to the Styles workspace, and Deploy (`renderDeploySection`) to
+   the Publish workspace. The dialog's Moved footnote says where each went.
+
+   `icon` is a KEY into the kit's glyph manifest (`@jxsuite/ui/icons`), not a tag: `studio.md`
    §13.5 is about exactly this distinction, and a key with no row draws nothing and says nothing.
-   These were `sp-icon-*` names, which is the OTHER key space: they named Spectrum elements, so
-   every one of them resolved to nothing the moment the nav was ready to draw one. The field is
-   still documented as reserved (`section-registry.ts`), so nothing here draws today; the names are
-   held to the kit's manifest by `settings-document.test.ts` so that a name is right when the inner
-   nav does draw it, rather than discovered wrong then. */
+   The field is still documented as reserved (`section-registry.ts`), so nothing here draws today;
+   the names are held to the kit's manifest by `settings-document.test.ts` so that a name is right
+   when the nav does draw it, rather than discovered wrong then. */
 
 registerSettingsSection({
+  group: "general",
   icon: "sliders-horizontal",
   key: "overview",
   label: "Overview",
@@ -86,13 +96,35 @@ registerSettingsSection({
   render: renderGeneralSettings,
 });
 /*
- * Contexts sits directly under Overview because it is the project's second identity: Overview says
- * what the site IS, Contexts says what it is rendered UNDER. It is a definition site only — the
- * pane context bar selects among what is defined here, and its "Manage contexts…" footer names this
- * key (§6.2). It is a RE-HOST: the section shipped earlier through this same registry and moved
- * into the document's inner nav without its renderer being touched.
+ * Locales sits with Overview because both are what every author decides about the whole site: its
+ * name and address, and the languages it is published in. It is also the definition site the
+ * pane's language control, the Languages panel and `i18n.addLocale` all read: there is one
+ * `i18n.locales` and this is the form over it.
  */
 registerSettingsSection({
+  group: "general",
+  icon: "globe",
+  key: "locales",
+  label: "Locales",
+  order: 25,
+  render: renderLocalesSection,
+});
+registerSettingsSection({
+  group: "integrations",
+  icon: "share-network",
+  key: "extensions",
+  label: "Extensions",
+  order: 5,
+  render: renderExtensionsSection,
+});
+/*
+ * Contexts leads Advanced because it is the project's second identity: Overview says what the site
+ * IS, Contexts says what it is rendered UNDER (breakpoints, color schemes, features). It is a
+ * definition site only: the pane context bar selects among what is defined here, and its "Manage
+ * contexts…" footer names this key (§6.2).
+ */
+registerSettingsSection({
+  group: "advanced",
   icon: "browser",
   key: "contexts",
   label: "Contexts",
@@ -100,39 +132,15 @@ registerSettingsSection({
   render: renderContextsSection,
 });
 registerSettingsSection({
+  group: "advanced",
   icon: "file-code",
   key: "head",
   label: "Site head",
   order: 20,
   render: renderHeadEditor,
 });
-/*
- * Locales sits under Site head because both are facts about the whole site's HEAD rather than about
- * one page: `<html lang>` and `<html dir>` are what a locale decides, and the routing choice below
- * them decides what a page's URL looks like. It is also the definition site the pane's language
- * control, the Languages panel and `i18n.addLocale` all read — there is one `i18n.locales` and this
- * is the form over it.
- */
 registerSettingsSection({
-  icon: "globe",
-  key: "locales",
-  label: "Locales",
-  order: 25,
-  render: renderLocalesSection,
-});
-/*
- * CSS Variables was the one section the shell redesign's configuration phase did not list, and it
- * stayed so that the project's design tokens never left every surface at once; §17.1 lists it now,
- * and `css-variables-shot` addresses this key by name.
- */
-registerSettingsSection({
-  icon: "paint-brush",
-  key: "cssVars",
-  label: "CSS Variables",
-  order: 30,
-  render: renderCssVarsEditor,
-});
-registerSettingsSection({
+  group: "advanced",
   icon: "brackets-curly",
   key: "definitions",
   label: "Data Shapes",
@@ -140,70 +148,72 @@ registerSettingsSection({
   render: renderDefsEditor,
 });
 registerSettingsSection({
+  group: "advanced",
   icon: "cube",
   key: "dependencies",
   label: "Packages",
   order: 60,
   render: renderDependenciesEditor,
 });
+/*
+ * Raw JSON's "Edit as code" leaves the dialog: the Code editor is the `project.json` tab's, which is
+ * the Styles workspace's, so the dialog closes and the tab opens in its source editor. Activating
+ * it is what switches the workspace (`workspace/tab-workspace.ts`).
+ */
 registerSettingsSection({
-  icon: "share-network",
-  key: "extensions",
-  label: "Extensions",
-  order: 70,
-  render: renderExtensionsSection,
-});
-registerSettingsSection({
-  icon: "upload-simple",
-  key: "deploy",
-  label: "Deploy",
-  order: 80,
-  render: renderDeploySection,
-});
-registerSettingsSection({
+  group: "advanced",
   icon: "code",
   key: "rawJson",
   label: "Raw JSON",
   order: 900,
-  render: renderRawJsonSection,
+  render: (container) => {
+    renderRawJsonSection(container, {
+      editAsCode: () => {
+        closeSettingsDialog();
+        showSettingsDocument(SOURCE_MODE);
+      },
+    });
+  },
 });
-
-// ─── Where the settings editor is ────────────────────────────────────────────
-
-/**
- * Which section the settings document is showing, or `null` when it is not the active editor.
- *
- * @returns {string | null}
- */
-export function activeSettingsSection(): string | null {
-  return settingsDocumentOpen() ? settingsDocumentSection() : null;
-}
-
-/** Whether the active tab is the configuration document in its settings editor. */
-export function settingsDocumentOpen(): boolean {
-  const tab = activeTab.value;
-  return tab?.documentPath === PROJECT_CONFIG_PATH && tab.session.ui.canvasMode === SETTINGS_MODE;
-}
 
 // ─── The document ─────────────────────────────────────────────────────────────
 
 /**
- * Open (or reveal) the configuration document in its settings editor.
+ * Remember the view the Styles workspace's home is in, when `mode` is one of the two home views
+ * (Variables or Elements). Code is a view beside the home, never the home, so it is not remembered:
+ * Back from Code and the next visit both return to the view recorded here
+ * (`shell.stylebook.view`).
  *
- * The tab is keyed by `project.json` on purpose: opening the file from the Files tree and opening
- * Settings reach the same tab, the same history and the same dirty flag. When it is already open
- * this only switches the editor, so an author who was reading the raw JSON keeps their undo stack.
+ * @param {string} mode The canvas mode `project.json` was just shown in
+ */
+export function rememberStylesView(mode: string): void {
+  if (mode === STYLES_VIEW_MODES.variables || mode === STYLES_VIEW_MODES.elements) {
+    shell.stylebook.view = mode;
+  }
+}
+
+/**
+ * Open (or reveal) the configuration document in one of its editors.
  *
+ * The tab is keyed by `project.json` on purpose: opening the file from the Files tree, opening
+ * Project Styles and "Edit as code" all reach the same tab, the same history and the same dirty
+ * flag. When it is already open this only switches the editor, so an author who was reading the raw
+ * JSON keeps their undo stack.
+ *
+ * @param {string} [mode] The editor: Variables (`tokens`), Elements (`stylebook`) or Code
+ *   (`source`). Defaults to the Styles home view the author was last in, Variables on a first
+ *   visit.
  * @returns {Tab | null} The tab, or null when no project is open
  */
-export function showSettingsDocument(mode: string = SETTINGS_MODE): Tab | null {
+export function showSettingsDocument(mode: string = shell.stylebook.view): Tab | null {
   const state = projectState;
   if (!state) {
     return null;
   }
+  rememberStylesView(mode);
   const existing = workspace.tabs.get(PROJECT_CONFIG_PATH);
   if (existing) {
-    for (const candidate of SETTINGS_TAB_MODES) {
+    for (const candidate of PROJECT_TAB_MODES.toReversed()) {
       if (!existing.capabilities.modes.includes(candidate)) {
         existing.capabilities.modes.unshift(candidate);
       }
@@ -213,20 +223,18 @@ export function showSettingsDocument(mode: string = SETTINGS_MODE): Tab | null {
     return revealTab(existing);
   }
   const tab = openTab({
-    capabilities: { modes: [...SETTINGS_TAB_MODES] },
+    capabilities: { modes: [...PROJECT_TAB_MODES] },
     document: state.projectConfig ?? {},
     documentPath: PROJECT_CONFIG_PATH,
     id: PROJECT_CONFIG_PATH,
   });
   /* The mode is written here rather than left to the capability list, because `createTab` seeds
-     `session.ui.canvasMode` from `resolvedModes.find(m => m !== "preview")` (`tabs/tab.ts`) — i.e.
-     from `SETTINGS_TAB_MODES[0]`, which is `settings`. A second door over the same document has to
-     SAY which editor it is, or `styles.open` from a cold workspace opens the settings form. The
-     capability list stays in its declared order for the same reason it always had one: the tab's
-     Editor control offers the modes in that order. */
+     `session.ui.canvasMode` from the first non-preview mode, and a door over the same document has
+     to SAY which editor it is: "Edit as code" from a cold workspace must open the source, not
+     Project Styles. */
   tab.session.ui.canvasMode = mode;
   tab.session.ui.preview = false;
-  /* The tab was opened over the configuration OBJECT — the platform parsed it, so there is no text
+  /* The tab was opened over the configuration OBJECT: the platform parsed it, so there is no text
      here to read a layout from, and `doc.layout` is null. A ⌘S on it would then write the
      formatter's layout for fresh output while a settings commit on the same document wrote the
      file's (`tabs/project-config.ts`, issue 308). The chokepoint reads the file once anyway; it
@@ -239,7 +247,7 @@ export function showSettingsDocument(mode: string = SETTINGS_MODE): Tab | null {
  * Make an already-open tab the active one without rebuilding it.
  *
  * `openTab` recreates the tab from scratch, which would discard the configuration document's
- * history — the one thing this phase exists to give it.
+ * history.
  *
  * @param {Tab} tab
  * @returns {Tab}
@@ -252,8 +260,7 @@ function revealTab(tab: Tab): Tab {
          operations, and the assignment is one of them: the other three are `resetTabCycle` (so
          Ctrl-Tab cycles from where you now are, not from the pane you left), `promoteMru` (so the
          MRU order agrees with what is on screen) and `syncTreeSelection` (so the file tree points
-         at the document you are looking at). Reopening Project Settings into the side pane left
-         all three describing the pane it had come from. */
+         at the document you are looking at). */
       focusPane(pane.id);
       break;
     }
@@ -264,12 +271,12 @@ function revealTab(tab: Tab): Tab {
 /**
  * Reach Project Settings, optionally at a named section.
  *
- * Awaits the contributed-section sync before returning, so a caller that then asks whether a
- * section exists is asking the complete registry. The sync is COALESCED (`extension-sections.ts`),
- * which is the second half of the deep-link fix: `refreshExtensionUi` fires the same function on
- * project activation and after every `project.json` write, and the modal started a second,
- * interleaved run whose unregister pass could take the caller's section down between the promise
- * resolving and the frame being drawn.
+ * Opens the dialog on the requested section (or on the one it last showed, which the registry
+ * remembers for the session), then awaits the contributed-section sync before returning, so a
+ * caller that then asks whether a section exists is asking the complete registry. The sync is
+ * COALESCED (`extension-sections.ts`): `refreshExtensionUi` fires the same function on project
+ * activation and after every `project.json` write, and a second, interleaved run could otherwise
+ * take the caller's section down between the promise resolving and the frame being drawn.
  *
  * @param {string} [section]
  */
@@ -277,13 +284,12 @@ export async function openProjectSettings(section?: string): Promise<void> {
   if (section !== undefined) {
     setSettingsSection(section);
   }
-  showSettingsDocument();
-  notifySettingsDocument();
+  void openSettingsDialog();
   try {
     const { syncExtensionSettingsSections } = await import("./extension-sections");
     await syncExtensionSettingsSections();
   } catch (error) {
-    /* Contributed sections are optional — the built-ins render regardless — but a contribution that
+    /* Contributed sections are optional (the built-ins render regardless) but a contribution that
        will not load is a broken extension, and §17.1 files a section that fails to load as a
        Problem rather than a toast that erases itself. */
     notify.warn(`Could not load extension settings sections — ${errorMessage(error)}`, {
@@ -305,22 +311,17 @@ export async function settingsSectionsReady(): Promise<void> {
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 /**
- * Open Project Settings — optionally on a named section, optionally at a named entry.
+ * Open Project Settings: optionally on a named section, optionally at a named entry.
  *
- * **This one record replaces four manifest verbs**: `openSettings`, `openSettings {section}`,
- * `settings.setSection` and the five `input: type` steps that clicked an entry row by region id.
- * The third was refused outright by §13.5 because its press-shim mirrored the section registry's
- * LABELS in a hand-kept map; the fourth was raw input standing in for a verb that did not exist
- * ("`settings.selectEntry` has no command record"). Sections have KEYS and map-layout sections have
- * ENTRY keys; this names both, so the manifest's input-step budget falls by five and its unstable
- * budget by five without one `settings.open` step changing.
+ * Sections have KEYS and map-layout sections have ENTRY keys; this names both, so a deep link (the
+ * entry editor's "Fields", the Languages panel, the pane's "Manage contexts…") and a screenshot
+ * step are the same call.
  *
  * The validation is deliberately asynchronous. Extension-contributed sections (`connections`,
- * `data`, `content`) register a tick after the document opens, so refusing synchronously would
- * reject three legitimate section ids; the command opens, awaits the sync, and only then decides
- * whether the caller named something real. A wrong key therefore fails the step instead of
- * rendering an empty content pane — which is exactly what `css-variables` (the key is `cssVars`)
- * has been doing.
+ * `data`, `content`) register a tick after the dialog opens, so refusing synchronously would reject
+ * three legitimate section ids; the command opens, awaits the sync, and only then decides whether
+ * the caller named something real. A wrong key therefore fails the call instead of rendering an
+ * empty body.
  *
  * @returns {AnyCommand[]}
  */
@@ -335,7 +336,7 @@ export function settingsCommands(): AnyCommand[] {
               "type or a data connection.",
           ),
           section: stringProperty(
-            "The settings section key to show. Defaults to Overview on a fresh open.",
+            "The settings section key to show. Defaults to the section shown last, or Overview.",
           ),
         },
         required: [],
@@ -344,19 +345,15 @@ export function settingsCommands(): AnyCommand[] {
       category: "Project",
       id: "settings.open",
       level: "project",
-      // ⌘⇧, — the other half of §15's `⌘, / ⌘⇧,` pair. `app.preferences` shipped with its chord
-      // And this one did not, so the two halves of "settings" were a keystroke and a palette search.
+      // ⌘⇧, — the other half of §15's `⌘, / ⌘⇧,` pair.
       keybinding: "mod+shift+,",
       menus: ["commandbar/overflow", "settings/menu", "palette"],
       group: "7_settings",
       requires: "an open project",
       /* `enablement`, not `when`: with no project open this row is DRAWN, greyed, carrying the
-         sentence above — `studio-ui-guidelines.md` §12.3's rule that a control which cannot act
-         explains itself rather than vanishing, and the reason the palette greys unavailable
-         commands instead of hiding them. It used to be `when`, so the rail's Settings menu held one
-         row on the welcome screen and said nothing about the other two; "why can't I" had no answer
-         anywhere. The gate itself is unchanged — `enabledWith` still refuses, so `registry.run` and
-         the assistant's tool still throw `CommandUnavailableError` exactly as before. */
+         sentence above (`studio-ui-guidelines.md` §12.3: a control which cannot act explains itself
+         rather than vanishing). `enabledWith` still refuses, so `registry.run` and the assistant's
+         tool throw `CommandUnavailableError`. */
       enablement: (ctx) => ctx.project.open,
       /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: this opens a surface for a
          person; the model writes `project.json` through `write_file` and the extension verbs. */
@@ -394,26 +391,40 @@ export function settingsCommands(): AnyCommand[] {
       title: "Open Project Settings",
     },
     /*
-     * The SECOND door over the same document. `project.json` has three editors — the settings form,
-     * Project Styles and the raw source — and until now only one of them had a name: Project Styles
-     * was reached by the pane's Editor control (which can only re-mode a tab that is ALREADY open)
-     * and by a hand-written `canvasMode` assignment inside Overview. `canvas.setMode` cannot stand
-     * in for this: it is level `document` and requires an open one, so from a cold workspace there
-     * is nothing to re-mode.
+     * Project Styles by name: an ALIAS of `view.setWorkspace { workspace: "styles" }`, which shows
+     * the Styles workspace's last tab or opens its home (`project.json` in its Variables view on a
+     * first visit, else in the view it was left in). The id is kept because it is how deep links, the docs and older scripts name the place; the
+     * switch itself has one implementation, the workspace's, so the two doors cannot disagree about
+     * what "open Project Styles" means. `view` then picks one of the tab's three views, which is
+     * how a deep link (Project Settings' Moved footnote, a screenshot) reaches the Variables view
+     * from anywhere: `canvas.setMode` cannot stand in for it, being level `document`.
      *
      * It is a peer of `settings.open` and declares the same gate, byte for byte
-     * (`studio-ui-guidelines.md` §12.4: two verbs over one document declare ONE availability
-     * rule). `styles.*` is the project-level plural of the selection-level `style.*` verbs in
-     * `panels/style-panel.ts`; the ids are one letter apart and the levels are the reason.
+     * (`studio-ui-guidelines.md` §12.4: two verbs over one document declare ONE availability rule).
+     * It is not in the gear menu: the gear holds Preferences and Project Settings, and Styles is a
+     * workspace the top bar already names.
      */
     {
+      args: argsSchema(
+        {
+          view: enumProperty(
+            STYLES_VIEWS,
+            "Which view of the project's styles to show: elements (element defaults by tag " +
+              "name), variables (the CSS custom properties) or code (project.json as text). " +
+              "Defaults to the view the Styles workspace was left in.",
+          ),
+        },
+        [],
+      ),
       category: "Project",
       id: "styles.open",
       level: "project",
-      menus: ["settings/menu", "palette"],
-      /* A distinct ordinal inside the settings family, so the gear reads Settings → Styles.
-         `studio-ui-guidelines.md` §12.3's lever is `group`, never a per-menu sort; `styles.open` is
-         not in the ⬢ menu, so nothing else sees this string. */
+      /* `never`, not `palette`, for the reason `view.setWorkspace` gives: the palette's way into
+         Styles is `workspace.focus.styles` ("Go to Styles", ⌘4), and a second row running the same
+         switch would be the same action under a second name. This record is the scripted door:
+         the Moved footnote, the Overview's Styles row and the screenshot manifest name it, and
+         `view` is what they can say that the chord cannot. */
+      menus: ["never"],
       group: "7_settings_styles",
       requires: "an open project",
       /* `studio-ui-guidelines.md` §12.4: two verbs over ONE document declare ONE availability rule,
@@ -421,8 +432,17 @@ export function settingsCommands(): AnyCommand[] {
       enablement: (ctx) => ctx.project.open,
       /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: this opens a surface for a
          person. */
-      run: () => {
-        showSettingsDocument(PROJECT_STYLES_VIEW);
+      run: async (_commandCtx, args: CommandArgValues) => {
+        const view =
+          args["view"] === undefined ? null : enumArg("styles.open", args, "view", STYLES_VIEWS);
+        const registry = activeRegistry();
+        if (!registry) {
+          throw new Error('command "styles.open" needs the window\'s command registry');
+        }
+        await registry.run("view.setWorkspace", { workspace: "styles" });
+        if (view !== null) {
+          showSettingsDocument(STYLES_VIEW_MODES[view]);
+        }
       },
       // Named, never spelled from the wire value: `stylebook` is shared with `dist/iframe-entry.js`
       // And may never be renamed, so nothing a reader sees is derived from it (`style/project-styles`).
@@ -432,7 +452,7 @@ export function settingsCommands(): AnyCommand[] {
 }
 
 /**
- * Register the settings verb.
+ * Register the settings verbs.
  *
  * @param {CommandRegistry} registry
  */

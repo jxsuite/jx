@@ -4,15 +4,30 @@ import { describe, expect, test } from "bun:test";
 import {
   computeEmptyPlaceholderClass,
   EMPTY_PLACEHOLDER_CLASSES,
+  liveEditProp,
   PLACEHOLDER_IMG,
   placeholderBrokenImages,
   prepareForEditMode,
   restoreTemplateExpressions,
+  sampleRowAt,
   templateToEditDisplay,
   TRANSPARENT_PX,
 } from "../src/utils/edit-display";
+import { renderNode } from "@jxsuite/runtime";
 import { isNodeObject } from "@jxsuite/schema/guards";
-import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+import type { JxScope } from "@jxsuite/runtime/types";
+import type { JsonValue, JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+
+/** A property an element was given, read as the instance would read it. */
+function propertyOf(el: Element | null, key: string): string {
+  if (!el) {
+    return "<no element>";
+  }
+  /* SAFETY: an element is an ordinary extensible object; the runtime writes each `$props` value
+     onto it as a property, and a key it did not write reads undefined. */
+  const props = el as Element & Record<string, JsonValue | undefined>;
+  return String(props[key]);
+}
 
 /**
  * Prepare a node-shaped value. The input is any document value because several fixtures are
@@ -194,7 +209,7 @@ describe("prepareForEditMode basics", () => {
 });
 
 describe("prepareForEditMode $props", () => {
-  test("processes template strings, url props, refs and passthrough values", () => {
+  test("a bound prop stays a live binding; a ref passes through; url props blank", () => {
     const out = prep({
       $props: {
         href: "${s}",
@@ -202,11 +217,13 @@ describe("prepareForEditMode $props", () => {
         link: { $ref: "#/state/url" },
         other: { $ref: "raw.path" },
         plain: 5,
+        row: { $ref: "$map/item/t" },
       },
       tagName: "x-card",
     });
     /* A component's inputs render live: a header's variant shown as `❪ state.variant ❫` reached the
-       component as that literal text and matched none of its styles. */
+       component as that literal text and matched none of its styles. A row pointer outside any
+       repeater has no row to read, so the component keeps its default. */
     expect(out.$props).toEqual({
       href: "${s}",
       label: "${t}",
@@ -214,6 +231,102 @@ describe("prepareForEditMode $props", () => {
       other: { $ref: "raw.path" },
       plain: 5,
     });
+  });
+
+  test("a component in a repeater is drawn with the repeater's first item", () => {
+    const out = prep({
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/rows" },
+          map: {
+            $props: {
+              count: "${index + 1}",
+              label: "${item.t} (${$page.locale})",
+              locale: "${$page.locale}",
+              title: { $ref: "$map/item/t" },
+            },
+            tagName: "x-row",
+          },
+        },
+      ],
+      tagName: "section",
+    });
+    const scope: JxScope = { $page: { locale: "fr" }, rows: [{ t: "Harbour" }, { t: "Crane" }] };
+    const host = renderNode(out, scope);
+    const row = host instanceof HTMLElement ? host.querySelector("x-row") : null;
+    expect(row).not.toBeNull();
+    expect(propertyOf(row, "title")).toBe("Harbour");
+    expect(propertyOf(row, "locale")).toBe("fr");
+    expect(propertyOf(row, "label")).toBe("Harbour (fr)");
+    expect(propertyOf(row, "count")).toBe("1");
+  });
+
+  test("an empty or unreadable list gives the instance empty values, not a thrown binding", () => {
+    const out = prep({
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/rows" },
+          map: { $props: { title: "${item.data.title}" }, tagName: "x-row" },
+        },
+        {
+          $prototype: "Array",
+          items: { $ref: "window#/rows" },
+          map: { $props: { title: "${item.data.title}" }, tagName: "x-other" },
+        },
+      ],
+      tagName: "section",
+    });
+    const host = renderNode(out, { rows: [] });
+    const rows = host instanceof HTMLElement ? [...host.querySelectorAll("x-row, x-other")] : [];
+    expect(rows.map((row) => propertyOf(row, "title"))).toEqual(["", ""]);
+  });
+
+  test("a literal list, a template list and a nested list each give a sample row", () => {
+    const out = prep({
+      children: [
+        {
+          $prototype: "Array",
+          items: [{ groups: [{ name: "inner" }], t: "literal" }],
+          map: {
+            children: [
+              {
+                $prototype: "Array",
+                items: { $ref: "$map/item/groups" },
+                map: { $props: { name: "${item.name}" }, tagName: "x-inner" },
+              },
+            ],
+            $props: { title: "${item.t}" },
+            tagName: "x-outer",
+          },
+        },
+        {
+          $prototype: "Array",
+          items: "${state.rows}",
+          map: { $props: { title: "${item.t}" }, tagName: "x-templated" },
+        },
+      ],
+      tagName: "section",
+    });
+    const host = renderNode(out, { rows: [{ t: "templated" }] });
+    const at = (sel: string) => (host instanceof HTMLElement ? host.querySelector(sel) : null);
+    expect(propertyOf(at("x-outer"), "title")).toBe("literal");
+    expect(propertyOf(at("x-inner"), "name")).toBe("inner");
+    expect(propertyOf(at("x-templated"), "title")).toBe("templated");
+  });
+
+  test("sampleRowAt gives a subtree under a repeater the row the full render used", () => {
+    const doc: JxMutableNode = {
+      children: [{ $prototype: "Array", items: { $ref: "#/state/rows" }, map: { tagName: "li" } }],
+      tagName: "ul",
+    };
+    expect(sampleRowAt(doc, ["children", 0, "map"])).toContain('state?.["rows"]');
+    expect(sampleRowAt(doc, ["children", 0])).toBeNull();
+    expect(sampleRowAt(doc, ["children", 5, "map"])).toBeNull();
+    expect(liveEditProp("plain text")).toBe("plain text");
+    // An unterminated `${` is left as written rather than cut short.
+    expect(liveEditProp("a ${b")).toBe("a ${b");
   });
 
   test("props that read the repeater row keep a display, the perimeter having no row", () => {
@@ -233,11 +346,10 @@ describe("prepareForEditMode $props", () => {
     expect(out.$props?.heroBg).toStartWith("data:image/svg+xml");
     // One that reads the page's state is live like any other.
     expect(out.$props?.featuredImage).toBe("${state.x}");
-    expect(out.$props?.row).toBe("{$map/item/t}");
-    // Non-image text prop → the readable ❪ expr ❫ binding glyph.
-    expect(out.$props?.title).toBe("❪ item.t ❫");
-    expect(out.$props?.title).toContain("❪");
-    expect(out.$props?.title).toContain("❫");
+    // A row pointer with no row to read is dropped: the component keeps its default.
+    expect(out.$props).not.toHaveProperty("row");
+    // A non-image row-bound prop stays a binding, evaluated live against the sample row.
+    expect(out.$props?.title).not.toContain("❪");
     // Link target prop → inert empty string.
     expect(out.$props?.href).toBe("");
   });
@@ -463,9 +575,35 @@ describe("prepareForEditMode empty placeholders", () => {
     }
   });
 
-  test("identical non-layout empty span still gets text placeholder", () => {
-    const out = prep({ style: { height: "3px" }, tagName: "span" });
+  test("a non-layout empty span gets the text placeholder", () => {
+    const out = prep({ tagName: "span" });
     expect(out.className).toBe("empty-text-placeholder");
+  });
+
+  test("an empty element whose own style sizes it is a shape, and gets no placeholder", () => {
+    // The jxsuite.com home's status dot: the placeholder text drew a one-glyph column over the hero.
+    const dot = {
+      style: { backgroundColor: "#22c55e", borderRadius: "50%", height: "6px", width: "6px" },
+      tagName: "span",
+    };
+    expect(computeEmptyPlaceholderClass(dot)).toBeNull();
+    expect(prep(dot).className).toBeUndefined();
+    expect(
+      computeEmptyPlaceholderClass({ style: { blockSize: "3px" }, tagName: "div" }),
+    ).toBeNull();
+    expect(computeEmptyPlaceholderClass({ style: { width: 12 }, tagName: "p" })).toBeNull();
+  });
+
+  test("an automatic or responsive-only size still leaves the element a text slot", () => {
+    expect(computeEmptyPlaceholderClass({ style: { width: "auto" }, tagName: "p" })).toBe(
+      "empty-text-placeholder",
+    );
+    expect(
+      computeEmptyPlaceholderClass({
+        style: { "@media (min-width: 40rem)": { width: "50%" } },
+        tagName: "section",
+      }),
+    ).toBe("empty-container-placeholder");
   });
 });
 

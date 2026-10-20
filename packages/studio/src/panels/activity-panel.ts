@@ -43,6 +43,7 @@ import { reactive } from "../reactivity";
 import { now } from "../services/clock";
 import { notify } from "../services/notify";
 import type { NotifyOptions } from "../services/notify";
+import type { CommandArgValues } from "../commands/command-args";
 import { registerPanel } from "./panel-registry";
 import type { PanelBody } from "./panel-registry";
 import type {
@@ -180,7 +181,10 @@ export interface ActivityHandle {
    * The log goes into the notification's `detail`, so the persistent, inspectable error view §16.4
    * asks for is the Problems row, not a modal that has to stay open to be read.
    */
-  fail: (message: string, opts?: { action?: string; path?: string }) => void;
+  fail: (
+    message: string,
+    opts?: { action?: string; actionArgs?: CommandArgValues; path?: string },
+  ) => void;
 }
 
 /**
@@ -237,7 +241,10 @@ export function beginActivity(options: ActivityOptions): ActivityHandle {
       finish("done", status);
     },
     entry: live,
-    fail(message: string, opts: { action?: string; path?: string } = {}) {
+    fail(
+      message: string,
+      opts: { action?: string; actionArgs?: CommandArgValues; path?: string } = {},
+    ) {
       // An operation that has already ended does not get to raise a Problem: the first outcome is
       // The one that happened, and a late `fail()` after a successful `done()` would put a failure
       // On a list whose whole promise is that everything on it still needs fixing.
@@ -252,6 +259,9 @@ export function beginActivity(options: ActivityOptions): ActivityHandle {
       }
       if (opts.action !== undefined) {
         notice.action = opts.action;
+      }
+      if (opts.actionArgs !== undefined) {
+        notice.actionArgs = opts.actionArgs;
       }
       if (opts.path !== undefined) {
         notice.path = opts.path;
@@ -381,8 +391,14 @@ function stepView(step: ActivityStep, index: number): ActivityStepView {
   };
 }
 
-/** One operation, as the document reads it. */
-function rowView(entry: ActivityEntry): ActivityRowView {
+/**
+ * One operation, as a document reads it.
+ *
+ * Exported because the Activity feed is not its only reader: Publish › Deploys draws a running
+ * deploy's steps from the same record (studio.md §22.8), and a second projection of one activity
+ * would be a second set of glyphs for the same states.
+ */
+export function activityRowView(entry: ActivityEntry): ActivityRowView {
   const lines = entry.log.length;
   return {
     cancellable: entry.cancellable,
@@ -423,7 +439,7 @@ export function activityView(): ActivityView {
     clearLabel: `Clear ${finished} finished`,
     hasFinished: finished > 0,
     hasRows: activities.length > 0,
-    rows: activities.map((entry) => rowView(entry)),
+    rows: activities.map((entry) => activityRowView(entry)),
   };
 }
 

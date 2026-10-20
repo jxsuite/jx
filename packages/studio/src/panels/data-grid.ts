@@ -23,6 +23,7 @@ import { mountDataActionsSurface } from "../surfaces/data-actions";
 import { mountPushPlanSurface } from "../surfaces/push-plan";
 import { dataSurfaceAvailable, pushSchema, testConnection } from "../services/data-service";
 import { openGridSourcePicker } from "../grid/grid-open";
+import { closeSettingsDialog } from "../settings/settings-dialog";
 import type { DataActionsSurfaceHandle, DataActionsView } from "../surfaces/data-actions";
 import type { DialogSurfaceHandle } from "../surfaces/dialog";
 import type { PushPlanSurfaceHandle, PushPlanView } from "../surfaces/push-plan";
@@ -277,6 +278,9 @@ function paintSectionActions(
     host,
     mountDataActionsSurface(host, projectActions(sectionKey, selected), {
       openGrid: () => {
+        /* The actions row is drawn in the settings dialog, and a grid opens as a TAB: left up, the
+           dialog would cover the very tab the reader asked for (§17.1). */
+        closeSettingsDialog();
         void openGridSourcePicker();
       },
       push: () => {

@@ -49,7 +49,7 @@ This is the one thing the rest of the toolchain cannot tell you. A build is perf
 **Stale** means the default language's file is newer than the translation. A file your platform reports no timestamp for is shown as present, never stale, because an absent timestamp isn't evidence of being behind.
 :::
 
-The panel has no rail button on purpose: a language grid shouldn't cost a rail slot in every monolingual project, or push every document panel's :kbd[⌘1]–:kbd[⌘8] chord along by one.
+The panel has no rail button on purpose: a language grid shouldn't cost a rail slot in every monolingual project.
 
 ## Side by side
 
@@ -66,13 +66,13 @@ The pane context bar's **Language** segment (:kbd[⌘K] → **Set Rendering Lang
 | **Same page in** (pane) | which **file** the pane is showing         |
 | **Language** (context)  | the `lang` and `dir` the artboard draws in |
 
-The second is how you check that a right-to-left language actually mirrors. It sets the language the canvas renders **as**. The text is whatever file is open, and the control says so. It's the same axis as breakpoint and colour scheme: a preview state, stored with the tab.
+The second is how you check that a right-to-left language actually mirrors. It sets the language the canvas renders **as**. The text is whatever file is open, and the control says so. It's the same axis as breakpoint and colour scheme: a preview state, stored with the tab. It stays set when you reopen the project, and the canvas draws in it from the start, including in a second pane or at a breakpoint you add later.
 
-The bar only names a language when it differs from the document's own, so a French page open in a French pane reads as it always did.
+With no language chosen, the canvas draws in the file's own language: the language of the folder it sits in, for a page or a collection entry alike, or the project's default. An Arabic translation mirrors as soon as you open it. The bar only names a language when it differs from the file's own, so a French page open in a French pane reads as it always did. If the project stops listing a language a pane was set to, the pane goes back to the file's own.
 
 ## Finding files by language
 
-The [Library](/docs/studio/projects/browse) has a **Language** facet and column, and the Files tree tags each row with the language of the directory it sits under, in that language's own name (_français_ rather than _French_).
+The [Content workspace](/docs/studio/projects/browse) has a **Language** facet and column, and the Files tree tags each row with the language of the directory it sits under, in that language's own name (_français_ rather than _French_).
 
 ## Commands
 

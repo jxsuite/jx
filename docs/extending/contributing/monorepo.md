@@ -6,6 +6,9 @@ code:
   - scripts/docs/check-plans.ts
   - scripts/ci/approve-held-runs.ts
   - scripts/check-schema-freshness.ts
+  - packages/test-support/src/preload.ts
+  - packages/test-support/src/dom-equality.ts
+  - packages/test-support/src/bun-pin.ts
 ---
 
 # Working in the monorepo
@@ -33,6 +36,16 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 
 Every package keeps full unit-test coverage, enforced per file by each package's `bunfig.toml` thresholds plus a manifest check that fails CI when a source file is never imported by any test. New source files ship with tests in the same PR.
 
+**One Bun version.** CI installs exactly the version in `.bun-version` at the repository root, in every workflow, through `.github/actions/setup-bun`. Coverage figures and test output can move between Bun patch releases, so a different local Bun can disagree with CI. When yours differs, the test run prints one warning line naming both versions and carries on. It never fails the run: where the temporary directory cannot be written, the line repeats per test file instead.
+
+**The shared test preload.** Every package whose tests use happy-dom preloads `@jxsuite/test-support/preload` from its `bunfig.toml`. It prints a DOM node as one line in a failure message, and it refuses deep equality on a DOM node: `toEqual`, `toStrictEqual`, `toMatchObject` and `toContainEqual` throw at once when either side is a node or holds one, inside class instances (an event, a mutation record) as well as plain objects and arrays. So do `toHaveProperty(path, value)` when the compared value holds a node, and `toHaveBeenCalledWith` and its last-call and nth-call forms when an argument or a call their failure would print holds one. Bun's diff printer can hang for minutes on a live UI-kit element, so the refusal is what keeps one bad assertion from stalling a CI job. Compare nodes with `toBe` (a recorded argument as `mock.calls[0][0]`), or a list of nodes with `identities()`:
+
+```ts
+import { identities } from "@jxsuite/test-support/inspect-dom";
+
+expect(identities(seen)).toEqual(identities([first, second]));
+```
+
 ## What CI runs, and when
 
 A pull request runs the checks its diff can actually fail. The test matrix is **derived** from the workspace dependency graph, with no hand-written list behind it, so adding a package cannot leave it untested.
@@ -53,7 +66,7 @@ Pushes to `main`, the nightly cron, and manual dispatch are never gated: they al
 
 `lint`, both typechecks and all the docs and schema gates run **unconditionally**, in one `checks` job. Each is a few seconds and a fresh CI job costs longer than that to start, so gating them would spend more time than it saves.
 
-**Interaction-performance gate**: `.github/workflows/studio-perf.yml` runs `bun run perf:studio` headless against the tracked `scripts/perf/baseline.json`: nightly on `main`, and on PRs touching Studio, the UI kit or the runtime. A metric that grows by more than 20 % and 25 ms against the baseline turns the job red, with the per-scenario delta table as the summary; the failure names the scenario. A baseline your own change legitimately beat is re-captured (`bun run perf:studio --reps 3 --write-baseline 1`) and lands in the same PR, where the windows underneath both baselines are part of the review.
+**Interaction-performance gate**: `.github/workflows/studio-perf.yml` traces Studio headless with `bun run perf:studio`. On PRs touching Studio, the UI kit or the runtime it is a same-runner A/B: the job builds the PR's merge base beside the PR, serves both, and interleaves five repetitions of every scenario between the two builds. Each scenario gets a fresh browser on each side. The gate fails on wall time or main-thread work (scripting, style and layout together), and only when the PR's median is more than 20 % and 25 ms above the base's and the repetitions separate (a one-sided Mann-Whitney test, p < 0.05). The three components are reported beside them as diagnostics. A scenario the base does not have yet is held to the ceilings in `scripts/perf/budgets.json` instead. A scenario that throws on either build, or whose command the PR no longer declares, fails the gate rather than leaving it. The A/B table is the job summary, and the failure names the scenario, the metric and the hottest source files. Nightly on `main`, the job compares against the tracked `scripts/perf/baseline.json` to watch for drift and uploads a fresh baseline captured on the runner. The comparison only fails the run when the baseline was captured under the current analyzer version; an older one is report-only. That `baseline.json` is only ever replaced from such a CI artifact, never from your machine; `scripts/perf/REPORT.md` has the adoption steps.
 
 :::doc-note
 `ci` is the aggregate job. It passes when every other job either succeeded or was skipped, and fails if any failed or was cancelled. A job your diff never reached leaves the run green.

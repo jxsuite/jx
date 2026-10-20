@@ -9,7 +9,7 @@ code:
 
 # Logic tab
 
-Logic is the Inspector's third tab, :kbd[⌘⇧3], and it holds everything about how the selected element _behaves_. Binding a list to a collection, binding a condition to a state value, and binding a click to a handler are one job, so they share one tab. Select an element on the canvas or in [Outline](/docs/studio/design/layers), then click **Logic**; with nothing selected, the tab invites you to click anything on the canvas to wire it up.
+Logic is the third view of the Inspector's **Element** tab, :kbd[⌘⇧4], and it holds everything about how the selected element _behaves_. Binding a list to a collection, binding a condition to a state value, and binding a click to a handler are one job, so they share one tab. Select an element on the canvas or in [Outline](/docs/studio/design/layers), then click **Logic**; with nothing selected, the tab invites you to click anything on the canvas to wire it up.
 
 The tab draws only the sections that apply to what you have selected:
 

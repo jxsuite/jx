@@ -7,13 +7,20 @@
  */
 
 import { projectState, stripEventHandlers } from "../store";
-import { displayTagName, isMappedArray, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import {
+  displayTagName,
+  isJsonObject,
+  isMappedArray,
+  isNonNullObject,
+  isString,
+} from "@jxsuite/schema/guards";
 import { canvasModeOfTab } from "./canvas-surface";
 import { toRaw } from "../reactivity";
 import {
   distributePageIntoLayout,
   getEffectiveElements,
   getEffectiveHead,
+  extensionClassPaths,
   getEffectiveImports,
   getEffectiveLayoutPath,
   getEffectiveMedia,
@@ -32,6 +39,12 @@ import {
 } from "../page-params";
 import { isComponentDoc, substitutePreviewProps } from "../component-props";
 import { assetContextFor, hostAssetDeclarations } from "./asset-refs";
+import { collectionForFile } from "../content/collection-match";
+import { writesEntryOnCanvas } from "../content/content-collections";
+import { collectionPage, entryLayoutPath, entryLocale } from "../content/collection-pages";
+import { pageContextFor } from "./canvas-page-context";
+import { loadExtensions } from "../format/format-host";
+import { bakeRepeaterSources, extensionClassKeys, repeaterSourceKeys } from "./repeater-sources";
 
 import type { AssetContext } from "./asset-refs";
 import type {
@@ -123,6 +136,115 @@ export function markLayoutNodes(node: JxMutableNode, file: string, path: JxPath 
 }
 
 /**
+ * A layout as the canvas wraps a document in it: read, its nodes marked with the file they come
+ * from, and itself wrapped in the layout ITS `$layout` names, all the way up.
+ *
+ * A layout can sit in another layout (`layouts/post.json` → `layouts/base.json`), and the build
+ * resolves the whole chain (`@jxsuite/site` `resolveLayout`), so a page drawn in the inner layout
+ * alone lost the outer one's nav and footer on the canvas and nowhere else. Each level is merged
+ * the way the build merges it, and each node keeps the marker of the file it was authored in, so
+ * opening a locked node still opens the layout that holds it. A cycle stops at the first repeat
+ * rather than recursing forever, and a parent that cannot be read leaves the chain where it is.
+ *
+ * @param {string} layoutPath - The `$layout` reference, project-relative as authored
+ * @param {Set<string>} [seen] - Files already on the chain
+ * @returns {Promise<JxMutableNode | null>} The merged, marked layout, or null when unreadable
+ */
+export async function resolveCanvasLayout(
+  layoutPath: string,
+  seen = new Set<string>(),
+): Promise<JxMutableNode | null> {
+  const file = layoutPath.replace(/^\.\//, "");
+  if (seen.has(file)) {
+    return null;
+  }
+  seen.add(file);
+  const layoutDoc = await resolveLayoutDoc(layoutPath);
+  if (!layoutDoc) {
+    return null;
+  }
+  // The SAME normalization resolveLayoutDoc reads the file with, so the marker's `file` is a path
+  // The editor can hand straight to navigateToComponent when the author asks to open it.
+  markLayoutNodes(layoutDoc, file);
+  const parentRef = layoutDoc.$layout;
+  if (!isString(parentRef) || !parentRef) {
+    return layoutDoc;
+  }
+  const parent = await resolveCanvasLayout(parentRef, seen);
+  if (!parent) {
+    return layoutDoc;
+  }
+  const merged = distributePageIntoLayout(parent, layoutDoc);
+  delete merged.$layout;
+  return merged;
+}
+
+/**
+ * Re-address a layout's `$elements` imports from the layout's file to the document being drawn.
+ *
+ * A layout's `{ $ref: "../components/site-nav.json" }` is relative to the LAYOUT, but once the
+ * layout is merged around a document the canvas resolves every `$ref` against the document's own
+ * base. A page in `pages/` sits as deep as `layouts/`, so the two answers agreed by coincidence; an
+ * entry in `content/menu/` or a page in `pages/blog/` resolved the same ref to
+ * `content/components/…`, which 404s and leaves the nav and footer unregistered. Each entry is
+ * re-addressed from the file its `$__layout` marker names, which is the file it was authored in at
+ * every level of a layout chain. Bare specifiers and URLs are left alone, and so is an entry with
+ * no marker (the document's own).
+ *
+ * @param {(JxElement | string)[] | undefined} elements - The merged document's `$elements`
+ * @param {string} documentPath - The project-relative path of the document being drawn
+ */
+export function rebaseLayoutElementRefs(
+  elements: readonly (JxElement | string | null)[] | undefined,
+  documentPath: string,
+) {
+  for (const el of elements ?? []) {
+    if (!isNonNullObject(el) || !isString(el.$ref) || !/^\.\.?\//.test(el.$ref)) {
+      continue;
+    }
+    const marker = el["$__layout"];
+    if (!isJsonObject(marker) || !isString(marker.file)) {
+      continue;
+    }
+    const target = new URL(el.$ref, `jx-project:/${marker.file}`).pathname.replace(/^\//, "");
+    el.$ref = computeRelativePath(documentPath, target);
+  }
+}
+
+/**
+ * A document's own layout override: its root's `$layout`, or a Markdown document's frontmatter
+ * `$layout` (which the build reads, and which the Inspector's Page tab writes); `undefined` when it
+ * names none.
+ */
+export function pageLayout(doc: JxMutableNode, tab: Tab | null): string | false | undefined {
+  if (doc.$layout !== undefined) {
+    return doc.$layout;
+  }
+  const fromFrontmatter = tab?.doc.content.frontmatter.$layout;
+  return isString(fromFrontmatter) || fromFrontmatter === false ? fromFrontmatter : undefined;
+}
+
+/**
+ * The layout a collection entry is drawn in (studio.md §22.5): the entry's own `$layout` (on its
+ * document, or in its frontmatter for a Markdown entry, {@link pageLayout}), else its collection's
+ * template page's `$layout`, else the project's `defaults.layout`. `null` when none applies.
+ *
+ * The template PAGE's own body is not spliced around the entry: a page that binds the entry into a
+ * wrapper of its own shows that wrapper only in Preview of the page itself, because the edit
+ * transforms cannot map the entry's paths through the page's bound node.
+ */
+export async function entryLayout(
+  doc: JxMutableNode,
+  tab: Tab | null,
+  path: string | null | undefined,
+): Promise<string | null> {
+  const own = pageLayout(doc, tab);
+  const match = path ? collectionForFile(path) : null;
+  const page = match ? await collectionPage(match.name, entryLocale(path)) : null;
+  return entryLayoutPath(own, page);
+}
+
+/**
  * Resolve a document into the form the iframe canvas renders: layout-distributed, edit-transformed,
  * with components/imports/$media/$head merged in, plus the path-mapper context and site style. This
  * is the "parent resolves, iframe renders" split — the realm-specific work (defineElement,
@@ -186,24 +308,35 @@ export async function resolveCanvasDocument(
     S.documentPath &&
     projectState?.isSiteProject &&
     (S.documentPath.startsWith("pages/") || S.documentPath.startsWith("./pages/"));
+  /* A collection entry written on the canvas is drawn the way a page is: inside a layout, with the
+     layout's nodes locked and the entry's own tree the editable region (studio.md §22.5). */
+  const isEntry =
+    !isPage && Boolean(projectState?.isSiteProject) && writesEntryOnCanvas(S.documentPath);
   let pageContentPrefix: (string | number)[] | null = null;
   let pageContentOffset = 0;
 
   // Layout wrapping obeys the tab-bar's "show layout elements" toggle (default on); with it off,
   // The page renders alone — the unwrapped path is identical to a non-layout page.
-  if (isPage && tab?.session.ui.showLayout !== false) {
-    const layoutPath = getEffectiveLayoutPath(doc.$layout);
+  if ((isPage || isEntry) && tab?.session.ui.showLayout !== false) {
+    const layoutPath = isEntry
+      ? await entryLayout(doc, tab, S.documentPath)
+      : getEffectiveLayoutPath(pageLayout(doc, tab));
     if (layoutPath) {
-      const layoutDoc = await resolveLayoutDoc(layoutPath);
+      const layoutDoc = await resolveCanvasLayout(layoutPath);
       if (layoutDoc) {
-        // The SAME normalization resolveLayoutDoc reads the file with, so the marker's `file` is a
-        // Path the editor can hand straight to navigateToComponent when the author asks to open it.
-        markLayoutNodes(layoutDoc, layoutPath.replace(/^\.\//, ""));
         const pageForSlots = canvasMode === "preview" ? structuredClone(toRaw(doc)) : renderDoc;
         const merged = distributePageIntoLayout(layoutDoc, pageForSlots);
         renderDoc =
           canvasMode === "preview" ? merged : prepareForEditMode(stripEventHandlers(merged));
         layoutWrapped = true;
+        if (S.documentPath) {
+          /* SAFETY: a document's `$elements` entries are tag-name strings, `{ $ref }` imports or
+             inline element definitions (a hand-edited null among them is skipped by the walk). */
+          rebaseLayoutElementRefs(
+            renderDoc.$elements as (JxElement | string | null)[] | undefined,
+            S.documentPath,
+          );
+        }
         const pageContent = findPageContentPrefix(merged);
         pageContentPrefix = pageContent?.prefix ?? null;
         pageContentOffset = pageContent?.offset ?? 0;
@@ -257,6 +390,40 @@ export async function resolveCanvasDocument(
       await resolveParamBoundState(renderDoc, boundKeys, docBase);
     }
   }
+
+  // `$site` and `$page`, as the build injects them (canvas-page-context.ts), in every mode: Preview
+  // Draws the page as it ships, and edit mode evaluates a component's bound props live. For a page
+  // This refines the pair injected above with the chosen route params and the project's i18n, and
+  // It is the only injection a collection entry gets.
+  if ((isPage || isEntry) && S.documentPath) {
+    const context = await pageContextFor(
+      {
+        documentPath: S.documentPath,
+        fields: isEntry ? (tab?.doc.content.frontmatter ?? null) : null,
+        isEntry,
+        lang: doc.$lang,
+        params: tab?.session.ui.previewParams ?? {},
+        title: doc.title,
+      },
+      projectState?.projectConfig,
+    );
+    if (context) {
+      // A rebuild, not a write: the render doc shares nodes with the tab's source document.
+      renderDoc = { ...renderDoc, state: { ...renderDoc.state, ...context } };
+    }
+  }
+
+  /* Class-backed state resolved before the render rather than by it (repeater-sources.ts): in every
+     mode, an entry naming an enabled extension's class by a bare `$prototype`, as the build
+     resolves it; in Edit and Design, also the collections a repeater reads, whose first item draws
+     the repeater's template. */
+  const extensions = await loadExtensions();
+  const classes = extensionClassPaths(extensions);
+  const bakeKeys = extensionClassKeys(renderDoc, classes);
+  if (canvasMode !== "preview") {
+    bakeKeys.push(...repeaterSourceKeys(doc));
+  }
+  renderDoc = await bakeRepeaterSources(renderDoc, [...new Set(bakeKeys)], docBase, classes);
 
   // Component definition docs (non-page): seed chosen test-prop values into the render doc's state
   // So a non-instantiated component previews with real data — templates, dataScope snapshots, and
@@ -361,7 +528,7 @@ export async function resolveCanvasDocument(
   if (effectiveElements.length > 0) {
     renderDoc.$elements = effectiveElements;
   }
-  renderDoc.imports = getEffectiveImports(renderDoc.imports);
+  renderDoc.imports = getEffectiveImports(renderDoc.imports, extensions);
   // The effective-media/head getters always answer a value: the merge, or an empty one.
   renderDoc.$media = getEffectiveMedia(renderDoc.$media);
   renderDoc.$head = getEffectiveHead(renderDoc.$head);

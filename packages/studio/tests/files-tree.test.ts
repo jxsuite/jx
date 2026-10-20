@@ -31,6 +31,7 @@ import {
 } from "./harness";
 import type { MockPlatformState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { requireProjectState, setProjectState } from "../src/store";
 import {
   PRIMARY_PANE,
@@ -523,7 +524,7 @@ describe("file tree listing", () => {
 
     // Keyed rows, and selection is one scope field the document compares against each row's path:
     // The nodes survive, so nothing the reader is on — a caret, a focus ring — is taken away.
-    expect(rows()).toEqual(before);
+    expect(identities(rows())).toEqual(identities(before));
     expect(rowFor("zeta.json").getAttribute("aria-selected")).toBe("true");
     expect(rowFor("beta.md").hasAttribute("aria-selected")).toBe(false);
   });
@@ -1091,7 +1092,7 @@ describe("file context menu", () => {
     expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["pages/home.json"]);
   });
 
-  test("Open Entry Form opens the tab in entry mode — the route the palette could not offer", async () => {
+  test("Open Entry opens a Markdown entry where it is written — the route the palette could not offer", async () => {
     await treeWithRegistry();
 
     await openMenuOn("posts/first.md");
@@ -1101,7 +1102,8 @@ describe("file context menu", () => {
 
     const tab = [...workspace.tabs.values()].find((t) => t.documentPath === "posts/first.md")!;
     expect(tab).toBeDefined();
-    expect(tab.session.ui.canvasMode).toBe("entry");
+    // An entry with a body is written on the canvas (studio.md §22.5); a JSON one opens its form.
+    expect(tab.session.ui.canvasMode).toBe("edit");
   });
 
   test("the declared rows come from the registry — with none published, they are absent", async () => {

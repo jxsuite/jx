@@ -24,8 +24,8 @@
  * There is no `icon` here any more, and its absence is the point rather than an omission: it was
  * typed `TemplateResult` and every value passed to it was an `sp-icon-*`, which is a Spectrum
  * element smuggled through a shared vocabulary into surfaces that have no other Spectrum in them.
- * `panels/git-panel.ts` was the last caller and it is a document now, so the field went with it —
- * `surfaces/empty-state.json` draws a word, and a region that needs a glyph beside one is asking
+ * The Source Control panel was the last caller and it became a document, so the field went with it
+ * — `surfaces/empty-state.json` draws a word, and a region that needs a glyph beside one is asking
  * for a control the kit declares rather than for a hole in this type.
  */
 export interface EmptyStateAction {

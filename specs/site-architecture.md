@@ -852,17 +852,16 @@ Additionally, the **Browse** canvas mode provides a full-screen project file tab
 
 ### 7.2 Content Collection Browser
 
-> **Status: Partial.** The Library ships as a `GridSource` editor with all five layouts and windowed, LRU-capped previews (`packages/studio/src/browse/library-source.ts`, `library-layouts.ts`, `library-preview.ts`). Cards, Calendar and Board work over every project file rather than a collection's own fields, and the layout is one module-scoped value (`libraryView.layout` in `library-pane.ts`), neither chosen per collection nor saved with a view: `packages/studio/src/grid/grid-layout.ts` saves only columns, sort, grouping and filter per grid.
+> **Status: Partial.** The browser ships as the Content workspace's home (`studio.md` §22.5): one collection at a time, the built-in Pages or a declared collection, over a `GridSource` scan with four views and windowed, LRU-capped previews (`packages/studio/src/browse/library-pane.ts`, `library-source.ts`, `library-layouts.ts`, `library-preview.ts`). Each collection keeps its own view, search and language for the session (`contentView` in `library-pane.ts`). Cards, Calendar and Board work over the collection's files rather than its entries' own fields, and a collection's view is not saved with a grid view: `packages/studio/src/grid/grid-layout.ts` saves only columns, sort, grouping and filter per grid.
 
-The **Library** is the collection browser — an editor kind over a `GridSource`, so a collection is the same kind of thing as a data table and is windowed by the same primitive.
+The **Content home** is the collection browser, over a `GridSource`, so a collection is the same kind of thing as a data table and is windowed by the same primitive. Media is not a collection: it is browsed in the Media workspace (`studio.md` §22.6).
 
 | Layout       | Status                                                                   | Description                                                               |
 | ------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| **Table**    | **Implemented**                                                          | Name, Category, Type, Path. Filterable by category and search.            |
+| **Table**    | **Implemented**                                                          | Name, URL (for Pages), Locale, Modified, Path. Filterable by search.      |
 | **Cards**    | **Partial** — windowed previews ship; no entry field is read into a card | Hero image, title and summary, with previews mounted only while on screen |
 | **Calendar** | **Partial** — dated by a filename prefix or mtime, never a schema date   | Date-sorted, for date-bearing collections                                 |
-| **Board**    | **Partial** — grouped by the fixed Library category, not a chosen field  | Grouped by a chosen field                                                 |
-| **Media**    | **Implemented**                                                          | Thumbnails, for the asset categories                                      |
+| **Board**    | **Partial** — grouped by the folder an entry is in, not a chosen field   | Grouped by a chosen field                                                 |
 
 **Views are windowed, and the window is the contract.** Rendering a live runtime instance per card does not survive a real project: the measured case is 300 pages in one category, where the whole list is 300 cards and 1,830 DOM nodes against a window's 40 and 270. Previews are mounted by an `IntersectionObserver` and held in an LRU whose cap must exceed one window's worth — a cap smaller than the window thrashes against itself and re-renders continuously.
 
@@ -881,7 +880,7 @@ Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG ca
 
 #### Frontmatter Form
 
-> **Status: Partial.** A content entry belonging to a collection with a schema opens the **entry editor**, a schema-driven form over the same widget mapping the inspector uses (`packages/studio/src/content/entry-editor.ts` over `mountSchemaForm` in `packages/studio/src/ui/schema-form.ts`). Five rows of the table below do not ship there: `format: "date"` and `format: "uri-reference"` are plain text fields, a `boolean` is a checkbox rather than a toggle, and an `array` of `string` and an `object` are raw JSON text.
+> **Status: Partial.** Entry editing is canvas-first (`studio.md` §22.5): an entry with a body is written on the canvas inside its template's layout, and its fields are the Inspector's Entry tab, the same schema-driven form over the same widget mapping the inspector uses (`packages/studio/src/content/entry-inspector.ts` over `mountSchemaForm` in `packages/studio/src/ui/schema-form.ts`). A JSON entry file opens the form-only **entry editor** instead (`content/entry-editor.ts`), and so does a CSV record of a file-backed collection, whose form reads and writes that one row through its file's grid (`content/record-entry.ts`, `studio.md` §22.5). Splicing an entry into its template page's bound body is Pending (`studio.md` §22.5). Five rows of the table below do not ship there: `format: "date"` and `format: "uri-reference"` are plain text fields, a `boolean` is a checkbox rather than a toggle, an `array` of `string` is a row per item with Add and Remove rather than a chip editor (an item with `format: "image"` is the media field, and an array of numbers, yes/no values, enum members or entry references gets the same rows with its own cell control), and an `object` is raw JSON text, except an image object (`{ src, alt?, width?, height?, title? }`), which is the media field over its `src` with an alt text row of its own.
 
 **One editor, two storage shapes.** Where an entry's fields LIVE depends on its format and nothing else: a Markdown entry keeps them in frontmatter, a JSON entry _is_ the document. The editor reads and writes whichever the format declares — forking the editor per format is how a JSON entry came to render a blank form and discard every edit while reporting success.
 
@@ -911,8 +910,8 @@ Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG ca
 | Operation       | Status          | Action                                                                                                                                                                    |
 | --------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Create**      | **Implemented** | Collection-scoped **New Entry**, seeded from the content type's schema defaults so the entry is valid the moment it exists. One creation flow, shared with the file tree. |
-| **Read**        | **Implemented** | The Library lists a collection; opening an entry gives the WYSIWYG canvas (Markdown) or the entry editor (JSON).                                                          |
-| **Update**      | **Implemented** | The entry editor edits an entry's fields for both storage shapes — Markdown frontmatter and the JSON document itself.                                                     |
+| **Read**        | **Implemented** | The Content home lists a collection; opening an entry gives the WYSIWYG canvas inside its layout (Markdown) or the entry editor (JSON).                                   |
+| **Update**      | **Implemented** | The Entry tab and the entry editor edit an entry's fields for both storage shapes — Markdown frontmatter and the JSON document itself.                                    |
 | **Delete**      | **Implemented** | Context menu → Delete, behind a confirmation that states the reference count (§9.4).                                                                                      |
 | **Rename/Move** | **Implemented** | Context menu → Rename. Updates the filename, and therefore the entry id and slug.                                                                                         |
 
@@ -1027,17 +1026,18 @@ It is a **warning, never an error**, and reported once per distinct value across
 
 The compiler automatically generates certain tags if not explicitly declared:
 
-| Auto-generated                   | Condition                                                                |
-| -------------------------------- | ------------------------------------------------------------------------ |
-| `<meta charset>`                 | Always (from `defaults.charset`)                                         |
-| `<meta name="viewport">`         | Always, unless the author supplies one                                   |
-| `<title>`                        | Always — page title, falling back to the site `name`                     |
-| `<link rel="canonical">`         | `url` set: `$site.url` + served path (§8.4.1); not the 404 page (§8.4.2) |
-| `<meta property="og:url">`       | With the canonical; an author-supplied value wins                        |
-| `<meta property="og:site_name">` | From `$site.name`; an author-supplied value wins                         |
-| `<html lang>`                    | From the page's `$lang`, else `defaults.lang`                            |
-| `<html dir>`                     | From the page's `$dir`, else `defaults.dir`; omitted when neither is set |
-| `sitemap.xml` entry              | Every indexable page, when `url` is set (§8.4.1)                         |
+| Auto-generated                   | Condition                                                                                                                                                                                     |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<meta charset>`                 | Always (from `defaults.charset`)                                                                                                                                                              |
+| `<meta name="viewport">`         | Always, unless the author supplies one                                                                                                                                                        |
+| `<title>`                        | Always — page title, falling back to the site `name`                                                                                                                                          |
+| `<meta name="description">`      | The page's `description` property (a Markdown page's frontmatter `description`), above the site's and the layout's; a description meta in the page's own `$head` wins (`withPageDescription`) |
+| `<link rel="canonical">`         | `url` set: `$site.url` + served path (§8.4.1); not the 404 page (§8.4.2)                                                                                                                      |
+| `<meta property="og:url">`       | With the canonical; an author-supplied value wins                                                                                                                                             |
+| `<meta property="og:site_name">` | From `$site.name`; an author-supplied value wins                                                                                                                                              |
+| `<html lang>`                    | From the page's `$lang`, else `defaults.lang`                                                                                                                                                 |
+| `<html dir>`                     | From the page's `$dir`, else `defaults.dir`; omitted when neither is set                                                                                                                      |
+| `sitemap.xml` entry              | Every indexable page, when `url` is set (§8.4.1)                                                                                                                                              |
 
 A page that has a Markdown twin also gets a `<link rel="alternate">` to it (§8.4.3).
 
@@ -1115,13 +1115,13 @@ The compiler serializes the `textContent` object to a JSON string within the `<s
 
 > **Status: Partial.** The `Search appearance` modal ships the merged-`$head` previews with provenance, the counters, the warnings and the grouped live fields (`packages/studio/src/panels/seo-modal.ts`, `packages/studio/src/panels/head-panel.ts`). The Schema.org editor does not exist anywhere in `packages/studio`, and `document.openSeo` deliberately declares no `aiTool` (`studio-ui-guidelines.md` §12.4), where this section says it has one.
 >
-> The previews live in a **modal**, `Search appearance`, rather than an inspector tab: they describe the document rather than a selection, and a rendered SERP row is a picture you study at width, not a field you fill in beside four others. They began as a disclosure inside the Document Header card and outgrew it — the card's job is the handful of values you type while writing.
+> The previews live in a **modal**, `Search appearance`, rather than an inspector tab: they describe the document rather than a selection, and a rendered SERP row is a picture you study at width, not a field you fill in beside four others. They began as a disclosure inside the Document Header card, which Edit no longer draws (`studio.md` §4.2), and outgrew it: a card's job is the handful of values you type while writing, and those are the Inspector's Page tab now.
 
 **The preview shows the MERGED `$head`** (§8.3), not the page's own entries — a page appends to the site's head rather than replacing it, so a preview of the page's half would misreport every title that inherits. Values the page did not author are marked as inherited, naming the donor, in the same provenance vocabulary the inspector uses for style and props.
 
 **There is no score.** Counters and named warnings only. A number out of 100 invites optimising the number, and the number is not the thing.
 
-**Two doors and a command.** The surface is opened by `document.openSeo` — a document-level command in the palette, with an `aiTool` projection — and projected onto two buttons: one at the foot of the Document Header card, one beside the Page panel's `Page` heading. Neither surface owns it. Two buttons because they are two moments: while writing the page, and while working on its head material.
+**One door and a command.** The surface is opened by `document.openSeo` — a document-level command in the palette, with an `aiTool` projection — and projected onto one button in the Inspector's Page tab, beside its `Page` heading, whether the tab is drawing a page's settings or a collection entry's (`studio.md` §6). The tab does not own it, so the palette reaches it by name. (A second button stood at the foot of the Document Header card until Edit stopped drawing that card, `studio.md` §4.2.)
 
 For any page or content entry it shows:
 
@@ -1381,29 +1381,30 @@ Only statically referenced files are copied into the build. A `src` computed at 
 
 ### 9.4 Studio Media Browser
 
-> **Status: Implemented.** Upload, browsing, metadata, the referenced-file warning and browsable usage (the Media view, `packages/studio/src/media/media-pane.ts`) all ship. The full Studio-side contract is `studio.md` §9.3 — this section states only what it means for the media on disk.
+> **Status: Implemented.** Upload, browsing, metadata, the referenced-file warning, browsable usage and the `public/media/` default all ship (`packages/studio/src/files/media-upload.ts` `DEFAULT_MEDIA_DIR`, the Media workspace's library in `packages/studio/src/media/media-library.ts`, the viewer in `media/media-pane.ts`; `packages/studio/tests/media-upload.test.ts`, `tests/media-library.test.ts`). The full Studio-side contract is `studio.md` §9.3 — this section states only what it means for the media on disk.
 
 **A preview resolves in the same space the canvas does.** Panel chrome — a media-picker thumbnail, the social card in a search-appearance preview — renders in the editor's own document, not the canvas, so a reference resolved for one and not the other breaks in exactly the places nobody photographs. The two take different things and must not be confused: a preview of what the AUTHOR WROTE resolves as §9.3 describes, while a preview of a FILE the browser is listing starts from the path and asks where that file publishes. `public/hero.jpg` is written `/hero.jpg` — a string that shares not one segment with it — so a preview built by prefixing a file path with a slash names a URL the site does not publish.
 
 **Usage is asked about the FILE, once.** A content-relative `./images/` reference previews at its asset-mount URL while the source keeps the authored form, so a media surface holds at least three names for one file and could ask under any of them. It asks under the file: §9.3 binds the engine to resolve every authored spelling, so a host that enumerated the spellings itself would be a second implementation of that rule — and the half that can fix a count but never a rewrite. Under-counting is what makes a delete look safe when it is not, so a delete states its reference count, and where the count cannot be answered it says **unknown**, never zero.
 
-Studio adds media to a project from four places: the Upload button on any image field, a file dropped on the canvas, a file dropped on the Files tree, and the Library's drop zone — which names its destination before the drop rather than choosing one for you. All of them write through the same core, which decides:
+Studio adds media to a project from four places: the Upload button on any image field, a file dropped on the canvas, a file dropped on the Files tree, and the Media workspace's Upload and drop zone (with Add new › Media, which is the same door). All of them write through the same core, which decides:
 
-- **Destination** — a document inside a content collection co-locates its media in `content/<collection>/images/` (§9.1); everything else lands in `public/`. The Files tree and the Manage view name their destination explicitly instead.
-- **Reference** — written per §9.3: `public/` contents from the site root (`/hero.jpg`), a content asset relative to its own entry (`./images/hero.jpg`) so the collection loader rewrites it to the asset mount, anything else relative to the project root.
+- **Destination** — a document inside a content collection co-locates its media in `content/<collection>/images/` (§9.1); everything else lands in `public/media/`, which the Media workspace uses too and states before the drop. The Files tree names its destination explicitly instead: the row the file is dropped on. `public/media/` is a default and not a rule; a file under any other `public/` path is published and listed exactly the same.
+- **Reference** — written per §9.3: `public/` contents from the site root (`/media/hero.jpg`), a content asset relative to its own entry (`./images/hero.jpg`) so the collection loader rewrites it to the asset mount, anything else relative to the project root.
 - **Collisions** — an upload never overwrites. A colliding name gains a `-1`, `-2`, … suffix before its extension.
 
 Uploaded images are ordinary project files and go through the build's optimization pipeline (§9.2) exactly like hand-placed ones.
 
 Shipped:
 
-- **Grid/list view** of all media in the project (thumbnail grid as default, table as alternative)
+- **Grid view** of all media in the project — every file under `public/` and every collection's `images/` — in the Media workspace (`studio.md` §22.6), filtered by kind and by **Unused**, searched, and sorted by newest, name or size
 - **Upload** — drag-and-drop or a file picker, on all four surfaces above
-- **Preview** — thumbnails for images, in both the picker and the Manage view
+- **Replace** — the one overwrite: the chosen file's bytes are written to the selected file's own path, so every reference keeps resolving (`studio.md` §9.3)
+- **Preview** — thumbnails for images, in the picker and in the Media workspace, requested as their tiles scroll into view
 - **Metadata** — dimensions and file size, as a row caption in the media picker (`files/media-meta.ts`: `1200 × 800 · 84 KB`). Both halves come from work already done — the size from the directory listing that built the list, the pixels from the thumbnail once the browser has decoded it — so a caption never costs a second download
 - **Delete** — the confirmation states the reference count, computed on the authored ref, and says **unknown** rather than zero when a lane cannot be counted (`files/file-ops.ts`)
-- **Viewing** — clicking a media file in the Files tree or the Library opens it in a tab of its own (`studio.md` §4.2's Media mode). It shows the asset at full size — an image, a video or audio with controls, a font as a specimen, a PDF embedded — with its kind and dimensions, the site URL a document would reference it by, and the list of documents that do. Before it, opening a media file was not merely unsupported: it produced an error telling the author to add a format class to `project.json`, which is not advice about a PNG.
-- **Usage tracking as a surface** — the Media view is that reader. The query already shipped and was already correct; what was missing was anywhere to see it outside the delete confirmation, so the answer to "which pages use this image?" arrived at the one moment the author had already decided. A failed count still reads **unknown**, never zero.
+- **Viewing** — clicking a media file in the Files tree, the Site panel or the Media workspace (**Open in viewer**) opens it in a tab of its own (`studio.md` §4.2's Media mode). It shows the asset at full size — an image, a video or audio with controls, a font as a specimen, a PDF embedded — with its kind and dimensions, the site URL a document would reference it by, and the list of documents that do. Before it, opening a media file was not merely unsupported: it produced an error telling the author to add a format class to `project.json`, which is not advice about a PNG.
+- **Usage tracking as a surface** — the Media view and the Media workspace's detail pane are that reader, and **Unused** asks the same question of every file when it is chosen. The engine (`packages/server/src/refactor/find-refs.ts`) reads what every document references once per tree change and answers each question from that index, so asking about every file costs one sweep of the project, not one per file. The query already shipped and was already correct; what was missing was anywhere to see it outside the delete confirmation, so the answer to "which pages use this image?" arrived at the one moment the author had already decided. A failed count still reads **unknown**, never zero.
 
 ---
 

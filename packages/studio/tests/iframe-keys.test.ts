@@ -19,6 +19,7 @@ import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 import {
   FRAME_KEY_SCOPES,
+  HOST_ONLY_COMMANDS,
   NO_TABLE,
   frameScopeStack,
   serializeKey,
@@ -242,7 +243,7 @@ describe("the frame's table is the app's keymap", () => {
   /** The registry the app builds, as `appCommandSet()` projects it. */
   const registry = createCommandRegistry({ getContext: emptyContext, mac: false });
   registry.registerAll(appCommandSet());
-  const chords = chordsInScopes(registry.keymap, FRAME_KEY_SCOPES);
+  const chords = chordsInScopes(registry.keymap, FRAME_KEY_SCOPES, HOST_ONLY_COMMANDS);
   const live: ForwardTable = { chords, mac: false };
 
   test("the projection is non-empty and covers the three frame scopes", () => {
@@ -264,7 +265,9 @@ describe("the frame's table is the app's keymap", () => {
         [false, "preview"],
       ] as const) {
         const stack = frameScopeStack(sessionLive, mode);
-        const claimed = registry.keymap.resolveChord(entry.chord, stack) !== undefined;
+        // A host-only command claims its chord for the host's own surfaces, never for a frame.
+        const holder = registry.keymap.resolveChord(entry.chord, stack);
+        const claimed = holder !== undefined && !HOST_ONLY_COMMANDS.has(holder.commandId);
         const event = eventFor(entry.chord);
         if (!event) {
           continue;
@@ -275,6 +278,21 @@ describe("the frame's table is the app's keymap", () => {
         ).toBe(claimed);
       }
     }
+  });
+
+  test("Escape stays with the page in Preview and mid-sentence, and selects the parent in Design", () => {
+    /* `pane.backToHome` holds bare Escape globally, for the views beside a strip-less home, none of
+       which is a canvas frame. Projected into the table it would have the frame cancel Escape
+       everywhere, so a rendered page's own <dialog> or popover could not be dismissed with it. */
+    const escape = () => key({ key: "Escape" });
+    expect(registry.keymap.resolveChord("escape", ["global"])?.commandId).toBe("pane.backToHome");
+    expect(shouldForwardKey(escape(), live, false, "preview")).toBe(false);
+    expect(shouldForwardKey(escape(), live, true, "edit")).toBe(false);
+    // Design still forwards it, to `selection.selectParent` in the canvas scope.
+    expect(shouldForwardKey(escape(), live, false, "design")).toBe(true);
+    const everything = chordsInScopes(registry.keymap, FRAME_KEY_SCOPES);
+    expect(everything).toContainEqual({ chord: "escape", scope: "global" });
+    expect(chords).not.toContainEqual({ chord: "escape", scope: "global" });
   });
 
   test("the four format verbs with chords are caret-scoped, so a sentence keeps its clipboard", () => {

@@ -19,6 +19,10 @@ code:
   - packages/studio/src/panels/canvas-dnd-bridge.ts
   - packages/studio/src/canvas/iframe-interaction.ts
   - packages/studio/src/tabs/selection.ts
+  - packages/studio/src/canvas/canvas-page-context.ts
+  - packages/studio/src/canvas/repeater-sources.ts
+  - packages/studio/src/canvas/npm-modules.ts
+  - packages/studio/src/utils/edit-display.ts
 ---
 
 # The canvas
@@ -41,13 +45,15 @@ In **Design** and **Project Styles** the canvas is an open surface you move arou
 
 **Design opens already fitted.** Switching into Design or Project Styles scales the canvas down so the whole thing is in view, so a wide layout never lands cut off at the edge of the panel. It never scales _up_ past 100%, and it never overrides you: once you have set a zoom yourself (with the controls, :kbd[Ctrl]-scroll or the chords), that file keeps your zoom for the rest of the session.
 
-In **Edit** mode the page scrolls like a normal browser page instead of panning, and :kbd[Ctrl]-scrolling zooms the content itself, so the text reflows at the new size, like browser page zoom. The element under your cursor stays under it while the page reflows around it. The zoom pod stays at the bottom-right in Edit, set in from the page's scrollbar so it never covers the track. In **Preview** the page scrolls too, and there is nothing to pan or zoom. See **[Modes](/docs/studio/interface/modes)**. The same goes for every editor that isn't a canvas: **Code**, the **Grid**, the **Library**, an **entry form** and **[Project Settings](/docs/studio/projects/settings)** all scroll under the wheel exactly like an ordinary page, including the boxes inside them, the Raw JSON view of `project.json` for one. What none of them does is zoom: :kbd[Ctrl]-scroll and a trackpad pinch do nothing there, the same as anywhere else in Studio outside the canvas, so a stray pinch never rescales the whole window.
+In **Edit** mode the page scrolls like a normal browser page instead of panning, and :kbd[Ctrl]-scrolling zooms the content itself, so the text reflows at the new size, like browser page zoom. The element under your cursor stays under it while the page reflows around it. The zoom pod stays at the bottom-right in Edit, set in from the page's scrollbar so it never covers the track. In **Preview** the page scrolls too, and there is nothing to pan or zoom. See **[Modes](/docs/studio/interface/modes)**. The same goes for every editor that isn't a canvas: **Code**, the **Grid**, the **Content home**, an **entry form** and **[Project Settings](/docs/studio/projects/settings)** all scroll under the wheel exactly like an ordinary page, including the boxes inside them, the Raw JSON view of `project.json` for one. What none of them does is zoom: :kbd[Ctrl]-scroll and a trackpad pinch do nothing there, the same as anywhere else in Studio outside the canvas, so a stray pinch never rescales the whole window.
 
 ## Selecting elements
 
 Click any element to select it. Studio outlines it, the Inspector inspects it, and the status bar shows its position in the page structure, a clickable trail of its ancestors.
 
 That includes the parts of the page that come from its **[layout](/docs/studio/projects/pages-layouts-components)**. The header and footer render dimmed, under a `LAYOUT · layouts/base.json` chip, and clicking one selects it and offers **Open Layout →** in the Inspector. They can't be typed into from here, because they belong to every page that uses that layout; see **[Layout elements](/docs/studio/design/properties#layout-elements)**.
+
+A content entry is drawn the same way: open a post and it is written inside its collection's template, with the template's header and footer locked around it. A slim banner above the canvas says so, with a button that opens the template in Design; see **[Write an entry](/docs/studio/projects/browse#write-an-entry)**.
 
 :kbd[⌘]-click (macOS) / :kbd[Ctrl]-click (Windows/Linux) adds an element to the selection or takes it out again. Every selected element keeps a box on the canvas, while the block action bar, the Inspector's single-element controls and the status trail address the one you clicked most recently; the status bar says **N selected** in front of the trail so the trail is never mistaken for the whole set. Ranges are drawn in the **[Outline](/docs/studio/design/layers#select-several-at-once)**, where a :kbd[Shift]-click covers everything between two rows. The canvas has no rubber-band selection.
 
@@ -84,7 +90,7 @@ A small floating toolbar appears above the selected element. It stays on the ele
 - For a component instance, **Edit Component** opens the component itself; for anything else, **Convert to Component** turns the selection into a reusable component.
 - While you're editing text, formatting buttons (bold, italic, and friends) and an **Insert data** button join the bar. See [Edit mode](/docs/studio/editing).
 
-The bar steps aside when you leave the canvas. Click into the Inspector, a panel or the document header and it disappears, so it is never sitting over the control you were reaching for. **Your selection stays exactly as it was**, which is what the Inspector is editing. It comes back the moment the canvas is in play again: click the element on the canvas, or select anything from the Outline, and the bar is there for it. Panning or zooming the canvas leaves it alone, and so do the bar's own pieces: its `⋮` menu, the link popover and the slash menu. In Edit, the bar also hides while its element is scrolled out of view, including up under the Document Header card, and returns when the element scrolls back. While only the top of the element has gone under the card, the bar drops below the element rather than onto the card.
+The bar steps aside when you leave the canvas. Click into the Inspector, a panel or the pane's context bar and it disappears, so it is never sitting over the control you were reaching for. **Your selection stays exactly as it was**, which is what the Inspector is editing. It comes back the moment the canvas is in play again: click the element on the canvas, or select anything from the Outline, and the bar is there for it. Panning or zooming the canvas leaves it alone, and so do the bar's own pieces: its `⋮` menu, the link popover and the slash menu. In Edit, the bar also hides while its element is scrolled out of view, including up under the writing banner over a collection entry, and returns when the element scrolls back. While only the top of the element has gone out of view, the bar drops below the element rather than standing above the page.
 
 :::doc-tip
 The bar keeps one shape. An action that cannot apply to the current selection, like moving the first child up or deleting the document root, is shown greyed with a tooltip saying what it needs, rather than disappearing. Buttons never move under your cursor.
@@ -128,6 +134,18 @@ The canvas is a page of your site, not a picture of one. Everything a published 
 
 :::doc-note
 The canvas stylesheet and the one `jx build` writes are produced by the same builder and compared byte for byte in the test suite, so the two cannot drift apart quietly. If the canvas and a built page ever do disagree about a project-level style, that is a bug worth reporting rather than a limit of the editor.
+:::
+
+## Your site's data
+
+The page on the canvas also knows where it is. `$page` and `$site` are filled in the way a build fills them: the page's URL, its title, its language and writing direction from the folder it sits in, and your site's name and languages. A collection entry gets the URL and language of the page that publishes it. So `${$page.locale}` formats a date in the page's own language on the canvas too, in every view.
+
+In Edit and Design, text your page draws from data shows the binding itself, such as `❪ item.title ❫`, because that is what you edit. A component is different: it is handed real values. A component inside a repeater is drawn with the list's first item, so an exhibition card shows the first exhibition's title, dates and gallery rather than failing on a date it cannot read. The list's data is loaded before the page draws.
+
+Data a layout reads from a content type, such as a sidebar's navigation, is loaded the same way, and a package script a component names with `npm:` is loaded from your project's installed packages.
+
+:::doc-note
+Two things a built page has are still missing on the canvas: state declared at the project level, and the list of a page's translations (`$page.alternates`), so a language switcher built from it stays empty here.
 :::
 
 ## Next

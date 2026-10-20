@@ -8,8 +8,8 @@
  *   per-render cleanup arrays. It stays a plain object, because wrapping a live editor instance and
  *   detached DOM nodes in a reactive proxy is an active hazard.
  * - `shell` (here) holds UI **inputs** — which panel each dock shows, whether each dock is open and
- *   how wide, the focused region, the layout preset, and the project-level state (source control,
- *   the stylebook selection, the settings tab) that a _document_ must not own.
+ *   how wide, the focused region, the workspace, and the project-level state (source control, the
+ *   stylebook selection, the settings tab) that a _document_ must not own.
  *
  * Because this record is reactive, a surface tracks it by reading it: the rail, the left panel and
  * the toolbar all repaint from the effects they already run. The stand-in that preceded this —
@@ -22,7 +22,7 @@
  */
 
 import { isBoolean, isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
-import { effect, effectScope, reactive } from "./reactivity";
+import { effect, effectScope, pauseTracking, reactive, resetTracking } from "./reactivity";
 import { SETTINGS } from "./services/settings/definitions";
 import { readStoredSetting, setSetting } from "./services/settings/kernel";
 import { loadedMonaco } from "./services/monaco-lazy";
@@ -36,14 +36,22 @@ import {
   booleanProperty,
   enumArg,
   enumProperty,
-  stringArg,
-  stringProperty,
 } from "./commands/command-args";
 import type { EffectScope } from "@vue/reactivity";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { LayoutHit } from "./canvas/iframe-protocol";
 import type { GitBranchesResult, GitDiffState, GitLogEntry, GitStatusResult } from "./types";
 import type { AnyCommand, CommandRegistry } from "./commands/registry";
+import {
+  DEFAULT_WORKSPACE,
+  isWorkspaceId,
+  WORKSPACE_IDS,
+  WORKSPACES,
+} from "./workspace/workspace-ids";
+import type { WorkspaceId } from "./workspace/workspace-ids";
+import { DEFAULT_PUBLISH_DESTINATION, DEFAULT_PUBLISH_TAB } from "./publish/publish-ids";
+import type { PublishDestination, PublishTab } from "./publish/publish-ids";
+import type { PagesDeploymentInfo } from "./publish/pages-service";
 
 /**
  * The three resizable docks around the pane grid: two flanking it, one under it.
@@ -54,7 +62,7 @@ import type { AnyCommand, CommandRegistry } from "./commands/registry";
  * {@link INSPECTOR_TAB_IDS}, the same mechanism that selects Content, Style and Logic.
  *
  * `"bottom"` is the one the Bottom dock (§16.3) added. It is a dock like the other two — a collapse
- * flag, a remembered size, a resize handle, a place in every {@link LayoutPreset} — and the reason
+ * flag, a remembered size, a resize handle, a place in every workspace's frame — and the reason
  * `view.toggleBottomDock` had no idempotent setter for two phases is that it was not on this
  * record. It sits under the PANE GRID rather than under the window (§16.3), so opening it never
  * narrows the Navigator or the Inspector.
@@ -88,18 +96,45 @@ export type DockId = "left" | "right" | "bottom";
  * `tests/panel-registry.test.ts` asserts the two agree, so the duplicate cannot drift.
  */
 export const NAVIGATOR_PANEL_IDS = [
+  "site",
+  "collections",
+  "styles",
   "files",
   "search",
-  "git",
   "i18n",
   "layers",
-  "page",
   "data",
   "packages",
   "insert",
 ] as const;
 
 export type NavigatorPanelId = (typeof NAVIGATOR_PANEL_IDS)[number];
+
+/**
+ * The Navigator panels that exist only as one workspace's preset panel: no rail button, and no
+ * frame but that workspace's draws them. Collections is the Content workspace's Navigator (§22.5),
+ * and Styles the Styles workspace's (§7.1).
+ *
+ * The dock record is the WINDOW's, so `leftTab` is persisted whatever workspace wrote it; a window
+ * closed in Content stores `collections`. Every workspace's own frame replaces it on entry, but a
+ * window with no project open applies no workspace frame, and drew "Collections · project" over a
+ * rail that has no Collections button. {@link navigatorPanelOutsideWorkspace} is the guard both of
+ * those moments go through. `tests/panel-registry.test.ts` asserts this set is exactly the
+ * rail-less panels a preset pins, so it cannot drift from the records.
+ */
+export const WORKSPACE_ONLY_PANELS: ReadonlySet<NavigatorPanelId> = new Set([
+  "collections",
+  "styles",
+]);
+
+/**
+ * The Navigator panel to show when no workspace frame chooses one (boot, and no project open): the
+ * stored panel, unless it is {@link WORKSPACE_ONLY_PANELS workspace-only}, in which case the
+ * default workspace's own first panel.
+ */
+export function navigatorPanelOutsideWorkspace(stored: NavigatorPanelId | null): NavigatorPanelId {
+  return stored && !WORKSPACE_ONLY_PANELS.has(stored) ? stored : DEFAULT_PANEL_ID;
+}
 
 /**
  * Panel ids a previous build persisted, and what they are called now.
@@ -111,8 +146,16 @@ export type NavigatorPanelId = (typeof NAVIGATOR_PANEL_IDS)[number];
  */
 const RENAMED_PANEL_IDS = new Map<string, NavigatorPanelId>([
   ["blocks", "insert"],
-  ["head", "page"],
+  /* Not a rename either — a MOVE. The Page panel is the Inspector's first tab now (§6), so the
+     Navigator has no panel of that name; a stored `page` (or the `head` it was before that) reopens
+     the Navigator on the Site panel, the Design workspace's own default, rather than on nothing. */
+  ["head", "site"],
+  ["page", "site"],
   ["imports", "packages"],
+  /* A move out of the Navigator altogether: Source Control is the Publish workspace's Review
+     changes and Branches now (§5.5, §22.8), so the Navigator has no panel of that name. A stored
+     `git` reopens on the Site panel, the Design workspace's own default, rather than on nothing. */
+  ["git", "site"],
   /* Not a rename — a MERGE. The State editor is part of the Data panel now (§5.6), so a
      stored `leftTab: "state"` names a real place and lands on it, rather than returning `null` and
      booting into the default the way `problems` does. Defining a value and watching it resolve are
@@ -120,21 +163,19 @@ const RENAMED_PANEL_IDS = new Map<string, NavigatorPanelId>([
   ["state", "data"],
 ]);
 
-/** The panel the Navigator wakes up on when nothing usable is stored. */
-export const DEFAULT_PANEL_ID: NavigatorPanelId = "layers";
-
-/** Whether a string is a declared panel id. */
-export function isNavigatorPanelId(value: unknown): value is NavigatorPanelId {
-  return typeof value === "string" && NAVIGATOR_PANEL_IDS.some((id) => id === value);
-}
+/**
+ * The panel the Navigator wakes up on when nothing usable is stored: the Site panel, the project by
+ * route (§5.7), because a fresh project is opened to find a page rather than to edit one.
+ */
+export const DEFAULT_PANEL_ID: NavigatorPanelId = "site";
 
 /**
  * Narrow an id arriving from a `string`-typed roster, or throw naming where it came from.
  *
- * The lock on the door {@link NAVIGATOR_PANEL_IDS} describes, in one place so the rail and the ⌘1–8
- * dispatcher cannot disagree about what an undeclared id means. Both receive their id from
- * `PanelRecord.id`, which is deliberately a `string` — the registry hosts the Bottom dock's panels
- * too, and their ids are {@link BOTTOM_TAB_IDS}.
+ * The lock on the door {@link NAVIGATOR_PANEL_IDS} describes, in one place so the rail and the
+ * `panel.focus.*` dispatcher cannot disagree about what an undeclared id means. Both receive their
+ * id from `PanelRecord.id`, which is deliberately a `string` — the registry hosts the Bottom dock's
+ * panels too, and their ids are {@link BOTTOM_TAB_IDS}.
  *
  * It throws rather than returning null because `tests/panel-registry.test.ts` asserts the enum and
  * the registry agree, so a failure here means the two have drifted — and the symptom of the last
@@ -174,24 +215,40 @@ export function migratePanelId(stored: JsonValue | undefined): NavigatorPanelId 
 }
 
 /**
- * The Inspector's tab ids, in strip order — the `value`s `panels/right-panel.ts` renders.
+ * The Inspector's LEAF ids, in strip order — every view the dock can show, and the values
+ * `view.setRightTab` accepts (§6).
  *
- * Four now, and `"assistant"` is one of them: the chat is a tab of this dock, so the id space that
- * addresses Content, Style and Logic addresses it too. The old arrangement needed a fourth verb
- * (`view.setAssistant`) precisely because the assistant was somewhere else; it survives as the
- * dock-toggle spelling of "show me the assistant", but it now writes the same field as the others.
- *
- * The ORDER is §6's — Content · Style · Logic · Assistant — which is the order ⌘⇧1–4 follow. The
- * human titles live in `commands/defaults.ts`'s `INSPECTOR_TABS` (a module with no state and no
- * DOM, so the CI checks can load it); `tests/right-panel.test.ts` asserts the two agree, the same
- * way `tests/panel-registry.test.ts` does for the rail.
+ * The strip draws three tabs, **Page · Element · Assistant**, and five leaves sit under them:
+ * `page`, then Element's three views (`properties` = Content, `style` = Style, `events` = Logic)
+ * behind a sub-switch, then `assistant`. The leaves stay addressable one by one because they are
+ * what scripts, chords and shots name — `view.setRightTab { tab: "style" }` shows Element with
+ * Style chosen — and a strip of three that addressed only itself would make Style unreachable by
+ * name. `commands/defaults.ts`'s `INSPECTOR_TABS` carries the titles and the strip grouping (a
+ * module with no state and no DOM, so the CI checks can load it); `tests/right-panel.test.ts`
+ * asserts the two agree, the same way `tests/panel-registry.test.ts` does for the rail.
  */
-export const INSPECTOR_TAB_IDS = ["properties", "style", "events", "assistant"] as const;
+export const INSPECTOR_TAB_IDS = ["page", "properties", "style", "events", "assistant"] as const;
 
 export type InspectorTabId = (typeof INSPECTOR_TAB_IDS)[number];
 
-/** The tab the Inspector falls back to — the leftmost, Content. */
-export const DEFAULT_INSPECTOR_TAB: InspectorTabId = "properties";
+/**
+ * The leaf the Inspector falls back to — Page, the strip's first tab, which is what the dock shows
+ * when nothing is selected (§6: an undeclared stored id coerces to Page).
+ */
+export const DEFAULT_INSPECTOR_TAB: InspectorTabId = "page";
+
+/** The Element tab's three leaves, in sub-switch order. */
+export const ELEMENT_TAB_IDS = ["properties", "style", "events"] as const;
+
+export type ElementTabId = (typeof ELEMENT_TAB_IDS)[number];
+
+/** The Element leaf the strip lands on when the selection first arrives and none was used yet. */
+export const DEFAULT_ELEMENT_TAB: ElementTabId = "properties";
+
+/** Whether a leaf is one of the Element tab's three views. */
+export function isElementTabId(value: unknown): value is ElementTabId {
+  return typeof value === "string" && ELEMENT_TAB_IDS.some((id) => id === value);
+}
 
 /** Whether a string is a declared Inspector tab id. */
 export function isInspectorTabId(value: unknown): value is InspectorTabId {
@@ -268,56 +325,148 @@ export interface ShellGit {
    */
   rev: number;
   logEntries: GitLogEntry[] | null;
-  /** "changes" | "history" — the panel's sub-tab. */
-  subTab: string;
   /** Epoch ms of the last successful refresh, or null when never refreshed. */
   lastUpdated: number | null;
+}
+
+/**
+ * What the Publish workspace is showing (studio.md §22.8): which sub-tab, and which destination its
+ * Review changes and the quick publish dialog offer. Project level, like the repository both
+ * describe, and reset with it, so the next project opens on Review changes rather than on the last
+ * project's Branches.
+ */
+export interface ShellPublish {
+  tab: PublishTab;
+  destination: PublishDestination;
+  /** What the host said about the connected project's deployments, and for which Pages project. */
+  deploys: {
+    state: "idle" | "loading" | "loaded" | "failed";
+    rows: PagesDeploymentInfo[];
+    error: string;
+    project: string;
+  };
+  /** The last build check, and the change set it was run against (`publish/publish-changes.ts`). */
+  build: { state: "idle" | "running" | "passed" | "failed"; text: string; for: string };
+  /** The pull request Send for review last opened; `number` 0 for none. */
+  review: { number: number; url: string };
 }
 
 /** The stylebook catalogue's selection and filters — project level, like the styles they edit. */
 export interface ShellStylebook {
   selection: string | null;
-  /** "elements" | "variables" */
-  tab: string;
+  /**
+   * The custom property the Variables view is pointed at (`--accent`), chosen from the Outline's
+   * variable rows, or `null`. Which LIST the Outline draws is not stored here: it follows the view
+   * the pane is in (Elements or Variables), so the two can never disagree.
+   */
+  variable: string | null;
+  /**
+   * The view the Styles workspace's home is in: Variables (`tokens`, the first visit's view, which
+   * is the most common reason to come here) or Elements (`stylebook`). Written whenever
+   * `project.json` is shown in one of the two, so the next visit, and Back from Code, return to the
+   * view the author was last in. Code is never the home: it is a view opened beside it.
+   */
+  view: "stylebook" | "tokens";
   filter: string;
   customizedOnly: boolean;
 }
 
 /**
- * A named arrangement of the shell — a layout tab (`docs/studio/interface.md`, "Command Bar").
+ * What a workspace does to the frame when it is entered (`docs/studio/interface.md`, "Workspaces").
  *
- * A layout is a TUPLE, not a mode: which Navigator panel is showing, whether each dock is open and
- * how wide, and which Inspector tab is selected. Picking one reconfigures; it never removes. Every
- * panel stays reachable by rail, chord and palette afterwards, because workspaces that gate
- * features are refused (`docs/studio/interface.md`, "Command Bar") — telling a copy editor the
- * Style panel "is in ⌘K" hands the non-technical user the one affordance they are least likely to
- * reach for.
+ * A preset is applied on EVERY entry and is not a lock (`specs/studio.md` §22.3). Entering a
+ * workspace draws the rail only where the rail has something to offer (Design), and opens or
+ * collapses the Navigator and the Inspector for the work the workspace is for; the dock toggles
+ * keep working inside it, and the next entry applies the preset again. The one thing carried from
+ * visit to visit is which Navigator panel a workspace that names none was showing, so Design comes
+ * back on the panel it was left on rather than on Styles' Outline.
  *
- * The field this replaces (`shell.layout`, a string with a declared default and NO writer) was the
- * exact failure `layoutSelection` had already been through: a record nothing sets, read by chrome
- * that therefore cannot change. Wiring it was the alternative to deleting it, and these are the
- * writers.
- *
- * **Editor kind is deliberately not in the tuple.** The shell redesign's layout tuple named it, but
- * nothing in the shell can apply it: switching a pane's editor is `studio.ts`'s `setCanvasMode`,
- * which this module does not have and cannot be handed without changing a bootstrap it does not
- * own. A fourth field no writer could honour would recreate the defect this type exists to close,
- * so the tuple is three fields and the fourth arrives with the pane record that can carry it.
+ * It replaces the four named layouts (Write · Design · Build · Ship) that preceded it. A layout was
+ * a tuple of panels with no job attached; a workspace owns its tabs, so switching to one changes
+ * WHAT is on screen, not only where the docks are.
  */
-export interface LayoutPreset {
-  /** Stable key. Built-ins use their own lowercase name; a saved layout gets a slug of its. */
-  id: string;
-  /** What the Command Bar tab reads. Renamed by double-clicking it. */
-  name: string;
-  /** Which Navigator panel this arrangement shows. */
-  navigatorPanel: NavigatorPanelId;
-  /** Which Inspector tab this arrangement selects. */
-  inspectorTab: InspectorTabId;
-  /** Which Bottom dock tab this arrangement selects — read whether or not the dock is open. */
-  bottomTab: BottomTabId;
-  /** Dock visibility and sizes, all three of them. */
-  docks: Record<DockId, DockState>;
+export interface WorkspacePreset {
+  id: WorkspaceId;
+  /** Whether the rail column is drawn at all. It has no toggle of its own, so this is a class. */
+  rail: boolean;
+  /**
+   * The Navigator on entry: open or collapsed, and on which panel. `panel` is applied on EVERY
+   * entry; `initial` is the panel a workspace that remembers its own opens on when it has nothing
+   * to remember yet — Design's Site panel (§22.3: "the Site panel, or the last Design panel").
+   */
+  navigator: { open: boolean; panel?: NavigatorPanelId; initial?: NavigatorPanelId };
+  /**
+   * The Inspector: open or collapsed on entry, and the tab it selects when one is named. The tab is
+   * per-document state, so naming it costs no other document anything.
+   *
+   * `whileWriting` draws it over a collapsed `open` while the active tab is a document written on
+   * the canvas ({@link WorkspaceDeps.writingOnCanvas}): Content's entries are edited on the canvas,
+   * where element selection and the Inspector apply, and its Library and forms are not; Styles'
+   * Elements view selects element defaults on its canvas, and its Variables and Code views do not.
+   */
+  inspector: { open: boolean; tab?: InspectorTabId; whileWriting?: boolean };
+  /**
+   * Whether each pane draws its document tab strip. Design and Content do: they are where several
+   * documents are open at once. Media, Styles and Publish draw their home surface alone, and what
+   * they open beside it (a media file, a comparison, `project.json` as Code) is left through the
+   * pane context bar's Back control (`workspace/workspace-back.ts`), so no strip is needed to get
+   * back. Projected as {@link TAB_STRIP_HIDDEN_CLASS} on `#app`.
+   */
+  tabStrip: boolean;
 }
+
+/**
+ * The five presets.
+ *
+ * - **Design** draws the rail and both side docks: the canvas, its outline and its inspector.
+ * - **Content** opens the Navigator on the Collections panel and collapses the Inspector, drawing it
+ *   while an entry is being written on the canvas.
+ * - **Media** and **Publish** collapse both side docks: each one's home is a surface that lays itself
+ *   out (the media grid, the change list).
+ * - **Styles** opens the Navigator on the Styles panel (variables, element defaults and color
+ *   schemes), and the Inspector on its Style tab only while the Elements view is on screen: that
+ *   view selects an element default on a canvas, and the Inspector is where it is styled. Variables
+ *   is edited in the view itself, and Code has no canvas, so both leave the pane its width.
+ *
+ * Only Design and Content draw a tab strip; the other three draw their home surface alone.
+ */
+export const WORKSPACE_PRESETS: Readonly<Record<WorkspaceId, WorkspacePreset>> = {
+  content: {
+    id: "content",
+    inspector: { open: false, whileWriting: true },
+    navigator: { open: true, panel: "collections" },
+    rail: false,
+    tabStrip: true,
+  },
+  design: {
+    id: "design",
+    inspector: { open: true },
+    navigator: { initial: "site", open: true },
+    rail: true,
+    tabStrip: true,
+  },
+  media: {
+    id: "media",
+    inspector: { open: false },
+    navigator: { open: false },
+    rail: false,
+    tabStrip: false,
+  },
+  publish: {
+    id: "publish",
+    inspector: { open: false },
+    navigator: { open: false },
+    rail: false,
+    tabStrip: false,
+  },
+  styles: {
+    id: "styles",
+    inspector: { open: false, tab: "style", whileWriting: true },
+    navigator: { open: true, panel: "styles" },
+    rail: false,
+    tabStrip: false,
+  },
+};
 
 export interface ShellState {
   /** Which panel the Navigator dock shows. One of {@link NAVIGATOR_PANEL_IDS}. */
@@ -342,10 +491,11 @@ export interface ShellState {
    */
   paneSplit: number;
   focusRegion: FocusRegion;
-  /** The active {@link LayoutPreset}'s id — the Command Bar tab drawn as selected. */
-  layout: string;
-  /** Every layout this project has, built-ins included. Persisted per project root. */
-  layouts: LayoutPreset[];
+  /**
+   * The workspace on screen — the top bar's selected tab, and the filter every pane's tab strip
+   * applies. Written by {@link enterWorkspace} alone. Persisted per project root.
+   */
+  workspace: WorkspaceId;
   /**
    * Layout chrome the author clicked, or `null`: a header, a footer, anything contributed by the
    * layout file. It is deliberately NOT a document selection: the node is not in the open page at
@@ -353,10 +503,9 @@ export interface ShellState {
    * the element inspector. See {@link setLayoutSelection}.
    */
   layoutSelection: LayoutHit | null;
-  /** Which section Project Settings opens on. */
-  settingsTab: string;
   stylebook: ShellStylebook;
   git: ShellGit;
+  publish: ShellPublish;
 }
 
 export const DOCK_STORAGE_KEY = "jx-studio-panel-widths";
@@ -364,9 +513,8 @@ export const DOCK_STORAGE_KEY = "jx-studio-panel-widths";
 /**
  * The per-project record's key prefix — one namespaced record per project root (§14.8).
  *
- * Namespaced because a layout is an arrangement of THIS project's panels: "Ship" over a repo with
- * no git remote is not the same tuple as "Ship" over one that has one, and two projects sharing a
- * key means opening the second silently rewrites the first.
+ * Namespaced because a workspace and its session are THIS project's: two projects sharing a key
+ * means opening the second silently rewrites the first.
  *
  * Dock geometry stays in {@link DOCK_STORAGE_KEY}, which is read at module scope, before any
  * project root exists. It is workspace state — `resetProjectShell()` has always kept it across a
@@ -527,93 +675,31 @@ function freshGit(): ShellGit {
     logEntries: null,
     rev: 0,
     status: null,
-    subTab: "changes",
   };
 }
 
+function freshPublish(): ShellPublish {
+  return {
+    build: { for: "", state: "idle", text: "" },
+    deploys: { error: "", project: "", rows: [], state: "idle" },
+    destination: DEFAULT_PUBLISH_DESTINATION,
+    review: { number: 0, url: "" },
+    tab: DEFAULT_PUBLISH_TAB,
+  };
+}
+
+/** The view the Styles workspace opens on until the author picks another: Variables. */
+export const DEFAULT_STYLES_HOME_VIEW: ShellStylebook["view"] = "tokens";
+
 function freshStylebook(): ShellStylebook {
-  return { customizedOnly: false, filter: "", selection: null, tab: "elements" };
+  return {
+    customizedOnly: false,
+    filter: "",
+    selection: null,
+    variable: null,
+    view: DEFAULT_STYLES_HOME_VIEW,
+  };
 }
-
-/**
- * The four layouts every project starts with — `Write · Design · Build · Ship`.
- *
- * Each is a real arrangement of surfaces that already exist, not a mode: Write puts the file set
- * beside the prose and the Inspector on Content; Design opens the Outline against the Style tab;
- * Build pairs Data with Logic; Ship opens Source Control and gives the whole width to the diff by
- * collapsing the Inspector — which stays one ⌘B away, because a layout never removes.
- *
- * Written as a factory so every project gets its own objects: they are mutable records (a saved
- * layout overwrites the one with its name) and a shared array literal would leak one project's
- * edits into the next.
- */
-function builtInLayouts(): LayoutPreset[] {
-  return [
-    {
-      bottomTab: "problems",
-      docks: {
-        bottom: { collapsed: true, size: 220 },
-        left: { collapsed: false, size: 240 },
-        /* WRITE COLLAPSES THE INSPECTOR. The shell redesign's layout arithmetic is the whole point
-           of this preset: 1600px − 56 rail − 240 navigator ≈ **1284px of page, 80%**, against
-           Design's 974. It shipped with the Inspector open at 280px, which is Design's number and
-           makes Write a Design with a different panel selected.
-
-           It does NOT re-open on selection. The shell redesign's sentence read "until something is
-           selected", and clicking a paragraph to put a caret in it IS a selection — a dock that
-           opened every time you clicked into prose would take the 80% back on the first keystroke.
-           `⌘⇧1`–`⌘⇧4` expand it (`focusInspectorTab` sets `collapsed: false` before it focuses), so
-           the Inspector is one chord away whenever it is wanted. */
-        right: { collapsed: true, size: 280 },
-      },
-      id: "write",
-      inspectorTab: "properties",
-      name: "Write",
-      navigatorPanel: "files",
-    },
-    {
-      bottomTab: "problems",
-      docks: {
-        bottom: { collapsed: true, size: 220 },
-        left: { collapsed: false, size: 240 },
-        right: { collapsed: false, size: 320 },
-      },
-      id: "design",
-      inspectorTab: "style",
-      name: "Design",
-      navigatorPanel: "layers",
-    },
-    {
-      bottomTab: "logic",
-      docks: {
-        bottom: { collapsed: true, size: 260 },
-        left: { collapsed: false, size: 280 },
-        right: { collapsed: false, size: 300 },
-      },
-      id: "build",
-      inspectorTab: "events",
-      name: "Build",
-      navigatorPanel: "data",
-    },
-    {
-      // The one built-in that OPENS the Bottom dock, on Activity: shipping is a long operation
-      // With a log, which is exactly what that tab is (§16.4 — Deploy folds into Activity).
-      bottomTab: "activity",
-      docks: {
-        bottom: { collapsed: false, size: 240 },
-        left: { collapsed: false, size: 300 },
-        right: { collapsed: true, size: 280 },
-      },
-      id: "ship",
-      inspectorTab: "properties",
-      name: "Ship",
-      navigatorPanel: "git",
-    },
-  ];
-}
-
-/** The layout a project wakes up on, and the fallback when a stored id names nothing. */
-export const DEFAULT_LAYOUT_ID = "design";
 
 /**
  * Build the whole record — nested collections complete — before it is handed to `reactive()`.
@@ -640,13 +726,12 @@ function createShellState(): ShellState {
     focusRegion: "pane",
     paneSplit: clampPaneSplit(saved.paneSplit),
     git: freshGit(),
-    layout: DEFAULT_LAYOUT_ID,
+    publish: freshPublish(),
     layoutSelection: null,
-    layouts: builtInLayouts(),
-    leftTab: migratePanelId(saved.leftTab) ?? DEFAULT_PANEL_ID,
-    settingsTab: "stylebook",
+    leftTab: navigatorPanelOutsideWorkspace(migratePanelId(saved.leftTab)),
     stylebook: freshStylebook(),
     theme: readPersistedTheme(),
+    workspace: DEFAULT_WORKSPACE,
   };
 }
 
@@ -659,6 +744,29 @@ function createShellState(): ShellState {
  * dock widths from a profile that claims not to have any.
  */
 applyStartupProfile();
+
+/**
+ * Storage keys a retired surface used to write, removed on boot so a stale preference never
+ * outlives the control that set it.
+ *
+ * `jx-studio-doc-header-expanded` was the Document Header card's fold-to-bar preference. Edit draws
+ * no card any more (studio.md §4.2), so nothing reads the key and nothing should be left holding
+ * it.
+ */
+export const RETIRED_STORAGE_KEYS: readonly string[] = ["jx-studio-doc-header-expanded"];
+
+/** Drop every {@link RETIRED_STORAGE_KEYS} entry, tolerating unavailable storage. Never throws. */
+export function forgetRetiredStorage(): void {
+  try {
+    for (const key of RETIRED_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage blocked or unavailable: there is nothing stored to forget.
+  }
+}
+
+forgetRetiredStorage();
 
 /*
  * SAFETY: `reactive()` returns a deep proxy carrying its target's own members, and ShellState holds
@@ -697,12 +805,17 @@ export function persistDocks(): void {
   }
 }
 
-// ─── Named layouts ────────────────────────────────────────────────────────────
+// ─── The project's record: its workspace, and its session ────────────────────
 
-/** What a project's namespaced record holds: its named layouts, and the session it was left in. */
+/**
+ * What a project's namespaced record holds: the workspace it was left in, and the session.
+ *
+ * A record written by a build that had named layouts also carries `layouts` and `activeLayout`.
+ * Neither is read, and the next write drops them: the layouts they name were replaced by the
+ * workspaces, and there is nothing in them a workspace could adopt.
+ */
 interface PersistedProject {
-  layouts?: LayoutPreset[];
-  activeLayout?: string;
+  workspace?: WorkspaceId;
   /**
    * §14.8's session — open documents per pane, the active one, and each one's view settings. A
    * session this boot has not read yet is carried over as the stored JSON it was.
@@ -710,31 +823,15 @@ interface PersistedProject {
   session?: PersistedSession | JsonValue | undefined;
 }
 
-/** The project whose layouts are loaded, or `undefined` before the first sync. */
-let _layoutRoot: string | null | undefined;
+/** The project whose workspace is loaded, or `undefined` before the first sync. */
+let _workspaceRoot: string | null | undefined;
 
-/** Whether a parsed value is a usable {@link LayoutPreset} — a stored record is untrusted input. */
-function isLayoutPreset(value: unknown): value is LayoutPreset {
-  /* Arrays fail here where the old `typeof … === "object"` let them through, and the outcome is
-     the same: an array carries no string `id`, so it was refused one line later. */
-  if (!isJsonObject(value)) {
-    return false;
-  }
-  const { docks } = value;
-  return (
-    isString(value.id) &&
-    value.id !== "" &&
-    isString(value.name) &&
-    isNavigatorPanelId(value.navigatorPanel) &&
-    isInspectorTabId(value.inspectorTab) &&
-    isBottomTabId(value.bottomTab) &&
-    isJsonObject(docks) &&
-    DOCK_IDS.every((dock) => {
-      const entry = docks[dock];
-      return isJsonObject(entry) && isNumber(entry.size);
-    })
-  );
-}
+/**
+ * The Navigator panel each workspace whose preset names none was last showing, in this window. Not
+ * persisted: it is a convenience between two visits, and the preset is the statement of what a
+ * workspace looks like on entry.
+ */
+let _panels: Partial<Record<WorkspaceId, string>> = {};
 
 /** The raw record for `root`, or `{}` for absent, corrupt or hand-edited storage. */
 function rawPersistedProject(root: string | null): JsonObject {
@@ -751,36 +848,26 @@ function rawPersistedProject(root: string | null): JsonObject {
   }
 }
 
-/** A project's layouts as {@link readPersistedProject} recovers them. */
-interface ProjectLayouts {
-  layouts: LayoutPreset[];
-  activeLayout: string | null;
-}
-
-/** Read a project's namespaced record, tolerating absent, corrupt and hand-edited storage. */
-function readPersistedProject(root: string | null): ProjectLayouts {
-  const fresh: ProjectLayouts = { activeLayout: null, layouts: builtInLayouts() };
-  if (!root) {
-    return fresh;
-  }
-  const parsed = rawPersistedProject(root);
-  const layouts = Array.isArray(parsed.layouts)
-    ? parsed.layouts.flatMap((entry) => (isLayoutPreset(entry) ? [entry] : []))
-    : [];
-  if (layouts.length === 0) {
-    return fresh;
-  }
-  return {
-    activeLayout: isString(parsed.activeLayout) ? parsed.activeLayout : null,
-    layouts,
-  };
+/**
+ * The workspace `root` was last left in: a missing, stale or unknown id (a layout id from the build
+ * that had named layouts, a workspace a later build renamed, a hand edit) is
+ * {@link DEFAULT_WORKSPACE}. Never throws: a stale record must not be the reason a project cannot
+ * open.
+ *
+ * The open sequence asks for it again AFTER restoring the session (`files/files.ts`), because
+ * restoring activates tabs and activating a tab enters that tab's workspace: a project left in
+ * Media, whose home tab is not a document the session records, would otherwise reopen in Design.
+ */
+export function persistedWorkspace(root: string | null): WorkspaceId {
+  const stored = rawPersistedProject(root).workspace;
+  return isWorkspaceId(stored) ? stored : DEFAULT_WORKSPACE;
 }
 
 /**
  * The session `root` was last left in, or `null` when there is none to restore.
  *
- * Separate from {@link readPersistedProject} because the two are read at different moments: the
- * layouts load reactively the instant the project root changes, and the session is read once, by
+ * Separate from {@link syncProjectWorkspace} because the two are read at different moments: the
+ * workspace loads reactively the instant the project root changes, and the session is read once, by
  * the open sequence, at the point where it would otherwise open the home page.
  */
 export function persistedSession(root: string | null): PersistedSession | null {
@@ -807,13 +894,6 @@ export function markSessionRestored(root: string | null): void {
 }
 
 /**
- * Write the project's namespaced record. One key, one writer, one shape.
- *
- * The dock record's two-writer bug (`persistWidths` vs `applyPanelCollapse`, both on
- * {@link DOCK_STORAGE_KEY}) is the reason this is a single function that serialises the whole
- * record rather than a merge at each call site.
- */
-/**
  * Write the session on the way out — the moment the whole feature exists for.
  *
  * The effect above tracks the session's SHAPE. The view settings ride along on the next shape
@@ -825,6 +905,13 @@ export function flushSession(): void {
   persistProjectShell();
 }
 
+/**
+ * Write the project's namespaced record. One key, one writer, one shape.
+ *
+ * The dock record's two-writer bug (`persistWidths` vs `applyPanelCollapse`, both on
+ * {@link DOCK_STORAGE_KEY}) is the reason this is a single function that serialises the whole
+ * record rather than a merge at each call site.
+ */
 export function persistProjectShell(): void {
   const root = workspace.projectRoot;
   if (!root) {
@@ -834,10 +921,9 @@ export function persistProjectShell(): void {
     localStorage.setItem(
       `${PROJECT_STORAGE_PREFIX}${root}`,
       JSON.stringify({
-        activeLayout: shell.layout,
-        layouts: shell.layouts,
         // Only for a project whose session has been read — see {@link markSessionRestored}.
         session: root === _sessionRoot ? captureSession() : rawPersistedProject(root).session,
+        workspace: shell.workspace,
       } satisfies PersistedProject),
     );
   } catch {
@@ -846,147 +932,99 @@ export function persistProjectShell(): void {
 }
 
 /**
- * Load the layouts belonging to `root`. Idempotent per root, so the effect can call it freely.
+ * Load the workspace belonging to `root`. Idempotent per root, so the effect can call it freely.
  *
- * Loading does NOT apply the active layout: a boot that re-applied it would overwrite the dock
- * widths the user dragged since, which are persisted separately and are the more recent statement.
- * The stored id says which tab is drawn as selected; clicking it is what re-applies the tuple.
+ * The id is read by {@link persistedWorkspace}, so a stale one opens the project in
+ * {@link DEFAULT_WORKSPACE} and loading never throws.
+ *
+ * Opening a project ENTERS its workspace, so the workspace's preset is applied here too. The dock
+ * record is the window's rather than the project's, and without this a project closed while Media
+ * had collapsed both side docks left the next project's Design frame collapsed. The rail follows
+ * `shell.workspace` on its own, through {@link applyDockLayout}. No preset is applied for `null`
+ * (no project open): there is no workspace on screen to lay out.
  */
-export function syncProjectLayouts(root: string | null): void {
-  if (root === _layoutRoot) {
+export function syncProjectWorkspace(root: string | null): void {
+  if (root === _workspaceRoot) {
     return;
   }
-  _layoutRoot = root;
-  const { activeLayout, layouts } = readPersistedProject(root);
-  shell.layouts = layouts;
-  const has = (id: string | null) => id !== null && layouts.some((preset) => preset.id === id);
-  // The stored active layout wins, then the one already selected, then the default, then whatever
-  // The project actually has — a bar drawn with nothing selected says the app has lost your place.
-  shell.layout = has(activeLayout)
-    ? activeLayout!
-    : has(shell.layout)
-      ? shell.layout
-      : has(DEFAULT_LAYOUT_ID)
-        ? DEFAULT_LAYOUT_ID
-        : (layouts[0]?.id ?? DEFAULT_LAYOUT_ID);
+  _workspaceRoot = root;
+  _panels = {};
+  shell.workspace = persistedWorkspace(root);
+  if (root === null) {
+    /* No frame to apply, but the Navigator is still on screen beside the rail: a panel only the
+       closed project's workspace drew (Collections, left in Content) is not this window's to show. */
+    shell.leftTab = navigatorPanelOutsideWorkspace(migratePanelId(shell.leftTab));
+    return;
+  }
+  /* Untracked: this runs inside the shell's project-root effect, which must depend on the root
+     alone and not on the panel and docks the preset reads and writes. */
+  pauseTracking();
+  try {
+    applyFrame(shell.workspace);
+    persistDocks();
+  } finally {
+    resetTracking();
+  }
 }
 
-/** The layout with this id, or `undefined`. */
-export function layoutById(id: string): LayoutPreset | undefined {
-  return shell.layouts.find((preset) => preset.id === id);
-}
-
-/** A stable id for a saved layout's name: `My Layout` → `my-layout`. */
-export function layoutIdFor(name: string): string {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, "-")
-    .replaceAll(/^-|-$/g, "");
-  return slug || "layout";
-}
-
-/** What applying or capturing a layout needs from the Inspector, which lives on the active tab. */
-export interface LayoutDeps {
+/** What entering a workspace needs from the Inspector, whose tab lives on the active document. */
+export interface WorkspaceDeps {
   setInspectorTab: (tab: InspectorTabId) => void;
-  inspectorTab: () => InspectorTabId;
+  /**
+   * Whether the active tab is a document being written on the canvas, which is what draws a
+   * `whileWriting` Inspector ({@link WorkspacePreset.inspector}). Injected by
+   * `workspace/workspace-switch.ts`, which owns the rule that reads a tab; absent, it is `false`.
+   */
+  writingOnCanvas?: () => boolean;
+}
+
+/** Whether a workspace's preset draws its Inspector, given whether a document is being written. */
+export function presetInspectorOpen(id: WorkspaceId, writing: boolean): boolean {
+  const { inspector } = WORKSPACE_PRESETS[id];
+  return inspector.open || (inspector.whileWriting === true && writing);
+}
+
+/** Lay a workspace's preset out: the Navigator's panel, both side docks and the Inspector's tab. */
+function applyFrame(id: WorkspaceId, deps?: WorkspaceDeps): void {
+  const preset = WORKSPACE_PRESETS[id];
+  const panel = migratePanelId(
+    preset.navigator.panel ?? _panels[id] ?? preset.navigator.initial ?? shell.leftTab,
+  );
+  if (panel) {
+    shell.leftTab = panel;
+  }
+  shell.docks.left.collapsed = !preset.navigator.open;
+  shell.docks.right.collapsed = !presetInspectorOpen(id, deps?.writingOnCanvas?.() === true);
+  if (preset.inspector.tab && deps) {
+    deps.setInspectorTab(preset.inspector.tab);
+  }
 }
 
 /**
- * Adopt a layout: its panel, its docks, its Inspector tab — and remember that it is the active one.
+ * Enter a workspace: lay its frame out by its {@link WORKSPACE_PRESETS} preset, which every entry
+ * applies afresh (`specs/studio.md` §22.3).
  *
- * Throws on an unknown id rather than silently doing nothing, because the id space is the user's
- * own (their saved layouts) and a typo in a command argument has to be reportable.
+ * This is the frame half of a switch and the one writer of `shell.workspace`. Which TAB is on
+ * screen is the other half, and it is not this module's: `workspace/workspace-switch.ts` activates
+ * the workspace's tab, and activating any tab enters that tab's workspace through here.
+ *
+ * Re-entering the workspace already showing changes nothing, so the verb is idempotent and a dock
+ * the author just toggled is not put back.
+ *
+ * @returns Whether the workspace changed.
  */
-export function applyLayout(id: string, deps: LayoutDeps): void {
-  const preset = layoutById(id);
-  if (!preset) {
-    throw new RangeError(
-      `no layout named "${id}" — this project has: ${shell.layouts.map((p) => p.id).join(", ")}`,
-    );
+export function enterWorkspace(id: WorkspaceId, deps?: WorkspaceDeps): boolean {
+  if (shell.workspace === id) {
+    return false;
   }
-  shell.layout = preset.id;
-  shell.leftTab = preset.navigatorPanel;
-  shell.bottomTab = preset.bottomTab;
-  for (const dock of DOCK_IDS) {
-    shell.docks[dock].collapsed = preset.docks[dock].collapsed;
-    shell.docks[dock].size = preset.docks[dock].size;
+  if (!WORKSPACE_PRESETS[shell.workspace].navigator.panel) {
+    _panels[shell.workspace] = shell.leftTab;
   }
-  deps.setInspectorTab(preset.inspectorTab);
+  shell.workspace = id;
+  applyFrame(id, deps);
   persistDocks();
   persistProjectShell();
-}
-
-/**
- * Save the current arrangement under `name`, and make it the active layout.
- *
- * Saving over an existing name overwrites it — that is what `+` on a layout you have just adjusted
- * means, and it keeps the operation idempotent for a caller that cannot see the list.
- */
-export function saveLayout(name: string, deps: LayoutDeps): LayoutPreset {
-  const trimmed = name.trim();
-  const id = layoutIdFor(trimmed);
-  const docks = perDock((dock) => ({
-    collapsed: shell.docks[dock].collapsed,
-    size: shell.docks[dock].size,
-  }));
-  const preset: LayoutPreset = {
-    bottomTab: isBottomTabId(shell.bottomTab) ? shell.bottomTab : DEFAULT_BOTTOM_TAB,
-    docks,
-    id,
-    inspectorTab: deps.inspectorTab(),
-    name: trimmed || id,
-    navigatorPanel: migratePanelId(shell.leftTab) ?? DEFAULT_PANEL_ID,
-  };
-  const existing = shell.layouts.findIndex((entry) => entry.id === id);
-  if (existing === -1) {
-    shell.layouts.push(preset);
-  } else {
-    shell.layouts.splice(existing, 1, preset);
-  }
-  shell.layout = id;
-  persistProjectShell();
-  return preset;
-}
-
-/** Rename a layout in place. The id — and therefore every reference to it — is unchanged. */
-export function renameLayout(id: string, name: string): void {
-  const preset = layoutById(id);
-  const trimmed = name.trim();
-  if (!preset || !trimmed) {
-    return;
-  }
-  preset.name = trimmed;
-  persistProjectShell();
-}
-
-/**
- * Forget a layout. The last one cannot be deleted: an empty Command Bar with a `+` and no way to
- * know what it does is worse than a layout you do not use.
- */
-export function deleteLayout(id: string): void {
-  if (shell.layouts.length < 2) {
-    return;
-  }
-  const index = shell.layouts.findIndex((preset) => preset.id === id);
-  if (index === -1) {
-    return;
-  }
-  shell.layouts.splice(index, 1);
-  if (shell.layout === id) {
-    shell.layout = shell.layouts[0]!.id;
-  }
-  persistProjectShell();
-}
-
-/**
- * Re-apply the active layout as declared — `View: Reset Layout`, always one action away.
- *
- * This is the escape hatch that makes a layout safe to drift from: drag a dock, collapse the
- * Inspector, open a different panel, and one command puts the arrangement back.
- */
-export function resetLayout(deps: LayoutDeps): void {
-  applyLayout(shell.layout, deps);
+  return true;
 }
 
 /**
@@ -1029,7 +1067,28 @@ export function applyChromeTheme(): void {
   loadedMonaco()?.editor.setTheme(monacoTheme());
 }
 
-/** Project the dock record onto the shell grid: collapse classes on #app, sizes as CSS vars. */
+/**
+ * The `#app` class that takes the rail column out of the grid. `styles/shell-frame.json` owns what
+ * it means; the rail has no toggle and no size, so it is a class and never a dock.
+ */
+export const RAIL_HIDDEN_CLASS = "rail-hidden";
+
+/**
+ * The `#app` class that takes every pane's tab strip out of the grid, in a workspace whose preset
+ * draws none ({@link WorkspacePreset.tabStrip}). `styles/shell-frame.json` owns what it means; the
+ * strips stay mounted underneath, so returning to Design repaints nothing.
+ */
+export const TAB_STRIP_HIDDEN_CLASS = "tabs-hidden";
+
+/** Whether the workspace on screen draws pane tab strips. */
+export function workspaceDrawsTabStrip(id: WorkspaceId = shell.workspace): boolean {
+  return WORKSPACE_PRESETS[id].tabStrip;
+}
+
+/**
+ * Project the dock record onto the shell grid: collapse classes on #app, sizes as CSS vars, and the
+ * active workspace's rail and tab strips.
+ */
 export function applyDockLayout(): void {
   const root = document.documentElement;
   for (const id of DOCK_IDS) {
@@ -1042,6 +1101,8 @@ export function applyDockLayout(): void {
   for (const id of DOCK_IDS) {
     app.classList.toggle(DOCK_CLASS[id], shell.docks[id].collapsed);
   }
+  app.classList.toggle(RAIL_HIDDEN_CLASS, !WORKSPACE_PRESETS[shell.workspace].rail);
+  app.classList.toggle(TAB_STRIP_HIDDEN_CLASS, !WORKSPACE_PRESETS[shell.workspace].tabStrip);
 }
 
 let _scope: EffectScope | null = null;
@@ -1109,11 +1170,11 @@ export function mountShell(): void {
     effect(() => {
       applyChromeTheme();
     });
-    // Layouts belong to a project, and the project root is reactive: opening one loads its record
-    // With no boot-order hook to forget. `resetProjectShell()` runs while the OLD root is still
-    // Set — it is the closing half of a switch — which is why the load cannot live there.
+    // The workspace belongs to a project, and the project root is reactive: opening one loads its
+    // Record with no boot-order hook to forget. `resetProjectShell()` runs while the OLD root is
+    // Still set — it is the closing half of a switch — which is why the load cannot live there.
     effect(() => {
-      syncProjectLayouts(workspace.projectRoot);
+      syncProjectWorkspace(workspace.projectRoot);
     });
     /*
      * §14.8's session, written whenever its SHAPE changes.
@@ -1251,21 +1312,21 @@ export function setLayoutSelection(selection: LayoutHit | null): void {
  *
  * Source control, the stylebook selection and the settings tab all describe _a_ project; carrying
  * them into the next one showed the previous repository's branch, file count and "last updated"
- * time under the new project's name. Docks, the layout preset and the active rail panel are
- * deliberately kept — they describe the workspace, not the project.
+ * time under the new project's name. Docks and the active rail panel are deliberately kept: they
+ * describe the window, not the project. The workspace is the project's, and the next
+ * {@link syncProjectWorkspace} reads it from that project's own record.
  */
 export function resetProjectShell(): void {
   Object.assign(shell.git, freshGit());
+  Object.assign(shell.publish, freshPublish());
   Object.assign(shell.stylebook, freshStylebook());
-  shell.settingsTab = "stylebook";
   shell.layoutSelection = null;
   // …and which project's session may be written, so the one being opened cannot be overwritten
   // Before it has been read.
   _sessionRoot = null;
-  // Forget which project's layouts are loaded, so the next `syncProjectLayouts()` reloads even if
-  // The same root is opened again. The docks and the active rail panel stay: they describe the
-  // Workspace, and re-applying a layout on project open would discard the widths you just dragged.
-  _layoutRoot = undefined;
+  // Forget which project's workspace is loaded, so the next `syncProjectWorkspace()` reloads even
+  // If the same root is opened again.
+  _workspaceRoot = undefined;
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -1288,6 +1349,14 @@ export interface ShellCommandDeps {
    */
   inspectorTab: () => InspectorTabId;
   /**
+   * The tab the strip rests on when nothing chose one: Page with nothing selected, otherwise the
+   * Element leaf last used (`specs/studio.md` §6). `view.setAssistant { open: false }` steps onto
+   * it, so closing the Assistant with a node selected shows that node rather than the document.
+   * Injected because the selection and the remembered leaf are per-document session state; absent
+   * (the CI projection), it is {@link DEFAULT_INSPECTOR_TAB}.
+   */
+  restingInspectorTab?: () => InspectorTabId;
+  /**
    * Whether a dock tab's panel record is currently available — its own `when` holding.
    *
    * INJECTED rather than imported for the reason the rest of this object exists: `shell` is
@@ -1300,6 +1369,24 @@ export interface ShellCommandDeps {
    * so a caller with no registry (the CI projection) is unaffected.
    */
   panelAvailable?: (id: string) => boolean;
+  /**
+   * Show a workspace: enter it AND put its tabs on screen (its most recent tab, or its home).
+   *
+   * Injected for the reason the Inspector writers are: opening a workspace's home reaches the
+   * Library, the settings document and the pane model, none of which this module may import. Absent
+   * (the CI projection, a test with no panes), the verb enters the workspace's frame and nothing
+   * else, which is still the state the argument names.
+   */
+  showWorkspace?: (id: WorkspaceId) => void;
+}
+
+/** Run {@link ShellCommandDeps.showWorkspace}, or enter the frame alone when none was handed in. */
+function showWorkspace(id: WorkspaceId, deps: ShellCommandDeps): void {
+  if (deps.showWorkspace) {
+    deps.showWorkspace(id);
+    return;
+  }
+  enterWorkspace(id, deps);
 }
 
 /** The Navigator dock hosts a panel — the precondition its own verbs share. */
@@ -1476,7 +1563,7 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
          duplicate title among 130 records. A palette row is a NAME, and two rows with one name is
          the defect the registry exists to prevent, arriving through the registry itself.
          `inspector.focus.assistant` is the row (it carries ⌘⇧4). This one keeps every other
-         consumer — the `open` STATE that `setRightTab` cannot express, the layout presets, three
+         consumer — the `open` STATE that `setRightTab` cannot express, the workspace presets, three
          screenshot steps, `⌘J`'s legacy branch — none of which needs a row to work. */
       menus: ["never"],
       group: "4_docks",
@@ -1487,100 +1574,49 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
           return;
         }
         if (deps.inspectorTab() === "assistant") {
-          deps.setInspectorTab(DEFAULT_INSPECTOR_TAB);
+          deps.setInspectorTab(deps.restingInspectorTab?.() ?? DEFAULT_INSPECTOR_TAB);
         }
       },
       title: "Show Assistant",
     },
-    // ── Named layouts ────────────────────────────────────────────────────────
-    // Five verbs, because a named arrangement you can create but not rename, delete or restore is
-    // A trap. All five are SETTERS: `view.setLayout { layout: "ship" }` means the same thing twice
-    // In a row, and `view.resetLayout` is the one action that puts a drifted arrangement back.
+    // ── Workspaces ───────────────────────────────────────────────────────────
+    // One SETTER, and one chord record per workspace. A chord cannot carry an argument, so ⌘1–5
+    // Are five records that each run the setter's own path rather than five implementations of it.
     {
       args: argsSchema({
-        layout: stringProperty("The layout's id — one of this project's saved layouts."),
+        workspace: enumProperty(WORKSPACE_IDS, "Which workspace to show."),
       }),
       category: "View",
-      id: "view.setLayout",
+      id: "view.setWorkspace",
       level: "application",
-      menus: ["palette"],
-      group: "4_layouts",
+      /* `never`, not `palette`: the five `workspace.focus.*` rows below are the palette's way in,
+         each with its chord, and an arguments prompt beside them would be the same action under a
+         second name. This record is the scripted door and the one the top bar's tabs run. */
+      menus: ["never"],
+      group: "4_workspaces",
       requires: "an open project",
       when: projectOpen,
       /* No `aiTool`: application-level chrome, refused at registration
          (`studio-ui-guidelines.md` §12.4). */
       run: (_ctx, args) => {
-        applyLayout(stringArg("view.setLayout", args, "layout"), deps);
+        showWorkspace(enumArg("view.setWorkspace", args, "workspace", WORKSPACE_IDS), deps);
       },
-      title: "Switch Layout",
+      title: "Switch Workspace",
     },
-    {
-      args: argsSchema({
-        name: stringProperty("What to call this arrangement. An existing name is overwritten."),
-      }),
+    ...WORKSPACES.map((entry, index): AnyCommand => ({
       category: "View",
-      id: "view.saveLayout",
+      id: `workspace.focus.${entry.id}`,
+      keybinding: `mod+${index + 1}`,
       level: "application",
       menus: ["palette"],
-      group: "4_layouts",
-      requires: "an open project",
-      when: projectOpen,
-      run: (_ctx, args) => {
-        saveLayout(stringArg("view.saveLayout", args, "name"), deps);
-      },
-      title: "Save Layout",
-    },
-    {
-      args: argsSchema({
-        layout: stringProperty("The layout's id."),
-        name: stringProperty("Its new name. The id, and every reference to it, is unchanged."),
-      }),
-      category: "View",
-      id: "view.renameLayout",
-      level: "application",
-      menus: ["palette"],
-      group: "4_layouts",
-      requires: "an open project",
-      when: projectOpen,
-      run: (_ctx, args) => {
-        renameLayout(
-          stringArg("view.renameLayout", args, "layout"),
-          stringArg("view.renameLayout", args, "name"),
-        );
-      },
-      title: "Rename Layout",
-    },
-    {
-      args: argsSchema({
-        layout: stringProperty("The layout's id. The last remaining layout is kept."),
-      }),
-      category: "View",
-      id: "view.deleteLayout",
-      level: "application",
-      menus: ["palette"],
-      group: "4_layouts",
-      requires: "an open project",
-      when: projectOpen,
-      run: (_ctx, args) => {
-        deleteLayout(stringArg("view.deleteLayout", args, "layout"));
-      },
-      title: "Delete Layout",
-    },
-    {
-      // No `args`: this verb takes none. An empty schema would be a promise of parameters the
-      // Palette would then prompt for and the record would ignore.
-      category: "View",
-      id: "view.resetLayout",
-      level: "application",
-      menus: ["palette"],
-      group: "4_layouts",
+      group: "4_workspaces",
       requires: "an open project",
       when: projectOpen,
       run: () => {
-        resetLayout(deps);
+        showWorkspace(entry.id, deps);
       },
-      title: "Reset Layout",
-    },
+      title: `Go to ${entry.title}`,
+    })),
     {
       args: argsSchema({
         color: enumProperty(CHROME_THEMES, "The Studio chrome's theme."),

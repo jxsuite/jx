@@ -10,7 +10,7 @@
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
@@ -201,7 +201,41 @@ export function isOwnedProjectDir(dir: string): boolean {
 }
 
 /**
+ * Whether the project at `dir` is under version control of its own, rather than a stranger inside
+ * somebody else's checkout.
+ *
+ * `git` answers for the nearest enclosing work tree, which is not the same question. A project
+ * copied into a folder another repository IGNORES (a scratch copy under a monorepo's `.cache/`, a
+ * download into a dotfiles repo's ignored `tmp/`) is "inside a work tree" by git's account, yet
+ * none of its files can ever be committed there: Publish would list the enclosing repository's
+ * branches and commits, and opening the project would fetch and pull a repository the user never
+ * chose. Such a project is therefore not a repository, and offers to initialise one. A project that
+ * is a TRACKED subfolder of a larger repository (a site inside a monorepo) still is one.
+ *
+ * @param {string} dir - The project root
+ * @returns {Promise<boolean>}
+ */
+export async function projectHasRepository(dir: string): Promise<boolean> {
+  const exitOf = async (args: string[]) => {
+    const proc = Bun.spawn(["git", ...args], { cwd: dir, stderr: "ignore", stdout: "ignore" });
+    return await proc.exited;
+  };
+  if ((await exitOf(["rev-parse", "--is-inside-work-tree"])) !== 0) {
+    return false;
+  }
+  // `check-ignore` exits 0 when the path IS ignored, 1 when it is not.
+  return (await exitOf(["check-ignore", "-q", "."])) !== 0;
+}
+
+/**
  * Parse raw `git status --porcelain=v2 --branch` output into structured data.
+ *
+ * The route runs it with `-z`, and that is the form that matters: without `-z` git C-quotes every
+ * path holding a byte outside printable ASCII (`72” Grapple.md` arrives as `"72\342\200\235
+ * Grapple.md"`), so Studio listed octal escapes inside stray quotes and asked git to stage a file
+ * that does not exist. With `-z` each record ends in NUL and every path is verbatim; a rename's
+ * original path is the record after it, which is skipped. Newline-separated output is still read,
+ * for callers and tests that hand it plain text.
  *
  * @param {string} out
  * @returns {{
@@ -220,7 +254,10 @@ export function parseGitStatus(out: string) {
   /** @type {{ path: string; status: string; staged: boolean }[]} */
   const files = [];
 
-  for (const line of out.split("\n")) {
+  const nulTerminated = out.includes("\0");
+  const records = out.split(nulTerminated ? "\0" : "\n");
+  for (let index = 0; index < records.length; index += 1) {
+    const line = records[index]!;
     if (!line) {
       continue;
     }
@@ -239,7 +276,11 @@ export function parseGitStatus(out: string) {
       const stagedCode = xy[0]!;
       const unstagedCode = xy[1]!;
       let filePath;
-      if (line.startsWith("2 ")) {
+      if (line.startsWith("2 ") && nulTerminated) {
+        // `2 XY sub mH mI mW hH hI Xscore path`, then the original path as its own record.
+        filePath = parts.slice(9).join(" ");
+        index += 1;
+      } else if (line.startsWith("2 ")) {
         const tabIdx = line.indexOf("\t");
         const pathPart = line.slice(tabIdx + 1);
         filePath = pathPart.split("\t").pop() || "";
@@ -771,16 +812,15 @@ export async function handleStudioApi(
       return problem("invalidRequest", errorMessage(error));
     }
 
-    /** Report a path relative to the active project root (or server root as fallback). */
-    const reportRelative = (fp: string) => {
-      if (activeProjectRoot) {
-        const rel = relative(activeProjectRoot, fp);
-        if (!rel.startsWith("..")) {
-          return fwd(rel);
-        }
-      }
-      return fwd(relative(root, fp));
-    };
+    /*
+     * Every path out is relative to the active project root (§4.1), a path BESIDE the project
+     * included: `../../docs/start`, not `docs/start`. A collection may live outside its project
+     * (`sites/jxsuite.com` declares `content.docs.source: "../../docs"`), and a server-root-relative
+     * reply for it reads as project-relative to the client, which resolves it against the server
+     * root again on the next call and names a directory nobody has. A recursive walk of that
+     * collection stopped at its first level, with a 500 for every subdirectory.
+     */
+    const reportRelative = (fp: string) => fwd(relative(activeProjectRoot ?? root, fp));
 
     try {
       if (pattern) {
@@ -821,7 +861,11 @@ export async function handleStudioApi(
       }
       return Response.json(byPathOrder(files));
     } catch (error) {
-      return problem("internalError", errorMessage(error));
+      // A directory that does not exist is a 404, not a server fault: a client probing whether a
+      // Folder exists yet (Add new's collision check) asks exactly this.
+      return isNotFound(error)
+        ? problem("notFound", errorMessage(error))
+        : problem("internalError", errorMessage(error));
     }
   }
 
@@ -1296,9 +1340,18 @@ export async function handleStudioApi(
         { headers: { "Cache-Control": "public, max-age=5" } },
       );
     } catch (error) {
-      return isNotFound(error)
-        ? problem("notFound", "Not found")
-        : problem("internalError", errorMessage(error));
+      if (!isNotFound(error)) {
+        return problem("internalError", errorMessage(error));
+      }
+      /* `optional=1`: the caller is asking whether the file is there, and "no" is an ordinary
+         answer rather than a failure — the same reasoning that makes a missing directory's listing
+         a 404 instead of a 500, one step further. A per-directory `.gitignore` probe is the case
+         that needs it: a listing hides dotfiles, so the only way to learn a directory has none is
+         to ask, and a 404 per directory lands in the browser console as a failed request. Never
+         cached, so a file created a moment later is read rather than remembered as absent. */
+      return url.searchParams.get("optional") === "1"
+        ? Response.json({ content: null, path: fp }, { headers: { "Cache-Control": "no-store" } })
+        : problem("notFound", "Not found");
     }
   }
 
@@ -1344,7 +1397,7 @@ export async function handleStudioApi(
     try {
       await mkdir(dirname(abs), { recursive: true });
       await writeFile(abs, await req.text(), "utf8");
-      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
+      return Response.json({ ok: true, path: fwd(relative(activeProjectRoot ?? root, abs)) });
     } catch (error) {
       return problem("internalError", errorMessage(error));
     }
@@ -1366,7 +1419,7 @@ export async function handleStudioApi(
       await mkdir(dirname(abs), { recursive: true });
       const buffer = await req.arrayBuffer();
       await Bun.write(abs, new Uint8Array(buffer));
-      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
+      return Response.json({ ok: true, path: fwd(relative(activeProjectRoot ?? root, abs)) });
     } catch (error) {
       return problem("internalError", errorMessage(error));
     }
@@ -1385,11 +1438,17 @@ export async function handleStudioApi(
       return new Response(errorMessage(error), { status: 400 });
     }
     try {
-      await unlink(abs);
-      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
+      /* A directory is removed only when it is EMPTY (`rmdir`), never recursively: a folder of
+         files is a decision about every file in it, which the client makes one file at a time. */
+      const entry = await stat(abs);
+      await (entry.isDirectory() ? rmdir(abs) : unlink(abs));
+      return Response.json({ ok: true, path: fwd(relative(activeProjectRoot ?? root, abs)) });
     } catch (error) {
-      return isNotFound(error)
-        ? problem("notFound", "Not found")
+      if (isNotFound(error)) {
+        return problem("notFound", "Not found");
+      }
+      return isNonNullObject(error) && "code" in error && error.code === "ENOTEMPTY"
+        ? problem("conflict", "The folder is not empty.")
         : problem("internalError", errorMessage(error));
     }
   }
@@ -1774,7 +1833,24 @@ export async function handleStudioApi(
   // ── Git endpoints ──────────────────────────────────────────────────────────
 
   if (path.startsWith("/__studio/git/")) {
-    const cwd = activeProjectRoot || root;
+    /* THE REPOSITORY IS THE REQUEST'S, NOT THE SERVER'S. One dev server serves every Studio tab
+       pointed at it, and `activeProjectRoot` is whichever project was activated last. Read from it
+       alone, two sessions on two projects ran each other's git: Initialize Repository in one
+       initialised the other. Every git call names its project with `?dir=`, as the file routes do,
+       under the same access rule; the fallback is for a caller that names none (no project open). */
+    const named = url.searchParams.get("dir");
+    const cwd = named
+      ? isAbsolute(named)
+        ? named
+        : resolve(root, named)
+      : activeProjectRoot || root;
+    if (named) {
+      try {
+        assertAccessible(cwd, root, activeProjectRoot);
+      } catch (error) {
+        return problem("invalidRequest", errorMessage(error));
+      }
+    }
     const gitCmd = path.slice("/__studio/git/".length);
 
     const runGit = async (args: string[]) => {
@@ -1804,15 +1880,13 @@ export async function handleStudioApi(
     };
 
     try {
+      /* Every command but the two that make a repository acts on THE PROJECT'S repository, so one
+         that has none of its own is refused rather than handed to whatever checkout encloses it
+         (see `projectHasRepository`). */
+      const makesRepository = gitCmd === "init" || gitCmd === "clone";
+      const hasRepository = makesRepository || (await projectHasRepository(cwd));
       if (gitCmd === "status" && req.method === "GET") {
-        // Check if we're in a git repo first
-        const checkProc = Bun.spawn(["git", "rev-parse", "--is-inside-work-tree"], {
-          cwd,
-          stderr: "pipe",
-          stdout: "pipe",
-        });
-        const checkExit = await checkProc.exited;
-        if (checkExit !== 0) {
+        if (!hasRepository) {
           return Response.json({
             ahead: 0,
             behind: 0,
@@ -1823,8 +1897,12 @@ export async function handleStudioApi(
           });
         }
 
+        /* `--untracked-files=all`: every untracked FILE, not its collapsed folder. By default git
+           reports a wholly untracked `content/` as one entry, so a fresh repository listed a
+           handful of folders that no group, comparison or checkbox could treat as a file, and the
+           count jumped to the real one the moment staging expanded them (studio.md §22.8). */
         const [out, remotesOut] = await Promise.all([
-          runGit(["status", "--porcelain=v2", "--branch"]),
+          runGit(["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"]),
           runGit(["remote"]),
         ]);
         const status = parseGitStatus(out);
@@ -1834,6 +1912,13 @@ export async function handleStudioApi(
           remotes: remotesOut.trim().split("\n").filter(Boolean),
         };
         return Response.json(fullStatus);
+      }
+
+      if (!hasRepository) {
+        return problem(
+          "conflict",
+          "This project is not a git repository of its own. Initialize one to use source control.",
+        );
       }
 
       if (gitCmd === "init" && req.method === "POST") {
@@ -1875,6 +1960,16 @@ export async function handleStudioApi(
 
       if (gitCmd === "log" && req.method === "GET") {
         const limit = url.searchParams.get("limit") || "20";
+        /* A repository with no commits yet has no history, which is an empty list, not a failure:
+           `git log` exits 128 on an unborn HEAD, and that 500 was the first console error every
+           freshly initialized project showed (studio.md §22.8). */
+        const hasHead = await runGit(["rev-parse", "--verify", "--quiet", "HEAD"]).then(
+          () => true,
+          () => false,
+        );
+        if (!hasHead) {
+          return Response.json([]);
+        }
         const out = await runGit(["log", `--max-count=${limit}`, "--format=%H\t%s\t%an\t%aI"]);
         const entries = out
           .trim()

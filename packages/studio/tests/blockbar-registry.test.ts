@@ -643,10 +643,10 @@ describe("a non-canvas editor refuses the movers, as it already refused Delete",
     expect(registry.isEnabled("selection.convertToComponent")).toBe(true);
   });
 
-  test("with Project Settings open every one of them is refused", () => {
-    // `settings` → `editorKindForMode` = "config", the state in which the Outline is drawing the
+  test("with the configuration document open every one of them is refused", () => {
+    // `stylebook` → `editorKindForMode` = "config", the state in which the Outline is drawing the
     // Project configuration object.
-    const registry = registryOverMode("settings");
+    const registry = registryOverMode("stylebook");
     for (const id of [...MOVERS, "selection.convertToComponent"]) {
       expect([id, registry.isEnabled(id)]).toEqual([id, false]);
     }

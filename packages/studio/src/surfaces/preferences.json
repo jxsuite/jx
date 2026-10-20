@@ -206,6 +206,21 @@
       "flex": "1",
       "color": "var(--fg-dim)",
       "minWidth": "0"
+    },
+    "& [part=\"appearance\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-5)"
+    },
+    "& [part=\"developer-row\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"developer-note\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
     }
   },
   "children": [
@@ -295,70 +310,127 @@
                 "appearance": {
                   "tagName": "div",
                   "attributes": {
-                    "part": "theme-row"
+                    "part": "appearance"
                   },
                   "children": [
                     {
-                      "tagName": "span",
+                      "tagName": "div",
                       "attributes": {
-                        "part": "theme-label"
-                      },
-                      "textContent": "Theme"
-                    },
-                    {
-                      "tagName": "jx-action-group",
-                      "attributes": {
-                        "part": "themes"
-                      },
-                      "$props": {
-                        "selects": "single",
-                        "compact": true,
-                        "label": "Theme"
+                        "part": "theme-row"
                       },
                       "children": [
                         {
-                          "$prototype": "Array",
-                          "items": {
-                            "$ref": "#/state/themes"
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "theme-label"
                           },
-                          "key": {
-                            "$ref": "$map/item/value"
+                          "textContent": "Theme"
+                        },
+                        {
+                          "tagName": "jx-action-group",
+                          "attributes": {
+                            "part": "themes"
                           },
-                          "map": {
-                            "tagName": "jx-action-button",
-                            "attributes": {
-                              "part": "theme",
-                              "data-theme": "${$map.item.value}"
-                            },
-                            "$props": {
-                              "size": "sm",
-                              "checked": {
-                                "$ref": "$map/item/checked"
-                              }
-                            },
-                            "onclick": {
-                              "$prototype": "Function",
-                              "body": [
-                                {
-                                  "operator": "call",
-                                  "target": {
-                                    "$ref": "#/state/setTheme"
-                                  },
-                                  "value": [
+                          "$props": {
+                            "selects": "single",
+                            "compact": true,
+                            "label": "Theme"
+                          },
+                          "children": [
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/themes"
+                              },
+                              "key": {
+                                "$ref": "$map/item/value"
+                              },
+                              "map": {
+                                "tagName": "jx-action-button",
+                                "attributes": {
+                                  "part": "theme",
+                                  "data-theme": "${$map.item.value}"
+                                },
+                                "$props": {
+                                  "size": "sm",
+                                  "checked": {
+                                    "$ref": "$map/item/checked"
+                                  }
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
                                     {
-                                      "$ref": "$map/item/value"
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/setTheme"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/value"
+                                        }
+                                      ]
                                     }
                                   ]
-                                }
-                              ]
-                            },
-                            "children": [
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "textContent": "${$map.item.label}"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "developer-row"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-switch",
+                          "attributes": {
+                            "part": "developer-panels"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "checked": {
+                              "$ref": "#/state/developerPanels"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
                               {
-                                "tagName": "span",
-                                "textContent": "${$map.item.label}"
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setDeveloperPanels"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/checked"
+                                  }
+                                ]
                               }
                             ]
-                          }
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Show developer panels"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "developer-note"
+                          },
+                          "textContent": "Puts Files and Packages on the Design rail. Both stay in the command palette either way."
                         }
                       ]
                     }

@@ -30,14 +30,17 @@ import {
   openHomePage,
   openProject,
   pickAndUploadTo,
+  refreshProjectDirectoriesFor,
   reloadFileInTab,
   reloadTabsIfChanged,
 } from "../src/files/files";
 import { shell } from "../src/shell";
+import { effect, effectScope } from "../src/reactivity";
 import type { DirEntry, GitStatusResult, ProjectState, StudioPlatform } from "../src/types";
 import { uploadAccept } from "../src/files/media-upload";
 import { resetAssetVersions, versionOf } from "../src/files/asset-versions";
 import { deriveJsonLayout } from "@jxsuite/schema/json-layout";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import { registerCollabPath, unregisterCollabPath } from "../src/collab/collab-state";
 
 // ─── Local helpers ────────────────────────────────────────────────────────────
@@ -114,6 +117,32 @@ beforeEach(() => {
 });
 
 // ─── loadDirectory ────────────────────────────────────────────────────────────
+
+/* The project's directory list is read as it opens. A first page or a first collection creates
+   `pages/` or `content/` after that, and the Content scan walks the list, so a write into a
+   conventional directory the list lacks re-reads it. */
+describe("refreshProjectDirectoriesFor", () => {
+  test("re-reads the list when a write lands in a conventional directory it lacks", async () => {
+    installFsPlatform({ "content/notes/first.md": "x", "pages/index.json": "{}" });
+    siteState({ projectDirs: ["pages"] });
+    expect(await refreshProjectDirectoriesFor(["content/notes/first.md"])).toBe(true);
+    expect(requireProjectState().projectDirs).toEqual(["content", "pages"]);
+  });
+
+  test("leaves the list alone for a directory it holds, a root file or an unconventional one", async () => {
+    const { state } = installFsPlatform({ "pages/index.json": "{}" });
+    siteState({ projectDirs: ["pages"] });
+    expect(
+      await refreshProjectDirectoriesFor([
+        "pages/about.json",
+        "./pages/b.json",
+        "project.json",
+        "scripts/x.js",
+      ]),
+    ).toBe(false);
+    expect(state.calls.filter(([name]) => name === "listDirectory")).toHaveLength(0);
+  });
+});
 
 describe("loadDirectory", () => {
   test("does nothing when no project is loaded", async () => {
@@ -483,6 +512,7 @@ describe("openProject", () => {
     return {
       calls,
       renderLeftPanel: () => calls.push("left"),
+      resetProjectCaches: () => calls.push("reset caches"),
     };
   }
 
@@ -498,6 +528,8 @@ describe("openProject", () => {
 
   test("loads the project, expands conventional dirs, and opens the home page", async () => {
     const ctx = ctxSpies();
+    // The panel the workspace frame put on the Navigator as the project opened.
+    shell.leftTab = "site";
     installFsPlatform(
       {
         "components/card.json": "{}",
@@ -526,9 +558,10 @@ describe("openProject", () => {
     expect(st.dirs.has("pages")).toBe(true);
     expect(st.dirs.has("components")).toBe(true);
 
-    // The rail is no longer repainted by hand: it tracks `shell.leftTab`, which openProject sets.
-    expect(ctx.calls).toEqual(["left"]);
-    expect(shell.leftTab).toBe("files");
+    // The previous project's Site index and media listing are dropped before the Navigator paints.
+    expect(ctx.calls).toEqual(["reset caches", "left"]);
+    // The frame's panel stands: opening a project no longer forces the (developer) Files panel.
+    expect(shell.leftTab).toBe("site");
     expect(activeTab.value?.documentPath).toBe("pages/index.json");
 
     const recent = JSON.parse(localStorage.getItem("jx-studio-recent-projects") ?? "[]");
@@ -594,6 +627,34 @@ describe("openFileInTab", () => {
     expect(activeTab.value?.id).toBe("tab-a");
     expect(requireProjectState().selectedPath).toBe("pages/a.json");
     expect(state.calls.filter(([name]) => name === "readFile")).toHaveLength(0);
+  });
+
+  /* A comparison opens its document IN Diff: the mode decides the tab's workspace, and activation
+     enters it, so a mode set after activation would visit Design first (studio.md §22.1). */
+  test("a requested canvas mode is the tab's before it is active, new or already open", async () => {
+    installFsPlatform({ "pages/a.json": "{}", "pages/c.json": "{}" });
+    siteState();
+    const modesWhenActive: string[] = [];
+    const scope = effectScope();
+    scope.run(() => {
+      effect(() => {
+        const active = activeTab.value;
+        if (active) {
+          modesWhenActive.push(`${active.id}:${active.session.ui.canvasMode}`);
+        }
+      });
+    });
+    await openFileInTab("pages/c.json", { canvasMode: "git-diff" });
+    openTab({ document: { tagName: "div" }, documentPath: "pages/a.json", id: "tab-a" });
+    openTab({ document: { tagName: "div" }, documentPath: "pages/b.json", id: "tab-b" });
+    await openFileInTab("pages/a.json", { canvasMode: "git-diff" });
+    scope.stop();
+    expect(modesWhenActive.filter((entry) => !entry.startsWith("tab-b"))).toEqual([
+      "pages/c.json:git-diff",
+      "tab-a:edit",
+      "tab-a:git-diff",
+    ]);
+    expect(workspace.tabs.get("tab-a")?.session.ui.canvasMode).toBe("git-diff");
   });
 
   test("opens into a NAMED pane, without the keyboard, as a preview tab", async () => {
@@ -919,6 +980,33 @@ describe("reloadFileInTab", () => {
       const expected = deriveJsonLayout(reformatted);
       expect(expected.blankAfter.size).toBe(1);
       expect([...(tab.doc.layout?.blankAfter ?? [])]).toEqual([...expected.blankAfter]);
+    });
+
+    test("a reloaded bare repeater is normalized, compared and saved back bare", async () => {
+      const source: JxMutableNode = {
+        children: { $prototype: "Array", items: [], map: { tagName: "li" } },
+        tagName: "ul",
+      };
+      const text = `${JSON.stringify(source, null, 2)}\n`;
+      const { state } = installFsPlatform({ "pages/a.json": text });
+      siteState();
+      const tab = openTab({
+        document: structuredClone(source),
+        documentPath: "pages/a.json",
+        id: "pages/a.json",
+      });
+      const before = tab.doc.document;
+
+      // The file is the one the tab was opened from: once both are in the member form they agree.
+      await reloadFileInTab("pages/a.json", { onlyIfChanged: true });
+      expect(tab.doc.document).toBe(before);
+
+      // A change on disk is read in the member form, and a save writes the file's own form.
+      state.files.set("pages/a.json", text.replace('"li"', '"p"'));
+      await reloadFileInTab("pages/a.json");
+      expect(Array.isArray(tab.doc.document.children)).toBe(true);
+      const { serializeDocument } = await import("../src/files/serialize-document");
+      expect(await serializeDocument(tab)).toBe(text.replace('"li"', '"p"'));
     });
 
     test("a changed JSON file is reloaded as usual", async () => {

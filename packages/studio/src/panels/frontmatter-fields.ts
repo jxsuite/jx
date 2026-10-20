@@ -9,12 +9,12 @@
  *
  * {@link projectFmField} is the half that says WHAT ONE OF THEM LOOKS LIKE — which control it draws,
  * what that control currently holds, and how to read the control's answer back into a frontmatter
- * value. It is a projection rather than a renderer, and that is the whole of why it lives here:
- * both surfaces that edit frontmatter are Jx documents now (the Document Header card,
- * `src/surfaces/doc-header.json`, and the Navigator's Page panel, `src/surfaces/panel-page.json`),
- * and a document draws its own markup. What they must not each decide is that a `$ref` field is a
- * picker, that `"uri-reference"` is a media format, or that an array is a comma-separated line — so
- * they do not: they ask here and draw the answer.
+ * value. It is a projection rather than a renderer, and that is the whole of why it lives here: the
+ * surface that edits frontmatter is a Jx document (the Inspector's Page tab,
+ * `src/surfaces/panel-page.json`), and a document draws its own markup. What it must not decide for
+ * itself is that a `$ref` field is a picker, that `"uri-reference"` is a media format, or that an
+ * array is a comma-separated line — so it does not: it asks here and draws the answer. (The
+ * Document Header card that once drew the same rows above the canvas is gone, studio.md §4.2.)
  *
  * It replaces `renderFmField`, which was a lit template and could therefore only ever have ONE of
  * the two hosts. The Page panel was the last one, and the renderer went with it.
@@ -66,13 +66,13 @@ export interface FmFieldSet {
  *
  * @param {Tab} tab
  * @param {ProjectConfig | null | undefined} projectConfig
- * @param {Set<string>} reserved — keys managed by dedicated controls elsewhere
+ * @param {ReadonlySet<string>} reserved — keys managed by dedicated controls elsewhere
  * @returns {FmFieldSet}
  */
 export function collectFmFields(
   tab: Tab,
   projectConfig: ProjectConfig | null | undefined,
-  reserved: Set<string>,
+  reserved: ReadonlySet<string>,
 ): FmFieldSet {
   /* SAFETY: `FormatFrontmatter` holds `JxDocumentValue`, which is the JSON value space seen through
      the typed interfaces a document's declared keys use (JxRef, JxStatement, CemEvent, ...). Every
@@ -299,7 +299,7 @@ export function projectFmField(
     return {
       parse: (raw) => {
         /* NaN is deleted rather than written. The two surfaces this replaced disagreed here: the
-           Page panel's `spNumberField` refused a non-number and the Document Header card wrote
+           Page panel's `spNumberField` refused a non-number and the old Document Header card wrote
            `NaN` into the frontmatter, where it round-trips to `null`. One answer, and it is the
            one that cannot corrupt the document. */
         const trimmed = String(raw).trim();

@@ -27,6 +27,7 @@ import {
   promoteTab,
   moveTabToPane,
   setTabPinned,
+  setTabScope,
   splitRight,
   tabCommands,
   tabIsLive,
@@ -342,6 +343,25 @@ describe("collapsing", () => {
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
     expect(workspace.activeTabId).toBe("b");
     scope.stop();
+  });
+
+  test("closing the focused side pane keeps the survivor's tab when the side pane's is another workspace's", () => {
+    /* A derived pane follows the author into every workspace still showing its source's document.
+       Close Side Pane from its own menu in Media focused it first, and the survivor inherited its
+       Design document as the one on screen, which carried the author off to Design. */
+    open("a");
+    open("b");
+    splitRight();
+    expect(workspace.activePaneId).toBe(SECONDARY_PANE);
+    setTabScope((id) => id !== "b");
+    try {
+      closePane(SECONDARY_PANE);
+    } finally {
+      setTabScope(null);
+    }
+    expect(workspace.activeTabId).toBe("a");
+    // Nothing is lost: the side pane's document is in the survivor's strip.
+    expect(paneById(PRIMARY_PANE)!.tabOrder).toEqual(["a", "b"]);
   });
 
   test("closing the last tab in the side pane collapses it", () => {

@@ -12,8 +12,11 @@
  * was fixed.
  *
  * What is left is the flow, which is all this module ever owned that mattered: what the default
- * name is, what makes a name usable, whether the document actually took the reference, and what is
- * written to disk once it has.
+ * name is, whether the document actually took the reference, and what is written to disk once it
+ * has. What makes a name usable is no longer this module's: it is HTML's valid custom element name,
+ * stated once in `create/element-name.ts` and asked by Add new's Component kind too, which runs
+ * {@link convertSelectionToComponent} for **Start from: Current selection** (`specs/studio.md`
+ * §9.1.1).
  *
  * @docs studio/design/components
  */
@@ -31,33 +34,62 @@ import { serializeJson } from "@jxsuite/schema/json-layout";
 import { notify } from "../services/notify";
 import { showPromptDialog } from "../ui/layers";
 import { validateComponentSlots } from "../services/cem-export";
+import { customElementNameProblem, deriveTagName } from "../create/element-name";
 
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
 
-const VALID_NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)+$/;
-
-/** Convert the currently selected element into a reusable component. */
-export async function convertToComponent() {
+/**
+ * The selected element a conversion would lift out, or `null` when there is none to convert.
+ *
+ * The root is not convertible (it is the document, not an element in it), and neither is a
+ * selection the document cannot resolve to a node with a tag. Exported so Add new can say WHY its
+ * Current selection choice is disabled rather than offering a button that does nothing.
+ */
+export function convertibleSelection(): { path: JxPath; node: JxMutableNode } | null {
   const tab = activeTab.value;
   const selected = primarySelection(tab?.session.selection);
   if (!tab || !selected || selected.length < 2) {
-    return;
+    return null;
   }
-
   const node = getNodeAtPath(tab.doc.document, selected);
   if (!node || !node.tagName) {
+    return null;
+  }
+  return { node, path: selected };
+}
+
+/** Convert the currently selected element into a reusable component. */
+export async function convertToComponent() {
+  const subject = convertibleSelection();
+  if (!subject) {
     return;
   }
-
-  const defaultName = deriveDefaultName(node);
-  const chosen = await promptComponentName(defaultName);
+  const chosen = await promptComponentName(deriveDefaultName(subject.node));
   if (!chosen) {
     return;
   }
   /* The prompt resolves the TRIMMED value; the case fold is this module's, because it is the case
      fold `validateName` already judged the name in. A tag name is lower-case by the same rule that
      made `Hero-Block` default to `hero-block`. */
-  const name = chosen.toLowerCase();
+  await convertSelectionToComponent(chosen.toLowerCase());
+}
+
+/**
+ * Replace the selected element with an instance of a new component named `name`, and write the
+ * component's definition to `components/<name>.json`.
+ *
+ * The caller has validated `name` (`create/element-name.ts`). The reference goes into the document
+ * FIRST, in one transaction, and the file is written only if that transaction landed — see below.
+ *
+ * @returns The component file's path, or `null` when nothing was converted or the write failed.
+ */
+export async function convertSelectionToComponent(name: string): Promise<string | null> {
+  const tab = activeTab.value;
+  const subject = convertibleSelection();
+  if (!tab || !subject) {
+    return null;
+  }
+  const { node, path: selected } = subject;
 
   // Extract component definition
   const componentDef = extractComponentDef(node);
@@ -107,7 +139,7 @@ export async function convertToComponent() {
      document the author was told had been changed. The gate raises its own toast saying why the
      edit is paused; the honest thing to add to it is nothing at all. */
   if (!converted) {
-    return;
+    return null;
   }
 
   // Write component file and refresh registry
@@ -130,27 +162,31 @@ export async function convertToComponent() {
         tier: "problem",
       });
     }
+    return componentFile;
   } catch (error) {
     notify.error(`Could not save the <${name}> component.`, {
       detail: errorMessage(error),
       path: componentFile,
       source: "Components",
     });
+    return null;
   }
 }
 
 /**
- * Derive a default tag name from a node.
- *
- * @param {JxMutableNode} node
- * @returns {string}
+ * The default tag name for a node: its `$id` when it has one, else its tag, through the shared
+ * deriver — so `$id: "Hero"` proposes `site-hero` and a `<section>` proposes `site-section`, the
+ * same answer Add new gives a component typed as "Hero".
  */
 function deriveDefaultName(node: JxMutableNode) {
-  if (node.$id && node.$id.includes("-")) {
-    return node.$id.toLowerCase();
+  if (node.$id) {
+    const fromId = deriveTagName(node.$id);
+    if (fromId !== "") {
+      return fromId;
+    }
   }
   const tag = (displayTagName(node.tagName) || "div").toLowerCase();
-  return tag.includes("-") ? tag : `jx-${tag}`;
+  return tag.includes("-") ? tag : deriveTagName(tag);
 }
 
 /**
@@ -170,30 +206,18 @@ function extractComponentDef(node: JxMutableNode) {
 }
 
 /**
- * Validate a component name against naming rules and existing registry.
- *
- * @param {string} val
- * @returns {{ valid: boolean; error: string }}
+ * The refusal a component name earns, or `""`: HTML's valid custom element name, then uniqueness
+ * against the registry.
  */
-function validateName(val: string) {
+function validateName(val: string): string {
   const name = val.trim().toLowerCase();
-  if (!name.includes("-")) {
-    return {
-      error: "Name must contain a hyphen (e.g. my-component)",
-      valid: false,
-    };
+  const problem = customElementNameProblem(name);
+  if (problem !== "") {
+    return problem;
   }
-  if (!VALID_NAME.test(name)) {
-    return {
-      error: "Lowercase letters, digits, and hyphens only",
-      valid: false,
-    };
-  }
-  const exists = componentRegistry.some((c) => c.tagName === name);
-  if (exists) {
-    return { error: `Component <${name}> already exists`, valid: false };
-  }
-  return { error: "", valid: true };
+  return componentRegistry.some((c) => c.tagName === name)
+    ? `Component <${name}> already exists`
+    : "";
 }
 
 /**
@@ -212,7 +236,7 @@ function promptComponentName(defaultName: string): Promise<string | null> {
     confirmLabel: "Convert",
     message: "Enter a hyphenated tag name for the new component.",
     placeholder: "my-component",
-    validate: (value) => validateName(value).error,
+    validate: validateName,
     value: defaultName,
   });
 }

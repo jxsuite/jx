@@ -364,11 +364,12 @@ describe("toggleDock's dock ids", () => {
     expect(shell.docks.right.collapsed).toBe(false);
     expect(inspectorTab()).toBe("assistant");
 
-    // Showing → step off it. Idempotent by state, so the dock stays where the author left it.
+    // Showing → step off it, onto Page, the strip's first tab. Idempotent by state, so the dock
+    // Stays where the author left it.
     studioDeps!.toggleDock("bottom");
-    expect(inspectorTab()).toBe("properties");
+    expect(inspectorTab()).toBe("page");
     expect(shell.docks.right.collapsed).toBe(false);
-    expect(tab.session.ui.rightTab).toBe("properties");
+    expect(tab.session.ui.rightTab).toBe("page");
   });
 
   test('"navigator" flips its dock and leaves the Assistant alone', () => {

@@ -230,11 +230,11 @@ function barPosition(anchor: {
      "the stage showing the active tab", which was the same answer only while a tab could be on
      screen in one place; with a document displayed in two panes it picked whichever came first in
      the grid, and clipped the bar against a stage the author is not typing in.
-     …and against the box that SCROLLS, where the stage has one. Edit docks the Document Header
-     card above its scroller, inside the same stage cell, so a node scrolled up under the band is
-     still inside the stage while nobody can see it — and the bar would float over the card,
-     pointing at a node the card is covering. Everywhere else there is no scroller and the stage is
-     the viewport, as it always was. */
+     …and against the box that SCROLLS, where the stage has one: Edit's page scroller. Over a
+     collection entry the writing banner stands above it in the same stage cell, so a node
+     scrolled up under the banner is still inside the stage while nobody can see it — and the bar
+     would float over the banner, pointing at a node it covers. Everywhere else there is no
+     scroller and the stage is the viewport, as it always was. */
   const surface = activeCanvasSurface();
   const viewport = panelOfSurface(surface)?.scrollContainer ?? stageOf(surface);
   const box = viewport ? rectOf(viewport) : null;
@@ -244,9 +244,9 @@ function barPosition(anchor: {
   /* ABOVE the anchor where the bar fits above it INSIDE that viewport, and BELOW it where it does
      not. The flip used to be decided against a flat 80 in WINDOW coordinates, the app's own top
      chrome, which is the same answer only while the viewport starts near the top of the window.
-     Edit's scroller starts under a band, so an anchor whose top had scrolled under the card while
-     its bottom was still on screen put the bar ON the card — over the fields it covers, taking
-     their clicks. Flipped is better than hidden: the element is visible, so its bar should be, and
+     Edit's scroller can start under the writing banner, so an anchor whose top had scrolled under
+     it while its bottom was still on screen put the bar ON the banner, taking its clicks. Flipped
+     is better than hidden: the element is visible, so its bar should be, and
      past the clip above the anchor's bottom edge is inside the viewport, so the flipped bar is too.
      The fallback is that same 80px of chrome, for a stage no pass has measured yet. */
   const ceiling = box ? box.top : 80 - BAR_CLEARANCE;
@@ -257,7 +257,7 @@ function barPosition(anchor: {
   /* Below it, and kept INSIDE the viewport: an element taller than what is left of the scroller has
      its bottom edge off screen, and the bar would follow it there — over the status bar, or over
      whatever the pane below is showing. Clamped, it stands on that element's last visible strip,
-     still pointing at it and still off the card. */
+     still pointing at it and still inside the scroller. */
   const below = anchor.top + anchor.height + 4;
   return {
     left: anchor.left,
@@ -1273,8 +1273,8 @@ function hideBar(): void {
  * The document + selection the bar is currently suppressed FOR, or null while it is free to draw.
  *
  * **Why a key and not a boolean.** The bar is `position: fixed` and clamped into the window, so it
- * can sit over the Document Header card, the pane context bar and the docks; an author working in
- * the Inspector's Logic tab reported it "blocking a part of the interface that the user needs to
+ * can sit over the pane context bar, the Inspector and the docks; an author working in the
+ * Inspector's Logic tab reported it "blocking a part of the interface that the user needs to
  * utilize". Hiding it on a chrome pointerdown is half an answer — {@link dismissBlockActionBar}
  * alone would flash back on the very next repaint, because the bar is re-rendered from the
  * `toolbarRefresh` seam on every selection snapshot and from `renderOnly("overlays")` on zoom/pan.

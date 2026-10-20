@@ -56,6 +56,17 @@ import type { IframeToParent, ParentToIframe, SerializedKey, SyncedChord } from 
  */
 export const FRAME_KEY_SCOPES = ["caret", "canvas", "global"] as const;
 
+/**
+ * Commands whose chords the frame never forwards, though their scope is on its stack.
+ *
+ * `pane.backToHome` holds bare Escape in the global scope, and it applies only to a view opened
+ * beside a strip-less workspace's home (a media viewer, a comparison, `project.json` as Code), none
+ * of which is a canvas frame. Projected into the table, it made every frame cancel Escape in
+ * Preview and mid-sentence too, where nothing else claims it, so an author's own `<dialog>` or
+ * popover in the rendered page could no longer be dismissed with it.
+ */
+export const HOST_ONLY_COMMANDS: ReadonlySet<string> = new Set(["pane.backToHome"]);
+
 /** The scope stack a caret session is in — app chords still fire, element-level ones do not. */
 const CARET_STACK = ["caret", "global"] as const;
 /** The stack with a selection but no caret: structural verbs are live. */

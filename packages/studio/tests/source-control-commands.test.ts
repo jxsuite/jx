@@ -69,7 +69,7 @@ void mock.module("../src/services/notify.js", () =>
 const { setProjectState } = await import("../src/state.js");
 const { emptyContext, makeContext } = await import("../src/commands/context.js");
 const { registerSourceControlCommands, sourceControlCommands } =
-  await import("../src/panels/git-panel.js");
+  await import("../src/publish/source-control.js");
 const { createCommandRegistry } = await import("../src/commands/registry.js");
 
 function command(id: string) {

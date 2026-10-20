@@ -10,6 +10,20 @@
 import type { CaptureRuntime } from "../../../scripts/check-image-lock";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { OfferedAction, RepoInfo } from "../src/types";
+import type { ComponentEntry } from "../src/files/components";
+
+// ─── Components ───────────────────────────────────────────────────────────────
+
+/**
+ * One project component with a prop default — what the Site panel, the Insert panel's click and the
+ * slash menu's Components group insert and import (specs/studio.md §5.7).
+ */
+export const SITE_CARD: ComponentEntry = {
+  path: "components/site-card.json",
+  props: [{ default: "Hi", name: "heading" }],
+  source: "project",
+  tagName: "site-card",
+};
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────
 

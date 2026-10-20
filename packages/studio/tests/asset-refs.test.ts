@@ -21,6 +21,7 @@ import {
   contentMountFor,
   mountedRefFor,
   previewAssetSrc,
+  previewAssetSrcFor,
   resolveAssetRef,
 } from "../src/canvas/asset-refs";
 import { withVersion } from "../src/canvas/asset-resolve";
@@ -184,6 +185,15 @@ describe("previewAssetSrc", () => {
     resetStudioState({ projectConfig: { content: POSTS, name: "Demo" } });
     resetWorkspaceWithTab(undefined, { documentPath: "pages/index.json" });
     expect(previewAssetSrc("./images/hero.png")).toBe("./images/hero.png");
+  });
+
+  test("previewAssetSrcFor resolves against the document it names, not the focused one", () => {
+    resetStudioState({ projectConfig: { content: POSTS, name: "Demo" } });
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/index.json" });
+    expect(previewAssetSrcFor("./images/hero.png", "content/posts/hello.md")).toBe(
+      "/content/posts/images/hero.png",
+    );
+    expect(previewAssetSrcFor("", "project.json")).toBe("");
   });
 
   test("passes through an already-absolute value and an empty one", () => {

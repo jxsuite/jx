@@ -4,6 +4,7 @@ description: "How Jx components work: self-describing JSON, state management, ex
 spec:
   - spec.md#16.6
   - spec.md#16.9
+  - spec.md#16.4
 code:
   - packages/compiler/src/shadow.ts
   - packages/compiler/src/targets/compile-element.ts
@@ -245,3 +246,9 @@ Signal scope is bounded at the component level. No implicit scope leaking.
 An instance can sit inside another component's own `children` as well as on a page or in a slot, and the build expands it at every level, props resolved against the enclosing component's state. See [Components inside components](/docs/framework/build#components-inside-components) for what the compiler writes and the one shape it refuses (a component that renders itself with the same props).
 
 The live runtime refuses that shape too, with the same words. A component that instantiates its own tag inside its own `children`, forwarding the same props, is stopped at the level where the props repeat: that instance stays an empty element, the console reports `Component <my-card> renders itself: my-card → my-card …`, and the rest of the page, its siblings and every other `<my-card>` included, renders as usual. The refused element also dispatches a bubbling `jx-error` event (an `ErrorEvent`, with the diagnostic as its `error` and `message`), so a page can listen for the refusal where a console line is out of reach. A component that renders itself with props that change at each level (a tree node) is allowed up to 32 levels deep in the runtime as in the build; past that it is reported the same way, with the chain it walked. Slot content does not count: `<my-card><my-card></my-card></my-card>` written on a page is two instances, not a component rendering itself. One shape only the runtime can meet, a component whose `onMount` or a later state change flips a `$switch` into its own tag again, is ended by the same 32-level cap rather than by the cycle check, because at that point the runtime cannot tell a component looping from a user opening one more level of a tree.
+
+## When a component cannot render yet
+
+A component whose render throws with the values it was given (a card that formats an empty `date` with `Intl/formatDate`, say) is reported the same way: `Jx: <my-card> was not rendered:` in the console and a `jx-error` event from the element, with the rest of the page drawn around it. In the live runtime that is not final. A prop bound to data that arrives later, such as a collection the page loads after its first render, reaches the component after it connected, so when one of the component's props changes the runtime draws it again, and its `onMount` runs once a render succeeds. The same error is reported once, not on every attempt.
+
+`onMount` receives the component's state and the element, and runs with the element as `this`, as a built site runs it. A prop named like a property every element has, such as `title` or `lang`, reaches the component from a parent's `$props` even when it changes after the component connected.

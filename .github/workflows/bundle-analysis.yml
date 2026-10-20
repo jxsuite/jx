@@ -62,12 +62,7 @@ jobs:
           - studio
     steps:
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          # Keep in sync with test.yml: bundle sizes shift between Bun
-          # versions, which would move the Codecov baseline.
-          bun-version: 1.4
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup-bun
       - name: Build with metafile
         run: bun run build:metafile
         working-directory: packages/${{ matrix.package }}

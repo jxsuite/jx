@@ -60,6 +60,10 @@ void mock.module("../src/panels/component-preview", () => ({
     return el;
   },
 }));
+// The specimen answers read the files the preview mock above replaces; this suite draws none.
+void mock.module("../src/style/stylebook-specimens", () => ({
+  loadStylebookSpecimens: async () => new Map(),
+}));
 
 const { buildStylebookDoc, hasTagStyle, transposeStylebookStyle } =
   await import("../src/panels/stylebook-doc");

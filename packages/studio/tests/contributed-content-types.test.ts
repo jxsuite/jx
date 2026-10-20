@@ -304,7 +304,7 @@ describe("parser contribution fixture", () => {
 describe("content types list panel", () => {
   test("renders empty state when nothing is selected", async () => {
     await setup({});
-    expect(part(container, "empty").textContent).toContain("Select or create an entry");
+    expect(part(container, "empty").textContent).toBe("Select a content type or create one");
     expect(entryKeys(container)).toEqual([]);
   });
 

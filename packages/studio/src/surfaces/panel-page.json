@@ -1,13 +1,13 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPanelPage",
-  "$description": "The Navigator's Page panel: everything the open document says about itself before anybody reads its body — its frontmatter, the layout it is poured into, its title, description, viewport and icon, its OpenGraph card, and the raw `$head` tags no structured control owns. ONE row vocabulary across the first four sections, told apart by `kind`, because a Title, a Layout picker and a schema-driven frontmatter field differ in what they COMMIT rather than in what they look like — and what they commit is `panels/head-panel.ts`'s decision, reached by the row's `key`. Nothing here knows what a `$head` entry is, which of them are managed, what a content collection is or that a page has a layout: the flow hands over sections whose every field is already a string and this draws them. The Custom Tags section is the one different shape — a read-only list plus the form that adds to it — because those rows are markup a reader is being SHOWN rather than a value they are editing.",
+  "$description": "The Inspector's Page tab (specs/studio.md §6), the former Navigator Page panel: everything the open document says about itself before anybody reads its body — its frontmatter, the layout it is poured into, its title, description, viewport and icon, its OpenGraph card, and the raw `$head` tags no structured control owns. ONE row vocabulary across the first four sections, told apart by `kind`, because a Title, a Layout picker and a schema-driven frontmatter field differ in what they COMMIT rather than in what they look like — and what they commit is `panels/head-panel.ts`'s decision, reached by the row's `key`. Nothing here knows what a `$head` entry is, which of them are managed, what a content collection is or that a page has a layout: the flow hands over sections whose every field is already a string and this draws them. The Custom Tags section is the one different shape — a read-only list plus the form that adds to it — because those rows are markup a reader is being SHOWN rather than a value they are editing.",
   "tagName": "div",
   "attributes": {
     "part": "page"
   },
   "style": {
-    "$description": "The eleven `.imports-*` and four `.head-*` rules in `styles/panels.css` plus the row vocabulary the panel used to borrow from `styles/inspector.css` (`.style-row`, `.style-row-label`, `.set-dot`) and `styles/overlays.css` (`.media-picker`, `.media-picker-thumb`). The borrowed ones are TRANSCRIBED rather than shared, for the reason `doc-header.json` gives: a document emits no class, so a class cannot style it, and the lit panels that still draw a `.style-row` go on owning those rules until they convert. Four token repairs travel with them. `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document is mounted outside it, so every rule that read it would silently have taken its 11px fallback and stopped following the theme; each is `--jx-text-sm` here, and the two bare `10px` literals are `--jx-text-xs`. `.imports-count` read `--text-hint`, a name NO stylesheet in this package defines — an unresolvable custom property makes the whole declaration invalid at computed-value time, so the count has been inheriting its colour rather than taking the one written for it, and it says `--fg-dim`, which is what it was drawing anyway. And `.head-section-body .style-row > sp-textfield` reached INSIDE another component to widen it, which a part cannot do and no longer has to: `[part=\"widget\"]` is the field itself. Two things changed on purpose. THE CLEAR DOT IS A BUTTON — it was a `<span>` with a click handler and no role, so a row's only route to clearing its value could not be reached from the keyboard at all. AND THE ADD FORM IS STATE, not three `ref()` handles read at submit time: a document binding writes only when the scope moves, so the flow states what each field holds and clearing one after a successful add is a real change the runtime carries back.",
+    "$description": "The eleven `.imports-*` and four `.head-*` rules in `styles/panels.css` plus the row vocabulary the panel used to borrow from `styles/inspector.css` (`.style-row`, `.style-row-label`, `.set-dot`) and `styles/overlays.css` (`.media-picker`, `.media-picker-thumb`). The borrowed ones are TRANSCRIBED rather than shared, because a document emits no class, so a class cannot style it, and the lit panels that still draw a `.style-row` go on owning those rules until they convert. Four token repairs travel with them. `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document is mounted outside it, so every rule that read it would silently have taken its 11px fallback and stopped following the theme; each is `--jx-text-sm` here, and the two bare `10px` literals are `--jx-text-xs`. `.imports-count` read `--text-hint`, a name NO stylesheet in this package defines — an unresolvable custom property makes the whole declaration invalid at computed-value time, so the count has been inheriting its colour rather than taking the one written for it, and it says `--fg-dim`, which is what it was drawing anyway. And `.head-section-body .style-row > sp-textfield` reached INSIDE another component to widen it, which a part cannot do and no longer has to: `[part=\"widget\"]` is the field itself. Two things changed on purpose. THE CLEAR DOT IS A BUTTON — it was a `<span>` with a click handler and no role, so a row's only route to clearing its value could not be reached from the keyboard at all. AND THE ADD FORM IS STATE, not three `ref()` handles read at submit time: a document binding writes only when the scope moves, so the flow states what each field holds and clearing one after a successful add is a real change the runtime carries back.",
     "display": "block",
     "overflowY": "auto",
     "padding": "var(--jx-space-2)",
@@ -84,6 +84,19 @@
     "& [part=\"widget\"]": {
       "width": "100%",
       "minWidth": "0"
+    },
+    "& [part=\"readout\"]": {
+      "$description": "A derived value set as text in the field's place, monospaced because a URL is read character by character.",
+      "display": "block",
+      "padding": "2px 0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"row-action\"]": {
+      "alignSelf": "flex-start"
     },
     "& [part=\"note\"]": {
       "$description": "What the row could not find out — the entries of a referenced collection that is empty, or the reason listing it failed. A sentence under the control, in the row's own label size, so it reads as part of the field rather than as an error banner.",
@@ -501,6 +514,15 @@
                             ]
                           }
                         },
+                        "readout": {
+                          "$description": "A value the document derives rather than stores, such as a page's URL, which is its file's place under `pages/`. Shown, never edited here: an editable URL would be a rename, and a rename is the file tree's.",
+                          "tagName": "output",
+                          "attributes": {
+                            "part": "readout",
+                            "aria-label": "${$map.item.label}"
+                          },
+                          "textContent": "${$map.item.value}"
+                        },
                         "select": {
                           "tagName": "jx-select",
                           "attributes": {
@@ -677,6 +699,54 @@
                                   }
                                 ]
                               }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "action-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "$map/item/hasAction"
+                      },
+                      "cases": {
+                        "true": {
+                          "$description": "The row's one door elsewhere, named for what it opens: the Layout row's Edit template opens the layout in Design.",
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "row-action"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "secondary"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/runRowAction"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/key"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "${$map.item.action}"
                             }
                           ]
                         }

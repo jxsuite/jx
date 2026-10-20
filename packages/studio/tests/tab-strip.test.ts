@@ -31,8 +31,13 @@ import type { MonacoSurface } from "../src/view";
 import type { PeerPresence } from "../src/collab/collab-state";
 import type { Tab } from "../src/tabs/tab";
 import { surfaceForPane } from "../src/canvas/surface-registry";
+import { installWorkspaceFollow } from "../src/workspace/workspace-switch";
+import { shell } from "../src/shell";
 
 let host: HTMLElement;
+/* The app's follow: activating a tab enters its workspace, so a content entry opened here is drawn
+   in Content's strip exactly as it is in the running shell. */
+let stopFollow: () => void = () => {};
 
 function open(id: string, documentPath: string | null = `/project/${id}.json`) {
   return openTab({
@@ -98,10 +103,13 @@ beforeEach(() => {
   initLayers();
   host = document.querySelector<HTMLElement>("#tab-strip")!;
   closeAllTabs();
+  shell.workspace = "design";
+  stopFollow = installWorkspaceFollow({ setInspectorTab: () => {} });
   mount(host);
 });
 
 afterEach(() => {
+  stopFollow();
   unmount();
   closeAllTabs();
   document.body.innerHTML = "";
@@ -1575,5 +1583,25 @@ describe("a derivation chip sits on the tab row's baseline grid", () => {
   test("its inline padding is wider than a chip's, because it has no siblings", () => {
     expect(style['& [part="derivation"]']!.padding).toBe("4px 10px");
     expect(style['& [part="tab"]']!.padding).toBe("4px var(--jx-space-2)");
+  });
+});
+
+// ─── The pin's hit area ───────────────────────────────────────────────────────
+
+describe("a chip that does not show its pin keeps no box for one", () => {
+  /* Read from the document for the same reason as above: happy-dom does no hit testing. The defect
+     was a pin at `opacity: 0` on every inactive chip, still 16px wide and still taking clicks, so the
+     centre of a short chip toggled an invisible pin instead of activating the tab. */
+  const { style } = doc;
+
+  test("an inactive, unpinned chip's pin is not drawn at all, and no rule hides one by opacity", () => {
+    expect(
+      style['& [part="tab"]:not([aria-selected="true"]):not([data-pinned]) [part="pin"]']!.display,
+    ).toBe("none");
+    expect("opacity" in style['& [part="pin"]']!).toBe(false);
+    const revealedOnHover = Object.keys(style).filter((selector) =>
+      selector.includes(':hover [part="pin"]'),
+    );
+    expect(revealedOnHover).toEqual([]);
   });
 });

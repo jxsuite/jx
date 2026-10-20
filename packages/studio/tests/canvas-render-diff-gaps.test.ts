@@ -1,7 +1,7 @@
 /**
- * Canvas render — the three NON-IFRAME editor dispatches and the guards around them.
+ * Canvas render — the NON-IFRAME editor dispatches and the guards around them.
  *
- * Settings, Library and Entry are the modes whose panel owns its own reactivity: the render hands
+ * The Content home and Entry are the modes whose panel owns its own reactivity: the render hands
  * the stage over once and every later repaint of the same tab must stop at the fast path instead of
  * rebuilding the pane. Both halves are asserted here — the hand-over (stage styling, the surface
  * and tab the panel was drawn for, and the `return` that keeps the design artboards off the stage)
@@ -10,10 +10,12 @@
  * Plus the one interactive affordance a stale COMPANION offers — Pin, which ends the follow — and
  * the two early returns in `canvas/surface-registry.ts`.
  *
- * The three panel modules are mocked exactly as `canvas-render-gaps.test.ts` mocks the grid panel:
- * a spy that records the surface and tab it was handed, and a mounted-set the render path can then
- * observe. The real panels are unit-tested in `settings-document.test.ts`, `library-pane.test.ts`
- * and `entry-editor.test.ts`; what is under test here is the dispatch.
+ * The panel modules are mocked exactly as `canvas-render-gaps.test.ts` mocks the grid panel: a spy
+ * that records the surface and tab it was handed, and a mounted-set the render path can then
+ * observe. The real panels are unit-tested in `library-pane.test.ts` and `entry-editor.test.ts`;
+ * what is under test here is the dispatch. Project Settings is not a canvas mode any more: it is a
+ * dialog (§17.1), and a tab that names the retired `settings` mode is drawn as any unknown mode
+ * is.
  */
 import {
   flush,
@@ -29,6 +31,7 @@ import {
   SECONDARY_PANE,
   activeTab,
   closeAllTabs,
+  openTab,
   paneById,
   workspace,
 } from "../src/workspace/workspace";
@@ -43,6 +46,7 @@ import {
 import { setFormats } from "../src/format/format-host";
 import type { CanvasSurface } from "../src/canvas/surface-registry";
 import type { Tab } from "../src/tabs/tab";
+import type { JsonSchema } from "../src/ui/schema-form";
 
 // ─── Controllable mock behavior ───────────────────────────────────────────────
 
@@ -76,6 +80,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   postOpenSlash: () => {},
   postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => 0,
+  postSiteStyleToLiveHosts: () => 0,
   releaseCanvasHosts: () => 0,
   requestCanvasEval: () => Promise.resolve(null),
   setToolbarRefresh: () => {},
@@ -131,9 +136,9 @@ void mock.module("../src/grid/grid-panel.js", () => ({
 
 /**
  * A stand-in panel module: it marks itself mounted for the pane it drew into, stamps a marker into
- * that pane's stage, and forgets the pane when detached — the same three facts the real Library,
- * Entry and Settings panes expose to the render path. A test can therefore count markers to see
- * whether a repaint rebuilt the pane.
+ * that pane's stage, and forgets the pane when detached — the same three facts the real Content
+ * home and Entry panes expose to the render path. A test can therefore count markers to see whether
+ * a repaint rebuilt the pane.
  */
 function panelDouble(marker: string) {
   const mounted = new Map<string, Tab | null>();
@@ -149,16 +154,16 @@ function panelDouble(marker: string) {
   return { detach, mounted, render };
 }
 
+/* The Content home is drawn by `workspace/workspace-home.ts`, which routes the Content home TAB to
+   `browse/library-pane.ts`; this double stands in for that module. */
 const library = panelDouble("library-marker");
 void mock.module("../src/browse/library-pane.js", () => ({
-  createLibraryEntry: () => Promise.resolve(null),
   detachLibraryPane: library.detach,
   invalidateLibrary: () => {},
-  libraryNewEntries: () => [],
   libraryPaneMounted: (paneId: string, tab: Tab) => library.mounted.get(paneId) === tab,
   refreshLibrary: () => Promise.resolve(),
   renderLibraryMode: library.render,
-  setLibraryCategory: () => {},
+  resetContentView: () => {},
   setLibraryLayout: () => {},
   setLibrarySearch: () => {},
 }));
@@ -166,19 +171,16 @@ void mock.module("../src/browse/library-pane.js", () => ({
 const entry = panelDouble("entry-marker");
 void mock.module("../src/content/entry-editor.js", () => ({
   ENTRY_MODE: "entry",
+  absentRequiredErrors: () => ({}),
   detachEntryPane: entry.detach,
+  formContext: () => ({}),
   entryDraftPill: () => null,
   entryPaneMounted: (paneId: string, tab: Tab) => entry.mounted.get(paneId) === tab,
+  fieldLabels: () => ({}),
   openEntryEditor: () => Promise.resolve(null),
   renderEntryMode: entry.render,
   setEntryDraft: () => {},
-}));
-
-const settings = panelDouble("settings-marker");
-void mock.module("../src/panels/settings-pane.js", () => ({
-  detachSettingsPane: settings.detach,
-  renderSettingsPane: settings.render,
-  settingsPaneMounted: (surface: CanvasSurface) => settings.mounted.has(surface.paneId),
+  titleFirst: (schema: JsonSchema) => schema,
 }));
 
 const { initCanvasRender, renderCanvas } = await import("../src/canvas/canvas-render");
@@ -198,6 +200,18 @@ function setMode(mode: string) {
   if (tab) {
     tab.session.ui.canvasMode = mode;
   }
+}
+
+/** Put the Content home's own tab in the pane, in its mode. */
+function showContentHome() {
+  closeAllTabs();
+  openTab({
+    capabilities: { modes: ["content-home"] },
+    document: { children: [], tagName: "div" },
+    documentPath: null,
+    id: "workspace://content",
+  });
+  setMode("content-home");
 }
 
 function stage(): HTMLElement {
@@ -220,7 +234,7 @@ beforeEach(() => {
   resetStudioState({ isSiteProject: true });
   closeAllTabs();
   setFormats([]);
-  for (const double of [library, entry, settings]) {
+  for (const double of [library, entry]) {
     double.render.mockClear();
     double.detach.mockClear();
     double.mounted.clear();
@@ -248,24 +262,19 @@ afterEach(() => {
 // ─── The non-iframe editor modes ──────────────────────────────────────────────
 
 describe("the modes whose panel owns its own reactivity", () => {
-  test("settings hands the stage to the Project Settings editor and draws nothing else", async () => {
+  test("the retired settings mode hands the stage to no editor of its own", async () => {
     setMode("settings");
     renderCanvas();
     await flush();
 
-    expect(settings.render).toHaveBeenCalledTimes(1);
-    expect(settings.render.mock.calls[0]![0]).toBe(surfaceForPane(PRIMARY_PANE));
-    // The stage is the editor's: full-bleed and a block, not the flex row the artboards want.
-    expect(stage().style.padding).toBe("0px");
-    expect(stage().style.display).toBe("block");
-    // …and the dispatch STOPS here. Falling through would build the design surface over the
-    // Editor — a panzoom wrap and an artboard on a stage the settings editor already owns.
-    expect(stage().querySelector('[part="panzoom"]')).toBeNull();
-    expect(canvasPanels).toHaveLength(0);
+    // Nothing claims it: no panel double ran, and the stage was not styled for a full-bleed editor.
+    expect(library.render).not.toHaveBeenCalled();
+    expect(entry.render).not.toHaveBeenCalled();
+    expect(stage().style.display).not.toBe("block");
   });
 
-  test("manage hands the stage to the Library, for THIS pane's tab, and draws nothing else", async () => {
-    setMode("manage");
+  test("the Content home's tab hands the stage to the Content home, and draws nothing else", async () => {
+    showContentHome();
     renderCanvas();
     await flush();
 
@@ -273,10 +282,18 @@ describe("the modes whose panel owns its own reactivity", () => {
     const [drawnOn, tab] = library.render.mock.calls[0]!;
     expect(drawnOn).toBe(surfaceForPane(PRIMARY_PANE));
     expect(tab).toBe(activeTab.value!);
-    expect(stage().style.padding).toBe("0px");
-    expect(stage().style.display).toBe("block");
+    // A home fills the stage by its own style block, so nothing is written onto the stage.
+    expect(stage().style.padding).toBe("");
     expect(stage().querySelector('[part="panzoom"]')).toBeNull();
     expect(canvasPanels).toHaveLength(0);
+  });
+
+  test("the retired manage mode is no editor any more: it draws as an unknown mode does", async () => {
+    setMode("manage");
+    renderCanvas();
+    await flush();
+    expect(stage().querySelector(".library-marker")).toBeNull();
+    expect(library.render).not.toHaveBeenCalled();
   });
 
   test("entry hands the stage to the entry form, for THIS pane's tab, and draws nothing else", async () => {
@@ -294,11 +311,37 @@ describe("the modes whose panel owns its own reactivity", () => {
     expect(canvasPanels).toHaveLength(0);
   });
 
+  /* A workspace home is the real module, not a double: the Publish workspace is a standing document
+     that follows its own records, so the hand-over, the stop and the fast path are all one mount. */
+  test("a workspace home takes the stage, stops there, and a same-tab repaint rebuilds nothing", async () => {
+    setMode("publish-home");
+    renderCanvas();
+    await flush(4);
+
+    // The home fills the stage by its own style block, so nothing is written onto the stage.
+    expect(stage().style.padding).toBe("");
+    expect(stage().style.display).toBe("");
+    expect(stage().querySelector('[part="panzoom"]')).toBeNull();
+    const home = stage().querySelector('[part="publish"]');
+    expect(home).not.toBeNull();
+
+    renderCanvas();
+    await flush(4);
+    expect(stage().querySelector('[part="publish"]')).toBe(home);
+
+    // Leaving the mode takes the home down with the rest of the stage.
+    setMode("entry");
+    renderCanvas();
+    await flush(4);
+    expect(stage().querySelector('[part="publish"]')).toBeNull();
+    expect(entry.render).toHaveBeenCalledTimes(1);
+  });
+
   /* THE FAST PATHS. Each panel runs its own effect scope over the document, so a same-tab repaint
      while it is mounted must draw nothing at all — a second `render*Mode` would tear the live pane
      down and rebuild it under whatever the author was doing in it. */
-  test("a same-tab repaint while the Library is mounted rebuilds nothing", async () => {
-    setMode("manage");
+  test("a same-tab repaint while the Content home is mounted rebuilds nothing", async () => {
+    showContentHome();
     renderCanvas();
     await flush();
     expect(stage().querySelectorAll(".library-marker")).toHaveLength(1);
@@ -325,8 +368,8 @@ describe("the modes whose panel owns its own reactivity", () => {
 
   /* THE CONTROL for both fast paths: the mounted panel belongs to the TAB it was drawn for. Open
      another document in the pane and the fast path is not the answer — the pane is rebuilt. */
-  test("the fast path is per TAB — another document rebuilds the Library", async () => {
-    setMode("manage");
+  test("the fast path is per TAB — another document rebuilds the entry form", async () => {
+    setMode("entry");
     renderCanvas();
     await flush();
 
@@ -337,12 +380,12 @@ describe("the modes whose panel owns its own reactivity", () => {
         id: "other-tab",
       },
     );
-    setMode("manage");
+    setMode("entry");
     renderCanvas();
     await flush();
 
-    expect(library.render).toHaveBeenCalledTimes(2);
-    expect(library.render.mock.calls[1]![1]).toBe(activeTab.value!);
+    expect(entry.render).toHaveBeenCalledTimes(2);
+    expect(entry.render.mock.calls[1]![1]).toBe(activeTab.value!);
   });
 
   /* THE OTHER CONTROL, and the one the fast paths owe: `!modeChanged`.
@@ -353,8 +396,8 @@ describe("the modes whose panel owns its own reactivity", () => {
      exactly "the structure on this stage is not mine", so the fast path must NOT be the answer:
      without it the render returns on the module's word and the new host stays empty, with nothing
      but a reload to get the pane back. */
-  test("a re-registered stage rebuilds the Library, though the module still calls it mounted", async () => {
-    setMode("manage");
+  test("a re-registered stage rebuilds the Content home, though the module still calls it mounted", async () => {
+    showContentHome();
     renderCanvas();
     await flush();
     expect(library.render).toHaveBeenCalledTimes(1);
@@ -506,7 +549,8 @@ describe("the surface registry's guards", () => {
       });
       disposePaneSurface("ghost");
 
-      expect(released).toEqual([ghost]);
+      expect(released).toHaveLength(1);
+      expect(released[0]).toBe(ghost);
       expect(stop).toHaveBeenCalledTimes(1);
       expect(allCanvasSurfaces().map((surface) => surface.paneId)).not.toContain("ghost");
     } finally {

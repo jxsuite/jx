@@ -40,6 +40,40 @@ export const PROJECT_STYLES_TITLE = "Project Styles";
  */
 export const PROJECT_STYLES_VIEW: CanvasMode = "stylebook";
 
+/**
+ * The editor the Variables view draws under: the CSS custom properties of `project.json`'s root
+ * style block (§7.1). A Studio-side editor mode like `media` or `entry`, not a canvas render, so it
+ * is not a member of the iframe protocol's `CANVAS_MODES` and nothing in the frame bundle reads
+ * it.
+ */
+export const PROJECT_VARIABLES_VIEW = "tokens";
+
+/** The Code editor's mode over the same document. */
+const PROJECT_SOURCE_VIEW = "source";
+
+/**
+ * The Styles workspace's three views of the `project.json` tab, by the names `styles.open` takes,
+ * in the order the pane's Editor control offers them: the element defaults (keyed by tag name), the
+ * custom properties, and the file as text. One map, so the argument enum, the tab's mode list and
+ * the editor labels cannot disagree about which mode a view is.
+ */
+export const STYLES_VIEW_MODES = {
+  elements: PROJECT_STYLES_VIEW,
+  variables: PROJECT_VARIABLES_VIEW,
+  code: PROJECT_SOURCE_VIEW,
+} as const;
+
+/** A view `styles.open` can be asked for. */
+export type StylesView = keyof typeof STYLES_VIEW_MODES;
+
+/** Every view name, in the Editor control's order. */
+export const STYLES_VIEWS: readonly StylesView[] = ["elements", "variables", "code"];
+
+/** The `project.json` tab's modes, in that same order. */
+export const STYLES_TAB_MODES: readonly string[] = STYLES_VIEWS.map(
+  (view) => STYLES_VIEW_MODES[view],
+);
+
 // ─── Token groups ────────────────────────────────────────────────────────────
 
 /** The four buckets the token editor lists, in display order. */

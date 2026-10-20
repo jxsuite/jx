@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioSettingsDeploy",
-  "$description": "Project Settings › Deploy: where the site ships, and what it is built with. One row over `build.adapter`, and the sentence a failed write leaves behind. The adapter (`surfaces/settings-deploy.ts`) hands in the chosen adapter, the enumeration it is chosen from and whatever the last write had to say; the document draws them and hands the change straight back. Nothing here reads `project.json` — a section that re-read the config while drawing would be a second opinion about a file one module already owns.",
+  "$description": "Publish › Hosting's build adapter (studio.md §22.8), which was Project Settings › Deploy: one row over `build.adapter`, and the sentence a failed write leaves behind. It draws no heading of its own: Hosting's \"How it is built\" section heads it, and a second title inside that card would name the same thing twice. The adapter (`surfaces/settings-deploy.ts`) hands in the chosen adapter, the enumeration it is chosen from and whatever the last write had to say; the document draws them and hands the change straight back. Nothing here reads `project.json`: a section that re-read the config while drawing would be a second opinion about a file one module already owns.",
   "tagName": "section",
   "attributes": {
     "part": "deploy"
@@ -11,12 +11,6 @@
     "display": "block",
     "fontFamily": "var(--jx-font-sans)",
     "color": "var(--fg)",
-    "& [part=\"title\"]": {
-      "margin": "0 0 16px",
-      "fontSize": "16px",
-      "fontWeight": "600",
-      "color": "var(--fg)"
-    },
     "& [part=\"section-error\"]": {
       "$description": "A write that failed, said under the section title rather than pinned to the picker: settings save on change, so a silent rejection would read as \"my edit just vanished\", and what failed was the whole file rather than the value. Its size read `--spectrum-font-size-75` with a 12px fallback, which resolved only inside `<sp-theme>` — a document is mounted in the settings pane, where that name is not in scope and the fallback is all it would ever have taken — so the size is the kit's scale and the colour is the studio layer's. It is `section-error` rather than `error` because the adapter picker is a `jx-select`, which draws a permanent `[part=\"error\"]` of its own in this same light-DOM tree: a rule on that name would give the picker's own refusal sentence this 16px margin too.",
       "margin": "0 0 16px",
@@ -29,13 +23,6 @@
     }
   },
   "children": [
-    {
-      "tagName": "h3",
-      "attributes": {
-        "part": "title"
-      },
-      "textContent": "Deploy"
-    },
     {
       "tagName": "div",
       "attributes": {
@@ -67,7 +54,7 @@
       },
       "$props": {
         "span": true,
-        "label": "Platform Adapter",
+        "label": "Build adapter",
         "description": "What the site is built for. Static writes plain files; the others emit a server entry for that runtime."
       },
       "children": [

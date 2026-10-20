@@ -50,7 +50,7 @@ initLayers();
 
 describe("keyScopeStack — surfaces that are not an editing engine", () => {
   test("every non-engine editor kind gets the bare global stack, and the engines do not", () => {
-    const bare: EditorKind[] = ["none", "config", "diff", "entry", "library"];
+    const bare: EditorKind[] = ["none", "config", "diff", "entry", "home"];
     for (const kind of bare) {
       expect(keyScopeStack(makeContext({ editor: { kind } })), kind).toEqual(["global"]);
     }
@@ -168,7 +168,9 @@ describe("the reference control reads a collection once", () => {
     const second = document.createElement("div");
     mountReference(first, "ref-first");
     mountReference(second, "ref-second");
-    await waitFor(() => optionsIn(first).length > 0 && optionsIn(second).length > 0);
+    /* Waiting for the ENTRIES, not for any option: both pickers draw "Loading…" while the read is
+       in flight, and a wait that stopped there could pass before the read had even started. */
+    await waitFor(() => optionsIn(first).includes("ada") && optionsIn(second).includes("ada"));
 
     expect(directoryReads(state)).toEqual(["content/authors"]);
     expect(optionsIn(first)).toEqual(["—", "ada", "grace"]);

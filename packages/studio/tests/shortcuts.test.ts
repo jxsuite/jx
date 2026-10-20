@@ -117,6 +117,7 @@ const {
   nextRegion,
   openProjectFlow,
   REGION_CYCLE,
+  isStageBackground,
   registerStudioCommands,
 } = await import("../src/editor/shortcuts");
 const { createCommandRegistry } = await import("../src/commands/registry");
@@ -444,15 +445,13 @@ describe("wheel handler", () => {
     expect(() => wheel(wrapEl(), { deltaY: 50 })).not.toThrow();
   });
 
-  /* The Document Header band stands in the same stage cell as the page's scroller and scrolls
-     ITSELF, capped. Forwarding its wheel to the page cancelled the band's own native scroll — a form
-     longer than the cap could not be wheeled at all, and the page moved underneath it instead. */
-  test("a wheel over the docked Document Header band is left to the band", () => {
+  /* A box standing in the same stage cell as the page's scroller that scrolls ITSELF keeps its own
+     wheel: forwarding it to the page would cancel the box's native scroll, and the page would move
+     underneath it instead. The guard reads whether the box can scroll, not which part it is. */
+  test("a wheel over a self-scrolling box beside the page's scroller is left to the box", () => {
     canvasMode = "edit";
     const sc = editScroller();
-    // Drawn with its own part, as the stage draws it — though the guard reads whether the box can
-    // Scroll, not which part it is.
-    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 0 }, "doc-header");
+    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 0 });
     const field = document.createElement("input");
     band.append(field);
     wrapEl().append(band, sc);
@@ -463,20 +462,20 @@ describe("wheel handler", () => {
     sc.remove();
   });
 
-  /* …and only while it has room. At the end of its range the band answers nothing, so the page takes
+  /* …and only while it has room. At the end of its range the box answers nothing, so the page takes
      the wheel — which is the chaining the browser would do, and the reason the stage keeps claiming
      the event at all (native chaining out of the scroller reaches the shell). */
-  test("a band at the end of its range hands the wheel back to the page", () => {
+  test("a box at the end of its range hands the wheel back to the page", () => {
     canvasMode = "edit";
     const sc = editScroller();
-    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 500 }, "doc-header");
+    const band = scrollBox({ clientHeight: 400, scrollHeight: 900, scrollTop: 500 });
     const field = document.createElement("input");
     band.append(field);
     wrapEl().append(band, sc);
     const e = wheel(field, { deltaY: 120 });
     expect(e.defaultPrevented).toBe(true);
     expect(sc.scrollTop).toBe(120);
-    // Back UP is still the band's, from the same position.
+    // Back UP is still the box's, from the same position.
     sc.scrollTop = 0;
     const up = wheel(field, { deltaY: -120 });
     expect(up.defaultPrevented).toBe(false);
@@ -519,14 +518,13 @@ describe("wheel handler", () => {
   });
 
   /* The grid could not be wheel-scrolled at all: the pan branch preventDefaulted over a Tabulator
-     viewport that owns its own virtual scroller. Only the mode string "manage" was exempt, and it
-     is reachable from nowhere else in the codebase (the scope is `grid`, §13.3).
+     viewport that owns its own virtual scroller. Only the Library's mode string was exempt (the
+     scope is `grid`, §13.3); the Content home is its successor, and a scrolling list like it.
 
-     `settings` and `entry` are the same defect over the two PANE FORMS: Project Settings scrolls
-     its section column (and the Raw JSON `<pre>` inside it) and the Entry editor scrolls its
-     fields, so a wheel over either was preventDefaulted for a panzoom wrap neither mode mounts —
-     the scrollbar could be dragged, and the wheel did nothing. */
-  test.each(["grid", "manage", "settings", "entry", "preview"])(
+     `entry` is the same defect over the PANE FORM: the Entry editor scrolls its fields, so a wheel
+     over it was preventDefaulted for a panzoom wrap the mode never mounts — the scrollbar could be
+     dragged, and the wheel did nothing. */
+  test.each(["grid", "content-home", "entry", "preview"])(
     "%s mode lets the surface scroll itself",
     (mode) => {
       canvasMode = mode;
@@ -540,7 +538,7 @@ describe("wheel handler", () => {
      pinch arrives as exactly this event — so a stage with no zoom of its own must block it like the
      rest of the app's chrome, or a pinch over a form scales the whole of Studio. Blocked is not
      panned: neither the stage offsets nor the tab's zoom may move. */
-  test.each(["grid", "manage", "settings", "entry", "preview"])(
+  test.each(["grid", "content-home", "entry", "preview"])(
     "%s mode blocks ctrl+wheel browser zoom without panning or zooming",
     (mode) => {
       canvasMode = mode;
@@ -553,24 +551,18 @@ describe("wheel handler", () => {
     },
   );
 
-  /* The wheel reaches the stage from a DESCENDANT — the Raw JSON `<pre>` is nested two levels
-     inside the settings document — so the exemption has to survive the bubble, not just a
-     dispatch on the wrap itself. */
-  test("a wheel over a scroller inside the settings pane is left alone", () => {
-    canvasMode = "settings";
-    const doc = document.createElement("div");
-    // The settings pane's scrolling column, as `surfaces/settings-pane.json` draws it. The
-    // Exemption is decided by the canvas MODE rather than by anything on this element; it is
-    // Spelled the way the pane spells it so a reader is not sent looking for a class that is gone.
-    doc.setAttribute("part", "content");
-    const pre = document.createElement("pre");
-    pre.className = "settings-raw-json";
-    doc.append(pre);
-    wrapEl().append(doc);
-    const e = wheel(pre, { deltaY: 20 });
+  /* The wheel reaches the stage from a DESCENDANT — a field nested inside the entry form — so the
+     exemption has to survive the bubble, not just a dispatch on the wrap itself. */
+  test("a wheel over a scroller inside a self-scrolling pane is left alone", () => {
+    canvasMode = "entry";
+    const form = document.createElement("div");
+    const field = document.createElement("textarea");
+    form.append(field);
+    wrapEl().append(form);
+    const e = wheel(field, { deltaY: 20 });
     expect(e.defaultPrevented).toBe(false);
     expect(setPan).not.toHaveBeenCalled();
-    doc.remove();
+    form.remove();
   });
 
   test("ctrl+wheel outside canvas is blocked (browser zoom prevention)", () => {
@@ -589,7 +581,7 @@ describe("wheel handler", () => {
      the self-scrolling one, over a DESCENDANT, since that is where the gesture actually lands.
      (It used to assert `defaultPrevented === false` here, which was the browser-zoom hole.) */
   test("ctrl+wheel over a descendant of a self-scrolling stage is blocked, not zoomed", () => {
-    canvasMode = "manage";
+    canvasMode = "content-home";
     const child = document.createElement("div");
     wrapEl().append(child);
     const e = wheel(child, { ctrlKey: true, deltaY: 10 });
@@ -1442,64 +1434,55 @@ describe("direct keys", () => {
     setInspectorTab("properties");
   });
 
-  test("⌘1 reveals and focuses Files; ⌘1 again collapses and returns to the pane", () => {
+  test("Show Files reveals and focuses Files; running it again collapses and returns to the pane", async () => {
     shell.leftTab = "layers";
-    pressDoc("1", { ctrlKey: true });
+    await registry.run("panel.focus.files");
     expect(shell.leftTab).toBe("files");
     expect(shell.docks.left.collapsed).toBe(false);
     expect(shell.focusRegion).toBe("navigator");
 
-    // Toggle-FOCUS, not toggle-visible: the second press only closes because focus is already here.
-    pressDoc("1", { ctrlKey: true });
+    // Toggle-FOCUS, not toggle-visible: the second run only closes because focus is already here.
+    await registry.run("panel.focus.files");
     expect(shell.docks.left.collapsed).toBe(true);
     expect(shell.focusRegion).toBe("pane");
   });
 
-  test("⌘1 from another panel switches rather than closing", () => {
+  test("Show Files from another panel switches rather than closing", async () => {
     shell.leftTab = "layers";
     shell.focusRegion = "navigator";
-    pressDoc("1", { ctrlKey: true });
+    await registry.run("panel.focus.files");
     expect(shell.leftTab).toBe("files");
     expect(shell.docks.left.collapsed).toBe(false);
   });
 
-  test("⌘4 is the DOCUMENT group's first panel, and no chord reaches the Bottom dock", () => {
-    /* Both of these used to be Problems. It held the fourth slot with its body in the Bottom dock,
-       so `focusPanel` carried a branch that opened a different dock than every other chord —
-       ⌘1–⌘3 and ⌘5–⌘8 moved the Navigator and ⌘4 moved the bottom. The rail is the Navigator's
-       again; the Bottom dock is reached by `view.setBottomTab`, which names the tab it means. */
+  test("no digit chord reaches a panel any more, and none reaches the Bottom dock", () => {
+    /* The digit row switches workspaces now (⌘1–5, `view.setWorkspace`); the panel records keep
+       their palette rows and lose their chords. Pressing every digit must leave the Navigator and
+       the Bottom dock exactly as they were. */
     shell.leftTab = "files";
     shell.bottomTab = "activity";
     setDockCollapsed("bottom", true);
-    pressDoc("4", { ctrlKey: true });
-    expect(shell.leftTab).toBe("layers");
-    // The Bottom dock is untouched by every rail chord, not merely by this one.
-    for (const key of ["1", "2", "3", "4", "5", "6", "7", "8"]) {
+    for (const key of ["6", "7", "8"]) {
       pressDoc(key, { ctrlKey: true });
     }
+    expect(shell.leftTab).toBe("files");
     expect(shell.docks.bottom.collapsed).toBe(true);
     expect(shell.bottomTab).toBe("activity");
   });
 
-  test("⌘4 from elsewhere re-reveals rather than closing", () => {
-    setDockCollapsed("bottom", false);
-    shell.bottomTab = "problems";
-    shell.focusRegion = "navigator";
-    pressDoc("4", { ctrlKey: true });
-    expect(shell.docks.bottom.collapsed).toBe(false);
-    expect(shell.bottomTab).toBe("problems");
-  });
-
-  test("⌘⇧2 opens the Inspector dock, ⌘⇧4 selects its Assistant tab", () => {
+  test("⌘⇧3 opens the Inspector dock on Element › Style, ⌘⇧5 selects its Assistant tab", () => {
     // `key` is the SHIFTED glyph on every layout, so the digit row resolves by `code`.
-    pressDoc("@", { code: "Digit2", ctrlKey: true, shiftKey: true });
+    pressDoc("#", { code: "Digit3", ctrlKey: true, shiftKey: true });
     expect(shell.docks.right.collapsed).toBe(false);
     expect(shell.focusRegion).toBe("inspector");
     expect(inspectorTab()).toBe("style");
 
-    pressDoc("$", { code: "Digit4", ctrlKey: true, shiftKey: true });
+    pressDoc("%", { code: "Digit5", ctrlKey: true, shiftKey: true });
     expect(shell.docks.right.collapsed).toBe(false);
     expect(inspectorTab()).toBe("assistant");
+
+    pressDoc("!", { code: "Digit1", ctrlKey: true, shiftKey: true });
+    expect(inspectorTab()).toBe("page");
   });
 
   test("F6 walks the ring and ⇧F6 walks it back, skipping regions with no host", () => {
@@ -1739,6 +1722,30 @@ describe("stage background click", () => {
     expect(tab.session.selection).toEqual([]);
     surfaceForPane("primary").panzoomWrap = null;
     panzoom.remove();
+  });
+
+  test("clears it when Edit's frame (the margin around the page column) is clicked", () => {
+    // Edit has no pan/zoom surface: the grey margin beside the page is the scrolling frame box the
+    // Stage document draws with `data-slot="frame"`, and a click there is a click on nothing.
+    const tab = activeTab.value!;
+    const frame = document.createElement("div");
+    frame.dataset.slot = "frame";
+    const column = document.createElement("div");
+    frame.append(column);
+    wrapEl().append(frame);
+    tab.session.selection = [["children", 0]];
+    column.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(tab.session.selection).toEqual([["children", 0]]);
+    frame.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(tab.session.selection).toEqual([]);
+    frame.remove();
+  });
+
+  test("a frame box outside this stage is not this stage's background", () => {
+    const outside = document.createElement("div");
+    outside.dataset.slot = "frame";
+    expect(isStageBackground(outside, wrapEl(), null)).toBe(false);
+    expect(isStageBackground(null, wrapEl(), null)).toBe(false);
   });
 
   test("ignores a click on an artboard, and is a no-op with nothing selected", () => {

@@ -22,7 +22,12 @@ import {
 import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { projectState } from "../src/store";
-import { renderCssVarsEditor } from "../src/settings/css-vars-editor";
+import {
+  focusCssVar,
+  focusCssVarGroup,
+  renderCssVarsEditor,
+} from "../src/settings/css-vars-editor";
+import { revealCssVarsGroup, revealCssVarsToken } from "../src/surfaces/settings-css-vars";
 import { getNestedStyle, isJsonObject } from "@jxsuite/schema/guards";
 
 import type { JsonObject, JsonValue, JxStyle } from "@jxsuite/schema/types";
@@ -84,7 +89,7 @@ function writtenBlock(state: MockPlatformState, key: string): JsonObject | undef
 
 /** The group whose heading reads `title`. */
 function groupByTitle(container: HTMLElement, title: string): HTMLElement {
-  const group = [...container.querySelectorAll('[part="group"]')].find(
+  const group = [...container.querySelectorAll('[part="token-group"]')].find(
     (g) => g.querySelector('[part="group-title"]')?.textContent.trim() === title,
   );
   if (!(group instanceof HTMLElement)) {
@@ -255,12 +260,14 @@ describe("css vars grouping", () => {
     expect(container.querySelectorAll('[part="token"]').length).toBe(0);
   });
 
-  test("size names fall back through size/spacing/radius prefixes", async () => {
+  test("size, spacing and radius prefixes share a group, each row named by its real --name", async () => {
     const { container } = await setup(baseStyle());
     const names = texts(groupByTitle(container, "Sizes & Spacing"), "name");
-    expect(names).toContain("Gap");
-    expect(names).toContain("Spacing Lg");
-    expect(names).toContain("Radius Md");
+    expect(names).toContain("--size-gap");
+    expect(names).toContain("--spacing-lg");
+    expect(names).toContain("--radius-md");
+    // No friendly rewording stands in for the property: what the row says is what CSS reads.
+    expect(names).not.toContain("Gap");
   });
 });
 
@@ -269,38 +276,38 @@ describe("css vars grouping", () => {
 describe("color section", () => {
   test("hex values seed the swatch color input; non-hex falls back", async () => {
     const { container } = await setup(baseStyle());
-    const primary = swatch(tokenIn(container, "Colors", "Primary"));
-    const accent = swatch(tokenIn(container, "Colors", "Accent"));
+    const primary = swatch(tokenIn(container, "Colors", "--color-primary"));
+    const accent = swatch(tokenIn(container, "Colors", "--color-accent"));
     expect(primary.value).toBe("#007acc");
     expect(accent.value).toBe("#3b82f6"); // Fallback for "tomato"
   });
 
   test("swatch input updates the var and persists", async () => {
     const { container, state } = await setup(baseStyle());
-    await paint(tokenIn(container, "Colors", "Primary"), "#ff0000");
+    await paint(tokenIn(container, "Colors", "--color-primary"), "#ff0000");
     expect(style()["--color-primary"]).toBe("#ff0000");
     expect(writtenStyle(state)["--color-primary"]).toBe("#ff0000");
     // The value field followed the well, which is what makes them one control rather than two.
-    expect(field(tokenIn(container, "Colors", "Primary"), "value").value).toBe("#ff0000");
+    expect(field(tokenIn(container, "Colors", "--color-primary"), "value").value).toBe("#ff0000");
   });
 
   test("textfield change updates the var", async () => {
     const { container } = await setup(baseStyle());
-    await commit(field(tokenIn(container, "Colors", "Accent"), "value"), "rebeccapurple");
+    await commit(field(tokenIn(container, "Colors", "--color-accent"), "value"), "rebeccapurple");
     expect(style()["--color-accent"]).toBe("rebeccapurple");
   });
 
   test("delete removes the var and re-renders without the row", async () => {
     const { container, state } = await setup(baseStyle());
-    const remove = tokenIn(container, "Colors", "Accent").querySelector(
+    const remove = tokenIn(container, "Colors", "--color-accent").querySelector(
       '[part="remove"] [part="control"]',
     )!;
     // The button is named after the token it deletes, not after the icon it draws.
-    expect(remove.getAttribute("aria-label")).toBe("Delete Accent");
+    expect(remove.getAttribute("aria-label")).toBe("Delete --color-accent");
     pointer(remove, "click");
     await flush(4);
     expect(style()["--color-accent"]).toBeUndefined();
-    expect(() => tokenIn(container, "Colors", "Accent")).toThrow();
+    expect(() => tokenIn(container, "Colors", "--color-accent")).toThrow();
     expect(writtenStyle(state)["--color-accent"]).toBeUndefined();
   });
 
@@ -344,8 +351,8 @@ describe("color section", () => {
 describe("font section", () => {
   test("renders a preview line and updates on change", async () => {
     const { container } = await setup(baseStyle());
-    const body = tokenIn(container, "Fonts", "Body");
-    const preview = body.querySelector('[part="preview"]')!;
+    const body = tokenIn(container, "Fonts", "--font-body");
+    const preview = body.querySelector('[part="font-preview"]')!;
     expect(preview.textContent).toContain("quick brown fox");
     expect(getComputedStyle(preview).fontFamily).toContain("Georgia");
 
@@ -384,7 +391,10 @@ describe("size section and media overrides", () => {
 
   test("changing an override writes into the media block and persists", async () => {
     const { container, state } = await setup(baseStyle(), media);
-    await commit(field(tokenIn(container, "Sizes & Spacing", "Gap"), "override-value"), "12px");
+    await commit(
+      field(tokenIn(container, "Sizes & Spacing", "--size-gap"), "override-value"),
+      "12px",
+    );
     expect(getNestedStyle(style(), "@--sm")?.["--size-gap"]).toBe("12px");
     expect(writtenBlock(state, "@--sm")?.["--size-gap"]).toBe("12px");
   });
@@ -392,14 +402,17 @@ describe("size section and media overrides", () => {
   test("override change recreates a media block deleted after render", async () => {
     const { container } = await setup(baseStyle(), media);
     delete style()["@--sm"];
-    await commit(field(tokenIn(container, "Sizes & Spacing", "Gap"), "override-value"), "10px");
+    await commit(
+      field(tokenIn(container, "Sizes & Spacing", "--size-gap"), "override-value"),
+      "10px",
+    );
     expect(style()["@--sm"]).toEqual({ "--size-gap": "10px" });
   });
 
   test("size textfield change and add row work", async () => {
     const { container } = await setup(baseStyle(), media);
     const sizes = groupByTitle(container, "Sizes & Spacing");
-    await commit(field(tokenByName(sizes, "Gap"), "value"), "20px");
+    await commit(field(tokenByName(sizes, "--size-gap"), "value"), "20px");
     expect(style()["--size-gap"]).toBe("20px");
 
     await addVar(groupByTitle(container, "Sizes & Spacing"), "Gutter", "24px");
@@ -464,7 +477,10 @@ describe("color scheme overrides", () => {
 
   test("editing a scheme row writes the token into the @--dark block", async () => {
     const { container } = await setup(baseStyle(), SCHEME_MEDIA);
-    await commit(field(tokenIn(container, "Colors", "Accent"), "override-value"), "#0a0a0a");
+    await commit(
+      field(tokenIn(container, "Colors", "--color-accent"), "override-value"),
+      "#0a0a0a",
+    );
     expect(getNestedStyle(style(), "@--dark")?.["--color-accent"]).toBe("#0a0a0a");
   });
 
@@ -473,7 +489,7 @@ describe("color scheme overrides", () => {
       { ...baseStyle(), "@--dark": { "--color-accent": "#0a0a0a" } },
       SCHEME_MEDIA,
     );
-    await commit(field(tokenIn(container, "Colors", "Accent"), "override-value"), "");
+    await commit(field(tokenIn(container, "Colors", "--color-accent"), "override-value"), "");
     expect(style()["@--dark"]).toBeUndefined();
   });
 
@@ -502,7 +518,7 @@ describe("color scheme overrides", () => {
       { ...baseStyle(), "@--dark": { "--size-gap": "4px" } },
       { "--dark": "(prefers-color-scheme: dark)", "--sm": "(max-width: 600px)" },
     );
-    const gap = tokenIn(container, "Sizes & Spacing", "Gap");
+    const gap = tokenIn(container, "Sizes & Spacing", "--size-gap");
     expect(texts(gap, "override-label")).toEqual(["Dark", "@--sm"]); // Schemes first, then breakpoints
     expect(gap.querySelectorAll('[part="override"][data-kind="scheme"]')).toHaveLength(1);
     // A size token's scheme row is a plain field — the colour well belongs to colour tokens.
@@ -523,26 +539,40 @@ describe("color scheme overrides", () => {
     expect(hintOf(link)).toContain("Project Settings");
   });
 
-  test("pressing it moves the settings document to Contexts — it never defines one", async () => {
-    const { registerSettingsSection, setSettingsSection, settingsDocumentSection } =
-      await import("../src/settings/section-registry");
-    // Stand in for the two built-ins settings-document registers; this file never loads it.
-    registerSettingsSection({
-      key: "cssVars",
-      label: "CSS Variables",
-      order: 30,
-      render: () => {},
-    });
-    registerSettingsSection({ key: "contexts", label: "Contexts", order: 15, render: () => {} });
-    setSettingsSection("cssVars");
-    const { container } = await setup(baseStyle(), { "--sm": "(max-width: 600px)" });
-    pointer(
-      groupByTitle(container, "Colors").querySelector('[part="manage"] [part="control"]')!,
-      "click",
-    );
-    await flush(4);
-    expect(settingsDocumentSection()).toBe("contexts");
-    expect(projectState?.projectConfig?.$media).toEqual({ "--sm": "(max-width: 600px)" });
+  test("pressing it opens Project Settings on Contexts — it never defines one", async () => {
+    /* The editor is hosted outside Settings (the Styles workspace's Variables view), so the link is
+       the command, not a write to the section registry: a section chosen in a dialog that is not
+       open would change nothing the reader can see. */
+    const { createCommandRegistry } = await import("../src/commands/registry");
+    const { emptyContext } = await import("../src/commands/context");
+    const { setActiveRegistry } = await import("../src/commands/active-registry");
+    const asked: unknown[] = [];
+    const commands = createCommandRegistry({ getContext: emptyContext });
+    commands.registerAll([
+      {
+        category: "Project",
+        id: "settings.open",
+        level: "application",
+        menus: ["palette"],
+        run: (_ctx, args) => {
+          asked.push(args);
+        },
+        title: "Open Project Settings",
+      },
+    ]);
+    setActiveRegistry(commands);
+    try {
+      const { container } = await setup(baseStyle(), { "--sm": "(max-width: 600px)" });
+      pointer(
+        groupByTitle(container, "Colors").querySelector('[part="manage"] [part="control"]')!,
+        "click",
+      );
+      await flush(4);
+      expect(asked).toEqual([{ section: "contexts" }]);
+      expect(projectState?.projectConfig?.$media).toEqual({ "--sm": "(max-width: 600px)" });
+    } finally {
+      setActiveRegistry(null);
+    }
   });
 });
 
@@ -559,7 +589,7 @@ describe("adding an override", () => {
   test("the picker offers every declared context the token has no value in, schemes first", async () => {
     const { container } = await setup(baseStyle(), media);
     // --size-gap already has @--sm, so only the scheme and the feature query remain.
-    expect(offered(tokenIn(container, "Sizes & Spacing", "Gap"))).toEqual([
+    expect(offered(tokenIn(container, "Sizes & Spacing", "--size-gap"))).toEqual([
       ["--dark", "Dark"],
       ["--print", "@--print"],
     ]);
@@ -567,12 +597,12 @@ describe("adding an override", () => {
 
   test("picking a context seeds the override from the base value and persists it", async () => {
     const { container, state } = await setup(baseStyle(), media);
-    await pickContext(tokenIn(container, "Sizes & Spacing", "Spacing Lg"), "--sm");
+    await pickContext(tokenIn(container, "Sizes & Spacing", "--spacing-lg"), "--sm");
     expect(getNestedStyle(style(), "@--sm")?.["--spacing-lg"]).toBe("32px");
     expect(writtenBlock(state, "@--sm")?.["--spacing-lg"]).toBe("32px");
 
     // The row it created is now editable, and the picker no longer offers that context.
-    const token = tokenIn(container, "Sizes & Spacing", "Spacing Lg");
+    const token = tokenIn(container, "Sizes & Spacing", "--spacing-lg");
     expect(offered(token).map(([value]) => value)).not.toContain("--sm");
     expect(field(token, "override-value").value).toBe("32px");
     /* The picker went back to its placeholder. A binding writes only when what it read changed —
@@ -583,7 +613,7 @@ describe("adding an override", () => {
 
   test("a context name the picker does not offer is ignored rather than written", async () => {
     const { container } = await setup(baseStyle(), media);
-    const gap = tokenIn(container, "Sizes & Spacing", "Gap");
+    const gap = tokenIn(container, "Sizes & Spacing", "--size-gap");
     const select = addPicker(gap);
     // A context the picker never offered, asked for anyway: a stale row, or an extension.
     const injected = document.createElement("option");
@@ -598,19 +628,18 @@ describe("adding an override", () => {
 
   test("a colour token's scheme rows are shown unprompted, so the picker offers only the rest", async () => {
     const { container } = await setup(baseStyle(), media);
-    expect(offered(tokenIn(container, "Colors", "Accent")).map(([value]) => value)).toEqual([
-      "--sm",
-      "--print",
-    ]);
+    expect(offered(tokenIn(container, "Colors", "--color-accent")).map(([value]) => value)).toEqual(
+      ["--sm", "--print"],
+    );
   });
 
   test("a token with no value is not offered an override it could not carry", async () => {
     const { container } = await setup({ "--size-empty": "", "--size-gap": "16px" }, media);
     expect(
-      tokenIn(container, "Sizes & Spacing", "Gap").querySelector('[part="add-picker"]'),
+      tokenIn(container, "Sizes & Spacing", "--size-gap").querySelector('[part="add-picker"]'),
     ).not.toBeNull();
     expect(
-      tokenIn(container, "Sizes & Spacing", "Empty").querySelector('[part="add-picker"]'),
+      tokenIn(container, "Sizes & Spacing", "--size-empty").querySelector('[part="add-picker"]'),
     ).toBeNull();
   });
 
@@ -619,9 +648,11 @@ describe("adding an override", () => {
       { "--size-gap": "16px", "@--sm": { "--size-gap": "8px" } },
       media,
     );
-    await commit(field(tokenIn(container, "Sizes & Spacing", "Gap"), "override-value"), "");
+    await commit(field(tokenIn(container, "Sizes & Spacing", "--size-gap"), "override-value"), "");
     expect(style()["@--sm"]).toBeUndefined();
-    expect(offered(tokenIn(container, "Sizes & Spacing", "Gap")).map(([v]) => v)).toContain("--sm");
+    expect(offered(tokenIn(container, "Sizes & Spacing", "--size-gap")).map(([v]) => v)).toContain(
+      "--sm",
+    );
   });
 });
 
@@ -633,15 +664,15 @@ describe("token reference chips", () => {
       "--color-accent": "var(--color-brand)",
       "--color-brand": "#00aa55",
     });
-    const accent = tokenIn(container, "Colors", "Accent");
+    const accent = tokenIn(container, "Colors", "--color-accent");
     const chip = accent.querySelector('[part="chip"]')!;
-    expect(chip.querySelector('[part="chip-label"]')?.textContent.trim()).toBe("Brand");
+    expect(chip.querySelector('[part="chip-label"]')?.textContent.trim()).toBe("--color-brand");
     expect(chip.getAttribute("title")).toBe("var(--color-brand) → #00aa55");
     expect(getComputedStyle(chip.querySelector('[part="chip-swatch"]')!).background).toContain(
       "#00aa55",
     );
     // The well shows the resolved colour rather than an empty square.
-    expect(getComputedStyle(accent.querySelector('[part="swatch"]')!).background).toContain(
+    expect(getComputedStyle(accent.querySelector('[part="well"]')!).background).toContain(
       "#00aa55",
     );
     expect(swatch(accent).value).toBe("#00aa55");
@@ -654,13 +685,15 @@ describe("token reference chips", () => {
       "--color-c": "#123456",
     });
     expect(
-      tokenIn(container, "Colors", "A").querySelector('[part="chip"]')?.getAttribute("title"),
+      tokenIn(container, "Colors", "--color-a")
+        .querySelector('[part="chip"]')
+        ?.getAttribute("title"),
     ).toBe("var(--color-b) → #123456");
   });
 
   test("a reference that leads nowhere says so instead of inventing a value", async () => {
     const { container } = await setup({ "--size-gap": "var(--size-missing)" });
-    const gap = tokenIn(container, "Sizes & Spacing", "Gap");
+    const gap = tokenIn(container, "Sizes & Spacing", "--size-gap");
     expect(gap.querySelector('[part="chip"]')?.getAttribute("title")).toBe(
       "var(--size-missing) → unresolved",
     );
@@ -678,7 +711,7 @@ describe("token reference chips", () => {
 describe("a refused write", () => {
   test("is reported under the title rather than dropped on the floor", async () => {
     const { container } = await setup(baseStyle(), undefined, failing);
-    await commit(field(tokenIn(container, "Colors", "Accent"), "value"), "rebeccapurple");
+    await commit(field(tokenIn(container, "Colors", "--color-accent"), "value"), "rebeccapurple");
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("Could not save project.json");
     /* The predecessor `void`ed the rejection, so a read-only project.json took every edit and kept
@@ -689,10 +722,167 @@ describe("a refused write", () => {
 
   test("and the message clears once a write lands", async () => {
     const { container } = await setup(baseStyle(), undefined, failing);
-    await commit(field(tokenIn(container, "Colors", "Accent"), "value"), "rebeccapurple");
+    await commit(field(tokenIn(container, "Colors", "--color-accent"), "value"), "rebeccapurple");
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
     installMockPlatform();
-    await commit(field(tokenIn(container, "Colors", "Accent"), "value"), "teal");
+    await commit(field(tokenIn(container, "Colors", "--color-accent"), "value"), "teal");
     expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+});
+
+// ─── Pointed at from the Outline (§7.1) ──────────────────────────────────────
+
+describe("pointing the editor at a token", () => {
+  /** The token block for a custom property, by the property it names. */
+  function byName(container: HTMLElement, name: string): HTMLElement {
+    const found = [...container.querySelectorAll<HTMLElement>('[part="token"]')].find(
+      (el) => el.dataset["token"] === name,
+    );
+    if (!found) {
+      throw new Error(`no token row for ${name}`);
+    }
+    return found;
+  }
+
+  test("marks the token's row, scrolls it into view and puts the keyboard on its value", async () => {
+    const { container } = await setup(baseStyle());
+    const scrolled: string[] = [];
+    const row = byName(container, "--size-gap");
+    row.scrollIntoView = () => {
+      scrolled.push("--size-gap");
+    };
+    focusCssVar(container, "--size-gap");
+    await flush(4);
+    expect(byName(container, "--size-gap").getAttribute("aria-current")).toBe("true");
+    expect(byName(container, "--color-accent").getAttribute("aria-current")).toBeNull();
+    expect(scrolled).toEqual(["--size-gap"]);
+    expect(row.querySelector('[part="value"]')?.contains(document.activeElement)).toBe(true);
+  });
+
+  test("reveal: false marks the row and leaves the keyboard where it was", async () => {
+    const { container } = await setup(baseStyle());
+    const row = byName(container, "--color-accent");
+    let scrolled = false;
+    row.scrollIntoView = () => {
+      scrolled = true;
+    };
+    focusCssVar(container, "--color-accent", { reveal: false });
+    await flush(4);
+    expect(row.getAttribute("aria-current")).toBe("true");
+    expect(scrolled).toBe(false);
+  });
+
+  test("a name the project does not declare marks nothing, and null clears the mark", async () => {
+    const { container } = await setup(baseStyle());
+    focusCssVar(container, "--nowhere");
+    await flush(4);
+    expect(container.querySelector('[part="token"][aria-current="true"]')).toBeNull();
+    focusCssVar(container, "--color-accent", { reveal: false });
+    await flush(2);
+    focusCssVar(container, null);
+    await flush(2);
+    expect(container.querySelector('[part="token"][aria-current="true"]')).toBeNull();
+  });
+});
+
+describe("revealing a token row (the surface's half)", () => {
+  test("a host with no surface moves nothing", async () => {
+    const stray = document.createElement("div");
+    document.body.append(stray);
+    expect(() => {
+      revealCssVarsToken(stray, "--color-accent");
+    }).not.toThrow();
+    await flush(2);
+    expect(stray.childElementCount).toBe(0);
+  });
+
+  test("a surface taken out of the document before the turn moves nothing", async () => {
+    const { container } = await setup(baseStyle());
+    const scrolled: string[] = [];
+    const markScrolled = (name: string) => () => {
+      scrolled.push(name);
+    };
+    for (const row of container.querySelectorAll<HTMLElement>('[part="token"]')) {
+      row.scrollIntoView = markScrolled(row.dataset["token"] ?? "");
+    }
+    revealCssVarsToken(container, "--color-accent");
+    container.remove();
+    await flush(4);
+    expect(scrolled).toEqual([]);
+  });
+});
+
+describe("pointing the editor at a group (the Styles panel's headings and Add variable)", () => {
+  /** Record which group headings were scrolled to. */
+  function watchGroups(container: HTMLElement): string[] {
+    const scrolled: string[] = [];
+    for (const group of container.querySelectorAll<HTMLElement>("[data-group]")) {
+      group.scrollIntoView = () => {
+        scrolled.push(group.dataset["group"] ?? "");
+      };
+    }
+    return scrolled;
+  }
+
+  test("a group is scrolled to, and with add its Add row's name field takes the keyboard", async () => {
+    const { container } = await setup(baseStyle());
+    const scrolled = watchGroups(container);
+    focusCssVarGroup(container, "size");
+    await flush(4);
+    expect(scrolled).toEqual(["size"]);
+    expect(document.activeElement?.closest('[part="add-name"]')).toBeNull();
+    focusCssVarGroup(container, "font", { add: true });
+    await flush(4);
+    expect(scrolled).toEqual(["size", "font"]);
+    expect(document.activeElement).toBe(
+      container.querySelector('[data-group="font"] [part="add-name"] input'),
+    );
+  });
+
+  test("a group the section does not draw, a host with no surface and a detached one move nothing", async () => {
+    const { container } = await setup({ "--color-accent": "tomato" });
+    const scrolled = watchGroups(container);
+    // Other is drawn only when something is in it.
+    focusCssVarGroup(container, "other", { add: true });
+    await flush(4);
+    expect(scrolled).toEqual([]);
+    const stray = document.createElement("div");
+    document.body.append(stray);
+    expect(() => {
+      revealCssVarsGroup(stray, "color", true);
+    }).not.toThrow();
+    revealCssVarsGroup(container, "color", true);
+    container.remove();
+    await flush(4);
+    expect(scrolled).toEqual([]);
+  });
+});
+
+// ─── The section's own part names stay its own ───────────────────────────────
+
+describe("the section's style rules reach only its own nodes", () => {
+  test("no rule names a part that a kit element drawn here carries inside it", async () => {
+    // The kit is light DOM, so `& [part="preview"]` (the font specimen's rule) also reached the
+    // Add override picker's own closed-state value: a 36px picker under every 20px field.
+    const { container } = await setup(baseStyle(), {
+      "--": "1280px",
+      "--sm": "(max-width: 600px)",
+    });
+    const kitParts = new Set<string>();
+    for (const el of container.querySelectorAll("*")) {
+      if (el.localName.startsWith("jx-")) {
+        for (const inner of el.querySelectorAll("[part]")) {
+          kitParts.add(inner.getAttribute("part") ?? "");
+        }
+      }
+    }
+    // The picker is drawn, so the name that collided is among the kit's.
+    expect(kitParts.has("preview")).toBe(true);
+    const { default: doc } = await import("../src/surfaces/settings-css-vars.json");
+    const ruled = Object.keys(doc.style).flatMap((selector) =>
+      [...selector.matchAll(/\[part="([^"]+)"\]/g)].map((match) => match[1] ?? ""),
+    );
+    expect(ruled).toContain("well");
+    expect(ruled.filter((part) => kitParts.has(part))).toEqual([]);
   });
 });

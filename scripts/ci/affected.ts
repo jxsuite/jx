@@ -36,6 +36,9 @@ import type { Workspace } from "../lib/workspaces.ts";
  */
 const GLOBAL = [
   "package.json",
+  /* The exact Bun every job installs (.github/actions/setup-bun). A different Bun moves coverage
+     figures and matcher output in every suite, so a bump is a full run by construction. */
+  ".bun-version",
   "bun.lock",
   "bunfig.toml",
   "tsconfig.json",

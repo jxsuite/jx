@@ -547,14 +547,23 @@ export function createKeymap(options: { mac?: boolean } = {}): Keymap {
  * The command id is deliberately dropped — the frame decides whether to forward, never what runs —
  * and the projection is a pure function of the keymap so the host can recompute and repost it
  * whenever a rebinding lands.
+ *
+ * `except` names commands whose chords the second realm must leave alone: a command that never
+ * applies to what that realm draws (`canvas/iframe-keys.ts` `HOST_ONLY_COMMANDS`) would otherwise
+ * have the realm cancel the keystroke's own default for nothing.
  */
 export function chordsInScopes<S extends KeyScope>(
   keymap: Keymap,
   scopes: readonly S[],
+  except: ReadonlySet<string> = new Set(),
 ): { chord: string; scope: S }[] {
   const seen = new Set<string>();
   const out: { chord: string; scope: S }[] = [];
   for (const entry of keymap.entries()) {
+    // A command that can never run on behalf of the second realm must not make it swallow a key.
+    if (except.has(entry.commandId)) {
+      continue;
+    }
     /* `find` rather than a `Set.has` test: the narrowed member is what makes the result carry the
        CALLER's scope union. The canvas frame's table is three scopes wide (`FRAME_KEY_SCOPES`) and
        has to stay that way across the bridge, where `SyncedChord` declares exactly those three —

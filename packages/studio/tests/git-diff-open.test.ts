@@ -27,9 +27,11 @@ void mock.module("../src/workspace/workspace.js", () => ({
 }));
 
 // Reached only through the dynamic import for a renderable file.
+const openedModes: (string | undefined)[] = [];
 void mock.module("../src/files/files.js", () => ({
-  openFileInTab: (path: string) => {
+  openFileInTab: (path: string, opts: { canvasMode?: string } = {}) => {
     openedFiles.push(path);
+    openedModes.push(opts.canvasMode);
     const tab = { documentPath: path, id: path };
     tabs.set(path, tab);
     return Promise.resolve(tab);
@@ -43,6 +45,7 @@ beforeEach(() => {
   opened.length = 0;
   activated.length = 0;
   openedFiles.length = 0;
+  openedModes.length = 0;
   tabs.clear();
 });
 
@@ -79,6 +82,8 @@ describe("openComparisonTab", () => {
     // So the author can leave the comparison for Design without reopening anything.
     const tab = await openComparisonTab("pages/index.json");
     expect(openedFiles).toEqual(["pages/index.json"]);
+    // Opened IN Diff, so it is never active in the edit mode Design owns (studio.md §22.1).
+    expect(openedModes).toEqual(["git-diff"]);
     expect(opened).toEqual([]);
     expect(tab?.id).toBe("pages/index.json");
   });

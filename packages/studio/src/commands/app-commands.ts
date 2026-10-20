@@ -54,12 +54,14 @@ import { collabCommands } from "../collab/collab-commands";
 import { assistantCommands } from "../panels/ai-panel";
 import { preferencesCommands } from "../settings/preferences-dialog";
 import { aboutCommands } from "../about/about-modal";
-import { libraryCommands } from "../browse/library-commands";
-import { sourceControlCommands } from "../panels/git-panel";
+import { contentViewCommands } from "../browse/library-commands";
+import { sourceControlCommands } from "../publish/source-control";
 import { publishCommands } from "../publish/publish-commands";
 import { gridViewCommands } from "../grid/grid-panel";
 import { redirectsCommands } from "../grid/redirects-grid";
 import { contentCommands } from "../content/entry-commands";
+import { addNewCommands } from "../create/add-new-commands";
+import { mediaCommands } from "../media/media-commands";
 import { i18nCommands } from "../i18n/i18n-commands";
 import { newProjectCommands } from "../new-project/new-project-modal";
 import { canvasCommands } from "../editor/shortcuts";
@@ -67,6 +69,7 @@ import { formatCommands, registerSelectionCommands } from "../panels/block-actio
 import { fileFormatCommands } from "../format/convert-file";
 import { registerTabCommands } from "../workspace/workspace";
 import { derivationCommands, noopDerivationDeps } from "../workspace/pane-derive";
+import { workspaceBackCommands } from "../workspace/workspace-back";
 import type { AnyCommand } from "./registry";
 
 /** A verb set that does nothing — the checks read declarations, never behaviour. */
@@ -111,13 +114,15 @@ function viaRegistration(): AnyCommand[] {
  */
 export function appCommandSet(): AnyCommand[] {
   return [
-    // The panel roster is the one dependency the checks must supply for real: the ⌘1–8 records are
-    // Generated from it, so an empty one would hide eight commands (and their chords) from the
-    // Level check, the chrome budget and the generated keyboard sheet alike.
+    // The panel roster is the one dependency the checks must supply for real: the `panel.focus.*`
+    // Records are generated from it, so an empty one would hide a command per panel from the level
+    // Check, the chrome budget and the generated command sheet alike.
     ...defaultCommands({ ...noopCommandDeps(), panelRoster: panelFocusRoster() }),
     ...viaRegistration(),
     ...derivationCommands(noopDerivationDeps()),
     ...shellViewCommands({ inspectorTab: () => DEFAULT_INSPECTOR_TAB, setInspectorTab: NO_OP }),
+    // Back to a strip-less workspace's home: the pane context bar's Back control, and Escape.
+    ...workspaceBackCommands({ closeTab: NO_OP, setCanvasMode: NO_OP }),
     ...canvasViewCommands({
       getCanvasMode: () => "design",
       renderPane: NO_OP,
@@ -150,8 +155,13 @@ export function appCommandSet(): AnyCommand[] {
     ...assistantCommands(),
     ...preferencesCommands(),
     ...aboutCommands(),
-    ...libraryCommands(),
+    // The Content home's verbs: which collection it shows, and that collection's own view.
+    ...contentViewCommands(),
     ...contentCommands(),
+    // Add new (`file.new`): the one creation dialog, and its no-dialog form for a named kind.
+    ...addNewCommands(),
+    // The Media workspace's four verbs: browse, upload, replace and delete (studio.md §22.6).
+    ...mediaCommands(),
     // The four translation verbs. `i18n.switchLocale` is deliberately not among them: it is a
     // Rendering context, defined in `canvas/canvas-utils.ts` beside the per-tab UI state it writes.
     ...i18nCommands(),

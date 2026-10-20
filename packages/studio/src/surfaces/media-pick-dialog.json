@@ -1,0 +1,71 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioMediaPickDialog",
+  "$description": "The full-size media picker (`specs/studio.md` §9.3): a `jx-dialog` whose body is the Media workspace's own library surface in pick mode, so the picker and the workspace are one surface at two sizes. The dialog owns modality, Escape, the backdrop and focus restoration, and its footer is the answer: Cancel, or Use <file>, disabled until a file is chosen. The body is an ISLAND: this document draws the slot and nothing in it, and `surfaces/media-pick-dialog.ts` mounts `media-library.json` there through `onNodeCreated`.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": {
+      "$ref": "#/state/headline"
+    },
+    "confirmLabel": {
+      "$ref": "#/state/confirmLabel"
+    },
+    "confirmDisabled": {
+      "$ref": "#/state/blocked"
+    },
+    "cancelLabel": "Cancel",
+    "dismissible": true,
+    "size": "xl"
+  },
+  "attributes": {
+    "part": "media-pick"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "library-slot"
+      },
+      "style": {
+        "$description": "The library's box in pick mode is its own (`media-library.json`, `data-mode=\"pick\"`); the slot only gives it the dialog body's width.",
+        "minWidth": "0"
+      }
+    }
+  ]
+}

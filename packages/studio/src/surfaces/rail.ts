@@ -11,38 +11,27 @@
  * whose only name is a hover tooltip is the accessibility failure studio-ui-guidelines.md §12.3
  * names — and `aria-pressed` states the toggle-focus semantics honestly: re-picking the open panel
  * collapses its dock, which is a two-state control, not a one-way selection. The label is the
- * record's `railLabel` when it declares one (Source Control's is "Source", because the full title
- * ellipsed in the 48px label box), and the full `title` stays the accessible name and the tooltip.
+ * record's `railLabel` when it declares one (none does today: Source Control's "Source" left the
+ * rail with it), and the full `title` stays the accessible name and the tooltip.
  *
- * The foot holds the two buttons that open no Navigator panel. **Library** runs `library.open`: the
- * Library is a canvas tab, not a panel, and its button is pressed while that tab is the focused
- * one. Below it is the ⚙ **Settings** menu, a menu button rendered from the `settings/menu`
- * placement: a record joins the gear by declaring the placement and there is nothing here to update
- * in step. With no registry, or one that declares nothing for either, the foot is empty.
+ * **The rail has no foot.** It is drawn only in the Design workspace (the frame hides its column
+ * everywhere else, `shell.ts`'s `applyDockLayout`), so a control every workspace needs cannot live
+ * here: the ⚙ Settings menu moved to the top bar, and the Library button left with the Library,
+ * which the Content workspace replaces.
  *
- * What this adapter owns is the projection and the two decisions: which panel a button toggles, and
- * where the gear's menu opens. The scope is reactive, so the surface follows `shell` through one
- * effect that recomputes the projection; nothing repaints.
+ * What this adapter owns is the projection and the one decision: which panel a button toggles. The
+ * scope is reactive, so the surface follows `shell` through one effect that recomputes the
+ * projection; nothing repaints.
  *
  * @docs studio/interface
  */
 import { activityBar } from "../store";
 import { effect, effectScope, reactive } from "../reactivity";
 import { requireNavigatorPanelId, shell, toggleActivityTab } from "../shell";
-import { refreshGitStatus } from "../panels/git-panel";
+import { refreshGitStatus } from "../publish/source-control";
 import { panelContext, railGroups } from "../panels/panel-registry";
 import { registerNavigatorPanels } from "../panels/navigator-panels";
-import { activeRegistry } from "../commands/active-registry";
-import { runActiveReported } from "../commands/run-reported";
-import {
-  dismissSettingsMenu,
-  isSettingsMenuOpen,
-  openSettingsMenu,
-  SETTINGS_MENU_PLACEMENT,
-} from "../panels/settings-menu";
 import { mountSurface, registerSurface } from "../ui/surface";
-import { libraryTabId } from "../browse/library-source";
-import { activeTab } from "../workspace/workspace";
 import railDoc from "./rail.json";
 
 import type { EffectScope } from "@vue/reactivity";
@@ -71,21 +60,9 @@ interface RailGroupProjection {
   panels: RailButton[];
 }
 
-/** The parts of the rail's scope recomputed from the registry and the shell on every render. */
-type RailProjection = Pick<
-  RailScope,
-  "groups" | "libraryOpen" | "libraryVisible" | "settingsVisible"
->;
-
 interface RailScope {
   groups: RailGroupProjection[];
-  settingsVisible: boolean;
-  settingsOpen: boolean;
-  libraryVisible: boolean;
-  libraryOpen: boolean;
-  openLibrary: () => void;
   toggle: (id: string) => void;
-  openSettings: (anchor: EventTarget | null) => void;
 }
 
 let _scope: EffectScope | null = null;
@@ -117,9 +94,9 @@ export function toggleRailPanel(panel: PanelRecord): void {
 }
 
 /** The rail, as the surface reads it, from the registry and the shell as they stand now. */
-function project(): RailProjection {
+function project(): RailGroupProjection[] {
   const ctx = panelContext();
-  const groups = railGroups(ctx).map((group, index) => ({
+  return railGroups(ctx).map((group, index) => ({
     dividerAbove: index > 0,
     label: group.label,
     level: group.level,
@@ -132,41 +109,12 @@ function project(): RailProjection {
       title: panel.title,
     })),
   }));
-  const registry = activeRegistry();
-  const settingsVisible =
-    registry !== null && registry.forPlacement(SETTINGS_MENU_PLACEMENT).length > 0;
-  const libraryVisible =
-    registry?.get(LIBRARY_COMMAND) !== undefined && registry.isVisible(LIBRARY_COMMAND);
-  const libraryOpen = activeTab.value?.id === libraryTabId();
-  return { groups, libraryOpen, libraryVisible, settingsVisible };
 }
-
-/** The command the Library button runs: the record decides when it can, and what opening means. */
-const LIBRARY_COMMAND = "library.open";
 
 /** The reactive scope the surface reads, made once. */
 function state(): RailScope {
   _state ??= reactive<RailScope>({
     groups: [],
-    libraryOpen: false,
-    libraryVisible: false,
-    openLibrary: () => {
-      void runActiveReported(LIBRARY_COMMAND, undefined, "Navigator rail");
-    },
-    openSettings: (anchor: EventTarget | null) => {
-      if (!(anchor instanceof HTMLElement)) {
-        return;
-      }
-      openSettingsMenu(anchor, {
-        rerender: () => {
-          if (_state) {
-            _state.settingsOpen = isSettingsMenuOpen();
-          }
-        },
-      });
-    },
-    settingsOpen: false,
-    settingsVisible: false,
     toggle: (id: string) => {
       const panel = railGroups(panelContext())
         .flatMap((group) => group.panels)
@@ -181,13 +129,7 @@ function state(): RailScope {
 
 /** Recompute the projection from the registry and the shell; the surface follows. */
 export function renderActivityBar(): void {
-  const scope = state();
-  const next = project();
-  scope.groups = next.groups;
-  scope.settingsVisible = next.settingsVisible;
-  scope.libraryVisible = next.libraryVisible;
-  scope.libraryOpen = next.libraryOpen;
-  scope.settingsOpen = isSettingsMenuOpen();
+  state().groups = project();
   ensureMounted();
 }
 
@@ -209,9 +151,11 @@ export function mount(): void {
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
-      // Source control is PROJECT state, so the badge is fetched and drawn without reference to
-      // Any tab. The badge needs a status once. A refresh that already failed must not re-arm this:
-      // The effect re-runs on the very state the failure writes, so retrying here spins.
+      // Source control is PROJECT state, so its status is fetched without reference to any tab.
+      // No rail button draws it now; the Command Bar's Publish count does, and this is the fetch
+      // That count reads (`ctx.git.dirtyCount`). It needs a status once. A refresh that already
+      // Failed must not re-arm this: the effect re-runs on the very state the failure writes, so
+      // Retrying here spins.
       const { error, loading, status } = shell.git;
       if (!status && !loading && !error) {
         void refreshGitStatus();
@@ -222,7 +166,6 @@ export function mount(): void {
 }
 
 export function unmount(): void {
-  dismissSettingsMenu();
   _scope?.stop();
   _scope = null;
   const pending = _mount;

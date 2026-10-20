@@ -276,7 +276,8 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
       // The counts the design was measured against: 19 hand rows, 9 projected records; then
       // `open_document` crossed from hand to record and `set_canvas_mode` was projected (#334).
       expect(handNames.size).toBe(18);
-      expect(projectedNames.size).toBe(11);
+      // `add_new` (`file.new`) made it twelve.
+      expect(projectedNames.size).toBe(12);
     });
   });
 

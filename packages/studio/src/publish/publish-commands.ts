@@ -8,13 +8,15 @@
  * ships a site was, in the shipped app, unreachable. The toolbar's Publish button had already gone
  * with the toolbar, and nothing replaced it.
  *
- * Three records, always reachable, each disabled with the one sentence that says why:
+ * Five records, always reachable, each disabled with the one sentence that says why:
  *
- * | id                      | what it does                                              |
- * | ----------------------- | --------------------------------------------------------- |
- * | `publish.setUp`         | opens the provider connection flow                        |
- * | `publish.deploy`        | pushes the branch and asks Cloudflare what it did with it |
- * | `publish.openDashboard` | opens the connected Pages project on Cloudflare           |
+ * | id                      | what it does                                                |
+ * | ----------------------- | ----------------------------------------------------------- |
+ * | `publish.setUp`         | opens the provider connection flow                          |
+ * | `publish.deploy`        | pushes the branch and asks Cloudflare what it did with it   |
+ * | `publish.openDashboard` | opens the connected Pages project on Cloudflare             |
+ * | `publish.quick`         | opens the quick publish dialog (the chevron beside Publish) |
+ * | `publish.open`          | shows the Publish workspace, on one of its four sub-tabs    |
  *
  * **`runDeploy` is an Activity, not a toast.** A deploy pushes a branch and then waits on a build
  * that is happening somewhere else; that is the definition of the long operation §16.4 gave the
@@ -25,17 +27,21 @@
  * whether one is connected is a `project.json` question; the token that proves it is read only by
  * `platforms/devserver.ts` on its way to the same-origin proxy (`studio.md` §15 rule 1).
  *
- * **The panel is imported lazily** so this module carries no DOM at import time: `commands/
- * app-commands.ts` is loaded by three CI checks in a bare Bun process, and a module that opens a
- * modal at import would break all three.
+ * **The panel, the workspace and the quick dialog are imported lazily** so this module carries no
+ * DOM at import time: `commands/app-commands.ts` is loaded by three CI checks in a bare Bun
+ * process, and a module that opens a modal at import would break all three.
  */
 
 import { getPlatform } from "../platform";
 import { beginActivity } from "../panels/activity-panel";
 import { currentDeploy, noteDeployment } from "./deploy-checklist";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { latestDeployment, platformSupportsPublish } from "./pages-service";
+import { latestDeployment } from "./pages-service";
+import { activeRegistry } from "../commands/active-registry";
+import { argsSchema, enumArg, enumProperty } from "../commands/command-args";
+import { PUBLISH_TABS } from "./publish-ids";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
+import type { CommandArgValues } from "../commands/command-args";
 
 /**
  * How long the deploy waits for Cloudflare to admit the push happened.
@@ -133,12 +139,11 @@ export async function runDeploy(
 }
 
 /**
- * The three records.
+ * The five records.
  *
- * `enablement` reads `platformSupportsPublish()` rather than a `capability.*` key because there is
- * no `publish` capability yet — adding one is a `commands/context.ts` + `commands/live-context.ts`
- * change, and §13.4 is explicit that PAL differences belong there. Until it exists this is the one
- * `if (platform.x)` the family carries, in the one place a reader looks for it.
+ * Whether the host can reach Cloudflare is `ctx.capability.publish` (presence of the PAL's
+ * `cfApi`), so the family's refusals read the context like every other PAL difference does (§13.4)
+ * rather than asking the platform from inside a predicate.
  */
 export function publishCommands(): AnyCommand[] {
   return [
@@ -158,7 +163,7 @@ export function publishCommands(): AnyCommand[] {
       requires: "an open project on a platform that can reach the Cloudflare API",
       when: (ctx) => ctx.project.open,
       // `when` already asked about the project.
-      enablement: () => platformSupportsPublish(),
+      enablement: (ctx) => ctx.capability.publish,
       /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's second rule: an auth flow that waits on a
          person, with credentials. */
       run: async () => {
@@ -178,7 +183,7 @@ export function publishCommands(): AnyCommand[] {
         "reach the Cloudflare API",
       when: (ctx) => ctx.project.open,
       enablement: (ctx) =>
-        ctx.project.isRepo && currentDeploy() !== undefined && platformSupportsPublish(),
+        ctx.project.isRepo && currentDeploy() !== undefined && ctx.capability.publish,
       /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's third rule: remote and irreversible, the
          same class as `packages.remove`. */
       run: async () => {
@@ -194,7 +199,7 @@ export function publishCommands(): AnyCommand[] {
       group: "8_publish",
       requires: "a connected deploy provider, on a platform that can reach the Cloudflare API",
       when: (ctx) => ctx.project.open,
-      enablement: () => currentDeploy() !== undefined && platformSupportsPublish(),
+      enablement: (ctx) => currentDeploy() !== undefined && ctx.capability.publish,
       run: () => {
         const deploy = currentDeploy();
         if (deploy) {
@@ -202,6 +207,66 @@ export function publishCommands(): AnyCommand[] {
         }
       },
       title: "Open Deployment Dashboard",
+    },
+    {
+      category: "Publish",
+      id: "publish.quick",
+      level: "project",
+      /* Overflow and palette, never `commandbar/primary`: the Command Bar draws it as the chevron
+         beside the Publish workspace tab (studio.md §22.2), which is a rendering of this record,
+         and publishing is a workspace rather than a primary verb. */
+      menus: ["commandbar/overflow", "palette"],
+      group: "8_publish",
+      requires: "a project tracked by git",
+      when: (ctx) => ctx.project.open,
+      enablement: (ctx) => ctx.project.isRepo,
+      /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: it opens a dialog for a
+         person, and what that dialog publishes is the person's to send. */
+      run: async () => {
+        const { openQuickPublish } = await import("./publish-quick");
+        openQuickPublish();
+      },
+      title: "Quick Publish",
+    },
+    {
+      args: argsSchema(
+        {
+          tab: enumProperty(
+            PUBLISH_TABS,
+            "Which view of the Publish workspace to show: review (the changes and where they " +
+              "go), deploys (the live site and its deployments), branches, or hosting (where the " +
+              "project is saved and hosted). Defaults to the view the workspace was left on.",
+          ),
+        },
+        [],
+      ),
+      category: "Publish",
+      id: "publish.open",
+      level: "project",
+      /* `never`, for the reason `styles.open` gives: the palette's way into Publish is
+         `workspace.focus.publish` ("Go to Publish"), and a second row running the same switch would
+         be the same action under a second name. This is the scripted door, and `tab` is what it can
+         say that the chord cannot: the quick dialog's Review all and the screenshot manifest name
+         it. */
+      menus: ["never"],
+      group: "8_publish",
+      requires: "an open project",
+      enablement: (ctx) => ctx.project.open,
+      /* No `aiTool`, by `studio-ui-guidelines.md` §12.4's first rule: it shows a surface. */
+      run: async (_commandCtx, args: CommandArgValues) => {
+        const tab =
+          args["tab"] === undefined ? null : enumArg("publish.open", args, "tab", PUBLISH_TABS);
+        const registry = activeRegistry();
+        if (!registry) {
+          throw new Error('command "publish.open" needs the window\'s command registry');
+        }
+        await registry.run("view.setWorkspace", { workspace: "publish" });
+        if (tab !== null) {
+          const { showPublishTab } = await import("./publish-workspace");
+          showPublishTab(tab);
+        }
+      },
+      title: "Show Publish",
     },
   ];
 }

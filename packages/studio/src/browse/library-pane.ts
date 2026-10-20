@@ -1,76 +1,116 @@
 /// <reference lib="dom" />
 /**
- * The Library — an editor kind, drawn into the pane, over a {@link LibrarySource}.
+ * The Content home: one collection, browsed, in the Content workspace's home tab (`specs/studio.md`
+ * §9.1.2, §22.5).
  *
- * It replaces the Manage view, which was a full-screen MODAL over the whole shell. Everything that
- * was wrong with that follows from the modal: it could not be a tab, so it could not be one of two
- * panes, so it could not be open beside the page you were browsing FOR; it had no editor kind, so
- * the status bar and the pane context bar had nothing to say about it; and its own filter bar was
- * the only way to reach any of its state, so nothing it did was in the palette, on a chord, or
- * available to the assistant. `manage` was already in `commands/context.ts`'s `EDITOR_KIND_BY_MODE`
- * — the map just had nothing behind it.
+ * The Library this replaces answered "where is everything" with one tab of every project file in
+ * folder categories. That question has better answers now (pages, templates and components in the
+ * Site panel, media in the Media workspace), and what was left is the Library's real job: browsing
+ * and writing a COLLECTION. The home shows one at a time, the built-in **Pages** or a collection
+ * the project declares, chosen in the Collections panel (`panels/collections-panel.ts`) or by
+ * `content.showCollection`.
  *
  * The MARKUP is `surfaces/library-pane.json`, a Jx document over the kit; this module is the
- * projection and the decisions. Four things it is careful about:
+ * projection and the decisions. Five things it is careful about:
  *
  * 1. **It never says "No files found" for two different reasons.** A scan that could not read a
  *    directory is INCOMPLETE, not empty; it raises a Problem carrying the directory and a Retry
- *    (`library.refresh`), and the surface says so. A filter that matched nothing says which filter.
+ *    (`content.refresh`), and the surface says so. A filter that matched nothing says which filter.
  *    The four states are one word on the scope, so no two of them can be true at once.
  * 2. **The rendered item count is proportional to the viewport, not to the project.** See
- *    `../ui/virtual-window.ts` and `library-preview.ts`; the acceptance case is 300 pages in
- *    "All".
- * 3. **An upload has a named destination**, shown before the drop, asked for when the active category
- *    does not name one.
- * 4. **Creation is somebody else's flow.** A page, layout or component is `files.ts`'s creation, so a
- *    new page from the Library and a new file from the tree refuse a name that is already taken in
- *    exactly the same way; a collection entry is `content/entry-commands.ts`'s `createEntry`, so it
- *    arrives with the collection's extension and a body seeded from that collection's schema.
+ *    `../ui/virtual-window.ts` and `library-preview.ts`; the acceptance case is 300 pages.
+ * 3. **Every collection keeps its own view.** Its view switch, search and language are its own
+ *    ({@link contentView}`.views`), so Pages in Table and Posts in Cards is a state the home can be
+ *    in, and coming back to a collection finds it as it was left.
+ * 4. **Where a collection is published is read from the pages.** The header line ("Each post has a
+ *    page at `/blog/:slug` using Post") is derived from the page whose `$paths.contentType` names
+ *    the collection (`content/collection-pages.ts`), never stored beside it.
+ * 5. **Creation is somebody else's flow.** **New <item>** runs `file.new` (Add new, §9.1.1) on the
+ *    collection's kind, and **Add one** writes the collection's page exactly as Add new's own-page
+ *    option does (`create/add-new-flow.ts` `addCollectionPage`).
  *
  * @docs studio/projects/browse
  */
 
 import { effect, effectScope, reactive } from "../reactivity";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { localeLabel, resolveI18n } from "@jxsuite/schema/locale";
 import { notify } from "../services/notify";
 import { beginActivity } from "../panels/activity-panel";
 import { showPromptDialog } from "../ui/layers";
 import type { PromptDialogOptions } from "../ui/layers";
 import { openMenu } from "../surfaces/menu";
-import { rectOf } from "../utils/geometry";
 import { getPlatform } from "../platform";
+import { projectState, renderOnly } from "../store";
 import { invalidateUsages } from "../services/references";
 import { confirmFileDelete, renamePromptMessage } from "../files/file-ops";
-import { createFileIn, openFileInTab } from "../files/files";
-import { createEntry } from "../content/entry-commands";
-import { formatByExtension, formatSerialize } from "../format/format-host";
-import { entryCollections } from "../content/entry-model";
-import { uploadAccept, uploadAssets } from "../files/media-upload";
-import { localeLabel } from "@jxsuite/schema/locale";
+import { openFileInTab } from "../files/files";
+import { runActiveReported } from "../commands/run-reported";
 import {
-  LIBRARY_CATEGORIES,
+  PAGES_COLLECTION,
+  collectionSourceFile,
+  declaredCollectionSchema,
+  contentCollection,
+  templateDisplayName,
+} from "../content/content-collections";
+import {
+  onCollectionPagesRead,
+  peekCollectionPage,
+  peekCollectionPages,
+} from "../content/collection-pages";
+import { onPageSummariesRead, peekPageSummaries } from "../content/page-summaries";
+import { localeMarked, pageLabel, singularLabel } from "../panels/site-model";
+import { compareRoutes, fileToRoute } from "@jxsuite/site/routes";
+import {
+  dateFieldOf,
+  declaredDateField,
+  entryDay,
+  entryThumb,
+  onEntrySummariesRead,
+  peekEntrySummaries,
+  titleFieldOf,
+} from "../content/entry-summaries";
+import { entryCollection } from "../content/entry-model";
+import { isString } from "@jxsuite/schema/guards";
+import type { ContentTypeSchema } from "@jxsuite/schema/types";
+import { openEntry } from "../content/entry-open";
+import { openRecordEntry } from "../content/record-entry";
+import {
   LIBRARY_LAYOUTS,
   LIBRARY_LAYOUT_LABELS,
   PREVIEW_LAYOUTS,
   filterLibrary,
-  libraryCategory,
   libraryLocales,
-  uploadDirForCategory,
+  projectLocales,
 } from "./library-model";
-import { createLibrarySource, libraryColumns } from "./library-source";
+import { createLibrarySource, entryFieldColumns, libraryColumns } from "./library-source";
 import { createPreviewCache, createPreviewObserver, previewFor } from "./library-preview";
+import { mountPreview, shownPreview } from "./preview-root";
 import { computeWindow } from "../ui/virtual-window";
 import { paneRegion } from "../ui/regions";
-import { LAYOUT_METRICS, boardView, calendarView, columnsAt, libraryRow } from "./library-layouts";
+import {
+  LAYOUT_METRICS,
+  boardFieldOf,
+  boardView,
+  calendarView,
+  columnsAt,
+  entryFactsFrom,
+  fieldValues,
+  libraryRow,
+} from "./library-layouts";
 import { mountLibrarySurface } from "../surfaces/library-pane";
 import type { ActivityHandle } from "../panels/activity-panel";
-import type { FormatChoice, NewFileRequest } from "../files/files";
+import type { ContentCollection } from "../content/content-collections";
+import type { CollectionPage } from "../content/collection-pages";
 import type { EffectScope } from "@vue/reactivity";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { LibraryFile, LibraryLayout } from "./library-model";
+import type { BoardField, EntryFacts, EntryFactsOf } from "./library-layouts";
 import type { LibrarySource } from "./library-source";
+import type { CommandArgValues } from "../commands/command-args";
 import type {
   LibraryChip,
+  LibraryPageLine,
   LibrarySurfaceHandle,
   LibraryView,
   LibraryViewKind,
@@ -81,8 +121,8 @@ import type { CanvasSurface } from "../canvas/canvas-surface";
 
 // ─── View state ──────────────────────────────────────────────────────────────
 
-export interface LibraryViewState {
-  category: string;
+/** One collection's own view: how it is arranged, what it is filtered to. */
+export interface CollectionViewState {
   layout: LibraryLayout;
   query: string;
   /**
@@ -92,30 +132,86 @@ export interface LibraryViewState {
    * matches what {@link LibraryFile.locale} carries.
    */
   locale: string;
+  /**
+   * The Filter: one value of the collection's filter field ({@link filterFieldOf}: its status, else
+   * the field its Board groups by), or "" for every entry. A value the field no longer has filters
+   * nothing, rather than hiding every entry behind a choice the picker cannot show.
+   */
+  filter: string;
+}
+
+export interface ContentViewState {
+  /** The collection the home shows: `pages`, or a declared collection's name. */
+  collection: string;
+  /** Each collection's own view, created the first time it is shown. */
+  views: Record<string, CollectionViewState>;
   /** Bumped to force a repaint from a non-reactive source (a scroll, a finished scan). */
   revision: number;
   /** A scan is running. Distinct from "scanned and empty", which is what the old view conflated. */
   loading: boolean;
 }
 
+/** The view a collection starts in: Table, the shape both Content mockups open on. */
+const DEFAULT_LAYOUT: LibraryLayout = "table";
+
 /**
- * The Library's view state, reactive and module-scoped.
+ * The Content home's state, reactive and module-scoped.
  *
- * Module-scoped rather than per-tab because there is one Library per window (its tab id carries no
- * category — see `grid-source.ts`), and because the commands that write it must be able to do so
- * whether or not the pane is currently mounted: `library.setCategory` run from the palette while
- * another tab is focused sets the state the Library opens into.
+ * Module-scoped rather than per-tab because there is one Content home per window, and because the
+ * commands that write it must be able to do so whether or not the home is mounted:
+ * `content.setLayout` run from the palette sets the view the home opens into. Per COLLECTION
+ * inside, so one collection's view never leaks into another's.
  */
-export const libraryView: LibraryViewState = reactive({
-  category: "all",
-  layout: "cards",
+export const contentView: ContentViewState = reactive({
+  collection: PAGES_COLLECTION,
   loading: false,
-  locale: "",
-  query: "",
   revision: 0,
+  views: {},
 });
 
-/** The window's Library source. Built lazily; discarded by {@link invalidateLibrary}. */
+/** The view state of a collection, created on first read. */
+export function collectionView(key: string = shownCollectionKey()): CollectionViewState {
+  const existing = contentView.views[key];
+  if (existing) {
+    return existing;
+  }
+  const created: CollectionViewState = {
+    filter: "",
+    layout: DEFAULT_LAYOUT,
+    locale: "",
+    query: "",
+  };
+  contentView.views[key] = created;
+  // Read back through the reactive record, so a later write to the returned object is tracked.
+  return contentView.views[key] ?? created;
+}
+
+/** The collection the home shows, falling back to Pages when its name has gone from the project. */
+export function shownCollection(): ContentCollection {
+  return (
+    contentCollection(contentView.collection) ?? {
+      fileBacked: false,
+      item: "page",
+      key: PAGES_COLLECTION,
+      kind: "pages",
+      title: "Pages",
+    }
+  );
+}
+
+/**
+ * The key of the collection the home actually shows.
+ *
+ * `contentView.collection` is what was last ASKED for, and it can outlive its collection (a rename
+ * or a removal in Settings › Content types). Every default that means "the shown collection" reads
+ * this instead, so the view switch, search, language picker and preview tending all act on the
+ * collection on screen rather than on a stale key.
+ */
+export function shownCollectionKey(): string {
+  return shownCollection().key;
+}
+
+/** The window's scan source. Built lazily; discarded by {@link invalidateLibrary}. */
 let source: LibrarySource | null = null;
 
 /**
@@ -130,33 +226,54 @@ let scanAttempted = false;
 
 /** The source, creating it on first use. */
 export function librarySource(): LibrarySource {
+  /* A scan of a directory list the project has since outgrown is dropped here, on the next ask,
+     rather than by every door that can change the list: the project's directories loading after a
+     window restored into Content, or a collection being declared. Each of those repaints, and the
+     repaint is what asks. Without it the first answer, a walk of no directories, was cached as
+     "this project has no pages" until a reload. */
+  if (source?.stale() === true) {
+    source = null;
+    scanAttempted = false;
+    for (const panel of _active.values()) {
+      panel.cache.clear();
+    }
+  }
   source ??= createLibrarySource();
   return source;
 }
 
-/** Repaint whatever is mounted. */
+/** Repaint whatever is mounted, the Collections panel's counts included. */
 function bump() {
-  libraryView.revision += 1;
+  contentView.revision += 1;
 }
 
-export function setLibraryCategory(key: string): void {
-  libraryView.category = key;
+/** Show a collection in the home. The home itself is opened by `content.showCollection`. */
+export function setContentCollection(key: string): void {
+  contentView.collection = key;
+  collectionView(key);
+  bump();
+  renderOnly("leftPanel");
+}
+
+export function setLibraryLayout(layout: LibraryLayout, key: string = shownCollectionKey()): void {
+  collectionView(key).layout = layout;
   bump();
 }
 
-export function setLibraryLayout(layout: LibraryLayout): void {
-  libraryView.layout = layout;
+export function setLibrarySearch(query: string, key: string = shownCollectionKey()): void {
+  collectionView(key).query = query;
   bump();
 }
 
-export function setLibrarySearch(query: string): void {
-  libraryView.query = query;
+/** Show the entries with one value of the filter field, or `""` for all of them. A setter. */
+export function setLibraryFilter(value: string, key: string = shownCollectionKey()): void {
+  collectionView(key).filter = value;
   bump();
 }
 
 /** Show one language, or `""` for all of them. A setter, so "" is a value and not an absence. */
-export function setLibraryLocale(locale: string): void {
-  libraryView.locale = locale;
+export function setLibraryLocale(locale: string, key: string = shownCollectionKey()): void {
+  collectionView(key).locale = locale;
   bump();
 }
 
@@ -164,7 +281,7 @@ export function setLibraryLocale(locale: string): void {
  * Drop the scan and the rendered previews.
  *
  * Called by every surface that changes the project's file set — an upload, a creation, a rename, a
- * delete — so the Library is never showing a file that is gone.
+ * delete — so the home is never showing a file that is gone.
  *
  * The SLOT table survives, and that is the difference between this and a teardown: clearing the
  * cache detaches every rendered preview from the box it was in, and those boxes are still on
@@ -180,13 +297,45 @@ export function invalidateLibrary(): void {
   bump();
 }
 
+/**
+ * How many files each collection holds, from the scan as it stands. Starts the scan when none has
+ * been attempted, so the Collections panel can ask before the home has ever been shown; the panel
+ * repaints when it lands.
+ *
+ * @returns Collection key → count, or `null` while no scan has finished.
+ */
+export function collectionCounts(): Map<string, number> | null {
+  const current = librarySource();
+  if (!scanAttempted && !contentView.loading) {
+    void loadLibrary();
+  }
+  if (!current.scanned()) {
+    return null;
+  }
+  const counts = new Map<string, number>();
+  for (const file of current.files()) {
+    if (file.collection !== null) {
+      counts.set(file.collection, (counts.get(file.collection) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 // ─── Loading ─────────────────────────────────────────────────────────────────
 
 /** A scan slower than this earns an Activity row; a fast one must not litter the dock. */
 export const SCAN_ACTIVITY_DELAY_MS = 600;
 
 /** Deduplication key for the scan Problem, so a failing watcher is one row and not sixty. */
-const SCAN_PROBLEM_KEY = "library.scan";
+const SCAN_PROBLEM_KEY = "content.scan";
+
+/** The `source` every Problem and toast this module files carries. */
+const SOURCE = "Content";
+
+/** The scan's Activity row, filled in only once the scan outlasts {@link SCAN_ACTIVITY_DELAY_MS}. */
+interface SlowScanActivity {
+  handle: ActivityHandle | null;
+}
 
 /**
  * Run the scan and report it honestly.
@@ -196,21 +345,16 @@ const SCAN_PROBLEM_KEY = "library.scan";
  * contract exists to end. The row is informational, and it only appears when the scan is slow
  * enough that its absence would look like a hang.
  */
-/** The scan's Activity row, filled in only once the scan outlasts {@link SCAN_ACTIVITY_DELAY_MS}. */
-interface SlowScanActivity {
-  handle: ActivityHandle | null;
-}
-
 async function loadLibrary(): Promise<void> {
   const current = librarySource();
   scanAttempted = true;
-  libraryView.loading = true;
+  contentView.loading = true;
   bump();
 
   const slow: SlowScanActivity = { handle: null };
   const timer = setTimeout(() => {
     slow.handle = beginActivity({
-      source: "Library",
+      source: SOURCE,
       status: "Reading the project's directories…",
       title: "Scan project files",
     });
@@ -227,11 +371,11 @@ async function loadLibrary(): Promise<void> {
       // A Problem, not a toast: the list on screen is wrong until this is fixed, and the fix is a
       // Command the row can run.
       notify.error(summary, {
-        action: "library.refresh",
+        action: "content.refresh",
         detail,
         key: SCAN_PROBLEM_KEY,
         path: failures[0]!.dir,
-        source: "Library",
+        source: SOURCE,
         tier: "problem",
       });
       slow.handle?.setStatus(summary);
@@ -244,21 +388,23 @@ async function loadLibrary(): Promise<void> {
       slow.handle.fail(message);
     } else {
       notify.error(message, {
-        action: "library.refresh",
+        action: "content.refresh",
         detail: errorMessage(error),
         key: SCAN_PROBLEM_KEY,
-        source: "Library",
+        source: SOURCE,
         tier: "problem",
       });
     }
   } finally {
     clearTimeout(timer);
-    libraryView.loading = false;
+    contentView.loading = false;
     bump();
+    // The Collections panel draws the counts this scan just produced.
+    renderOnly("leftPanel");
   }
 }
 
-/** Re-scan from scratch — the Retry behind the Problem, and the toolbar's Refresh. */
+/** Re-scan from scratch — the Retry behind the Problem. */
 export async function refreshLibrary(): Promise<void> {
   source = null;
   scanAttempted = false;
@@ -271,7 +417,7 @@ export async function refreshLibrary(): Promise<void> {
 // ─── The mounted pane ────────────────────────────────────────────────────────
 
 interface ActiveLibraryPane {
-  /** The pane whose stage this Library is drawn on. The map key, held on the record too. */
+  /** The pane whose stage this home is drawn on. The map key, held on the record too. */
   paneId: string;
   tabId: string;
   scope: EffectScope;
@@ -293,30 +439,26 @@ interface ActiveLibraryPane {
    * and a scroll through a long list would read each document several times over.
    */
   pendingPaths: Set<string>;
-  /** Whether a drag is over the body. Held here so a dragover does not recompute the window. */
-  dropActive: boolean;
   /** The coalesced post-repaint pass; see {@link scheduleSettle}. */
   settleTimer: ReturnType<typeof setTimeout> | null;
+  /** Stops listening for the collection-pages index. */
+  unlisten: () => void;
 }
 
 /**
- * The Library mounted in each pane, keyed by pane id.
+ * The home mounted in each pane, keyed by pane id.
  *
- * ONE instance per pane, not per window. It was a module-level `let active`, which is a fact about
- * the shell having had one stage — and the failure it produced the moment two are drawn is not
- * cosmetic: pane B mounting a Library called `detachLibraryPane()`, destroying pane A's
- * `IntersectionObserver`, preview cache and effect scope while pane A's DOM was still on screen.
- * `canvas-render.ts`'s `resetCanvasView` calls the detach UNCONDITIONALLY on every empty pane, so
- * it did not even take a second Library to do it.
+ * ONE instance per pane, not per window: pane B mounting the home must not destroy pane A's
+ * `IntersectionObserver`, preview cache and effect scope while pane A's DOM is still on screen.
  */
 const _active = new Map<string, ActiveLibraryPane>();
 
-/** The Library mounted in a pane, or null. */
+/** The home mounted in a pane, or null. */
 function activeIn(paneId: string): ActiveLibraryPane | null {
   return _active.get(paneId) ?? null;
 }
 
-/** Whether the Library is live in this pane for this tab — the canvas-render fast-path guard. */
+/** Whether the home is live in this pane for this tab — the canvas-render fast-path guard. */
 export function libraryPaneMounted(paneId: string, tab: Tab): boolean {
   const panel = activeIn(paneId);
   return (
@@ -324,7 +466,7 @@ export function libraryPaneMounted(paneId: string, tab: Tab): boolean {
   );
 }
 
-/** Tear one pane's Library down (mode change, tab switch, project close). Idempotent. */
+/** Tear one pane's home down (mode change, tab switch, project close). Idempotent. */
 export function detachLibraryPane(paneId: string): void {
   const panel = _active.get(paneId);
   if (!panel) {
@@ -334,6 +476,7 @@ export function detachLibraryPane(paneId: string): void {
     clearTimeout(panel.settleTimer);
     panel.settleTimer = null;
   }
+  panel.unlisten();
   panel.observer.destroy();
   panel.cache.clear();
   panel.slots.clear();
@@ -377,8 +520,8 @@ async function fillPreview(panel: ActiveLibraryPane, path: string) {
       return;
     }
     const slot = panel.slots.get(path);
-    if (slot?.isConnected && !slot.firstElementChild) {
-      slot.append(rendered);
+    if (slot?.isConnected && !shownPreview(slot)) {
+      mountPreview(slot, rendered);
     }
   } finally {
     panel.pendingPaths.delete(path);
@@ -392,11 +535,11 @@ function tendSlot(panel: ActiveLibraryPane, slot: HTMLElement, path: string): vo
   // Drift to the tail of the LRU, get evicted, get detached, and be re-rendered on the next
   // Repaint: the 300-page measurement showed 560 reads for 300 documents until this line moved.
   const cached = panel.cache.get(path);
-  if (slot.firstElementChild) {
+  if (shownPreview(slot)) {
     return;
   }
   if (cached) {
-    slot.append(cached);
+    mountPreview(slot, cached);
     return;
   }
   if (panel.pendingPaths.has(path)) {
@@ -420,20 +563,11 @@ function previewSlot(panel: ActiveLibraryPane, slot: HTMLElement, path: string):
 /**
  * The pass that runs once the document has reconciled, coalesced onto a task of its own.
  *
- * It exists because a document repaint is not a moment this module is present at: writing the
- * projection returns immediately and the runtime's keyed arrays reconcile a microtask later, so
- * "the window has moved" is only true one task after the write. Two things have to happen then and
- * cannot happen before.
- *
- * The first is releasing observations. A card outside the new window is now detached, and an
- * observation of a detached node can never fire again: it is pure cost — the browser walks it on
- * every scroll frame — and it pins the card's whole subtree. The intersect callback cannot be the
- * only release path, because a card flicked past before it ever intersected is never reported.
- *
- * The second is tending the slots that ARE on screen. A row the reconciler kept keeps its preview
- * box, so nothing re-announces it — and an LRU eviction detaches the render that was inside it. So
- * every visible slot is touched here: the touch is what keeps it at the head of the LRU, and the
- * refill is what puts a preview back into a box eviction emptied.
+ * A document repaint is not a moment this module is present at: writing the projection returns
+ * immediately and the runtime's keyed arrays reconcile a microtask later. Two things happen then:
+ * observations of cards that left the window are released (an observation of a detached node can
+ * never fire again, and it pins the card's subtree), and every visible slot is tended, which keeps
+ * it at the head of the LRU and refills a box an eviction emptied.
  */
 function scheduleSettle(panel: ActiveLibraryPane): void {
   if (panel.settleTimer !== null) {
@@ -445,7 +579,7 @@ function scheduleSettle(panel: ActiveLibraryPane): void {
       return;
     }
     panel.observer.releaseDetached();
-    const previews = PREVIEW_LAYOUTS.has(libraryView.layout);
+    const previews = PREVIEW_LAYOUTS.has(collectionView().layout);
     for (const [path, slot] of panel.slots) {
       if (!slot.isConnected) {
         panel.slots.delete(path);
@@ -458,14 +592,34 @@ function scheduleSettle(panel: ActiveLibraryPane): void {
   }, 0);
 }
 
+// ─── Opening ─────────────────────────────────────────────────────────────────
+
+/**
+ * Open a row: a page in Design, an entry where it is written (`content/entry-open.ts`).
+ *
+ * The same answer whichever collection drew the row, because the file says what it is: a page is
+ * Design's, and activating it enters Design (§22.1).
+ */
+export function openLibraryFile(file: Pick<LibraryFile, "path" | "collection" | "record">): void {
+  if (file.record) {
+    /* A record of a file-backed collection opens in its entry form: that one row's fields, typed
+       by the collection's schema, kept in its file's grid (`content/record-entry.ts`). */
+    void openRecordEntry(file.record.source, file.record.row);
+  } else if (file.collection === null || file.collection === PAGES_COLLECTION) {
+    void openFileInTab(file.path);
+  } else {
+    void openEntry(file.path);
+  }
+}
+
 // ─── Context menu ────────────────────────────────────────────────────────────
 
 /**
- * The menu the Library has up, whichever it is.
+ * The per-file menu the home has up, if any.
  *
- * One handle for both the per-file menu and the New menu, because only one of them can be open: the
- * kit's menu is a popover on the platform's own top layer, and opening a second while the first is
- * up is how two of them end up light-dismissing each other.
+ * One handle, because only one can be open: the kit's menu is a popover on the platform's own top
+ * layer, and opening a second while the first is up is how two of them end up light-dismissing each
+ * other.
  */
 let _menu: MenuHandle | null = null;
 
@@ -483,16 +637,11 @@ function fileAt(path: string): LibraryFile | null {
   );
 }
 
-/**
- * The per-file menu, opened at the pointer.
- *
- * The rows are the `menu` surface's own projections, so the Library's Delete is drawn, keyed and
- * dismissed exactly as the element menu's is — including the edge clamping, which was a hand-rolled
- * `requestAnimationFrame` measurement here and is the kit's popover's job.
- */
+/** The per-file menu, opened at the pointer. Region `content`. */
 function showLibraryContextMenu(path: string, x: number, y: number): void {
   const file = fileAt(path);
-  if (!file) {
+  // A record is a row of a file: renaming, duplicating or deleting "it" would act on the file.
+  if (!file || file.record) {
     return;
   }
   closeLibraryMenu();
@@ -518,10 +667,10 @@ function showLibraryContextMenu(path: string, x: number, y: number): void {
       }
     },
     origin: { x, y },
-    region: "library",
+    region: "content",
     rows: [
       row("open", "Open", () => {
-        void openFileInTab(file.path);
+        openLibraryFile(file);
       }),
       row(
         "rename",
@@ -546,44 +695,8 @@ function showLibraryContextMenu(path: string, x: number, y: number): void {
   });
 }
 
-/** The New menu, opened under its own button. A second press closes it: the button is a toggle. */
-function showLibraryNewMenu(opener: HTMLElement): void {
-  if (_menu) {
-    closeLibraryMenu();
-    return;
-  }
-  const entries = libraryNewEntries();
-  _menu = openMenu({
-    label: "New",
-    onClosed: (handle) => {
-      if (_menu === handle) {
-        _menu = null;
-      }
-    },
-    opener,
-    place: () => {
-      const box = rectOf(opener);
-      return { x: box.left, y: box.bottom + 4 };
-    },
-    region: "library-new",
-    rows: entries.map((entry, index) => ({
-      destructive: false,
-      disabled: false,
-      /* The document kinds and the collections are two different creation flows, so the boundary
-         between them is drawn rather than left to be inferred from the folder names. */
-      dividerAbove:
-        entry.collection !== undefined && entries[index - 1]?.collection === undefined && index > 0,
-      id: entry.key,
-      title: `${entry.label} — ${entry.dir}/`,
-    })),
-    run: (id) => {
-      void createLibraryEntry(id);
-    },
-  });
-}
-
 /**
- * The Library's rename dialog — the same copy, from the same helper, as the Files panel's.
+ * The rename dialog — the same copy, from the same helper, as the Files panel's.
  *
  * A rename here rewrites references exactly as one in the sidebar does, and two dialogs that
  * disagreed about that is the divergence the shared helper exists to prevent.
@@ -616,7 +729,7 @@ async function renameLibraryFile(file: LibraryFile) {
     notify.error(`Could not rename ${file.name}.`, {
       detail: errorMessage(error),
       path: file.path,
-      source: "Library",
+      source: SOURCE,
     });
   }
 }
@@ -638,7 +751,7 @@ async function duplicateLibraryFile(file: LibraryFile) {
     notify.error(`Could not duplicate ${file.name}.`, {
       detail: errorMessage(error),
       path: file.path,
-      source: "Library",
+      source: SOURCE,
     });
   }
 }
@@ -658,186 +771,95 @@ async function deleteLibraryFile(file: LibraryFile) {
     notify.error(`Could not delete ${file.name}.`, {
       detail: errorMessage(error),
       path: file.path,
-      source: "Library",
+      source: SOURCE,
     });
   }
 }
 
-// ─── Creation ────────────────────────────────────────────────────────────────
+// ─── The collection's page ───────────────────────────────────────────────────
 
-/** What the New menu offers: the three document kinds, plus one row per creatable collection. */
-export interface LibraryNewEntry {
-  key: string;
-  label: string;
-  dir: string;
-  /**
-   * The content collection this row creates an entry IN, or undefined for a document kind.
-   *
-   * Present is the whole difference between the two creation paths below — a collection row is
-   * `content/`'s job, because only that module knows the collection's extension and its schema.
-   */
-  collection?: string;
+/** The template a collection's page is drawn in, as the header line names it. */
+function templateClause(page: CollectionPage, defaultLayout: string | null): string {
+  if (page.layout === false) {
+    return "with no template";
+  }
+  const layout = page.layout ?? defaultLayout;
+  return layout ? `using ${templateDisplayName(layout)}` : "with no template";
 }
 
 /**
- * The new-entity rows.
+ * The header line: where a collection's entries are published (§22.5).
  *
- * Collections come from `content/entry-model.ts` rather than from `project.json` directly, so the
- * menu offers exactly the collections an entry can be created in. The predecessor read the raw
- * `content` map and derived a directory from the type NAME when `source` was absent, which produced
- * a row for a collection that has no entry directory at all and a row for a single-file (CSV)
- * catalogue, whose entries are rows and not files. Both created a file nothing would ever load.
+ * Pages have no line (a page is its own page), a collection whose index has not been read says
+ * nothing yet, and a collection with no page says so with the way to add one.
  */
-export function libraryNewEntries(): LibraryNewEntry[] {
-  const rows: LibraryNewEntry[] = [
-    { dir: "pages", key: "page", label: "Page" },
-    { dir: "layouts", key: "layout", label: "Layout" },
-    { dir: "components", key: "component", label: "Component" },
-  ];
-  for (const collection of entryCollections()) {
-    rows.push({
-      collection: collection.name,
-      dir: collection.dir,
-      key: `collection:${collection.name}`,
-      label: collection.name.charAt(0).toUpperCase() + collection.name.slice(1),
-    });
+export function pageLineFor(
+  collection: ContentCollection,
+  page: CollectionPage | null | undefined,
+  defaultLayout: string | null,
+  every: readonly CollectionPage[] = [],
+): LibraryPageLine {
+  const hidden: LibraryPageLine = {
+    designLabel: "",
+    pattern: "",
+    state: "hidden",
+    template: "",
+    text: "",
+  };
+  if (collection.kind === "pages") {
+    return hidden;
   }
-  return rows;
-}
-
-/**
- * Create one entity and open it.
- *
- * Two paths, because a collection entry is not a blank document. A **collection** row goes through
- * `content/entry-commands.ts`'s `createEntry`, which supplies the collection's extension (so the
- * field asks for a display name and the file is actually matched by the collection it was created
- * in) and a body seeded from the collection's **schema defaults** — the entry is valid the moment
- * it exists, rather than a pile of absent required fields — and then opens it in the entry FORM,
- * which is the editor that collection's fields belong to. Both of those are the reason
- * `createEntry` is called rather than reimplemented; a second seeder here would drift from the one
- * the palette's `content.newEntry` uses within a release.
- *
- * A **document kind** gets the format PICKER, which is the same argument the verbatim name field
- * used to make: a page may be a `.md` as easily as a `.json`, so the extension is a real choice —
- * now offered rather than left to be typed from memory. A collection's extension is not a choice;
- * it is the collection's, and `createEntry` supplies it.
- *
- * **A layout is not a choice either, and that is not a policy.** Both readers of a layout parse it
- * as JSON and neither dispatches through the format registry — `site/layout-resolver.ts` throws and
- * `site-context.ts` returns null — so a `.md` layout is a file the build cannot load. There is no
- * `"layout"` document kind for a format to declare, so this is stated here rather than derived.
- *
- * A **component** keeps the picker: a format whose `$studio.documentMode.componentWhen` promotes a
- * frontmatter `tagName` (Markdown's does) can express one perfectly well. What it cannot do is
- * express one from a `newFileTemplate` that carries no `tagName`, so the seed below supplies it —
- * through the format's own serializer, because this module knows no format's syntax.
- */
-/** How each document kind's extension is settled. Anything else falls back to the full picker. */
-const FORMAT_CHOICE_BY_KIND = new Map<string, FormatChoice>([
-  ["component", { defaultExt: ".json", docKind: "component", kind: "choose" }],
-  ["layout", { ext: ".json", kind: "fixed" }],
-  ["page", { defaultExt: ".json", docKind: "page", kind: "choose" }],
-]);
-
-/**
- * The body a new component starts as, when the reader picked a format rather than `.json`.
- *
- * `.json` answers `undefined` and takes the shared blank document. A format answers with its OWN
- * serialization of `{ tagName }` — never a hand-written `---\ntagName: …\n---`, which would put one
- * format's syntax in the Library. Without the `tagName` the file satisfies neither
- * `$studio.documentMode.componentWhen` nor the build's tag registration, and is a component nothing
- * loads. A stem that is not a valid custom-element name (no hyphen) cannot carry one, so it falls
- * back to the format's own template and the author names the tag themselves.
- */
-async function componentSeed(ext: string, fileName: string): Promise<string | undefined> {
-  const format = formatByExtension(ext);
-  if (!format?.capabilities.serialize) {
-    return undefined;
+  if (page === undefined) {
+    return { ...hidden, state: "loading", text: "Finding where these entries are published…" };
   }
-  const tagName = fileName.slice(0, fileName.length - ext.length);
-  if (!/^[a-z][\d.a-z]*-[\d.a-z-]*$/.test(tagName)) {
-    return undefined;
+  if (page === null) {
+    return { ...hidden, state: "none", text: "Entries have no page of their own" };
   }
-  try {
-    return await formatSerialize(
-      format.name,
-      { children: [], tagName },
-      { frontmatter: true, mode: "roundtrip" },
-    );
-  } catch {
-    // The serializer is the project's, so its failure is not a reason to refuse the creation —
-    // The format's own template still produces a file the author can finish by hand.
-    return undefined;
-  }
-}
-
-export async function createLibraryEntry(key: string): Promise<string | null> {
-  const entry = libraryNewEntries().find((row) => row.key === key);
-  if (!entry) {
-    return null;
-  }
-  let created: string | null;
-  if (entry.collection === undefined) {
-    const request: NewFileRequest = {
-      dir: entry.dir,
-      format: FORMAT_CHOICE_BY_KIND.get(entry.key) ?? { defaultExt: ".json", kind: "choose" },
-      source: "Library",
-      suggestedName: "untitled",
-      title: `New ${entry.label}`,
+  /* Every language, when the view shows every language and the collection has a page in more than
+     one: naming only the default language's page under "All" says the others have none. Each is
+     named by its language, in the order the index holds them; one template clause when they share
+     a template, else each its own. */
+  // In the order the project declares its languages, the default first, as every language list is.
+  const order = projectLocales();
+  const rank = (locale: string | null) => {
+    const at = locale === null ? -1 : order.indexOf(locale);
+    return at === -1 ? order.length : at;
+  };
+  const localized = every
+    .filter((each) => each.locale !== null)
+    .toSorted((a, b) => rank(a.locale) - rank(b.locale));
+  if (localized.length > 1) {
+    const clauses = new Set(localized.map((each) => templateClause(each, defaultLayout)));
+    return {
+      designLabel: `Design the ${collection.item} page`,
+      pattern: localized.map((each) => `${each.pattern} (${each.locale})`).join(", "),
+      state: "page",
+      template: clauses.size === 1 ? [...clauses][0]! : "using a template per language",
+      text: `Each ${collection.item} has a page in each language at`,
     };
-    if (entry.key === "component") {
-      request.content = componentSeed;
-    }
-    created = await createFileIn(request);
-  } else {
-    created = await createEntry(entry.collection);
   }
-  if (created === null) {
-    return null;
-  }
-  invalidateLibrary();
-  await loadLibrary();
-  // `createEntry` has already opened the entry form; opening the file again here would replace that
-  // Editor with the generic one for the same tab.
-  if (entry.collection === undefined) {
-    void openFileInTab(created);
-  }
-  return created;
+  return {
+    designLabel: `Design the ${collection.item} page`,
+    pattern: page.pattern,
+    state: "page",
+    template: templateClause(page, defaultLayout),
+    text: `Each ${collection.item} has a page at`,
+  };
 }
 
-// ─── Upload ──────────────────────────────────────────────────────────────────
-
-/**
- * Where an upload lands, and how the author was told.
- *
- * The active category's directory when it has one — printed on the drop zone, so the destination is
- * visible BEFORE the drop. "All" has none, and rather than falling back to a default nobody chose,
- * it asks. That fallback is exactly the surprise studio.md §16 exists to refuse: the file arrives,
- * the toast says it worked, and it is in a directory the author never picked.
- */
-export async function resolveUploadDir(): Promise<string | null> {
-  const named = uploadDirForCategory(libraryView.category);
-  if (named !== undefined) {
-    return named;
+/** Open the collection's page in Design: activating it enters Design (§22.1). */
+function designCollectionPage(name: string): void {
+  // The page in the language the view is filtered to: the one the reader is looking at.
+  const page = peekCollectionPage(name, collectionView(name).locale);
+  if (page) {
+    void openFileInTab(page.path);
   }
-  const chosen = await showPromptDialog("Upload files", {
-    confirmLabel: "Upload",
-    message: "The All view has no folder of its own. Choose where these files land.",
-    placeholder: "public",
-    validate: (value) => (value.trim() ? "" : "Enter a folder."),
-    value: "public",
-  });
-  return chosen === null ? null : chosen.trim().replace(/\/$/, "");
 }
 
-async function uploadIntoLibrary(files: FileList | File[]) {
-  const dir = await resolveUploadDir();
-  if (dir === null) {
-    return;
-  }
-  await uploadAssets([...files], { dir });
-  invalidateLibrary();
-  await loadLibrary();
+/** Write the collection's page, as Add new's own-page option does, then show the new line. */
+async function addCollectionPageFor(name: string): Promise<void> {
+  const { addCollectionPage } = await import("../create/add-new-flow");
+  await addCollectionPage(name);
 }
 
 // ─── The projection ──────────────────────────────────────────────────────────
@@ -848,25 +870,27 @@ function chip(key: string, label: string, active: boolean): LibraryChip {
 }
 
 /** The sentence a filter that matched nothing prints, naming both facets rather than one. */
-function noMatchMessage(): string {
-  const category = libraryCategory(libraryView.category);
-  // Both facets in one clause, so a reader who filtered twice is told about both rather than being
-  // Sent to clear one and find the list still empty.
-  const scopes = [
-    category && category.key !== "all" ? category.label : "",
-    libraryView.locale === "" ? "" : localeLabel(libraryView.locale),
-  ].filter((scope) => scope !== "");
-  const where = scopes.length === 0 ? "" : ` in ${scopes.join(" and ")}`;
-  const term = libraryView.query.trim();
-  return `No files match${term ? ` “${term}”` : ""}${where}.`;
+function noMatchMessage(collection: ContentCollection, view: CollectionViewState): string {
+  const where = `${view.locale === "" ? "" : ` in ${localeLabel(view.locale)}`}${
+    view.filter === "" ? "" : ` filtered to ${view.filter}`
+  }`;
+  const term = view.query.trim();
+  return `No ${collection.kind === "pages" ? "pages" : collection.title.toLowerCase()} match${
+    term ? ` “${term}”` : ""
+  }${where}.`;
 }
 
-/** Which of the nine things the body draws right now. */
-function viewKind(current: LibrarySource, matched: number, total: number): LibraryViewKind {
+/** Which of the eight things the body draws right now. */
+function viewKind(
+  current: LibrarySource,
+  layout: LibraryLayout,
+  matched: number,
+  total: number,
+): LibraryViewKind {
   if (matched > 0) {
-    return libraryView.layout;
+    return layout;
   }
-  if (libraryView.loading || !current.scanned()) {
+  if (contentView.loading || !current.scanned()) {
     return "loading";
   }
   if (current.failures().length > 0) {
@@ -875,11 +899,329 @@ function viewKind(current: LibrarySource, matched: number, total: number): Libra
   return total === 0 ? "empty" : "nomatch";
 }
 
+/**
+ * A collection's entry files, in scan order. The ONE list both the Content home and the Collections
+ * panel read entry summaries for: the summary cache keeps one list per collection, so two
+ * differently-ordered lists would each evict the other's read.
+ */
+export function collectionEntryPaths(key: string): string[] {
+  return librarySource()
+    .files()
+    .filter((file) => file.collection === key)
+    .map((file) => file.path);
+}
+
+/**
+ * What each entry of a declared collection says about itself (title, status, date), read once
+ * through the Collections panel's summaries. Pages and a file-backed collection (whose entries are
+ * rows of one file) answer nothing, and so does every entry until the read lands.
+ */
+function entryFactsFor(collection: ContentCollection, layout: LibraryLayout): EntryFactsOf {
+  if (collection.kind === "pages") {
+    return librarySource().scanned() ? pageFactsFor(layout === "table") : entryFactsFrom(new Map());
+  }
+  if (collection.fileBacked) {
+    /* A record's facts are its fields, read with the file by the scan; it is dated by its own date
+       field, as an entry file is, so the Calendar never falls back to the one file's mtime. */
+    const schema = collectionSchema(collection.key);
+    const records = librarySource()
+      .files()
+      .filter((file) => file.collection === collection.key && file.record);
+    return entryFactsFrom(
+      new Map(
+        records.map((file) => {
+          const { fields } = file.record!;
+          const dateField = dateFieldOf(schema, fields);
+          const date = dateField === null ? "" : entryDay(fields[dateField] ?? "");
+          // A record's picture is its image field, relative to the file that holds it.
+          const thumb = entryThumb(file.record!.source, fields, schema);
+          return [file.path, { date, fields, status: "", thumb, title: file.name }];
+        }),
+      ),
+    );
+  }
+  if (!librarySource().scanned()) {
+    return entryFactsFrom(new Map());
+  }
+  const summaries = peekEntrySummaries(collection.key, collectionEntryPaths(collection.key));
+  const byPath = new Map<string, EntryFacts>(
+    (summaries ?? []).map((entry) => [
+      entry.path,
+      {
+        date: entry.date,
+        fields: entry.fields,
+        status: entry.status,
+        thumb: entry.thumb,
+        title: entry.title,
+      },
+    ]),
+  );
+  return entryFactsFrom(byPath);
+}
+
+/**
+ * What each page says about itself in the Pages table: its name, as the Site panel gives it (Home,
+ * About, "Post page" for a collection's page), its template, and Draft for a page marked one.
+ *
+ * The name comes from the route, so it is there before any file is read; the template and the draft
+ * flag arrive with the page summaries. A page's Status reads Published only when some page in the
+ * project is a draft: with none, pages have no draft workflow, and a column of "Published" would be
+ * a state nobody defined. Only the Table draws a template or a status, so only the Table reads the
+ * pages: Cards, Calendar and Board name a page by its route and read nothing.
+ */
+function pageFactsFor(readPages: boolean): EntryFactsOf {
+  const paths = collectionEntryPaths(PAGES_COLLECTION);
+  const summaries = readPages ? peekPageSummaries(paths) : null;
+  const declared = new Set(Object.keys(projectState?.projectConfig?.content ?? {}));
+  const fallback = defaultLayoutPath();
+  const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
+  const anyDraft = [...(summaries?.values() ?? [])].some((page) => page.draft);
+  const byPath = new Map<string, EntryFacts>(
+    paths.map((path) => {
+      const summary = summaries?.get(path);
+      const collection = summary?.contentType ?? null;
+      const layout = summary === undefined ? undefined : (summary.layout ?? fallback ?? false);
+      return [
+        path,
+        {
+          date: "",
+          status: summary === undefined || !anyDraft ? "" : summary.draft ? "Draft" : "Published",
+          template:
+            layout === undefined ? "" : layout === false ? "None" : templateDisplayName(layout),
+          title:
+            collection !== null && declared.has(collection)
+              ? localeMarked(`${singularLabel(collection)} page`, path, i18n)
+              : pageLabel(fileToRoute(path), path, i18n),
+        },
+      ];
+    }),
+  );
+  return entryFactsFrom(byPath);
+}
+
+/** Pages in the order the router matches them, the order the Site panel lists them in. */
+function inRouteOrder(files: readonly LibraryFile[]): readonly LibraryFile[] {
+  return files
+    .map((file) => ({ file, route: fileToRoute(file.path) }))
+    .toSorted((a, b) => compareRoutes(a.route, b.route) || a.file.path.localeCompare(b.file.path))
+    .map(({ file }) => file);
+}
+
+/** A declared collection's schema, or null for one that declares none. */
+function collectionSchema(key: string): ContentTypeSchema | null {
+  return entryCollection(key)?.schema ?? declaredCollectionSchema(key);
+}
+
+/** The fields the Table names in a column of their own already: what an entry is called, its date. */
+function listedElsewhere(schema: ContentTypeSchema | null): ReadonlySet<string> {
+  const skip = new Set<string>();
+  const title = titleFieldOf(schema);
+  const date = declaredDateField(schema);
+  for (const name of [title, date]) {
+    if (name !== null) {
+      skip.add(name);
+    }
+  }
+  return skip;
+}
+
+/** Each field's declared string `enum`, the order a Board grouped by it draws its columns in. */
+function fieldEnums(schema: ContentTypeSchema | null): ReadonlyMap<string, readonly string[]> {
+  const enums = new Map<string, readonly string[]>();
+  for (const [name, field] of Object.entries(schema?.properties ?? {})) {
+    if (Array.isArray(field.enum)) {
+      enums.set(
+        name,
+        field.enum.filter((value) => isString(value)),
+      );
+    }
+  }
+  return enums;
+}
+
+/** The field the Filter narrows a collection by, and the values it offers. */
+export interface FilterField {
+  /** "Status", or the field's own title. */
+  title: string;
+  /** The values offered, in the order the Board stands its columns in. */
+  values: readonly string[];
+  /** Whether an entry with these facts has `value`. */
+  matches: (facts: EntryFacts | undefined, value: string) => boolean;
+}
+
+/**
+ * What the Filter narrows by: an entry's **status** where the collection has a draft workflow, else
+ * the field its Board groups by (`boardFieldOf`: the first field with an `enum`, else the first
+ * whose values repeat; a list field by each of its items). The same choice the Board makes, so the
+ * Filter offers exactly the columns the Board draws. `null` when nothing groups the entries.
+ */
+export function filterFieldOf(
+  facts: readonly (EntryFacts | undefined)[],
+  field: BoardField | null,
+): FilterField | null {
+  const statuses = [...new Set(facts.flatMap((entry) => (entry?.status ? [entry.status] : [])))];
+  if (statuses.length > 0) {
+    return {
+      matches: (entry, value) => (entry?.status ?? "") === value,
+      title: "Status",
+      values: statuses.toSorted((a, b) =>
+        a === "Draft" ? -1 : b === "Draft" ? 1 : a.localeCompare(b),
+      ),
+    };
+  }
+  if (!field) {
+    return null;
+  }
+  const held = new Set(
+    facts.flatMap((entry) => fieldValues(entry?.fields?.[field.name], field.list)),
+  );
+  const values =
+    field.order.length > 0
+      ? [...field.order, ...[...held].filter((value) => !field.order.includes(value)).toSorted()]
+      : [...held].toSorted((a, b) => a.localeCompare(b));
+  return {
+    matches: (entry, value) => fieldValues(entry?.fields?.[field.name], field.list).includes(value),
+    title: field.title,
+    values,
+  };
+}
+
+/** Everything the home draws in a pane, as one value. */
+function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView {
+  const current = librarySource();
+  const collection = shownCollection();
+  const view = collectionView(collection.key);
+  const { layout } = view;
+  const all = filterLibrary(current.files(), { collection: collection.key, query: "" });
+  const factsOf = entryFactsFor(collection, layout);
+  const facts = all.map((file) => factsOf(file));
+  const schema = collection.kind === "collection" ? collectionSchema(collection.key) : null;
+  const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema));
+  const boardField = boardFieldOf(fieldColumns, fieldEnums(schema), facts);
+  // Pages are listed by route; the Filter is a collection's, over what its entries say.
+  const filterField = collection.kind === "collection" ? filterFieldOf(facts, boardField) : null;
+  const filterValue =
+    filterField !== null && filterField.values.includes(view.filter) ? view.filter : "";
+  const searched = filterLibrary(current.files(), {
+    collection: collection.key,
+    locale: view.locale,
+    query: view.query,
+  });
+  const filtered =
+    filterField === null || filterValue === ""
+      ? searched
+      : searched.filter((file) => filterField.matches(factsOf(file), filterValue));
+  const files = collection.kind === "pages" ? inRouteOrder(filtered) : filtered;
+  const total = all.length;
+  const kind = viewKind(current, layout, files.length, total);
+  const range = windowFor(panel, layout, files.length);
+  const slice = files.slice(range.start, range.end);
+  const failures = current.failures();
+  const locales = libraryLocales(all);
+  const columns = libraryColumns(collection.key, {
+    // A date the schema declares is a column even before an entry fills it in.
+    date: declaredDateField(schema) !== null || facts.some((entry) => (entry?.date ?? "") !== ""),
+    fields: fieldColumns,
+    locale: locales.length > 1,
+    status: facts.some((entry) => (entry?.status ?? "") !== ""),
+  });
+  const live = kind === "cards";
+  const calendar =
+    kind === "calendar" ? calendarView(files, factsOf) : { groups: [], truncated: "" };
+  const pages = collection.kind === "pages";
+  const plural = pages ? "pages" : collection.title.toLowerCase();
+
+  return {
+    bannerState: failures.length > 0 ? "shown" : "hidden",
+    bannerText:
+      failures.length === 0
+        ? ""
+        : `This list is incomplete — ${failures.length} ${
+            failures.length === 1 ? "directory" : "directories"
+          } could not be read (${failures[0]!.dir}${failures.length > 1 ? ", …" : ""}).`,
+    columns: kind === "table" ? columns.map((c) => ({ field: c.field, title: c.title })) : [],
+    emptyDetail:
+      kind === "incomplete"
+        ? `${failures.length} ${
+            failures.length === 1 ? "directory" : "directories"
+          } could not be read, so this is not the same as an empty collection.`
+        : kind === "nomatch"
+          ? `${total} ${total === 1 ? collection.item : plural} in all.`
+          : kind === "empty"
+            ? `New ${collection.item} adds the first one.`
+            : "",
+    emptyMessage:
+      kind === "nomatch"
+        ? noMatchMessage(collection, view)
+        : kind === "empty"
+          ? `No ${plural} yet.`
+          : "",
+    fieldsState: collection.kind === "collection" ? "shown" : "hidden",
+    groups: kind === "board" ? boardView(files, factsOf, boardField) : calendar.groups,
+    layouts: LIBRARY_LAYOUTS.map((name) =>
+      chip(name, LIBRARY_LAYOUT_LABELS[name], layout === name),
+    ),
+    localeOptions: [
+      { label: "All languages", value: "all" },
+      ...locales.map((tag) => ({ label: localeLabel(tag), value: tag })),
+    ],
+    /* The facet's options come from ALL of the collection's files, never from the filtered ones: a
+       picker whose choices collapse to the choice just made cannot be used to make another. One
+       locale — or none — means every file already agrees. */
+    filterOptions:
+      filterField === null
+        ? []
+        : [
+            { label: `Any ${filterField.title.toLowerCase()}`, value: "all" },
+            ...filterField.values.map((value) => ({ label: value, value })),
+          ],
+    filterState: filterField !== null && filterField.values.length > 1 ? "shown" : "hidden",
+    filterValue: filterValue === "" ? "all" : filterValue,
+    localeState: locales.length < 2 ? "hidden" : "shown",
+    localeValue: view.locale === "" ? "all" : view.locale,
+    newLabel: `New ${collection.item}`,
+    // A file-backed collection's entries are rows of its file, added in the file's grid.
+    newState: collection.fileBacked ? "hidden" : "shown",
+    /* ADDED to the grid's own padding rather than replacing it: a bare `padding-top:0px` took the
+       gap under the header away, and the first row of cards sat with its top border under it. */
+    pad: `padding-top:calc(var(--jx-space-4) + ${range.padTop}px);padding-bottom:calc(var(--jx-space-4) + ${range.padBottom}px)`,
+    padBottom: `height:${range.padBottom}px`,
+    padTop: `height:${range.padTop}px`,
+    page: pageLineFor(
+      collection,
+      pages ? null : peekCollectionPage(collection.key, view.locale),
+      defaultLayoutPath(),
+      // Under every language, the page of each; filtered to one, that language's alone.
+      pages || view.locale !== "" ? [] : (peekCollectionPages(collection.key) ?? []),
+    ),
+    query: view.query,
+    region: paneRegion(paneId, "content"),
+    rows:
+      kind === "cards" || kind === "table"
+        ? slice.map((file) =>
+            libraryRow(file, kind === "table" ? columns : [], live, factsOf(file)),
+          )
+        : [],
+    searchLabel: `Search ${plural}`,
+    subtitle: pages ? "Every URL on your site." : "",
+    title: collection.title,
+    truncated: calendar.truncated,
+    truncatedState: calendar.truncated === "" ? "hidden" : "shown",
+    view: kind,
+  };
+}
+
+/** The project's default layout, which a page with no `$layout` of its own is drawn in. */
+function defaultLayoutPath(): string | null {
+  // Read at call time: `projectState` is replaced wholesale on a project switch.
+  return projectState?.projectConfig?.defaults?.layout ?? null;
+}
+
 // ─── Mount ───────────────────────────────────────────────────────────────────
 
 /**
- * Draw the Library into the pane. Re-entrant: a same-tab call while it is live is a no-op, because
- * the pane owns its own reactivity from here (the grid/settings/stylebook pattern).
+ * Draw the Content home into the pane. Re-entrant: a same-tab call while it is live is a no-op,
+ * because the pane owns its own reactivity from here (the grid/settings/stylebook pattern).
  */
 export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
   const { paneId, wrap: canvasWrap } = surface;
@@ -901,115 +1243,54 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     }
   });
 
-  const view = (): LibraryView => {
-    const current = librarySource();
-    const { layout } = libraryView;
-    const files = filterLibrary(current.files(), {
-      category: libraryView.category,
-      locale: libraryView.locale,
-      query: libraryView.query,
-    });
-    const total = current.files().length;
-    const kind = viewKind(current, files.length, total);
-    const range = windowFor(panel, layout, files.length);
-    const slice = files.slice(range.start, range.end);
-    const failures = current.failures();
-    const locales = libraryLocales(current.files());
-    const destination = uploadDirForCategory(libraryView.category);
-    /* Cards is the only layout that draws a live document render inside a card. A Media tile is a
-       thumbnail of an ASSET — `library-layouts.ts` says why — so it asks for the glyph instead. */
-    const live = kind === "cards";
-    const calendar = kind === "calendar" ? calendarView(files) : { groups: [], truncated: "" };
-
-    return {
-      bannerState: failures.length > 0 ? "shown" : "hidden",
-      bannerText:
-        failures.length === 0
-          ? ""
-          : `This list is incomplete — ${failures.length} ${
-              failures.length === 1 ? "directory" : "directories"
-            } could not be read (${failures[0]!.dir}${failures.length > 1 ? ", …" : ""}).`,
-      categories: LIBRARY_CATEGORIES.map((category) =>
-        chip(category.key, category.label, libraryView.category === category.key),
-      ),
-      columns:
-        kind === "table" ? libraryColumns().map((c) => ({ field: c.field, title: c.title })) : [],
-      dropActive: panel?.dropActive ? "true" : "false",
-      dropRegion: paneRegion(paneId, "library/dropZone"),
-      emptyDetail:
-        kind === "incomplete"
-          ? `${failures.length} ${
-              failures.length === 1 ? "directory" : "directories"
-            } could not be read, so this is not the same as an empty project.`
-          : kind === "nomatch"
-            ? `${total} file(s) in the project.`
-            : "",
-      emptyMessage: kind === "nomatch" ? noMatchMessage() : "",
-      groups: kind === "board" ? boardView(files) : calendar.groups,
-      layouts: LIBRARY_LAYOUTS.map((name) =>
-        chip(name, LIBRARY_LAYOUT_LABELS[name], libraryView.layout === name),
-      ),
-      localeOptions: [
-        { label: "All languages", value: "all" },
-        ...locales.map((tag) => ({ label: localeLabel(tag), value: tag })),
-      ],
-      /* The facet's options come from ALL scanned files, never from the filtered ones: a picker
-         whose choices collapse to the choice just made cannot be used to make another. One locale —
-         or none — means every file already agrees. */
-      localeState: locales.length < 2 ? "hidden" : "shown",
-      localeValue: libraryView.locale === "" ? "all" : libraryView.locale,
-      pad: `padding-top:${range.padTop}px;padding-bottom:${range.padBottom}px`,
-      padBottom: `height:${range.padBottom}px`,
-      padTop: `height:${range.padTop}px`,
-      query: libraryView.query,
-      region: paneRegion(paneId, "library"),
-      rows:
-        kind === "cards" || kind === "media" || kind === "table"
-          ? slice.map((file) => libraryRow(file, kind === "table" ? libraryColumns() : [], live))
-          : [],
-      truncated: calendar.truncated,
-      truncatedState: calendar.truncated === "" ? "hidden" : "shown",
-      uploadAccept: uploadAccept(),
-      uploadHint:
-        destination === undefined ? "Upload — asks for a folder" : `Upload into ${destination}/`,
-      view: kind,
-    };
-  };
-
   const draw = () => {
     if (panel !== null && activeIn(paneId) === panel) {
-      panel.surface.update(view());
+      panel.surface.update(homeView(panel, paneId));
       scheduleSettle(panel);
     }
   };
 
-  const mounted = mountLibrarySurface(canvasWrap, view(), {
+  const mounted = mountLibrarySurface(canvasWrap, homeView(null, paneId), {
+    addPage: () => {
+      void addCollectionPageFor(shownCollection().key);
+    },
     contextMenu: (path, x, y) => showLibraryContextMenu(path, x, y),
-    dragOut: () => {
-      if (panel && panel.dropActive) {
-        panel.dropActive = false;
-        draw();
-      }
+    designPage: () => {
+      designCollectionPage(shownCollection().key);
     },
-    dragOver: () => {
-      if (panel && !panel.dropActive) {
-        panel.dropActive = true;
-        draw();
-      }
+    openFields: () => {
+      void runActiveReported(
+        "settings.open",
+        { entry: shownCollection().key, section: "content" },
+        SOURCE,
+      );
     },
-    drop: (files) => {
-      if (panel) {
-        panel.dropActive = false;
+    openGrid: () => {
+      const collection = shownCollection();
+      // A file-backed collection's grid is its file's own: `collection.editInGrid` grids folders.
+      const file = collection.fileBacked ? collectionSourceFile(collection.key) : null;
+      if (file) {
+        void openFileInTab(file);
+        return;
       }
-      draw();
-      if (files?.length) {
-        void uploadIntoLibrary(files);
-      }
+      void runActiveReported("collection.editInGrid", { name: collection.key }, SOURCE);
     },
     openFile: (path) => {
-      void openFileInTab(path);
+      openLibraryFile(fileAt(path) ?? { collection: shownCollectionKey(), path });
     },
-    openNewMenu: (opener) => showLibraryNewMenu(opener),
+    openNew: () => {
+      const collection = shownCollection();
+      // The language the view is filtered to is the one the reader is writing in.
+      const { locale } = collectionView(collection.key);
+      const args: CommandArgValues =
+        collection.kind === "pages"
+          ? { kind: "page" }
+          : { collection: collection.key, kind: "entry" };
+      if (locale !== "") {
+        args.locale = locale;
+      }
+      void runActiveReported("file.new", args, SOURCE);
+    },
     previewSlot: (element, path) => {
       if (panel) {
         previewSlot(panel, element, path);
@@ -1017,7 +1298,6 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     },
     reset: () => {
       setLibrarySearch("");
-      setLibraryCategory("all");
       setLibraryLocale("");
     },
     retry: () => {
@@ -1030,26 +1310,16 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       }
     },
     search: (value) => setLibrarySearch(value),
-    setCategory: (key) => setLibraryCategory(key),
-    /* SAFETY: the surface's layout buttons pass `$map.item.key`, and the `layouts` state they map is
+    /* SAFETY: the surface's view buttons pass `$map.item.key`, and the `layouts` state they map is
        built from LIBRARY_LAYOUTS in the projection above, so every key is a LibraryLayout. */
     setLayout: (key) => setLibraryLayout(key as LibraryLayout),
+    setFilter: (value) => setLibraryFilter(value === "all" ? "" : value),
     setLocale: (value) => setLibraryLocale(value === "all" ? "" : value),
-    upload: (input) => {
-      const chosen = input.files;
-      // Cleared before the upload starts: a file input that keeps its value refuses the same file
-      // Twice, and the picker is this surface's own control rather than a node it found.
-      input.value = "";
-      if (chosen?.length) {
-        void uploadIntoLibrary(chosen);
-      }
-    },
   });
 
   const scope = effectScope();
   panel = {
     cache: createPreviewCache(),
-    dropActive: false,
     observer,
     paneId,
     pending: new WeakMap(),
@@ -1060,6 +1330,17 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     slots: new Map(),
     surface: mounted,
     tabId: tab.id,
+    unlisten: (() => {
+      // The collection's page and its entries' titles are both read after the first paint.
+      const stopPages = onCollectionPagesRead(() => bump());
+      const stopEntries = onEntrySummariesRead(() => bump());
+      const stopPageFacts = onPageSummariesRead(() => bump());
+      return () => {
+        stopPages();
+        stopEntries();
+        stopPageFacts();
+      };
+    })(),
     wrap: canvasWrap,
   };
   _active.set(paneId, panel);
@@ -1070,18 +1351,29 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
         return;
       }
       // Everything the pane draws from.
-      void libraryView.revision;
-      void libraryView.category;
-      void libraryView.layout;
-      void libraryView.query;
-      void libraryView.locale;
-      void libraryView.loading;
+      void contentView.revision;
+      void contentView.collection;
+      void contentView.loading;
+      const view = collectionView(shownCollectionKey());
+      void view.layout;
+      void view.query;
+      void view.locale;
 
       draw();
 
-      if (!scanAttempted && !libraryView.loading) {
+      if (!scanAttempted && !contentView.loading) {
         void loadLibrary();
       }
     });
   });
+}
+
+/** Forget every collection's view and the scan — tests, and a project switch. */
+export function resetContentView(): void {
+  contentView.collection = PAGES_COLLECTION;
+  contentView.views = {};
+  contentView.loading = false;
+  source = null;
+  scanAttempted = false;
+  bump();
 }

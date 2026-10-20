@@ -1,0 +1,7 @@
+[test]
+# The package's own preload, so its suite runs under the same guards it ships (src/preload.ts).
+preload = ["./src/preload.ts"]
+coverageReporter = ["text", "lcov"]
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = ["**/tests/**", "./result/**"]
+coverageThreshold = { lines = 1.0, functions = 1.0 }

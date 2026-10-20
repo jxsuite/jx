@@ -2,7 +2,8 @@
 import { effectScope, reactive } from "../reactivity";
 import { formatByName, formatForPath } from "../format/format-host";
 import type { FormatFrontmatter } from "../format/format-host";
-import { normalizeArrayChildren } from "../state";
+import { normalizeDocument } from "./bare-repeaters";
+import type { BareRepeaters } from "./bare-repeaters";
 import type { JxPath } from "../state";
 import type { FormulaEditDef, FunctionEditDef, InlineEditDef, JsonValue } from "../types";
 import { editorKindForMode } from "../commands/context";
@@ -15,13 +16,20 @@ import type { JsonLayout } from "@jxsuite/schema/json-layout";
  * The project's configuration file, project-relative.
  *
  * Named here rather than at the four places that used to spell it, because it is a DOCUMENT PATH —
- * `inferModes` answers `["stylebook", "source"]` for it (editor kind `config`), and
- * `tabs/project-config.ts` binds the tab at this path as the configuration document.
+ * `inferModes` answers `["stylebook", "tokens", "source"]` for it (the Styles workspace's Elements,
+ * Variables and Code views; editor kind `config`), and `tabs/project-config.ts` binds the tab at
+ * this path as the configuration document.
  */
 export const PROJECT_CONFIG_PATH = "project.json";
 
 export interface TabUi {
+  /** The Inspector leaf showing (`shell.ts`'s `INSPECTOR_TAB_IDS`); Page on a fresh tab (§6). */
   rightTab: string;
+  /**
+   * The Element leaf last shown — Content, Style or Logic — so the selection-driven switch from
+   * Page returns to the view the author was using rather than always to Content (§6).
+   */
+  elementTab: string;
   canvasMode: string;
   /** Preview toggle — composes with an edit/design canvasMode; the effective mode becomes "preview". */
   preview: boolean;
@@ -198,6 +206,22 @@ export interface Tab {
      * file.
      */
     layout: JsonLayout | null;
+    /**
+     * The text a format-class file (Markdown) was read as, or null for a JSON document, a new
+     * document or a stub. The format's serializer is handed it on save
+     * (`files/serialize-document.ts`) so every frontmatter key the author did not edit keeps its
+     * own spelling and the body keeps its markers (`@jxsuite/parser` `source-style.ts`). The
+     * lifetime is `layout`'s: an edit leaves it alone, and a read from disk, a source-view commit,
+     * a peer's text or a save replaces it with the text just read or written.
+     */
+    source: string | null;
+    /**
+     * The repeaters the file wrote as a node's whole `children`, which loading rewrote into the
+     * member form the editor works in (`tabs/bare-repeaters.ts`); null when it wrote none. A fact
+     * about the file with the lifetime `layout` has: a reload or a source-view commit replaces it,
+     * an edit or an undo leaves it alone, and a save writes those repeaters back as they were.
+     */
+    bareRepeaters: BareRepeaters | null;
   };
   session: {
     /**
@@ -267,7 +291,8 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     previewLocale: null,
     previewParams: {},
     previewProps: null,
-    rightTab: "properties",
+    rightTab: "page",
+    elementTab: "properties",
     showLayout: true,
     styleFilter: "",
     styleSections: {},
@@ -302,6 +327,7 @@ const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff
  *   openedFrom?: TabOrigin | null;
  *   preview?: boolean;
  *   layout?: JsonLayout | null;
+ *   source?: string | null;
  * }} opts
  * @returns {Tab}
  */
@@ -316,6 +342,8 @@ export function createTab({
   openedFrom = null,
   preview: previewTab = false,
   layout = null,
+  source = null,
+  canvasMode,
 }: {
   id: string;
   documentPath?: string | null;
@@ -327,28 +355,37 @@ export function createTab({
   openedFrom?: TabOrigin | null;
   preview?: boolean;
   layout?: JsonLayout | null;
+  /** The text a format-class file was read as (`doc.source`). */
+  source?: string | null;
+  /**
+   * The mode to open in instead of the first declared one: a comparison opens straight into
+   * `git-diff`, so the tab is never active in an edit mode that belongs to another workspace.
+   */
+  canvasMode?: string | undefined;
 }) {
   const scope = effectScope();
 
   // Normalize legacy whole-children repeaters to the canonical array-member form before the doc
   // (and its first history checkpoint) are stored.
-  normalizeArrayChildren(document);
+  const bareRepeaters = normalizeDocument(document);
 
   const resolvedModes = capabilities?.modes ?? inferModes(documentPath, sourceFormat);
   // A tab opens in its first allowed mode — never one the toolbar would disable.
   // Formats author mode order so the default comes first (edit, stylebook, etc.).
   // "preview" is a per-tab toggle rather than a base mode: a preview-first format opens
   // In its first non-preview mode with the toggle already on.
-  const initialCanvasMode = resolvedModes.find((m) => m !== "preview") ?? "edit";
+  const initialCanvasMode = canvasMode ?? resolvedModes.find((m) => m !== "preview") ?? "edit";
   const initialPreview = resolvedModes[0] === "preview";
 
   const doc: Tab["doc"] = {
+    bareRepeaters,
     content: { frontmatter: frontmatter || {} },
     dirty: false,
     document,
     handlersSource: null,
     layout,
     mode: inferDocumentMode(documentPath, sourceFormat),
+    source,
     sourceFormat,
   };
   const history: Tab["history"] = {
@@ -404,7 +441,10 @@ export function createTab({
  */
 function inferModes(documentPath: string | null | undefined, sourceFormat: string | null) {
   if (documentPath === PROJECT_CONFIG_PATH) {
-    return ["stylebook", "source"];
+    /* Elements, Variables and Code: the Styles workspace's three views. Spelled here rather than
+       imported from `style/project-styles` (`STYLES_TAB_MODES`), whose imports reach `store`,
+       which imports this module; `tests/project-config.test.ts` holds the two lists equal. */
+    return ["stylebook", "tokens", "source"];
   }
   const format = formatByName(sourceFormat) ?? formatForPath(documentPath);
   if (format) {

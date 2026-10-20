@@ -80,6 +80,11 @@
       "gap": "var(--jx-space-1)",
       "minWidth": "0"
     },
+    "& [part=\"row\"] > [part=\"cell\"]:only-of-type > *": {
+      "$description": "A row of one cell (an item of a list of single values: a category, a picture) gives that cell the row's width, so a list reads as the fields around it do rather than as a column of stubs.",
+      "flex": "1",
+      "minWidth": "0"
+    },
     "& [part=\"row-add\"]": {
       "alignSelf": "flex-start"
     },
@@ -236,6 +241,9 @@
                       },
                       "multiline": {
                         "$ref": "$map/item/multiline"
+                      },
+                      "type": {
+                        "$ref": "$map/item/inputType"
                       }
                     },
                     "oninput": {
@@ -621,7 +629,7 @@
                     ]
                   },
                   "rows": {
-                    "$description": "An array whose items are objects with a declared shape: one row per item, one cell per declared property, a remove beside each and one add below. The alternative was the raw-JSON editor, which is what an array of anything else still gets — a shape the schema states is a shape the form can draw.",
+                    "$description": "An array whose items have a declared shape: one row per item, one cell per declared property of an object item, or one cell for a single-value item (a list of categories, a gallery of pictures), with a remove beside each and one add below. The alternative was the raw-JSON editor, which is what an array of anything else still gets: a shape the schema states is a shape the form can draw.",
                     "tagName": "span",
                     "attributes": {
                       "part": "rows",
@@ -858,7 +866,7 @@
                                     }
                                   },
                                   "control": {
-                                    "$description": "A cell a registered control owns — a relationship to another collection is the one that reaches here. The document draws the empty host and nothing inside it; `ui/schema-form.ts` mounts the control into it, by the same dispatch a FIELD host gets. An extension's control is its own surface rather than part of this one, and the seam between them is this empty node.",
+                                    "$description": "A cell a registered control owns: a relationship to another collection, or a picture (the media field). The document draws the empty host and nothing inside it; `ui/schema-form.ts` mounts the control into it, by the same dispatch a FIELD host gets. An extension's control is its own surface rather than part of this one, and the seam between them is this empty node.",
                                     "tagName": "span",
                                     "attributes": {
                                       "part": "cell-control-host",

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { handleStudioApi, parseGitStatus } from "../src/studio-api";
+import { handleStudioApi, parseGitStatus, projectHasRepository } from "../src/studio-api";
 import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -81,6 +81,24 @@ describe("parseGitStatus", () => {
     const out = "2 R. N... 100644 100644 100644 abc123 def456 R100\told.js\tnew.js\n";
     const result = parseGitStatus(out);
     expect(result.files).toEqual([{ path: "new.js", staged: true, status: "R" }]);
+  });
+
+  test("reads NUL-terminated records: verbatim non-ASCII paths, rename origin skipped", () => {
+    const out = [
+      "# branch.head main",
+      "1 .M N... 100644 100644 100644 abc123 def456 content/products/72” Grapple.md",
+      "2 R. N... 100644 100644 100644 abc123 def456 R100 pages/new name.md",
+      "pages/old.md",
+      "? content/products/Extra Augers 12”,16”.md",
+      "",
+    ].join("\0");
+    const result = parseGitStatus(out);
+    expect(result.branch).toBe("main");
+    expect(result.files).toEqual([
+      { path: "content/products/72” Grapple.md", staged: false, status: "M" },
+      { path: "pages/new name.md", staged: true, status: "R" },
+      { path: "content/products/Extra Augers 12”,16”.md", staged: false, status: "U" },
+    ]);
   });
 
   test("parses file paths with spaces", () => {
@@ -209,6 +227,15 @@ describe("git endpoints", () => {
     expect(untracked?.staged).toBe(false);
   });
 
+  test("GET status names a non-ASCII path as it is on disk", async () => {
+    const name = "72” Grapple.md";
+    writeFileSync(join(GIT_FIXTURE, name), "# Grapple");
+    const res = await studioGitReq("/__studio/git/status");
+    const data: GitStatusResult = await res.json();
+    expect(data.files.map((f) => f.path)).toContain(name);
+    rmSync(join(GIT_FIXTURE, name));
+  });
+
   test("POST stage adds file to index", async () => {
     const stageRes = await studioGitReq("/__studio/git/stage", "POST", {
       files: ["new.txt"],
@@ -297,6 +324,21 @@ describe("git endpoints", () => {
     const branchRes = await studioGitReq("/__studio/git/branches");
     const branchData = /** @type {{ current: string }} */ await branchRes.json();
     expect(branchData.current).toBe("main");
+  });
+
+  test("GET log answers an unborn HEAD with an empty history, not a 500", async () => {
+    const fresh = resolve(import.meta.dir, "_git_fixture_unborn");
+    rmSync(fresh, { force: true, recursive: true });
+    mkdirSync(fresh, { recursive: true });
+    execSync("git init -b main", { cwd: fresh });
+    try {
+      const urlStr = "http://localhost/__studio/git/log?limit=5";
+      const res = await handleStudioApi(new Request(urlStr), new URL(urlStr), fresh);
+      expect(res?.status).toBe(200);
+      expect(await res?.json()).toEqual([]);
+    } finally {
+      rmSync(fresh, { force: true, recursive: true });
+    }
   });
 
   test("GET log returns commit history", async () => {
@@ -395,5 +437,68 @@ describe("git endpoints", () => {
     expect(res.status).toBe(200);
     const data = /** @type {{ content: string }} */ await res.json();
     expect(data.content).toBe("hello");
+  });
+});
+
+// ── A project inside a folder another repository ignores ────────────────────
+
+describe("a project inside a folder another repository ignores", () => {
+  const OUTER = resolve(import.meta.dir, "_git_outer_fixture");
+  const NESTED = join(OUTER, "scratch", "site");
+
+  /** One request against the nested project, as the server sees it when that project is open. */
+  async function nestedReq(path: string, method = "GET") {
+    const urlStr = `http://localhost${path}`;
+    const res = await handleStudioApi(new Request(urlStr, { method }), new URL(urlStr), NESTED);
+    if (!res) {
+      throw new Error(`No response from handleStudioApi for ${method} ${path}`);
+    }
+    return res;
+  }
+
+  beforeAll(() => {
+    rmSync(OUTER, { force: true, recursive: true });
+    mkdirSync(NESTED, { recursive: true });
+    execSync("git init -q -b main", { cwd: OUTER });
+    writeFileSync(join(OUTER, ".gitignore"), "scratch/\n");
+    writeFileSync(join(NESTED, "project.json"), "{}");
+  });
+
+  afterAll(() => {
+    rmSync(OUTER, { force: true, recursive: true });
+  });
+
+  test("projectHasRepository tells an ignored folder from a tracked subfolder", async () => {
+    expect(await projectHasRepository(NESTED)).toBe(false);
+    mkdirSync(join(OUTER, "tracked"), { recursive: true });
+    expect(await projectHasRepository(join(OUTER, "tracked"))).toBe(true);
+  });
+
+  test("status says it is not a repository, rather than describing the enclosing one", async () => {
+    const res = await nestedReq("/__studio/git/status");
+    const data: GitStatusResult = await res.json();
+    expect(data.isRepo).toBe(false);
+    expect(data.branch).toBe("");
+  });
+
+  test("every other command is refused instead of reaching the enclosing repository", async () => {
+    for (const [path, method] of [
+      ["/__studio/git/branches", "GET"],
+      ["/__studio/git/fetch", "POST"],
+      ["/__studio/git/pull", "POST"],
+    ] as const) {
+      const res = await nestedReq(path, method);
+      expect(res.status).toBe(409);
+      expect(await res.text()).toContain("not a git repository of its own");
+    }
+  });
+
+  test("init gives the project a repository of its own", async () => {
+    const init = await nestedReq("/__studio/git/init", "POST");
+    expect(init.status).toBe(200);
+    const res = await nestedReq("/__studio/git/status");
+    const data: GitStatusResult = await res.json();
+    expect(data.isRepo).toBe(true);
+    expect(data.files.map((file) => file.path)).toContain("project.json");
   });
 });

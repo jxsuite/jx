@@ -485,42 +485,6 @@ describe("what gets written", () => {
     await pending;
     expect(written[0]!.content).toBe("---\ntitle: x\n---\n");
   });
-
-  /**
-   * A lazy body is the only way a caller can seed content whose FORMAT it does not know until the
-   * dialog resolves — the Library's New ▸ Component, which must write a `tagName` a markdown
-   * template does not carry.
-   */
-  test("a body function is handed the settled extension and the composed name", async () => {
-    const seen: [string, string][] = [];
-    const pending = createFileIn({
-      content: (ext, fileName) => {
-        seen.push([ext, fileName]);
-        return `seeded for ${ext}`;
-      },
-      dir: "pages",
-      format: { kind: "choose" },
-      suggestedName: "untitled",
-    });
-    await flush();
-    await answerPromptDialog("card", ".md");
-    await pending;
-    expect(seen).toEqual([[".md", "card.md"]]);
-    expect(written[0]!.content).toBe("seeded for .md");
-  });
-
-  test("a body function answering nothing falls back to the format's template", async () => {
-    const pending = createFileIn({
-      // How the Library's component seed declines a `.json`: there is no format to ask.
-      content: (): string | undefined => undefined,
-      dir: "content",
-      format: { ext: ".md", kind: "fixed" },
-    });
-    await flush();
-    await answerPromptDialog("Notes");
-    await pending;
-    expect(written[0]!.content).toBe("# New file\n");
-  });
 });
 
 describe("outcomes", () => {

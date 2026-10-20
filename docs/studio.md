@@ -9,7 +9,7 @@ Jx Studio is the visual builder for Jx projects. It runs on your machine, either
 
 Studio is organized around a few surfaces:
 
-- [The Library](/docs/studio/projects/browse) shows your pages, components, content, and media, each with a live preview.
+- [The Content workspace](/docs/studio/projects/browse) lists your pages and every collection's entries, with live previews, and is where you write an entry inside its template.
 - [Edit mode](/docs/studio/editing) is inline writing on the real page, with slash commands and frontmatter forms.
 - [Design mode](/docs/studio/design) gives you a live canvas per breakpoint and a full style inspector.
 - [Logic](/docs/studio/logic) is state, formulas, events, and data, without leaving the visual editor.

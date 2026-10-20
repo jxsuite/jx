@@ -26,7 +26,7 @@ import { getProjectList } from "../project-list";
 import { reactive } from "../reactivity";
 import { MINUTE, now } from "../services/clock";
 import { clearRecentProjects, getRecentProjects, removeRecentProject } from "../recent-projects";
-import { platformSupportsClone } from "../panels/git-panel";
+import { platformSupportsClone } from "../publish/source-control";
 import { mountSurface, registerSurface } from "../ui/surface";
 import welcomeDoc from "./welcome.json";
 import type { SurfaceHandle } from "../ui/surface";

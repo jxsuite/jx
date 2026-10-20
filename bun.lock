@@ -52,6 +52,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.3",
+        "@jxsuite/test-support": "workspace:^",
         "ajv": "^8.20.0",
       },
     },
@@ -105,6 +106,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.3",
         "@jxsuite/runtime": "workspace:^",
+        "@jxsuite/test-support": "workspace:^",
         "@types/mdast": "^4.0.4",
         "ajv": "^8.20.0",
       },
@@ -170,6 +172,7 @@
         "@happy-dom/global-registrator": "^21.0.3",
         "@jxsuite/connector": "workspace:^",
         "@jxsuite/parser": "workspace:^",
+        "@jxsuite/test-support": "workspace:^",
         "@types/mdast": "^4.0.4",
       },
     },
@@ -206,6 +209,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.3",
         "@jxsuite/server": "workspace:^",
+        "@jxsuite/test-support": "workspace:^",
         "@jxsuite/ui": "workspace:^",
         "electron-builder": "^26.15.3",
         "electron-updater": "^6.8.9",
@@ -219,6 +223,7 @@
       },
       "devDependencies": {
         "@jxsuite/runtime": "workspace:^",
+        "@jxsuite/test-support": "workspace:^",
       },
     },
     "packages/import": {
@@ -237,6 +242,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.3",
+        "@jxsuite/test-support": "workspace:^",
         "@types/pngjs": "^6.0.5",
         "happy-dom": "^21.0.3",
       },
@@ -279,6 +285,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.3",
+        "@jxsuite/test-support": "workspace:^",
       },
     },
     "packages/schema": {
@@ -369,10 +376,18 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.3",
+        "@jxsuite/test-support": "workspace:^",
         "@types/mdast": "^4.0.4",
         "@webref/css": "^8.7.7",
         "@webref/elements": "^2.9.2",
         "@webref/idl": "^3.85.2",
+      },
+    },
+    "packages/test-support": {
+      "name": "@jxsuite/test-support",
+      "version": "0.0.0",
+      "dependencies": {
+        "@happy-dom/global-registrator": "^21.0.3",
       },
     },
     "packages/ui": {
@@ -384,6 +399,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.3",
+        "@jxsuite/test-support": "workspace:^",
         "@phosphor-icons/core": "^2.1.1",
       },
     },
@@ -888,6 +904,8 @@
     "@jxsuite/starters": ["@jxsuite/starters@workspace:packages/starters"],
 
     "@jxsuite/studio": ["@jxsuite/studio@workspace:packages/studio"],
+
+    "@jxsuite/test-support": ["@jxsuite/test-support@workspace:packages/test-support"],
 
     "@jxsuite/ui": ["@jxsuite/ui@workspace:packages/ui"],
 

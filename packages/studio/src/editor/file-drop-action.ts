@@ -83,11 +83,19 @@ export function resolveFileDropTarget(
  * The node an uploaded asset becomes when inserted. Images get a plain `<img>` (the build's
  * optimizer picks it up); playable media gets native controls so it is usable straight away;
  * anything else becomes a download link, which is the only sensible generic rendering.
+ *
+ * **An image arrives with no `alt` at all, never an empty one.** `alt=""` is a claim (the image is
+ * decorative, and a screen reader skips it), and a drop cannot know it: stamping it made every
+ * dropped picture invisible to assistive technology and silenced the accessibility report's
+ * `img-alt-missing`, the one check that would have asked. Leaving it out is what gets the image
+ * flagged, and the drop selects the new element (`applyDropInstruction`), so the Inspector is
+ * already on the field the author has to fill. Neither is the file name a description: `IMG_0412`
+ * read aloud is noise, not an alternative.
  */
 export function elementForAsset(asset: UploadedAsset): JxMutableNode {
   switch (asset.kind) {
     case "image": {
-      return { attributes: { alt: "", src: asset.ref }, tagName: "img" };
+      return { attributes: { src: asset.ref }, tagName: "img" };
     }
     case "video": {
       return { attributes: { controls: "", src: asset.ref }, tagName: "video" };

@@ -13,7 +13,7 @@
  * the old adapter back — `live()` did this for the lit template, and a binding that never moved
  * would otherwise leave the picker claiming a platform the file does not name.
  *
- * @docs studio/projects/settings
+ * @docs studio/publish/other-hosts
  */
 
 import { reactive } from "../reactivity";

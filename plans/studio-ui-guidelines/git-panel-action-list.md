@@ -11,21 +11,27 @@ workspaces:
 size: L
 ---
 
-# The Source Control panel and the welcome screen draw every control from its command record, so no surface offers what a record refuses
+# Publish's source-control verbs and the welcome screen draw every control from its command record, so no surface offers what a record refuses
 
 ## Context
 
-`specs/studio-ui-guidelines.md` §12.5, line 867:
+**Re-targeted when Source Control moved into the Publish workspace.** The Navigator panel this plan was written against is deleted (`studio.md` §5.5, §22.8): `panels/git-panel.ts`, `surfaces/git-panel.ts`, `surfaces/git-panel.json` and their tests (`tests/git-panel-gaps.test.ts`, `tests/git-panel-states.test.ts`) are gone, the verbs live in `packages/studio/src/publish/source-control.ts`, and Publish › Review changes and Branches draw them from `src/publish/publish-workspace.ts` over `src/surfaces/publish-workspace.json`. What that move already settled:
 
-> **Status: Partial.** The tab strip, the outline, the block bar and the Command Bar draw from placements. `ACTIONS` in `packages/studio/src/panels/git-panel.ts` is a second list: its `createRepository` calls `createGithubRepository()` directly from the no-repository state, where `git.createGithubRepository`'s `enablement` refuses, so the repository is created on GitHub and adding the remote then fails (asserted as behaviour in `tests/git-panel-gaps.test.ts`).
+- The bypass the marker named is closed. Review changes runs Initialize, Create GitHub Repository and Push as their records (`actionsFor`), and its no-repository state offers Initialize alone, so nothing creates a GitHub repository for a project git does not track. Publish › Hosting draws every source and host command from its record, disabled with the record's reason.
+- The commit split button, its `git.commitWithoutSync` row and the branch picker are gone. Committing is the Publish workspace's primary button (`publishChanges` in `src/publish/publish-changes.ts`, Publish live or Send for review), and branches are a list with Switch and New branch.
+- `cloneRepository` left `NavigatorPanelDeps`; the bootstrap hands it to `setSourceControlDeps`.
 
-This is the failure §12.4's table records for the `git.*` family ("Created a repository on GitHub, then failed to add the remote"). The records were fixed; the panel reaches the same function through a second door.
+`specs/studio-ui-guidelines.md` §12.5 now reads:
 
-**Verified**
+> **Status: Partial.** The tab strip, the outline, the block bar and the Command Bar draw from placements. The Source Control panel and its `ACTIONS` list are gone: Publish › Review changes runs Initialize, Create GitHub Repository and Push as their records (`actionsFor` in `packages/studio/src/publish/publish-workspace.ts`), its no-repository state offers Initialize alone, and Hosting draws every source and host command from its record with the record's reason. What is left is the verbs that have no record yet, run as functions of `publish/source-control.ts`: fetch, pull, refresh, include and leave out, discard, and branch switch and create.
 
-- `ACTIONS: GitPanelActions` in `packages/studio/src/panels/git-panel.ts` has nineteen entries. Three have a record in `sourceControlCommands()` (same file, which also holds `git.signInToGithub`): `initRepository` (`git.init`), `createRepository` (`git.createGithubRepository`: `enablement: (ctx) => ctx.project.isRepo`, `requires: "a project tracked by git"`) and `push` (`git.push`). `createRepository` calls `createGithubRepository({ projectName })` (`src/github/github-publish.ts`) with no gate.
-- `src/surfaces/git-panel.json` draws that button twice as the literal "Create GitHub repository": in `view-slot` case `no-repo` (the bypass) and in `remote-slot` case `local` (where the gate holds). Every sync-bar and commit control binds `disabled` to `#/state/busy` alone; the row verbs, Stage all and Unstage all bind none (Discard binds `cannotDiscard`).
-- `createGithubRepository` creates the repository (`auto_init: false`), then runs `platform.gitAddRemote`, which fails outside a repository: "The repository was created, but the remote could not be added." `git-panel-gaps.test.ts`'s "publish in the non-repo state calls createGithubRepository with the project name" pins the bypass.
+So what remains of this plan is GPA1.1's refusals (Create needs a commit; the remote gate), GPA1.2's records for the verbs above (`git.commit` and `git.commitAndSync` are superseded by `publishChanges`: the open question becomes whether `publish.*` grows a record for it), and GPA1.3's welcome screen. Below, the steps are re-targeted at the modules above: the panel's `GitPanelValues` projection is `PublishWorkspaceView` (`surfaces/publish-workspace.ts`, built by `publishWorkspaceView()` in `publish/publish-workspace.ts`), and its `ACTIONS` list is `actionsFor()` in the same module. The verification that follows is the census as it was taken against the deleted panel, kept with the panel's own paths as history, because its findings outside the panel still stand.
+
+**Verified (against the deleted panel; history)**
+
+- `ACTIONS: GitPanelActions` in `packages/studio/src/panels/git-panel.ts` had nineteen entries. Three have a record in `sourceControlCommands()` (same file, which also holds `git.signInToGithub`): `initRepository` (`git.init`), `createRepository` (`git.createGithubRepository`: `enablement: (ctx) => ctx.project.isRepo`, `requires: "a project tracked by git"`) and `push` (`git.push`). `createRepository` calls `createGithubRepository({ projectName })` (`src/github/github-publish.ts`) with no gate.
+- `src/surfaces/git-panel.json` drew that button twice as the literal "Create GitHub repository": in `view-slot` case `no-repo` (the bypass) and in `remote-slot` case `local` (where the gate holds). Every sync-bar and commit control binds `disabled` to `#/state/busy` alone; the row verbs, Stage all and Unstage all bind none (Discard binds `cannotDiscard`).
+- `createGithubRepository` creates the repository (`auto_init: false`), then runs `platform.gitAddRemote`, which fails outside a repository: "The repository was created, but the remote could not be added." `git-panel-gaps.test.ts`'s "publish in the non-repo state calls createGithubRepository with the project name" pinned the bypass; it was deleted with the panel, and `publish-workspace.test.ts`'s "with no remote, Create GitHub repository runs its record" pins the record path that replaced it.
 - The other sixteen entries have no record. Capabilities: `clone` (the injected `cloneRepository`, which the welcome screen also calls), `commit`, `commitAndSync`, `fetch`, `pull`, `refresh`, `stageAll`, `unstageAll`, and the row verbs `stage`, `unstage`, `discard`. Row activation: `openFile`. Input handlers: `editMessage`, `chooseBranch`, `selectTab`, `openCommitMenu`. The commit menu's one row carries the id `git.commitWithoutSync`, which names no record.
 
 **Found by this pass (census corrections)**
@@ -67,7 +73,7 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
 - **Open:** Whether `git.commit` projects to the assistant, which §12.4 rule 3 defers until "`git.commit` becomes a record". Recommendation: no, and rule 3 is rewritten to say so. The model has no read of the working tree's status or of the remote, and a commit, push or discard carries whatever is on disk.
 - **Open:** Whether this plan also takes the Packages table's Remove and the welcome screen's Start list. Recommendation: yes to both. Remove goes in GPA1.1: it is Create's failure class, and §12.5 cannot be Implemented while one surface removes what the record refuses. The Start list goes in GPA1.3: its New Project divergence is exactly the symptom the section names. `openPageAction` stays out, for the reason given in Context.
 - **Decided:** A control runs its record through `runActiveReported(id, args, "Source Control")`. The panel is mounted by the Navigator with no registry injected, which is the Command Bar's and the status bar's situation too, and §12.4 routes a surface's refusal to Problems through that one helper.
-- **Decided:** A new module, `src/commands/projection.ts`, owns what a command prints: `commandControl` (one record to one control), `commandTooltip` (moved from `surfaces/commandbar.ts`) and, in GPA1.2, `commandRow` (one record to one menu row). It is the module `plan:studio-ui-guidelines/name-and-chord-gaps` names and extends with `placementRows`, so the two plans build one projector rather than two. `commands/app-commands.ts` imports `git-panel.ts`, so the panel must stay loadable in a bare Bun process and cannot import `surfaces/commandbar.ts`, which reaches the canvas and preview stack.
+- **Decided:** A new module, `src/commands/projection.ts`, owns what a command prints: `commandControl` (one record to one control), `commandTooltip` (moved from `surfaces/commandbar.ts`) and, in GPA1.2, `commandRow` (one record to one menu row). It is the module `plan:studio-ui-guidelines/name-and-chord-gaps` names and extends with `placementRows`, so the two plans build one projector rather than two. `commands/app-commands.ts` imports `source-control.ts`, so the panel must stay loadable in a bare Bun process and cannot import `surfaces/commandbar.ts`, which reaches the canvas and preview stack.
 - **Decided:** The panel draws its controls by id, not through a new placement. Each mood lays out its own controls, and the deploy checklist's `actionView` already renders a record by id with its title and `requires`.
 - **Decided:** The projection folds `busy` into each control's `disabled`, because the adapter decides and the document binds values (the module header's rule). The hint stays the record's, except while busy: then a control disabled only by `busy` takes the `busyReason` sentence, which `plan:studio-ui-guidelines/empty-state-copy` (the no-repository buttons) and `plan:studio-ui-guidelines/conventions-checklist-controls` (CCO2.3, the rest) add to `gitPanelValues()`. Whichever of them has landed, `gitPanelValues()` sets `controls.*.hint` from it while `loading`; if neither has, the record's hint stands and they apply it when they land.
 - **Decided:** Every new record that writes the repository declares the family precondition (§12.4): `when: (ctx) => ctx.project.open`, `enablement: (ctx) => ctx.project.isRepo`, `requires: "a project tracked by git"`, narrowed by `hasRemote` for the remote verbs if that decision holds. `git.refresh` has `when` only, because reading status is how a project learns it is a repository. `git.clone` is `application`-level with `when: (ctx) => ctx.capability.gitClone`. Every new record is `menus: ["palette"]`, and the Studio menu is unchanged.
@@ -92,14 +98,13 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
    - `export function commandTooltip(registry, id)` moves here from `surfaces/commandbar.ts`: `""` for an unknown id, otherwise `commandControl(registry, id).hint`. `commandbar.ts` keeps `export { commandTooltip } from "../commands/projection";`, so `panels/layers-panel.ts`, `tests/commandbar.test.ts` and the four `mock.module` stand-ins that stub it (`studio-shell.test.ts`, `studio-shell-fixture.ts`, `studio-shell-boot-gaps.test.ts`, `shell-misc-diff-gaps.test.ts`) still hold. `panels/block-action-bar.ts`'s own `commandTooltip(registry, command)` is `plan:studio-ui-guidelines/name-and-chord-gaps`'s.
    - The module imports only types in this slice.
 2. `src/commands/context.ts` and `src/commands/live-context.ts`, if the remote decision holds: the `git` group gains `hasRemote: boolean` (`false` in `emptyContext()`), and `createLiveContext` sets `ctx.git.hasRemote = (shell.git.status?.remotes?.length ?? 0) > 0` beside `ahead`. The `?? 0` is `remoteStep`'s guard for a host that reports no array.
-3. `src/surfaces/git-panel.ts`:
-   - `GitPanelValues` gains `controls: GitPanelControls` (`init`, `createRepository`, `push`, each a `CommandControlView`) and loses `pushLabel`.
-   - `project()` assigns `scope.controls`, and `emptyValues()` seeds three skeleton views.
-4. `src/panels/git-panel.ts`:
-   - `gitPanelValues()` reads `activeRegistry()` and builds `controls` through `commandControl`, with `disabled: true` while `loading`. Push's suffix is `` ` (${ahead})` `` when ahead. The mount's effect tracks whatever the projection reads, so reading `activeRegistry()` (a `shallowRef`) and the gates (the registry's `createLiveContext` reads `shell.git.status`) is the whole wiring.
-   - `ACTIONS.initRepository`, `.createRepository` and `.push` each become `void runActiveReported(<id>, undefined, SOURCE)`, with `const SOURCE = "Source Control"`.
-   - `git.createGithubRepository`'s `run` calls a new private `refuseWithoutCommit()` first. It awaits `getPlatform().gitLog(1).catch(() => [])`, and an empty answer throws `new RangeError(NO_COMMIT_TO_PUSH)` with the sentence "Create GitHub Repository needs a commit to push: commit your changes first." If the remote decision holds, its `enablement` becomes `(ctx) => ctx.project.isRepo && !ctx.git.hasRemote` with `requires: "a project tracked by git, with no remote yet"`, and `git.push`'s becomes `(ctx) => ctx.project.isRepo && ctx.git.hasRemote` with `requires: "a repository with a remote"`. Rewrite Create's comment to state every refusal.
-5. `src/surfaces/git-panel.json`:
+3. `src/surfaces/publish-workspace.ts`:
+   - `PublishWorkspaceView` gains `controls: SourceControls` (`init`, `createRepository`, `push`, each a `CommandControlView`) and loses `pushLabel`.
+4. `src/publish/publish-workspace.ts` and `src/publish/source-control.ts`:
+   - `publishWorkspaceView()` reads `activeRegistry()` and builds `controls` through `commandControl`, with `disabled: true` while `loading`. Push's suffix is `` ` (${ahead})` `` when ahead. The mount's effect tracks whatever the projection reads, so reading `activeRegistry()` (a `shallowRef`) and the gates (the registry's `createLiveContext` reads `shell.git.status`) is the whole wiring.
+   - `actionsFor()`'s `initRepository`, `createRepository` and `push` already run `runActiveReported(<id>, undefined, "Publish")`; nothing to change there.
+   - `git.createGithubRepository`'s `run` (in `sourceControlCommands()`, `src/publish/source-control.ts`) calls a new private `refuseWithoutCommit()` first. It awaits `getPlatform().gitLog(1).catch(() => [])`, and an empty answer throws `new RangeError(NO_COMMIT_TO_PUSH)` with the sentence "Create GitHub Repository needs a commit to push: commit your changes first." If the remote decision holds, its `enablement` becomes `(ctx) => ctx.project.isRepo && !ctx.git.hasRemote` with `requires: "a project tracked by git, with no remote yet"`, and `git.push`'s becomes `(ctx) => ctx.project.isRepo && ctx.git.hasRemote` with `requires: "a repository with a remote"`. Rewrite Create's comment to state every refusal.
+5. `src/surfaces/publish-workspace.json`:
    - `init`: `textContent` becomes `${state.controls.init.label}`, and `hint` and `disabled` come from `#/state/controls/init/…`.
    - Both `create-repository` buttons do the same from `controls.createRepository`, and the literal goes.
    - `push`: `label`, `hint` and `disabled` come from `controls.push`.
@@ -110,7 +115,7 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
 **GPA1.2: the panel's other capabilities as records**
 
 1. `projection.ts` adds `commandRow(registry, command, { dividerAbove = false, args, source } = {}): MenuRowProjection`, with the signature `plan:studio-ui-guidelines/name-and-chord-gaps` specifies. It returns `id`, `title`, `disabled: !registry.isEnabled(command.id)`, `destructive` from the record, `dividerAbove`, `chord` when `formatBinding` gives one that does not restate the title (the rule `buildRows` in `editor/context-menu.ts` states), and `requires` when disabled. With a `source`, an enabled row's `run` is `() => void runReported(registry, command.id, args, source)`; without one the row has no `run`. The module gains its one value import, `runReported`.
-2. `git-panel.ts`: add `SourceControlDeps { openRecentProject(root: string): Promise<void> }`, then `sourceControlCommands(deps = NO_SOURCE_CONTROL_DEPS)` and `registerSourceControlCommands(registry, deps?)`. Add these records (category "Source Control", group `"7_scm"`, no `aiTool`), reusing the existing helpers. `git.fetch`, `git.pull` and `git.commitAndSync` take `git.push`'s remote gate if that decision holds.
+2. `source-control.ts`: add `SourceControlDeps { openRecentProject(root: string): Promise<void> }`, then `sourceControlCommands(deps = NO_SOURCE_CONTROL_DEPS)` and `registerSourceControlCommands(registry, deps?)`. Add these records (category "Source Control", group `"7_scm"`, no `aiTool`), reusing the existing helpers. `git.fetch`, `git.pull` and `git.commitAndSync` take `git.push`'s remote gate if that decision holds.
 
    | id                  | title                 | args                                     | run                                                                                    |
    | ------------------- | --------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -140,7 +145,7 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
    - `canClone` becomes `controls.clone.visible`, and `pullLabel` goes.
    - `fileRowView(file, registry)` gains `stageName`, `unstageName` and `discardName` (`<title>: <path>`). It also gains `discardHint`: the record's hint, or `` `${title} — requires a file git already tracks` `` for `U`.
    - The picker's last option is labelled with `git.createBranch`'s title.
-5. `git-panel.json`: bind every one of those controls, as in GPA1.1. The no-project `clone-slot` switches on `#/state/controls/clone/visible`.
+5. `publish-workspace.json`: bind every one of those controls, as in GPA1.1. The no-project `clone-slot` switches on `#/state/controls/clone/visible`.
 6. Remove `cloneRepository` from `GitPanelDeps` and from `NavigatorPanelDeps` (`src/panels/panel-registry.ts`), and from `leftPanelMod.mount` in `src/studio.ts`. `studio.ts` calls `registerSourceControlCommands(commandRegistry, { openRecentProject })`. Update `git.init`'s rule-3 comment.
 
 **GPA1.3: the welcome screen, and the flip**
@@ -155,7 +160,7 @@ This is the failure §12.4's table records for the `git.*` family ("Created a re
    - `run(id)` is `void runActiveReported(id, undefined, "Welcome")`.
    - `WelcomeCtx` keeps only `openRecentProject`, and `studio.ts`'s `initWelcome` call shrinks to match.
    - If `plan:desktop/single-file-mode` has landed (its step 14 hand-writes an Open File… tile), `START_COMMANDS` gains `"file.openFile"` after `"project.open"`, and that record gains `icon: "file"` if it lacks one. Its `when` (`ctx.capability.openFile`) hides the tile off the desktop. `WelcomeCtx.openFile`, the `"file"` `StartAction` id and its `run` case go with the hand-written list, and `studio.ts` keeps `openFile` in the command deps only.
-6. Delete `platformSupportsClone` from `git-panel.ts`, which has no caller left, and its tests.
+6. Delete `platformSupportsClone` from `source-control.ts`, which has no caller left, and its tests.
 
 **Integration contract.**
 
@@ -183,7 +188,7 @@ The suite is `packages/studio`, run as `bun test --isolate --coverage` from that
 
 Two suites share a harness for the git panel:
 
-- `git-panel-gaps.test.ts` and `git-panel-states.test.ts` create a registry with `createCommandRegistry` and a `getContext` read from `projectState` and `shell.git` (`isRepo`, and `hasRemote` if it lands), register `registerSourceControlCommands`, and call `setActiveRegistry` in `beforeEach` and `setActiveRegistry(null)` in `afterEach`.
+- `source-control.test.ts` and `publish-workspace.test.ts` create a registry with `createCommandRegistry` and a `getContext` read from `projectState` and `shell.git` (`isRepo`, and `hasRemote` if it lands), register `registerSourceControlCommands`, and call `setActiveRegistry` in `beforeEach` and `setActiveRegistry(null)` in `afterEach`.
 - Their platform stub's `gitLog` answers one entry unless a case says otherwise. `source-control-commands.test.ts`'s `mockPlatform` gains the same `gitLog`: it has none today, and `getPlatform().gitLog(1)` on an absent method throws a `TypeError` before `.catch` can see it, which would break both existing Create cases.
 
 **GPA1.1**
@@ -195,12 +200,12 @@ Two suites share a harness for the git panel:
   - "a suffix composes into the label and the hint, never the title"
   - "a hidden record is invisible and disabled"
   - "commandTooltip keeps its old answers"
-- `git-panel-gaps.test.ts`:
+- `source-control.test.ts`:
   - The bypass case is rewritten as "the no-repo state draws Create GitHub Repository from its record, disabled, the reason in its title". It asserts `[part="control"]` is `disabled`, its `title` is the record's `requires` sentence after "Create GitHub Repository — requires ", and `publishCalls` is empty.
   - New: "a click that reaches the refused record files the refusal under Source Control and creates nothing". The click lands on the host, which fires `onclick` even while the inner control is disabled.
   - "the no-remote sync bar's publish falls back to a default project name" becomes "the no-remote sync bar's create runs the record", keeping its `my-project` assertion.
   - "initialize repository runs gitInit and refreshes" becomes "initialize repository runs the record" (gitInit, refresh, both notices).
-- `git-panel-states.test.ts`:
+- `publish-workspace.test.ts`:
   - "a project git is not tracking offers both ways to start" asserts the record titles and Create's disabled state.
   - "ahead and behind counts reach the label and both button names" reads `controls.push.label`.
   - New: "with no registry published, the command-backed controls draw disabled rather than guessing".
@@ -220,7 +225,7 @@ Two suites share a harness for the git panel:
   - "Clone is application-level and gated on the gitClone capability".
   - One run case per record: fetch and pull refresh after; commit reads and clears the field; commit with `message` leaves the field; an empty message is a `RangeError`; commit and sync pushes after committing; stage and unstage one path; a path not in the status is refused by `coerceArgs`; discard confirms and refuses `U`; checkout is a no-op on the current branch; create branch prompts only without `name`; clone passes `openRecentProject`.
 - `command-projection.test.ts`, the `commandRow` cases `name-and-chord-gaps` lists, so it inherits them: "commandRow prints the title, the chord through formatBinding, and destructive from the record"; "a chord that restates the title is not printed"; "a disabled record's row carries its requires sentence and no run"; "with a source, an enabled row runs through runReported and a refusal is filed under that source"; "without a source a row carries no run of its own".
-- `git-panel-gaps.test.ts`:
+- `source-control.test.ts`:
   - The sync bar, commit form, branch picker and file-row cases keep their platform assertions, now through the records.
   - The commit-menu case asserts one row, `id: "git.commit"`, title "Commit".
   - New: "every control the document draws runs its record". A fresh registry holds a spy record under each `git.*` id; the case clicks every control and asserts each spy ran and no platform method was called.
@@ -249,9 +254,9 @@ Two suites share a harness for the git panel:
 
 `specs/studio-ui-guidelines.md`, edited in place:
 
-- §12.3's marker: delete the last clause, "and the Source Control panel's "Create GitHub repository" renames `git.createGithubRepository` (`src/surfaces/git-panel.json`)". The Bottom dock clause becomes the list's last item, so it takes the "and".
+- §12.3's marker: delete the last clause, "and the Source Control panel's "Create GitHub repository" renames `git.createGithubRepository` (`src/surfaces/publish-workspace.json`)". The Bottom dock clause becomes the list's last item, so it takes the "and".
 - §12.4's marker: delete ", and the `git.*` row's failure returns through the Source Control panel, which is §12.5's". Unless the sweep has landed, the module count ("Thirteen modules") also drops by one to the list's new length (count it: `plan:studio-ui-guidelines/empty-state-copy` removes an entry too).
-- §12.5's marker becomes: "**Status: Partial.** The tab strip, the outline, the block bar and the Command Bar draw from placements, and the Source Control panel draws Initialize Repository, Create GitHub Repository and Push from their records. The panel's other verbs are still defined by `ACTIONS` in `packages/studio/src/panels/git-panel.ts` rather than by records. The welcome screen's Start list (`src/surfaces/welcome.ts`) duplicates `project.new` and `project.open` and disagrees with the first: its tile opens the project the wizard creates, and the record's `run` opens nothing."
+- §12.5's marker becomes: "**Status: Partial.** The tab strip, the outline, the block bar and the Command Bar draw from placements, and the Source Control panel draws Initialize Repository, Create GitHub Repository and Push from their records. The panel's other verbs are still defined by `ACTIONS` in `packages/studio/src/publish/source-control.ts` rather than by records. The welcome screen's Start list (`src/surfaces/welcome.ts`) duplicates `project.new` and `project.open` and disagrees with the first: its tile opens the project the wizard creates, and the record's `run` opens nothing."
 - Fragment: `bun run spec:change studio-ui-guidelines.md patch -m "The Source Control panel draws Initialize Repository, Create GitHub Repository and Push from their records, so §12.3 and §12.4 no longer name it, and §12.5 names what remains: the panel's other verbs and the welcome screen's Start list"`.
 
 `specs/studio.md`:
@@ -260,7 +265,7 @@ Two suites share a harness for the git panel:
 - §13.4's `git` row gains `hasRemote`, if it holds.
 - Fragment: `bun run spec:change studio.md minor -m "§5.5: Create GitHub Repository refuses a project with no commit or with a remote already, and §13.4 gains git.hasRemote, the gate on the remote verbs"`.
 
-Docs (`bun run docs:sync` names `docs/studio/publish/source-control.md` and `docs/studio/publish.md` through `git-panel.ts` and `deploy-checklist.ts`, `docs/studio/projects/settings.md` through `dependencies-editor.ts`, and four pages through `commandbar.ts`, which need nothing because `commandTooltip` moves without changing an answer). No sentence below may carry an em dash (`bun run docs:prose`):
+Docs (`bun run docs:sync` names `docs/studio/publish/source-control.md` and `docs/studio/publish.md` through `source-control.ts` and `deploy-checklist.ts`, `docs/studio/projects/settings.md` through `dependencies-editor.ts`, and four pages through `commandbar.ts`, which need nothing because `commandTooltip` moves without changing an answer). No sentence below may carry an em dash (`bun run docs:prose`):
 
 - `docs/studio/publish/source-control.md`: the no-repository paragraph says Create GitHub Repository waits until the project is tracked and has a commit, and that hovering it says why. The "Local only (no remote)" sentence and the Create row of the "Without the panel" table use the record's title, and the row adds that it needs a commit.
 - `docs/studio/publish/github.md`, "Put the project on GitHub": the same facts; commit first. The button's label becomes "Create GitHub Repository" in lines 40 and 42. Line 47 names the activity, whose title stays "Create GitHub repository", so it does not change.
@@ -301,7 +306,7 @@ Docs:
 
 `specs/studio-ui-guidelines.md`:
 
-- §12.5's marker becomes: "**Status: Implemented.** The tab strip, the outline, the block bar, the Command Bar, the Source Control panel and the welcome screen draw their controls from command records and run them through the registry (`packages/studio/src/panels/git-panel.ts`, `src/surfaces/welcome.ts`), and no surface calls past a record's refusal: the Packages table's Remove runs the function `packages.remove` runs (`src/settings/dependencies-editor.ts`)."
+- §12.5's marker becomes: "**Status: Implemented.** The tab strip, the outline, the block bar, the Command Bar, the Source Control panel and the welcome screen draw their controls from command records and run them through the registry (`packages/studio/src/publish/source-control.ts`, `src/surfaces/welcome.ts`), and no surface calls past a record's refusal: the Packages table's Remove runs the function `packages.remove` runs (`src/settings/dependencies-editor.ts`)."
 - §12.4 rule 2's set gains `project.addRepository`.
 - §10's marker: "inherit §12.3's and §12.5's: the rail prints no chord, the tab-strip and Files-tree menus carry none, and the welcome screen's Start list is a list of its own" becomes "inherit §12.3's: the rail prints no chord, and the tab-strip and Files-tree menus carry none". The count stands, because both items still wait on §12.3.
 - Fragment: `bun run spec:change studio-ui-guidelines.md minor -m "§12.5: the Source Control panel and the welcome screen draw every control from its command record, and New Project opens what it creates from every surface"`.
@@ -325,9 +330,9 @@ This plan does not close `studio-ui-guidelines.md`'s last open item, so there is
 - `bun scripts/check-coverage-manifest.ts packages/studio`.
 - `bun scripts/check-command-levels.ts`, `bun scripts/check-chrome-budget.ts`, `bun scripts/check-shot-contract.ts`, `bun run typecheck` and `bun run lint`.
 - `bun run docs:status`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links`, `bun run docs:prose`, `bun run docs:section-refs` and `bun run plans:check`.
-- `rg -n "createGithubRepository\(" packages/studio/src/panels/git-panel.ts` shows one call, inside the record's `run`.
+- `rg -n "createGithubRepository\(" packages/studio/src/publish/source-control.ts` shows one call, inside the record's `run`.
 - `rg -n "removePackage" packages/studio/src/settings/dependencies-editor.ts` prints nothing.
-- `ACTIONS` in `packages/studio/src/panels/git-panel.ts` contains no `gitAction(`, `getPlatform(` or `createGithubRepository(` call. Read the object; the mechanical proof is the spy case in `git-panel-gaps.test.ts`.
+- `actionsFor()` in `packages/studio/src/publish/publish-workspace.ts` contains no `gitAction(`, `getPlatform(` or `createGithubRepository(` call. Read the object; the mechanical proof is the spy case in `publish-workspace.test.ts`.
 - By hand in Studio: open a folder git does not track. Create GitHub Repository is disabled, and hovering it says why. Initialize it: Create is enabled, and clicking it files "…needs a commit to push" under Source Control with nothing created on GitHub. On a repository with a remote, the palette shows Create GitHub Repository disabled with its reason. From the palette, New Project… opens the project it creates.
 
 ## Slices

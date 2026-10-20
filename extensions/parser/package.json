@@ -68,6 +68,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.3",
     "@jxsuite/runtime": "workspace:^",
+    "@jxsuite/test-support": "workspace:^",
     "@types/mdast": "^4.0.4",
     "ajv": "^8.20.0"
   },

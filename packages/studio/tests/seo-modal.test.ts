@@ -32,6 +32,7 @@ import { invalidateLayoutCache } from "../src/site-context";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext, makeContext } from "../src/commands/context";
 import { setActiveRegistry } from "../src/commands/active-registry";
+import { invalidateMediaCache } from "../src/ui/media-picker";
 
 import type { FormatFrontmatter } from "../src/format/format-host";
 import type { ProjectConfig } from "@jxsuite/schema/types";
@@ -314,24 +315,25 @@ describe("the favicon row", () => {
     expect(row("description").querySelector('[part="browse"]')).toBeNull();
   });
 
-  test("Browse offers the project's media in a kit menu, and picking one commits it", async () => {
+  test("Browse offers the project's images in the media picker's browser, and a pick commits", async () => {
     const tab = setupContentTab({ title: "Hello" });
     installMockPlatform({
       listDirectory: async (dir: string) =>
         dir === "public"
           ? [{ name: "hero.jpg", path: "public/hero.jpg", size: 12, type: "file" }]
-          : [],
+          : // The project root, which the media scan reads first to find its scan roots.
+            [{ name: "public", path: "public", type: "directory" }],
     });
+    invalidateMediaCache();
     await mountAndFlush();
-    /* A kit menu, not the Spectrum popover the inspector's media picker draws: a modal `<dialog>`
-       is in the top layer, so an overlay painted into a layer div renders underneath the dialog
-       that opened it and is inert besides. */
+    /* The image field's own browser: a top-layer `jx-popover`, so it paints over the modal that
+       opened it, and the dialog keeps no second list of the project's media (studio.md §9.3). */
     click(row("og:image").querySelector('[part="browse"]')!);
     await flush(8);
     const item = document.querySelector<HTMLElement>(
-      "#layer-popover jx-menu-item[data-command-id]",
+      '#layer-popover jx-popover[part="media-browser"] [part="row"]',
     );
-    expect(item?.textContent).toContain("hero.jpg");
+    expect(item?.dataset.path).toBe("/hero.jpg");
     click(item!);
     await flush(4);
     expect(tab.doc.content.frontmatter.$head).toEqual([
@@ -553,6 +555,21 @@ describe("the two realms a document can keep its head material in", () => {
     expect(tab.doc.document.$head).toEqual([
       { attributes: { content: "Written onto the root", name: "description" }, tagName: "meta" },
     ]);
+    expect("$head" in tab.doc.content.frontmatter).toBe(false);
+  });
+
+  test("a Markdown page's frontmatter description is the Description it edits", async () => {
+    // The build writes a page's `description` property as its description meta, so the modal's
+    // Description is that value, written back there rather than into a head meta it would shadow.
+    setupContentTab({ description: "From frontmatter", title: "Hello" });
+    const tab = activeTab.value;
+    if (!tab) {
+      throw new Error("setupContentTab opened no tab");
+    }
+    await mountAndFlush();
+    expect(control("description").value).toBe("From frontmatter");
+    fireChange("description", "Rewritten");
+    expect(tab.doc.content.frontmatter.description).toBe("Rewritten");
     expect("$head" in tab.doc.content.frontmatter).toBe(false);
   });
 

@@ -264,9 +264,12 @@ describe("the deploy-checklist surface", () => {
     shell.git.status = null;
     const host = await paint();
     expect(stepStates(host).slice(0, 2)).toEqual(["unknown", "unknown"]);
-    expect(
-      host.querySelector('[part="step"][data-state="unknown"] [part="step-icon"]')?.textContent,
-    ).toBe("?");
+    const icon = host.querySelector<HTMLElement & { name: string; label: string }>(
+      '[part="step"][data-state="unknown"] [part="step-icon"]',
+    );
+    expect(icon?.tagName.toLowerCase()).toBe("jx-icon");
+    expect(icon?.name).toBe("question");
+    expect(icon?.label).toBe("Not checked yet");
   });
 
   test("a step the registry cannot run draws no button, rather than a dead one", async () => {

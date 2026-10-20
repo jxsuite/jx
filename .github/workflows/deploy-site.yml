@@ -92,10 +92,10 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
         with:
-          # Pinned; keep in sync with the canonical pin in test.yml.
-          bun-version: 1.4
+          # This job runs its own (non-frozen) install below.
+          install: "false"
 
       - uses: actions/cache@v6
         with:

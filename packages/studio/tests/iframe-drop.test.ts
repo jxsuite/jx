@@ -149,6 +149,71 @@ describe("computeDropInstruction — root nearestChildEdge", () => {
   });
 });
 
+describe("computeDropInstruction — a block never lands inside a paragraph", () => {
+  /** `<div><p><strong>Mailing Address:</strong> 138 Church Road</p><p>x</p></div>`. */
+  function paragraphDoc(): JxMutableNode {
+    return {
+      children: [
+        {
+          children: [{ tagName: "strong", textContent: "Mailing Address:" }, " 138 Church Road"],
+          tagName: "p",
+        },
+        { tagName: "p", textContent: "x" },
+      ],
+      tagName: "div",
+    };
+  }
+
+  /** The paragraph with its `<strong>` nested inside, as the canvas draws them. */
+  function paragraph() {
+    const p = el(["children", 0], { height: 40, top: 100 });
+    const strong = el(["children", 0, "children", 0], { height: 20, top: 110 });
+    p.append(strong);
+    return { p, strong };
+  }
+
+  test("a component over the middle of a paragraph with element children goes below it", () => {
+    const { p } = paragraph();
+    const out = computeDropInstruction(p, 125, paragraphDoc(), { tag: "eer-cta", type: "block" });
+    expect(out?.instruction).toBe("reorder-below");
+    expect(out?.targetPath).toEqual(["children", 0]);
+  });
+
+  test("a block over a <strong> inside a paragraph is placed beside the paragraph", () => {
+    const { strong } = paragraph();
+    const above = computeDropInstruction(strong, 105, paragraphDoc(), {
+      tag: "img",
+      type: "block",
+    });
+    expect(above).toMatchObject({ instruction: "reorder-above", targetPath: ["children", 0] });
+    expect(above?.referenceRect).toEqual({ height: 40, width: 100, x: 0, y: 100 });
+    // An OS file drag names no tag and is placed as a block too.
+    const file = computeDropInstruction(strong, 135, paragraphDoc(), { type: "block" });
+    expect(file).toMatchObject({ instruction: "reorder-below", targetPath: ["children", 0] });
+  });
+
+  test("text-level content still goes inside the paragraph", () => {
+    const { strong } = paragraph();
+    const out = computeDropInstruction(strong, 112, paragraphDoc(), { tag: "em", type: "block" });
+    expect(out?.targetPath).toEqual(["children", 0, "children", 0]);
+    const { p } = paragraph();
+    const moved = computeDropInstruction(p, 125, paragraphDoc(), {
+      path: ["children", 0, "children", 0],
+      type: "tree-node",
+    });
+    expect(moved?.instruction).toBe("make-child");
+  });
+
+  test("a moved block keeps out of a paragraph, and a paragraph never lands by its own text", () => {
+    const { strong } = paragraph();
+    const src = { path: ["children", 1], type: "tree-node" as const };
+    const out = computeDropInstruction(strong, 135, paragraphDoc(), src);
+    expect(out).toMatchObject({ instruction: "reorder-below", targetPath: ["children", 0] });
+    const self = { path: ["children", 0], type: "tree-node" as const };
+    expect(computeDropInstruction(strong, 105, paragraphDoc(), self)).toBeNull();
+  });
+});
+
 describe("computeDropInstruction — canDrop (tree-node)", () => {
   test("dropping a node onto its own descendant returns null", () => {
     // Source = section [children,0]; target = its child h2 [children,0,children,0].

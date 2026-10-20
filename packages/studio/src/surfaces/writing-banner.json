@@ -1,0 +1,94 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioWritingBanner",
+  "$description": "The writing-mode banner (specs/studio.md §22.5): one slim line above the canvas while a collection entry is written inside its template's layout, saying what the arrangement is (the text and media are editable, the layout is locked) with the door to the template, which opens it in Design. `content/writing-banner.ts` decides whether there is a template to open and what it is called; this document draws a sentence and, when there is one, the button.",
+  "tagName": "div",
+  "attributes": {
+    "part": "banner",
+    "role": "note",
+    "data-jx-region": "${state.region}"
+  },
+  "style": {
+    "$description": "A quiet band, the Content-Entry board's: the canvas is the subject, so the banner is a tinted line rather than a panel, and its action is a quiet button.",
+    "display": "flex",
+    "alignItems": "center",
+    "flexWrap": "wrap",
+    "gap": "var(--jx-space-2)",
+    "padding": "var(--jx-space-1) var(--jx-space-4)",
+    "background": "color-mix(in srgb, var(--accent) 10%, var(--bg-panel))",
+    "borderBottom": "1px solid var(--border)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-sm)",
+    "color": "var(--fg-dim)",
+    "& [part=\"glyph\"]": {
+      "flexShrink": "0",
+      "color": "var(--accent)"
+    },
+    "& [part=\"text\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"action-slot\"]": {
+      "display": "contents"
+    }
+  },
+  "children": [
+    {
+      "tagName": "jx-icon",
+      "attributes": {
+        "part": "glyph"
+      },
+      "$props": {
+        "name": "lock-simple"
+      }
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "text"
+      },
+      "textContent": "${state.text}"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "action-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/actionState"
+      },
+      "cases": {
+        "shown": {
+          "tagName": "jx-action-button",
+          "attributes": {
+            "part": "edit-template"
+          },
+          "$props": {
+            "size": "sm",
+            "quiet": true
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/openTemplate"
+                },
+                "value": []
+              }
+            ],
+            "description": "Opening the template is activating it, which enters Design (studio.md §22.1)."
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "${state.actionLabel}"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

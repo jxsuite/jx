@@ -39,6 +39,10 @@ import {
   loadFormats,
 } from "../../format/format-host";
 import { parseSourceForPath } from "../../files/file-ops";
+import { collectionForDirectory } from "../../content/collection-match";
+import { collectionSourceFile } from "../../content/content-collections";
+import { fileRecordIds as recordIdsOf } from "../../content/file-record-ids";
+import { LOCALE_PLACEHOLDER } from "../../canvas/asset-resolve";
 import { columnsFromSchema, inferColumnsFromRows } from "../schema-columns";
 import { makeGridTabId } from "../grid-source";
 import type {
@@ -129,14 +133,77 @@ async function listEntryFiles(dir: string, exts: string[]): Promise<string[]> {
   return results.toSorted();
 }
 
-/** Entry ids (file stems) of a collection — used by relationship cell editors. */
+/**
+ * The real directories a collection's entries live in.
+ *
+ * A plain source is its one directory. A localized source (`content/exhibitions/{locale}`) is one
+ * directory per language, and the literal path with the placeholder is a directory nobody has:
+ * listing it is a 500 from the dev server and an empty collection on screen. So the placeholder's
+ * parent is listed, and each subdirectory is kept when the one collection matcher
+ * (`content/collection-match.ts`) says that directory IS this collection's, which is what keeps an
+ * undeclared language or a co-located `images/` folder out.
+ */
+export async function collectionSourceDirs(info: { dir: string; name: string }): Promise<string[]> {
+  const cut = info.dir.indexOf(LOCALE_PLACEHOLDER);
+  if (cut === -1) {
+    return [info.dir];
+  }
+  const head = info.dir.slice(0, cut).replace(/\/$/, "");
+  const tail = info.dir.slice(cut + LOCALE_PLACEHOLDER.length);
+  let children;
+  try {
+    children = await getPlatform().listDirectory(head);
+  } catch {
+    return []; // No parent directory yet: a localized collection with no entries in any language.
+  }
+  return children
+    .filter((entry) => entry.type === "directory")
+    .map((entry) => `${entry.path}${tail}`.replace(/\/$/, ""))
+    .filter((dir) => collectionForDirectory(dir)?.name === info.name)
+    .toSorted();
+}
+
+/** Every entry file of a collection, across all of its directories. */
+async function listCollectionFiles(info: CollectionInfo): Promise<string[]> {
+  const dirs = await collectionSourceDirs(info);
+  const lists = await Promise.all(dirs.map((dir) => listEntryFiles(dir, [info.ext])));
+  return lists.flat().toSorted();
+}
+
+/**
+ * The ids of a file-backed collection's records (`content/file-records.ts`), or `null` when the
+ * source is a directory. A source that names a file is read, never listed: listing a CSV as a
+ * directory is a 500 from the dev server and a collection of no entries on screen.
+ */
+async function fileRecordIds(info: CollectionInfo): Promise<string[] | null> {
+  const file = collectionSourceFile(info.name);
+  if (file === null) {
+    return null;
+  }
+  let text: string;
+  try {
+    text = await getPlatform().readFile(file);
+  } catch {
+    return []; // A source file not written yet: an empty collection.
+  }
+  return recordIdsOf(file, text, info.def.idField);
+}
+
+/**
+ * Entry ids of a collection (file stems, or a file-backed collection's record ids), used by
+ * relationship cell editors and the Site panel's counts.
+ */
 export async function listCollectionEntryIds(typeName: string): Promise<string[]> {
   await loadFormats().catch(() => {}); // Extension resolution needs the format registry.
   const info = collectionInfo(typeName);
   if (!info) {
     return [];
   }
-  const files = await listEntryFiles(info.dir, [info.ext]);
+  const recordIds = await fileRecordIds(info);
+  if (recordIds !== null) {
+    return recordIds;
+  }
+  const files = await listCollectionFiles(info);
   return files.map((path) => {
     const base = path.split("/").pop() ?? path;
     return base.slice(0, base.length - info.ext.length);
@@ -421,7 +488,11 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
     }
     const doc = entry.document;
     const fullDoc = { ...frontmatter, ...doc, children: doc.children ?? [] };
-    const text = await formatSerialize(entry.formatName, fullDoc, { mode: "roundtrip" });
+    // The entry's own text, so only the patched keys are re-spelled.
+    const text = await formatSerialize(entry.formatName, fullDoc, {
+      mode: "roundtrip",
+      source: entry.rawText,
+    });
     markLocalMutation(path);
     await platform.writeFile(path, text);
     entries.set(path, { ...entry, frontmatter, rawText: text });
@@ -628,10 +699,7 @@ export function createCollectionSource(typeName: string): GridSource {
       );
     },
     label: typeName,
-    list: () => {
-      const info = requireInfo();
-      return listEntryFiles(info.dir, [info.ext]);
-    },
+    list: () => listCollectionFiles(requireInfo()),
     resolveInsertPath: (raw) => {
       const info = requireInfo();
       let path = raw.trim().replace(/^\.\//, "").replace(/^\//, "");

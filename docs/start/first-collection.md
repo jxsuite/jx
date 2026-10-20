@@ -18,13 +18,17 @@ In this tutorial you give your site a blog the structured way: a `posts` content
 
 A content type is your CMS schema: where a collection's entries live, and what fields each one carries.
 
-1. Open the **Settings** menu at the foot of the rail and pick **Open Project Settings › Content Types**. (:kbd[⌘K] and **Open Project Settings** gets you to the same place.)
-2. Click **New Entry** at the bottom of the type list.
+1. Open the **Settings** menu in the Command Bar and pick **Open Project Settings › Content Types**. (:kbd[⌘K] and **Open Project Settings** gets you to the same place.)
+2. Click **New content type** at the bottom of the type list.
 3. Type `Posts` and click **Create**.
 
 ![The Content Types section with the new posts type selected and its empty field schema](../images/blog-content-type.png)
 
 You should see the new type selected, named `posts`, with a matching source folder (`content/posts/`) and an empty field schema ready to fill.
+
+:::doc-tip
+**Add new › Collection** (:kbd[⌘N]) does steps 1 and 2 in one go, from a set of common fields, and can create the page each post opens at as well. This tutorial builds the type by hand so you see every part of it. See **[Content types](/docs/studio/projects/content-types#create-a-content-type)**.
+:::
 
 ## 2. Give it fields
 
@@ -40,19 +44,19 @@ You should now see three field rows in the schema. These become the form every p
 
 ## 3. Create your first post
 
-1. Press :kbd[⌘⇧E] to open **The Library**.
-2. Click **New**. The menu now lists an item for the type you just defined, so pick **Posts**.
-3. Name the entry `hello-world`.
+1. Press :kbd[⌘N] to open **Add new** (in a browser, :kbd[⌘⌥N]).
+2. Choose **Entry** in the list on the left. It appears now that your project has a content type, and **Posts** is already picked as its collection.
+3. Type `Hello World` and click **Create entry**.
 
-![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../images/mode-manage.png)
+![The Content workspace showing a collection as cards with live previews, with the Collections panel on the left](../images/mode-manage.png)
 
-Studio creates the file in `content/posts/` with every schema field pre-filled with a sensible blank, and opens it. Back in The Library, the entry appears under the **Content** filter, labeled with its type.
+Studio creates `content/posts/hello-world.md` with every schema field pre-filled (the title with the name you typed, the rest with a sensible blank) and opens it in the [Content workspace](/docs/studio/projects/browse), where **Posts** is now listed in the Collections panel on the left.
 
 ## 4. Fill it in
 
-The post opens in **Edit** view with a **Document Header** card docked at the top of the canvas, holding the same fields your schema defined:
+The post opens on the canvas, inside your site's template: the banner above it says the text is yours to write and the layout is locked. Its fields are on the right, in the Inspector's **Entry** tab:
 
-1. Type `Hello World` into **title**.
+1. Check that **title** says `Hello World`.
 2. Pick today in the **date** field.
 3. Give **description** a sentence: `The first post on my brand-new blog.`
 
@@ -60,20 +64,20 @@ Then click into the page below and write a paragraph or two of body text.
 
 ![Jx Studio editing markdown content inline with a WYSIWYG editor](../images/mode-edit.png)
 
-You should see the frontmatter form filled in and your words on the page. The same fields also live in the **Page** panel, :kbd[⌘5]. See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
+You should see the fields filled in and your words on the page. See **[Write an entry](/docs/studio/projects/browse#write-an-entry)** for the rest of the Entry tab.
 
 ## 5. Add two more posts
 
-Repeat step 3 twice, choosing **New** > **Posts** and naming them `grid-mode-rocks` and `hello-again` (or anything you like). This time skip the fields on purpose; you'll fill them in bulk next.
+Repeat step 3 twice, naming them `Grid mode rocks` and `Hello again` (or anything you like). This time skip the other fields on purpose; you'll fill them in bulk next.
 
-You should now have three entries under The Library's **Content** filter, two of them with empty frontmatter.
+You should now have three entries under **Posts** in the Collections panel, two of them with nothing but a title.
 
 ## 6. Open the collection as a grid
 
 Editing entries one file at a time doesn't scale, so Studio can open the whole collection as a spreadsheet:
 
-1. Click **Files** in the **Project** group of the Navigator rail, or press :kbd[⌘1].
-2. Right-click the `content/posts` folder and choose **Edit Collection in Grid**.
+1. Click **Posts** in the Collections panel, then click **Edit in grid** in the toolbar above the list. (The same action is on the right-click menu of the `content/posts` folder in the Files panel, as **Edit Collection in Grid**.)
+2. The grid opens in the Content workspace, beside your posts. A view you save there is listed under **Posts** in the Collections panel next time.
 
 ![The posts collection open in Grid mode, one row per entry with title, date, and description columns](../images/blog-grid.png)
 
@@ -93,7 +97,7 @@ Saving a collection row rewrites that file's frontmatter block, which is exactly
 
 ## 8. Create the Blog page
 
-1. Open **The Library** again, then **New** > **Page**, and name it `Blog`. Studio writes the page and opens it at your site's `/blog` address.
+1. Press :kbd[⌘N] to open **Add new** again (in a browser, :kbd[⌘⌥N]), keep **Page**, type `Blog` and click **Create page**. Studio writes the page and opens it at your site's `/blog` address.
 2. In the **View** control on the pane's context bar, click **Design**.
 
 You should see the empty page on the design canvas, once per breakpoint.
@@ -114,14 +118,14 @@ You should see one plausible-looking post card on the canvas. Style it as much o
 
 The page needs the posts as data it can render:
 
-1. Press :kbd[⌘6] for the **Data** panel, then click the **+ Add…** picker.
+1. Click **Data** on the Navigator rail to open the **Data** panel, then click the **+ Add…** picker.
 2. Pick **ContentCollection**, listed with the sources your project's imports and extensions provide.
 3. Rename the new entry to `posts` (type the name and press :kbd[Enter]).
 4. Set **contentType** to `posts`, and add a **sort** rule on the `date` field with order `desc`, so the newest post lists first.
 
 ![The Data panel editing a ContentCollection entry with contentType posts and a date sort rule](../images/blog-collection-state.png)
 
-Open the **Data** panel (:kbd[⌘6]) and you should see `posts` worth `Array(3)`, which is your three entries, live. Filters, limits, and the other sources are covered in **[Data sources](/docs/studio/logic/data-sources)**.
+Open the **Data** panel and you should see `posts` worth `Array(3)`, which is your three entries, live. Filters, limits, and the other sources are covered in **[Data sources](/docs/studio/logic/data-sources)**.
 
 ## 11. Repeat the card for every post
 
@@ -151,9 +155,9 @@ Pick **Preview** in the **View** control on the context bar.
 
 ![Preview on, the single card expanded into three post cards with real titles, dates, and descriptions](../images/blog-preview.png)
 
-You should see the single card expand into three, newest first, each filled in from its own post. Switch the **View** control back to **Design**, then save your open documents with :kbd[⌘S] / :kbd[Ctrl+S]. When you're ready, commit the lot from **Source Control**. See **[Source control](/docs/studio/publish/source-control)**.
+You should see the single card expand into three, newest first, each filled in from its own post. Switch the **View** control back to **Design**, then save your open documents with :kbd[⌘S] / :kbd[Ctrl+S]. When you're ready, publish the lot from the **Publish** workspace's **Review changes** (:kbd[⌘5]). See **[Source control](/docs/studio/publish/source-control)**.
 
-![Jx Studio commit box: write a message and commit-and-sync straight from the Source Control panel](../images/git-commit.png)
+![The publish card in Review changes: the destination, the summary and the publish button](../images/git-commit.png)
 
 ## Give each post its own page
 
@@ -163,8 +167,8 @@ The listing links nowhere yet, and that's deliberate: one page per post is the j
 
 A complete content pipeline, end to end:
 
-- A **content type** (`posts`) gives you schema-backed entries with one-click creation from The Library.
-- **Three entries**, edited both one at a time (the Document Header card) and in bulk (**Grid mode**).
+- A **content type** (`posts`) gives you schema-backed entries with one-click creation from **New post** in the Content workspace.
+- **Three entries**, edited both one at a time (the Inspector's **Entry** tab) and in bulk (**Grid mode**).
 - A **ContentCollection** state entry is the collection as live, sorted data on a page.
 - A **repeater** whose template binds `item.data` fields is one designed card, rendered per post.
 

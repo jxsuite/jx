@@ -23,7 +23,7 @@ Instead of one company's servers, your site touches three places, each with one 
 2. **A repository** is an online copy of that folder, with its full history. It's your backup and your publishing channel.
 3. **A host** is the service that shows the site to visitors. Every time you sync changes to the repository, the host rebuilds and the new version goes live.
 
-The day-to-day loop is: edit in Studio, click **Commit and sync**, and a minute later the site is updated. All of it happens through Studio's buttons, and you never type commands.
+The day-to-day loop is: edit in Studio, click **Publish live**, and a minute later the site is updated. All of it happens through Studio's buttons, and you never type commands.
 
 ## A short glossary
 

@@ -21,7 +21,7 @@ code:
 
 # Content collections
 
-> **Studio writes this format for you.** The [content-type builder](/docs/studio/projects/content-types) edits the `content` section visually, and entries show up in [The Library](/docs/studio/projects/browse) with schema-driven forms.
+> **Studio writes this format for you.** The [content-type builder](/docs/studio/projects/content-types) edits the `content` section visually, and entries show up in [the Content workspace](/docs/studio/projects/browse), where they are written inside their template with their fields as a schema-driven form.
 >
 > It also enforces the collection's format where you create files: **New File…** in a collection's folder is **New Entry**, and in a subfolder of it the format picker is locked to the collection's extension. See [Creating a file](/docs/studio/interface#creating-a-file).
 

@@ -99,12 +99,11 @@ describe("the frame's bound parts", () => {
   });
 
   /*
-   * ONE place, so nothing to tell apart. The host used to be announced with a placement — `pinned`
-   * from the lead slot, `in-column` from a slot inside Edit's column — and the card read it back
-   * before the runtime had written it. The card is Edit's alone now and leads the frame, so it is a
-   * sibling of the scroller rather than a block of the column the breakpoint sizes.
+   * Edit's one band is the writing-mode banner over a collection entry (studio.md §22.5); an
+   * ordinary page leads with nothing (§4.2). The banner leads the frame, a sibling of the scroller
+   * rather than a block of the column the breakpoint sizes.
    */
-  test("the Document Header host is announced from the lead slot, ahead of Edit's scroller", async () => {
+  test("the writing banner host is announced from the lead slot, ahead of Edit's scroller", async () => {
     const el = host();
     const stage = mountCanvasStage(
       el,
@@ -112,23 +111,39 @@ describe("the frame's bound parts", () => {
         framePart: "edit-canvas",
         handles: "shown",
         innerPart: "edit-column",
-        lead: "header",
+        lead: "banner",
       }),
       actions,
     );
     await stage.ready;
-    expect(announced.filter((a) => a.part === "doc-header")).toEqual([
-      { detail: "", part: "doc-header" },
+    expect(announced.filter((a) => a.part === "writing-banner")).toEqual([
+      { detail: "", part: "writing-banner" },
     ]);
-    const card = el.querySelector<HTMLElement>('[part="doc-header"]')!;
-    expect(card.dataset.placement).toBeUndefined();
-    expect(card.closest('[part="edit-canvas"]')).toBeNull();
-    // Document order: the band first, the scroller after it — which is what "docked above" means
-    // To a column flex container.
-    const order = [...el.querySelectorAll('[part="doc-header"], [part="edit-canvas"]')].map(
+    const banner = el.querySelector<HTMLElement>('[part="writing-banner"]')!;
+    expect(banner.closest('[part="edit-canvas"]')).toBeNull();
+    const order = [...el.querySelectorAll('[part="writing-banner"], [part="edit-canvas"]')].map(
       (node) => node.getAttribute("part"),
     );
-    expect(order).toEqual(["doc-header", "edit-canvas"]);
+    expect(order).toEqual(["writing-banner", "edit-canvas"]);
+    stage.dispose();
+  });
+
+  test("an ordinary Edit frame leads with nothing: the scroller is the stage's first box", async () => {
+    const el = host();
+    const stage = mountCanvasStage(
+      el,
+      boardsView(["base"], {
+        framePart: "edit-canvas",
+        handles: "shown",
+        innerPart: "edit-column",
+        lead: "none",
+      }),
+      actions,
+    );
+    await stage.ready;
+    expect(el.querySelector('[part="lead-slot"]')?.children.length ?? 0).toBe(0);
+    expect(el.querySelector('[part="doc-header"]')).toBeNull();
+    expect(el.querySelector('[part="writing-banner"]')).toBeNull();
     stage.dispose();
   });
 

@@ -421,6 +421,8 @@ A body counts as returning a value only when something follows `return` on the s
 }
 ```
 
+An `npm:` specifier names a package export, and each renderer resolves it where its packages are: the build bundles it (`packages/compiler/src/site/bundler.ts`), and the interpreter imports it through the host's package resolver (`setNpmModuleResolver`), which a live renderer installs to say where its packages are served; with none installed it imports the bare specifier, which an import map can answer. It never hands `import()` the `npm:` URL itself, which no browser fetches.
+
 ##### 4d — Function Properties
 
 > **Status: Partial.** The property table, parameter-object normalization and compiled-site bundling (`packages/compiler/src/site/bundler.ts`) ship. Four rules hold in only some tiers: usage-based classification of a `$src` entry is `compile-element.ts`'s alone (the interpreter introspects the imported function, and `compile-client.ts` makes every `$src` entry a computed, so a `$src` handler bound to `on*` attaches no listener); declaring both `body` and `$src` throws at runtime scope build but is never a compile-time error; `compile-client.ts` ignores `$lazy`; and the interpreter's `resolveParamNames` recognizes `state` only in first position rather than binding by name.
@@ -562,7 +564,7 @@ Template literal syntax `${}` is valid **anywhere a string value appears in the 
 }
 ```
 
-**A binding writes when its SOURCE moves, not when its target differs.** The effect behind `"value": "${state.query}"` re-runs only when something it read changed, and it then skips a write equal to what the element already holds — the second half is deliberate, because re-setting `value` on a focused control moves the caret and collapses the selection. Together they mean a document cannot RE-ASSERT a value it has already written. After the reader has typed over a bound control, writing the scope value the scope already held is not a change, so the effect never re-runs and the field keeps what the reader typed; the write that would have emptied it is exactly the one that is skipped. There is no write-only spelling that fires on every pass, and reaching for the element and assigning `value` is not the alternative — that is the host writing into a tree the document owns. The host makes the correction visible instead: it announces the raw value the control now holds, and the value it settled on is then a real move rather than an equal write. `packages/studio/src/ui/form-controls.ts` carries that bounce so a refused rename snaps back, and `packages/studio/src/panels/git-panel.ts` so that dismissing a "New branch…" pick can put the picker back on the branch that is checked out.
+**A binding writes when its SOURCE moves, not when its target differs.** The effect behind `"value": "${state.query}"` re-runs only when something it read changed, and it then skips a write equal to what the element already holds — the second half is deliberate, because re-setting `value` on a focused control moves the caret and collapses the selection. Together they mean a document cannot RE-ASSERT a value it has already written. After the reader has typed over a bound control, writing the scope value the scope already held is not a change, so the effect never re-runs and the field keeps what the reader typed; the write that would have emptied it is exactly the one that is skipped. There is no write-only spelling that fires on every pass, and reaching for the element and assigning `value` is not the alternative — that is the host writing into a tree the document owns. The host makes the correction visible instead: it announces the raw value the control now holds, and the value it settled on is then a real move rather than an equal write. `packages/studio/src/ui/form-controls.ts` carries that bounce so a refused rename snaps back, and `packages/studio/src/settings/project-sections.ts` so that a build adapter `project.json` refused puts the picker back on the one on disk.
 
 **A binding whose expression throws renders nothing and keeps listening.** State that resolves asynchronously reads `null` before it reads its value, so `${state.posts.length}` throws on its first evaluation in any live render. The throw is caught inside the binding's own effect: a text binding renders empty and an attribute or property binding writes nothing, every dependency the expression read before it threw stays tracked, and the binding re-runs, and renders, when the change that makes it valid arrives. The error is reported once per template source as a console warning, or, to a host that asked, delivered every time (`setTemplateErrorHandler`, embedding.md §5.2). Uncaught, it stopped the effect for good and unwound the whole render above it, so one early read left the page blank.
 
@@ -1639,6 +1641,8 @@ A bare identifier or `#/state/` ref resolves in this order:
 
 `window` and `document` globals are **not** part of this fallback chain: an explicit-scheme miss yields no value (a bare, schemeless ref is the only form that falls back to `null`). Reach globals with an explicit `window#/` / `document#/` ref (§7.4).
 
+A template reads the page context bare: `${$page.locale}` and `${$site.name}` are the `$page` and `$site` entries of the scope (`site-architecture.md` §10), bound as names of the template the way `item` and `index` are, in the interpreter as in the compiler's static evaluation. Where a scope has neither, both read `undefined`.
+
 > **Status: Implemented.**
 
 ---
@@ -1671,6 +1675,8 @@ A Jx component whose root `tagName` contains a hyphen is a custom element defini
 
 Custom elements use JavaScript properties as their primary data interface. `$props` can include signal references, functions, objects, and scalars. HTML observed attributes are a secondary mechanism.
 
+A prop the definition declares under the name of an `HTMLElement` property (`title`, `lang`) gets no forwarding accessor, so `el.title = v` writes the element's own property. A parent's `$props` binding addresses the definition's prop rather than the element's, and so in the interpreter it writes the instance's state as well once the instance has connected: a list row whose data arrives after it connected draws its title.
+
 ### 16.3 Dependency Registration (`$elements`)
 
 ```json
@@ -1695,7 +1701,11 @@ Dependencies are registered depth-first before the parent.
 | `adoptedCallback`          | `onAdopted`   | Element moved to new document          |
 | `attributeChangedCallback` | (automatic)   | Observed attribute changes             |
 
-`onMount` receives `(state, host)` — the element's scope and the element itself. A behaviour sidecar that has to reach the element it belongs to gets it as an argument; before it did not, and elements dispatched an event at themselves purely so a root handler could read `currentTarget`, which was a round trip standing in for a missing parameter. The other three hooks take `(state)`.
+**A render that throws is reported, not thrown onward.** The interpreter renders an instance inside its async `connectedCallback`, so a definition whose render throws with the values it was given (a `date` defaulting to `""` passed to `Intl/formatDate`, whose `RangeError` is the standard's own, §19.4c) would otherwise surface as an unhandled rejection that names no element. A `${…}` template binding is not such a throw: it survives its expression throwing and draws nothing until it can (§6.1), so this is a throw elsewhere in the render, such as a `$ref` binding to a computed entry. It is reported on the same two surfaces as a refused instance (§16.9): the console line `Jx: <tag> was not rendered:` with the error, and a bubbling, composed `jx-error` `ErrorEvent` from the element. What rendered before the throw stays, slot content is still distributed into the slots that were drawn, the rest of the page renders, and `onMount` does not run for that instance. A host already out of the document reports nothing.
+
+**And it is drawn again when what it was given changes.** A prop bound to data that arrives after the instance connected (a collection the page resolves after its first render, a row a list fills in) reaches the instance late, so the render that threw was a render of the empty values. The interpreter watches the definition's authored entries, the ones a prop can write, and when one changes it clears the instance and renders it again; a render that succeeds runs `onMount` then and stops the watch. Writes are coalesced into one microtask, the same error is reported once rather than per attempt, and a host removed from the document stops waiting.
+
+`onMount` receives `(state, host)` — the element's scope and the element itself — and is called with the host as `this`, as the compiled element calls it, where a state function is an arrow inside the element class. A behaviour sidecar that has to reach the element it belongs to gets it as an argument; before it did not, and elements dispatched an event at themselves purely so a root handler could read `currentTarget`, which was a round trip standing in for a missing parameter. The other three hooks take `(state)`.
 
 A document mounted by a host through `mount()` ([embedding.md](./embedding.md) §2) runs the same two hooks at its own boundary: `onMount` once its root is attached, `onUnmount` from `dispose()`. The names are shared on purpose, so a component and a mounted document read alike.
 

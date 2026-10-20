@@ -1816,10 +1816,9 @@ let standing: { handle: SignalsSurfaceHandle; host: HTMLElement } | null = null;
  * Draw the Data panel — mounting the document the first time, and projecting into it every time
  * after.
  *
- * The document goes into `.panel-content`, not into the `.panel-body` this is handed, for the
- * reason `panels/git-panel.ts` states: only one of them is the node lit renders this panel's body
- * into, and appending to the other would leave the panel drawn under whatever the Navigator paints
- * next.
+ * The document goes into `.panel-content`, not into the `.panel-body` this is handed, because only
+ * one of them is the node lit renders this panel's body into, and appending to the other would
+ * leave the panel drawn under whatever the Navigator paints next.
  *
  * A container that has CHANGED means the Navigator rebuilt the panel, so the panel-local record of
  * which parameter editor is in its advanced view — and which rename was refused — starts over with

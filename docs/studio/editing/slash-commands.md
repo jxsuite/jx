@@ -5,6 +5,7 @@ code:
   - packages/studio/src/editor/slash-menu.ts
   - packages/studio/src/editor/inline-edit.ts
   - packages/studio/src/editor/inline-edit-apply.ts
+  - packages/studio/src/editor/insert-component.ts
 ---
 
 # Slash commands
@@ -47,6 +48,12 @@ The menu also has a name. **Insert: Insert Block…** in the command palette (:k
 | **Section**         | Section container |
 
 Filtering matches either the name or the element's short tag, so `ol` finds Numbered List and `h1` finds Heading 1.
+
+## Components
+
+After the blocks, under a **Components** heading, the menu lists your components by tag, such as `<site-card>`: your project's own first, then the ones your installed packages provide. Filtering reaches them too, so `card` finds `<site-card>`. Choosing one places an instance of the component with its default settings, and adds the component (or its package) to the page's imports in the same step, the way dragging it from the [Insert palette](/docs/studio/design/elements) does. On an empty paragraph the component replaces it; on a line with text, it lands right after it.
+
+The canvas **+** between elements opens the same list, Components included.
 
 :::doc-tip
 The same menu appears when you click the name badge on the block action bar to convert a selected element into something else; see **[The canvas](/docs/studio/interface/canvas)**.

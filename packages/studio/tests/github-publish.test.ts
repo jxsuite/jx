@@ -86,7 +86,7 @@ void mock.module("../src/platform.js", () => ({
   registerPlatform: () => {},
 }));
 
-void mock.module("../src/panels/git-panel.js", () => ({
+void mock.module("../src/publish/source-control.js", () => ({
   platformSupportsClone: () => false,
   refreshGitStatus: async () => {},
 }));

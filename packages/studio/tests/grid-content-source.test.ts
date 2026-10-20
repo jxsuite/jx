@@ -4,6 +4,7 @@ import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import {
   collectionDirs,
+  collectionSourceDirs,
   collectionInfo,
   createCollectionSource,
   createPagesSource,
@@ -94,6 +95,58 @@ describe("collection resolution", () => {
     setup();
     expect(await listCollectionEntryIds("posts")).toEqual(["hello", "world"]);
     expect(await listCollectionEntryIds("missing")).toEqual([]);
+  });
+
+  test("listCollectionEntryIds reads a file-backed collection's records, never lists the file", async () => {
+    const { state } = installMockPlatform(
+      { formatAction: mockFormatAction },
+      { "content/projects.csv": "Title,Slug\nA,a-one\n,\nB,\n" },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: {
+          gone: { format: "Csv", schema: {}, source: "./content/gone.csv" },
+          projects: { format: "Csv", schema: {}, source: "./content/projects.csv" },
+        },
+      },
+    });
+    // The blank row is no record; a row with no id cell is named by its place, as the loader names it.
+    expect(await listCollectionEntryIds("projects")).toEqual(["a-one", "1"]);
+    expect(await listCollectionEntryIds("gone")).toEqual([]);
+    expect(state.calls.filter(([method]) => method === "listDirectory")).toEqual([]);
+  });
+
+  test("a localized collection is listed across its declared language folders", async () => {
+    installMockPlatform(
+      { formatAction: mockFormatAction },
+      {
+        "content/ex/ar/b.md": HELLO_MD,
+        "content/ex/de/stray.md": HELLO_MD,
+        "content/ex/en/a.md": HELLO_MD,
+        "content/ex/fr-CA/c.md": WORLD_MD,
+        "content/ex/images/x.md": HELLO_MD,
+      },
+    );
+    resetStudioState({
+      projectConfig: {
+        content: { ex: { format: "Markdown", schema: {}, source: "./content/ex/{locale}/" } },
+        i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"] },
+      },
+    });
+    // The undeclared `de` folder and the co-located `images/` folder are not languages of it.
+    expect(await collectionSourceDirs({ dir: "content/ex/{locale}", name: "ex" })).toEqual([
+      "content/ex/ar",
+      "content/ex/en",
+      "content/ex/fr-CA",
+    ]);
+    expect(await listCollectionEntryIds("ex")).toEqual(["b", "a", "c"]);
+    const { total } = await createCollectionSource("ex").rows();
+    expect(total).toBe(3);
+  });
+
+  test("a localized collection with no folder yet has no directories", async () => {
+    setup();
+    expect(await collectionSourceDirs({ dir: "content/none/{locale}", name: "none" })).toEqual([]);
   });
 });
 
@@ -226,6 +279,24 @@ describe("commit — cell edits", () => {
 
     const { rows } = await source.rows();
     expect(rows.find((r) => r.key === "content/posts/hello.md")!.cells.title).toBe("Hey there");
+  });
+
+  test("a cell edit re-spells only its own key: the rest of the file is the bytes it was", async () => {
+    const state = setup();
+    state.files.set(
+      "content/posts/hello.md",
+      '---\ntitle: Hello\nphone: "717-669-8739"\nnote: wrapped over\n  two lines\n---\n\nSome _emphasis_.\n',
+    );
+    const source = createCollectionSource("posts");
+    await source.rows();
+    await source.commit({
+      cells: [{ baseline: "Hello", field: "title", rowKey: "content/posts/hello.md", value: "Hi" }],
+      deletes: [],
+      inserts: [],
+    });
+    expect(state.files.get("content/posts/hello.md")).toBe(
+      '---\ntitle: Hi\nphone: "717-669-8739"\nnote: wrapped over\n  two lines\n---\n\nSome _emphasis_.\n',
+    );
   });
 
   test("clearing a cell removes the frontmatter key", async () => {

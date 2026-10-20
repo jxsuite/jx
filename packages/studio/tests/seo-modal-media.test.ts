@@ -25,6 +25,8 @@ import { invalidateLayoutHeadCache } from "../src/panels/head-panel";
 import { invalidateLayoutCache } from "../src/site-context";
 import { mountsOf } from "../src/services/surface-registry";
 import { closeSeoModal, openSeoModal } from "../src/panels/seo-modal";
+import { invalidateMediaCache } from "../src/ui/media-picker";
+import { setMediaChangedHandler } from "../src/files/media-upload";
 import type { MockPlatformState } from "./harness";
 
 /** The surface's root, or null when it is not up. */
@@ -52,9 +54,20 @@ function click(el: Element): void {
   el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
-/** The rows of whatever kit menu is currently open. */
-function menuRows(): HTMLElement[] {
-  return [...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item")];
+/** The media picker's compact browser, which Browse opens over the modal. */
+function browser(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('#layer-popover jx-popover[part="media-browser"]');
+}
+
+/** The site URL each row of the open browser would commit. */
+function browserPaths(): (string | undefined)[] {
+  return [...(browser()?.querySelectorAll<HTMLElement>('[part="row"]') ?? [])].map(
+    (el) => el.dataset.path,
+  );
+}
+
+function browserEmptyLine(): string | undefined {
+  return browser()?.querySelector('[part="empty"]')?.textContent.trim();
 }
 
 /** How many times the project tree has been walked. */
@@ -100,7 +113,7 @@ async function openOver(): Promise<void> {
 
 beforeEach(() => {
   setShell();
-  clearLayerSlot("popover", "seo-media");
+  clearLayerSlot("popover", "media-picker");
   ({ state } = installMockPlatform({
     uploadFile: async (path: string) => {
       // The backend really has it afterwards, so a re-scan can find what the upload put there.
@@ -109,6 +122,8 @@ beforeEach(() => {
     },
   }));
   registerRenderer("seoModal", () => {});
+  // What the app's bootstrap injects: an upload drops the media listing every chooser reads.
+  setMediaChangedHandler(() => invalidateMediaCache());
   invalidateLayoutCache();
   invalidateLayoutHeadCache();
 });
@@ -118,13 +133,13 @@ afterEach(async () => {
      slot BY REGION — so one dismissed late, by the next test rebuilding the shell, takes that
      test's own menu down with it. In the app Browse is pressed from a modal that closes with it,
      so this is a fixture's state rather than a defect's. */
-  for (const menu of document.querySelectorAll("#layer-popover jx-menu")) {
-    if (menu instanceof HTMLElement) {
-      close(menu);
-    }
+  const open = browser();
+  if (open) {
+    close(open);
   }
   await flush(2);
-  clearLayerSlot("popover", "seo-media");
+  clearLayerSlot("popover", "media-picker");
+  setMediaChangedHandler(null);
   closeSeoModal();
   closeAllTabs();
 });
@@ -162,24 +177,27 @@ function answerPicker(input: HTMLInputElement, files: File[]): void {
 }
 
 describe("Browse, and the listing it keeps", () => {
-  test("a project with no media offers one disabled row that says so", async () => {
-    /* Not an empty menu: a menu with nothing in it is indistinguishable from one that failed to
-       open, and the row names what would have to exist for there to be anything to pick. */
+  test("Browse opens the media picker's own browser, which says the project has no images", async () => {
+    /* Not a list of the dialog's own: the field's browser, a top-layer popover that paints over the
+       modal, so the dialog and every image field answer from one listing (studio.md §9.3). */
     setupTab();
     await openOver();
     click(row("og:image").querySelector('[part="browse"]')!);
     await flush(8);
 
-    const rows = menuRows();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.textContent).toContain("No media in this project");
-    expect(rows[0]?.getAttribute("aria-disabled")).toBe("true");
+    expect(browser()).not.toBeNull();
+    expect(browserPaths()).toEqual([]);
+    expect(browserEmptyLine()).toBe("No images in this project yet");
+    // The row that opens the full-size picker, narrowed to images because the field holds one.
+    expect(browser()?.querySelector('[part="browse-all"]')?.textContent.trim()).toBe(
+      "Browse all images…",
+    );
     expect(scans()).toBeGreaterThan(0);
   });
 
   test("a second Browse answers from the listing it already has", async () => {
-    /* The scan walks `public/` in full, so it is done once and remembered. Only an upload can
-       change the answer, and only an upload invalidates it. */
+    /* The scan walks `public/` and every collection's images in full, so it is done once and
+       remembered. Only a change to the media (an upload) invalidates it. */
     setupTab();
     state.files.set("public/hero.png", "png-bytes");
     await openOver();
@@ -189,7 +207,22 @@ describe("Browse, and the listing it keeps", () => {
 
     expect(scans()).toBe(before);
     // Still the previous test's answer, because the tree was never walked again.
-    expect(menuRows()[0]?.textContent).toContain("No media in this project");
+    expect(browserEmptyLine()).toBe("No images in this project yet");
+  });
+
+  test("a pick commits the file's site URL into the row", async () => {
+    const tab = setupTab();
+    invalidateMediaCache();
+    state.files.set("public/media/hero.png", "png-bytes");
+    await openOver();
+    click(row("og:image").querySelector('[part="browse"]')!);
+    await flush(8);
+    expect(browserPaths()).toEqual(["/media/hero.png"]);
+    click(browser()!.querySelector('[part="row"]')!);
+    await flush(6);
+    expect(tab.doc.content.frontmatter["$head"]).toEqual([
+      { attributes: { content: "/media/hero.png", property: "og:image" }, tagName: "meta" },
+    ]);
   });
 });
 
@@ -209,7 +242,7 @@ describe("Upload", () => {
 
     // The first file of the batch lands in the row that asked for it, as the ref production serves.
     expect(tab.doc.content.frontmatter["$head"]).toEqual([
-      { attributes: { content: "/card.png", property: "og:image" }, tagName: "meta" },
+      { attributes: { content: "/media/card.png", property: "og:image" }, tagName: "meta" },
     ]);
 
     // And the listing is forgotten: the tree it was derived from has just changed.
@@ -217,7 +250,7 @@ describe("Upload", () => {
     click(row("og:image").querySelector('[part="browse"]')!);
     await flush(8);
     expect(scans()).toBeGreaterThan(before);
-    expect(menuRows().map((menuRow) => menuRow.textContent.trim())).toEqual(["/card.png"]);
+    expect(browserPaths()).toEqual(["/media/card.png"]);
   });
 
   test("an upload that lands after the modal closed writes nothing", async () => {

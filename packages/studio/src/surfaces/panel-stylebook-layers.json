@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPanelStylebookLayers",
-  "$description": "The Outline panel while the pane is showing Project Styles: the element catalogue as a list of selectable tags, and the document's own custom properties under the other tab. The adapter hands in one flat projection per row — its badge, its name, how deep it sits, whether the open file has already styled it and whether it is the selected one — so nothing here walks the catalogue tree, reads the component registry or knows what a `& tag` style key is. A row asks the host to select the compound path it was given, by that path.",
+  "$description": "The Outline panel while the pane is showing a document's Elements view: the element catalogue as a list of selectable tags. The adapter hands in one flat projection per row — its badge, its name, how deep it sits, whether the open file has already styled it and whether it is the selected one — so nothing here walks the catalogue tree, reads the component registry or knows what a `& tag` style key is. A row asks the host to select the compound path it was given, by that path. The project's CSS custom properties are not listed here: `project.json` in the Styles workspace has its own Navigator, the Styles panel (`styles-panel.json`), which lists them.",
   "tagName": "div",
   "attributes": {
     "part": "stylebook-layers"
@@ -72,9 +72,6 @@
       "fontSize": "9px",
       "textAlign": "center"
     },
-    "& [part=\"badge\"][data-kind=\"variable\"]": {
-      "fontFamily": "var(--font-mono)"
-    },
     "& [part=\"label\"]": {
       "flex": "1",
       "minWidth": "24px",
@@ -85,34 +82,6 @@
     "& [part=\"dot\"]": {
       "$description": "The file has already styled this tag. The kit's neutral disc in the accent, which is the one thing about it that was ever this surface's own.",
       "background": "var(--accent)"
-    },
-    "& [part=\"value\"]": {
-      "maxWidth": "80px",
-      "overflow": "hidden",
-      "color": "var(--fg-dim)",
-      "fontSize": "var(--jx-text-sm)",
-      "textOverflow": "ellipsis",
-      "whiteSpace": "nowrap"
-    },
-    "& [part=\"empty\"]": {
-      "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (studio-ui-guidelines.md §11): one sentence saying what the region is for, then where its content comes from.",
-      "display": "flex",
-      "flexDirection": "column",
-      "alignItems": "center",
-      "gap": "var(--jx-space-3)",
-      "padding": "var(--jx-space-5)",
-      "textAlign": "center",
-      "color": "var(--fg-dim)",
-      "fontSize": "var(--jx-text-md)"
-    },
-    "& [part=\"empty-message\"], & [part=\"empty-detail\"]": {
-      "margin": "0",
-      "maxWidth": "28ch",
-      "lineHeight": "1.5"
-    },
-    "& [part=\"empty-detail\"]": {
-      "fontSize": "var(--jx-text-sm)",
-      "opacity": "0.8"
     },
     "@(forced-colors: active)": {
       "& [part=\"row\"][aria-current=\"true\"]": {
@@ -125,193 +94,91 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "tab-slot",
-        "role": "none"
+        "part": "list",
+        "data-tab": "elements"
       },
-      "style": {
-        "display": "contents"
-      },
-      "$switch": {
-        "$ref": "#/state/tab"
-      },
-      "cases": {
-        "elements": {
-          "tagName": "div",
-          "attributes": {
-            "part": "list",
-            "data-tab": "elements"
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/rows"
           },
-          "children": [
-            {
-              "$prototype": "Array",
-              "items": {
-                "$ref": "#/state/rows"
-              },
-              "key": {
-                "$ref": "$map/item/key"
-              },
-              "map": {
-                "tagName": "button",
-                "attributes": {
-                  "part": "row",
-                  "type": "button",
-                  "data-path": "${$map.item.key}",
-                  "data-kind": "${$map.item.kind}",
-                  "aria-current": "${$map.item.selected ? 'true' : null}"
-                },
-                "style": {
-                  "--row-indent": {
-                    "$ref": "$map/item/indent"
-                  }
-                },
-                "onclick": {
-                  "$prototype": "Function",
-                  "body": [
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "button",
+            "attributes": {
+              "part": "row",
+              "type": "button",
+              "data-path": "${$map.item.key}",
+              "data-kind": "${$map.item.kind}",
+              "aria-current": "${$map.item.selected ? 'true' : null}"
+            },
+            "style": {
+              "--row-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "onclick": {
+              "$prototype": "Function",
+              "body": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/selectRow"
+                  },
+                  "value": [
                     {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/selectRow"
-                      },
-                      "value": [
-                        {
-                          "$ref": "$map/item/key"
-                        }
-                      ]
+                      "$ref": "$map/item/key"
                     }
                   ]
-                },
-                "children": [
-                  {
-                    "tagName": "span",
-                    "attributes": {
-                      "part": "badge",
-                      "data-kind": "${$map.item.kind}"
-                    },
-                    "textContent": "${$map.item.tag}"
-                  },
-                  {
-                    "tagName": "span",
-                    "attributes": {
-                      "part": "label"
-                    },
-                    "textContent": "${$map.item.label}"
-                  },
-                  {
-                    "tagName": "span",
-                    "attributes": {
-                      "part": "dot-slot",
-                      "role": "none"
-                    },
-                    "style": {
-                      "display": "contents"
-                    },
-                    "$switch": {
-                      "$ref": "$map/item/customized"
-                    },
-                    "cases": {
-                      "true": {
-                        "tagName": "jx-dot",
-                        "attributes": {
-                          "part": "dot",
-                          "role": "img",
-                          "aria-label": "Styled in this file"
-                        }
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        "variables": {
-          "tagName": "div",
-          "attributes": {
-            "part": "variables-slot",
-            "role": "none"
-          },
-          "style": {
-            "display": "contents"
-          },
-          "$switch": {
-            "$ref": "#/state/hasVariables"
-          },
-          "cases": {
-            "true": {
-              "tagName": "ul",
-              "attributes": {
-                "part": "list",
-                "data-tab": "variables"
-              },
-              "children": [
-                {
-                  "$prototype": "Array",
-                  "items": {
-                    "$ref": "#/state/variables"
-                  },
-                  "key": {
-                    "$ref": "$map/item/key"
-                  },
-                  "map": {
-                    "tagName": "li",
-                    "attributes": {
-                      "part": "row",
-                      "data-kind": "variable",
-                      "data-path": "${$map.item.name}"
-                    },
-                    "children": [
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "badge",
-                          "data-kind": "variable"
-                        },
-                        "textContent": "var"
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "label"
-                        },
-                        "textContent": "${$map.item.name}"
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "value"
-                        },
-                        "textContent": "${$map.item.value}"
-                      }
-                    ]
-                  }
                 }
               ]
             },
-            "false": {
-              "tagName": "div",
-              "attributes": {
-                "part": "empty"
-              },
-              "children": [
-                {
-                  "tagName": "p",
-                  "attributes": {
-                    "part": "empty-message"
-                  },
-                  "textContent": "No variables defined."
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "badge",
+                  "data-kind": "${$map.item.kind}"
                 },
-                {
-                  "tagName": "p",
-                  "attributes": {
-                    "part": "empty-detail"
-                  },
-                  "textContent": "A custom property declared on this file's own style block is listed here."
+                "textContent": "${$map.item.tag}"
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "label"
+                },
+                "textContent": "${$map.item.label}"
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "dot-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/customized"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "jx-dot",
+                    "attributes": {
+                      "part": "dot",
+                      "role": "img",
+                      "aria-label": "Styled in this file"
+                    }
+                  }
                 }
-              ]
-            }
+              }
+            ]
           }
         }
-      }
+      ]
     }
   ]
 }

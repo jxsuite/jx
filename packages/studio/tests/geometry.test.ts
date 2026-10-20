@@ -1,5 +1,6 @@
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { toPosixPath } from "../scripts/lib/posix-path";
@@ -33,7 +34,7 @@ describe("geometry funnel helpers", () => {
       asked.push([x, y]);
       return [marker];
     };
-    expect(elementsAtPoint(10, 20, root)).toEqual([marker]);
+    expect(identities(elementsAtPoint(10, 20, root))).toEqual(identities([marker]));
     expect(asked).toEqual([[10, 20]]);
   });
 

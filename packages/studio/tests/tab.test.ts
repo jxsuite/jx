@@ -20,7 +20,9 @@ describe("Tab primitive", () => {
     expect(tab.doc.mode).toBe("component");
     expect(tab.doc.dirty).toBe(false);
     expect(tab.session.selection).toEqual([]);
-    expect(tab.session.ui.rightTab).toBe("properties");
+    // A fresh document opens on the Inspector's Page tab, and remembers Content as its Element view.
+    expect(tab.session.ui.rightTab).toBe("page");
+    expect(tab.session.ui.elementTab).toBe("properties");
     expect(tab.history.index).toBe(0);
     expect(tab.history.snapshots).toHaveLength(1);
 

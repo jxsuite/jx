@@ -50,7 +50,8 @@ void mock.module("../src/commands/active-registry", () => ({
   activeRegistry: () => ({ run: runMock }),
 }));
 
-const { bindStyleHost, resetSelectorMenu } = await import("../src/panels/style-panel");
+const { VARIABLES_INSPECTOR_MESSAGE, bindStyleHost, resetSelectorMenu } =
+  await import("../src/panels/style-panel");
 const { mountStylePanelSurface } = await import("../src/surfaces/style-panel");
 const { openSelectorMenu } = await import("../src/surfaces/target-line");
 const { initCssData } = await import("../src/panels/style-utils");
@@ -301,6 +302,16 @@ describe("the tab's teaching states", () => {
       "Open a page to style what you click.",
     );
   });
+
+  test("beside the Variables view → says where the work is, never 'click the canvas'", async () => {
+    setupTab({});
+    // Even with a tag chosen in Elements a moment ago: the Variables view has no element to style.
+    shell.stylebook.selection = "h1";
+    const c = await renderPanel("tokens");
+    const message = c.querySelector('[part="empty-message"]')?.textContent ?? "";
+    expect(message).toBe(VARIABLES_INSPECTOR_MESSAGE);
+    expect(message).not.toContain("canvas");
+  });
 });
 
 // ─── Stylebook mode ──────────────────────────────────────────────────────────
@@ -319,6 +330,28 @@ describe("stylebook mode", () => {
     expect(r).not.toBeNull();
     expect(chip(c, "textAlign")?.dataset.state).toBe("inherited");
     expect(chip(c, "textAlign")?.textContent).toContain("from site tokens");
+  });
+
+  test("an unset inherited property shows what the tag inherits from body and its ancestor tags", async () => {
+    // Font Family on `h1` read "depends on user agent" (the CSS initial value) while the specimen
+    // Was drawn in the project's body font.
+    const tab = setupTab({});
+    tab.doc.document.style = {
+      color: "black",
+      fontFamily: "var(--font-body)",
+      margin: "0",
+      table: { color: "navy", th: { fontWeight: "700" } },
+    };
+    shell.stylebook.selection = "table th";
+    tab.session.ui.activeSelector = "table th";
+    const c = await renderPanel("stylebook");
+    expect(chip(c, "fontFamily")?.dataset.state).toBe("inherited");
+    expect(chip(c, "fontFamily")?.textContent).toContain("from body");
+    expect(input(row(c, "fontFamily"))?.getAttribute("placeholder")).toBe("var(--font-body)");
+    // The nearest donor wins: `table` sets a colour, so `th` inherits that one.
+    expect(chip(c, "color")?.textContent).toContain("from table");
+    // A property CSS does not inherit is not offered as inherited.
+    expect(chip(c, "margin")?.dataset.state ?? "default").not.toBe("inherited");
   });
 
   test("the selector menu offers the TAG's states, and choosing one writes under the tag", async () => {
@@ -343,6 +376,17 @@ describe("stylebook mode", () => {
     click(listRow(await selectorRows(), "__base__"));
     await settle();
     expect(tab.session.ui.activeSelector).toBe("a");
+  });
+
+  test("a tag chosen before the selection is parked still opens its editor", async () => {
+    // The Styles workspace opens project.json with nothing selected; the tag editor edits the
+    // Document root, so an unparked selection means the root rather than a thrown rebuild.
+    const tab = setupTab({});
+    tab.session.selection = [];
+    shell.stylebook.selection = "h1";
+    const c = await renderPanel("stylebook");
+    expect(c.querySelector('[part="empty-message"]')).toBeNull();
+    expect(scopeChip(c)?.textContent).toContain("all <h1> in this document");
   });
 
   test("a layout's stylebook rule is project-wide, and the band says how wide", async () => {

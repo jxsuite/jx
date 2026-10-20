@@ -24,11 +24,9 @@ You should now see your project open on the canvas.
 
 ## 2. Create the component
 
-1. Press :kbd[⌘⇧E] to open **The Library**.
-2. Click **New** and choose **Component**.
-3. Type `counter-card` and confirm.
-
-![The Library open in a Studio pane, listing a project's pages and components as cards with live previews](../images/mode-manage.png)
+1. Press :kbd[⌘N] to open **Add new** (in a browser, :kbd[⌘⌥N]), or click the **+** at the top of the Site panel.
+2. Choose **Component**.
+3. Type `counter-card` and click **Create component**.
 
 Studio writes `components/counter-card.json` and opens it in a new tab, an empty canvas ready to fill. (When to reach for a component versus a page or layout is covered in **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components)**.)
 
@@ -55,7 +53,7 @@ You should now see a button labeled **Add one** with an empty paragraph after it
 
 The component needs somewhere to keep its number. That's a state entry:
 
-1. Press :kbd[⌘6] for the **Data** panel.
+1. Click **Data** in the **Document** group of the Navigator rail to open the **Data** panel.
 2. Click the **+ Add…** picker at the bottom of the panel and choose **Value**. The new entry appears with a placeholder name and its editor open.
 3. Rename it first: type `count` into the **Name** field and press :kbd[Enter].
 4. Set **Type** to `integer`, then type `0` into **Default**. A new entry starts with an empty default, and an empty string is not something you can add one to.
@@ -79,7 +77,7 @@ The chip takes on the accent color: this value is produced from something else n
 
 ## 7. Make the button count
 
-1. Select the button and open the Inspector's **Logic** tab, either by clicking it or by pressing :kbd[⌘⇧3]. Logic is where an element's behavior lives: its events, and the condition or repeating-list settings when it has them.
+1. Select the button and open the Inspector's **Logic** tab, either by clicking it or by pressing :kbd[⌘⇧4]. Logic is where an element's behavior lives: its events, and the condition or repeating-list settings when it has them.
 2. In the **Events** section, click **Add Event**. A binding appears on `onclick`, and since the file has no functions yet it starts as an inline handler.
 3. The picker beside the event name chooses how the binding responds. Set it to **Expression**, the mode for one-step reactions. (**Inline code** and **Existing function** are the other two.)
 4. In the formula editor, set the **Operator** to `+=`. The **Target** row becomes a signal picker, so choose `count`. In the **Value** row, leave the source on **Fixed value**, change its type from `null` to `num`, and enter `1`.
@@ -98,7 +96,7 @@ You should see the number climb with every click. That's the whole reactive loop
 
 ## 9. Watch the value resolve
 
-Click **Data** in the **Document** group of the Navigator rail, or press :kbd[⌘6]. It lists the same entries as the Data panel, but with what each one is worth _right now_, so your `count` row shows the current number. Stay in Preview, click **Add one**, and watch the row change; **Refresh** re-renders the canvas and reads the values again.
+Click **Data** in the **Document** group of the Navigator rail, or run **Show Data** from :kbd[⌘K]. It lists the same entries as the Data panel, but with what each one is worth _right now_, so your `count` row shows the current number. Stay in Preview, click **Add one**, and watch the row change; **Refresh** re-renders the canvas and reads the values again.
 
 ![The Data panel with the count entry showing its live value](../images/counter-data-explorer.png)
 
@@ -121,7 +119,7 @@ Test values are a preview lens only, and are never saved into the component. Pro
 
 The document's tab shows a **●** dot for unsaved changes. Press :kbd[⌘S] (macOS) or :kbd[Ctrl+S] (Windows/Linux), or click **Save** in the Command Bar, and the dot goes away.
 
-You should see the dot disappear. When you're ready to publish, **Source Control** takes it from here. See **[Source control](/docs/studio/publish/source-control)**.
+You should see the dot disappear. When you're ready to publish, the **Publish** workspace takes it from here. See **[Source control](/docs/studio/publish/source-control)**.
 
 ## What you built
 

@@ -18,7 +18,7 @@ import { mountSignalsPanel } from "../src/panels/signals-panel";
 import { registerPanel, resetPanels } from "../src/panels/panel-registry";
 import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
 import { view } from "../src/view";
-import { shell } from "../src/shell";
+import { NAVIGATOR_PANEL_IDS, migratePanelId, shell } from "../src/shell";
 
 /** The shell's Navigator cell, which `initShellRefs()` found in `beforeEach`. */
 function navigatorHost(): HTMLElement {
@@ -32,7 +32,6 @@ function makeCtx(overrides: Partial<NavigatorPanelDeps> = {}): NavigatorPanelDep
      `webdata.elements` alone: category name to `{ tag }[]`, the shape the bundled file has. */
   const webdata = { elements: { Text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"];
   return {
-    cloneRepository: mock(() => {}),
     defaultDef: (tag: string) => ({ tagName: tag }),
     defBadgeLabel: () => "badge",
     defCategory: () => "cat",
@@ -49,7 +48,6 @@ function makeCtx(overrides: Partial<NavigatorPanelDeps> = {}): NavigatorPanelDep
     // Navigator hands it reaches the drawn rows.
     mountSignalsPanel,
     setCanvasMode: mock(() => {}),
-    setGitDiffState: mock(() => {}),
     webdata,
     ...overrides,
   };
@@ -102,6 +100,28 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("left panel — the shared scroller", () => {
+  test("a different panel opens at its top; a repaint of the same one keeps its place", async () => {
+    shell.leftTab = "layers";
+    await mountWith();
+    const scroller = navigatorHost();
+    scroller.scrollTop = 480;
+    render();
+    await flush(3);
+    // The same panel repainted: the reader's place is theirs.
+    expect(scroller.scrollTop).toBe(480);
+    shell.leftTab = "files";
+    resetStudioState({ dirs: new Map([[".", []]]), searchQuery: "" });
+    render();
+    await Promise.resolve();
+    /* Not yet: the reset waits for the frame, so it does not lay out the panel the dock is still
+       building (a forced style recalculation on every panel switch). */
+    expect(scroller.scrollTop).toBe(480);
+    await flush(4);
+    expect(scroller.scrollTop).toBe(0);
+  });
+});
+
 describe("left panel — project-level tabs", () => {
   /* Files is a Jx document too (`surfaces/files-panel.json`), mounted by the record's own
      `afterRender` — so there is no injected `renderFilesTemplate` left to capture and no DnD pass
@@ -119,70 +139,11 @@ describe("left panel — project-level tabs", () => {
     expect(body?.querySelector('[part="content"] [part="files"]')).not.toBeNull();
   });
 
-  /* Source Control is a Jx document (`surfaces/git-panel.json`) mounted by the record's own
-     `afterRender`, so the panel is no longer drawn through `deps.renderGitPanel` and there is no
-     `#git-rendered` to find. What the Navigator still owes it is the HOST: the `[part="panel-body"]`
-     carrying its region, and the `[part="content"]` box the document goes into. */
-  function seedRepo() {
-    shell.git.branches = { branches: ["main"], current: "main" };
-    shell.git.status = {
-      ahead: 0,
-      behind: 0,
-      branch: "main",
-      files: [],
-      isRepo: true,
-      remotes: ["origin"],
-    };
-  }
-
-  test("git tab mounts the Source Control document", async () => {
-    seedRepo();
-    shell.leftTab = "git";
-    await mountWith();
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="git-panel"]')).not.toBeNull();
-    /* And the box it went into is the one the Navigator's own document drew, addressable as this
-       panel's region — which is the seam, and the thing a stale selector used to photograph. */
-    expect(
-      navigatorHost().querySelector<HTMLElement>('[part="panel-body"]')?.dataset.jxRegion,
-    ).toBe("navigator/panel:git");
-    // The header reads the record's title; "Source" is the rail button's label and only that.
-    expect(navigatorHost().querySelector('[part="header-title"]')?.textContent.trim()).toBe(
-      "Source Control",
-    );
-  });
-
-  test("git tab renders with no active tab — Source Control is project level", async () => {
-    seedRepo();
-    closeAllTabs();
-    shell.leftTab = "git";
-    await mountWith();
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="git-panel"]')).not.toBeNull();
-  });
-
-  test("project-level source-control changes reach the panel with no tab open", async () => {
-    /* The panel used to be repainted by hand from inside git-panel (`renderOnly("leftPanel")` after
-       every write), and then by the Navigator's own repaint. Both are gone: the mounted document
-       owns an effect over the same `shell.git` fields, so the sub-tab moving is enough. */
-    seedRepo();
-    closeAllTabs();
-    shell.leftTab = "git";
-    await mountWith();
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="commit"]')).not.toBeNull();
-
-    shell.git.subTab = "history";
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="commit"]')).toBeNull();
-    expect(navigatorHost().querySelector('[part="history"]')).not.toBeNull();
-
-    shell.git.logEntries = [
-      { author: "a", date: "2024-01-01T00:00:00Z", hash: "abc", message: "m" },
-    ];
-    await flush(4);
-    expect(navigatorHost().querySelector('[part="history-entry"]')).not.toBeNull();
-    shell.git.subTab = "changes";
+  /* Source Control is not a Navigator panel any more: it is the Publish workspace (§5.5, §22.8),
+     so a stored `git` lands on the Site panel rather than on nothing. */
+  test("a stored git panel id reopens the Navigator on the Site panel", () => {
+    expect(NAVIGATOR_PANEL_IDS).not.toContain("git");
+    expect(migratePanelId("git")).toBe("site");
   });
 
   test("insert panel renders the elements palette and registers DnD", async () => {
@@ -227,6 +188,16 @@ describe("left panel — document tabs", () => {
     expect(navigatorHost().querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
     expect(navigatorHost().querySelector('[part="outline"]')).toBeNull();
     expect(ctx.registerLayersDnD).not.toHaveBeenCalled();
+  });
+
+  test("the Variables view's mode draws the tree: its properties are the Styles panel's", async () => {
+    // Only a document's Elements view lists the catalogue; the custom properties are listed by the
+    // Styles workspace's own Navigator panel, beside their groups and swatches.
+    activeTab.value!.doc.document.style = { "--accent": "#2448c9" };
+    await mountWith({ getCanvasMode: () => "tokens" });
+    await flush(4);
+    expect(navigatorHost().querySelector('[part="outline"]')).not.toBeNull();
+    expect(navigatorHost().querySelector('[data-kind="variable"]')).toBeNull();
   });
 
   test("the packages tab routes to the Packages panel, which mounts its own document", async () => {
@@ -308,7 +279,8 @@ describe("left panel — document tabs", () => {
   test("every document tab has its own no-document sentence", async () => {
     closeAllTabs();
     const seen = new Set<string>();
-    for (const tabName of ["layers", "packages", "data", "page"]) {
+    // Page is the Inspector's tab now (§6), so the Navigator's document panels are these three.
+    for (const tabName of ["layers", "packages", "data"]) {
       shell.leftTab = tabName;
       await mountWith();
       const message = navigatorHost().querySelector('[part="empty-message"]')?.textContent ?? "";
@@ -316,7 +288,7 @@ describe("left panel — document tabs", () => {
       seen.add(message);
       unmount();
     }
-    expect(seen.size).toBe(4);
+    expect(seen.size).toBe(3);
   });
 });
 

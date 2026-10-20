@@ -21,8 +21,12 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { projectState } from "../store";
 import { updateSiteConfig } from "../site-context";
 import { activeRegistry } from "../commands/active-registry";
+import { runActiveReported } from "../commands/run-reported";
+import { closeSettingsDialog } from "./settings-dialog";
 import { getPlatform } from "../platform";
 import { mountOverviewSurface } from "../surfaces/settings-overview";
+import { previewAssetSrcFor } from "../canvas/asset-refs";
+import { PROJECT_CONFIG_PATH } from "../tabs/tab";
 
 import type {
   OverviewActions,
@@ -90,6 +94,65 @@ function headWithDescription(head: JxHeadEntry[], text: string): JxHeadEntry[] {
   );
 }
 
+// ─── Favicon ($head link) ───────────────────────────────────────────────────
+
+/**
+ * True for a `<link>` whose `rel` names the `icon` relation.
+ *
+ * `rel` is a set of space-separated, ASCII case-insensitive tokens (HTML Standard, link types), so
+ * the legacy `rel="shortcut icon"` every favicon snippet still carries is the same relation as
+ * `rel="icon"`. `apple-touch-icon` is a different token and is not the favicon.
+ */
+function isIconLink(entry: JxHeadEntry): boolean {
+  const rel = entry.attributes?.rel;
+  return (
+    entry.tagName === "link" &&
+    isString(rel) &&
+    rel
+      .toLowerCase()
+      .split(/\s+/u)
+      .some((token) => token === "icon")
+  );
+}
+
+/**
+ * The site favicon. Like the description it is not a top-level `project.json` key (the composed
+ * schema is closed, and no compiler stage reads one): it is the `<link rel="icon">` in `$head`,
+ * which is what every starter and `@jxsuite/create` write and what the browser reads
+ * (`site-architecture.md` §2).
+ */
+function readFavicon(cfg: ProjectConfig): string {
+  const href = (cfg.$head ?? []).find((e) => isIconLink(e))?.attributes?.href;
+  return isString(href) ? href : "";
+}
+
+/**
+ * `$head` with the icon link pointing at `href`.
+ *
+ * The existing link is rewritten in place, so its position among the head entries and any other
+ * attribute an author gave it (`sizes`, a media query) survive. `type` is the one attribute that is
+ * dropped: it describes the file being replaced, and a new upload may be a different format.
+ */
+function headWithFavicon(head: JxHeadEntry[], href: string): JxHeadEntry[] {
+  if (!head.some((e) => isIconLink(e))) {
+    return [...head, { attributes: { href, rel: "icon" }, tagName: "link" }];
+  }
+  return head.map((entry) => {
+    if (!isIconLink(entry)) {
+      return entry;
+    }
+    const { type: _type, ...attributes } = entry.attributes ?? {};
+    return { ...entry, attributes: { ...attributes, href } };
+  });
+}
+
+/** The file name an uploaded favicon is stored under: `favicon` plus the upload's own extension. */
+function faviconFileName(file: File): string {
+  const dot = file.name.lastIndexOf(".");
+  const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : "";
+  return /^[a-z0-9]+$/u.test(ext) ? `favicon.${ext}` : "favicon.ico";
+}
+
 /**
  * The patch that _removes_ `url`. `undefined` survives the object spread inside `updateSiteConfig`
  * and `JSON.stringify` then drops the key, so clearing the field clears the setting instead of
@@ -100,31 +163,36 @@ function headWithDescription(head: JxHeadEntry[], text: string): JxHeadEntry[] {
  */
 const CLEAR_URL: ProjectConfigPatch = { url: undefined };
 
+/** The record the Global Styles button is drawn from: **Go to Styles**, the workspace's ⌘4. */
+const STYLES_COMMAND = "workspace.focus.styles";
+
 // ─── Projection ──────────────────────────────────────────────────────────────
 
 /**
  * What the surface should be showing, from the configuration and the registry as they stand now.
  *
- * The Project Styles button is rendered FROM the `styles.open` record, so it is disabled rather
- * than absent when it cannot act (`studio-ui-guidelines.md` §12.3) and it cannot drift from the
- * palette row or the gear menu. The record's TITLE, and nothing else off the registry:
+ * The Global Styles button is rendered FROM the `workspace.focus.styles` record (**Go to Styles**,
+ * ⌘4), whose run is `view.setWorkspace { workspace: "styles" }`, so it is disabled rather than
+ * absent when it cannot act (`studio-ui-guidelines.md` §12.3) and it cannot drift from the palette
+ * row or the switcher's tab. The record's TITLE, and nothing else off the registry:
  * `disabledReason` would be the `studio-ui-guidelines.md` §12.3 shape for a control that can be
- * inapplicable, but this one cannot be — `styles.open` is gated on `ctx.project.open` and Overview
- * is a section of the project's own configuration document, so by the time this renders the answer
- * is always yes. Asking anyway would also be a FOCUS read inside a function that was handed a
- * container, which is what `scripts/check-pane-singletons.ts` rule 4 forbids: a pane-scoped surface
- * must not report the focused pane's state. A project-level verb happens to read the same in every
- * pane, but the way to be right about that is not to ask. The one thing that can genuinely be
- * missing is the registry itself (bootstrap order, a test), and that is an existence check, not a
- * state read.
+ * inapplicable, but this one cannot be — the switch is gated on `ctx.project.open` and Overview is
+ * a section of the project's own configuration, so by the time this renders the answer is always
+ * yes. Asking anyway would also be a FOCUS read inside a function that was handed a container,
+ * which is what `scripts/check-pane-singletons.ts` rule 4 forbids: a pane-scoped surface must not
+ * report the focused pane's state. A project-level verb happens to read the same in every pane, but
+ * the way to be right about that is not to ask. The one thing that can genuinely be missing is the
+ * registry itself (bootstrap order, a test), and that is an existence check, not a state read.
  */
 function values(container: HTMLElement): OverviewValues {
   const cfg = config();
-  const command = activeRegistry()?.get("styles.open");
+  const command = activeRegistry()?.get(STYLES_COMMAND);
   return {
     description: readDescription(cfg),
     error: errors.get(container) ?? null,
-    favicon: isString(cfg.favicon) ? cfg.favicon : "",
+    favicon: readFavicon(cfg),
+    // `project.json` authored it, whatever tab is in front: the section is project-level.
+    faviconSrc: previewAssetSrcFor(readFavicon(cfg), PROJECT_CONFIG_PATH),
     name: cfg.name ?? "",
     stylesDisabled: command === undefined,
     stylesTitle: command?.title ?? "",
@@ -178,29 +246,31 @@ function actions(container: HTMLElement): OverviewActions {
       if (!file) {
         return;
       }
+      // `public/` is copied to the site root verbatim, so `public/favicon.svg` is `/favicon.svg`.
+      const name = faviconFileName(file);
       try {
-        await getPlatform().uploadFile("public/favicon.ico", file);
+        await getPlatform().uploadFile(`public/${name}`, file);
       } catch (error) {
         reject("favicon", `Could not upload the favicon — ${errorMessage(error)}`);
         return;
       }
-      await persist({ favicon: "/favicon.ico" }, "favicon");
+      await persist({ $head: headWithFavicon(config().$head ?? [], `/${name}`) }, "favicon");
     });
     input.click();
   };
 
   return {
     /*
-     * Project Styles is the SAME document in a different editor, and `styles.open` is the one place
-     * that says so. This used to write `session.ui.canvasMode` here directly — a second
+     * Global styles are the Styles workspace's, and the workspace switch is the one place that
+     * says how to get there. This used to write `session.ui.canvasMode` here directly — a second
      * implementation of a capability, `studio-ui-guidelines.md` §12.5's defect in miniature: the
      * button and the command could disagree about what "open Project Styles" means, and only one of
-     * them was reachable by name. The mode is still a fact about the TAB, and there is exactly one
-     * `project.json` tab, so `revealTab`'s `focusPane` puts the keyboard on whichever pane holds
-     * it.
+     * them was reachable by name. Overview is drawn in the settings dialog, so the dialog closes
+     * first: left up, it would cover the workspace the reader just asked for.
      */
     openStyles: () => {
-      void activeRegistry()?.run("styles.open");
+      closeSettingsDialog();
+      void runActiveReported("view.setWorkspace", { workspace: "styles" }, "Settings");
     },
     setDescription: (value: string) => {
       echo({ description: value });

@@ -24,3 +24,19 @@ export function setPreviewNavigateHandler(next: PreviewNavigateHandler | null): 
 export function getPreviewNavigateHandler(): PreviewNavigateHandler | null {
   return handler;
 }
+
+/**
+ * Hand a URL to the user's real browser.
+ *
+ * Reuses the seam the desktop launchers already register for Preview link clicks, which routes
+ * through the OS rather than navigating a webview with no address bar; the browser build falls back
+ * to a new tab. One function, because Open in Browser and the Publish workspace's Visit site and
+ * deployment links all mean the same thing by "open this outside Studio".
+ */
+export function openUrlExternally(url: string): void {
+  if (handler) {
+    handler(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}

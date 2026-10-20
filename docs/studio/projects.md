@@ -15,16 +15,16 @@ A Jx project is a folder on your computer. No hosted service holds your work and
 
 Studio and the folder are two views of the same thing. Each area of your project maps to a subfolder:
 
-| On disk        | What it holds                                  | In Studio                                                |
-| -------------- | ---------------------------------------------- | -------------------------------------------------------- |
-| `pages/`       | One file per page of your site                 | **Pages** in the [Library](/docs/studio/projects/browse) |
-| `layouts/`     | Shared page shells: headers, footers, wrappers | **Layouts**                                              |
-| `components/`  | Reusable building blocks                       | **Components**                                           |
-| `content/`     | Posts, entries, and other collection content   | **Content**                                              |
-| `public/`      | Images, video, fonts, and other media          | **Media** (see [Media](/docs/studio/projects/media))     |
-| `project.json` | The site's settings: name, URL, design tokens  | Project settings                                         |
+| On disk        | What it holds                                  | In Studio                                                          |
+| -------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
+| `pages/`       | One file per page of your site                 | **Pages** in the [Content workspace](/docs/studio/projects/browse) |
+| `layouts/`     | Shared page shells: headers, footers, wrappers | **Layouts**                                                        |
+| `components/`  | Reusable building blocks                       | **Components**                                                     |
+| `content/`     | Posts, entries, and other collection content   | **Content**                                                        |
+| `public/`      | Images, video, fonts, and other media          | **Media** (see [Media](/docs/studio/projects/media))               |
+| `project.json` | The site's settings: name, URL, design tokens  | Project settings                                                   |
 
-Two more folders exist when a project needs them: `data/` holds project data files (the Library lists them under **Content**) and `styles/` holds stylesheets (listed under **Components**).
+Two more folders exist when a project needs them: `data/` holds project data files and `styles/` holds stylesheets. Both are in the Files panel (turn on **Show developer panels** in Preferences › Appearance to keep it on the rail).
 
 What each kind of file is for, and when to reach for which, is covered in **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components)**. The full folder anatomy is documented in **[Site architecture](/docs/framework/site)**.
 
@@ -43,5 +43,5 @@ Because a project is just a folder, "moving to Jx" or "leaving Jx" is copying fi
 ## Next
 
 - **[Create a project](/docs/studio/projects/create)**: the New Project modal, field by field
-- **[The Library](/docs/studio/projects/browse)**: the whole project in one tab, with live previews
+- **[The Content workspace](/docs/studio/projects/browse)**: your pages and every collection, with live previews
 - **[Publish](/docs/studio/publish)**: commit your project and put it live

@@ -76,7 +76,24 @@ export function mount(deps: NavigatorPanelDeps) {
     { panels: [panelView()] },
     {
       onContent: (panelId, host) => {
+        const switched = _content !== null && _content.panelId !== panelId;
         _content = { host, panelId };
+        /* `#left-panel` is the ONE scroller every panel draws in (the dock's root is `display:
+           contents`), so its offset outlived the panel it belonged to: scrolled down to the Site
+           panel's Components, a click on Outline opened the Outline that far down. A different
+           panel is a different list, and it opens at its top. A repaint of the same panel keeps
+           its place, because the box is keyed on the panel and is not announced again.
+           In the next FRAME, not here: this runs while the dock is still building the new panel,
+           and a scroll write lays out the half-built document to clamp the offset (a forced
+           recalculation on every Navigator panel switch in the perf trace). The frame lays it out
+           anyway, and resets the offset before anything is painted. */
+        if (switched) {
+          requestAnimationFrame(() => {
+            if (_content?.host === host) {
+              requireShellRef(leftPanel, "left-panel").scrollTop = 0;
+            }
+          });
+        }
         /* A MICROTASK, not this call. `onNodeCreated` fires the moment the element is CONSTRUCTED
            and the runtime applies its attributes on the next line, so a panel's `afterRender` run
            from here would be handed a content box with no `part` on it — and several panels find
@@ -93,20 +110,17 @@ export function mount(deps: NavigatorPanelDeps) {
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
-      // Shell state is tracked with no tab open — which panel is showing, and the project-level
-      // State the project-level panels draw from. A document-less rail tab still repaints.
+      // Shell state is tracked with no tab open: which panel is showing. A document-less rail tab
+      // Still repaints.
       void shell.leftTab;
-      void shell.settingsTab;
-      void shell.git.status;
-      void shell.git.loading;
-      void shell.git.error;
-      void shell.git.subTab;
-      void shell.git.logEntries;
       const tab = activeTab.value;
       if (tab) {
         // Track properties the Navigator's panels read
         void tab.doc.document;
         void tab.doc.mode;
+        // The editor too: the Outline draws the element catalogue beside a document's Elements
+        // View, and the tree beside every other.
+        void tab.session.ui.canvasMode;
         // The whole SET, joined — a bare property read would not re-trigger when the selection
         // Changes WITHIN the array, and §6.7's helpers always replace it but nothing enforces that.
         void tab.session.selection.map((path) => path.join("/")).join("|");

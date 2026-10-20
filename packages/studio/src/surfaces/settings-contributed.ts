@@ -41,7 +41,7 @@ export interface ContributedEntryView {
   /** The key in the section's map on disk — the row's identity and its `data-entry`. */
   key: string;
   selected: boolean;
-  /** `pane.primary/entry:<key>`, so a shot can name the row without a selector. */
+  /** `overlay.dialog:settings/entry:<key>`, so a shot can name the row without a selector. */
   region: string;
 }
 
@@ -61,8 +61,16 @@ export interface ContributedView {
   editorState: "empty" | "editing";
   /** What the rename field holds — the key on disk, or what the reader has just typed. */
   entryName: string;
-  /** `pane.primary/editor`. */
+  /** `overlay.dialog:settings/editor`. */
   editorRegion: string;
+  /** The new-entry button: "New content type", or "New entry" when the section names none. */
+  newLabel: string;
+  /** The new-entry field's accessible label. */
+  newFieldLabel: string;
+  /** The new-entry field's placeholder, a slug of the noun. */
+  newPlaceholder: string;
+  /** What the right column says while nothing is selected. */
+  emptyText: string;
 }
 
 /** What the reader may do here. Each one is a decision the section makes. */
@@ -116,6 +124,10 @@ function emptyView(): ContributedView {
     newName: "",
     newState: "closed",
     title: "",
+    emptyText: "",
+    newFieldLabel: "",
+    newLabel: "",
+    newPlaceholder: "",
   };
 }
 
@@ -199,6 +211,10 @@ export function mountContributedSurface(
       scope.newName = view.newName;
       scope.newState = view.newState;
       scope.title = view.title;
+      scope.emptyText = view.emptyText;
+      scope.newFieldLabel = view.newFieldLabel;
+      scope.newLabel = view.newLabel;
+      scope.newPlaceholder = view.newPlaceholder;
     },
   };
 }

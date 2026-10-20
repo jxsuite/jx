@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { handleStudioApi } from "../src/studio-api";
 import { join, resolve } from "node:path";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import type { JsonObject } from "@jxsuite/schema/types";
 
@@ -75,6 +75,20 @@ describe("git/status — isRepo and remotes fields", () => {
     const res = await studioGitReq("/__studio/git/status");
     const data = await res.json();
     expect(data.isRepo).toBe(true);
+  });
+
+  test("lists an untracked folder file by file, not as the folder", async () => {
+    mkdirSync(join(GIT_FIXTURE, "fresh", "deep"), { recursive: true });
+    writeFileSync(join(GIT_FIXTURE, "fresh", "a.txt"), "a");
+    writeFileSync(join(GIT_FIXTURE, "fresh", "deep", "b.txt"), "b");
+    const res = await studioGitReq("/__studio/git/status");
+    // SAFETY: the status route answers GitStatusResult, whose `files` rows each carry a `path`.
+    const data = (await res.json()) as { files: { path: string }[] };
+    expect(data.files.map((file) => file.path).toSorted()).toEqual([
+      "fresh/a.txt",
+      "fresh/deep/b.txt",
+    ]);
+    rmSync(join(GIT_FIXTURE, "fresh"), { force: true, recursive: true });
   });
 
   test("returns remotes as empty array when no remotes configured", async () => {
@@ -298,5 +312,56 @@ describe("git/push — setUpstream option", () => {
     const req = new Request(urlStr, { method: "POST" });
     const res = await handleStudioApi(req, new URL(urlStr), PUSH_FIXTURE);
     expect(res?.status).toBe(200);
+  });
+});
+
+// ── the project a git route acts on ───────────────────────────────────────────
+
+describe("git routes act on the project the request names", () => {
+  /* One dev server serves every Studio tab, and its active project is whichever was activated
+     last. A request that names its project with `?dir=` acts there, never in the active one. */
+  const PARENT = resolve("/tmp", `_jx_git_dir_fixture_${process.pid}`);
+  const MINE = join(PARENT, "mine");
+  const THEIRS = join(PARENT, "theirs");
+
+  beforeAll(() => {
+    rmSync(PARENT, { force: true, recursive: true });
+    mkdirSync(MINE, { recursive: true });
+    mkdirSync(THEIRS, { recursive: true });
+  });
+
+  afterAll(() => {
+    rmSync(PARENT, { force: true, recursive: true });
+  });
+
+  async function named(path: string, dir: string, method = "GET") {
+    const urlStr = `http://localhost${path}?dir=${encodeURIComponent(dir)}`;
+    const res = await handleStudioApi(
+      new Request(urlStr, { method }),
+      new URL(urlStr),
+      PARENT,
+      THEIRS,
+    );
+    if (!res) {
+      throw new Error(`No response for ${path}`);
+    }
+    return res;
+  }
+
+  test("init runs in the named project, not the server's active one", async () => {
+    const init = await named("/__studio/git/init", "mine", "POST");
+    expect(init.status).toBe(200);
+    expect(existsSync(join(MINE, ".git"))).toBe(true);
+    expect(existsSync(join(THEIRS, ".git"))).toBe(false);
+    const mine = await named("/__studio/git/status", MINE);
+    const theirs = await named("/__studio/git/status", THEIRS);
+    const [mineStatus, theirStatus] = await Promise.all([mine.json(), theirs.json()]);
+    expect(mineStatus.isRepo).toBe(true);
+    expect(theirStatus.isRepo).toBe(false);
+  });
+
+  test("a named directory outside the root and the active project is refused", async () => {
+    const res = await named("/__studio/git/init", "/", "POST");
+    expect(res.status).toBe(400);
   });
 });

@@ -36,7 +36,16 @@ const STATUS_LETTERS = new Map<string, string>([
  */
 export function parsePorcelainV1(out: string): GitFileStatus[] {
   const files: GitFileStatus[] = [];
-  for (const line of out.split("\n")) {
+  /*
+   * `gitStatus` asks for `-z`: without it git C-quotes any path holding a byte outside printable
+   * ASCII (`"72\342\200\235 Grapple.md"`), which no file on disk is called. With `-z` records end
+   * in NUL, paths are verbatim, and a rename is `XY new` followed by the original path as its own
+   * record. Newline output is still read, for callers and tests that hand it plain text.
+   */
+  const nulTerminated = out.includes("\0");
+  const records = out.split(nulTerminated ? "\0" : "\n");
+  for (let index = 0; index < records.length; index += 1) {
+    const line = records[index]!;
     if (line.length < 4) {
       continue;
     }
@@ -49,8 +58,15 @@ export function parsePorcelainV1(out: string): GitFileStatus[] {
       files.push({ path: rest, staged: false, status: "U" });
       continue;
     }
-    const arrow = rest.indexOf(" -> ");
-    const path = arrow === -1 ? rest : rest.slice(arrow + " -> ".length);
+    let path = rest;
+    if (nulTerminated) {
+      if (xy.includes("R") || xy.includes("C")) {
+        index += 1;
+      }
+    } else {
+      const arrow = rest.indexOf(" -> ");
+      path = arrow === -1 ? rest : rest.slice(arrow + " -> ".length);
+    }
     const [x = " ", y = " "] = xy;
     if (x !== " ") {
       files.push({ path, staged: true, status: STATUS_LETTERS.get(x) ?? x });
@@ -83,14 +99,47 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
     return stdout;
   }
 
+  /**
+   * Whether the project is under version control of its OWN: inside a work tree, and not in a
+   * folder that work tree ignores. Git answers for the nearest enclosing checkout, so a project
+   * copied into another repository's ignored folder would otherwise publish, branch and pull
+   * against that repository (the dev server's `projectHasRepository` says the same).
+   */
+  async function hasRepository(): Promise<boolean> {
+    try {
+      await git("rev-parse", "--is-inside-work-tree");
+    } catch (error) {
+      // No project at all is `git()`'s own refusal, not an answer about one.
+      if (!session.projectRoot) {
+        throw error;
+      }
+      return false;
+    }
+    try {
+      // `check-ignore` exits 0 (resolves) when the path IS ignored, and 1 (throws) when not.
+      await git("check-ignore", "-q", ".");
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  /** {@link git} for a command that acts on the project's repository, refused when it has none. */
+  async function repoGit(...args: string[]): Promise<string> {
+    if (!(await hasRepository())) {
+      throw new Error(
+        "This project is not a git repository of its own. Initialize one to use source control.",
+      );
+    }
+    return git(...args);
+  }
+
   async function gitStatus(): Promise<GitStatusResult> {
     if (!session.projectRoot) {
       throw new Error("No project open");
     }
 
-    try {
-      await git("rev-parse", "--is-inside-work-tree");
-    } catch {
+    if (!(await hasRepository())) {
       return {
         ahead: 0,
         behind: 0,
@@ -103,7 +152,10 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
 
     const branchRaw = await git("branch", "--show-current");
     const branch = branchRaw.trim();
-    const files = parsePorcelainV1(await git("status", "--porcelain=v1"));
+    // Every untracked FILE, not its collapsed folder: see the dev server's status route.
+    const files = parsePorcelainV1(
+      await git("status", "--porcelain=v1", "-z", "--untracked-files=all"),
+    );
 
     let ahead = 0;
     let behind = 0;
@@ -126,16 +178,26 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
   }
 
   async function gitBranches(): Promise<GitBranchesResult> {
-    const currentRaw = await git("branch", "--show-current");
+    const currentRaw = await repoGit("branch", "--show-current");
     const current = currentRaw.trim();
-    const output = await git("branch", "-a", "--format=%(refname:short)");
+    const output = await repoGit("branch", "-a", "--format=%(refname:short)");
     const branches = output.trim().split("\n").filter(Boolean);
     return { branches, current };
   }
 
   async function gitLog(params: { limit?: number }): Promise<GitLogEntry[]> {
     const limit = params.limit ?? 50;
-    const output = await git("log", `--max-count=${limit}`, "--format=%H%n%s%n%an%n%aI%n---");
+    // No commits yet is an empty history, not a failure: `git log` exits 128 on an unborn HEAD.
+    // RepoGit first, so a folder that is not a repository still fails as it always has.
+    await repoGit("rev-parse", "--git-dir");
+    const hasHead = await git("rev-parse", "--verify", "--quiet", "HEAD").then(
+      () => true,
+      () => false,
+    );
+    if (!hasHead) {
+      return [];
+    }
+    const output = await repoGit("log", `--max-count=${limit}`, "--format=%H%n%s%n%an%n%aI%n---");
     const entries: GitLogEntry[] = [];
     const chunks = output.trim().split("\n---\n").filter(Boolean);
     for (const chunk of chunks) {
@@ -148,59 +210,59 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
   }
 
   async function gitStage(params: { files: string[] }): Promise<void> {
-    await git("add", "--", ...params.files);
+    await repoGit("add", "--", ...params.files);
   }
 
   async function gitUnstage(params: { files: string[] }): Promise<void> {
-    await git("restore", "--staged", "--", ...params.files);
+    await repoGit("restore", "--staged", "--", ...params.files);
   }
 
   async function gitCommit(params: { message: string }): Promise<void> {
-    await git("commit", "-m", params.message);
+    await repoGit("commit", "-m", params.message);
   }
 
   async function gitPush(params?: { setUpstream?: boolean }): Promise<void> {
     if (params?.setUpstream) {
-      const branchRaw = await git("rev-parse", "--abbrev-ref", "HEAD");
+      const branchRaw = await repoGit("rev-parse", "--abbrev-ref", "HEAD");
       const branch = branchRaw.trim();
-      await git("push", "-u", "origin", branch);
+      await repoGit("push", "-u", "origin", branch);
     } else {
-      await git("push");
+      await repoGit("push");
     }
   }
 
   async function gitPull(): Promise<void> {
-    await git("pull");
+    await repoGit("pull");
   }
 
   async function gitFetch(): Promise<void> {
-    await git("fetch");
+    await repoGit("fetch");
   }
 
   async function gitCheckout(params: { branch: string }): Promise<void> {
-    await git("checkout", params.branch);
+    await repoGit("checkout", params.branch);
   }
 
   async function gitCreateBranch(params: { name: string }): Promise<void> {
-    await git("checkout", "-b", params.name);
+    await repoGit("checkout", "-b", params.name);
   }
 
   async function gitDiff(params: { path?: string }): Promise<string> {
     if (params.path) {
-      return git("diff", "--", params.path);
+      return repoGit("diff", "--", params.path);
     }
-    return git("diff");
+    return repoGit("diff");
   }
 
   async function gitShow(params: { path: string; ref?: string }): Promise<string> {
     const ref = params.ref || "HEAD";
     // `./` so the path resolves against the project root rather than the repository root. See the
     // Same call in the dev server's studio API for what it costs to omit.
-    return git("show", `${ref}:./${params.path}`);
+    return repoGit("show", `${ref}:./${params.path}`);
   }
 
   async function gitDiscard(params: { files: string[] }): Promise<void> {
-    await git("checkout", "--", ...params.files);
+    await repoGit("checkout", "--", ...params.files);
   }
 
   async function gitInit(): Promise<void> {
@@ -208,7 +270,7 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
   }
 
   async function gitAddRemote(params: { name: string; url: string }): Promise<void> {
-    await git("remote", "add", params.name, params.url);
+    await repoGit("remote", "add", params.name, params.url);
   }
 
   return {

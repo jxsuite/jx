@@ -41,8 +41,10 @@ export interface DeployStepRowView {
   id: string;
   /** `done` | `todo` | `unknown`, as `data-state`. `unknown` is not a third kind of "no". */
   state: string;
-  /** The one-character glyph the checklist chose for that state. */
+  /** The kit icon the checklist chose for that state (`check`, `warning-circle`, `question`). */
   icon: string;
+  /** The state in words, the icon's accessible name: "Done", "To do", "Not checked yet". */
+  iconLabel: string;
   /** The label, and — unless the link is forged — the sentence that says what is missing. */
   text: string;
 }

@@ -172,6 +172,24 @@ describe("applyDropInstruction — block inserts", () => {
     assertNoHoles(tab.doc.document);
   });
 
+  test("the dropped block is the selection afterwards, wherever it landed", () => {
+    const tab = openDoc(makeDoc());
+    applyDropInstruction(
+      activeTab.value,
+      { type: "make-child" },
+      { fragment: { tagName: "img" }, type: "block" },
+      ["children", 0],
+    );
+    expect(tab.session.selection).toEqual([["children", 0, "children", 1]]);
+    applyDropInstruction(
+      activeTab.value,
+      { type: "reorder-below" },
+      { fragment: { tagName: "hr" }, type: "block" },
+      ["children", 1],
+    );
+    expect(tab.session.selection).toEqual([["children", 2]]);
+  });
+
   test("reorder on a root-level path is a no-op", () => {
     const tab = openDoc(makeDoc());
     const before = jsonClone(tab.doc.document);

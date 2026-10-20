@@ -180,11 +180,13 @@ describe("every declaration reaches run, by id, and the refusal comes back verba
     });
   }
 
-  test("the eleven declarations are exactly these, and each is one record", () => {
+  test("the twelve declarations are exactly these, and each is one record", () => {
     /* Nine from the projection (seven completed, two migrated), then #334: `open_document`
        crossed from the hand table to the `document.open` record, and `canvas.setMode` was
-       projected because the mode decides `editor.kind`, the fact the tree tools are gated on. */
+       projected because the mode decides `editor.kind`, the fact the tree tools are gated on.
+       `add_new` is `file.new`, which creates without a dialog when it is given a name. */
     expect([...DECLARED.keys()].toSorted()).toEqual([
+      "add_new",
       "add_project_locale",
       "check_accessibility",
       "check_popovers",
@@ -965,9 +967,7 @@ describe("the assistant's tool budget", () => {
     "redirects.import",
     "publish.setUp",
     "file.convertFormat",
-    "content.newEntry",
     "i18n.createTranslation",
-    "library.newEntry",
     "project.new",
   ];
 

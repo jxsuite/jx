@@ -140,36 +140,78 @@
             {
               "$prototype": "Array",
               "items": {
-                "$ref": "#/state/rows"
+                "$ref": "#/state/groups"
               },
               "key": {
                 "$ref": "$map/item/key"
               },
               "map": {
-                "tagName": "jx-option",
+                "tagName": "div",
                 "attributes": {
-                  "part": "option",
-                  "id": "slash-menu-option-${$map.index}",
-                  "value": "${$map.item.key}",
-                  "label": "${$map.item.label}",
-                  "description": "${$map.item.description}"
+                  "part": "group",
+                  "role": "group",
+                  "aria-label": "${$map.item.name}"
                 },
-                "onmouseenter": {
-                  "$prototype": "Function",
-                  "body": [
-                    {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/hover"
-                      },
-                      "value": [
-                        {
-                          "$ref": "$map/index"
-                        }
-                      ]
+                "children": [
+                  {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "group-label-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/hasLabel"
+                    },
+                    "cases": {
+                      "true": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "group-heading",
+                          "aria-hidden": "true"
+                        },
+                        "textContent": "${$map.item.label}"
+                      }
                     }
-                  ]
-                }
+                  },
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/rows"
+                    },
+                    "key": {
+                      "$ref": "$map/item/key"
+                    },
+                    "map": {
+                      "tagName": "jx-option",
+                      "attributes": {
+                        "part": "option",
+                        "id": "slash-menu-option-${$map.item.index}",
+                        "value": "${$map.item.key}",
+                        "label": "${$map.item.label}",
+                        "description": "${$map.item.description}"
+                      },
+                      "onmouseenter": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/hover"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/index"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
               }
             }
           ]

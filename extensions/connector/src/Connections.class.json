@@ -19,6 +19,7 @@
       "order": 60,
       "layout": "map",
       "entry": {
+        "noun": "connection",
         "ui": {
           "urlEnv": { "control": "secret" }
         },

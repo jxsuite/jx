@@ -1,15 +1,15 @@
 /**
- * The Library's five layouts, as geometry and projections rather than as markup.
+ * The Content home's four views, as geometry and projections rather than as markup.
  *
- * All five draw the SAME rows — one scan, one filter — so switching layout is a repaint, never a
- * re-read. What differs is the geometry, and the geometry is data ({@link LAYOUT_METRICS}) rather
- * than five hand-rolled scroll containers: the pane hands each layout a window computed from the
- * metric, so virtualization is a property of the Library rather than of whichever layout someone
- * remembered to virtualize.
+ * All four draw the SAME rows — one scan, one collection, one filter — so switching view is a
+ * repaint, never a re-read. What differs is the geometry, and the geometry is data
+ * ({@link LAYOUT_METRICS}) rather than five hand-rolled scroll containers: the pane hands each
+ * layout a window computed from the metric, so virtualization is a property of the Content home
+ * rather than of whichever layout someone remembered to virtualize.
  *
- * **Two of them are grouped, and grouped lists are bounded differently.** Table, Cards and Media
- * are flat and uniform, so they window. Calendar and Board are grouped, and a window over a grouped
- * list either breaks the groups or needs variable-height measurement; both draw text only (no live
+ * **Two of them are grouped, and grouped lists are bounded differently.** Table and Cards are flat
+ * and uniform, so they window. Calendar and Board are grouped, and a window over a grouped list
+ * either breaks the groups or needs variable-height measurement; both draw text only (no live
  * preview, so an item costs one `<li>`), and each caps what it draws and SAYS what it left out. A
  * layout that silently truncated would be the same class of lie as "No files found".
  *
@@ -20,11 +20,110 @@
 
 import { isImage } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
+import { localDay } from "../utils/local-day";
 import { localeLabel } from "@jxsuite/schema/locale";
-import { groupByCategory, groupByDate } from "./library-model";
+import { fileToRoute } from "@jxsuite/site/routes";
+import { PAGES_COLLECTION } from "../content/content-collections";
+import { groupByDate, groupByFolder, libraryDate } from "./library-model";
+import { entryFieldOfKey } from "./library-source";
+import type { EntryFieldColumn } from "./library-source";
+import type { EntryFieldTexts } from "../content/entry-summaries";
 import type { LibraryFile, LibraryLayout } from "./library-model";
 import type { GridColumn, GridCellValue } from "../grid/grid-source";
 import type { LibraryGroup, LibraryRow } from "../surfaces/library-pane";
+
+/** What a collection entry says about itself, once read: its title, status and date. */
+export interface EntryFacts {
+  title: string;
+  /** "Draft", "Published", or "" for a collection with no draft workflow. */
+  status: string;
+  /** `YYYY-MM-DD`, or "". */
+  date: string;
+  /** The schema's fields as list text, keyed by field name, when the entry has been read. */
+  fields?: EntryFieldTexts | undefined;
+  /** A page's template, by name ("Base", "None"), once the page has been read. */
+  template?: string | undefined;
+  /**
+   * The entry's picture, as a preview URL: the field its schema declares an image (a post's
+   * `cover`), from `content/entry-summaries.ts`'s `entryThumb`. "" or absent for none.
+   */
+  thumb?: string | undefined;
+}
+
+/** The field a Board groups a collection by when it has no draft workflow, and its heading. */
+export interface BoardField {
+  name: string;
+  title: string;
+  /** The schema's `enum`, when it declares one: the order the columns stand in. */
+  order: readonly string[];
+  /** The field holds a list: an entry stands in the column of each of its values. */
+  list?: boolean | undefined;
+}
+
+/**
+ * The values one field's list text holds: each item of a list field (its text joins them with
+ * commas, as a CSV cell does), or the one value of any other field. Blank values are none.
+ */
+export function fieldValues(text: string | undefined, list: boolean | undefined): string[] {
+  if (text === undefined || text.trim() === "") {
+    return [];
+  }
+  if (!list) {
+    return [text];
+  }
+  return text
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value !== "");
+}
+
+/** A Board with more columns than this is a list of singletons, not a grouping. */
+const BOARD_FIELD_MAX_GROUPS = 12;
+
+/**
+ * The field a Board groups by when the entries have no status: the first listed field the schema
+ * gives an `enum`, else the first whose values actually repeat. A menu grouped by its `course` is a
+ * board; a menu grouped by its one folder is one column, which says nothing. `null` when no field
+ * groups the entries (every value unique, or every value the same), so the Board falls back to
+ * folders.
+ *
+ * @param fields The listed fields, in order ({@link entryFieldColumns}).
+ * @param enums Each field's declared `enum`, where it has one.
+ * @param facts What each entry says, as read so far.
+ */
+export function boardFieldOf(
+  fields: readonly EntryFieldColumn[],
+  enums: ReadonlyMap<string, readonly string[]>,
+  facts: readonly (EntryFacts | undefined)[],
+): BoardField | null {
+  const declared = fields.find((field) => enums.has(field.name));
+  if (declared) {
+    return { ...declared, order: enums.get(declared.name)! };
+  }
+  for (const field of fields) {
+    if (field.measure) {
+      continue;
+    }
+    // A list field's every item is a value: `Patios, Stone` is two, not one string.
+    const values = facts.flatMap((entry) => fieldValues(entry?.fields?.[field.name], field.list));
+    const distinct = new Set(values).size;
+    if (distinct >= 2 && distinct < values.length && distinct <= BOARD_FIELD_MAX_GROUPS) {
+      return { ...field, order: [] };
+    }
+  }
+  return null;
+}
+
+/** A file's entry facts, or `undefined` for a file that is no entry or has not been read yet. */
+export type EntryFactsOf = (file: LibraryFile) => EntryFacts | undefined;
+
+/** Facts by path. Empty for Pages, and for a collection whose entries are still being read. */
+export function entryFactsFrom(facts: ReadonlyMap<string, EntryFacts>): EntryFactsOf {
+  return (file) => facts.get(file.path);
+}
+
+/** No file has facts. */
+const NO_FACTS: EntryFactsOf = entryFactsFrom(new Map());
 
 /** The geometry a layout scrolls at. `itemWidth` of 0 means one item per row. */
 export interface LayoutMetric {
@@ -39,7 +138,7 @@ export interface LayoutMetric {
 /**
  * Per-layout geometry.
  *
- * These are nominal sizes that must match the Library surface's own style block. They are
+ * These are nominal sizes that must match the Content home surface's own style block. They are
  * approximate on purpose: the window's job is to keep the rendered count proportional to the
  * viewport, and being one row out costs one row of overscan, not correctness.
  */
@@ -47,7 +146,6 @@ export const LAYOUT_METRICS: Readonly<Record<LibraryLayout, LayoutMetric>> = {
   board: { itemWidth: 0, rowHeight: 0, windowed: false },
   calendar: { itemWidth: 0, rowHeight: 0, windowed: false },
   cards: { itemWidth: 200, rowHeight: 194, windowed: true },
-  media: { itemWidth: 132, rowHeight: 132, windowed: true },
   table: { itemWidth: 0, rowHeight: 32, windowed: true },
 };
 
@@ -86,20 +184,29 @@ export function formatSize(size: number | undefined): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }
 
-/** An ISO timestamp as `YYYY-MM-DD`, or "" when there is none. Never invents "just now". */
+/**
+ * An ISO timestamp as the local `YYYY-MM-DD` it fell on, or "" when there is none. Never invents
+ * "just now".
+ */
 export function formatModified(modified: string | undefined): string {
-  if (!modified) {
-    return "";
-  }
-  const parsed = new Date(modified);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+  return modified ? localDay(new Date(modified)) : "";
 }
 
-/** The text one table cell shows for a file. */
-export function cellText(file: LibraryFile, field: string): string {
+/** The text one table cell shows for a file, and for an entry what it says about itself. */
+export function cellText(file: LibraryFile, field: string, entry?: EntryFacts): string {
   switch (field) {
-    case "category": {
-      return file.category;
+    case "date": {
+      return entry?.date ?? "";
+    }
+    case "status": {
+      return entry?.status ?? "";
+    }
+    case "template": {
+      return entry?.template ?? "";
+    }
+    case "title": {
+      // Until the entry is read, the file name: the title is never blank while it loads.
+      return entry?.title ?? file.name;
     }
     case "locale": {
       // The autonym, not the tag: the column exists so a reader can find their own language in it,
@@ -113,7 +220,8 @@ export function cellText(file: LibraryFile, field: string): string {
       return file.name;
     }
     case "path": {
-      return file.path;
+      // A record is stored in its collection's file; its key (`prices.csv#3`) is no path.
+      return file.record?.source ?? file.path;
     }
     case "size": {
       return formatSize(file.size);
@@ -121,8 +229,13 @@ export function cellText(file: LibraryFile, field: string): string {
     case "type": {
       return file.type;
     }
+    case "url": {
+      // Only a page has a URL of its own; an entry's is its collection page's, read elsewhere.
+      return file.collection === PAGES_COLLECTION ? fileToRoute(file.path).urlPattern : "";
+    }
     default: {
-      return "";
+      const own = entryFieldOfKey(field);
+      return own === null ? "" : (entry?.fields?.[own] ?? "");
     }
   }
 }
@@ -134,40 +247,56 @@ export function cellTextOf(value: GridCellValue | undefined): string {
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
-/** The four categories whose files are documents the runtime can render a preview of. */
-const PREVIEWABLE = new Set(["Components", "Content", "Layouts", "Pages"]);
-
 /**
  * One file, as the surface reads it.
  *
- * `live` is whether this layout may draw a real document render at all: Cards may, Media never
- * does. Getting that from the caller rather than from the file is what keeps a tile cheap — a
- * thumbnail of an asset is an `<img>`, and a live runtime render inside one is the whole cost the
- * Media layout exists to avoid.
+ * `live` is whether this layout may draw a real document render at all: Cards may, Table never
+ * does. Getting that from the caller rather than from the file is what keeps a row cheap. An image
+ * is drawn as itself; every other file in a collection is a document the runtime can render.
  *
  * @param file The scanned file.
  * @param columns The Table's columns, from the grid source. Empty for a layout with no cells.
  * @param live Whether a previewable document may claim the `doc` island.
+ * @param entry What the file says about itself, when it is a collection entry that has been read.
  */
 export function libraryRow(
   file: LibraryFile,
   columns: readonly GridColumn[],
   live: boolean,
+  entry?: EntryFacts,
 ): LibraryRow {
   const image = isImage(file.ext);
+  // An entry is shown by its own picture (its `cover`), not by a render of its body text.
+  const thumb = entry?.thumb ?? "";
   return {
-    art: image ? "image" : live && PREVIEWABLE.has(file.category) ? "doc" : "glyph",
-    cells: columns.map((column) => ({ field: column.field, text: cellText(file, column.field) })),
+    // A record is a row of a file, not a document the runtime can render.
+    art:
+      image || thumb !== ""
+        ? "image"
+        : live && file.collection !== null && !file.record
+          ? "doc"
+          : "glyph",
+    cells: columns.map((column) => ({
+      field: column.field,
+      text: cellText(file, column.field, entry),
+    })),
     meta: file.type,
-    name: file.name,
+    name: entry?.title ?? file.name,
     path: file.path,
-    src: image ? previewFileSrc(file.path) : "",
+    src: image ? previewFileSrc(file.path) : thumb,
   };
 }
 
-/** The text-only row both grouped layouts draw: a name, and the path it opens. */
-function nameRow(file: LibraryFile): LibraryRow {
-  return { art: "glyph", cells: [], meta: file.type, name: file.name, path: file.path, src: "" };
+/** The text-only row both grouped layouts draw: a name (an entry's title), and the path it opens. */
+function nameRow(file: LibraryFile, entry?: EntryFacts): LibraryRow {
+  return {
+    art: "glyph",
+    cells: [],
+    meta: file.type,
+    name: entry?.title ?? file.name,
+    path: file.path,
+    src: "",
+  };
 }
 
 // ─── Calendar ────────────────────────────────────────────────────────────────
@@ -181,19 +310,27 @@ export interface CalendarView {
 /**
  * Calendar: one section per day, newest first, plus an explicit account of what it did not place.
  *
- * A file's day comes from a `YYYY-MM-DD` filename prefix or the filesystem's mtime — never from
- * "now". Files with neither are listed under "No date" rather than parked on today, because a
- * calendar that invents dates is worse than one that admits it cannot place a file.
+ * A file's day is an entry's own date field when it has one, else a `YYYY-MM-DD` filename prefix or
+ * the filesystem's mtime — never "now". Files with none are listed under "No date" rather than
+ * parked on today, because a calendar that invents dates is worse than one that admits it cannot
+ * place a file.
  *
+ * @param factsOf What each entry says about itself; its `date` wins over the file's.
  * @returns The day sections, and the sentence naming the older days it did not draw.
  */
-export function calendarView(files: readonly LibraryFile[]): CalendarView {
-  const { days, undated } = groupByDate(files);
+export function calendarView(
+  files: readonly LibraryFile[],
+  factsOf: EntryFactsOf = NO_FACTS,
+): CalendarView {
+  const { days, undated } = groupByDate(files, (file) => {
+    const own = factsOf(file)?.date;
+    return own || libraryDate(file);
+  });
   const shown = days.slice(0, CALENDAR_DAY_LIMIT);
   const hiddenDays = days.length - shown.length;
   const groups: LibraryGroup[] = shown.map((day) => ({
     count: "",
-    files: day.files.map((file) => nameRow(file)),
+    files: day.files.map((file) => nameRow(file, factsOf(file))),
     id: day.date,
     note: "",
     noteState: "hidden",
@@ -203,7 +340,7 @@ export function calendarView(files: readonly LibraryFile[]): CalendarView {
   if (undated.length > 0) {
     groups.push({
       count: "",
-      files: undated.slice(0, BOARD_COLUMN_LIMIT).map((file) => nameRow(file)),
+      files: undated.slice(0, BOARD_COLUMN_LIMIT).map((file) => nameRow(file, factsOf(file))),
       /* Not a date, and it must never collide with one: the section's identity is what keeps its
          node across a repaint, and a day is always `YYYY-MM-DD`, so a leading underscore pair cannot be one. */
       id: "__undated",
@@ -224,13 +361,90 @@ export function calendarView(files: readonly LibraryFile[]): CalendarView {
 
 // ─── Board ───────────────────────────────────────────────────────────────────
 
-/** Board: one column per category present, each capped and each stating its own total. */
-export function boardView(files: readonly LibraryFile[]): LibraryGroup[] {
-  return groupByCategory(files).map((group) => {
+/** The order a status Board's columns stand in: the work in progress first. */
+const STATUS_ORDER = ["Draft", "Published"];
+
+/** Group entries by their status, in {@link STATUS_ORDER}, then any other status by name. */
+function groupByStatus(
+  files: readonly LibraryFile[],
+  factsOf: EntryFactsOf,
+): { group: string; files: LibraryFile[] }[] {
+  const byStatus = new Map<string, LibraryFile[]>();
+  for (const file of files) {
+    const status = factsOf(file)?.status || "No status";
+    const bucket = byStatus.get(status);
+    if (bucket) {
+      bucket.push(file);
+    } else {
+      byStatus.set(status, [file]);
+    }
+  }
+  const rank = (status: string) => {
+    const at = STATUS_ORDER.indexOf(status);
+    return at === -1 ? STATUS_ORDER.length : at;
+  };
+  return [...byStatus.entries()]
+    .map(([group, grouped]) => ({ files: grouped, group }))
+    .toSorted((a, b) => rank(a.group) - rank(b.group) || a.group.localeCompare(b.group));
+}
+
+/** Group entries by one field's value, in the schema's `enum` order, then any other value by name. */
+function groupByField(
+  files: readonly LibraryFile[],
+  factsOf: EntryFactsOf,
+  field: BoardField,
+): { group: string; files: LibraryFile[] }[] {
+  const none = `No ${field.title.toLowerCase()}`;
+  const byValue = new Map<string, LibraryFile[]>();
+  for (const file of files) {
+    const values = fieldValues(factsOf(file)?.fields?.[field.name], field.list);
+    // An entry tagged twice stands in both columns: each is the set of entries with that tag.
+    for (const value of values.length === 0 ? [none] : new Set(values)) {
+      const bucket = byValue.get(value);
+      if (bucket) {
+        bucket.push(file);
+      } else {
+        byValue.set(value, [file]);
+      }
+    }
+  }
+  const rank = (value: string) => {
+    if (value === none) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    const at = field.order.indexOf(value);
+    return at === -1 ? field.order.length : at;
+  };
+  return [...byValue.entries()]
+    .map(([group, grouped]) => ({ files: grouped, group }))
+    .toSorted((a, b) => rank(a.group) - rank(b.group) || a.group.localeCompare(b.group));
+}
+
+/**
+ * Board: one column per status when the collection's entries have one (Draft, Published), else one
+ * per value of the field the collection is grouped by ({@link boardFieldOf}: a menu's `course`),
+ * else one per folder present; each capped and each stating its own total. A flat collection
+ * grouped by folder is one column, which says nothing, so a field is preferred to it.
+ *
+ * @param factsOf What each entry says about itself.
+ * @param field The field to group by when the entries have no status.
+ */
+export function boardView(
+  files: readonly LibraryFile[],
+  factsOf: EntryFactsOf = NO_FACTS,
+  field: BoardField | null = null,
+): LibraryGroup[] {
+  const byStatus = files.some((file) => (factsOf(file)?.status ?? "") !== "");
+  const groups = byStatus
+    ? groupByStatus(files, factsOf)
+    : field
+      ? groupByField(files, factsOf, field)
+      : groupByFolder(files);
+  return groups.map((group) => {
     const hidden = group.files.length - BOARD_COLUMN_LIMIT;
     return {
       count: String(group.files.length),
-      files: group.files.slice(0, BOARD_COLUMN_LIMIT).map((file) => nameRow(file)),
+      files: group.files.slice(0, BOARD_COLUMN_LIMIT).map((file) => nameRow(file, factsOf(file))),
       id: group.group,
       note: hidden > 0 ? `${hidden} more — switch to Table to see them.` : "",
       noteState: hidden > 0 ? "shown" : "hidden",

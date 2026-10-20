@@ -9,6 +9,7 @@ spec:
 code:
   - packages/compiler/src/targets/compile-element.ts
   - packages/compiler/src/targets/compile-client.ts
+  - packages/runtime/src/runtime.ts
 ---
 
 # Functions and sidecars
@@ -98,6 +99,8 @@ export function decrement(state) {
 ```
 
 When several entries share a `$src`, the module is imported once and its named exports extracted; module caching is automatic.
+
+An `npm:` specifier names an export of an installed package. `jx build` bundles it into the site. A page rendered live (on the Studio canvas, or by an app embedding the runtime) imports it from wherever that host serves packages: the Studio dev server bundles it from your project's `node_modules`, and an app can answer with an import map.
 
 A sidecar entry has no `body` to read, so its role follows how the document uses it. Bind it to an event, invoke it as `state.helper(state)`, or name it a lifecycle hook, and it stays a function. Read it anywhere else, in a list's `items`, a `${}` interpolation or a property binding, and it becomes a computed value: what you get is the export's **return value**, recomputed when its inputs change, not the function itself.
 

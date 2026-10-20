@@ -27,8 +27,14 @@
  */
 
 import { openSlashMenuSurface } from "../surfaces/slash-menu";
+import { componentSlashCommands } from "./insert-component";
 import { rectOf } from "../utils/geometry";
-import type { SlashMenuRow, SlashMenuSurface, SlashMenuView } from "../surfaces/slash-menu";
+import type {
+  SlashMenuGroup,
+  SlashMenuRow,
+  SlashMenuSurface,
+  SlashMenuView,
+} from "../surfaces/slash-menu";
 import type { SlashCommand } from "./inline-edit";
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -115,9 +121,43 @@ export function showSlashMenuAtRect(
   showAt(rect, filter, cbs);
 }
 
+/**
+ * The standard set: the HTML elements, then the project's components under their own heading
+ * (§5.7), read from the registry at the moment the menu opens so a component saved a moment ago is
+ * on offer.
+ */
+function standardCommands(): SlashCommand[] {
+  return [...SLASH_COMMANDS, ...componentSlashCommands()];
+}
+
 /** Everything on offer right now: what the caller named, or the standard set. */
 function source(): SlashCommand[] {
-  return callbacks?.commands || SLASH_COMMANDS;
+  return callbacks?.commands || standardCommands();
+}
+
+/**
+ * The rows as the panel groups them: consecutive offers with the same heading share a group, and
+ * the first, unheaded group is the HTML elements. Each row keeps its index in the FLAT list, which
+ * is the one the keyboard, the highlight and a pick count in.
+ */
+function groupsOf(rows: readonly SlashMenuRow[], items: readonly SlashCommand[]): SlashMenuGroup[] {
+  const groups: SlashMenuGroup[] = [];
+  for (const [index, row] of rows.entries()) {
+    const label = items[index]?.group ?? "";
+    const last = groups.at(-1);
+    if (last?.label === label) {
+      last.rows.push(row);
+    } else {
+      groups.push({
+        hasLabel: label !== "",
+        key: label || "elements",
+        label,
+        name: label || "Elements",
+        rows: [row],
+      });
+    }
+  }
+  return groups;
 }
 
 /** The offers a filter leaves standing. An empty filter leaves all of them. */
@@ -132,14 +172,17 @@ function matching(filter: string, from: SlashCommand[]): SlashCommand[] {
 /** What the panel should be showing, from the state above. */
 function view(): SlashMenuView {
   const rect = _anchorRect;
+  const rows = filteredItems.map((cmd, index): SlashMenuRow => ({
+    description: cmd.description,
+    index,
+    key: cmd.tag,
+    label: cmd.label,
+  }));
   return {
     activeIndex: activeIdx,
     filter: filterText,
-    rows: filteredItems.map((cmd): SlashMenuRow => ({
-      description: cmd.description,
-      key: cmd.tag,
-      label: cmd.label,
-    })),
+    groups: groupsOf(rows, filteredItems),
+    rows,
     showFilter,
     // The gap between the anchor and the panel is the `--jx-popover-offset` token the element
     // Already applies, so this is the anchor's own edge rather than an edge plus a guess.
@@ -163,7 +206,7 @@ function showAt(
   callbacks = cbs;
   _anchorRect = rect;
 
-  filteredItems = matching(filter, cbs.commands || SLASH_COMMANDS);
+  filteredItems = matching(filter, cbs.commands || standardCommands());
 
   if (filteredItems.length === 0 && !cbs.showFilter) {
     dismissSlashMenu();

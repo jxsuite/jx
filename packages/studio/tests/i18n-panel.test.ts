@@ -50,10 +50,11 @@ const EN_FR: ResolvedI18n = {
 };
 
 /** One scanned file, as `scanLibrary` would have produced it. */
-function file(path: string, modified?: string, category = "Pages"): LibraryFile {
+function file(path: string, modified?: string, media = false): LibraryFile {
   return {
-    category,
+    collection: path.startsWith("pages/") ? "pages" : null,
     ext: path.split(".").pop() ?? "",
+    media,
     modified,
     name: path.split("/").pop() ?? path,
     path,
@@ -195,9 +196,9 @@ describe("parityRows", () => {
     expect(cellAt(rows, "pages/contact.json", "fr")).toMatchObject({ state: "present" });
   });
 
-  test("an asset is not a row — `categoryFor` has already decided what is media", () => {
+  test("an asset is not a row — the scan has already decided what is media", () => {
     const rows = parityRows(
-      [file("pages/hero.png", undefined, "Media"), file("pages/index.json")],
+      [file("pages/hero.png", undefined, true), file("pages/index.json")],
       EN_FR,
     );
     expect(rows.map((row) => row.key)).toEqual(["pages/index.json"]);
@@ -211,7 +212,7 @@ describe("parityRows", () => {
   });
 
   test("a content entry inside a collection gets the collection's locale position", () => {
-    const rows = parityRows([file("content/blog/en/hello.md", undefined, "Content")], EN_FR);
+    const rows = parityRows([file("content/blog/en/hello.md")], EN_FR);
     expect(cellAt(rows, "content/blog/hello.md", "en")).toMatchObject({ state: "present" });
     expect(cellAt(rows, "content/blog/hello.md", "fr")).toEqual({
       path: "content/blog/fr/hello.md",
@@ -442,7 +443,8 @@ describe("the empty states", () => {
     expect(action?.disabled).toBe(false);
     action?.click();
     await flush();
-    expect(ran).toEqual([{ args: {}, id: "settings.open" }]);
+    // On Locales: the dialog remembers its section for the session, and this action means one.
+    expect(ran).toEqual([{ args: { section: "locales" }, id: "settings.open" }]);
   });
 
   test("a bilingual project with nothing in it says so rather than drawing an empty table", async () => {

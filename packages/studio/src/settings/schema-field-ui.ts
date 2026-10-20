@@ -12,6 +12,7 @@
  */
 
 import { isMediaFormat } from "../utils/studio-utils";
+import { localDay } from "../utils/local-day";
 
 export interface SchemaProperty {
   type?: string;
@@ -102,7 +103,8 @@ export function schemaForType(type: string, format?: string) {
  */
 export function yamlDefault(type: string, format?: string) {
   if (format === "date") {
-    return new Date().toISOString().split("T")[0];
+    // Today where the author is: a UTC "today" is tomorrow every evening west of Greenwich.
+    return localDay(new Date());
   }
   if (isMediaFormat(format)) {
     return '""';

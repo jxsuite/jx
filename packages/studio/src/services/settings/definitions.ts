@@ -144,6 +144,17 @@ export const SETTINGS = {
     normalize: trimmed,
     scope: "user",
   },
+  /**
+   * Whether the Design rail draws the developer panels — Files and Packages (`specs/studio.md`
+   * §5.1). Unset, the default, keeps them off the rail; `settings/developer-panels.ts` reads it.
+   * Roams, for the reason `showIgnoredFiles` does: it is a way of working, not a window's.
+   */
+  developerPanels: {
+    default: "",
+    key: "jx.panels.developer",
+    normalize: trimmed,
+    scope: "user",
+  },
   cfAccountId: {
     default: "",
     key: "jx.cf.accountId",

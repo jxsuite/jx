@@ -128,10 +128,11 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  * - `argSelectors` a puppeteer handler prefix (`xpath/`, `pierce/`) inside a step's `args`. Always
  *   zero, and landing it at zero is what keeps it zero.
  * - `inputSteps` raw input: keystrokes, typing, caret placement, synthetic drags. The contract's
- *   migration aimed for ≤6. It lands at **14**, and the gap is almost entirely the two ids that
- *   have no command record yet (`element.insertData`, `media.browse`) plus `tab-strip-shot`, which
- *   types into a real editor because the dirty flag is EARNED, not asserted. Each falls out as its
- *   record lands.
+ *   migration aimed for ≤6. It lands at **14**, and the gap was almost entirely the two ids that
+ *   had no command record (`element.insertData`, `media.browse`) plus `tab-strip-shot`, which types
+ *   into a real editor because the dirty flag is EARNED, not asserted. Both records have landed
+ *   (`insert.data`, `media.browse`); each of their shots still types, because its subject is the
+ *   control the step presses rather than the state the record names.
  *
  *   **14 → 13 when "resolving with" became a popover.** `counter-test-prop` typed into
  *   `pane.primary/prop:count`, which a popover puts behind a gesture — so the value got a record
@@ -163,7 +164,7 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *   names an input the app accepts by name. Net input steps for the shot: three to one. The budget
  *   rises by the one `caret` step quarantine was hiding.
  * - `nonDerivedRegions` DISTINCT region ids no registry stamps for free — the hand-stamped leaves the
- *   README's "The gate" budgets for (`navigator/panel:git/commit`, `navigator/statements`, the
+ *   README's "The gate" budgets for (`pane.primary/publish/commit`, `navigator/statements`, the
  *   settings entry rows…). Contract 0 counted 17 CSS selectors here.
  *
  *   **11 → 10 when "resolving with" became a popover**, and `pane.primary/prop:count` is the one that
@@ -171,15 +172,31 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *
  *   **12 → 11 with the second pane**, and the media-picker's browse button is the one that left. It
  *   was hand-stamped `inspector/field:<prop>/browse`, and the stamp was a claim about location the
- *   picker cannot make: the Document Header card draws the same control inside every pane's STAGE, so
+ *   picker cannot make: the Document Header card drew the same control inside every pane's STAGE, so
  *   with two panes the id resolved to two elements and `resolveRegion` answered with the side pane's
  *   — an `inspector/…` id on a control that is not in the Inspector. `ui/regions.ts` derives it now,
  *   scoped to the one Inspector, and the number falls the way this file says a number should: because
  *   a hand-stamp became unnecessary.
+ *
+ *   **10 → 11 with the Styles workspace's Variables view**, and `pane.primary/variables` is the one
+ *   that arrived. `css-variables-shot` photographs that view, and the only derived id it could
+ *   otherwise expect is `pane.primary`, which exists whatever the pane shows: a `styles.open` that
+ *   landed on Elements, or a view that never mounted, would pass and photograph the wrong surface for
+ *   `studio/design/tokens`. The view stamps its root through `paneRegion()`, as
+ *   `pane.primary/media-library` does, and the id is counted for the same reason it is: a view
+ *   authors it, no registry does.
+ *
+ *   **11 → 10 when Edit stopped drawing the Document Header card** (studio.md §4.2), and
+ *   `pane.primary/frontmatter` is the one that left: the card it named is gone, the document's
+ *   settings are the Inspector's Page tab, and `document-panel-shot` photographs that tab through the
+ *   derived `inspector/tab:page`.
  * - `unstable` `{reason, until}` escape hatches. **2** after Project Settings became a document and
- *   retired the five `settings.selectEntry` steps. Of what is left, one is `blog-insert-data`'s,
- *   whose id has since LANDED (`insert.data`) and whose step survives because the shot's subject is
- *   the merge-tag LIST, a control — a docs decision, not a registry gap. See {@link REMEDY}.
+ *   retired the five `settings.selectEntry` steps. **2 → 1 when `media.browse` landed as a
+ *   record**: `media-picker-shot`'s hatch existed only because the id had none, and its step stays
+ *   an ordinary budgeted input because the shot's subject is the compact browser the field's own
+ *   Browse control opens. What is left is `blog-insert-data`'s, whose id has since LANDED
+ *   (`insert.data`) and whose step survives because the shot's subject is the merge-tag LIST, a
+ *   control — a docs decision, not a registry gap. See {@link REMEDY}.
  */
 export const CONTRACT_BUDGET = {
   selectorActions: 0,
@@ -189,7 +206,7 @@ export const CONTRACT_BUDGET = {
   argSelectors: 0,
   inputSteps: 14,
   nonDerivedRegions: 10,
-  unstable: 2,
+  unstable: 1,
 } as const;
 
 export type BudgetKey = keyof typeof CONTRACT_BUDGET;
@@ -235,9 +252,9 @@ export const DERIVED_REGION_PATTERNS: readonly RegExp[] = [
   /^inspector\/field:[\w$.-]+$/,
   /* The Browse control of an Inspector field. It WAS hand-stamped — `ui/media-picker.ts` wrote
      `inspector/field:${prop}/browse` onto the button — and that stamp was a claim about location
-     the picker is in no position to make: the same control is drawn by the Document Header card,
-     inside each PANE's stage, where two panes made the id resolve to two elements and neither of
-     them was in the Inspector. `ui/regions.ts` derives it now, by finding `.media-picker-browse`
+     the picker was in no position to make: the same control was drawn by the Document Header card
+     (since removed), inside each PANE's stage, where two panes made the id resolve to two elements
+     and neither of them was in the Inspector. `ui/regions.ts` derives it now, by finding `.media-picker-browse`
      inside the Inspector's own `[data-prop]` row, so it is one of the ids nobody authors. */
   /^inspector\/field:[\w$.-]+\/browse$/,
   // Already in `PLACEMENTS`.
@@ -286,7 +303,6 @@ interface LegacyVerb {
 const LEGACY_ACTIONS: ReadonlyMap<string, LegacyVerb> = new Map([
   ["editDef", { id: "formula.editDef" }],
   ["editFunction", { id: "formula.editEvent" }],
-  ["openBrowse", { id: "library.open" }],
   ["openDataGrid", { id: "data.openGrid" }],
   ["openNewProject", { id: "project.new" }],
   ["openQuickSearch", { id: "search.openPalette" }],

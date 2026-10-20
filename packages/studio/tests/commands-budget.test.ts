@@ -62,11 +62,11 @@ describe("checkChromeBudget", () => {
   });
 
   test("the Inspector's row is the tab list itself, not a copy of it", () => {
-    // Wave A wrote the four tab titles out by hand. They now come from `commands/defaults.ts`'s
-    // `INSPECTOR_TABS` — the list the dock renders and ⌘⇧1–4 address — so a fifth tab fails this
-    // Check in the commit that adds it.
+    // Wave A wrote the tab titles out by hand. They now come from `commands/defaults.ts`'s
+    // `INSPECTOR_STRIP` — the strip the dock renders (§6) — so a fourth tab fails this check in the
+    // Commit that adds it. Element's Content · Style · Logic switch is inside a tab and not counted.
     const inspector = DECLARED_DOCK_TABS.find((dock) => dock.dock === "inspector");
-    expect(inspector?.tabs).toEqual(["Content", "Style", "Logic", "Assistant"]);
+    expect(inspector?.tabs).toEqual(["Page", "Element", "Assistant"]);
   });
 
   test("dockTabs joins the observed rail groups onto the declared docks", () => {

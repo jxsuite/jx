@@ -56,4 +56,13 @@ describe("parsePorcelainV1", () => {
   test("a path with spaces survives", () => {
     expect(parsePorcelainV1(" M pages/my page.md\n")[0]?.path).toBe("pages/my page.md");
   });
+
+  test("NUL-terminated records keep non-ASCII paths verbatim and skip a rename's origin", () => {
+    const out = '?? content/72” Grapple.md\0R  pages/new.md\0pages/old.md\0 M a"b.md\0';
+    expect(parsePorcelainV1(out)).toEqual([
+      { path: "content/72” Grapple.md", staged: false, status: "U" },
+      { path: "pages/new.md", staged: true, status: "R" },
+      { path: 'a"b.md', staged: false, status: "M" },
+    ]);
+  });
 });

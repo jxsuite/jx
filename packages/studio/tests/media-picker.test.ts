@@ -51,8 +51,18 @@ void mock.module("../src/store", () => ({
       fn(...args),
 }));
 
-const { invalidateMediaCache, mountMediaPicker, unmountMediaPicker, uploadAndAssign } =
-  await import("../src/ui/media-picker");
+const {
+  invalidateMediaCache,
+  isMediaScanPath,
+  mountMediaPicker,
+  onProjectMediaChange,
+  openFullMediaPicker,
+  projectMediaFiles,
+  showMediaPickerPopover,
+  unmountMediaPicker,
+  uploadAndAssign,
+} = await import("../src/ui/media-picker");
+const { closeMediaPickDialog } = await import("../src/media/media-library");
 const { openMediaBrowserSurface } = await import("../src/surfaces/media-browser");
 const { initLayers, layerHost } = await import("../src/ui/layers");
 
@@ -92,11 +102,28 @@ const defaultTree = {
   "public/img": [{ name: "photo.JPG", path: "public/img/photo.JPG", type: "file" }],
 } satisfies Record<string, DirEntry[]>;
 
+/** The default tree's listing of one directory, empty for a directory it does not hold. */
+/**
+ * The project root's listing a tree implies: a folder for every top-level segment it names. The
+ * scan lists the root first and walks only the scan roots it finds there.
+ */
+function rootListing(tree: Record<string, DirEntry[]>): DirEntry[] {
+  const top = new Set(Object.keys(tree).map((dir) => dir.split("/")[0]!));
+  return [...top].map((name) => ({ name, path: name, type: "directory" }));
+}
+
+function defaultListing(dir: string): DirEntry[] {
+  if (dir === ".") {
+    return rootListing(defaultTree);
+  }
+  return new Map<string, DirEntry[]>(Object.entries(defaultTree)).get(dir) ?? [];
+}
+
 function installTree(tree: Record<string, DirEntry[]>, canvasUrl?: string) {
   installMockPlatform({
     ...(canvasUrl != null && { canvasUrl }),
     listDirectory: async (dir: string) => {
-      const entries = tree[dir];
+      const entries = dir === "." && !tree[dir] ? rootListing(tree) : tree[dir];
       if (!entries) {
         throw new Error(`ENOENT: ${dir}`);
       }
@@ -260,6 +287,56 @@ describe("media cache collection", () => {
     );
   });
 
+  test("callers asking while the walk runs share it rather than starting another", async () => {
+    let walks = 0;
+    installMockPlatform({
+      listDirectory: async (dir: string) => {
+        if (dir === "public") {
+          walks += 1;
+        }
+        return defaultListing(dir);
+      },
+    });
+    // The Site panel asks on every Navigator paint; several paints land before the walk does.
+    const answers = [projectMediaFiles(), projectMediaFiles(), projectMediaFiles()];
+    expect(answers).toEqual([null, null, null]);
+    await flush();
+    expect(walks).toBe(1);
+    expect(projectMediaFiles()?.map((file) => file.file)).toEqual([
+      "public/logo.png",
+      "public/clip.mp4",
+      "public/img/photo.JPG",
+    ]);
+  });
+
+  test("a walk that started before an invalidation cannot land after it", async () => {
+    let release: (entries: DirEntry[]) => void = () => {};
+    let held = true;
+    installMockPlatform({
+      listDirectory: (dir: string) => {
+        if (dir === "public" && held) {
+          held = false;
+          return new Promise<DirEntry[]>((resolve) => {
+            release = resolve;
+          });
+        }
+        return Promise.resolve(defaultListing(dir));
+      },
+    });
+    const first = projectMediaFiles();
+    // An upload lands mid-walk: the listing in flight no longer describes the project.
+    invalidateMediaCache();
+    expect([first, projectMediaFiles()]).toEqual([null, null]);
+    await flush();
+    release([{ name: "stale.png", path: "public/stale.png", type: "file" }]);
+    await flush();
+    expect(projectMediaFiles()?.map((file) => file.file)).toEqual([
+      "public/logo.png",
+      "public/clip.mp4",
+      "public/img/photo.JPG",
+    ]);
+  });
+
   test("invalidateMediaCache forces reload; an unreadable root yields an empty browser", async () => {
     await mountField("");
     invalidateMediaCache();
@@ -272,7 +349,8 @@ describe("media cache collection", () => {
     pointer(browseButton(host), "click");
     await flush();
     expect(rows()).toHaveLength(0);
-    expect(emptyLine()).toBe("No matches");
+    // An empty project says so, rather than "No matches" over a search nobody typed.
+    expect(emptyLine()).toBe("No media in this project yet");
   });
 });
 
@@ -449,6 +527,7 @@ describe("the media browser", () => {
   test("a panel closed before it mounts focuses nothing and leaves no slot", async () => {
     const handle = openMediaBrowserSurface(
       {
+        browseAllLabel: "Browse all media…",
         emptyLabel: "No matches",
         filter: "",
         moreLabel: "",
@@ -458,7 +537,13 @@ describe("the media browser", () => {
         x: 0,
         y: 0,
       },
-      { measure: () => {}, pick: () => {}, setFilter: () => {} },
+      {
+        browseAll: () => {},
+        measure: () => {},
+        pick: () => {},
+        setFilter: () => {},
+        showMore: () => {},
+      },
       null,
     );
     handle.close();
@@ -467,7 +552,28 @@ describe("the media browser", () => {
     expect(panel()).toBeNull();
   });
 
-  test("more than 50 entries are listed to the cap and the rest are counted", async () => {
+  test("more than 50 entries are listed to the cap, and the count is the control that lists the rest", async () => {
+    invalidateMediaCache();
+    const many: DirEntry[] = [];
+    for (let i = 0; i < 120; i++) {
+      many.push({ name: `pic-${i}.png`, path: `public/pic-${i}.png`, type: "file" });
+    }
+    installTree({ public: many });
+    await openBrowser();
+    expect(rows()).toHaveLength(50);
+    expect(moreLine()).toBe("Show 50 more");
+    panel()!.querySelector<HTMLElement>('[part="more"]')!.click();
+    await flush();
+    expect(rows()).toHaveLength(100);
+    expect(moreLine()).toBe("Show 20 more");
+    panel()!.querySelector<HTMLElement>('[part="more"]')!.click();
+    await flush();
+    // Every file the Media workspace lists, and no marker left over.
+    expect(rows()).toHaveLength(120);
+    expect(moreLine()).toBeNull();
+  });
+
+  test("a fresh panel starts at the cap again", async () => {
     invalidateMediaCache();
     const many: DirEntry[] = [];
     for (let i = 0; i < 60; i++) {
@@ -475,8 +581,14 @@ describe("the media browser", () => {
     }
     installTree({ public: many });
     await openBrowser();
+    panel()!.querySelector<HTMLElement>('[part="more"]')!.click();
+    await flush();
+    expect(rows()).toHaveLength(60);
+    closeFromPlatform();
+    await flush();
+    await openBrowser();
     expect(rows()).toHaveLength(50);
-    expect(moreLine()).toBe("…10 more");
+    expect(moreLine()).toBe("Show 10 more");
   });
 });
 
@@ -505,7 +617,7 @@ describe("media picker upload", () => {
     });
     created!.dispatchEvent(new Event("change"));
     await flush();
-    expect(commits).toEqual(["/hero.png"]);
+    expect(commits).toEqual(["/media/hero.png"]);
   });
 
   test("a picker dismissed without choosing anything commits nothing", async () => {
@@ -526,7 +638,7 @@ describe("media picker upload", () => {
 
     // Both files land, but only the first fills the single-valued field.
     expect(state.calls.filter((c) => c[0] === "uploadFile")).toHaveLength(2);
-    expect(commits).toEqual(["/hero.png"]);
+    expect(commits).toEqual(["/media/hero.png"]);
   });
 
   test("uploadAndAssign commits nothing when every upload failed", async () => {
@@ -627,6 +739,23 @@ describe("browse list metadata", () => {
     expect(rafQueue).toHaveLength(afterFirst);
   });
 
+  test("an SVG's caption takes the size the file declares, not the decode's", async () => {
+    const { state } = installMockPlatform({
+      listDirectory: async (dir: string) =>
+        dir === "public"
+          ? [{ name: "mark.svg", path: "public/mark.svg", size: 400, type: "file" }]
+          : [{ name: "public", path: "public", type: "directory" }],
+    });
+    state.files.set(
+      "public/mark.svg",
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"></svg>',
+    );
+    await openBrowser();
+    loadThumb(firstThumb(), 150, 150);
+    await flush();
+    expect(captions()).toEqual(["64 × 64 · 400 B"]);
+  });
+
   test("a broken thumbnail reports 0 and is not written down as a measurement", async () => {
     await openBrowser();
     loadThumb(firstThumb(), 0, 0);
@@ -654,5 +783,195 @@ describe("browse list metadata", () => {
     installTree({ public: [{ name: "logo.png", path: "public/logo.png", type: "file" }] });
     await openBrowser();
     expect(captions()).toEqual([undefined]);
+  });
+});
+
+// ─── The scan's reach, and who hears about it ────────────────────────────────
+
+describe("what counts as the project's media", () => {
+  test("public/** and every collection's images/ folder, each with its kind", async () => {
+    installTree({
+      content: [
+        { name: "blog", path: "content/blog", type: "directory" },
+        { name: "notes.md", path: "content/notes.md", type: "file" },
+        { name: "drafts", path: "content/drafts", type: "directory" },
+        { name: "locked", path: "content/locked", type: "directory" },
+      ],
+      "content/blog": [
+        { name: "post.md", path: "content/blog/post.md", type: "file" },
+        { name: "images", path: "content/blog/images", type: "directory" },
+      ],
+      "content/drafts": [{ name: "draft.md", path: "content/drafts/draft.md", type: "file" }],
+      "content/blog/images": [
+        { name: "cover.png", path: "content/blog/images/cover.png", type: "file" },
+      ],
+      public: [{ name: "intro.mp4", path: "public/intro.mp4", type: "file" }],
+    });
+    projectMediaFiles();
+    await flush();
+    const files = projectMediaFiles() ?? [];
+    expect(files.map((file) => [file.file, file.kind])).toEqual([
+      ["public/intro.mp4", "video"],
+      ["content/blog/images/cover.png", "image"],
+    ]);
+  });
+
+  test("a collection without an images/ folder is never asked for one", async () => {
+    const asked: string[] = [];
+    installMockPlatform({
+      listDirectory: async (dir: string) => {
+        asked.push(dir);
+        if (dir === "content") {
+          return [{ name: "notes", path: "content/notes", type: "directory" }];
+        }
+        if (dir === "content/notes") {
+          return [{ name: "a.md", path: "content/notes/a.md", type: "file" }];
+        }
+        if (dir === ".") {
+          return [{ name: "content", path: "content", type: "directory" }];
+        }
+        return [];
+      },
+    });
+    projectMediaFiles();
+    await flush();
+    expect(asked).toContain("content/notes");
+    expect(asked).not.toContain("content/notes/images");
+  });
+
+  test("a project with no content/ folder lists public/ alone, and never asks for content/", async () => {
+    const asked: string[] = [];
+    const tree = new Map<string, DirEntry[]>([
+      [
+        ".",
+        [
+          { name: "pages", path: "pages", type: "directory" },
+          { name: "public", path: "public", type: "directory" },
+        ],
+      ],
+      ["public", [{ name: "a.png", path: "public/a.png", type: "file" }]],
+    ]);
+    installMockPlatform({
+      listDirectory: async (dir: string) => {
+        asked.push(dir);
+        return tree.get(dir) ?? [];
+      },
+    });
+    projectMediaFiles();
+    await flush();
+    const listed = projectMediaFiles() ?? [];
+    expect(listed.map((file) => file.file)).toEqual(["public/a.png"]);
+    expect(asked).not.toContain("content");
+  });
+
+  test("an unreadable project root still walks both scan roots", async () => {
+    const asked: string[] = [];
+    installMockPlatform({
+      listDirectory: async (dir: string) => {
+        asked.push(dir);
+        if (dir === "public") {
+          return [{ name: "a.png", path: "public/a.png", type: "file" }];
+        }
+        throw new Error(`ENOENT: ${dir}`);
+      },
+    });
+    projectMediaFiles();
+    await flush();
+    expect((projectMediaFiles() ?? []).map((file) => file.file)).toEqual(["public/a.png"]);
+    expect(asked).toEqual(expect.arrayContaining([".", "public", "content"]));
+  });
+
+  test("isMediaScanPath names exactly the two trees the scan walks", () => {
+    expect(isMediaScanPath("public/media/a.png")).toBe(true);
+    expect(isMediaScanPath("content/blog/images/a.png")).toBe(true);
+    expect(isMediaScanPath(String.raw`content\blog\images\a.png`)).toBe(true);
+    expect(isMediaScanPath("content/blog/post.md")).toBe(false);
+    expect(isMediaScanPath("pages/index.json")).toBe(false);
+  });
+
+  test("a listener hears the listing land and the invalidation that drops it, until it leaves", async () => {
+    let heard = 0;
+    const stop = onProjectMediaChange(() => {
+      heard += 1;
+    });
+    projectMediaFiles();
+    await flush();
+    expect(heard).toBe(1);
+    invalidateMediaCache();
+    expect(heard).toBe(2);
+    stop();
+    invalidateMediaCache();
+    expect(heard).toBe(2);
+  });
+
+  test("with no platform registered the listing stays unknown rather than empty", async () => {
+    globalThis.__jxPlatform = undefined;
+    expect(projectMediaFiles()).toBeNull();
+    await flush();
+    expect(projectMediaFiles()).toBeNull();
+  });
+});
+
+// ─── One picker, two sizes ───────────────────────────────────────────────────
+
+describe("images only, and Browse all media…", () => {
+  function anchor(): HTMLElement {
+    const el = document.createElement("button");
+    document.body.append(el);
+    hosts.push(el);
+    return el;
+  }
+
+  test("an image chooser lists images alone and says so on its last row", async () => {
+    showMediaPickerPopover(anchor(), () => {}, { images: true });
+    await flush();
+    expect(rowPaths()).toEqual(["/logo.png", "/img/photo.JPG"]);
+    expect(panel()?.querySelector('[part="browse-all"]')?.textContent.trim()).toBe(
+      "Browse all images…",
+    );
+  });
+
+  test("an image chooser over a project with no images says that, not 'No matches'", async () => {
+    installTree({ public: [{ name: "clip.mp4", path: "public/clip.mp4", type: "file" }] });
+    showMediaPickerPopover(anchor(), () => {}, { images: true });
+    await flush();
+    expect(emptyLine()).toBe("No images in this project yet");
+  });
+
+  test("Browse all media… closes the compact list and opens the full picker with the same commit", async () => {
+    const commits: string[] = [];
+    showMediaPickerPopover(anchor(), (value) => commits.push(value));
+    await flush();
+    expect(panel()?.querySelector('[part="browse-all"]')?.textContent.trim()).toBe(
+      "Browse all media…",
+    );
+    pointer(panel()!.querySelector<HTMLElement>('[part="browse-all"]')!, "click");
+    await flush(6);
+    expect(panel()).toBeNull();
+    const dialog = layerHost("dialog").querySelector('jx-dialog[part="media-pick"]');
+    expect(dialog).not.toBeNull();
+    closeMediaPickDialog();
+    await flush();
+    expect(layerHost("dialog").querySelector('jx-dialog[part="media-pick"]')).toBeNull();
+  });
+
+  test("openFullMediaPicker hands the image restriction to the dialog", async () => {
+    await openFullMediaPicker(() => {}, { images: true });
+    await flush(6);
+    const dialog = layerHost("dialog").querySelector<HTMLElement>('jx-dialog[part="media-pick"]');
+    expect(dialog?.querySelector('[part="headline"]')?.textContent.trim()).toBe("Choose an image");
+    closeMediaPickDialog();
+    await flush();
+  });
+
+  test("a field mounted for an image passes the restriction to its browser", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    hosts.push(host);
+    mountMediaPicker(host, "src", "", () => {}, { images: true });
+    await flush();
+    pointer(browseButton(host), "click");
+    await flush();
+    expect(rowPaths()).toEqual(["/logo.png", "/img/photo.JPG"]);
   });
 });

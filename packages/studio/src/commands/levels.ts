@@ -176,17 +176,20 @@ export type PanelPlacement = (typeof PANEL_PLACEMENTS)[number];
 export const PANEL_PLACEMENT_MATRIX: Readonly<Record<PanelPlacement, PlacementRule>> = {
   "rail/project": {
     admits: ["project"],
-    note: "the rail's upper group — Files, Search, Source Control, Problems",
+    note: "the rail's upper group — Site, and Files with the developer panels on",
   },
   "rail/document": {
     admits: ["document"],
-    note: "the rail's lower group — Outline, Page, Data, Packages",
+    note: "the rail's lower group — Outline, Data, and Packages with the developer panels on",
   },
   navigator: {
     admits: ["project", "document"],
     note: "whichever level the hosted panel declares; the panel header prints it",
   },
-  inspector: { admits: ["selection"], note: "the Inspector's tabs are selection surfaces" },
+  inspector: {
+    admits: ["document", "selection"],
+    note: "Page is the open document's tab, Element the selection's (§6)",
+  },
   "dock.bottom": { admits: ["project", "document"], note: "the panel header states which" },
 };
 
@@ -196,8 +199,11 @@ export interface PlaceablePanel {
   level: Level;
   /** The dock hosting the panel's body. */
   dock: "navigator" | "inspector" | "bottom";
-  /** `false` for a panel with no rail button — it declares no rail-group placement. */
-  rail?: boolean | undefined;
+  /**
+   * `false` for a panel with no rail button — it declares no rail-group placement. `"developer"` is
+   * a rail button only while the developer panels are shown, and it still holds its placement.
+   */
+  rail?: boolean | "developer" | undefined;
 }
 
 /** One rejected (panel, placement) pair. Shaped like {@link PlacementViolation}, keyed by panel. */

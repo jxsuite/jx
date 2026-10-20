@@ -9,32 +9,47 @@
  *    identical sentence — "No files found" — which is the lie §16 exists to end.
  *    {@link scanLibrary} returns {@link LibraryScan.failures} beside the files; the pane raises
  *    them as Problems with a Retry and refuses to call an incomplete listing empty.
- * 2. **A category has a directory.** The Manage view filtered by category and uploaded to whatever
- *    directory the active filter happened to name, which for "All" was nothing at all — the upload
- *    landed wherever `uploadAssets` defaulted. {@link uploadDirForCategory} still answers, but the
- *    pane never uploads to an unnamed destination: it asks.
+ * 2. **A file is in one collection or in none.** The Library this model served filtered by FOLDER
+ *    (Pages, Layouts, Components, Content, Media) and matched content with a third matcher of its
+ *    own, which disagreed with the collection grid about the same entry. Every file now carries the
+ *    key of the collection the Content workspace lists it under ({@link LibraryFile.collection}),
+ *    from `content/content-collections.ts`, whose one matcher is `content/collection-match.ts`
+ *    (studio.md §9.1.2).
  *
  * Everything here is pure over its inputs (the scan takes the platform as an argument) so the
  * 300-page acceptance case can be measured without a DOM.
  */
 
 import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-upload";
+import { PAGES_COLLECTION, collectionKeyOfPath } from "../content/content-collections";
+import { isRoutedPageFile } from "@jxsuite/site/routes";
+import { collectionForFile } from "../content/collection-match";
+import { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
 import { projectState } from "../store";
 import { notedListing } from "../files/asset-versions";
+import { localDay } from "../utils/local-day";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { isString } from "@jxsuite/schema/guards";
 import { resolveI18n, servedLocaleOfPath } from "@jxsuite/schema/locale";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
 import type { ContentSectionEntry, DirEntry, StudioPlatform } from "../types";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 
 // ─── Files ───────────────────────────────────────────────────────────────────
 
-/** One row of the Library, whichever layout is drawing it. */
+/** One scanned file, whichever layout is drawing it. */
 export interface LibraryFile {
   name: string;
   path: string;
-  /** The content type name for a content file; the extension otherwise. */
+  /** The extension, or `"file"` for a name without one. */
   type: string;
-  category: string;
+  /**
+   * The key of the collection the file is in (`pages`, or a collection's name), or `null` for a
+   * file in none: a template, a component, a media file, anything else.
+   */
+  collection: string | null;
+  /** Whether the file is media by its extension — never an entry, whatever folder it is in. */
+  media: boolean;
   ext: string;
   /** Bytes, when the platform reported them. */
   size?: number | undefined;
@@ -52,6 +67,13 @@ export interface LibraryFile {
    * is in none.
    */
   locale?: string | undefined;
+  /**
+   * Set when this row is one RECORD of a file-backed collection rather than a file: `path` is then
+   * the record's key (`prices.csv#3`), and `source` the file it is stored in, which is what opening
+   * it opens (`content/file-records.ts`); `row` is its place among the file's data rows, which is
+   * the row that file's grid lands on.
+   */
+  record?: { source: string; row: number; fields: Readonly<Record<string, string>> } | undefined;
 }
 
 /** A directory the scan could not read. Its presence means the listing is INCOMPLETE, not empty. */
@@ -66,103 +88,117 @@ export interface LibraryScan {
   failures: ScanFailure[];
 }
 
-// ─── Categories ──────────────────────────────────────────────────────────────
-
-/** A Library category: what it is called, and the directory an upload into it lands in. */
-export interface LibraryCategory {
-  key: string;
-  label: string;
-  /** Absent for "All" — which is why "All" has no upload destination and must ask for one. */
-  dir?: string;
-}
-
-export const LIBRARY_CATEGORIES: readonly LibraryCategory[] = [
-  { key: "all", label: "All" },
-  { dir: "pages", key: "pages", label: "Pages" },
-  { dir: "layouts", key: "layouts", label: "Layouts" },
-  { dir: "components", key: "components", label: "Components" },
-  { dir: "content", key: "content", label: "Content" },
-  { dir: "public", key: "media", label: "Media" },
-];
-
-/** The category keys, for a command's `enum` — so `library.setCategory` refuses an unknown one. */
-export const LIBRARY_CATEGORY_KEYS: readonly string[] = LIBRARY_CATEGORIES.map((c) => c.key);
-
-/** The category with this key, or undefined. */
-export function libraryCategory(key: string): LibraryCategory | undefined {
-  return LIBRARY_CATEGORIES.find((c) => c.key === key);
-}
-
-/**
- * The directory a drop on the Library targets while `key` is the active category.
- *
- * `undefined` for "All" and for any category without one, and the caller MUST treat that as "ask",
- * never as "use the default": an upload that lands somewhere the author did not choose is the same
- * class of surprise as a rename that silently rewrites files.
- */
-export function uploadDirForCategory(key: string): string | undefined {
-  return libraryCategory(key)?.dir;
-}
-
-/** Map a file path to a display category. Media files override by extension. */
-export function categoryFor(dir: string, ext: string): string {
-  if (ext && MEDIA_EXTENSIONS.has(ext)) {
-    return "Media";
-  }
-  if (dir.startsWith("pages")) {
-    return "Pages";
-  }
-  if (dir.startsWith("layouts")) {
-    return "Layouts";
-  }
-  if (dir.startsWith("components")) {
-    return "Components";
-  }
-  if (dir.startsWith("content")) {
-    return "Content";
-  }
-  if (dir.startsWith("public")) {
-    return "Media";
-  }
-  if (dir.startsWith("data")) {
-    return "Content";
-  }
-  if (dir.startsWith("styles")) {
-    return "Components";
-  }
-  return "Other";
-}
-
-/**
- * The content type a path belongs to, from the project's `content` section — capitalized, or null.
- *
- * @param {string} filePath
- * @returns {string | null}
- */
-export function contentTypeFor(filePath: string): string | null {
-  /* SAFETY: `content` is the parser extension's opaque project section, which its project fragment
-     schema defines as a map of section entries; the loop reads only the optional `source`, and skips
-     an entry without one. */
-  const content = (projectState?.projectConfig?.content ?? {}) as Record<
-    string,
-    ContentSectionEntry
-  >;
-  for (const [name, entry] of Object.entries(content)) {
-    if (!entry.source) {
-      continue;
-    }
-    const prefix = entry.source.replace(/^\.\//, "").replace(/\/$/, "");
-    if (filePath.startsWith(`${prefix}/`) || filePath === prefix) {
-      return name.charAt(0).toUpperCase() + name.slice(1);
-    }
-  }
-  return null;
-}
-
 // ─── The scan ────────────────────────────────────────────────────────────────
 
-/** Directory names never worth walking — a `node_modules` scan is minutes, not milliseconds. */
-const SKIP_DIRS = new Set(["node_modules", ".git", ".jx", "dist", "build", ".cache"]);
+/** A project-relative path without `./`, backslashes or a trailing slash. */
+function normalizeDir(path: string): string {
+  return path
+    .replaceAll("\\", "/")
+    .replace(/^(?:\.\/)+/, "")
+    .replace(/\/+$/, "");
+}
+
+/** Whether a `source` names one file (a CSV catalogue) rather than a directory to walk. */
+function namesOneFile(source: string): boolean {
+  if (source.endsWith("/")) {
+    return false;
+  }
+  const base = source.slice(source.lastIndexOf("/") + 1);
+  return /\.[a-z\d]+$/i.test(base);
+}
+
+/**
+ * The directories the Content scan walks: the conventional project directories that exist, plus
+ * every declared directory-collection `source` none of them already covers.
+ *
+ * The conventional list alone missed two real collections. A collection may live BESIDE the project
+ * (`sites/jxsuite.com` declares `content.docs.source: "../../docs"`), which no project directory
+ * can contain; and a collection created after the project opened (Add new › Collection) has its
+ * source under a `content/` that did not exist when the conventional list was read. Both were
+ * listed as empty, which is the lie {@link LibraryScan.failures} exists to end.
+ *
+ * A localized source is walked from the directory above its `{locale}` segment, which the walk
+ * descends into on its own. A file-backed source is a file, not a directory to walk.
+ *
+ * @param projectDirs The conventional directories present at the project root.
+ * @param config The project configuration whose `content` section declares the collections.
+ */
+export function libraryScanDirs(
+  projectDirs: readonly string[],
+  config: ProjectConfig | null | undefined,
+): readonly string[] {
+  const dirs: string[] = [];
+  for (const dir of projectDirs) {
+    dirs.push(normalizeDir(dir));
+  }
+  const extra: string[] = [];
+  /* SAFETY: `content` is the parser extension's section, collection name → entry object; only the
+     optional string `source` is read, and it is tested before use. */
+  const content = (config?.content ?? {}) as Record<string, ContentSectionEntry>;
+  for (const def of Object.values(content)) {
+    if (!isString(def.source) || def.source === "" || namesOneFile(def.source)) {
+      continue;
+    }
+    let source = normalizeDir(def.source);
+    const cut = source.indexOf(LOCALE_PLACEHOLDER);
+    if (cut !== -1) {
+      source = normalizeDir(source.slice(0, cut));
+    }
+    if (source === "" || source === ".") {
+      continue;
+    }
+    const covered = [...dirs, ...extra].some(
+      (dir) => source === dir || source.startsWith(`${dir}/`),
+    );
+    if (!covered) {
+      extra.push(source);
+    }
+  }
+  // The project's own list, unchanged, when every collection is already under it.
+  return extra.length === 0 ? projectDirs : [...projectDirs, ...extra];
+}
+
+/**
+ * The collection a scanned file is an ENTRY of, or `null`.
+ *
+ * `collectionKeyOfPath` answers which collection's folder holds a file, which is the question a
+ * convert or a creation asks. A listing asks a narrower one: is this a file the collection's loader
+ * reads? A Markdown collection's folder may hold a `nav.json` beside its pages (the jxsuite docs
+ * do), and counting it made the Content home and the Site panel disagree about one collection. So a
+ * collection that DECLARES its format lists only the files carrying that format's extension; one
+ * that declares none is left to the loader's reading of the source, as before.
+ *
+ * Pages are judged the way the build's walk judges them: with `pageExtensions` given, a file under
+ * `pages/` is a page only when it carries one of them, so `index.json.bak` beside the home page is
+ * a file in the folder rather than a second page (it publishes nothing).
+ *
+ * @param path The project-relative file.
+ * @param pageExtensions The extensions the build routes (`routedPageExtensions`); omitted, a page's
+ *   extension is not judged.
+ */
+export function entryCollectionOf(path: string, pageExtensions?: readonly string[]): string | null {
+  const key = collectionKeyOfPath(path);
+  if (key === null) {
+    return null;
+  }
+  if (key === PAGES_COLLECTION) {
+    return pageExtensions === undefined || isRoutedPageFile(path, pageExtensions) ? key : null;
+  }
+  const match = collectionForFile(path);
+  if (!match || match.name !== key || !match.def.format || match.ext === null) {
+    return key;
+  }
+  return path.toLowerCase().endsWith(match.ext.toLowerCase()) ? key : null;
+}
+
+/**
+ * Directory names never worth walking — a `node_modules` scan is minutes, not milliseconds.
+ *
+ * Not `build` or `dist`: the scan starts inside the project's own directories, never at its root
+ * where a build writes, and a collection is free to name a section `build` (the jxsuite docs file
+ * their CLI pages under `framework/build/`). Skipping the name dropped those entries silently.
+ */
+const SKIP_DIRS = new Set(["node_modules", ".git", ".jx", ".cache"]);
 
 /**
  * Walk one directory tree, collecting files and recording — never swallowing — what it could not
@@ -175,13 +211,18 @@ async function walk(
   out: LibraryFile[],
   failures: ScanFailure[],
   i18n: ResolvedI18n | null,
+  optional = false,
+  pageExtensions?: readonly string[],
 ): Promise<void> {
   let entries: DirEntry[];
   try {
     // Noted: the Library walks every media directory, so it is where most versions are learned.
     entries = await notedListing(() => platform.listDirectory(dir));
   } catch (error) {
-    failures.push({ dir, error: errorMessage(error) });
+    // A declared collection's folder that does not exist yet is an empty collection, not a fault.
+    if (!optional) {
+      failures.push({ dir, error: errorMessage(error) });
+    }
     return;
   }
   const subdirectories: string[] = [];
@@ -193,21 +234,23 @@ async function walk(
       continue;
     }
     const ext = extensionOf(entry.name);
-    const category = categoryFor(entry.path, ext);
     out.push({
-      category,
+      collection: entryCollectionOf(entry.path, pageExtensions),
       ext,
       locale: servedLocaleOfPath(entry.path, i18n) ?? undefined,
+      media: MEDIA_EXTENSIONS.has(ext),
       modified: entry.modified,
       name: entry.name,
       path: entry.path,
       size: entry.size,
-      type: category === "Content" ? (contentTypeFor(entry.path) ?? ext) : ext || "file",
+      type: ext || "file",
     });
   }
   // Siblings in parallel, depth serialized per branch: the platform counts every call as in-flight,
   // So `probe.idle()` already knows the scan is running without the Library declaring a source.
-  await Promise.all(subdirectories.map((sub) => walk(sub, platform, out, failures, i18n)));
+  await Promise.all(
+    subdirectories.map((sub) => walk(sub, platform, out, failures, i18n, false, pageExtensions)),
+  );
 }
 
 /**
@@ -219,13 +262,19 @@ async function walk(
 export async function scanLibrary(
   dirs: readonly string[],
   platform: Pick<StudioPlatform, "listDirectory">,
+  optional: ReadonlySet<string> = new Set(),
+  pageExtensions?: readonly string[],
 ): Promise<LibraryScan> {
   const files: LibraryFile[] = [];
   const failures: ScanFailure[] = [];
   // Resolved ONCE for the whole walk. `resolveI18n` canonicalizes every declared tag through
   // `Intl.Locale`, and a project with 300 pages would otherwise pay for that per file.
   const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
-  await Promise.all(dirs.map((dir) => walk(dir, platform, files, failures, i18n)));
+  await Promise.all(
+    dirs.map((dir) =>
+      walk(dir, platform, files, failures, i18n, optional.has(dir), pageExtensions),
+    ),
+  );
   files.sort((a, b) => a.path.localeCompare(b.path));
   return { failures, files };
 }
@@ -233,25 +282,19 @@ export async function scanLibrary(
 // ─── Filtering ───────────────────────────────────────────────────────────────
 
 export interface LibraryFilter {
-  category: string;
+  /** The collection key to keep: `pages`, or a declared collection's name. */
+  collection: string;
   query: string;
   /** A canonical tag, or "" for every language. Never a label — the labels are not unique. */
   locale?: string;
 }
 
-/**
- * Category, then text over name and path, then language. Returns the input array unchanged when
- * nothing filters.
- */
+/** Collection, then text over name and path, then language. */
 export function filterLibrary(
   files: readonly LibraryFile[],
   filter: LibraryFilter,
 ): readonly LibraryFile[] {
-  let result = files;
-  const category = libraryCategory(filter.category);
-  if (category && category.key !== "all") {
-    result = result.filter((f) => f.category === category.label);
-  }
+  let result = files.filter((f) => f.collection === filter.collection);
   const query = filter.query.trim().toLowerCase();
   if (query) {
     result = result.filter(
@@ -267,7 +310,8 @@ export function filterLibrary(
 
 // ─── Layouts ─────────────────────────────────────────────────────────────────
 
-export const LIBRARY_LAYOUTS = ["table", "cards", "media", "calendar", "board"] as const;
+/** The Content home's four views (studio.md §22.5), in the order its view switch draws them. */
+export const LIBRARY_LAYOUTS = ["table", "cards", "calendar", "board"] as const;
 
 export type LibraryLayout = (typeof LIBRARY_LAYOUTS)[number];
 
@@ -275,20 +319,16 @@ export const LIBRARY_LAYOUT_LABELS: Readonly<Record<LibraryLayout, string>> = {
   board: "Board",
   calendar: "Calendar",
   cards: "Cards",
-  media: "Media",
   table: "Table",
 };
 
-/** Whether a string names a layout — the guard behind `library.setLayout`'s argument. */
+/** Whether a string names a layout — the guard behind `content.setLayout`'s argument. */
 export function isLibraryLayout(value: string): value is LibraryLayout {
   return LIBRARY_LAYOUTS.some((layout) => layout === value);
 }
 
-/** Layouts that draw a live preview per item. Table and Board draw text, and stay cheap. */
-export const PREVIEW_LAYOUTS: ReadonlySet<LibraryLayout> = new Set<LibraryLayout>([
-  "cards",
-  "media",
-]);
+/** Layouts that draw a live preview per item. Table, Calendar and Board draw text. */
+export const PREVIEW_LAYOUTS: ReadonlySet<LibraryLayout> = new Set<LibraryLayout>(["cards"]);
 
 // ─── Derived axes (Calendar and Board) ───────────────────────────────────────
 
@@ -308,9 +348,10 @@ export function libraryDate(file: LibraryFile): string | null {
     return prefix[1]!;
   }
   if (file.modified) {
-    const parsed = new Date(file.modified);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString().slice(0, 10);
+    // The day it was modified where the reader is, not in UTC (`utils/local-day.ts`).
+    const day = localDay(new Date(file.modified));
+    if (day) {
+      return day;
     }
   }
   return null;
@@ -318,7 +359,7 @@ export function libraryDate(file: LibraryFile): string | null {
 
 /**
  * The locales this project DECLARES, canonical and in declaration order — the value space of the
- * Library's language facet and of `library.setLocale`'s `enum`.
+ * Content home's language facet and of `content.setLocale`'s `enum`.
  *
  * Read at call time rather than cached: `projectState` is a plain binding replaced wholesale on a
  * project switch, so a cached list would describe the project before last.
@@ -330,10 +371,9 @@ export function projectLocales(): readonly string[] {
 /**
  * The locales actually PRESENT among these files, in the project's declaration order.
  *
- * Ordered by the project and not by the scan for the reason {@link groupByCategory} orders its
- * columns by {@link LIBRARY_CATEGORIES}: a facet whose options reshuffle when a file is added is a
- * facet nobody can build muscle memory for. Declaration order also puts the default locale first,
- * because {@link resolveI18n} guarantees it is `locales[0]`.
+ * Ordered by the project and not by the scan: a facet whose options reshuffle when a file is added
+ * is a facet nobody can build muscle memory for. Declaration order also puts the default locale
+ * first, because {@link resolveI18n} guarantees it is `locales[0]`.
  *
  * Only declared tags can appear — `localeOfPath` matches nothing else — so filtering the
  * declaration through the presence set loses no file.
@@ -361,11 +401,14 @@ export interface LibraryDateGroups {
 }
 
 /** Calendar buckets, newest day first, plus the files no date could be derived for. */
-export function groupByDate(files: readonly LibraryFile[]): LibraryDateGroups {
+export function groupByDate(
+  files: readonly LibraryFile[],
+  dateOf: (file: LibraryFile) => string | null = libraryDate,
+): LibraryDateGroups {
   const byDay = new Map<string, LibraryFile[]>();
   const undated: LibraryFile[] = [];
   for (const file of files) {
-    const date = libraryDate(file);
+    const date = dateOf(file);
     if (date === null) {
       undated.push(file);
       continue;
@@ -383,28 +426,33 @@ export function groupByDate(files: readonly LibraryFile[]): LibraryDateGroups {
   return { days, undated };
 }
 
-/** Board columns — one per category present, in the Library's own category order, then the rest. */
-export function groupByCategory(
+/** The folder a file is in, project-relative: `pages/blog/a.md` → `pages/blog`. */
+export function folderOf(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? "." : path.slice(0, slash);
+}
+
+/**
+ * Board columns: one per folder the files are in, in path order.
+ *
+ * A collection is browsed one at a time, so a column per collection would be one column; the
+ * folders inside it (`pages/` and `pages/blog/`, a dated archive's years) are the grouping a
+ * collection already has on disk, and the one a Board can state without reading any file.
+ */
+export function groupByFolder(
   files: readonly LibraryFile[],
 ): { group: string; files: LibraryFile[] }[] {
   const byGroup = new Map<string, LibraryFile[]>();
   for (const file of files) {
-    const bucket = byGroup.get(file.category);
+    const folder = folderOf(file.path);
+    const bucket = byGroup.get(folder);
     if (bucket) {
       bucket.push(file);
     } else {
-      byGroup.set(file.category, [file]);
+      byGroup.set(folder, [file]);
     }
   }
-  const order = LIBRARY_CATEGORIES.map((c) => c.label);
   return [...byGroup.entries()]
     .map(([group, groupFiles]) => ({ files: groupFiles, group }))
-    .toSorted((a, b) => {
-      const ai = order.indexOf(a.group);
-      const bi = order.indexOf(b.group);
-      if (ai === bi) {
-        return a.group.localeCompare(b.group);
-      }
-      return (ai === -1 ? order.length : ai) - (bi === -1 ? order.length : bi);
-    });
+    .toSorted((a, b) => a.group.localeCompare(b.group));
 }

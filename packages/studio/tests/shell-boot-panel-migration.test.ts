@@ -31,6 +31,6 @@ describe("shell boot — the persisted panel id", () => {
 
   test("the old id is not silently kept alive as an alias", () => {
     expect([...NAVIGATOR_PANEL_IDS]).not.toContain("blocks");
-    expect(DEFAULT_PANEL_ID).toBe("layers");
+    expect(DEFAULT_PANEL_ID).toBe("site");
   });
 });

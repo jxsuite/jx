@@ -302,9 +302,8 @@ function selectionKey(editing: FormulaEditDef): string {
  *
  * The document reports a chip by its key and a button by nothing at all, so the objects behind them
  * — the tab, the target, the root node, the sub-node a commit replaces — live here, rewritten by
- * every projection. Held rather than recomputed at click time for the reason `panels/git-panel.ts`
- * states about its own seat: a callback captured at mount would reach the FIRST projection's
- * document for the rest of the window.
+ * every projection. Held rather than recomputed at click time because a callback captured at mount
+ * would reach the FIRST projection's document for the rest of the window.
  */
 interface Resolved {
   tab: Tab;

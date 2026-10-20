@@ -14,7 +14,8 @@ import {
   toDocPos,
   toDomPosition,
 } from "../src/canvas/iframe-position";
-import type { EditablePredicate } from "../src/canvas/iframe-position";
+import type { DomPosition, EditablePredicate } from "../src/canvas/iframe-position";
+import { describeNode } from "@jxsuite/test-support/inspect-dom";
 
 // These are pure DOM traversals with no layout reads, so happy-dom exercises them faithfully — in
 // Contrast to caret-from-point and line geometry, which are Chromium-only and verified via CDP.
@@ -41,6 +42,11 @@ function one<K extends keyof HTMLElementTagNameMap>(
     throw new Error(`fixture has no <${tag}>`);
   }
   return el;
+}
+
+/** A position with its node as its identity, so two compare without deep-comparing DOM nodes. */
+function described(position: DomPosition | null): { node: string; offset: number } | null {
+  return position === null ? null : { node: describeNode(position.node), offset: position.offset };
 }
 
 /** The text node a fixture puts at `node`; markup there instead fails the test. */
@@ -168,15 +174,16 @@ describe("offsetOf / domPositionAt round-trip", () => {
   test("offsets clamp into range instead of throwing", () => {
     const c = mount(`<p data-jx-path='["children",0]'>abc</p>`);
     const p = one(c, "p");
-    expect(domPositionAt(p, 99)).toEqual({ node: textOf(p.firstChild), offset: 3 });
-    expect(domPositionAt(p, -5)).toEqual({ node: textOf(p.firstChild), offset: 0 });
+    const text = textOf(p.firstChild);
+    expect(described(domPositionAt(p, 99))).toEqual(described({ node: text, offset: 3 }));
+    expect(described(domPositionAt(p, -5))).toEqual(described({ node: text, offset: 0 }));
   });
 
   test("an empty block resolves to the element itself", () => {
     const c = mount(`<p data-jx-path='["children",0]'></p>`);
     const p = one(c, "p");
     expect(blockTextLength(p)).toBe(0);
-    expect(domPositionAt(p, 0)).toEqual({ node: p, offset: 0 });
+    expect(described(domPositionAt(p, 0))).toEqual(described({ node: p, offset: 0 }));
   });
 
   test("offsetOf returns null for a node outside the block", () => {
@@ -224,7 +231,7 @@ describe("toDocPos / toDomPosition", () => {
     // At the new end, not be discarded (that would kick the user out of the block mid-collab).
     const c = mount(`<p data-jx-path='["children",0]'>hi</p>`);
     const back = toDomPosition(c, { offset: 40, path: ["children", 0] });
-    expect(back).toEqual({ node: one(c, "p").firstChild!, offset: 2 });
+    expect(described(back)).toEqual(described({ node: one(c, "p").firstChild!, offset: 2 }));
   });
 });
 

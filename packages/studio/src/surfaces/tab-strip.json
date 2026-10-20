@@ -115,7 +115,7 @@
       "color": "var(--jx-bg)"
     },
     "& [part=\"pin\"]": {
-      "$description": "`.tab-strip-pin`, in `jx-tab`'s actions slot. A click on it never also selects the tab, and that is the KIT's doing now rather than a `stopPropagation` this document has to remember: `jx-tab` stops a click inside its actions slot exactly as it stops one on its own close button.",
+      "$description": "`.tab-strip-pin`, in `jx-tab`'s actions slot, on the current chip and on a pinned one (the rule below). A click on it never also selects the tab, and that is the KIT's doing now rather than a `stopPropagation` this document has to remember: `jx-tab` stops a click inside its actions slot exactly as it stops one on its own close button.",
       "display": "flex",
       "alignItems": "center",
       "justifyContent": "center",
@@ -130,7 +130,6 @@
       "lineHeight": "1",
       "borderRadius": "var(--radius)",
       "cursor": "pointer",
-      "opacity": "0",
       ":hover": {
         "background": "var(--hover-bg)",
         "color": "var(--fg)"
@@ -140,8 +139,9 @@
         "outlineOffset": "-1px"
       }
     },
-    "& [part=\"tab\"]:hover [part=\"pin\"], & [part=\"tab\"][aria-selected=\"true\"] [part=\"pin\"], & [part=\"tab\"][data-pinned] [part=\"pin\"]": {
-      "opacity": "1"
+    "& [part=\"tab\"]:not([aria-selected=\"true\"]):not([data-pinned]) [part=\"pin\"]": {
+      "$description": "An inactive, unpinned chip draws no pin and keeps no box for one. It was `opacity: 0` here and revealed on hover, so the invisible button still took 16px of the chip and every click on it: the centre of a short chip (the Media home's, beside its viewer tab) was the pin, so the click toggled a pin nobody could see and the tab did not activate. A box that takes clicks is a control, and a control is either shown or absent. The current chip shows its pin, a pinned chip shows its mark, and any chip pins from its context menu (`document.togglePinned`).",
+      "display": "none"
     },
     "& [part=\"tab\"][data-pinned] [part=\"pin\"]": {
       "color": "var(--accent)"

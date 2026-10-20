@@ -240,20 +240,6 @@ describe("a region named by ROLE outlives the node it was minted on", () => {
     // Belongs to — which is the whole reason the surface axis exists.
     expect(focusRegionOf(host.querySelector("#assistant"))).toBe("inspector");
   });
-
-  test("`pane.primary/frontmatter` outlived `#frontmatter-panel` the same way", () => {
-    // It named a grid row. The row is gone and the Document Header card is drawn inside the stage,
-    // Where `panels/frontmatter-panel.ts` stamps the id on the card's own <section> — so the table
-    // Has one fewer row and `properties-bar`'s crop still resolves.
-    expect(isRegionId("pane.primary/frontmatter")).toBe(true);
-    const host = tree(
-      `<div id="canvas-wrap"><section class="doc-header" id="card"
-         data-jx-region="pane.primary/frontmatter"></section></div>`,
-    );
-    expect(resolveRegion("pane.primary/frontmatter", host)?.id).toBe("card");
-    // It is a PART of the primary pane, so focus lands in the pane it belongs to.
-    expect(focusRegionOf(host.querySelector("#card"))).toBe("pane");
-  });
 });
 
 describe("the shell's own regions", () => {

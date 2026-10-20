@@ -24,7 +24,7 @@ With generated code, the AI is usually the only practical way back in, because v
 
 ## Every change is a diff
 
-Because the assistant changes files, its work shows up in **[Source Control](/docs/studio/publish/source-control)** like your own edits: a list of changed files, each with a readable diff. Review what it did, commit what you like, discard what you don't, and roll back any commit later. AI output rides the same rails as your own work, rather than getting a separate, unaccountable channel into your project.
+Because the assistant changes files, its work shows up in **[Review changes](/docs/studio/publish/source-control)** like your own edits: a list of changed files, each with a readable diff. Review what it did, commit what you like, discard what you don't, and roll back any commit later. AI output rides the same rails as your own work, rather than getting a separate, unaccountable channel into your project.
 
 ## Ownership
 

@@ -61,6 +61,28 @@ describe("highlightFence", () => {
     expect(childAt(elementAt($children, 0), 0).className).toContain("shiki");
   });
 
+  test("tokenizes a whole line however slowly it goes: the output never depends on the clock", () => {
+    /* Every clock read a full second later than the last: any per-line time limit would stop
+       after the first scan and leave the template expression painted as part of the string. */
+    const code = 'const html = `<div class="alert">${__("Pick one")}</div>`;';
+    const steady = highlightFence(code, "js")!;
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => {
+      now += 1000;
+      return now;
+    };
+    let slow: (JxElement | string)[] | null;
+    try {
+      slow = highlightFence(code, "js");
+    } finally {
+      Date.now = realNow;
+    }
+    expect(JSON.stringify(slow)).toBe(JSON.stringify(steady));
+    expect(spell(slow ?? [])).toBe(code);
+    expect(steady.filter((s) => !isString(s) && s.textContent === "__")).toHaveLength(1);
+  });
+
   test("returns null for unknown languages", () => {
     expect(highlightFence("PRINT 1", "cobol")).toBeNull();
     expect(highlightFence("x", "not-a-language")).toBeNull();

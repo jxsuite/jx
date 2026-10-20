@@ -184,9 +184,10 @@ describe("resolveFileDropTarget", () => {
 // ─── elementForAsset ─────────────────────────────────────────────────────────
 
 describe("elementForAsset", () => {
-  test("an image becomes a plain <img> with an empty alt", () => {
+  test("an image becomes a plain <img> with no alt, so the missing description is flagged", () => {
+    // `alt=""` would declare the picture decorative, a claim a drop cannot make.
     expect(elementForAsset(asset())).toEqual({
-      attributes: { alt: "", src: "/hero.png" },
+      attributes: { src: "/hero.png" },
       tagName: "img",
     });
   });

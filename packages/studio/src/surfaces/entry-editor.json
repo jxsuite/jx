@@ -56,6 +56,13 @@
       "color": "var(--fg-dim)",
       "fontSize": "var(--jx-text-md)",
       "lineHeight": "1.5"
+    },
+    "& [part=\"record-nav\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
     }
   },
   "children": [
@@ -101,6 +108,135 @@
                     "part": "collection"
                   },
                   "textContent": "${state.collection}"
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "record-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/recordNav"
+                  },
+                  "cases": {
+                    "shown": {
+                      "$description": "A record of a file-backed collection (a CSV row): which row of the file this is, the rows either side of it, and the grid that shows them all. A file entry has no neighbours to step to, so it draws none of this.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "record-nav",
+                        "role": "group",
+                        "aria-label": "Records"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "previous"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Previous record",
+                            "hint": "Previous record",
+                            "disabled": {
+                              "$ref": "#/state/previousDisabled"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/showPrevious"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "‹ Previous"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "place"
+                          },
+                          "textContent": "${state.place}"
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "next"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Next record",
+                            "hint": "Next record",
+                            "disabled": {
+                              "$ref": "#/state/nextDisabled"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/showNext"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Next ›"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "grid"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Edit in grid",
+                            "hint": "Every record of the file, as a table"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/openGrid"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Edit in grid"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
                 },
                 {
                   "tagName": "div",

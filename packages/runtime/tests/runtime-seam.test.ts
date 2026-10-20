@@ -180,7 +180,8 @@ describe("the runtime seam", () => {
     const el = document.createElement(tag);
     document.body.append(el);
     await tick();
-    expect(seen).toEqual([{ hasScope: true, host: el }]);
+    expect(seen.map((entry) => entry.hasScope)).toEqual([true]);
+    expect(seen[0]?.host).toBe(el);
     el.remove();
   });
 });

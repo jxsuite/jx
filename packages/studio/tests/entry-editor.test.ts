@@ -29,6 +29,7 @@ import {
   detachEntryPane,
   entryDraftPill,
   entryPaneMounted,
+  fieldLabels,
   renderEntryMode,
   setEntryDraft,
 } from "../src/content/entry-editor";
@@ -184,6 +185,29 @@ afterEach(() => {
   detachEntryPane("primary");
   document.body.replaceChildren();
   closeAllTabs();
+});
+
+/* The Entry tab titled its rows with the raw keys (`title`, `cover`, `date`). An author reads the
+   field's name in words, or the schema's own `title` where it states one. */
+describe("fieldLabels", () => {
+  test("titles each field by its schema title, else its key in words", () => {
+    expect(
+      fieldLabels({
+        properties: {
+          cover: { format: "image", type: "string" },
+          publishedAt: { format: "date", type: "string" },
+          summary: { title: "Teaser", type: "string" },
+          tag: { title: "", type: "string" },
+        },
+      }),
+    ).toEqual({
+      cover: { label: "Cover" },
+      publishedAt: { label: "Published at" },
+      summary: { label: "Teaser" },
+      tag: { label: "Tag" },
+    });
+    expect(fieldLabels(null)).toEqual({});
+  });
 });
 
 describe("the mode is registered where every reader looks", () => {
@@ -471,12 +495,22 @@ describe("mountEntryEditorSurface — dispose lifecycle", () => {
     emptyLine: "Nothing to edit.",
     fieldsRegion: "",
     name: "",
+    nextDisabled: true,
     note: "",
     noteState: "hidden",
+    place: "",
+    previousDisabled: true,
+    recordNav: "hidden",
     region: "",
     stage: "empty",
   };
-  const actions = { openContentTypes: () => {}, setDraft: () => {} };
+  const actions = {
+    openContentTypes: () => {},
+    openGrid: () => {},
+    setDraft: () => {},
+    showNext: () => {},
+    showPrevious: () => {},
+  };
   const islands = { fieldsSlot: () => {} };
 
   test("attached() is false once disposed, even before the mount has settled", () => {

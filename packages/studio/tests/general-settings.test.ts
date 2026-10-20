@@ -318,40 +318,92 @@ describe("save failures", () => {
     await flush(4);
 
     expect(errorText(container)).toBe("Could not upload the favicon — disk full");
-    expect(config().favicon).toBeUndefined();
+    expect(config().$head ?? []).toEqual([]);
   });
 });
 
 // ─── Favicon ─────────────────────────────────────────────────────────────────
 
 describe("favicon", () => {
-  test("no favicon shows the dashed placeholder; configured favicon shows preview + path", async () => {
+  /** The `$head` entries that are an icon link. */
+  const iconLinks = () =>
+    (config().$head ?? []).filter(
+      (entry) => entry.tagName === "link" && String(entry.attributes?.rel).includes("icon"),
+    );
+
+  test("no icon link shows the dashed placeholder; the $head icon link shows preview + path", async () => {
     const { container } = await setup({});
     expect(container.querySelector("img")).toBeNull();
     expect(part(container, "favicon-empty").textContent).toBe("—");
 
-    const { container: withFavicon } = await setup({ favicon: "/favicon.ico" });
-    expect(part(withFavicon, "favicon").getAttribute("src")).toBe("/favicon.ico");
-    expect(part(withFavicon, "favicon-path").textContent).toBe("/favicon.ico");
+    // Where every starter puts it: `project.json` has no top-level favicon key.
+    const { container: withFavicon } = await setup({
+      $head: [
+        { attributes: { content: "Jx", name: "generator" }, tagName: "meta" },
+        { attributes: { href: "/favicon.svg", rel: "icon" }, tagName: "link" },
+      ],
+    });
+    expect(part(withFavicon, "favicon").getAttribute("src")).toBe("/favicon.svg");
+    expect(part(withFavicon, "favicon-path").textContent).toBe("/favicon.svg");
     expect(withFavicon.querySelector('[part="favicon-empty"]')).toBeNull();
   });
 
-  test("upload flow stores the file, sets favicon, and re-renders the preview", async () => {
+  test("rel is a token list: `shortcut icon` is the favicon, `apple-touch-icon` is not", async () => {
+    const { container } = await setup({
+      $head: [{ attributes: { href: "/touch.png", rel: "apple-touch-icon" }, tagName: "link" }],
+    });
+    expect(container.querySelector('[part="favicon-empty"]')).not.toBeNull();
+
+    const { container: legacy } = await setup({
+      $head: [{ attributes: { href: "/images/logo.png", rel: "Shortcut Icon" }, tagName: "link" }],
+    });
+    expect(part(legacy, "favicon-path").textContent).toBe("/images/logo.png");
+  });
+
+  test("upload stores the file under its own type and adds the $head icon link", async () => {
     const { container, state } = await setup({});
     const fileInput = pickFavicon(container);
     expect(fileInput.type).toBe("file");
     expect(fileInput.accept).toBe("image/*,.ico,.svg");
 
-    const file = new File(["icon-bytes"], "favicon.ico", { type: "image/x-icon" });
+    const file = new File(["<svg/>"], "Logo.SVG", { type: "image/svg+xml" });
     Object.defineProperty(fileInput, "files", { configurable: true, value: [file] });
     fileInput.dispatchEvent(new Event("change"));
     await flush(4);
 
     const upload = state.calls.find(([name]) => name === "uploadFile");
-    expect(upload).toEqual(["uploadFile", "public/favicon.ico", file]);
-    expect(config().favicon).toBe("/favicon.ico");
+    expect(upload).toEqual(["uploadFile", "public/favicon.svg", file]);
+    expect(iconLinks()).toEqual([
+      { attributes: { href: "/favicon.svg", rel: "icon" }, tagName: "link" },
+    ]);
+    // Never the top-level key the closed project schema refuses.
+    expect(Object.hasOwn(config(), "favicon")).toBe(false);
     // The preview swaps in without the section being rebuilt: one binding, one `$switch`.
-    expect(part(container, "favicon").getAttribute("src")).toBe("/favicon.ico");
+    expect(part(container, "favicon").getAttribute("src")).toBe("/favicon.svg");
+  });
+
+  test("upload rewrites the existing icon link in place, keeping its other attributes", async () => {
+    const { container } = await setup({
+      $head: [
+        {
+          attributes: { href: "/favicon.svg", rel: "icon", sizes: "any", type: "image/svg+xml" },
+          tagName: "link",
+        },
+        { attributes: { content: "Jx", name: "generator" }, tagName: "meta" },
+      ],
+    });
+    const fileInput = pickFavicon(container);
+    const file = new File(["png"], "mark", { type: "image/png" });
+    Object.defineProperty(fileInput, "files", { configurable: true, value: [file] });
+    fileInput.dispatchEvent(new Event("change"));
+    await flush(4);
+
+    expect(config().$head).toEqual([
+      // `type` described the old file; a name with no extension is stored as favicon.ico.
+      { attributes: { href: "/favicon.ico", rel: "icon", sizes: "any" }, tagName: "link" },
+      { attributes: { content: "Jx", name: "generator" }, tagName: "meta" },
+    ]);
+    expect(part(container, "favicon-path").textContent).toBe("/favicon.ico");
   });
 
   test("change event without a selected file is a no-op", async () => {
@@ -361,7 +413,7 @@ describe("favicon", () => {
     fileInput.dispatchEvent(new Event("change"));
     await flush(4);
     expect(state.calls.filter(([name]) => name === "uploadFile")).toHaveLength(0);
-    expect(config().favicon).toBeUndefined();
+    expect(iconLinks()).toEqual([]);
   });
 });
 
@@ -378,19 +430,19 @@ describe("platform adapter", () => {
 
 describe("global styles shortcut", () => {
   /*
-   * The button RENDERS FROM `styles.open` and runs it. It used to write `session.ui.canvasMode`
-   * itself — a second implementation of a capability that also existed as no command at all, so
-   * the only way to reach Project Styles from a closed configuration tab was this button
-   * (studio-ui-guidelines.md §12.5).
+   * The button RENDERS FROM `workspace.focus.styles` and runs the workspace switch. It used to
+   * write `session.ui.canvasMode` itself — a second implementation of a capability that also
+   * existed as no command at all (studio-ui-guidelines.md §12.5). Global styles are the Styles
+   * workspace's now, and the switch is the one door to it.
    */
   function installStylesRegistry() {
     const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
     registry.register({
-      id: "styles.open",
-      title: "Open Project Styles",
-      category: "Project",
-      level: "project",
-      menus: ["settings/menu", "palette"],
+      id: "workspace.focus.styles",
+      title: "Go to Styles",
+      category: "View",
+      level: "application",
+      menus: ["palette"],
       requires: "an open project",
       when: (ctx: CommandContext) => ctx.project.open,
       run: () => {},
@@ -399,26 +451,26 @@ describe("global styles shortcut", () => {
     return registry;
   }
 
-  test("Edit Global Styles runs the command, rather than writing the mode itself", async () => {
+  test("Go to Styles switches to the Styles workspace, rather than writing the mode itself", async () => {
     const registry = installStylesRegistry();
-    const ran: string[] = [];
-    registry.run = (id) => {
-      ran.push(id);
+    const ran: { id: string; args: unknown }[] = [];
+    registry.run = (id, args) => {
+      ran.push({ args, id });
       return Promise.resolve();
     };
     resetWorkspaceWithTab();
     const { container } = await setup({});
     pointer(part(container, "styles-open"), "click");
-    expect(ran).toEqual(["styles.open"]);
+    expect(ran).toEqual([{ args: { workspace: "styles" }, id: "view.setWorkspace" }]);
   });
 
   test("its tooltip is the record's own title, so the two cannot drift", async () => {
-    // The button's LABEL is in-context copy — "Edit Global Styles" is what this field is about —
-    // But what it invokes is named by the record, the half studio-ui-guidelines.md §12.3 governs.
+    // The button's LABEL is in-context copy, but what it invokes is named by the record, the half
+    // Studio-ui-guidelines.md §12.3 governs.
     installStylesRegistry();
     const { container } = await setup({});
-    expect(part(container, "styles-open").getAttribute("title")).toBe("Open Project Styles");
-    expect(part(container, "styles-open").textContent.trim()).toBe("Edit Global Styles");
+    expect(part(container, "styles-open").getAttribute("title")).toBe("Go to Styles");
+    expect(part(container, "styles-open").textContent.trim()).toBe("Go to Styles");
   });
 
   /*

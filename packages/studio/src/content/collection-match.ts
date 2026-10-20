@@ -1,12 +1,13 @@
 /**
  * Collection-match — the ONE answer to "which content collection owns this path".
  *
- * Three matchers already existed and disagreed: `utils/studio-utils.ts`'s `findContentTypeSchema`,
+ * Three matchers existed and disagreed: `utils/studio-utils.ts`'s `findContentTypeSchema`,
  * `grid/sources/content-source.ts`'s `collectionInfo` and `browse/library-model.ts`'s
- * `contentTypeFor`. Each was right about the question it was written for and wrong about the
- * others', which was tolerable while the consumers were a form and a grid. It stopped being
- * tolerable when the Files tree began asking, because a mismatch there does not draw the wrong
- * field — it CONSTRAINS or REROUTES a creation, and both are wrong answers the author cannot see.
+ * `contentTypeFor` (since deleted: the Content workspace asks this module instead). Each was right
+ * about the question it was written for and wrong about the others', which was tolerable while the
+ * consumers were a form and a grid. It stopped being tolerable when the Files tree began asking,
+ * because a mismatch there does not draw the wrong field — it CONSTRAINS or REROUTES a creation,
+ * and both are wrong answers the author cannot see.
  *
  * Four things this states that no predecessor did:
  *

@@ -794,7 +794,8 @@ describe("the popover behaviour", () => {
     // `showPopover.length` is 0 even in an engine that accepts the bag, so arity detection cannot
     // Work: the try/catch IS the feature test.
     expect(calls.length).toBe(2);
-    expect(calls[0]).toEqual([{ source: anchor }]);
+    expect(calls[0]).toHaveLength(1);
+    expect(calls[0]?.[0]?.source).toBe(anchor);
     expect(calls[1]).toEqual([]);
   });
 

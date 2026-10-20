@@ -16,8 +16,7 @@
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 
-const { isNavigatorPanelId, NAVIGATOR_PANEL_IDS, requireNavigatorPanelId } =
-  await import("../src/shell");
+const { NAVIGATOR_PANEL_IDS, requireNavigatorPanelId } = await import("../src/shell");
 
 describe("requireNavigatorPanelId", () => {
   test("every declared id passes through unchanged", () => {
@@ -39,7 +38,6 @@ describe("requireNavigatorPanelId", () => {
     // `problems` is a real panel and a real tab; it is not a NAVIGATOR panel, and
     // `view.setBottomTab` is its door. Accepting it here is how a rail button comes to open
     // Something at the bottom of the window.
-    expect(isNavigatorPanelId("problems")).toBe(false);
     expect(() => requireNavigatorPanelId("problems", "panel.focus")).toThrow(/panel\.focus/);
   });
 });

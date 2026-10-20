@@ -3,11 +3,14 @@ title: "Working with components"
 description: "Turn any selection into a reusable component in Jx Studio, wire its props on the Content tab, add slots, and preview it with test values."
 code:
   - packages/studio/src/editor/convert-to-component.ts
+  - packages/studio/src/create/element-name.ts
   - packages/studio/src/component-props.ts
   - packages/studio/src/panels/pane-context.ts
   - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/panels/properties-panel.ts
   - packages/studio/src/panels/provenance.ts
+  - packages/studio/src/editor/insert-component.ts
+  - packages/studio/src/panels/site-panel.ts
 ---
 
 # Working with components
@@ -20,11 +23,13 @@ The natural way to make a component is to design it in place first, then promote
 
 1. Build the element on the canvas: structure, styles, content.
 2. Right-click it (on the canvas or in [Outline](/docs/studio/design/layers)) and choose **Convert to Component**.
-3. Give it a tag name (lowercase, with a hyphen, like `pricing-card`) and click **Convert**. Studio validates the name as you type and won't let you collide with an existing component.
+3. Give it a tag name (lowercase, with a hyphen, like `pricing-card`) and click **Convert**. Studio suggests one from the element, checks the name as you type against the rule the browser itself applies to custom element names, and won't let you collide with an existing component.
 
 ![The Convert to Component dialog with a tag name filled in](../../images/convert-to-component.png)
 
-Studio saves the component as its own file in the project's `components/` folder, swaps your selection for an instance of it, and adds it to the [Insert palette](/docs/studio/design/elements). Drop more instances anywhere from there. If the component's slots need attention, Studio files it on **[Problems](/docs/studio/interface/problems-and-progress)** naming the component file, so it stays listed until you fix it.
+Studio saves the component as its own file in the project's `components/` folder, swaps your selection for an instance of it, and adds it to the [Insert palette](/docs/studio/design/elements) and the **Components** section of the [Site panel](/docs/studio/interface#the-site-panel). Drop more instances anywhere from there. If the component's slots need attention, Studio files it on **[Problems](/docs/studio/interface/problems-and-progress)** naming the component file, so it stays listed until you fix it.
+
+**Add new** does the same from the other direction: press :kbd[⌘N] (:kbd[⌘⌥N] in a browser), choose **Component**, type a name such as `Pricing card`, and pick **Start from: Current selection**. The tag is derived from the name (`pricing-card`; a one-word name like `Hero` becomes `site-hero`), and the selection is converted exactly as above. **Blank** starts an empty component instead, and **Copy of…** starts from an existing one. See **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components#create-one)**.
 
 To open a component from an instance, right-click the instance and choose **Edit Component**, or click **→ Edit definition** under **Component Settings** on the Content tab.
 
@@ -62,4 +67,4 @@ A component is a plain file (`components/pricing-card.json`), and converting als
 ## Next
 
 - Repeat a component once per item of a list with **[Repeaters](/docs/studio/design/repeaters)**.
-- Insert instances from the **[Insert palette](/docs/studio/design/elements)**.
+- Insert instances from the **[Insert palette](/docs/studio/design/elements)**, the Site panel's **Components** cards, or the **Components** heading of the slash menu and the canvas **+**. However you insert one, Studio adds the component to the page's imports in the same step, so the page always resolves the element it shows.

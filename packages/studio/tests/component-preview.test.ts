@@ -5,9 +5,10 @@
  */
 import "./with-dom.js";
 import { beforeEach, describe, expect, test } from "bun:test";
-import { renderComponentPreview } from "../src/panels/component-preview";
+import { defineComponent, renderComponentPreview } from "../src/panels/component-preview";
 import { setProjectState } from "../src/store";
 import type { ProjectState } from "../src/types";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /** An open project with no config and nothing expanded; `projectRoot` empty unless given. */
 function emptyProject(projectRoot = ""): ProjectState {
@@ -55,6 +56,29 @@ describe("renderComponentPreview", () => {
     expect(el.hasAttribute("compact")).toBe(false);
     expect(el.hasAttribute("label")).toBe(false);
     expect(el.hasAttribute("unset")).toBe(false);
+  });
+
+  test("sample props are set as the instance's own properties, ahead of connection", async () => {
+    if (!customElements.get("x-preview-sampled")) {
+      customElements.define("x-preview-sampled", class extends HTMLElement {});
+    }
+    const el = await renderComponentPreview(
+      { source: "npm", tagName: "x-preview-sampled" },
+      new Map<string, JsonValue>([
+        ["title", "Harbour"],
+        ["hue", 214],
+      ]),
+    );
+    expect(el.title).toBe("Harbour");
+    expect(Object.getOwnPropertyDescriptor(el, "hue")?.value).toBe(214);
+  });
+
+  test("defineComponent answers whether the tag can be instantiated", async () => {
+    expect(await defineComponent({ source: "npm", tagName: "x-preview-sampled" })).toBe(true);
+    expect(await defineComponent({ source: "npm", tagName: "x-never-defined" })).toBe(false);
+    expect(
+      await defineComponent({ path: "components/a.md", source: "project", tagName: "x-md" }),
+    ).toBe(false);
   });
 
   test("npm component not registered → does not throw", async () => {

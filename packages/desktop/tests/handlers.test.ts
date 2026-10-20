@@ -184,6 +184,60 @@ describe("listDirectory", () => {
     }
   });
 
+  test("a collection declared outside the project root is reachable, and nothing else beside it", async () => {
+    // `sites/jxsuite.com` keeps its docs at `../../docs`: the project and its collection are
+    // Siblings here, `site/` and `docs/`, with `secret/` beside them undeclared.
+    const base = join(import.meta.dir, "_fixtures_handlers_outside_collection");
+    const site = join(base, "site");
+    rmSync(base, { force: true, recursive: true });
+    mkdirSync(join(base, "docs", "start"), { recursive: true });
+    mkdirSync(join(base, "news", "fr"), { recursive: true });
+    mkdirSync(join(base, "secret"), { recursive: true });
+    mkdirSync(site, { recursive: true });
+    writeFileSync(join(base, "docs", "start", "intro.md"), "# Intro\n");
+    writeFileSync(join(base, "news", "fr", "a.md"), "# A\n");
+    writeFileSync(join(base, "secret", "key.txt"), "no");
+    writeFileSync(join(base, "prices.csv"), "a\n1\n");
+    writeFileSync(
+      join(site, "project.json"),
+      JSON.stringify({
+        content: {
+          docs: { source: "../docs" },
+          inside: { source: "./content/posts" },
+          news: { source: "../news/{locale}/" },
+          nosource: { format: "Markdown" },
+          prices: { source: "../prices.csv" },
+        },
+      }),
+    );
+    setProjectRoot(site);
+    try {
+      const entries = await listDirectory({ dir: "../docs/start" });
+      expect(entries.map((entry: DirEntry) => entry.path)).toEqual(["../docs/start/intro.md"]);
+      expect(await handleReadFile({ path: "../docs/start/intro.md" })).toBe("# Intro\n");
+      expect(await handleReadFile({ path: "../news/fr/a.md" })).toBe("# A\n");
+      expect(await handleReadFile({ path: "../prices.csv" })).toBe("a\n1\n");
+      await handleWriteFile({ content: "# New\n", path: "../docs/start/new.md" });
+      expect(existsSync(join(base, "docs", "start", "new.md"))).toBe(true);
+      await expect(handleReadFile({ path: "../secret/key.txt" })).rejects.toThrow(
+        "Path outside project root",
+      );
+      await expect(listDirectory({ dir: ".." })).rejects.toThrow("Path outside project root");
+      // A project whose `project.json` cannot be read reaches nothing beyond its root.
+      writeFileSync(join(site, "project.json"), "{");
+      await expect(handleReadFile({ path: "../docs/start/intro.md" })).rejects.toThrow(
+        "Path outside project root",
+      );
+      writeFileSync(join(site, "project.json"), JSON.stringify({ content: "none" }));
+      await expect(handleReadFile({ path: "../docs/start/intro.md" })).rejects.toThrow(
+        "Path outside project root",
+      );
+    } finally {
+      rmSync(base, { force: true, recursive: true });
+      setProjectRoot(null);
+    }
+  });
+
   test("rejects directory outside project root", async () => {
     setup();
     try {
@@ -272,6 +326,21 @@ describe("handleDeleteFile", () => {
       writeFileSync(join(FIXTURES, "temp.txt"), "temporary");
       await handleDeleteFile({ path: "temp.txt" });
       await expect(handleReadFile({ path: "temp.txt" })).rejects.toThrow();
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("removes an empty folder, refuses one that holds files, and ignores a missing path", async () => {
+    setup();
+    try {
+      mkdirSync(join(FIXTURES, "emptied/inner"), { recursive: true });
+      writeFileSync(join(FIXTURES, "emptied/kept.txt"), "kept");
+      await handleDeleteFile({ path: "emptied/inner" });
+      expect(existsSync(join(FIXTURES, "emptied/inner"))).toBe(false);
+      await expect(handleDeleteFile({ path: "emptied" })).rejects.toThrow();
+      expect(existsSync(join(FIXTURES, "emptied/kept.txt"))).toBe(true);
+      await handleDeleteFile({ path: "never-there.txt" });
     } finally {
       cleanup();
     }

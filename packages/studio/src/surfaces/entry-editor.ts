@@ -64,6 +64,12 @@ export interface EntryEditorView {
   note: string;
   /** The `empty` stage's first sentence, naming the document it is about. */
   emptyLine: string;
+  /** Whether the entry is a record of a file (a CSV row), which draws its place and its neighbours. */
+  recordNav: "hidden" | "shown";
+  /** Its place among the file's records: "3 of 11". */
+  place: string;
+  previousDisabled: boolean;
+  nextDisabled: boolean;
 }
 
 /** What the reader can do here. Both are decisions the editor owns. */
@@ -72,6 +78,10 @@ export interface EntryEditorActions {
   setDraft: (draft: boolean) => void;
   /** Open Project Settings › Content types — the door out of the `empty` stage. */
   openContentTypes: () => void;
+  /** A record: show the file's previous record, its next one, or the whole file in its grid. */
+  showPrevious: () => void;
+  showNext: () => void;
+  openGrid: () => void;
 }
 
 /** The node the document renders empty for somebody else to fill. */
@@ -105,6 +115,10 @@ function project(scope: EntryEditorScope, view: EntryEditorView): void {
   scope.noteState = view.noteState;
   scope.note = view.note;
   scope.emptyLine = view.emptyLine;
+  scope.recordNav = view.recordNav;
+  scope.place = view.place;
+  scope.previousDisabled = view.previousDisabled;
+  scope.nextDisabled = view.nextDisabled;
 }
 
 /** The `part` a node was authored with, or `""` — the only thing this adapter asks about a node. */
@@ -141,11 +155,18 @@ export function mountEntryEditorSurface(
     emptyLine: "",
     fieldsRegion: "",
     name: "",
+    nextDisabled: true,
     note: "",
     noteState: "hidden",
     openContentTypes: actions.openContentTypes,
+    openGrid: actions.openGrid,
+    place: "",
+    previousDisabled: true,
+    recordNav: "hidden",
     region: "",
     setDraft: actions.setDraft,
+    showNext: actions.showNext,
+    showPrevious: actions.showPrevious,
     stage: "empty",
   });
   project(scope, view);

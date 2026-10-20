@@ -151,4 +151,4 @@ One thing does not change: `observedAttributes`. The browser fixes that list whe
 
 ## Dispose
 
-Call `handle.dispose()` when the host removes the surface. It stops every effect the render created, runs the document's `onUnmount` if it declares one, removes the root, and releases the styles the mount adopted. Calling it twice is safe. Passing a `signal` does the same when the signal aborts.
+Call `handle.dispose()` when the host removes the surface. It removes the root first, then stops every effect the render created and releases the styles the mount adopted, then runs the document's `onUnmount` if it declares one. Removing the root first means the release writes to elements that have already left the page, so the browser does not re-style them on the way out; it also means `onUnmount` sees a detached root, as a component's own `onUnmount` does. Calling it twice is safe. Passing a `signal` does the same when the signal aborts.

@@ -75,6 +75,8 @@ import { runReported } from "../commands/run-reported";
 import { openMenu } from "../surfaces/menu";
 import { rectOf } from "../utils/geometry";
 import { mountJumpBarSurface } from "../surfaces/jump-bar";
+import { workspaceHomeLabel } from "../workspace/workspace-ids";
+import { gridTabLabel } from "../grid/grid-source";
 import type { CommandRegistry } from "../commands/registry";
 import type { FormulaEditDef, FunctionEditDef } from "../types";
 import type { JxPath } from "../state";
@@ -150,6 +152,30 @@ export function documentLabel(path: string | null): string {
   }
   const root = projectState?.projectRoot;
   return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
+}
+
+/**
+ * What the file segment says about a tab: its path, or, for a VIRTUAL tab, the view's own name.
+ *
+ * A pathless tab is one of two different things. A workspace home (`workspace://content`) or a grid
+ * (`grid://…`) has no file because it is a view, not a document, and it never will have one;
+ * calling it "Untitled · Not saved to disk yet" invited the author to save a page that does not
+ * exist. Those tabs are named exactly as their strip chip names them (`panels/tab-strip.ts`), so
+ * the address and the tab agree. Only a genuinely new document is "Untitled".
+ */
+export function fileSegmentText(tab: Tab): Pick<JumpSegment, "label" | "title"> {
+  if (tab.documentPath) {
+    return { label: documentLabel(tab.documentPath), title: tab.documentPath };
+  }
+  const home = workspaceHomeLabel(tab.id);
+  if (home) {
+    return { label: home, title: `The ${home} workspace's home, a view rather than a file` };
+  }
+  const grid = gridTabLabel(tab.id);
+  if (grid) {
+    return { label: grid, title: `${grid}, a view of many files rather than one` };
+  }
+  return { label: documentLabel(null), title: "Not saved to disk yet" };
 }
 
 // ─── The selection trail (moved here from statusbar.ts) ──────────────────────
@@ -284,8 +310,7 @@ export function jumpSegments(
       choices: [],
       command: derived ? "pane.pin" : "palette.openFiles",
       kind: "file",
-      label: documentLabel(tab.documentPath),
-      title: tab.documentPath ?? "Not saved to disk yet",
+      ...fileSegmentText(tab),
     },
   ];
 

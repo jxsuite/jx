@@ -21,7 +21,7 @@ The data grid is **[Grid mode](/docs/studio/editing/grid)** pointed at a databas
 
 ## Open a table
 
-Click **Open Data Grid** in the action row of _Settings > Connections_ or _Settings > Data Tables_. The picker lists every grid-able source in one place: pages and content collections under **Project**, then a **Data** group per connection with its tables. A connection with no tables yet says so in place of its list, and asks you to push a schema first: define and push in **[Data tables](/docs/studio/data/tables)**, then come back.
+Click **Open Data Grid** in the action row of _Settings > Integrations > Connections_ or _Settings > Integrations > Data Tables_. Project settings closes so the grid you pick opens in front of you. The picker lists every grid-able source in one place: pages and content collections under **Project**, then a **Data** group per connection with its tables. A connection with no tables yet says so in place of its list, and asks you to push a schema first: define and push in **[Data tables](/docs/studio/data/tables)**, then come back.
 
 Each table opens as its own tab, so you can keep a grid alongside the page you're building.
 

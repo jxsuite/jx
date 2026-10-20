@@ -9,8 +9,14 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { installMockPlatform, resetStudioState, resetWorkspaceWithTab, testFile } from "./harness";
 import {
+  DEFAULT_MEDIA_DIR,
+  announceMediaChanged,
   assetRef,
   extensionOf,
+  mediaFileKind,
+  canReplaceWith,
+  replaceAccept,
+  replaceAsset,
   isImage,
   isMediaFile,
   joinDir,
@@ -22,6 +28,7 @@ import {
   uploadDirFor,
 } from "../src/files/media-upload";
 import { closeAllTabs } from "../src/workspace/workspace";
+import { problems, resetNotifications, toasts } from "../src/services/notify";
 import {
   beginListing,
   noteListing,
@@ -66,6 +73,13 @@ describe("isImage / isMediaFile", () => {
     expect(isMediaFile("a.woff2")).toBe(true);
     expect(isMediaFile("a.ts")).toBe(false);
   });
+
+  test("every extension mediaKind calls video or audio is media, so the listing shows it", () => {
+    for (const name of ["a.mov", "a.m4v", "a.m4a", "a.flac"]) {
+      expect(mediaKind({ name })).not.toBe("file");
+      expect(isMediaFile(name)).toBe(true);
+    }
+  });
 });
 
 describe("mediaKind", () => {
@@ -97,10 +111,11 @@ describe("uploadDirFor", () => {
     expect(uploadDirFor(String.raw`content\blog\hello.md`)).toBe("content/blog/images");
   });
 
-  test("everything else — including a bare content/ file and no document — goes to public", () => {
-    expect(uploadDirFor("pages/index.json")).toBe("public");
-    expect(uploadDirFor("content/orphan.md")).toBe("public");
-    expect(uploadDirFor(null)).toBe("public");
+  test("everything else — including a bare content/ file and no document — goes to public/media", () => {
+    expect(uploadDirFor("pages/index.json")).toBe("public/media");
+    expect(uploadDirFor("content/orphan.md")).toBe("public/media");
+    expect(uploadDirFor(null)).toBe("public/media");
+    expect(DEFAULT_MEDIA_DIR).toBe("public/media");
   });
 });
 
@@ -156,16 +171,35 @@ describe("uploadAssets", () => {
     expect(state.calls).toEqual([]);
   });
 
-  test("uploads to public/ and reports the site-root ref", async () => {
+  test("`only` uploads just what the listing will show, and names what it skipped", async () => {
+    resetNotifications();
+    const { state } = installMockPlatform();
+    const media = await uploadAssets([testFile("clip.mov"), testFile("notes.txt")], {
+      only: "media",
+    });
+    expect(media.map((asset) => asset.path)).toEqual(["public/media/clip.mov"]);
+    const images = await uploadAssets([testFile("a.png"), testFile("b.heic"), testFile("c.pdf")], {
+      only: "image",
+    });
+    expect(images.map((asset) => asset.path)).toEqual(["public/media/a.png"]);
+    expect(state.calls.filter(([call]) => call === "uploadFile")).toHaveLength(2);
+    const said = toasts.map((toast) => toast.message);
+    expect(said).toContain("Skipped notes.txt");
+    expect(said).toContain("Skipped 2 files");
+    // Nothing left to upload: nothing is asked of the platform at all.
+    expect(await uploadAssets([testFile("x.txt")], { only: "image" })).toEqual([]);
+  });
+
+  test("uploads to public/media/ and reports the site-root ref", async () => {
     const { state } = installMockPlatform();
     const file = testFile("hero.png");
 
     const assets = await uploadAssets([file]);
 
     expect(assets).toEqual([
-      { kind: "image", name: "hero.png", path: "public/hero.png", ref: "/hero.png" },
+      { kind: "image", name: "hero.png", path: "public/media/hero.png", ref: "/media/hero.png" },
     ]);
-    expect(state.calls).toContainEqual(["uploadFile", "public/hero.png", file]);
+    expect(state.calls).toContainEqual(["uploadFile", "public/media/hero.png", file]);
   });
 
   test("follows the active content document to its collection images directory", async () => {
@@ -193,11 +227,14 @@ describe("uploadAssets", () => {
   });
 
   test("never overwrites: colliding names get a suffix, within the batch too", async () => {
-    installMockPlatform({}, { "public/hero.png": "existing" });
+    installMockPlatform({}, { "public/media/hero.png": "existing" });
 
     const assets = await uploadAssets([testFile("hero.png"), testFile("hero.png")]);
 
-    expect(assets.map((a) => a.path)).toEqual(["public/hero-1.png", "public/hero-2.png"]);
+    expect(assets.map((a) => a.path)).toEqual([
+      "public/media/hero-1.png",
+      "public/media/hero-2.png",
+    ]);
   });
 
   test("an unlistable destination is treated as empty rather than failing", async () => {
@@ -207,8 +244,8 @@ describe("uploadAssets", () => {
 
     const assets = await uploadAssets([testFile("hero.png")]);
 
-    expect(assets.map((a) => a.path)).toEqual(["public/hero.png"]);
-    expect(state.calls).toContainEqual(["uploadFile", "public/hero.png", expect.anything()]);
+    expect(assets.map((a) => a.path)).toEqual(["public/media/hero.png"]);
+    expect(state.calls).toContainEqual(["uploadFile", "public/media/hero.png", expect.anything()]);
   });
 
   /* A store may report a path that already existed (one that de-duplicates by content, say). Its
@@ -260,7 +297,7 @@ describe("uploadAssets", () => {
     await uploadAssets([testFile("a.png"), testFile("b.png")]);
 
     expect(changed).toHaveBeenCalledTimes(1);
-    expect(changed).toHaveBeenCalledWith("public");
+    expect(changed).toHaveBeenCalledWith("public/media");
   });
 
   test("a wholly failed batch skips the media-changed handler", async () => {
@@ -299,7 +336,7 @@ describe("the backend's answer", () => {
   test("a backend that reports nothing keeps the requested path", async () => {
     installMockPlatform({ uploadFile: (path: string) => Promise.resolve({ path }) });
     const [asset] = await uploadAssets([testFile("hero.png")]);
-    expect(asset?.path).toBe("public/hero.png");
+    expect(asset?.path).toBe("public/media/hero.png");
   });
 });
 
@@ -312,7 +349,7 @@ describe("assetCapabilities", () => {
     Object.defineProperty(big, "size", { value: 999_999_999 });
     const assets = await uploadAssets([big]);
     expect(assets).toHaveLength(1);
-    expect(state.calls).toContainEqual(["uploadFile", "public/huge.png", big]);
+    expect(state.calls).toContainEqual(["uploadFile", "public/media/huge.png", big]);
   });
 
   test("an oversized file is refused before the round trip, naming the limit", async () => {
@@ -342,5 +379,101 @@ describe("assetCapabilities", () => {
     expect(uploadAccept()).toContain("image/*");
     installMockPlatform({ assetCapabilities: { accept: "image/png" } });
     expect(uploadAccept()).toBe("image/png");
+  });
+});
+
+describe("mediaFileKind", () => {
+  test("names the five kinds the Media workspace filters by", () => {
+    expect(mediaFileKind("hero.JPG")).toBe("image");
+    expect(mediaFileKind("clip.webm")).toBe("video");
+    expect(mediaFileKind("song.mp3")).toBe("audio");
+    // A font first: as an element it is only an `<a href>`, but it is not a document.
+    expect(mediaFileKind("Inter.woff2")).toBe("font");
+    expect(mediaFileKind("menu.pdf")).toBe("document");
+  });
+});
+
+describe("announceMediaChanged", () => {
+  test("runs the injected handler with the directory, and is inert without one", async () => {
+    await announceMediaChanged("public/media");
+    const changed = mock(() => {});
+    setMediaChangedHandler(changed);
+    await announceMediaChanged("public/media");
+    expect(changed).toHaveBeenCalledWith("public/media");
+  });
+});
+
+/**
+ * Replace: the one door that writes over an existing file (studio.md §9.3). The path does not
+ * change, so every reference keeps resolving and shows the new bytes, and nothing about the path
+ * tells a cache it did, so the version goes and the change is announced.
+ */
+describe("replaceAsset", () => {
+  beforeEach(() => {
+    resetNotifications();
+    resetAssetVersions();
+  });
+
+  test("writes to the SAME path, forgets its version and announces the change", async () => {
+    noteListing(
+      [{ name: "hero.jpg", path: "public/media/hero.jpg", type: "file", version: "v1" }],
+      beginListing(),
+    );
+    const { state } = installMockPlatform();
+    const changed = mock(() => {});
+    setMediaChangedHandler(changed);
+    // `.jpeg` names the same format as `.jpg`, so it may stand in for it.
+    const file = testFile("other-name.jpeg");
+
+    expect(await replaceAsset("public/media/hero.jpg", file)).toBe(true);
+
+    // The chosen file's own name is irrelevant: the bytes land under the replaced file's path.
+    expect(state.calls).toContainEqual(["uploadFile", "public/media/hero.jpg", file]);
+    expect(versionOf("public/media/hero.jpg")).toBeUndefined();
+    expect(changed).toHaveBeenCalledWith("public/media");
+  });
+
+  test("a backend that stored it elsewhere did not replace anything, and says so", async () => {
+    installMockPlatform({ uploadFile: () => Promise.resolve({ path: "public/media/hero-1.jpg" }) });
+    expect(await replaceAsset("public/media/hero.jpg", testFile("hero.jpg"))).toBe(false);
+    expect(problems.some((p) => p.message === "hero.jpg was not replaced.")).toBe(true);
+  });
+
+  test("a failed write is reported and changes nothing", async () => {
+    installMockPlatform({ uploadFile: () => Promise.reject(new Error("read-only")) });
+    const changed = mock(() => {});
+    setMediaChangedHandler(changed);
+    expect(await replaceAsset("hero.jpg", testFile("hero.jpg"))).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+    expect(problems.some((p) => p.message === "Could not replace hero.jpg.")).toBe(true);
+  });
+
+  test("a file of another format is refused before anything is written", async () => {
+    const { state } = installMockPlatform();
+    const changed = mock(() => {});
+    setMediaChangedHandler(changed);
+    // A PNG under hero.jpg, or a PDF under it, breaks every page that uses the address.
+    expect(await replaceAsset("public/media/hero.jpg", testFile("logo.png"))).toBe(false);
+    expect(await replaceAsset("public/logo.svg", testFile("menu.pdf"))).toBe(false);
+    expect(state.calls.filter(([call]) => call === "uploadFile")).toEqual([]);
+    expect(changed).not.toHaveBeenCalled();
+    expect(problems.some((p) => p.message === "logo.png cannot replace hero.jpg.")).toBe(true);
+  });
+
+  test("replaceAccept offers the replaced file's own format, and canReplaceWith agrees", () => {
+    expect(replaceAccept("public/hero.jpg")).toBe(".jpg,.jpeg");
+    expect(replaceAccept("public/scan.TIFF")).toBe(".tif,.tiff");
+    expect(replaceAccept("public/media/clip.mp4")).toBe(".mp4");
+    expect(canReplaceWith("public/hero.JPEG", { name: "new.jpg" })).toBe(true);
+    expect(canReplaceWith("public/media/clip.mp4", { name: "clip.webm" })).toBe(false);
+    expect(canReplaceWith("public/README", { name: "x" })).toBe(true);
+  });
+
+  test("a declared limit refuses an oversized replacement before the round trip", async () => {
+    const { state } = installMockPlatform({ assetCapabilities: { maxUploadBytes: 10 } });
+    const big = testFile("big.png");
+    Object.defineProperty(big, "size", { value: 4096 });
+    expect(await replaceAsset("public/media/hero.png", big)).toBe(false);
+    expect(state.calls.filter(([call]) => call === "uploadFile")).toEqual([]);
   });
 });

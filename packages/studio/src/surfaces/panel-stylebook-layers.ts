@@ -55,24 +55,9 @@ export interface StylebookRowView {
   kind: string;
 }
 
-/** One custom property the open file declares. */
-export interface StylebookVariableView {
-  /** The reconcile key. Same as {@link name}; kept separate so the key never follows the label. */
-  key: string;
-  /** The property, `--accent` and its like. */
-  name: string;
-  /** Whatever it is declared as, as text. */
-  value: string;
-}
-
 /** What the panel says the surface should be showing right now. */
 export interface StylebookLayersValues {
-  /** `elements` or `variables` — `shell.stylebook.tab`, which names the `$switch` case. */
-  tab: string;
   rows: StylebookRowView[];
-  variables: StylebookVariableView[];
-  /** Whether there is anything under the variables tab: the document has no `length` to ask. */
-  hasVariables: boolean;
 }
 
 /** What a control can ask the panel to do. The one thing a row does is select itself. */
@@ -94,10 +79,7 @@ interface StylebookLayersScope extends StylebookLayersValues, StylebookLayersAct
 
 /** Write a projection into the scope. */
 function project(scope: StylebookLayersScope, values: StylebookLayersValues): void {
-  scope.tab = values.tab;
   scope.rows = values.rows;
-  scope.variables = values.variables;
-  scope.hasVariables = values.hasVariables;
 }
 
 /**
@@ -115,11 +97,8 @@ export function mountStylebookLayersSurface(
   actions: StylebookLayersActions,
 ): StylebookLayersSurfaceHandle {
   const scope: StylebookLayersScope = reactive<StylebookLayersScope>({
-    hasVariables: false,
     rows: [],
     selectRow: actions.selectRow,
-    tab: "elements",
-    variables: [],
   });
   project(scope, values);
 

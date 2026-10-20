@@ -223,6 +223,12 @@ export interface GitStatusResult {
 export interface GitBranchesResult {
   current: string;
   branches: string[];
+  /**
+   * The repository's default branch (the one a pull request merges into), when the host knows it. A
+   * host whose branches are sessions reports it so a review is never committed to the live branch;
+   * a local repository may omit it.
+   */
+  defaultBranch?: string;
 }
 
 export interface GitLogEntry {

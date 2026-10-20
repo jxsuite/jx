@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { setProjectRoot } from "../src/handlers";
-import { gitAddRemote, gitInit, gitPush, gitStatus } from "../src/git";
+import { gitAddRemote, gitBranches, gitFetch, gitInit, gitPush, gitStatus } from "../src/git";
 
 const FIXTURES = join(import.meta.dir, "_fixtures_git_new");
 
@@ -83,6 +83,41 @@ describe("gitStatus — non-git directory", () => {
     expect(result.ahead).toBe(0);
     expect(result.behind).toBe(0);
     expect(result.remotes).toEqual([]);
+  });
+});
+
+// ─── gitStatus — a project in another repository's ignored folder ─────────────
+
+describe("gitStatus — a project inside a folder another repository ignores", () => {
+  const OUTER = join("/tmp", `_jx_outer_repo_${process.pid}`);
+  const NESTED = join(OUTER, "scratch", "site");
+
+  beforeAll(() => {
+    rmSync(OUTER, { force: true, recursive: true });
+    mkdirSync(NESTED, { recursive: true });
+    Bun.spawnSync(["git", "init", "-q"], { cwd: OUTER });
+    writeFileSync(join(OUTER, ".gitignore"), "scratch/\n");
+    writeFileSync(join(NESTED, "project.json"), "{}");
+    setProjectRoot(NESTED);
+  });
+
+  afterAll(() => {
+    setProjectRoot(FIXTURES);
+    rmSync(OUTER, { force: true, recursive: true });
+  });
+
+  test("is not a repository, and the enclosing one is never acted on", async () => {
+    const result = await gitStatus();
+    expect(result.isRepo).toBe(false);
+    await expect(gitBranches()).rejects.toThrow("not a git repository of its own");
+    await expect(gitFetch()).rejects.toThrow("not a git repository of its own");
+  });
+
+  test("initialising gives the project a repository of its own", async () => {
+    await gitInit();
+    const result = await gitStatus();
+    expect(result.isRepo).toBe(true);
+    expect(result.files.map((file) => file.path)).toContain("project.json");
   });
 });
 

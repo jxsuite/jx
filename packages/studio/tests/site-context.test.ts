@@ -8,6 +8,7 @@ import {
   getEffectiveImports,
   getEffectiveLocales,
   getEffectiveMedia,
+  getEffectiveRenderLocale,
   getEffectiveStyle,
 } from "../src/site-context";
 
@@ -115,6 +116,35 @@ describe("getEffectiveImports", () => {
     const result = getEffectiveImports({ A: "override.json" });
     expect(result.A).toBe("override.json");
     expect(result.B).toBe("b.json");
+  });
+
+  test("the enabled extensions' classes come last, as the build resolves a bare $prototype", () => {
+    openProject({ imports: { ContentEntry: "./mine/ContentEntry.class.json" } });
+    const extensions = [
+      {
+        classes: [
+          { name: "ContentEntry", path: "/ext/parser/ContentEntry.class.json" },
+          { name: "Markdown", path: "/ext/parser/Markdown.class.json" },
+          { name: "NotAClass", path: "/ext/parser/readme.md" },
+        ],
+        contributions: [],
+        name: "@jxsuite/parser",
+        specifier: "@jxsuite/parser",
+      },
+      {
+        classes: [{ name: "Markdown", path: "/ext/other/Markdown.class.json" }],
+        contributions: [],
+        name: "other",
+        specifier: "other",
+      },
+      { contributions: [], name: "bare", specifier: "bare" },
+    ];
+    expect(getEffectiveImports({}, extensions)).toEqual({
+      // The project's own mapping wins over the registry's.
+      ContentEntry: "./mine/ContentEntry.class.json",
+      // The first extension to declare a name keeps it.
+      Markdown: "/ext/parser/Markdown.class.json",
+    });
   });
 });
 
@@ -243,5 +273,40 @@ describe("getEffectiveLocales", () => {
     expect(getEffectiveLocales()?.locales).toHaveLength(2);
     openProject({ name: "Other" });
     expect(getEffectiveLocales()).toBeNull();
+  });
+});
+
+// ─── getEffectiveRenderLocale ────────────────────────────────────────────────
+
+describe("getEffectiveRenderLocale", () => {
+  test("null in a project that declares no locales, whatever was chosen", () => {
+    openProject({ name: "Demo" });
+    expect(getEffectiveRenderLocale("ar", "pages/ar/about.json")).toBeNull();
+  });
+
+  test("a declared choice wins over the path and the default", () => {
+    openProject({ i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"] } });
+    expect(getEffectiveRenderLocale("en", "pages/ar/about.json")).toBe("en");
+    expect(getEffectiveRenderLocale("fr-ca", "pages/about.json")).toBe("fr-CA");
+  });
+
+  // The restored-session case: the stored tag is ignored, not drawn.
+  test("a choice the project no longer declares answers as if none were made", () => {
+    openProject({ i18n: { defaultLocale: "en", locales: ["en", "fr"] } });
+    expect(getEffectiveRenderLocale("ar", "pages/fr/a-propos.json")).toBe("fr");
+  });
+
+  // The file's own language, without being asked: an Arabic entry is drawn right to left.
+  test("with no choice, the path's locale, page or entry, else the default", () => {
+    openProject({ i18n: { defaultLocale: "en", locales: ["en", "fr-CA", "ar"] } });
+    expect(getEffectiveRenderLocale(null, "pages/ar/about.json")).toBe("ar");
+    expect(getEffectiveRenderLocale(null, "content/exhibitions/fr-ca/a.md")).toBe("fr-CA");
+    expect(getEffectiveRenderLocale(null, "pages/about.json")).toBe("en");
+    expect(getEffectiveRenderLocale(null, null)).toBe("en");
+  });
+
+  test("a project declaring one locale still answers it", () => {
+    openProject({ i18n: { defaultLocale: "ar", locales: ["ar"] } });
+    expect(getEffectiveRenderLocale(null, "pages/index.json")).toBe("ar");
   });
 });

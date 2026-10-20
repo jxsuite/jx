@@ -52,6 +52,12 @@ export interface GridView {
   getSelectedRowKeys: () => string[];
   /** Local text filter across all columns (empty clears). */
   setSearch: (term: string) => void;
+  /**
+   * Select one row's cells and scroll it into view, once the table is built.
+   *
+   * @returns False when no row the table shows carries the key (filtered out, or gone).
+   */
+  revealRow: (rowKey: string) => Promise<boolean>;
   destroy: () => void;
 }
 
@@ -216,12 +222,17 @@ export function createGridView(host: HTMLElement, controller: GridController): G
 
   controller.bindView({ refreshData });
 
-  table.on("tableBuilt", () => {
-    built = true;
-    if (pendingRefresh) {
-      pendingRefresh = false;
-      refreshData();
-    }
+  /* Settles once the table is built: a reveal asked for before then waits for it, because the
+     engine has no rows to find, and its default range would replace the one the reveal drew. */
+  const whenBuilt = new Promise<void>((resolve) => {
+    table.on("tableBuilt", () => {
+      built = true;
+      if (pendingRefresh) {
+        pendingRefresh = false;
+        refreshData();
+      }
+      resolve();
+    });
   });
 
   /*
@@ -383,6 +394,20 @@ export function createGridView(host: HTMLElement, controller: GridController): G
     },
 
     refreshData,
+
+    async revealRow(rowKey: string) {
+      await whenBuilt;
+      const row = table.getRow(rowKey);
+      const cells = row ? row.getCells() : [];
+      const [first] = cells;
+      const last = cells.at(-1);
+      if (!first || !last) {
+        return false;
+      }
+      table.addRange(first, last);
+      await table.scrollToRow(rowKey, "center", false).catch(() => {});
+      return true;
+    },
 
     setSearch(term: string) {
       const query = term.trim().toLowerCase();

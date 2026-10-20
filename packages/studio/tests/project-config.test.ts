@@ -23,6 +23,7 @@ import { projectState, setProjectState } from "../src/store";
 import { canUndo, undo } from "../src/tabs/transact";
 import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
 import { toRaw } from "../src/reactivity";
+import { STYLES_TAB_MODES } from "../src/style/project-styles";
 import { getPlatform } from "../src/platform";
 import { deriveJsonLayout, parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 import { isString } from "@jxsuite/schema/guards";
@@ -385,7 +386,9 @@ describe("binding", () => {
     expect(bound).not.toBe(detached);
     expect(bound.id).toBe(opened.id);
     expect(bound.documentPath).toBe(PROJECT_CONFIG_PATH);
-    expect(bound.capabilities.modes).toEqual(["stylebook", "source"]);
+    expect(bound.capabilities.modes).toEqual(["stylebook", "tokens", "source"]);
+    // The same list the Styles workspace names its views by, in its order: one list, two holders.
+    expect(bound.capabilities.modes).toEqual([...STYLES_TAB_MODES]);
 
     await updateSiteConfig({ name: "Edited" });
     expect(toRaw(bound.doc.document).name).toBe("Edited");

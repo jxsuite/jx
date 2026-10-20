@@ -30,7 +30,7 @@ import {
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { projectState } from "../src/store";
-import { activeTab, openTab } from "../src/workspace/workspace";
+import { openTab } from "../src/workspace/workspace";
 import { toRaw } from "../src/reactivity";
 import {
   PROJECT_CONFIG_PATH,
@@ -39,6 +39,7 @@ import {
 } from "../src/tabs/project-config";
 import {
   BUILD_ADAPTERS,
+  disposeDeploySection,
   renderDeploySection,
   renderRawJsonSection,
 } from "../src/settings/project-sections";
@@ -136,7 +137,7 @@ describe("the Deploy section", () => {
     const { container } = await setup({}, renderDeploySection);
     const labelledby = picker(container).getAttribute("aria-labelledby");
     expect(labelledby).toBeTruthy();
-    expect(container.querySelector(`#${labelledby!}`)?.textContent).toBe("Platform Adapter");
+    expect(container.querySelector(`#${labelledby!}`)?.textContent).toBe("Build adapter");
   });
 
   test("changing it merges into build config and persists", async () => {
@@ -146,7 +147,7 @@ describe("the Deploy section", () => {
     expect(written(state).build?.adapter).toBe("bun");
   });
 
-  test("a rejected write is shown under the section title", async () => {
+  test("a rejected write is shown above the row, as the section's", async () => {
     const { container } = await setup(
       { build: { adapter: "static" } },
       renderDeploySection,
@@ -154,12 +155,12 @@ describe("the Deploy section", () => {
     );
     await choose(container, "node");
     expect(errorText(container)).toContain("Could not save project.json");
-    /* Between the title and the row: the whole file failed to save, not the one control, so the
-       sentence is the section's rather than the field's. */
+    /* Before the row: the whole file failed to save, not the one control, so the sentence is the
+       section's rather than the field's. The section has no title of its own; Hosting heads it. */
     const section = container.querySelector('[part="deploy"]')!;
     const order = [...section.children].map((el) => el.getAttribute("part"));
     const slotIndex = order.indexOf("section-error-slot");
-    expect(slotIndex).toBeGreaterThan(order.indexOf("title"));
+    expect(order).not.toContain("title");
     expect(slotIndex).toBeLessThan(order.indexOf("row"));
     expect(
       container
@@ -217,35 +218,62 @@ describe("the Deploy section", () => {
     await flush(4);
     expect(container.querySelector('[part="deploy"]')).toBe(before!);
   });
+
+  test("disposing takes the section out, idempotently, and the next draw mounts afresh", async () => {
+    const { container } = await setup({ build: { adapter: "bun" } }, renderDeploySection);
+    const before = container.querySelector('[part="deploy"]');
+    disposeDeploySection(container);
+    disposeDeploySection(container);
+    await flush(4);
+    const gone = container.querySelector('[part="deploy"]');
+    renderDeploySection(container);
+    await flush(4);
+    const after = container.querySelector('[part="deploy"]');
+    expect([gone, after === before, after === null]).toEqual([null, false, false]);
+  });
 });
 
 // ─── Raw JSON ────────────────────────────────────────────────────────────────
 
+/** Raw JSON with a recording host, which is all the section asks of where it is drawn. */
+let editedAsCode = 0;
+function rawJson(container: HTMLElement): void {
+  renderRawJsonSection(container, {
+    editAsCode: () => {
+      editedAsCode += 1;
+    },
+  });
+}
+
 describe("the Raw JSON section", () => {
   test("shows the file exactly as the chokepoint serialises it", async () => {
-    const { container } = await setup({ extensions: [], name: "Bistro" }, renderRawJsonSection);
+    const { container } = await setup({ extensions: [], name: "Bistro" }, rawJson);
     // The file's bytes, trailing newline included: what a save writes.
     expect(container.querySelector('[part="json"]')?.textContent).toBe(
       '{\n  "extensions": [],\n  "name": "Bistro"\n}\n',
     );
   });
 
-  test("Edit as code switches the same tab to the Code editor", async () => {
-    const { container } = await setup({ name: "Bistro" }, renderRawJsonSection);
+  /* The section decides nothing about WHERE the code opens: it is drawn in the settings dialog,
+     and the host (`settings/settings-document.ts`) closes the dialog and opens the `project.json`
+     tab in its source editor. `settings-document.test.ts` pins that half. */
+  test("Edit as code asks its host, once per press", async () => {
+    editedAsCode = 0;
+    const { container } = await setup({ name: "Bistro" }, rawJson);
     pointer(container.querySelector('[part="edit"]')!, "click");
-    expect(activeTab.value?.session.ui.canvasMode).toBe("source");
+    expect(editedAsCode).toBe(1);
   });
 
   test("with no project open it renders an empty object rather than throwing", async () => {
-    const { container } = await setup(null, renderRawJsonSection);
+    const { container } = await setup(null, rawJson);
     expect(container.querySelector('[part="json"]')?.textContent).toBe("{}\n");
   });
 
   test("a redraw re-reads the file into the standing document", async () => {
-    const { container } = await setup({ name: "Bistro" }, renderRawJsonSection);
+    const { container } = await setup({ name: "Bistro" }, rawJson);
     const before = container.querySelector('[part="rawjson"]');
     config().name = "Trattoria";
-    renderRawJsonSection(container);
+    rawJson(container);
     await flush(2);
     expect(container.querySelector('[part="rawjson"]')).toBe(before!);
     expect(container.querySelector('[part="json"]')?.textContent).toContain("Trattoria");

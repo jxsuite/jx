@@ -257,9 +257,12 @@ export interface RemapCtx {
  * Recompute a single path reference for a rename, preserving its original style. Returns the new
  * string, or null when nothing changes.
  *
- * `rootRelativeBare` makes a bare value (no "./" or "../") resolve against the project root rather
- * than the document directory — used for `$layout`, which the compiler resolves against projectRoot
- * (layout-resolver.ts), and for site-relative conventions.
+ * `rootRelativeBare` makes the value resolve against the project root rather than the document
+ * directory, in every spelling: `./layouts/base.json` in `pages/blog/[slug].json` names
+ * `layouts/base.json`, because the compiler resolves `$layout` with `resolve(projectRoot, ref)`
+ * (layout-resolver.ts). Treating a `./` value as document-relative there missed every page's own
+ * `$layout`, so a renamed layout left them pointing at the old name. Used for `$layout` and for
+ * `build.copy` keys, which are project paths too.
  */
 export function rewriteRef(
   cls: { core: string; suffix: string; rooted: boolean },
@@ -270,10 +273,8 @@ export function rewriteRef(
   if (rooted) {
     return rewriteSiteUrl(core, suffix, ctx);
   }
-  const startsRel = core.startsWith("./") || core.startsWith("../");
-  const useRoot = rootRelativeBare && !startsRel;
-  const baseOld = useRoot ? ctx.root : ctx.docOldDir;
-  const baseNew = useRoot ? ctx.root : ctx.docNewDir;
+  const baseOld = rootRelativeBare ? ctx.root : ctx.docOldDir;
+  const baseNew = rootRelativeBare ? ctx.root : ctx.docNewDir;
 
   const targetOld = joinPosix(baseOld, core);
   const targetNew = remapTarget(targetOld, ctx.oldAbs, ctx.newAbs);

@@ -59,6 +59,23 @@ export interface SlashMenuRow {
   label: string;
   /** A muted note at the end of the row. Empty draws no box: `jx-option` hides its own part. */
   description: string;
+  /** The row's position in the FLAT list — its id, and what a hover reports. */
+  index: number;
+}
+
+/**
+ * One headed run of rows: the HTML elements (no heading), then the project's components under
+ * "Components" (§5.7). A `role="group"` wrapper is what `jx-listbox` reads headings from, and its
+ * rows stay its own (`optionsOf` keeps every descendant option whose nearest listbox is this one).
+ */
+export interface SlashMenuGroup {
+  key: string;
+  /** The visible heading; empty for the unheaded first group. */
+  label: string;
+  /** The group's accessible name, which the unheaded group needs too. */
+  name: string;
+  hasLabel: boolean;
+  rows: SlashMenuRow[];
 }
 
 /** What the panel is showing right now. */
@@ -71,7 +88,10 @@ export interface SlashMenuView {
   showFilter: boolean;
   /** What that field contains. */
   filter: string;
+  /** Every row, flat, in the order the keyboard walks them. */
   rows: SlashMenuRow[];
+  /** The same rows as the panel draws them, headed. */
+  groups: SlashMenuGroup[];
   /** The highlighted row, as an index into {@link SlashMenuView.rows}. */
   activeIndex: number;
 }
@@ -108,6 +128,7 @@ interface SlashMenuScope {
   showFilter: boolean;
   filter: string;
   rows: SlashMenuRow[];
+  groups: SlashMenuGroup[];
   /**
    * The active row's id — the ONE string the highlight is written as. The listbox turns it into a
    * row's `selected`, and the filter field, when there is one, puts the same string in its
@@ -193,6 +214,7 @@ export function openSlashMenuSurface(
       }
     },
     rows: [...view.rows],
+    groups: [...view.groups],
     showFilter: view.showFilter,
     x: view.x,
     y: view.y,
@@ -274,6 +296,7 @@ export function openSlashMenuSurface(
       scope.showFilter = next.showFilter;
       scope.filter = next.filter;
       scope.rows = [...next.rows];
+      scope.groups = [...next.groups];
       scope.activeId = activeIdOf(next);
       scope.isEmpty = next.rows.length === 0;
       scope.expanded = next.rows.length > 0;

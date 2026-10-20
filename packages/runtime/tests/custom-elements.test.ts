@@ -226,7 +226,9 @@ describe("Custom Elements", () => {
     // Still unregistered — yet the fix has already set the instance props as JS properties, ready
     // For whenever the upgrade lands, instead of discarding them.
     expect(customElements.get(tag)).toBeUndefined();
-    expect(el).toMatchObject({ label: "instance-value", value: 42 });
+    // Read as own properties, not by deep-matching the element (the shared preload refuses that).
+    const own = ["label", "value"].map((key) => Object.getOwnPropertyDescriptor(el, key)?.value);
+    expect(own).toEqual(["instance-value", 42]);
   });
 
   test("props.* attributes override state defaults and are stripped", async () => {
@@ -292,6 +294,30 @@ describe("Custom Elements", () => {
 
     expect(el.querySelector("div")).not.toBeNull();
     expect("mountCalled" in el ? el.mountCalled : undefined).toBe(true);
+    el.remove();
+  });
+
+  test("onMount runs with the host as this, as the compiled element calls it", async () => {
+    const tag = uniqueTag();
+    await defineElement({
+      children: [{ className: "inner", tagName: "p", textContent: "x" }],
+      state: {
+        found: "",
+        // The jxsuite.com search component's shape: the body reaches its host through `this`.
+        onMount: {
+          $prototype: "Function",
+          arguments: ["state"],
+          body: "state.found = this.querySelector('.inner') ? this.tagName.toLowerCase() : 'none';",
+        },
+      },
+      tagName: tag,
+    });
+    const el = document.createElement(tag);
+    document.body.append(el);
+    await new Promise((r) => {
+      setTimeout(r, 200);
+    });
+    expect("found" in el ? el.found : undefined).toBe(tag);
     el.remove();
   });
 

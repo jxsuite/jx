@@ -63,7 +63,7 @@ Breakpoints layer in the same order a browser applies their media queries, so wh
 
 ## Define your breakpoints
 
-Breakpoints are defined in one place: **Settings › Contexts**. Pick **Open Project Settings › Contexts** from the **Settings** menu at the foot of the rail. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Contexts** in the section list. From the canvas, the context bar's **Context** popover has a **Manage contexts…** button at the bottom that lands on the same section without losing your element selection.
+Breakpoints are defined in one place: **Settings › Advanced › Contexts**. Pick **Open Project Settings › Contexts** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Contexts** in the section list. From the canvas, the context bar's **Context** popover has a **Manage contexts…** button at the bottom that lands on the same section without losing your element selection.
 
 The section holds three groups, because all three are the same thing on disk and only differ in what their condition asks about:
 
@@ -73,7 +73,7 @@ The section holds three groups, because all three are the same thing on disk and
 
 Above them sits **Base width**, which sets how wide the Base canvas panel renders when no other context applies.
 
-Name a context in plain language; Studio derives the stored name ("Wide screen" becomes `--wide-screen`). Every change is schema-checked and then written to `project.json`. If the schema refuses the value or the write fails, the reason appears under the control that caused it and the stored value stays as it was, so a refused edit never looks like the field forgetting what you typed. Settings is a document like any other, so :kbd[⌘Z] takes a context change back.
+Name a context in plain language; Studio derives the stored name ("Wide screen" becomes `--wide-screen`). Every change is schema-checked and then written to `project.json`. If the schema refuses the value or the write fails, the reason appears under the control that caused it and the stored value stays as it was, so a refused edit never looks like the field forgetting what you typed. While `project.json` is open in the Styles workspace, a context change is a step in its history, so :kbd[⌘Z] there takes it back.
 
 Whatever you declare here is also what a [design token](/docs/studio/design/tokens) can carry a different value in: declare a Dark scheme and every color token gains a **Dark** row, declare a breakpoint and any token can be given a value at it.
 

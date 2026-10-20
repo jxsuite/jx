@@ -8,21 +8,31 @@
  * path.
  */
 
-import { isNonNullObject } from "@jxsuite/schema/guards";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { getFormats, loadExtensions, loadFormats } from "../format/format-host";
-import { registerSettingsSection, unregisterSettingsSection } from "./section-registry";
+import {
+  DEFAULT_SETTINGS_GROUP,
+  isSettingsGroupId,
+  registerSettingsSection,
+  unregisterSettingsSection,
+} from "./section-registry";
 import { renderContributedSection } from "./contributed-section";
 import { dataSectionActions } from "../panels/data-grid";
 import type { ExtensionContributionInfo } from "../types";
 import type { JsonSchema } from "../ui/schema-form";
 import type { ContributedSectionOptions, SettingsContribution } from "./contributed-section";
+import type { SettingsGroupId } from "./section-registry";
 
 /** The `$studio.settings` block shape consumed here (nav metadata + the renderer inputs). */
 interface StudioSettingsBlock {
   icon?: string;
   label?: string;
+  /** The nav group: `general`, `integrations` (the default) or `advanced`. */
+  group?: string;
   order?: number;
   layout?: "map" | "form";
+  /** The sentence the section body opens with, in place of its group's (extensions.md §9.1). */
+  intro?: string;
   entry?: SettingsContribution["settings"]["entry"];
 }
 
@@ -30,7 +40,9 @@ interface StudioSettingsBlock {
 export interface DerivedSettingsSection {
   key: string;
   label: string;
+  group: SettingsGroupId;
   icon?: string | undefined;
+  intro?: string | undefined;
   order: number;
   contribution: SettingsContribution;
 }
@@ -85,7 +97,11 @@ export function deriveSettingsSection(
       settings: sectionSettings,
       title: label,
     },
+    /* A group the nav does not draw falls back to the default rather than hiding the section:
+       an extension naming a group from a later vocabulary still gets its section listed. */
+    group: isSettingsGroupId(settings.group) ? settings.group : DEFAULT_SETTINGS_GROUP,
     icon: settings.icon,
+    intro: isString(settings.intro) ? settings.intro : undefined,
     key,
     label,
     order: settings.order ?? DEFAULT_SECTION_ORDER,
@@ -144,7 +160,9 @@ async function runSync(): Promise<void> {
       }
       const { contribution } = derived;
       registerSettingsSection({
+        group: derived.group,
         icon: derived.icon,
+        intro: derived.intro,
         key: derived.key,
         label: derived.label,
         order: derived.order,

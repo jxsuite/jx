@@ -15,6 +15,7 @@ import {
 import { hasTyping } from "../src/tabs/typing";
 import { displayTagName, isString } from "@jxsuite/schema/guards";
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { notifyModule } from "./notify-mock";
 import { initShellRefs, setProjectState } from "../src/store";
 import {
@@ -324,6 +325,8 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   revealCanvasPath: () => Promise.resolve(null),
   postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: (style: JxStyle) => styleUpdateImpl(style),
+  // The Variables view's editor pushes a token edit to the page canvases (`style/live-preview`).
+  postSiteStyleToLiveHosts: () => 0,
   getEditBarAnchorRect: () => null,
   getEditSnapshot: () => ({ editing: false, snapshot: null }),
   mountIframeCanvas: (
@@ -410,8 +413,6 @@ const {
   renderOverlays,
   scheduleCanvasRender,
 } = await import("../src/canvas/canvas-render");
-const { mount: mountDocHeader, unmount: unmountDocHeader } =
-  await import("../src/panels/frontmatter-panel");
 
 // ─── Test context ─────────────────────────────────────────────────────────────
 
@@ -651,7 +652,7 @@ describe("renderCanvas without a tab", () => {
   test("renders the welcome screen when no project is loaded", () => {
     setProjectState(null);
     renderCanvas();
-    expect(renderWelcome).toHaveBeenCalledWith(stageEl());
+    expect(renderWelcome.mock.calls.map(([target]) => target)).toContain(stageEl());
   });
 
   /*
@@ -680,7 +681,7 @@ describe("renderCanvas without a tab", () => {
   test("keeps the welcome screen when the root is not a site project", () => {
     resetStudioState({ isSiteProject: false, projectRoot: ".", root: "/repo" });
     renderCanvas();
-    expect(renderWelcome).toHaveBeenCalledWith(stageEl());
+    expect(renderWelcome.mock.calls.map(([target]) => target)).toContain(stageEl());
   });
 });
 
@@ -1034,6 +1035,23 @@ describe("source mode", () => {
       expect(serializeJson(tab.doc.document, tab.doc.layout)).toBe(
         '{ "children": [], "tagName": "main" }\n',
       );
+    });
+  });
+
+  test("a bare repeater typed into the buffer is edited in the member form", async () => {
+    const tab = openSyncedTab();
+    setMode("source");
+    await withFastTimers(async (runPending) => {
+      renderCanvas();
+      await waitForEditors(1);
+      const [editor] = createdEditors;
+      editor!._ignoreNextChange = false;
+      editor!._model!._value =
+        '{ "children": { "$prototype": "Array", "items": [] }, "tagName": "ul" }';
+      fireModelChange(editor!);
+      await runPending();
+      expect(Array.isArray(tab.doc.document.children)).toBe(true);
+      expect([...(tab.doc.bareRepeaters?.pointers ?? [])]).toEqual([""]);
     });
   });
 
@@ -1627,6 +1645,35 @@ describe("media mode", () => {
     expect(stageEl().querySelector('[part="viewer"]')).toBe(viewer!);
 
     detachMediaPane("primary");
+  });
+});
+
+describe("tokens mode", () => {
+  test("mounts the Variables view, a repaint leaves it alone, and leaving the mode takes it down", async () => {
+    /* The Styles workspace's Variables view is a form over `project.json`'s custom properties,
+       not a canvas render: no artboard, and the view follows the document through its own effect,
+       so the fast path is what keeps a half-typed value from being rebuilt under the reader. */
+    const tab = openSyncedTab(
+      { style: { "--accent": "#2448c9" }, tagName: "div" },
+      { documentPath: "project.json" },
+    );
+    tab.capabilities.modes = ["stylebook", "tokens", "source"];
+    setMode("tokens");
+    renderCanvas();
+    await flush(6);
+
+    const mounted = stageEl().querySelector('[part="variables-view"]');
+    expect(mounted).not.toBeNull();
+    expect(canvasPanels.length).toBe(0);
+
+    renderCanvas();
+    await flush(4);
+    expect(stageEl().querySelector('[part="variables-view"]')).toBe(mounted!);
+
+    setMode("source");
+    renderCanvas();
+    await flush(4);
+    expect(stageEl().querySelector('[part="variables-view"]')).toBeNull();
   });
 });
 
@@ -2506,7 +2553,9 @@ describe("scheduleCanvasRender", () => {
     await rafTurn();
     await flush();
     // One render, and it drew the welcome screen into the primary stage.
-    expect(renderWelcome.mock.calls).toEqual([[stageEl()]]);
+    expect(renderWelcome.mock.calls.map((call) => identities(call))).toEqual([
+      identities([stageEl()]),
+    ]);
   });
 
   test("catches renderCanvas errors inside the frame callback", async () => {
@@ -2537,190 +2586,98 @@ describe("renderOverlays", () => {
   });
 });
 
-// ─── The Document Header card's slot ──────────────────────────────────────────
+// ─── What leads Edit's frame ──────────────────────────────────────────────────
 
 /**
- * `#frontmatter-panel` is deleted; the stage draws the card's host. What is asserted here is WHERE
- * — Edit docks it above the page's scroller at the pane's width, and every other surface, Design
- * included, puts it nowhere at all.
+ * Edit draws the page and nothing above it (studio.md §4.2): the Document Header card is gone, and
+ * a document's settings are the Inspector's Page tab's. The one band that still leads Edit's frame
+ * is the writing-mode banner over a collection entry (§22.5), so what is asserted here is that an
+ * ordinary page starts at the top of the pane, and that the banner — and only the banner — stacks
+ * the stage.
  */
-describe("the Document Header slot", () => {
-  // The card really renders here — its SEO block reaches for the media listing, so the stage needs
-  // A platform. Local to this block: the rest of the file asserts dispatch, not panel content.
-  beforeEach(() => {
-    installMockPlatform();
-    mountDocHeader();
-  });
-
-  afterEach(() => {
-    unmountDocHeader();
-  });
-
-  /** A tab whose document genuinely has a header (`hasDocumentHeader` is the only predicate). */
-  function openHeaderedTab() {
-    const tab = openSyncedTab();
-    tab.doc.document.title = "Designing for slowness";
+describe("what leads Edit's frame", () => {
+  /** An entry of a Markdown collection, the one document Edit draws a band over. */
+  function openEntryTab() {
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: { content: { posts: { format: "markdown", source: "./content/posts" } } },
+    });
+    const tab = openSyncedTab(undefined, { documentPath: "content/posts/hello.md" });
+    tab.doc.document.title = "Hello";
     return tab;
   }
 
-  const slot = () => stageEl().querySelector('[part="doc-header"]');
-
-  test("Edit docks it above the page's scroller at the pane's width", async () => {
-    openHeaderedTab();
+  test("a page with a title, a layout and head tags opens at the top: no card, no band", async () => {
+    /* Every fact the card used to dock above the page is a document with one: title, $head and a
+       layout. None of them draws anything over the frame now. */
+    const tab = openSyncedTab();
+    tab.doc.document.title = "Designing for slowness";
+    tab.doc.document.$head = [{ attributes: { content: "x", name: "author" }, tagName: "meta" }];
     setMode("edit");
     renderCanvas();
     await flush();
 
-    /* NOT in the column. The column's width is the breakpoint's or the drag's, and the column is
-       inside the scroller, so a card drawn there was exactly as wide as a 320px page and scrolled
-       off with its first screen. Read across the column's own parts, because that is where it used
-       to be: the artefact is the only block left in it. */
-    expect(slot()).not.toBeNull();
-    const column = stageEl().querySelector('[part="edit-column"]')!;
-    const blocks = [
-      ...column.querySelectorAll('[part="doc-header"], [part="panel"], [part="edit-handle"]'),
+    expect(stageEl().querySelector('[part="doc-header"]')).toBeNull();
+    expect(stageEl().querySelector('[part="writing-banner"]')).toBeNull();
+    expect(stageEl().querySelector('[part="lead-slot"]')?.children.length ?? 0).toBe(0);
+    // The scroller is the stage's first box, and the cell stays the row it is by default.
+    expect(stageEl().querySelector('[part="edit-canvas"]')).not.toBeNull();
+    expect(stageEl().style.flexDirection).toBe("");
+    expect(stageEl().style.alignItems).toBe("");
+    expect(stageEl().style.gap).toBe("");
+  });
+
+  test("a collection entry gets the writing banner above the scroller, and the stage stacks", async () => {
+    openEntryTab();
+    setMode("edit");
+    renderCanvas();
+    await flush();
+
+    const banner = stageEl().querySelector('[part="writing-banner"]');
+    expect(banner).not.toBeNull();
+    // Outside the scroller, so the page scrolls UNDER it rather than taking it along…
+    expect(banner?.closest('[part="edit-canvas"]')).toBeNull();
+    // …and ahead of it in document order, which is "above" once the stage cell is a column.
+    const order = [
+      ...stageEl().querySelectorAll('[part="writing-banner"], [part="edit-canvas"]'),
     ].map((el) => el.getAttribute("part"));
-    expect(blocks).toEqual(["panel"]);
-    expect(slot()?.closest('[part="edit-column"]')).toBeNull();
-    // Outside the scroller, so the page scrolls UNDER it rather than taking it along.
-    expect(slot()?.closest('[part="edit-canvas"]')).toBeNull();
-    // Ahead of it in document order, which is "above" once the stage cell is a column.
-    const order = [...stageEl().querySelectorAll('[part="doc-header"], [part="edit-canvas"]')].map(
-      (el) => el.getAttribute("part"),
-    );
-    expect(order).toEqual(["doc-header", "edit-canvas"]);
-    // The stage cell stacks and stretches: that is what makes the band the PANE's width.
+    expect(order).toEqual(["writing-banner", "edit-canvas"]);
     expect(stageEl().style.flexDirection).toBe("column");
     expect(stageEl().style.alignItems).toBe("stretch");
-    /* …and closes its own 24px gap, so the scroller clips its content AT the band's bottom border.
-       With the gap the page ended at an invisible line 24px below that border with nothing drawn in
-       between, and the border read as a hairline over one continuous surface. */
+    // Flush: the cell's own 24px gap would be dead space between the band and the scroller.
     expect(stageEl().style.gap).toBe("0px");
-    expect(htmlEl('[part="doc-header"]').dataset.placement).toBeUndefined();
   });
 
-  test("Design draws no header, and the stage stays a row", async () => {
-    // The artboards get the whole pane; the Navigator's Page panel carries the same fields.
-    openHeaderedTab();
-    setMode("design");
-    renderCanvas();
-    await flush();
-
-    expect(slot()).toBeNull();
-    expect(stageEl().style.flexDirection).toBe("");
-    expect(stageEl().style.alignItems).toBe("");
-    expect(stageEl().style.gap).toBe("");
-  });
-
-  test("Design with breakpoints draws no header either, over any of its artboards", async () => {
-    const tab = openSyncedTab({
-      $media: { "--": "400px", tablet: "(min-width: 768px)" },
-      children: [{ tagName: "p", textContent: "Hi" }],
-      tagName: "div",
-      title: "Two artboards",
-    });
-    expect(tab.doc.document.title).toBe("Two artboards");
-    setMode("design");
-    renderCanvas();
-    await flush();
-
-    expect(stageEl().querySelectorAll('[part="doc-header"]').length).toBe(0);
-    expect(stageEl().querySelectorAll('[part="panel"]').length).toBeGreaterThan(1);
-  });
-
-  test("a document with no header gets no slot, and the stage stays a row", async () => {
-    openSyncedTab();
+  test("Edit → Design → Edit over an entry takes the banner down and brings it back", async () => {
+    openEntryTab();
     setMode("edit");
     renderCanvas();
     await flush();
-
-    expect(slot()).toBeNull();
-    expect(stageEl().style.flexDirection).toBe("");
-    expect(stageEl().style.alignItems).toBe("");
-    expect(stageEl().style.gap).toBe("");
-  });
-
-  test("Edit → Design → Edit takes the card down and brings it back", async () => {
-    /* The two moving parts are `wantsDocHeader` releasing the host (`attachDocumentHeaderHost(…,
-       null)`) and the mode transition clearing the two inline writes Edit made to stack the cell.
-       Either one missing leaves a card the stage no longer draws, or a Design stage laid out as a
-       column around nothing. */
-    openHeaderedTab();
-    setMode("edit");
-    renderCanvas();
-    await flush();
-    expect(stageEl().querySelector('[part="doc-header"] [part="card"]')).not.toBeNull();
-    expect(stageEl().style.flexDirection).toBe("column");
-    expect(stageEl().style.gap).toBe("0px");
+    expect(stageEl().querySelector('[part="writing-banner"]')).not.toBeNull();
 
     setMode("design");
     renderCanvas();
     await flush();
-    expect(slot()).toBeNull();
-    expect(stageEl().querySelector('[part="card"]')).toBeNull();
+    expect(stageEl().querySelector('[part="writing-banner"]')).toBeNull();
     expect(stageEl().style.flexDirection).toBe("");
     expect(stageEl().style.alignItems).toBe("");
-    // The gap is the cell's own again: Design's artboards and Monaco's halves stand apart by it.
     expect(stageEl().style.gap).toBe("");
 
     setMode("edit");
     renderCanvas();
     await flush();
-    expect(stageEl().querySelector('[part="doc-header"] [part="card"]')).not.toBeNull();
+    expect(stageEl().querySelector('[part="writing-banner"]')).not.toBeNull();
     expect(stageEl().style.flexDirection).toBe("column");
-    expect(stageEl().style.gap).toBe("0px");
   });
 
-  test("a document that loses its header unstacks the stage without a mode change", async () => {
-    /* Whether a document HAS a header changes with the document, not the mode — which is why Edit
-       writes the stage's axis on every render rather than on the transition. */
-    const tab = openHeaderedTab();
-    setMode("edit");
-    renderCanvas();
-    await flush();
-    expect(stageEl().style.flexDirection).toBe("column");
-
-    delete tab.doc.document.title;
-    renderCanvas();
-    await flush();
-    expect(slot()).toBeNull();
-    expect(stageEl().style.flexDirection).toBe("");
-    expect(stageEl().style.alignItems).toBe("");
-    expect(stageEl().style.gap).toBe("");
-  });
-
-  test("Preview, Source and Grid draw no header — they are not authoring views", async () => {
-    openHeaderedTab();
+  test("Preview, Source and Grid draw no band over an entry — they are not writing views", async () => {
+    openEntryTab();
     for (const mode of ["preview", "source", "grid"]) {
       setMode(mode);
       renderCanvas();
       await flush();
-      expect(slot()).toBeNull();
+      expect(stageEl().querySelector('[part="writing-banner"]')).toBeNull();
     }
-  });
-
-  test("a logic editor in the dock leaves the card slotted, and BOUND", async () => {
-    // `wantsDocHeader` used to carry `!editingFunction && !editingFormula`, from the days when the
-    // Sub-editors covered the stage. In the dock they do not, so those clauses reached
-    // `attachDocumentHeaderHost("primary", null)` on a card that was still visible: it was detached, not
-    // Removed, and went on showing frontmatter from before the edit with nothing to say so.
-    const tab = openHeaderedTab();
-    setMode("edit");
-    renderCanvas();
-    await flush();
-    const before = slot();
-    expect(before).not.toBeNull();
-
-    tab.session.ui.editingFunction = { eventKey: "onclick", path: [], type: "event" };
-    renderCanvas();
-    await flush();
-    expect(slot()).not.toBeNull();
-
-    tab.session.ui.editingFunction = null;
-    tab.session.ui.editingFormula = { defName: "total", type: "def" };
-    renderCanvas();
-    await flush();
-    expect(slot()).not.toBeNull();
   });
 });
 
@@ -2837,9 +2794,9 @@ describe("renderCanvas is addressed by pane", () => {
  * The previous round shipped all three green and none of them testable: replacing the string
  * `"lens"` with `"MUTANT"` at `canvas-render.ts:677`, `:997` and `:1219` — which deletes every
  * lens-specific render behaviour in the package — left 275, 102 and 117 tests passing across
- * fourteen files. The one test that named the Document Header gate asserted
- * `hasDocumentHeader(page) === true` and `derivationOfPane(SECONDARY) === "lens"`, neither of which
- * touches the gate, and its own comment said so.
+ * fourteen files. The one test that named the lens gate on the band over Edit's frame asserted a
+ * predicate and `derivationOfPane(SECONDARY) === "lens"`, neither of which touches the gate, and
+ * its own comment said so.
  *
  * Every test below fails under that mutation, which is how they were written: the mutation was
  * applied first and each assertion was checked red before it was checked green.
@@ -2881,29 +2838,27 @@ describe("a derived pane's stage", () => {
     unregisterCanvasSurface(SECONDARY_PANE);
   });
 
-  test("draws no Document Header card, while the pane that OWNS the tab draws one", async () => {
-    /* `canvas-render.ts:677`. The card is an editing surface over the SAME frontmatter — Title,
-       Route, SEO — and two of them side by side is two writers for one field. Under the mutation
-       the lens grows a second card. Both sides in EDIT, the one mode that draws a card at all: in
-       Design neither pane would, and the lens gate would pass without being asked anything. */
+  test("draws no writing banner, while the pane that OWNS the entry draws one", async () => {
+    /* The banner's door ("Edit the template in Design") belongs to the pane that owns the tab; a
+       lens is a view. Both sides in EDIT, the one mode that draws a banner at all: in Design
+       neither pane would, and the lens gate would pass without being asked anything. */
     installMockPlatform();
-    mountDocHeader();
-    try {
-      const tab = openSyncedTab();
-      tab.doc.document.title = "Designing for slowness";
-      setMode("edit");
-      const lensWrap = standUpLens(lensRecord({ mode: "edit" }));
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: { content: { posts: { format: "markdown", source: "./content/posts" } } },
+    });
+    const tab = openSyncedTab(undefined, { documentPath: "content/posts/hello.md" });
+    tab.doc.document.title = "Hello";
+    setMode("edit");
+    const lensWrap = standUpLens(lensRecord({ mode: "edit" }));
 
-      renderCanvas(PRIMARY_PANE);
-      renderCanvas(SECONDARY_PANE);
-      await flush();
+    renderCanvas(PRIMARY_PANE);
+    renderCanvas(SECONDARY_PANE);
+    await flush();
 
-      expect(stageEl().querySelector('[part="doc-header"]')).not.toBeNull();
-      expect(lensWrap.querySelector('[part="doc-header"]')).toBeNull();
-      lensWrap.remove();
-    } finally {
-      unmountDocHeader();
-    }
+    expect(stageEl().querySelector('[part="writing-banner"]')).not.toBeNull();
+    expect(lensWrap.querySelector('[part="writing-banner"]')).toBeNull();
+    lensWrap.remove();
   });
 
   test("a diff lens renders ITS OWN comparison, never the app-level slot", async () => {
@@ -3192,7 +3147,7 @@ describe("a derived pane's stage", () => {
       "Select an element inside a component to see its definition.",
     );
     // Not the welcome screen — this pane is not empty, it is waiting.
-    expect(renderWelcome).not.toHaveBeenCalledWith(wrap);
+    expect(renderWelcome.mock.calls.map(([target]) => target)).not.toContain(wrap);
     wrap.remove();
   });
 
@@ -3226,7 +3181,7 @@ describe("a derived pane's stage", () => {
     await flush();
 
     expect(wrap.textContent).toContain("Looking for something to show here…");
-    expect(renderWelcome).not.toHaveBeenCalledWith(wrap);
+    expect(renderWelcome.mock.calls.map(([target]) => target)).not.toContain(wrap);
     wrap.remove();
   });
 });

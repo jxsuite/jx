@@ -105,6 +105,8 @@ export async function parseSourceForPath(path: string, source: string) {
 export const parseCollabSource: CollabParser = async (tab, text) => {
   if (tab.documentPath && formatForPath(tab.documentPath)) {
     const parsed = await parseSourceForPath(tab.documentPath, text);
+    // The peer's text is what this client saves against now, as `layout` is for a JSON file.
+    tab.doc.source = text;
     return { document: parsed.document, frontmatter: parsed.frontmatter };
   }
   const parsed = parseJsonDocument(text);
@@ -195,6 +197,7 @@ export async function openFile() {
           fileHandle: handle,
           frontmatter,
           id: name,
+          source: text,
           sourceFormat: format.name,
         });
       } else if (name.endsWith(".json")) {
@@ -254,26 +257,27 @@ export async function openFile() {
  * **By injection**, the idiom `setSurfaceTeardown` and `setDiffRepaint` already use. The one
  * listener today is source control: a comparison is two texts read once, so it does not notice a
  * save on its own, and the file an author is most likely to save is the one they are reviewing. A
- * direct import would put `panels/git-panel.ts` into this module's graph, which is a load error for
- * every suite that mocks the canvas host out from under it.
+ * direct import would put `publish/source-control.ts` and the comparison opener behind it into this
+ * module's graph, which is a load error for every suite that mocks the canvas host out from under
+ * it.
  *
  * The listener is handed the document as well as the path, for the second listener: the live chrome
  * lane (`services/live-surfaces.ts`) re-mounts a saved surface from the document the tab just wrote
  * rather than reading the file back, which is what keeps the shipped app from ever reading its
  * chrome from disk.
  */
-let _onDocumentSaved: (path: string | null, doc: JxMutableNode) => void = () => {};
+let _onDocumentSaved: (path: string | null, doc: JxMutableNode, tab: Tab) => void = () => {};
 
 /** Register the save listener. Called once, from the bootstrap. */
 export function setDocumentSavedListener(
-  listener: (path: string | null, doc: JxMutableNode) => void,
+  listener: (path: string | null, doc: JxMutableNode, tab: Tab) => void,
 ): void {
   _onDocumentSaved = listener;
 }
 
 function reportSaved(tab: Tab) {
   const doc = tab.doc.document;
-  _onDocumentSaved(tab.documentPath, doc);
+  _onDocumentSaved(tab.documentPath, doc, tab);
   const warning =
     isString(doc.tagName) && doc.tagName.includes("-") ? validateComponentSlots(doc) : null;
   if (warning) {
@@ -398,6 +402,9 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
       const platform = getPlatform();
       await platform.writeFile(tab.documentPath, output);
       tab.doc.dirty = false;
+      if (tab.doc.sourceFormat !== null) {
+        tab.doc.source = output;
+      }
       /* Retract the unsaved bytes NOW rather than a debounce later. The write also reaches the
          backend's filesystem watcher, and a live preview coalesces both into one reload only if
          they arrive together — otherwise a save costs two. */
@@ -418,6 +425,9 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
       await writable.write(output);
       await writable.close();
       tab.doc.dirty = false;
+      if (tab.doc.sourceFormat !== null) {
+        tab.doc.source = output;
+      }
       reportSaved(tab);
       return true;
     }

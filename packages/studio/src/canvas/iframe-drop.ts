@@ -47,6 +47,93 @@ const VOID_TAGS = new Set([
 ]);
 
 /**
+ * Phrasing content (HTML's content model) that is NOT also an embedded or interactive block an
+ * author drops as its own block: text-level elements. Only these may land inside a paragraph. An
+ * image, a video and a component are phrasing by the letter of HTML, but a card dragged from the
+ * Site panel onto a paragraph means "put it here", not "glue it into this sentence": in Markdown
+ * the latter serialises as an inline directive or image stuck to the text.
+ */
+const TEXT_LEVEL_TAGS = new Set([
+  "a",
+  "abbr",
+  "b",
+  "bdi",
+  "bdo",
+  "br",
+  "cite",
+  "code",
+  "data",
+  "del",
+  "dfn",
+  "em",
+  "i",
+  "ins",
+  "kbd",
+  "mark",
+  "q",
+  "s",
+  "samp",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "sup",
+  "time",
+  "u",
+  "var",
+  "wbr",
+]);
+
+/** Elements whose content model is phrasing only: a block dropped inside one breaks it. */
+const PHRASING_HOSTS = new Set([
+  ...TEXT_LEVEL_TAGS,
+  "button",
+  "dt",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "label",
+  "legend",
+  "p",
+  "pre",
+  "summary",
+]);
+
+/** A node's tag, lower-cased, `div` when it names none. */
+function tagOf(node: JxMutableNode | null | undefined): string {
+  return (displayTagName(node?.tagName) || "div").toLowerCase();
+}
+
+/** Whether the dragged thing is text-level content, which may be placed inside a paragraph. */
+function isTextLevelSource(src: DragSrcKind, shadowDoc: JxMutableNode): boolean {
+  const tag = src.type === "block" ? (src.tag ?? "") : tagOf(getNodeAtPath(shadowDoc, src.path));
+  return TEXT_LEVEL_TAGS.has(tag.toLowerCase());
+}
+
+/**
+ * The outermost phrasing host at or above `el` (the paragraph around a `<strong>`), or null when
+ * `el` is in none. A block is placed beside that host, never inside it.
+ */
+function phrasingHostOf(el: HTMLElement, shadowDoc: JxMutableNode): HTMLElement | null {
+  let host: HTMLElement | null = null;
+  let current: HTMLElement | null = el;
+  while (current) {
+    const path = parseJxPath(current.dataset.jxPath ?? "");
+    if (path.length === 0) {
+      break;
+    }
+    if (PHRASING_HOSTS.has(tagOf(getNodeAtPath(shadowDoc, path)))) {
+      host = current;
+    }
+    current = nearestPathEl(current.parentElement);
+  }
+  return host;
+}
+
+/**
  * Walk up from an element to the nearest ancestor carrying a `data-jx-path`. Refactored out of the
  * `nearestHit` walk (iframe-interaction.ts) to take an element directly so the hit-test adapter can
  * reuse it. Returns null when no addressable node is found.
@@ -120,6 +207,26 @@ export function computeDropInstruction(
 
   if (!canDrop(src, targetPath)) {
     return null;
+  }
+
+  /* A block over a paragraph (or anything inside one) lands above or below the paragraph: a
+     component or an image nested in a `<p>` is serialised glued to its text. */
+  const host = isTextLevelSource(src, shadowDoc) ? null : phrasingHostOf(targetEl, shadowDoc);
+  if (host) {
+    const hostPath = parseJxPath(host.dataset.jxPath ?? "");
+    if (!canDrop(src, hostPath)) {
+      return null;
+    }
+    const hostRect = rectFor(host);
+    const hostRelY = hostRect.height === 0 ? 0 : (cursorY - hostRect.y) / hostRect.height;
+    return hostRelY < 0.5
+      ? { edge: "top", instruction: "reorder-above", referenceRect: hostRect, targetPath: hostPath }
+      : {
+          edge: "bottom",
+          instruction: "reorder-below",
+          referenceRect: hostRect,
+          targetPath: hostPath,
+        };
   }
 
   const node = getNodeAtPath(shadowDoc, targetPath);

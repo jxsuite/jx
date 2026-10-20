@@ -98,7 +98,7 @@ The parser returns one mount per content type with a directory source. The site 
 
 ## Studio settings: `$studio.settings`
 
-The section class's `$studio` block may declare a settings section, rendered generically by Studio under _Settings_. The auth extension's, verbatim:
+The section class's `$studio` block may declare a settings section, rendered generically by Studio in its Project settings dialog. The auth extension's, verbatim:
 
 ```json
 "$studio": {
@@ -121,7 +121,8 @@ The section class's `$studio` block may declare a settings section, rendered gen
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `icon`           | Section icon in the settings nav. Names a glyph from the Jx UI kit icon set (`@jxsuite/ui/icons`), never an element tag. A name the kit does not ship draws nothing.                 |
 | `label`          | Section label (defaults to `project.title`).                                                                                                                                         |
-| `order`          | Sort position among contributed sections.                                                                                                                                            |
+| `group`          | Which group of the settings nav lists the section: `"general"`, `"integrations"` (default) or `"advanced"` (Studio marks it _For developers_). Any other value reads as the default. |
+| `order`          | Sort position within its group.                                                                                                                                                      |
 | `layout`         | `"form"` (default) renders one form over the whole section value. `"map"` gives master-detail for `type: object` + `additionalProperties` sections: key list left, entry form right. |
 | `entry.ui`       | Per-field control overrides for the entry form: `{ "<field>": { "control": "<name>" } }`.                                                                                            |
 | `entry.newEntry` | Template for freshly created entries, with `${key}` substitution.                                                                                                                    |

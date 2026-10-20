@@ -28,6 +28,7 @@
     "@jxsuite/schema": "workspace:^"
   },
   "devDependencies": {
-    "@jxsuite/runtime": "workspace:^"
+    "@jxsuite/runtime": "workspace:^",
+    "@jxsuite/test-support": "workspace:^"
   }
 }

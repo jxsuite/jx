@@ -207,18 +207,25 @@ test("boot builds no datalist, and queues no idle work to fill one", () => {
   expect(idleCallbacks).toHaveLength(0);
 });
 
-test("the pane-context bar is wired to the three callbacks it still takes", async () => {
+test("the pane-context bar is wired to the five callbacks it takes", async () => {
   expect(paneCtx).not.toBeNull();
   /* It took four more — `navigateBack`, `navigateToLevel` and the two logic-editor closes — for a
      breadcrumb and a Back this bar no longer draws. `getCanvasMode` is the fifth to go, and it went
      for a different reason: it answered for the FOCUSED pane, and this bar is drawn once per pane.
-     What is left is the axes' own wiring, and with no active tab every one of them is a guarded
-     no-op. */
+     What is left is the axes' own wiring, plus the guarded close the Back control of a strip-less
+     workspace runs and the hand-off of the keyboard to the home it lands on, and with no active
+     tab every one of them is a guarded no-op. */
   expect(Object.keys(paneCtx!).toSorted()).toEqual([
+    "closeTab",
     "exportFile",
+    "focusHome",
     "parseMediaEntries",
     "setCanvasMode",
   ]);
+  // The hand-off with nothing mounted queues for the next mount and throws nothing.
+  expect(() => paneCtx!.focusHome?.("primary", "media")).not.toThrow();
+  expect(() => paneCtx!.focusHome?.("primary", "publish")).not.toThrow();
+  expect(() => paneCtx!.focusHome?.("primary", "styles")).not.toThrow();
   await paneCtx!.exportFile();
   // The write takes its target: no tab, nothing written, and no throw.
   expect(() => paneCtx!.setCanvasMode(null, "edit")).not.toThrow();

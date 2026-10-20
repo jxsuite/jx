@@ -1,17 +1,16 @@
 /**
- * The Library's verbs.
+ * The Content home's verbs (`specs/studio.md` §22.5).
  *
- * Every piece of Library state a person can reach is reachable here, which is the difference
- * between this and the Manage view it replaces. That view's category filter, its search box and its
- * grid/table switch existed ONLY as buttons inside a modal, so `scripts/screenshots/automation.ts`
- * carried a hand-maintained `BROWSE_CATEGORY_LABELS` table and pressed the buttons through an XPath
- * matched on their rendered text, exactly what the shot contract's R1 forbids
- * (`scripts/screenshots/README.md`). `library.setCategory` is the same action the button runs, and
- * the button is now a rendering of the record.
+ * Every piece of the home's state a person can reach is reachable here: which collection it shows,
+ * how that collection is arranged, what it is filtered to. The view switch, the search field and
+ * the language picker are renderings of the same records, and the Collections panel's rows run
+ * `content.showCollection` rather than writing the state themselves, so a shot or a script names
+ * the collection instead of pressing a row it found by its text.
  *
  * Every setter is idempotent and names the STATE it reaches, never a delta: there is no
- * `library.toggleLayout`, because a toggle against unstated state is what silently inverted
- * eighteen manifest steps when a default flipped.
+ * `content.toggleLayout`, because a toggle against unstated state is what silently inverted
+ * eighteen manifest steps when a default flipped. The view setters write the SHOWN collection's own
+ * view, so each collection keeps its own.
  */
 
 import {
@@ -22,18 +21,11 @@ import {
   optionalStringArg,
   stringProperty,
 } from "../commands/command-args";
-import { openLibraryTab } from "../grid/grid-open";
+import { LIBRARY_LAYOUTS, LIBRARY_LAYOUT_LABELS, projectLocales } from "./library-model";
+import { contentCollectionKeys } from "../content/content-collections";
 import {
-  LIBRARY_CATEGORY_KEYS,
-  LIBRARY_LAYOUTS,
-  LIBRARY_LAYOUT_LABELS,
-  projectLocales,
-} from "./library-model";
-import {
-  createLibraryEntry,
-  libraryNewEntries,
   refreshLibrary,
-  setLibraryCategory,
+  setContentCollection,
   setLibraryLayout,
   setLibraryLocale,
   setLibrarySearch,
@@ -41,76 +33,77 @@ import {
 import type { LibraryLayout } from "./library-model";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
-/** Every value `library.setLocale` accepts: the project's own locales, plus "all" for none of them. */
+/** Every value `content.setLocale` accepts: the project's own locales, plus "all" for none of them. */
 function localeChoices(): string[] {
   return ["all", ...projectLocales()];
 }
 
-/** The Library's command records. */
-export function libraryCommands(): AnyCommand[] {
+/**
+ * Show a collection in the Content home, opening the home if it is not open.
+ *
+ * Opening the home activates it, and activating a tab enters its workspace (§22.1), so this is also
+ * how a script reaches Content on a named collection in one step.
+ */
+export async function showCollection(key: string): Promise<void> {
+  setContentCollection(key);
+  /* Dynamic: the home's module mounts surfaces, and this record is loaded in the bare Bun process
+     the CI checks run in. */
+  const { openWorkspaceHome } = await import("../workspace/workspace-home");
+  openWorkspaceHome("content");
+}
+
+/** The Content home's command records. */
+export function contentViewCommands(): AnyCommand[] {
   return [
     {
-      category: "Project",
-      id: "library.open",
-      // ⌘⇧E, as studio.md §9.1.2 names it. The Library is the content surface for a site
-      // With a collection, and it was reachable only by palette search and one overflow menu item.
-      keybinding: "mod+shift+e",
-      level: "project",
-      menus: ["commandbar/overflow", "palette", "context/file"],
-      group: "1_file",
-      requires: "an open project",
-      when: (ctx) => ctx.project.open,
-      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: chrome. None of the
-         Library family is projected — every one of these verbs shapes a listing a person reads,
-         and the model has `list_files` / `search_files` for the same facts. */
-      run: () => {
-        openLibraryTab();
-      },
-      title: "Open Library",
-    },
-    {
       args: argsSchema({
-        category: enumProperty(
-          LIBRARY_CATEGORY_KEYS,
-          'Which category the Library lists. "all" clears the category filter.',
+        /* Derived: this record is built at module scope, before any project is open, so a frozen
+           enum would offer only `pages` forever. The getter is read when the prompt opens, when
+           the tool list is serialised, and when `registry.run` coerces the value; an enum is also
+           what keeps the verb in the palette, which prompts for enums only. A shot is checked with
+           no project open, so a manifest step may name `pages` and nothing else. */
+        collection: derivedEnumProperty(
+          contentCollectionKeys,
+          'Which collection the Content home shows: "pages", or a collection project.json declares.',
         ),
       }),
       category: "Project",
-      id: "library.setCategory",
+      id: "content.showCollection",
       level: "project",
       menus: ["palette"],
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`: a listing filter for a person (studio-ui-guidelines.md §12.4, rule 1). */
-      run: (_ctx, args) => {
-        const key = enumArg("library.setCategory", args, "category", LIBRARY_CATEGORY_KEYS);
-        setLibraryCategory(key);
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's first deletion rule: it shapes a listing a
+         person reads, and the model has `list_files` for the same facts. */
+      run: async (_ctx, args) => {
+        const key = enumArg("content.showCollection", args, "collection", contentCollectionKeys());
+        await showCollection(key);
       },
-      title: "Library: Show Category",
+      title: "Content: Show Collection",
     },
     {
       args: argsSchema({
         layout: enumProperty(
           LIBRARY_LAYOUTS,
-          `How the Library arranges its items — ${LIBRARY_LAYOUTS.map(
+          `How the Content home arranges the collection it shows: ${LIBRARY_LAYOUTS.map(
             (layout) => LIBRARY_LAYOUT_LABELS[layout],
           ).join(", ")}.`,
         ),
       }),
       category: "Project",
-      id: "library.setLayout",
+      id: "content.setLayout",
       level: "project",
       menus: ["palette"],
       group: "1_file",
       requires: "an open project",
       when: (ctx) => ctx.project.open,
-      /* No `aiTool`: a listing filter for a person (studio-ui-guidelines.md §12.4, rule 1). */
+      /* No `aiTool`: a listing view for a person (studio-ui-guidelines.md §12.4, rule 1). */
       run: (_ctx, args) => {
-        const layout = enumArg<LibraryLayout>("library.setLayout", args, "layout", LIBRARY_LAYOUTS);
+        const layout = enumArg<LibraryLayout>("content.setLayout", args, "layout", LIBRARY_LAYOUTS);
         setLibraryLayout(layout);
       },
-      title: "Library: Set Layout",
+      title: "Content: Set View",
     },
     {
       args: {
@@ -121,7 +114,7 @@ export function libraryCommands(): AnyCommand[] {
         type: "object",
       },
       category: "Project",
-      id: "library.setSearch",
+      id: "content.setSearch",
       level: "project",
       menus: ["palette"],
       group: "1_file",
@@ -130,42 +123,38 @@ export function libraryCommands(): AnyCommand[] {
       /* No `aiTool`: a listing filter for a person; the model has `search_files`
          (studio-ui-guidelines.md §12.4, rule 1). */
       run: (_ctx, args) => {
-        setLibrarySearch(optionalStringArg("library.setSearch", args, "query") ?? "");
+        setLibrarySearch(optionalStringArg("content.setSearch", args, "query") ?? "");
       },
-      title: "Library: Filter Files",
+      title: "Content: Search Collection",
     },
     {
       args: argsSchema({
-        /* Derived, for the reason `content/entry-commands.ts` gives at length: this record is
-           built at module scope, before any project is open, so `enumProperty(localeChoices(), …)`
-           would freeze at `["all"]` and the palette would offer that forever. The getter is read
-           when the prompt opens, when the AI tool list is serialised, and when `registry.run`
-           coerces the value. */
+        /* Derived, for the reason `content.showCollection` gives. */
         locale: derivedEnumProperty(
           localeChoices,
-          'Which language the Library lists, as a BCP 47 tag the project declares. "all" ' +
+          'Which language the Content home lists, as a BCP 47 tag the project declares. "all" ' +
             "clears the language filter.",
         ),
       }),
       category: "Project",
-      id: "library.setLocale",
+      id: "content.setLocale",
       level: "project",
       menus: ["palette"],
       group: "1_file",
       requires: "a project with more than one locale",
-      // A monolingual project has no facet to set: the Library draws no picker, and offering the
-      // Verb would name a value space with one member in it.
+      // A monolingual project has no facet to set: the home draws no picker, and offering the verb
+      // Would name a value space with one member in it.
       when: (ctx) => ctx.project.open && ctx.project.isMultilingual,
       /* No `aiTool`: a listing filter for a person (studio-ui-guidelines.md §12.4, rule 1). */
       run: (_ctx, args) => {
-        const choice = enumArg("library.setLocale", args, "locale", localeChoices());
+        const choice = enumArg("content.setLocale", args, "locale", localeChoices());
         setLibraryLocale(choice === "all" ? "" : choice);
       },
-      title: "Library: Show Language",
+      title: "Content: Show Language",
     },
     {
       category: "Project",
-      id: "library.refresh",
+      id: "content.refresh",
       level: "project",
       menus: ["palette"],
       group: "1_file",
@@ -173,41 +162,12 @@ export function libraryCommands(): AnyCommand[] {
       when: (ctx) => ctx.project.open,
       /* No `aiTool`: chrome (studio-ui-guidelines.md §12.4, rule 1). */
       run: () => refreshLibrary(),
-      title: "Library: Rescan Files",
-    },
-    {
-      args: {
-        additionalProperties: false,
-        properties: {
-          type: stringProperty(
-            'What to create: "page", "layout", "component", or "collection:<name>" for a ' +
-              "content collection this project declares.",
-          ),
-        },
-        required: ["type"],
-        type: "object",
-      },
-      category: "Project",
-      id: "library.newEntry",
-      level: "project",
-      menus: ["palette"],
-      group: "1_file",
-      requires: "an open project",
-      when: (ctx) => ctx.project.open,
-      undo: "project",
-      /* No `aiTool`, by studio-ui-guidelines.md §12.4's second deletion rule: it waits on the New
-         File prompt; `create_page` / `create_component` cover the job. */
-      run: async (_ctx, args) => {
-        const declared = libraryNewEntries().map((entry) => entry.key);
-        const key = enumArg("library.newEntry", args, "type", declared);
-        await createLibraryEntry(key);
-      },
-      title: "Library: New Entry",
+      title: "Content: Rescan Files",
     },
   ];
 }
 
-/** Register the Library's verbs. */
-export function registerLibraryCommands(registry: CommandRegistry): void {
-  registry.registerAll(libraryCommands());
+/** Register the Content home's verbs. */
+export function registerContentViewCommands(registry: CommandRegistry): void {
+  registry.registerAll(contentViewCommands());
 }

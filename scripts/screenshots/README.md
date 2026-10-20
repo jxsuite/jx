@@ -62,17 +62,20 @@ Requires a system Chromium/Chrome (`CHROMIUM_BIN`, else `chromium` / `google-chr
 
       // STEPS — exactly one of cmd | seed | input per entry.
       "steps": [
-        { "cmd": "view.showPanel", "args": { "panel": "git" } },
+        { "cmd": "publish.open", "args": { "tab": "review" } },
         { "seed": "seed.git", "args": { "status": {} } },
       ],
 
       // EXPECT — fails the shot. probe.idle() already ran after boot and after every step.
-      "expect": [{ "region": "navigator/panel:git" }, { "state": { "git": { "dirtyCount": 3 } } }],
+      "expect": [
+        { "region": "pane.primary/publish/commit" },
+        { "state": { "git": { "dirtyCount": 3 } } },
+      ],
 
       // CAPTURE — region ids, never selectors.
       "capture": [
-        { "image": "git-panel", "of": "navigator/panel:git" },
-        { "image": "git-commit", "of": "navigator/panel:git/commit", "padding": 16 },
+        { "image": "git-panel", "of": "pane.primary" },
+        { "image": "git-commit", "of": "pane.primary/publish/commit", "padding": 16 },
       ],
 
       // THEN — more pictures from the same boot. What `variants` was.
@@ -114,9 +117,9 @@ A **seed** may only write state whose real writer is a network or IPC boundary. 
 **`input` is debt with a cap.** State cannot express a gesture in flight, and faking one would be a worse lie than a two-line hatch. Every kind is addressed by a region id or a `JxPath`, never a selector:
 
 ```jsonc
-{ "input": "hover",    "region": "navigator/panel:git" }
+{ "input": "hover",    "region": "navigator/panel:layers" }
 { "input": "type",     "text": "/", "region": "inspector/field:href" }  // region is optional
-{ "input": "dragOver", "region": "pane.primary/library/dropZone" }
+{ "input": "dragOver", "region": "pane.primary/media-library" }
 { "input": "caret",    "path": ["children", 3], "clickCount": 2 }
 ```
 
@@ -139,8 +142,8 @@ Follow-on `{ steps, expect, capture }` against the same boot. It carries none of
 `<surface>[.<instance>][/<part>]`. Surfaces: `rail` · `navigator` · `inspector` · `pane` · `dock.bottom` · `statusbar` · `commandbar` · `overlay`. Instances: `pane.primary`, `pane.secondary`, `overlay.palette`, `overlay.dialog`, `overlay.menu`, `overlay.toasts`. `pane` aliases `pane.primary`.
 
 ```text
-navigator/panel:git           the Source Control panel
-navigator/panel:git/commit    a leaf within it
+navigator/panel:layers        the Outline panel
+pane.primary/publish/commit   a hand-stamped leaf: Publish's destination card
 inspector/tab:style           the Style tab's body
 inspector/field:href          a field row
 pane.primary/tabs             the primary pane's tab strip

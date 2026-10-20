@@ -16,7 +16,7 @@
  * field, and a table field's rows and cells — and inside the innermost one `$map/item` is the cell,
  * so a control genuinely cannot see the entry it belongs to. Each record therefore carries the
  * entry name, the field key and (for a cell) its row and column, which the flow looks straight back
- * up. That is the same answer `surfaces/git-panel.json` gives for its nested file rows.
+ * up. That is the same answer `surfaces/publish-workspace.json` gives for its nested file rows.
  *
  * **Five islands, all through `onNodeCreated`** (specs/studio-ui-guidelines.md §9.4). The
  * expression editor, the statement-card editor and the media picker are lit surfaces of their own
@@ -24,10 +24,10 @@
  * resolved-value tree is a document of its own (`surfaces/panel-data.ts`). The document renders an
  * empty host for each and the flow fills it.
  *
- * **The container is not cleared**, for the reason `surfaces/git-panel.ts` states: a panel body is
- * a node lit renders into and its comment markers are how lit finds its own content again. So the
- * document is APPENDED, and {@link SignalsSurfaceHandle.attached} is how the panel finds out that
- * the Navigator has since painted another panel over the top of it.
+ * **The container is not cleared**, because a panel body is a node lit renders into and its comment
+ * markers are how lit finds its own content again. So the document is APPENDED, and
+ * {@link SignalsSurfaceHandle.attached} is how the panel finds out that the Navigator has since
+ * painted another panel over the top of it.
  *
  * @docs studio/logic/data
  */

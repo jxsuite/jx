@@ -92,6 +92,11 @@ describe("trackStageScrollbar", () => {
   test("writes the width on the CELL, not on the stage or the root, and observes the scroller", () => {
     const el = scroller();
     trackStageScrollbar(surface, el);
+    /* Nothing measured on the call: the stage has just been rebuilt, and a read here forced a
+       recalculation of the whole document. The observer's first notification, delivered after the
+       frame's layout, is the first write. */
+    expect(published(cell)).toBe("0px");
+    observers.resize(el);
 
     expect(published(cell)).toBe("15px");
     // The stage and the root stay clean: two panes would otherwise share one pane's scrollbar.
@@ -126,6 +131,7 @@ describe("trackStageScrollbar", () => {
 
     const second = scroller(1144, 1132);
     trackStageScrollbar(surface, second);
+    observers.resize(second);
     expect(observers.observes(first)).toBe(false);
     expect(observers.observes(second)).toBe(true);
     expect(surface.stageScrollbar?.scroller).toBe(second);
@@ -151,6 +157,7 @@ describe("trackStageScrollbar", () => {
     loose.append(el);
 
     trackStageScrollbar(surface, el);
+    observers.resize(el);
     expect(published(document.documentElement)).toBe("17px");
   });
 });

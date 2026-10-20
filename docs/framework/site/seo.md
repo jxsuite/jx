@@ -35,6 +35,8 @@ A page declares metadata as an array of head elements under `$head`, and its tit
 
 Each entry is `{ "tagName": ..., "attributes": ... }`, and any head element works: `meta`, `link`, `script`, `style`. Use the `title` property rather than a `<title>` entry; the merge always writes the computed title last, so a literal `<title>` in `$head` is overridden.
 
+A page can state its description the same way, as a top-level `description` property; in a Markdown page that is the `description:` frontmatter key beside `title:`. The build writes it as the page's `<meta name="description">`, which beats a description from the site or the layout. A description `meta` in the page's own `$head` still wins over the property.
+
 ## Templated metadata
 
 `title` and `$head` attribute values support template strings, evaluated against the page's resolved state. Content-driven pages take their metadata straight from the content entry, with no duplication. This is the docs page template on jxsuite.com:

@@ -106,6 +106,8 @@ export interface SchemaFormFieldView {
   mono: boolean;
   /** Draw the text control as a text area. */
   multiline: boolean;
+  /** The native input type of the text control: `date` for a `format: "date"` field, else `text`. */
+  inputType: string;
   /** Why this value is refused (§16.1's inline tier). Empty draws nothing. */
   error: string;
   /** Whether there is a refusal to announce. A document branches on a flag, never on a length. */
