@@ -1,4 +1,7 @@
 [test]
+# Before every file: DOM nodes print as one line in failure output, so a failing
+# `toBe(liveElement)` cannot dump a kit element's reactive graph into the log (tests/preload.ts).
+preload = ["./tests/preload.ts"]
 coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
 coveragePathIgnorePatterns = [

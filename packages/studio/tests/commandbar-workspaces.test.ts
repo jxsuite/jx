@@ -254,7 +254,13 @@ describe("the quick-publish chevron", () => {
     expect(button).not.toBeNull();
     // Beside the strip, never inside it: a tab that sometimes opened a dialog would mean two things.
     expect(strip()?.contains(button)).toBe(false);
-    expect(button.previousElementSibling).toBe(strip());
+    /* Its `$switch` host is the strip's next sibling, a `display: contents` box, so in layout and in
+       the accessibility tree the chevron is the item after the tablist. The button itself has no
+       previous sibling inside that host. */
+    const slot = button.parentElement;
+    expect(slot?.getAttribute("part")).toBe("quick-slot");
+    expect(slot?.previousElementSibling).toBe(strip());
+    expect(slot?.children).toHaveLength(1);
     const control = button.querySelector('[part="control"]');
     expect(control?.getAttribute("aria-label")).toBe("Quick publish");
     expect(control?.getAttribute("aria-haspopup")).toBe("dialog");

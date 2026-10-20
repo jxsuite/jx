@@ -23,8 +23,10 @@ runs:
         # THE pin, in one place. Coverage instrumentation shifts between Bun versions and would
         # silently move the per-file coverageThreshold ratchet, so bumping this means
         # re-baselining every packages/*/bunfig.toml in the same PR (AGENTS.md, Testing &
-        # Coverage Policy). It used to be copied across five workflows.
-        bun-version: 1.4
+        # Coverage Policy). It used to be copied across five workflows. An exact patch, not
+        # `1.4`: a floating minor moved CI to 1.4.3 while local runs stayed on 1.4.2, and the two
+        # disagreed about whether one failing `toBe(liveElement)` failed at all.
+        bun-version: 1.4.3
     - if: inputs.install == 'true'
       run: bun install --frozen-lockfile
       shell: bash
