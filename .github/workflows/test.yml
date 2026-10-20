@@ -41,10 +41,6 @@ jobs:
           fetch-depth: 0
           filter: blob:none
       - uses: ./.github/actions/setup-bun
-      # ~2s, and it is what lets the vendored-SDK assertions in scripts/*.test.ts actually run
-      # rather than skip. `--init` never moves the gitlink, so it cannot mask a pin/submodule
-      # disagreement — the check inside it still reports one.
-      - run: bun scripts/check-electrobun-vendor.ts --init
       # The derived docs pages are gitignored build outputs (`scripts/docs/generators/pages.ts`),
       # and the link and nav tests under scripts/docs read the page set off disk; `postinstall`
       # skips the generator under CI, so it runs here. Under a second.
@@ -334,26 +330,10 @@ jobs:
       # test matrix as tests/worker-safety.test.ts. See packages/ai/tsconfig.worker.json.
       - run: bun run typecheck:ai-worker
       - run: bun --cwd packages/studio scripts/check-icons.ts
-      # The desktop's electrobun config, judged WITHOUT building the app. The CLI is a compiled Bun
-      # binary whose resolver takes node: builtins and relative paths and NOT bare specifiers — and
-      # a config it cannot load is answered by silently using a different one, so the build dies
-      # later on an entrypoint this package never declared. Nothing was red until a release. Also
-      # checks that the studio copy rows still cover the manifest: a config can load perfectly and
-      # derive an EMPTY list, which packages an app with no studio in it.
-      - run: bun --cwd packages/desktop scripts/check-electrobun-config.ts
       - run: bun run typecheck
-      # packages/desktop resolves `electrobun/*` out of the pinned vendor/electrobun submodule, so
-      # the pass below needs it checked out. `--init` materialises and narrows it and writes the one
-      # generated file the SDK imports; it deliberately does NOT move the gitlink, so a Dependabot
-      # bump that moves the `electrobun` pin alone is still reported here rather than papered over.
-      # This replaced a `bunx electrobun prepare` network download: Electrobun 2 publishes no SDK on
-      # npm, so before the submodule existed nothing could typecheck this package without Hutch.
-      # The desktop TEST job needs neither — it mocks the module by specifier.
-      - run: bun scripts/check-electrobun-vendor.ts --init
-      # packages/desktop is EXCLUDED from the root tsconfig (electrobun ships raw .ts in its SDK,
-      # which the root's two strictest flags reject 165 times) so it needs its own pass — without
-      # this, nothing there is typechecked at all, and an unbound identifier once shipped through.
-      # See packages/desktop/tsconfig.json for what differs and why.
+      # packages/desktop is EXCLUDED from the root tsconfig (it does not yet pass the root's two
+      # strictest flags) so it needs its own pass — without this, nothing there is typechecked at
+      # all, and an unbound identifier once shipped through. See packages/desktop/tsconfig.json.
       - run: bun run --cwd packages/desktop typecheck
       # Type-aware (tsgolint) pass — Flow-soundness rules in .oxlintrc.strict.json.
       # The tsgolint binary ships with the oxlint-tsgolint dev dep (installed above).
@@ -490,6 +470,24 @@ jobs:
       # docs:verify and schema:verify use.
       - run: git diff --exit-code -- packages/studio/index.html
 
+  # The desktop application's backend, staged the way a release stages it and then STARTED: under
+  # the Bun that ships beside it, through the same IPC the Electron main process uses, doing the
+  # things a bundle can lose (a data file nobody staged, a module resolved by name with no
+  # node_modules to resolve from). Unit tests run the sources and cannot see any of that; the first
+  # person to see it used to be whoever opened the packaged app. Gated on the desktop workspace
+  # being in the computed matrix, so a diff its closure cannot reach does not pay for it.
+  desktop-bundle:
+    needs: changes
+    if: contains(needs.changes.outputs.test_matrix, 'packages/desktop')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-bun
+      - run: bun run build
+      - run: bun run --cwd packages/desktop stage
+      - run: bun run --cwd packages/desktop smoke
+
   # The Nix build, as a job of THIS workflow rather than a workflow of its own.
   #
   # It used to be `on: pull_request` in nix.yml with a `paths:` filter, and that is exactly why it
@@ -525,7 +523,7 @@ jobs:
   # of this design: a job the diff cannot reach must leave this green.
   ci:
     if: always()
-    needs: [changes, test, checks, lens-mutants, studio-dist, nix, coverage-comment]
+    needs: [changes, test, checks, lens-mutants, studio-dist, desktop-bundle, nix, coverage-comment]
     runs-on: ubuntu-latest
     steps:
       - name: Gate

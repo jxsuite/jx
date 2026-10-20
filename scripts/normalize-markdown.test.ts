@@ -166,7 +166,6 @@ describe("isFormattable", () => {
     "scripts/docs/_fixtures/cadenced.md",
     "packages/server/tests/_studio_fixtures/md-components/plain.md",
     "packages/desktop/tests/_fixtures_content/content/docs/advanced.md",
-    "vendor/electrobun/package/README.md",
   ];
   for (const path of skipped) {
     test(`skips ${path}`, () => {

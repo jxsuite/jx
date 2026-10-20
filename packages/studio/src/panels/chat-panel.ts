@@ -19,12 +19,12 @@
  *
  * **The assistant's SURFACE document is what this module defers.** Mounting `surfaces/ai-chat.ts`
  * costs a traced 100–290 ms of connectedCallback at boot (its island projections; see
- * `scripts/perf/REPORT.md`), paid on every window open although the document is invisible until
- * the tab is picked. Binding is the same seam (`bindAiPanelHost`) and it is now deferred to the
- * first time the Assistant tab is actually shown or revealed: `renderAiPanel` no-ops while the
- * surface is null, and the surface's own watcher projects whatever the machinery wrote before that
- * point, so a prompt seeded into a boot the reader never spends in the tab is not lost — it is one
- * more message waiting when the body first appears.
+ * `scripts/perf/REPORT.md`), paid on every window open although the document is invisible until the
+ * tab is picked. Binding is the same seam (`bindAiPanelHost`) and it is now deferred to the first
+ * time the Assistant tab is actually shown or revealed: `renderAiPanel` no-ops while the surface is
+ * null, and the surface's own watcher projects whatever the machinery wrote before that point, so a
+ * prompt seeded into a boot the reader never spends in the tab is not lost — it is one more message
+ * waiting when the body first appears.
  *
  * **This module is the SEAM, and it has no markup of its own.** The assistant is a Jx document
  * (`surfaces/ai-chat.json`), and a document CLEARS the host it is given — so it needs a container

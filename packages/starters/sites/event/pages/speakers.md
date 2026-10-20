@@ -29,6 +29,7 @@ title: "Speakers — Horizon Conf 2026"
 :::div{style.fontFamily="var(--font-heading)" style.fontWeight="700" style.fontSize="1.05rem"}
 Jonas Berg
 :::
+
 :::div{style.fontSize="0.9rem" style.color="var(--color-text-muted)"}
 Infra Lead, Kestrel
 :::
@@ -38,6 +39,7 @@ Infra Lead, Kestrel
 :::div{style.fontFamily="var(--font-heading)" style.fontWeight="700" style.fontSize="1.05rem"}
 Sam Whitfield
 :::
+
 :::div{style.fontSize="0.9rem" style.color="var(--color-text-muted)"}
 Product Engineer, Ridgeline
 :::
@@ -47,6 +49,7 @@ Product Engineer, Ridgeline
 :::div{style.fontFamily="var(--font-heading)" style.fontWeight="700" style.fontSize="1.05rem"}
 Nadia Hassan
 :::
+
 :::div{style.fontSize="0.9rem" style.color="var(--color-text-muted)"}
 Design Systems, Cobalt
 :::
@@ -56,6 +59,7 @@ Design Systems, Cobalt
 :::div{style.fontFamily="var(--font-heading)" style.fontWeight="700" style.fontSize="1.05rem"}
 Theo Marsh
 :::
+
 :::div{style.fontSize="0.9rem" style.color="var(--color-text-muted)"}
 Founder, Driftwork
 :::
@@ -65,6 +69,7 @@ Founder, Driftwork
 :::div{style.fontFamily="var(--font-heading)" style.fontWeight="700" style.fontSize="1.05rem"}
 Ravi Menon
 :::
+
 :::div{style.fontSize="0.9rem" style.color="var(--color-text-muted)"}
 Performance, Fathom
 :::
@@ -74,6 +79,7 @@ Performance, Fathom
 :::div{style.fontFamily="var(--font-heading)" style.fontWeight="700" style.fontSize="1.05rem"}
 Grace Liu
 :::
+
 :::div{style.fontSize="0.9rem" style.color="var(--color-text-muted)"}
 Accessibility Lead, Everly
 :::
@@ -83,6 +89,7 @@ Accessibility Lead, Everly
 :::div{style.fontFamily="var(--font-heading)" style.fontWeight="700" style.fontSize="1.05rem"}
 Owen Frost
 :::
+
 :::div{style.fontSize="0.9rem" style.color="var(--color-text-muted)"}
 Eng Manager, Beacon
 :::
@@ -92,6 +99,7 @@ Eng Manager, Beacon
 :::div{style.fontFamily="var(--font-heading)" style.fontWeight="700" style.fontSize="1.05rem"}
 Mira Patel
 :::
+
 :::div{style.fontSize="0.9rem" style.color="var(--color-text-muted)"}
 Creative Director, Halcyon
 :::

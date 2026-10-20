@@ -17,7 +17,7 @@ import { exchangeCode } from "@jxsuite/server/oauth-loopback";
 import type { LoopbackAuthorizer } from "@jxsuite/server/oauth-loopback";
 import { GITHUB_OAUTH_CLIENT_ID } from "@jxsuite/studio/github-auth-status";
 import { readCredential, writeCredential } from "./credential-store";
-import { openExternal } from "./utils";
+import { openExternal } from "./open-external";
 
 const AUTHORIZATION_ENDPOINT = "https://github.com/login/oauth/authorize";
 const TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token";

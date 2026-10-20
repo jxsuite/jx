@@ -25,8 +25,8 @@
  * cancel, and Browse… a button that silently did nothing.
  *
  * Only the plain dev-server browser session needs this. Every packaged build has a real native
- * dialog that returns a path directly and keeps it — electrobun's `Utils.openFileDialog`, and the
- * NixOS chromium build's XDG desktop portal.
+ * dialog that returns a path directly and keeps it — the Electron app's native folder dialog, and
+ * the NixOS chromium build's XDG desktop portal.
  *
  * @docs studio/projects/create
  */

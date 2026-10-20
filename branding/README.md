@@ -26,7 +26,7 @@ Keep `jx.svg` as the thing you edit, and treat `jx_flattened.svg` as build outpu
   generate-icons
   ```
 
-  It rasterizes the flattened SVG with `rsvg-convert` at 16, 32, 48, 128, 256 and 512 px plus an `@2x` of each into `packages/desktop/icon.iconset/`, copies the 512 px result to `packages/desktop/icon.png`, and composes `packages/desktop/icon.ico` from the 16/32/48/256 sizes with ImageMagick. All of those outputs are **committed**, so changing the mark means running the command and committing what it produces in the same change.
+  It rasterizes the flattened SVG with `rsvg-convert` at 16, 32, 48, 128, 256 and 512 px plus an `@2x` of each into `packages/desktop/icon.iconset/`, copies the 512 px result to `packages/desktop/icon.png`, and composes `packages/desktop/icon.ico` from the 16/32/48/256 sizes with ImageMagick. The macOS app has its own source, `packages/desktop/icon-macos.svg` (the same mark on a rounded tile with the margin and shadow macOS expects), which it rasterizes at 1024 px to `packages/desktop/icon-macos.png`; electron-builder turns that into the icns. All of those outputs are **committed**, so changing the mark means running the command and committing what it produces in the same change.
 
 `jx.png` is not referenced anywhere in the repository. It is kept for use outside it.
 

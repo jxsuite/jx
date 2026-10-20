@@ -118,8 +118,8 @@ export function createPreviewCache(limit: number = PREVIEW_CACHE_LIMIT): Preview
 
 /**
  * The URL a previewed document's relative refs resolve against: the file's own URL under the
- * project, as the canvas spells it. A shell with an opaque origin (electrobun's `views://` before
- * its canvas URL is known) has no such URL to build, and keeps the shell's own address.
+ * project, as the canvas spells it. A shell with an opaque origin (a custom-scheme shell such as
+ * `views://`) has no such URL to build, and keeps the shell's own address.
  */
 function previewBase(filePath: string): string {
   const base = documentBase(projectState?.projectRoot);

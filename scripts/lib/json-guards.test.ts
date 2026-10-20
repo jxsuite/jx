@@ -29,7 +29,7 @@ describe("isText", () => {
 describe("the no-install scripts", () => {
   // These run under `install: "false"`, where a runtime workspace-package import resolves against
   // The published package instead of the workspace. Only erased `import type` lines may name one.
-  const scripts = ["check-bun-nix.ts", "check-electrobun-vendor.ts", "ci/approve-held-runs.ts"];
+  const scripts = ["check-bun-nix.ts", "ci/approve-held-runs.ts"];
 
   test.each(scripts)("%s imports no workspace package at runtime", (script) => {
     const source = readFileSync(join(import.meta.dir, "..", script), "utf8");

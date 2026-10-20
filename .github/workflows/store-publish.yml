@@ -1,6 +1,7 @@
-# Submits the desktop MSIX to the Microsoft Store, so a desktop release stops ending at "a human
-# opens Partner Center and clicks through five pages by hand", which is how desktop-v5.2.0 shipped:
-# `build-msix.yml` already attaches `JxStudio_<version>_x64.msix` to the GitHub release.
+# Submits the desktop Store package to the Microsoft Store, so a desktop release stops ending at "a
+# human opens Partner Center and clicks through five pages by hand", which is how desktop-v5.2.0
+# shipped: `bundle-desktop-windows.yml` already attaches `win-x64-JxStudio.appx` to the GitHub
+# release, built by electron-builder's `appx` target beside the installer.
 #
 # This is Microsoft's own path, as its guide lays it out
 # (learn.microsoft.com/windows/apps/publish/msstore-dev-cli/github-actions): the
@@ -72,13 +73,13 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download the MSIX from the release
+      - name: Download the Store package from the release
         if: steps.credentials.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ inputs.tag_name }}
-        run: gh release download "$TAG_NAME" --pattern '*.msix' --dir msix-download
+        run: gh release download "$TAG_NAME" --pattern '*.appx' --dir store-download
 
       # The CLI version is pinned: a re-run must behave like the run it repeats, and recent
       # releases have shipped regressions (a v0.4.0 crash, microsoft/msstore-cli#154; an upload
@@ -113,9 +114,9 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          packages=(msix-download/*.msix)
+          packages=(store-download/*.appx)
           if [ "${#packages[@]}" -ne 1 ]; then
-            echo "::error::Expected one .msix asset on release $TAG_NAME, found ${#packages[@]}"
+            echo "::error::Expected one .appx asset on release $TAG_NAME, found ${#packages[@]}"
             exit 1
           fi
           msstore publish "${packages[0]}" --appId "$STORE_APP_ID"

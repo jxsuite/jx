@@ -12,12 +12,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { buildSite } from "@jxsuite/compiler/site";
 
-void mock.module("electrobun/main", () => ({
-  BrowserWindow: class {},
-  Electrobun: { start: () => {} },
-  Utils: { openFileDialog: async () => [] },
-}));
-
 /** The compiler's site build, typed as the real one so the result the session reads cannot drift. */
 const compilerBuild = mock<typeof buildSite>(async () => ({
   errors: [],

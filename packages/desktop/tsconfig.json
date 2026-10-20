@@ -1,23 +1,12 @@
 {
-  /* The desktop package cannot use the root tsconfig, which is why the root EXCLUDES it — and why
-     nothing here was typechecked at all until an unbound identifier shipped through `bun run
-     typecheck` unnoticed. CI runs this config as a second step for that reason.
-
-     The cause is that electrobun's SDK is raw TypeScript, not declarations, so importing it pulls a
-     dependency's SOURCES into the program as first-class files. Neither `exclude` nor
-     `skipLibCheck` keeps them out — see the root config for why — and under the root's
-     `exactOptionalPropertyTypes` they emit errors we cannot fix in a dependency.
-
-     ONE of the root's flags is genuinely blocked. Measured on electrobun 2.0.1:
-
-       exactOptionalPropertyTypes  → 15 errors across 7 SDK files (BrowserView 7, BrowserWindow 2,
-                                     Updater 2, Utils, Tray, ContextMenu, ApplicationMenu). Ours: 7.
-       noUncheckedIndexedAccess    → 0 errors in electrobun. Ours: 129, ~90% of them array indexing
-                                     in tests (88 in window-manager.test.ts alone).
-
-     So `noUncheckedIndexedAccess` is off for OUR debt, not for the dependency's, and re-enabling it
-     is a bounded piece of work rather than a wait. Prefer narrowing this file back toward the root
-     config over widening it, and re-measure before believing either number. */
+  /* The desktop package is checked by its OWN config, and the root EXCLUDES it, for one measured
+     reason. Under the root's two strictest flags, `noUncheckedIndexedAccess` and
+     `exactOptionalPropertyTypes`, it reports 56 errors: 12 "possibly undefined" on array and
+     property reads and 14 on indexed access, almost all in tests, plus the optional-property ones
+     in `src/chromium/platform.ts`. They are this package's own debt, bounded and fixable. Fixing
+     them and deleting this file is how it joins the root program; until then CI runs this config
+     as a second step, because a package left out of every typecheck is how an unbound identifier
+     once shipped. */
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "lib": ["ESNext", "DOM"],
@@ -26,32 +15,6 @@
     "noEmit": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
-
-    /* Where `electrobun/*` resolves from: the `vendor/electrobun` submodule, pinned to the exact
-       release the `electrobun` devDependency names. Electrobun 2 ships no SDK on npm — every
-       specifier in `node_modules/electrobun` resolves to a module that throws — and the SDK reaches
-       a project only when Hutch downloads that release's core archive into `.hutch/devkit`. Pointing
-       here instead means a plain `git clone` typechecks: no network, no Hutch, no `electrobun
-       prepare` step in front of `tsc`.
-
-       These `paths` are also the BUILD sysroot for the webview init bundle: `scripts/pre-build.ts`
-       compiles `src/init.ts` with plain `bun build`, which reads them, and with the submodule
-       absent it silently falls back to `node_modules/electrobun`'s throwing stub — desktop 5.0.0
-       through 5.1.3 shipped that, so pre-build now runs `check-electrobun-vendor.ts --init` first
-       and judges the result. Hutch's `.hutch/devkit` remains the sysroot for Hutch's own bundling of
-       the main process, and the two are the same release rather than two sources of truth — the
-       devkit is a verbatim copy of these same directories, and `bun run electrobun:verify` fails
-       when the submodule and the pin disagree. `.gitmodules` carries the full rationale.
-
-       These three entries are the entire `electrobun` surface this package imports; add one here and
-       to `SDK_ENTRY_POINTS` in `scripts/check-electrobun-vendor.ts` if a fourth is ever needed.
-       Extending the devkit's own generated tsconfig is not an option even when one exists: it sets
-       `baseUrl`, which TypeScript 7 removed, so the whole project fails with TS5102. */
-    "paths": {
-      "electrobun": ["../../vendor/electrobun/package/src/sdks/main/index.ts"],
-      "electrobun/main": ["../../vendor/electrobun/package/src/sdks/main/index.ts"],
-      "electrobun/view": ["../../vendor/electrobun/package/src/browser/index.ts"]
-    },
 
     "resolveJsonModule": true,
     "skipLibCheck": true,

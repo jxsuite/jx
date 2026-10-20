@@ -117,16 +117,6 @@ describe("the runtime install is the desktop app's production graph", () => {
     expect(extensions.filter((name) => !declared.has(name))).toEqual([]);
   });
 
-  test("the install check's externals are exactly the ones Electrobun's bundle treats as external", () => {
-    const listed = (block: string | undefined) =>
-      [...(block ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]!).toSorted();
-    const nixList = listed(/resolveExternals = \[([^\]]*)\]/.exec(nix)?.[1]);
-    const config = readFileSync(resolve(REPO, "packages/desktop/electrobun.config.ts"), "utf8");
-    const configList = listed(/external: \[([^\]]*)\]/.exec(config)?.[1]);
-    expect(nixList.length).toBeGreaterThan(0);
-    expect(nixList).toEqual(configList);
-  });
-
   test("the install check resolves the launcher against the installed tree", () => {
     expect(nix).toContain("doInstallCheck = true;");
     expect(nix).toContain("bun build $out/lib/jx-studio/packages/desktop/src/chromium/index.ts");

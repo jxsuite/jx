@@ -11,12 +11,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-void mock.module("electrobun/main", () => ({
-  BrowserWindow: class {},
-  Electrobun: { start: () => {} },
-  Utils: { openFileDialog: async () => [] },
-}));
-
 void mock.module("@jxsuite/server/site-preview", () => ({
   startSitePreview: () => ({ origin: "http://127.0.0.1:4321", port: 4321 }),
 }));

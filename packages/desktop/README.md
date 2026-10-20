@@ -1,52 +1,62 @@
 # `@jxsuite/desktop`
 
-> Jx Studio as a standalone desktop application, built with [Electrobun](https://electrobun.dev).
+> Jx Studio as a standalone desktop application, built with [Electron](https://www.electronjs.org).
 
 ## Overview
 
-`@jxsuite/desktop` wraps `@jxsuite/studio` in a native desktop window. It exposes the Studio UI via Electrobun's webview and connects it to a Bun-process backend that handles filesystem I/O, Git, and package management through a typed RPC layer.
+`@jxsuite/desktop` wraps `@jxsuite/studio` in a native desktop window. Electron is the root process: it owns every window, the application menu, the native dialogs, the single-instance lock and the updater. A Bun backend is its child and owns every project: one session and one loopback server per window, with filesystem I/O, Git, package management and the compiler behind a typed RPC. The two speak a small JSON protocol over the IPC channel Electron opens when it spawns the backend, and project I/O never crosses it: each window's page talks to its own server over a token-gated WebSocket.
+
+The architecture is specified in [`specs/desktop.md`](../../specs/desktop.md) §9.7, and the packaging in §7.
 
 ## Platform targets
 
-| Target                            | Runtime                              | Status                      |
-| --------------------------------- | ------------------------------------ | --------------------------- |
-| macOS, Windows, Linux (non-NixOS) | Electrobun (Bun + native webview)    | Active                      |
-| NixOS                             | Chromium `--app` + `@jxsuite/server` | Via `nix build`             |
-| Dev mode                          | Chrome + `@jxsuite/server`           | Active (Studio development) |
+| Target                          | Runtime                                                | Channel                             |
+| ------------------------------- | ------------------------------------------------------ | ----------------------------------- |
+| macOS, Windows, Linux x64/arm64 | The Electron application, packaged by electron-builder | GitHub releases (auto-updates)      |
+| Windows (Store)                 | The same application, as an appx                       | Microsoft Store                     |
+| NixOS                           | The same application, built by Nix                     | `nix run github:jxsuite/jx/release` |
+| Ubuntu (snap)                   | The same application, unpacked into a snap             | Snap Store                          |
+| Dev mode                        | Chrome + `@jxsuite/server`                             | Studio development                  |
 
 ## Prerequisites
 
-Just `bun install` at the repo root. Electrobun 2 builds through **Hutch**, its native build CLI, but nothing needs installing by hand: the `electrobun` devDependency is a dependency-free bootstrap whose version selects the whole toolchain. Its first command downloads the paired Hutch, verifies it against the release's published digest, and caches it under `~/.hutch`, so the Hutch, Cottontail and Electrobun versions all ride the workspace lockfile instead of a machine-wide install.
-
-The Electrobun SDK is not on npm either: the `electrobun` package resolves every specifier, types included, to a module that throws. A **build** reads the SDK out of `.hutch/devkit`, a gitignored directory Hutch projects out of the release archive. Builds project it implicitly, and `bun run sync` does it on demand.
-
-**Typechecking reads it from somewhere a clone actually has.** `vendor/electrobun` is a git submodule pinned to the exact release the `electrobun` devDependency names, and this package's `tsconfig.json` maps `electrobun/*` straight into its sources. The root `bun install` checks it out; after a clone without submodules, `bun run electrobun:sync` at the repo root does the same. Then `bun run typecheck` passes offline, with no Hutch involved.
-
-Both sysroots are the same release rather than two sources of truth, and `bun run electrobun:verify` is what keeps them that way. **Bumping Electrobun therefore takes two moves**: Dependabot bumps the version pin in `package.json`, the submodule does not follow, and the gate goes red until the gitlink moves to the matching tag. CI makes that second move for you by pushing a commit to the pull request; if you bump the pin by hand, run `bun run electrobun:sync` and commit the moved gitlink alongside it.
+Just `bun install` at the repo root. Neither Electron nor Bun is installed by hand: `ELECTRON_BIN` names an Electron executable for the checkout runner, and electron-builder downloads the Electron it packages (the version is pinned in `electron-builder.yml`, and equals nixpkgs' `electron`). The npm `electron` package is deliberately not a dependency, because its postinstall downloads a ~100 MB binary.
 
 ## Development
 
 ```bash
-bun run dev          # Launch Electrobun dev window
-bun run chromium     # Launch in Chrome app-mode (NixOS / dev mode)
+ELECTRON_BIN=/path/to/electron bun run dev [project]   # The Electron application, from the checkout
+bun run chromium                                       # The per-window launcher in Chromium app mode
 ```
 
-## Building
+A second `bun run dev <project>` hands its project to the running application instead of starting another copy.
+
+## Packaging
 
 ```bash
-bun run build           # Debug build
-bun run build:release   # Canary release build
-bun run build:stable    # Production release build (+ Windows MSI)
+bun run stage                                  # Assemble build/ for electron-builder, for this machine
+bun run package [--target mac|win|linux]       # Stage, then run electron-builder
+bun run package -- --dir                       # An unpacked application to run or inspect
+bun run smoke                                  # Start the STAGED backend and exercise it
 ```
+
+`bun run stage` writes `build/app` (the main process, the preload and a `package.json`, which become `app.asar`) and `build/resources` (the backend bundle and its data, the studio assets, and the pinned Bun that runs the backend). `electron-builder.yml` places them and names the installers: `macos-arm64-JxStudio.dmg` (and the zip electron-updater applies), `win-x64-JxStudio-Setup.exe` and the Store's `win-x64-JxStudio.appx`, and `linux-<arch>-JxStudio.AppImage`.
+
+`bun run smoke` starts the packaged backend with the Bun that ships beside it, through the same IPC the Electron main process uses, and asks it to do the things a bundle can lose: create a project, build a site, preview it, read the extension catalog and resolve the client runtime. Unit tests run the sources and cannot see a data file nobody staged, so this runs on every pull request that reaches this package and in every release lane.
+
+Signing and notarization read their credentials from the environment (`CSC_LINK`, `APPLE_API_KEY` and friends) and are skipped, loudly, when absent, so an unsigned local build still completes. See [`SIGNING.md`](./SIGNING.md) for the Windows Store certificate.
 
 ## Architecture
 
 ```
-Electrobun webview  ←→  BrowserView RPC  ←→  Bun process (src/index.ts)
-   (@jxsuite/studio)                          (filesystem, Git, packages)
+Electron main process  ←→  JSON IPC  ←→  Bun backend (src/hub/main.ts)
+ windows · menu · dialogs                 one hub, N windows:
+ single-instance lock · updater            ProjectSession + server + token each
+        │                                           │
+        └── one BrowserWindow per window ───────────┘ token-gated WebSocket RPC
 ```
 
-The Bun backend registers all RPC handlers at startup. Studio communicates with it through the [Platform Abstraction Layer](../studio/README.md). That is the same interface `@jxsuite/server` uses in dev mode, and the one cloud APIs will use in the future.
+Studio communicates with its backend through the [Platform Abstraction Layer](../studio/README.md): the same interface `@jxsuite/server` uses in dev mode, and the one cloud APIs will use in the future.
 
 ### RPC categories
 
@@ -60,12 +70,12 @@ The Bun backend registers all RPC handlers at startup. Studio communicates with 
 
 ## Dependencies
 
-| Package           | Purpose                   |
-| ----------------- | ------------------------- |
-| `@jxsuite/studio` | Studio UI                 |
-| `dbus-ts`         | D-Bus integration (Linux) |
-
-Electrobun is deliberately absent from that table: the `electrobun` entry under `devDependencies` is a command bootstrap, not the SDK. The SDK comes from `.hutch/devkit` for builds and from the `vendor/electrobun` submodule for typechecking. See [Prerequisites](#prerequisites).
+| Package            | Purpose                                                          |
+| ------------------ | ---------------------------------------------------------------- |
+| `@jxsuite/studio`  | Studio UI                                                        |
+| `dbus-ts`          | The freedesktop portal client of the per-window launcher (Linux) |
+| `electron-builder` | Packages the application (dev dependency)                        |
+| `electron-updater` | Self-updates, bundled into the main process (dev dependency)     |
 
 ## License
 

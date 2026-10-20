@@ -51,15 +51,17 @@
   container-type: inline-size;
   container-name: toolbar;
 }
-#toolbar.electrobun-webkit-app-region-drag {
+/* A window handle under the frameless desktop window: the Command Bar (#toolbar) and the
+   boot-failure strip carry it, and the Electron shell drags the window by any area it covers.
+   Unscoped because the class name is self-describing. A no-op in a browser tab. */
+.app-region-drag {
   -webkit-app-region: drag;
 }
-/* The mirror of #toolbar's own drag class above: every interactive control inside the Command Bar
-   carries this (commandbar.json) so Electrobun's ancestry walk finds a working no-drag signal on
-   the button itself instead of falling through to the toolbar's drag region. Unscoped, like
-   .resize-edge below, because the class name is self-describing and used nowhere else. A no-op
-   outside Electrobun. */
-.electrobun-webkit-app-region-no-drag {
+/* The mirror of the drag class above: it marks an interactive control inside a drag region
+   (commandbar.json) so a press on the button reaches the button instead of dragging the window.
+   Unscoped, like .resize-edge below, because the class name is self-describing. A no-op outside a
+   frameless desktop window. */
+.app-region-no-drag {
   -webkit-app-region: no-drag;
 }
 /* Resize edge zones */

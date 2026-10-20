@@ -13,16 +13,11 @@
     "style": "error",
     "suspicious": "error"
   },
-  // `vendor` is the pinned Electrobun SDK submodule — a dependency's sources, held to a
-  // dependency's standards rather than ours.
-  // It belongs HERE, and the reason is worth knowing: oxlint walks the tree honouring `.gitignore`,
-  // which is what actually excludes node_modules, coverage and the old `.hutch/devkit` this
-  // replaced — no config entry ever did. `.oxlintignore` is never read either
-  // (oxlint's ignore FILE is `.eslintignore`, via `--ignore-path`, and the lint script passes
-  // neither) — every entry in it merely happens to be gitignored too. A submodule is TRACKED, so
-  // nothing excludes it implicitly and adding `vendor/` to `.oxlintignore` was measured to change
-  // nothing.
-  "ignorePatterns": ["dist", "**/*.map", "vendor"],
+  // oxlint walks the tree honouring `.gitignore`, which is what actually excludes node_modules and
+  // coverage. `.oxlintignore` is never read (oxlint's ignore FILE is `.eslintignore`, via
+  // `--ignore-path`, and the lint script passes neither), so a TRACKED path that should not be
+  // linted belongs here.
+  "ignorePatterns": ["dist", "**/*.map"],
   "overrides": [
     {
       // Claude hooks should be allowed to exit the process
@@ -33,7 +28,7 @@
       }
     },
     {
-      // Tool contracts (commitlint, electrobun, etc.) require default exports.
+      // Tool contracts (commitlint, etc.) require default exports.
       "files": ["**/*.config.*", "**/commitlint.config.ts"],
       "rules": {
         "import/no-default-export": "off"

@@ -327,7 +327,7 @@ describe("not-ready selection gates", () => {
 // ─── canvasUrl-change host rebuild ───────────────────────────────────────────
 
 describe("canvasUrl-change rebuild", () => {
-  test("a host built with the default URL rebuilds when the platform's loopback URL arrives", async () => {
+  test("a host built with the default URL rebuilds when the platform's canvasUrl changes", async () => {
     const saved = globalThis.__jxPlatform;
     Reflect.deleteProperty(globalThis, "__jxPlatform");
     try {
@@ -338,9 +338,9 @@ describe("canvasUrl-change rebuild", () => {
       const src0 = canvasEl.querySelector("iframe")!.getAttribute("src")!;
       expect(src0.startsWith("/packages/studio/canvas.html?")).toBe(true);
 
-      // The electrobun loopback URL resolves late: the same canvas re-mounts against it.
-      /* SAFETY: a mount reads the platform only for `canvasUrl` and `canvasUrlDeferred`
-         (`resolveCanvasUrl`), `documentBaseUrl` (`documentBase`) and `assetSpace` (asset refs), all
+      // The platform's URL differs from the one the host was built with: the same canvas re-mounts against it.
+      /* SAFETY: a mount reads the platform only for `canvasUrl` (`resolveCanvasUrl`),
+         `documentBaseUrl` (`documentBase`) and `assetSpace` (asset refs), all
          optional members of StudioPlatform; no method is called on it during these mounts. */
       globalThis.__jxPlatform = {
         canvasUrl: "http://127.0.0.1:4242/__studio__/canvas.html",
