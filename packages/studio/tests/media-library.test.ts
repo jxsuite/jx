@@ -23,6 +23,7 @@ import {
   topDialog,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { isString } from "@jxsuite/schema/guards";
 import * as files from "../src/files/files";
 import { initLayers, layerHost } from "../src/ui/layers";
@@ -483,7 +484,7 @@ describe("what the library lists", () => {
     pointer(filterButton("video"), "click");
     await settle();
     // Only the tile still drawn is watched; the five the filter dropped were released.
-    expect([...watched]).toEqual([tileOf("public/media/clip.mp4")]);
+    expect(identities(watched)).toEqual(identities([tileOf("public/media/clip.mp4")]));
   });
 
   test("a loaded thumbnail's size becomes its caption", async () => {
@@ -814,7 +815,8 @@ describe("uploads", () => {
     );
     try {
       requestMediaUpload();
-      expect(shown).toEqual([part<HTMLInputElement>("upload-input", part("upload"))]);
+      const input = part<HTMLInputElement>("upload-input", part("upload"));
+      expect(identities(shown)).toEqual(identities([input]));
     } finally {
       picker.mockRestore();
     }

@@ -2,23 +2,24 @@
 
 The core packages are the Jx framework itself. [`extensions/*`](../extensions/README.md) extends Jx through the public hooks any third party can use; `packages/*` is what gets extended. The dependency edge between the two is one-way, and it is the rule that defines this directory: see [specs/extensions.md §2](../specs/extensions.md).
 
-| Package                           | What it is                                                                     |
-| --------------------------------- | ------------------------------------------------------------------------------ |
-| [`@jxsuite/schema`](./schema)     | JSON Schema 2020-12 meta-schema generator for Jx documents                     |
-| [`@jxsuite/runtime`](./runtime)   | JSON-native reactive web component runtime: no virtual DOM, no diffing         |
-| [`@jxsuite/compiler`](./compiler) | Static HTML compiler, island detector, site builder, plus the `jx` CLI         |
-| [`@jxsuite/server`](./server)     | Bun dev server: live reload, proxy resolution, Studio backend                  |
-| [`@jxsuite/studio`](./studio)     | The visual builder, as a backend-agnostic browser application                  |
-| [`@jxsuite/desktop`](./desktop)   | Studio packaged as a desktop app on Electrobun (an app, not a library)         |
-| [`@jxsuite/protocol`](./protocol) | Studio Backend Protocol: wire types and the canonical route table              |
-| [`@jxsuite/collab`](./collab)     | Co-editing primitives: Y.Doc schema, op bridge, differ, wire envelope          |
-| [`@jxsuite/ai`](./ai)             | Streaming LLM client, tool registry, reactive chat state                       |
-| [`@jxsuite/create`](./create)     | Project scaffolding behind `bun create @jxsuite`                               |
-| [`@jxsuite/starters`](./starters) | Starter catalogue: `registry.json` plus one buildable project each             |
-| [`@jxsuite/import`](./import)     | Clone a live website into a Jx project                                         |
-| [`@jxsuite/markup`](./markup)     | HTML → Jx nodes, Markdown → sanitized HTML                                     |
-| [`@jxsuite/formulas`](./formulas) | Composite pure formulas authored as declarative `$expression` JSON             |
-| [`@jxsuite/ui`](./ui)             | The UI kit: interface elements authored as Jx documents, their theme and icons |
+| Package                                   | What it is                                                                     |
+| ----------------------------------------- | ------------------------------------------------------------------------------ |
+| [`@jxsuite/schema`](./schema)             | JSON Schema 2020-12 meta-schema generator for Jx documents                     |
+| [`@jxsuite/runtime`](./runtime)           | JSON-native reactive web component runtime: no virtual DOM, no diffing         |
+| [`@jxsuite/compiler`](./compiler)         | Static HTML compiler, island detector, site builder, plus the `jx` CLI         |
+| [`@jxsuite/server`](./server)             | Bun dev server: live reload, proxy resolution, Studio backend                  |
+| [`@jxsuite/studio`](./studio)             | The visual builder, as a backend-agnostic browser application                  |
+| [`@jxsuite/desktop`](./desktop)           | Studio packaged as a desktop app on Electrobun (an app, not a library)         |
+| [`@jxsuite/protocol`](./protocol)         | Studio Backend Protocol: wire types and the canonical route table              |
+| [`@jxsuite/collab`](./collab)             | Co-editing primitives: Y.Doc schema, op bridge, differ, wire envelope          |
+| [`@jxsuite/ai`](./ai)                     | Streaming LLM client, tool registry, reactive chat state                       |
+| [`@jxsuite/create`](./create)             | Project scaffolding behind `bun create @jxsuite`                               |
+| [`@jxsuite/starters`](./starters)         | Starter catalogue: `registry.json` plus one buildable project each             |
+| [`@jxsuite/import`](./import)             | Clone a live website into a Jx project                                         |
+| [`@jxsuite/markup`](./markup)             | HTML → Jx nodes, Markdown → sanitized HTML                                     |
+| [`@jxsuite/formulas`](./formulas)         | Composite pure formulas authored as declarative `$expression` JSON             |
+| [`@jxsuite/ui`](./ui)                     | The UI kit: interface elements authored as Jx documents, their theme and icons |
+| [`@jxsuite/test-support`](./test-support) | Private, test-only: the shared `bun test` preload for happy-dom suites         |
 
 ## Rules
 
@@ -61,6 +62,7 @@ Versioning is the monorepo release train: release-please, one component per pack
 ## Surprises
 
 - **The `jx` binary runs `dist/cli.js`, not `src/`.** Probing compiler behavior through the bin without rebuilding silently tests stale code; run `bun run build:compiler` first, or invoke `packages/compiler/src/cli.ts` directly.
-- **The canonical Bun pin is `.github/actions/setup-bun`**, which is what `test.yml` uses; the other workflows still call `oven-sh/setup-bun` with their own copy of the same version, so a bump has to reach all of them. Coverage instrumentation shifts between Bun versions, so bumping it also means re-baselining every `packages/*/bunfig.toml` in the same PR.
+- **The Bun pin is `.bun-version`** at the repository root, an exact patch. `.github/actions/setup-bun` is its only reader in CI, every workflow job that runs Bun goes through that action, and `scripts/bun-pin.test.ts` fails a workflow that sets its own version. Coverage instrumentation shifts between Bun versions, so bumping it also means re-baselining every `bunfig.toml` threshold in the same PR. Locally, the test preload prints one warning line when your Bun differs.
+- **Every happy-dom suite preloads `@jxsuite/test-support/preload`** from its `bunfig.toml`. It prints DOM nodes as one line in failure output and refuses deep equality (`toEqual` and friends, `toHaveProperty(path, value)`, `toHaveBeenCalledWith` and its last/nth forms) on a DOM node, class instances that hold one included, before Bun's diff printer can hang on one. Compare nodes with `toBe`, or lists of nodes with `identities()` from `@jxsuite/test-support/inspect-dom`.
 - **Do not restate counts in prose**: not the number of packages here, and especially not the number of starters. `bun run docs:claims` reads `packages/starters/registry.json` and fails the root README or any marketing page that disagrees; it does not scan package READMEs, so there the habit is the only guard.
 - **A `bun install`ed starter root shadows this workspace**: it materialises a published `@jxsuite/schema` beside the far-ahead local copy. `bun run schema:generate-all` cleans those roots first via `scripts/check-shadowed-core.ts --fix`.

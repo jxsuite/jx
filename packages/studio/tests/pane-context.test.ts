@@ -31,6 +31,7 @@ import {
 } from "./harness";
 import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import type { Tab } from "../src/tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { CommandArgValues } from "../src/commands/command-args";
@@ -356,7 +357,7 @@ describe("the bar", () => {
       openTestTab();
       await mountBar();
       const band = part("band")!;
-      expect(observed.at(-1)?.targets).toEqual([band]);
+      expect(identities(observed.at(-1)?.targets ?? [])).toEqual(identities([band]));
       let reads = 0;
       let height = 28;
       Object.defineProperty(band, "offsetHeight", {

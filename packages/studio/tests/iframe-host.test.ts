@@ -2470,7 +2470,8 @@ describe("cross-frame drag session (Phase 4c)", () => {
     const seen: HostState[] = [];
     setNativeDragEnterHandler((h) => seen.push(h));
     channels[0]!.deliver({ kind: "nativeDragEnter" });
-    expect(seen).toEqual([host]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(host);
     setNativeDragEnterHandler(() => {});
   });
 

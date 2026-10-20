@@ -7,6 +7,7 @@
  */
 import { installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { setFormats } from "../src/format/format-host";
 import type { StudioFormat } from "../src/format/format-host";
 import type { ComponentEntry } from "../src/files/components";
@@ -491,7 +492,7 @@ describe("createPreviewObserver", () => {
     // Nothing was ever watched on this path, so the sweep has nothing to find.
     expect(observer.releaseDetached()).toBe(0);
     observer.destroy();
-    expect(seen).toEqual([el]);
+    expect(identities(seen)).toEqual(identities([el]));
   });
 
   test("reports a card once, on entry, and stops watching it", () => {
@@ -522,12 +523,12 @@ describe("createPreviewObserver", () => {
       { isIntersecting: true, target: visible },
       { isIntersecting: false, target: offscreen },
     ]);
-    expect(seen).toEqual([visible]);
-    expect(unobserved).toEqual([visible]);
+    expect(identities(seen)).toEqual(identities([visible]));
+    expect(identities(unobserved)).toEqual(identities([visible]));
     // Both cards are detached fixtures, so a sweep would take everything still watched. It takes
     // Exactly one: the reported card was already released, and the other was NOT.
     expect(observer.releaseDetached()).toBe(1);
-    expect(unobserved).toEqual([visible, offscreen]);
+    expect(identities(unobserved)).toEqual(identities([visible, offscreen]));
     observer.destroy();
     expect(disconnected).toBe(true);
     expect(observed.length).toBe(2);
@@ -546,7 +547,7 @@ describe("createPreviewObserver", () => {
     observer.observe(card);
     observer.observe(card);
     observer.observe(card);
-    expect(observed).toEqual([card]);
+    expect(identities(observed)).toEqual(identities([card]));
   });
 
   /**
@@ -577,15 +578,15 @@ describe("createPreviewObserver", () => {
     scrolledPast.remove();
 
     expect(observer.releaseDetached()).toBe(1);
-    expect(unobserved).toEqual([scrolledPast]);
+    expect(identities(unobserved)).toEqual(identities([scrolledPast]));
     // Idempotent: the pane calls it after every commit, and most commits detach nothing.
     expect(observer.releaseDetached()).toBe(0);
-    expect(unobserved).toEqual([scrolledPast]);
+    expect(identities(unobserved)).toEqual(identities([scrolledPast]));
 
     // The card still in the window was kept — proven by taking it out and sweeping again.
     onscreen.remove();
     expect(observer.releaseDetached()).toBe(1);
-    expect(unobserved).toEqual([scrolledPast, onscreen]);
+    expect(identities(unobserved)).toEqual(identities([scrolledPast, onscreen]));
 
     observer.destroy();
     host.remove();

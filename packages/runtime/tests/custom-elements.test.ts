@@ -226,7 +226,9 @@ describe("Custom Elements", () => {
     // Still unregistered — yet the fix has already set the instance props as JS properties, ready
     // For whenever the upgrade lands, instead of discarding them.
     expect(customElements.get(tag)).toBeUndefined();
-    expect(el).toMatchObject({ label: "instance-value", value: 42 });
+    // Read as own properties, not by deep-matching the element (the shared preload refuses that).
+    const own = ["label", "value"].map((key) => Object.getOwnPropertyDescriptor(el, key)?.value);
+    expect(own).toEqual(["instance-value", 42]);
   });
 
   test("props.* attributes override state defaults and are stripped", async () => {

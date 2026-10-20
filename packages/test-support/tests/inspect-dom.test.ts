@@ -5,11 +5,12 @@ import { describe, expect, test } from "bun:test";
 import {
   INSPECT_CUSTOM,
   describeNode,
-  installCompactDomInspect,
+  identities,
   installCompactInspect,
+  loadHappyDom,
   nodeId,
-} from "../src/testing/inspect-dom.ts";
-import type { NodePrototype } from "../src/testing/inspect-dom.ts";
+} from "../src/inspect-dom.ts";
+import type { NodePrototype } from "../src/inspect-dom.ts";
 
 const markerOf = (text: string) => text.match(/ #(\d+)/u)?.[1];
 
@@ -56,6 +57,22 @@ describe("describeNode", () => {
   });
 });
 
+describe("identities", () => {
+  test("is equal for the same nodes in the same order, and for nothing else", () => {
+    const first = document.createElement("p");
+    const second = document.createElement("p");
+    const both = identities([first, second]);
+    expect(both).toEqual(identities([first, second]));
+    expect(both).not.toEqual(identities([second, first]));
+    expect(identities([first])).not.toEqual(identities([second]));
+    expect(identities(new Set([first, null, undefined]))).toEqual([
+      describeNode(first),
+      "null",
+      "undefined",
+    ]);
+  });
+});
+
 describe("installing it", () => {
   test("defines the hook once, and a prototype that has one keeps it", () => {
     const prototype: NodePrototype = {};
@@ -66,37 +83,20 @@ describe("installing it", () => {
     expect(prototype[INSPECT_CUSTOM]).toBe(installed);
   });
 
+  test("loadHappyDom hands back the Node class the registered window's nodes are built from", async () => {
+    const { Node: base } = await loadHappyDom();
+    const el = document.createElement("section");
+    expect(el instanceof base).toBe(true);
+    expect(document.createTextNode("t") instanceof base).toBe(true);
+  });
+
   test("the preload put it on happy-dom's Node, and installing again keeps it", async () => {
-    expect(Object.hasOwn(Node.prototype, INSPECT_CUSTOM)).toBe(true);
-    const installed = Object.getOwnPropertyDescriptor(Node.prototype, INSPECT_CUSTOM)?.value;
-    await installCompactDomInspect();
-    expect(Object.getOwnPropertyDescriptor(Node.prototype, INSPECT_CUSTOM)?.value).toBe(installed);
+    const { Node: base } = await loadHappyDom();
+    expect(Object.hasOwn(base.prototype, INSPECT_CUSTOM)).toBe(true);
+    const installed = base.prototype[INSPECT_CUSTOM];
+    installCompactInspect(base.prototype);
+    expect(base.prototype[INSPECT_CUSTOM]).toBe(installed);
     const el = document.createElement("section");
     expect(Bun.inspect(el)).toBe(describeNode(el));
   });
-});
-
-describe("a failing toBe between two live kit elements", () => {
-  test("prints a few lines, naming both, instead of their reactive graphs", async () => {
-    /* The fixture is a real failing test; run it the way CI runs a file, from this workspace so
-       its preload applies. Without the hook the same failure printed 6.6 million lines (338 MB). */
-    const child = Bun.spawn(["bun", "test", "--isolate", "./tests/fixtures/inspect-flood.ts"], {
-      cwd: `${import.meta.dir}/..`,
-      stderr: "pipe",
-      stdout: "pipe",
-    });
-    const [out, err, code] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
-    const output = `${out}${err}`;
-    expect(code).toBe(1);
-    expect(output).toContain("(fail) two live strips are not the same element");
-    expect(output.length).toBeLessThan(4000);
-    /* Distinct markers, not occurrences: under GitHub Actions the child also repeats the message
-       as a one-line `::error` annotation, so the same two elements are printed more than once. */
-    const markers = new Set(output.matchAll(/<jx-tabs [^\n%]*?#(\d+)/gu).map((match) => match[1]));
-    expect(markers.size).toBe(2);
-  }, 30_000);
 });

@@ -6,6 +6,7 @@
 import "./with-dom";
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 
 import { flush, stubRect } from "./harness";
 import { initLayers } from "../src/ui/layers";
@@ -184,7 +185,7 @@ describe("openMenu", () => {
     expect(document.activeElement).toBe(row);
     row.click();
     await flush();
-    expect(focusedAtRun).toEqual([opener]);
+    expect(identities(focusedAtRun)).toEqual(identities([opener]));
     opener.remove();
   });
 
@@ -206,7 +207,7 @@ describe("openMenu", () => {
     elsewhere.focus();
     menuIn(open.host)!.querySelector<HTMLElement>('[data-command-id="a"]')!.click();
     await flush();
-    expect(focusedAtRun).toEqual([elsewhere]);
+    expect(identities(focusedAtRun)).toEqual(identities([elsewhere]));
     opener.remove();
     elsewhere.remove();
   });

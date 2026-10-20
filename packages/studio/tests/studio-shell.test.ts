@@ -1665,7 +1665,7 @@ describe("parent-chrome commit guard", () => {
   test("a chrome pointerdown suppresses the block action bar", () => {
     pointerDownAt();
     // The exemption was asked of the pointerdown's own target, and it did not apply.
-    expect(isEditChromeTargetMock).toHaveBeenCalledWith(document);
+    expect(isEditChromeTargetMock.mock.calls.map(([target]) => target)).toContain(document);
     expect(suppressBarMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1675,7 +1675,7 @@ describe("parent-chrome commit guard", () => {
     try {
       pointerDownAt();
       // The exemption is decided on the target the pointer landed on.
-      expect(isEditChromeTargetMock).toHaveBeenCalledWith(document);
+      expect(isEditChromeTargetMock.mock.calls.map(([target]) => target)).toContain(document);
       expect(suppressBarMock).not.toHaveBeenCalled();
       expect(commitEditMock).not.toHaveBeenCalled();
     } finally {
@@ -1695,7 +1695,7 @@ describe("parent-chrome commit guard", () => {
     try {
       pointerDownAt(inStage);
       // The guard saw the stage element itself, not a retargeted ancestor.
-      expect(isEditChromeTargetMock).toHaveBeenCalledWith(inStage);
+      expect(isEditChromeTargetMock.mock.calls.map(([target]) => target)).toContain(inStage);
       expect(suppressBarMock).not.toHaveBeenCalled();
       expect(commitEditMock).toHaveBeenCalledWith();
     } finally {

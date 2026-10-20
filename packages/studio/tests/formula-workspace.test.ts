@@ -23,6 +23,7 @@ import {
   resetWorkspaceWithTab,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { initShellRefs } from "../src/store";
 import { activeCanvasSurface } from "../src/canvas/canvas-surface";
 import { bottomPanelRegion } from "../src/ui/regions";
@@ -579,7 +580,7 @@ describe("the code surface", () => {
 
     // No `[part="code-host"]` under this element any more, which is exactly the question
     // `syncFunctionEditor` asks in order to drop an instance attached to DOM nobody can see.
-    expect(monacoSyncs).toEqual([dock]);
+    expect(identities(monacoSyncs)).toEqual(identities([dock]));
   });
 });
 

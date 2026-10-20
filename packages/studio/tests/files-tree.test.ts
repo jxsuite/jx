@@ -31,6 +31,7 @@ import {
 } from "./harness";
 import type { MockPlatformState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { requireProjectState, setProjectState } from "../src/store";
 import {
   PRIMARY_PANE,
@@ -523,7 +524,7 @@ describe("file tree listing", () => {
 
     // Keyed rows, and selection is one scope field the document compares against each row's path:
     // The nodes survive, so nothing the reader is on — a caret, a focus ring — is taken away.
-    expect(rows()).toEqual(before);
+    expect(identities(rows())).toEqual(identities(before));
     expect(rowFor("zeta.json").getAttribute("aria-selected")).toBe("true");
     expect(rowFor("beta.md").hasAttribute("aria-selected")).toBe(false);
   });

@@ -8,6 +8,7 @@
  */
 import { installResizeObserver, stubRect } from "./harness";
 import { describe, expect, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import {
   DEFAULT_OVERSCAN_ROWS,
   computeWindow,
@@ -272,7 +273,9 @@ describe("createVirtualWindow", () => {
         rowHeight: () => 10,
         scroller: el,
       });
-      expect(observers.flatMap((observer) => observer.observed)).toEqual([el]);
+      expect(identities(observers.flatMap((observer) => observer.observed))).toEqual(
+        identities([el]),
+      );
       handle.destroy();
       expect(observers.map((observer) => observer.disconnected)).toEqual([true]);
     } finally {

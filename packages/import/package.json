@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.3",
+    "@jxsuite/test-support": "workspace:^",
     "@types/pngjs": "^6.0.5",
     "happy-dom": "^21.0.3"
   },

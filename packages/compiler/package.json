@@ -59,6 +59,7 @@
     "@happy-dom/global-registrator": "^21.0.3",
     "@jxsuite/connector": "workspace:^",
     "@jxsuite/parser": "workspace:^",
+    "@jxsuite/test-support": "workspace:^",
     "@types/mdast": "^4.0.4"
   }
 }

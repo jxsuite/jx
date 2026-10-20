@@ -287,10 +287,8 @@ describe("jx-checkbox", () => {
     input.click();
     input.click();
     // In light DOM the target IS the native input, so every ported `e.target.checked` read works.
-    expect(heard).toEqual([
-      [input, true],
-      [input, false],
-    ]);
+    expect(heard.map(([target]) => target === input)).toEqual([true, true]);
+    expect(heard.map(([, checked]) => checked)).toEqual([true, false]);
     expect(el.checked).toBe(false);
   });
 

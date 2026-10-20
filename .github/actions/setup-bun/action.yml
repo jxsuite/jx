@@ -1,5 +1,5 @@
 name: Set up Bun
-description: Install the pinned Bun and the workspace dependencies.
+description: Install the pinned Bun (the repository's .bun-version) and the workspace dependencies.
 
 # `actions/checkout` deliberately is NOT here. A local `uses: ./…` action requires the repository
 # to already be on disk, so the checkout has to stay in the calling job — and it varies anyway
@@ -11,22 +11,28 @@ description: Install the pinned Bun and the workspace dependencies.
 
 inputs:
   install:
-    description: Run `bun install --frozen-lockfile`. Set false for jobs that only need Bun itself.
+    description: Run `bun install --frozen-lockfile`. Set false for jobs that run their own install or only need Bun itself.
     required: false
     default: "true"
 
 runs:
   using: composite
   steps:
+    # THE pin is `.bun-version` at the repository root, an exact patch, and this is the only place
+    # CI reads it: every workflow job that runs Bun comes through this action, which
+    # `scripts/bun-pin.test.ts` asserts. Coverage instrumentation shifts between Bun versions and
+    # would silently move the per-file coverageThreshold ratchet, so bumping the file means
+    # re-baselining every workspace `bunfig.toml` in the same PR (AGENTS.md, Testing & Coverage
+    # Policy). The test preload (`@jxsuite/test-support/preload`) reads the same file and warns,
+    # once per run, when the local Bun differs. It is an exact patch, not `1.4`: a floating minor
+    # moved CI to 1.4.3 while local runs stayed on 1.4.2, and the two disagreed about whether one
+    # failing `toBe(liveElement)` failed at all.
+    - id: pin
+      shell: bash
+      run: echo "version=$(tr -d '[:space:]' < .bun-version)" >> "$GITHUB_OUTPUT"
     - uses: oven-sh/setup-bun@v2
       with:
-        # THE pin, in one place. Coverage instrumentation shifts between Bun versions and would
-        # silently move the per-file coverageThreshold ratchet, so bumping this means
-        # re-baselining every packages/*/bunfig.toml in the same PR (AGENTS.md, Testing &
-        # Coverage Policy). It used to be copied across five workflows. An exact patch, not
-        # `1.4`: a floating minor moved CI to 1.4.3 while local runs stayed on 1.4.2, and the two
-        # disagreed about whether one failing `toBe(liveElement)` failed at all.
-        bun-version: 1.4.3
+        bun-version: ${{ steps.pin.outputs.version }}
     - if: inputs.install == 'true'
       run: bun install --frozen-lockfile
       shell: bash

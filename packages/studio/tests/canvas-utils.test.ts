@@ -6,6 +6,7 @@ import {
   stubRect,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import {
   activateCanvasPanel,
   applyEditZoom,
@@ -772,7 +773,7 @@ describe("observeCenterUntilStable", () => {
     observeCenterUntilStable(primary());
     expect(surfaceForPane("primary").needsCenter).toBe(true);
     const ro = FakeResizeObserver.instances[0]!;
-    expect(ro.observed).toEqual([wrap]);
+    expect(identities(ro.observed)).toEqual(identities([wrap]));
     expect(surfaceForPane("primary").panX).toBe(200);
 
     surfaceForPane("primary").panX = 0;

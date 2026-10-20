@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.3",
+    "@jxsuite/test-support": "workspace:^",
     "ajv": "^8.20.0"
   },
   "jx": "./jx-extension.json"

@@ -549,7 +549,8 @@ describe("the surface registry's guards", () => {
       });
       disposePaneSurface("ghost");
 
-      expect(released).toEqual([ghost]);
+      expect(released).toHaveLength(1);
+      expect(released[0]).toBe(ghost);
       expect(stop).toHaveBeenCalledTimes(1);
       expect(allCanvasSurfaces().map((surface) => surface.paneId)).not.toContain("ghost");
     } finally {

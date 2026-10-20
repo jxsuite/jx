@@ -71,11 +71,7 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global --add safe.directory /tmp/jx-perf-base
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4
-
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup-bun
 
       # The traced bundle is the one this checkout builds, not a dev cache: the dist/ dev server
       # watcher reuses it and the gate's URLs go through the jxsuite.com fixture that lives in

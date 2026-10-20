@@ -43,7 +43,22 @@ describe("the whole matrix", () => {
      * forbids.
      */
     expect(flags).toContain("catalog");
-    expect(flags.length).toBe(workspaces.length);
+    /*
+     * Every workspace but `test-support`, which is the one that must depend on nothing: it is the
+     * shared test preload every happy-dom suite loads, so an edge from it to any `@jxsuite` package
+     * would put that package's own suite downstream of itself.
+     */
+    expect(flags).not.toContain("test-support");
+    expect(flags.length).toBe(workspaces.length - 1);
+  });
+
+  test("a change to the shared test preload retests every suite that loads it", () => {
+    const flags = flagsFor("packages/test-support/src/dom-equality.ts");
+    for (const consumer of ["studio", "ui", "runtime", "compiler", "auth", "parser", "import"]) {
+      expect(flags).toContain(consumer);
+    }
+    expect(flags).toContain("test-support");
+    expect(flags).not.toContain("schema");
   });
 
   test("a root manifest change runs everything", () => {

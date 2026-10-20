@@ -1,7 +1,7 @@
 /**
- * Compact printing for DOM nodes in `bun test` failure output. A test-only module, exported as
- * `@jxsuite/ui/testing/inspect-dom` and installed by a workspace's `bunfig.toml` preload, so every
- * test file in that workspace gets it whether or not it goes through a shared harness.
+ * Compact printing for DOM nodes in `bun test` failure output. Installed by this package's preload
+ * (`@jxsuite/test-support/preload`), which every happy-dom workspace names in its `bunfig.toml`, so
+ * every test file gets it whether or not it goes through a shared harness.
  *
  * Why it exists: Bun prints a failing `expect(a).toBe(b)` by inspecting both operands, and a
  * happy-dom element is an object with hundreds of symbol-keyed slots. A kit element also carries
@@ -18,10 +18,9 @@
  * identity marker (`#7`): two distinct elements with the same markup print differently, which is
  * the whole question a failing `toBe` between elements asks.
  *
- * NOT covered: a failing `toEqual` / `toStrictEqual` between two distinct live kit elements. Its
- * diff is drawn by a separate printer that ignores the hook and walks the same graph, and it was
- * measured hanging with no output for over 100 seconds. Compare elements by identity (`toBe`) or by
- * the property you mean, never by deep equality; CI's per-run deadline is the only net under it.
+ * Deep equality is the other half, and it lives in `dom-equality.ts`: the diff a failing `toEqual`
+ * draws comes from a separate printer that ignores this hook, so that guard refuses the comparison
+ * before Bun's printer is ever reached.
  */
 
 import { dirname } from "node:path";
@@ -101,6 +100,17 @@ export function describeNode(node: InspectableNode): string {
 }
 
 /**
+ * The identity of each node in a list, as its one-line form (`null` for a missing one). Two lists
+ * are equal under `toEqual` exactly when they hold the same nodes in the same order, because every
+ * form carries the node's own marker, and a failure diffs readable lines instead of node graphs.
+ * This is how a test compares a list of nodes, which the deep-equality guard refuses to compare
+ * directly: `expect(identities(seen)).toEqual(identities([el]))`.
+ */
+export function identities(nodes: Iterable<InspectableNode | null | undefined>): string[] {
+  return [...nodes].map((node) => (node == null ? String(node) : describeNode(node)));
+}
+
+/**
  * Defines the compact printer on `nodePrototype`, the prototype every DOM node inherits.
  * Idempotent: a prototype that already has it keeps the one it has.
  */
@@ -116,17 +126,26 @@ export function installCompactInspect(nodePrototype: NodePrototype): void {
   });
 }
 
+/** The slice of happy-dom's module surface the preload needs: its `Node` class. */
+export interface HappyDom {
+  Node: NodeClass;
+}
+
+/** The `Node` class of happy-dom: what `instanceof` tests against, and whose prototype is patched. */
+export interface NodeClass {
+  new (): InspectableNode;
+  readonly prototype: NodePrototype;
+}
+
 /**
- * Installs the printer on the happy-dom that `@happy-dom/global-registrator` registers. happy-dom
- * is resolved from the registrator's own location rather than by bare name, so the prototype
- * patched is the one the registered window's nodes are built from, and so no workspace has to
- * declare happy-dom just to reach it. The window need not be registered yet: the classes are
- * module-level.
+ * Loads the happy-dom that `@happy-dom/global-registrator` registers. It is resolved from the
+ * registrator's own location rather than by bare name, so the `Node` class handed back is the one
+ * the registered window's nodes are built from, and so no workspace has to declare happy-dom just
+ * to reach it. The window need not be registered yet: the classes are module-level.
  */
-export async function installCompactDomInspect(): Promise<void> {
-  const registrator = Bun.resolveSync("@happy-dom/global-registrator", import.meta.dir);
+export async function loadHappyDom(from: string = import.meta.dir): Promise<HappyDom> {
+  const registrator = Bun.resolveSync("@happy-dom/global-registrator", from);
   const happyDom = Bun.resolveSync("happy-dom", dirname(registrator));
-  /* SAFETY: happy-dom's entry exports its `Node` class; only its prototype is used here. */
-  const { Node } = (await import(happyDom)) as { Node: { prototype: NodePrototype } };
-  installCompactInspect(Node.prototype);
+  /* SAFETY: happy-dom's entry exports its `Node` class, the base of every node it builds. */
+  return (await import(happyDom)) as HappyDom;
 }

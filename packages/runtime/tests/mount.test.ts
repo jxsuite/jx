@@ -415,7 +415,8 @@ describe("mount — events out", () => {
     );
     host.querySelector("button")!.click();
     await tick();
-    expect(seen).toEqual([{ detail: "saved", target: m.root }]);
+    expect(seen.map((entry) => entry.detail)).toEqual(["saved"]);
+    expect(seen[0]?.target).toBe(m.root);
   });
 
   test("a body run from an event dispatches from that event's currentTarget, not the root", async () => {
@@ -438,7 +439,8 @@ describe("mount — events out", () => {
     const button = host.querySelector("button")!;
     button.click();
     await tick();
-    expect(targets).toEqual([button]);
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toBe(button);
   });
 });
 

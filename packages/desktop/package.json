@@ -45,6 +45,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.3",
     "@jxsuite/server": "workspace:^",
+    "@jxsuite/test-support": "workspace:^",
     "@jxsuite/ui": "workspace:^",
     "electrobun": "2.0.2",
     "rcedit": "^5.0.2"

@@ -7,6 +7,9 @@ code:
   - scripts/ci/approve-held-runs.ts
   - scripts/check-schema-freshness.ts
   - scripts/check-electrobun-vendor.ts
+  - packages/test-support/src/preload.ts
+  - packages/test-support/src/dom-equality.ts
+  - packages/test-support/src/bun-pin.ts
 ---
 
 # Working in the monorepo
@@ -33,6 +36,16 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 ## Testing policy
 
 Every package keeps full unit-test coverage, enforced per file by each package's `bunfig.toml` thresholds plus a manifest check that fails CI when a source file is never imported by any test. New source files ship with tests in the same PR.
+
+**One Bun version.** CI installs exactly the version in `.bun-version` at the repository root, in every workflow, through `.github/actions/setup-bun`. Coverage figures and test output can move between Bun patch releases, so a different local Bun can disagree with CI. When yours differs, the test run prints one warning line naming both versions and carries on. It never fails the run: where the temporary directory cannot be written, the line repeats per test file instead.
+
+**The shared test preload.** Every package whose tests use happy-dom preloads `@jxsuite/test-support/preload` from its `bunfig.toml`. It prints a DOM node as one line in a failure message, and it refuses deep equality on a DOM node: `toEqual`, `toStrictEqual`, `toMatchObject` and `toContainEqual` throw at once when either side is a node or holds one, inside class instances (an event, a mutation record) as well as plain objects and arrays. So do `toHaveProperty(path, value)` when the compared value holds a node, and `toHaveBeenCalledWith` and its last-call and nth-call forms when an argument or a call their failure would print holds one. Bun's diff printer can hang for minutes on a live UI-kit element, so the refusal is what keeps one bad assertion from stalling a CI job. Compare nodes with `toBe` (a recorded argument as `mock.calls[0][0]`), or a list of nodes with `identities()`:
+
+```ts
+import { identities } from "@jxsuite/test-support/inspect-dom";
+
+expect(identities(seen)).toEqual(identities([first, second]));
+```
 
 ## What CI runs, and when
 

@@ -103,11 +103,11 @@ describe("snapcraft.yaml", () => {
     expect(workflow).not.toContain("sudo review-tools");
   });
 
-  test("pins Bun to the series CI runs, by checksum", () => {
+  test("pins Bun to the exact version CI runs, by checksum", () => {
     const build = snapcraft.parts.bun?.["override-build"] ?? "";
-    const pinned = /version=(\d+\.\d+)\.\d+/.exec(build)?.[1];
-    const action = readFileSync(resolve(repo, ".github/actions/setup-bun/action.yml"), "utf8");
-    const ci = /bun-version: (\d+\.\d+)/.exec(action)?.[1];
+    const pinned = /version=(\d+\.\d+\.\d+)/.exec(build)?.[1];
+    // `.bun-version` is the one pin every workflow installs (.github/actions/setup-bun reads it).
+    const ci = readFileSync(resolve(repo, ".bun-version"), "utf8").trim();
     expect(pinned).toBeDefined();
     expect(pinned).toBe(ci);
     expect(build).toContain("sha256sum -c -");

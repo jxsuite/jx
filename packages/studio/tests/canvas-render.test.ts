@@ -15,6 +15,7 @@ import {
 import { hasTyping } from "../src/tabs/typing";
 import { displayTagName, isString } from "@jxsuite/schema/guards";
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { identities } from "@jxsuite/test-support/inspect-dom";
 import { notifyModule } from "./notify-mock";
 import { initShellRefs, setProjectState } from "../src/store";
 import {
@@ -651,7 +652,7 @@ describe("renderCanvas without a tab", () => {
   test("renders the welcome screen when no project is loaded", () => {
     setProjectState(null);
     renderCanvas();
-    expect(renderWelcome).toHaveBeenCalledWith(stageEl());
+    expect(renderWelcome.mock.calls.map(([target]) => target)).toContain(stageEl());
   });
 
   /*
@@ -680,7 +681,7 @@ describe("renderCanvas without a tab", () => {
   test("keeps the welcome screen when the root is not a site project", () => {
     resetStudioState({ isSiteProject: false, projectRoot: ".", root: "/repo" });
     renderCanvas();
-    expect(renderWelcome).toHaveBeenCalledWith(stageEl());
+    expect(renderWelcome.mock.calls.map(([target]) => target)).toContain(stageEl());
   });
 });
 
@@ -2552,7 +2553,9 @@ describe("scheduleCanvasRender", () => {
     await rafTurn();
     await flush();
     // One render, and it drew the welcome screen into the primary stage.
-    expect(renderWelcome.mock.calls).toEqual([[stageEl()]]);
+    expect(renderWelcome.mock.calls.map((call) => identities(call))).toEqual([
+      identities([stageEl()]),
+    ]);
   });
 
   test("catches renderCanvas errors inside the frame callback", async () => {
@@ -3144,7 +3147,7 @@ describe("a derived pane's stage", () => {
       "Select an element inside a component to see its definition.",
     );
     // Not the welcome screen — this pane is not empty, it is waiting.
-    expect(renderWelcome).not.toHaveBeenCalledWith(wrap);
+    expect(renderWelcome.mock.calls.map(([target]) => target)).not.toContain(wrap);
     wrap.remove();
   });
 
@@ -3178,7 +3181,7 @@ describe("a derived pane's stage", () => {
     await flush();
 
     expect(wrap.textContent).toContain("Looking for something to show here…");
-    expect(renderWelcome).not.toHaveBeenCalledWith(wrap);
+    expect(renderWelcome.mock.calls.map(([target]) => target)).not.toContain(wrap);
     wrap.remove();
   });
 });

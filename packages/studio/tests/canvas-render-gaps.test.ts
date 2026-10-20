@@ -373,7 +373,10 @@ describe("grid mode", () => {
     renderCanvas();
     await flush(); // The source editor mounts behind the lazy Monaco import.
     // Still the one hand-over, to this pane's stage for this tab: the repaint drew nothing new.
-    expect(renderGridMode.mock.calls).toEqual([[surfaceForPane("primary"), activeTab.value!]]);
+    expect(renderGridMode).toHaveBeenCalledTimes(1);
+    const [[handedSurface, handedTab] = []] = renderGridMode.mock.calls;
+    expect(handedSurface).toBe(surfaceForPane("primary"));
+    expect(handedTab).toBe(activeTab.value!);
   });
 });
 
