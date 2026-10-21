@@ -8,7 +8,7 @@
     <true/>
     <!-- The identity the provisioning profile names: <team id>.<bundle id>. The team id is public. -->
     <key>com.apple.application-identifier</key>
-    <string>5466QQ2CL8.com.jxsuite.jx-studio</string>
+    <string>5466QQ2CL8.com.jxsuite.studio</string>
     <key>com.apple.developer.team-identifier</key>
     <string>5466QQ2CL8</string>
     <!-- A project is a folder the user picks, and recents have to survive a relaunch. -->

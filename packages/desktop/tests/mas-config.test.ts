@@ -58,11 +58,17 @@ describe("the sandbox entitlements", () => {
   });
 
   test("names the team and bundle identity the provisioning profile will carry", () => {
-    const appId = /^appId: (.+)$/m.exec(builder)?.[1];
-    expect(appId).toBe("com.jxsuite.jx-studio");
+    const script = read("scripts/package-app.ts");
+    const masAppId = /const MAS_APP_ID = "([^"]+)"/.exec(script)?.[1];
+    expect(masAppId).toBe("com.jxsuite.studio");
     const team = stringOf(app, "com.apple.developer.team-identifier");
     expect(team).toBe("5466QQ2CL8");
-    expect(stringOf(app, "com.apple.application-identifier")).toBe(`${team}.${appId}`);
+    expect(stringOf(app, "com.apple.application-identifier")).toBe(`${team}.${masAppId}`);
+    expect(script).toContain("`-c.appId=${MAS_APP_ID}`");
+  });
+
+  test("leaves the DMG's identifier alone", () => {
+    expect(builder).toMatch(/^appId: com\.jxsuite\.jx-studio$/m);
   });
 
   test("every nested executable inherits the sandbox and keeps its JIT entitlements", () => {
@@ -86,7 +92,7 @@ describe("the sandbox entitlements", () => {
 describe("the package script", () => {
   test("asks electron-builder for `--mac mas`, which has no switch of its own", () => {
     const script = read("scripts/package-app.ts");
-    expect(script).toContain('["--mac", "mas"]');
+    expect(script).toContain('["--mac", "mas", ');
     expect(script).toContain('mas: "darwin"');
   });
 });
