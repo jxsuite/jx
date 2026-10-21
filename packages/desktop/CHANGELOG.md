@@ -1,5 +1,24 @@
 # Changelog
 
+## [6.0.1](https://github.com/jxsuite/jx/compare/desktop-v6.0.0...desktop-v6.0.1) (2026-10-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/auth bumped to 0.7.0
+    * @jxsuite/compiler bumped to 6.0.2
+    * @jxsuite/connector bumped to 0.7.0
+    * @jxsuite/create bumped to 1.3.17
+    * @jxsuite/parser bumped to 4.0.1
+    * @jxsuite/server bumped to 6.0.1
+    * @jxsuite/starters bumped to 3.0.1
+    * @jxsuite/studio bumped to 8.0.1
+  * devDependencies
+    * @jxsuite/server bumped to 6.0.1
+    * @jxsuite/ui bumped to 0.7.1
+
 ## [6.0.0](https://github.com/jxsuite/jx/compare/desktop-v5.4.8...desktop-v6.0.0) (2026-10-21)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [5.1.0](https://github.com/jxsuite/jx/compare/runtime-v5.0.0...runtime-v5.1.0) (2026-10-21)
+
+
+### Features
+
+* **connector:** settings contributions name their group, intro sentence and item noun ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+
+
+### Bug Fixes
+
+* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **site:** a page's own description property becomes its description meta, ahead of the page head ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+
 ## [5.0.0](https://github.com/jxsuite/jx/compare/runtime-v4.1.0...runtime-v5.0.0) (2026-10-17)
 
 
