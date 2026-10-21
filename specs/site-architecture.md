@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.6.17-draft\
+**Version:** 0.6.26-draft\
 **Status:** Partial\
-**Updated:** 2026-10-16\
+**Updated:** 2026-10-21\
 **License:** MIT
 
 ---
@@ -2314,6 +2314,15 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.6.26-draft** (2026-10-21) — The usage engine answers every question from one per-tree-change index of the project's references.
+- **0.6.25-draft** (2026-10-21) — §8.6: Search appearance has one button, on the Inspector's Page tab for a page and a collection entry alike, now that Edit draws no Document Header card.
+- **0.6.24-draft** (2026-10-21) — §7.4: a CSV record opens in the form-only entry editor, and an image object is the media field with an alt text row.
+- **0.6.23-draft** (2026-10-21) — A page's description property (a Markdown page's frontmatter description) is written as its description meta, below a description meta in the page's own $head.
+- **0.6.22-draft** (2026-10-21) — §7.4 an array of single values in the entry form is a row per item with Add and Remove (pictures get the media field per row) rather than raw JSON text.
+- **0.6.21-draft** (2026-10-21) — §9.4: an upload with no collection context lands in public/media/, and the Media workspace is the fourth upload surface, with Replace as the one overwrite (Implemented).
+- **0.6.20-draft** (2026-10-21) — §7.4: a JSON entry file opens the form-only entry editor, and a file-backed collection's record opens its file's grid on that record's row.
+- **0.6.19-draft** (2026-10-21) — §7.2, §7.4 and §7.5: the collection browser is the Content home, one collection at a time with its own view, and entry editing is canvas-first, with the form-only editor kept for JSON and file-backed entries.
+- **0.6.18-draft** (2026-10-21) — §9.4: an upload with no collection context lands in public/media/, and the Media workspace replaces the Library as the fourth upload surface (Partial).
 - **0.6.17-draft** (2026-10-16) — The /assets/ URLs the compiler writes into component and page modules for $src functions are re-rooted on the deployment base path (14.7).
 - **0.6.16-draft** (2026-10-07) — The not-found page gets no Markdown twin: none is written and none is advertised (8.4.2, 8.4.3).
 - **0.6.15-draft** (2026-10-07) — A page advertises each export sidecar it has with a link rel=alternate of the format's media type (new 8.4.3); only twins that were written, an author's own link wins, none on the not-found page.
