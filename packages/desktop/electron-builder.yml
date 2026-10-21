@@ -86,10 +86,6 @@ mas:
   entitlements: build-resources/entitlements.mas.plist
   entitlementsInherit: build-resources/entitlements.mas.inherit.plist
   provisioningProfile: build-resources/embedded.provisionprofile
-  # The team Chromium names its Mach service after (see the application-groups entitlement).
-  # @electron/osx-sign writes it from the signing identity; saying it here keeps an unsigned build honest.
-  extendInfo:
-    ElectronTeamID: 5466QQ2CL8
 
 win:
   target:
