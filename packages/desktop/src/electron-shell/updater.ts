@@ -58,6 +58,8 @@ export interface UpdateSchedule {
 export interface UpdateEnvironment {
   /** `process.env.APPIMAGE`: set when the Linux app is an AppImage, which is the one that updates. */
   appImage: string | undefined;
+  /** `process.mas`: a Mac App Store install is updated by the App Store. */
+  macAppStore: boolean;
   /** Whether this is a packaged build; an unpackaged run has no feed. */
   packaged: boolean;
   platform: NodeJS.Platform;
@@ -69,13 +71,14 @@ export interface UpdateEnvironment {
  * Whether this installation updates itself.
  *
  * Only where electron-updater can replace the running application: not in a checkout, not a Store
- * package (the Store does it), and on Linux only the AppImage (a `.deb` is the package manager's).
- * The Nix package and the snap are not AppImages, and their own tools replace them.
+ * package (the Microsoft Store and the Mac App Store do it), and on Linux only the AppImage (a
+ * `.deb` is the package manager's). The Nix package and the snap are not AppImages, and their own
+ * tools replace them.
  *
  * @param environment The facts it depends on.
  */
 export function updatesEnabled(environment: UpdateEnvironment): boolean {
-  if (!environment.packaged || environment.windowsStore) {
+  if (!environment.packaged || environment.windowsStore || environment.macAppStore) {
     return false;
   }
   return environment.platform !== "linux" || environment.appImage !== undefined;

@@ -66,3 +66,4 @@ packages/server/tests/_git_remote_fixture/
 # The Nix app tree build-snap.yml stages for packages/desktop/snap/snapcraft.yaml, and its output.
 packages/desktop/snap-stage/
 packages/desktop/*.snap
+packages/desktop/build-resources/embedded.provisionprofile

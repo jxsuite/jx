@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- The Mac App Store build's own entitlements (specs/desktop.md §7.7). The store requires the
+         App Sandbox, and a sandboxed app is only as capable as what is listed here. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <!-- The identity the provisioning profile names: <team id>.<bundle id>. The team id is public. -->
+    <key>com.apple.application-identifier</key>
+    <string>5466QQ2CL8.com.jxsuite.studio</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>5466QQ2CL8</string>
+    <!-- A project is a folder the user picks, and recents have to survive a relaunch. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+    <!-- The backend listens on loopback for the webview; installs and Git over HTTPS go out. -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- Electron's V8 and the Bun backend's JavaScriptCore both JIT. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+  </dict>
+</plist>

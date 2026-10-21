@@ -61,6 +61,8 @@ export interface AppDeps {
   exists: (path: string) => boolean;
   /** Load electron-updater's `autoUpdater`; a parameter so a test never loads the real one. */
   loadUpdater: () => Promise<AutoUpdater>;
+  /** Whether this is a Mac App Store install, which the App Store updates. */
+  macAppStore: boolean;
   platform: NodeJS.Platform;
   /** Electron's `process.resourcesPath`, where a packaged app keeps its files. */
   resourcesPath: string;
@@ -251,6 +253,7 @@ export async function startApp(
     env = process.env,
     exists = existsSync,
     loadUpdater = loadAutoUpdater,
+    macAppStore = process.mas === true,
     platform = process.platform,
     resourcesPath = electronResourcesPath(),
     schedule = { ...DEFAULT_SCHEDULE, setInterval, setTimeout },
@@ -392,7 +395,7 @@ export async function startApp(
   // A backend that is gone leaves windows with nothing to talk to; end rather than show them.
   backend.onExit(() => app.quit());
 
-  if (updatesEnabled({ appImage: env.APPIMAGE, packaged, platform, windowsStore })) {
+  if (updatesEnabled({ appImage: env.APPIMAGE, macAppStore, packaged, platform, windowsStore })) {
     loadUpdater()
       .then((updater) => {
         startUpdates(

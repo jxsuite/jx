@@ -482,8 +482,8 @@
     },
     "docs/images/elements-panel.png": {
       "bytes": 104223,
-      "capturedAt": "2026-10-20T18:02:02Z",
-      "capturedBy": "screenshots@ci/39470911641",
+      "capturedAt": "2026-10-21T17:12:15Z",
+      "capturedBy": "screenshots@ci/39641367578",
       "definition": "5c724ab422023ec4490fcc57ff086c3f53bfcd94c42ac73a3000b9a5cc94dfbe",
       "height": 1880,
       "runtime": {
@@ -661,9 +661,9 @@
       "width": 816
     },
     "docs/images/media-upload.png": {
-      "bytes": 1009422,
-      "capturedAt": "2026-10-20T19:50:48Z",
-      "capturedBy": "screenshots@ci/39486425028",
+      "bytes": 1008380,
+      "capturedAt": "2026-10-21T18:51:07Z",
+      "capturedBy": "screenshots@ci/39655884088",
       "definition": "c597407bf7739960d16f3c89a85f588ba1022b4fa5d135c3484fabb9cb30ef1a",
       "height": 1824,
       "runtime": {
@@ -671,7 +671,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "2ee14e95f85f66f2ce5fe9c8cc74571fb3cb3e78aa2c6ef05b8c7656c885c3cc",
+      "sha256": "db3990ed023dd38be58824cb9698992f5853f7d39cbd9381059d774e8c975bf8",
       "shot": "media-upload",
       "width": 3840
     },
@@ -782,8 +782,8 @@
     },
     "docs/images/quick-access.png": {
       "bytes": 1550835,
-      "capturedAt": "2026-10-20T18:01:59Z",
-      "capturedBy": "screenshots@ci/39470911641",
+      "capturedAt": "2026-10-21T17:12:11Z",
+      "capturedBy": "screenshots@ci/39641367578",
       "definition": "73445d334cc350e7007cebab5e2da2e69cc6dde83cb8c8af0b78c2ad88776dd1",
       "height": 2000,
       "runtime": {
@@ -841,9 +841,9 @@
       "width": 1152
     },
     "docs/images/settings-document.png": {
-      "bytes": 1116363,
-      "capturedAt": "2026-10-20T18:01:53Z",
-      "capturedBy": "screenshots@ci/39470911641",
+      "bytes": 1116365,
+      "capturedAt": "2026-10-21T17:12:04Z",
+      "capturedBy": "screenshots@ci/39641367578",
       "definition": "75e7e9588af2765d5ce4876bd3bb47c4d746d311353947c1bfa94fb71e73eeb6",
       "height": 2000,
       "runtime": {
@@ -851,7 +851,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "36145889ec4726cadb9fa33a717fcc4138d167ca74da0619edd572f773e98c5a",
+      "sha256": "dc261c1a22e78724751ff0db0a7108febfddb883d6b1ba29ba9e1d8ce52f4373",
       "shot": "settings-document",
       "width": 3840
     },
