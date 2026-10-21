@@ -108,7 +108,13 @@ jobs:
         if: steps.credentials.outputs.configured == 'true'
         run: |
           set -euo pipefail
-          pkg=$(ls packages/desktop/artifacts/mas-arm64-JxStudio.pkg)
+          pkg=$(find packages/desktop/artifacts -maxdepth 2 -name '*.pkg' | head -n 1)
+          if [ -z "$pkg" ]; then
+            echo "::error::electron-builder produced no .pkg; the artifacts directory holds:"
+            find packages/desktop/artifacts -maxdepth 2 | head -n 50
+            exit 1
+          fi
+          echo "Uploading $pkg"
           xcrun altool --upload-app --type macos --file "$pkg" \
             --apiKey "${{ secrets.APPLE_API_KEY_ID }}" --apiIssuer "${{ secrets.APPLE_API_ISSUER_ID }}"
 
