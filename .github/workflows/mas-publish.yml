@@ -19,6 +19,10 @@ on:
         required: true
         type: string
   workflow_dispatch:
+  # TEMPORARY: a workflow that is not on main cannot be dispatched, so the first runs are pushes.
+  push:
+    branches: [feat/mac-app-store]
+    paths: [.github/workflows/mas-publish.yml]
 
 permissions:
   contents: read
