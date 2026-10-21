@@ -65,6 +65,13 @@ describe("the sandbox entitlements", () => {
     expect(stringOf(app, "com.apple.application-identifier")).toBe(`${team}.${appId}`);
   });
 
+  test("joins the app group Chromium's Mach service is named after, and says which team", () => {
+    const team = stringOf(app, "com.apple.developer.team-identifier");
+    expect(app).toContain("com.apple.security.application-groups");
+    expect(app).toContain(`<string>${team}.com.jxsuite.studio</string>`);
+    expect(masBlock).toContain(`ElectronTeamID: ${team}`);
+  });
+
   test("every nested executable inherits the sandbox and keeps its JIT entitlements", () => {
     expect(enabled(inherit)).toEqual(
       expect.arrayContaining([
