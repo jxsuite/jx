@@ -1,7 +1,7 @@
 /**
  * Package Jx Studio: stage, then run electron-builder.
  *
- *     bun run package [--target mac|win|linux] [--arch arm64|x64] [-- <electron-builder args>]
+ *     bun run package [--target mac|mas|win|linux] [--arch arm64|x64] [-- <electron-builder args>]
  *
  * With no target it builds for the machine it runs on. Anything after the options goes to
  * electron-builder unchanged, so `--dir` produces an unpacked application to run or inspect, and
@@ -12,7 +12,7 @@
 import { resolve } from "node:path";
 
 const desktopDir = resolve(import.meta.dir, "..");
-const PLATFORMS = { linux: "linux", mac: "darwin", win: "win32" } as const;
+const PLATFORMS = { linux: "linux", mac: "darwin", mas: "darwin", win: "win32" } as const;
 type Target = keyof typeof PLATFORMS;
 
 const argv = process.argv.slice(2);
@@ -72,7 +72,8 @@ await run([
   "electron-builder",
   "--config",
   "electron-builder.yml",
-  `--${target}`,
+  // Electron-builder has no `--mas` switch: the Mac App Store build is `--mac mas`.
+  ...(target === "mas" ? ["--mac", "mas"] : [`--${target}`]),
   `--${arch}`,
   ...passthrough,
 ]);

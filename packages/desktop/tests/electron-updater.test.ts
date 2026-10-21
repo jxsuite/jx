@@ -5,6 +5,7 @@ import { fakeSchedule, fakeUpdater } from "./_fake-updater";
 describe("updatesEnabled", () => {
   const packaged = {
     appImage: undefined,
+    macAppStore: false,
     packaged: true,
     platform: "darwin",
     windowsStore: false,
@@ -21,6 +22,10 @@ describe("updatesEnabled", () => {
 
   test("the Store updates a Store install", () => {
     expect(updatesEnabled({ ...packaged, platform: "win32", windowsStore: true })).toBe(false);
+  });
+
+  test("the App Store updates a Mac App Store install", () => {
+    expect(updatesEnabled({ ...packaged, macAppStore: true })).toBe(false);
   });
 
   test("on Linux only the AppImage updates itself; a deb is the package manager's", () => {

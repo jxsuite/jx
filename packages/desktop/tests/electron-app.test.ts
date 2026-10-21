@@ -692,6 +692,7 @@ describe("self-updates", () => {
       deps: {
         env: options.env ?? {},
         loadUpdater: load,
+        macAppStore: false,
         platform: options.platform ?? "darwin",
         resourcesPath: "/R",
         schedule: timers.schedule,
@@ -713,6 +714,7 @@ describe("self-updates", () => {
   test.each([
     ["a checkout", { configure: false }],
     ["a Store install", { platform: "win32" as const, windowsStore: true }],
+    ["a Mac App Store install", { macAppStore: true }],
     ["a Linux build that is not an AppImage", { platform: "linux" as const }],
   ])("%s does not", async (_name, options) => {
     const load = mock(() => Promise.resolve(fakeUpdater().updater));
@@ -725,6 +727,7 @@ describe("self-updates", () => {
       deps: {
         env: {},
         loadUpdater: load,
+        macAppStore: "macAppStore" in options,
         platform: "platform" in options ? options.platform : "darwin",
         resourcesPath: "/R",
         schedule: fakeSchedule().schedule,

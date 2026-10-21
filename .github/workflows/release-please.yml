@@ -136,6 +136,17 @@ jobs:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
     secrets: inherit
 
+  # The Mac App Store, to TestFlight only. A lane of its own that builds the sandboxed package itself,
+  # so it needs nothing from desktop-macos and does not gate the release. A clean no-op until the
+  # MAS_* secrets exist (packages/desktop/AGENTS.md, "Mac App Store Publishing").
+  mas-publish:
+    needs: release-please
+    if: needs.release-please.outputs.desktop_released == 'true'
+    uses: ./.github/workflows/mas-publish.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.desktop_tag }}
+    secrets: inherit
+
   # The Ubuntu twin of desktop-windows -> store-publish. The snap packs the same unpacked Electron
   # application as every other channel (build-snap.yml says how), and neither job gates the `release`
   # branch: a Store upload is a distribution channel, not part of what the tag is.
