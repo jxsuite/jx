@@ -205,6 +205,8 @@ declare module "electron" {
 /** What Electron adds to Node's `process`, which Node's own `Process` type does not declare. */
 declare namespace NodeJS {
   interface Process {
+    /** Set when the app runs as a Mac App Store build, which Electron's `mas` flavor reports. */
+    mas?: boolean;
     /** The directory the installed app's `resources` live in. */
     resourcesPath?: string;
     /** Set when the app runs as a Microsoft Store (appx) package. */

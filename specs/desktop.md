@@ -752,6 +752,23 @@ Installed ElectroBun builds cannot update into this application: their updater a
 
 **Linux** ships an AppImage per architecture, the one Linux package electron-updater replaces in place. It needs FUSE 2, and on Ubuntu 24.04 and later the system restricts the sandbox Electron relies on for apps that are not installed from a package, so the snap is the recommended Ubuntu channel. There is no `.deb`: the snap and the Nix package already cover the package-manager channels, and the tool electron-builder needs for one does not ship for arm64.
 
+### 7.7 Mac App Store
+
+> **Status: Partial.** The `mas` target, its two entitlements files and the updater's refusal inside a Mac App Store install are built. Not built: Studio's access to a project folder the user picked, from the backend process, under the App Sandbox (below), the upload lane to App Store Connect, and a first run of any of it with a distribution identity.
+
+The Mac App Store is a second macOS channel beside the notarized DMG of §7.6, built from the same staged application by `bun run package --target mas --arch arm64`, which asks electron-builder for its `mas` target. It differs from the DMG in four ways, each forced by the store and not chosen:
+
+- **A different identity and a different container.** The package is signed with the Apple Distribution certificate and wrapped in a `.pkg` signed with the Mac Installer Distribution certificate, and it carries an embedded provisioning profile for `com.jxsuite.jx-studio`. The Developer ID certificate of §7.6 cannot sign it. Nothing is notarized: the store's review replaces notarization.
+- **The App Sandbox is on.** `build-resources/entitlements.mas.plist` grants the application `com.apple.security.app-sandbox`, user-selected read-write file access, app-scope bookmarks, and outbound and inbound network (the backend listens on loopback, and package installs and Git over HTTPS go out). Hardened-runtime exceptions the DMG needs (`disable-library-validation`) are not part of it; `allow-jit` and `allow-unsigned-executable-memory` stay, because V8 and the Bun backend's JavaScriptCore both JIT. `build-resources/entitlements.mas.inherit.plist` is what every nested executable is signed with, the pinned Bun included: it carries `app-sandbox` and `com.apple.security.inherit`, so a child runs inside its parent's sandbox.
+- **The store updates the app.** `process.mas` is true in the build, and `updatesEnabled` (§7.5) returns false for it, as it does for a Microsoft Store install. The feed in `electron-builder.yml` is never read.
+- **Some features do not exist in it.** The site import needs a Chromium that the sandbox will not let the app launch, and `CHROME_PATH` is only ever set by the Nix package and the snap, so the macOS application already ships without it (§9.5). Git runs the system's `git` from `PATH`, which in the sandbox is Apple's developer-tools shim: it may be absent, and it cannot read `~/.gitconfig`, SSH keys or credential helpers. Git over HTTPS to a public repository can work, and SSH remotes cannot.
+
+**What is open.** A sandboxed application can read a folder only after the user picks it, and the grant belongs to the process that received it. The backend is a child process spawned at launch, before any pick, so a folder picked later is not visible to it unless the grant is passed down, by spawning a backend after the pick, by routing file access through the main process, or by an entitlement a review will accept. Which one is right is a measurement on a signed sandboxed build, and nobody has made it. Until then this section is Partial and the TestFlight upload exists to find out.
+
+**Review.** The store's guideline 2.5.2 forbids an app that downloads or runs code that changes its features. Studio runs the user's own project and installs the npm packages the user asks for, as an editor or an IDE does; the review notes say so.
+
+**Updates are releases.** Each desktop release uploads its build to App Store Connect for TestFlight. Submitting a build to App Review is a person's decision and no lane makes it.
+
 ---
 
 ## 8. Chrome Development Mode

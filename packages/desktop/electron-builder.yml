@@ -72,6 +72,21 @@ mac:
   # when they are not, so an unsigned local build still completes.
   notarize: true
 
+# The Mac App Store build (specs/desktop.md §7.7): `bun run package --target mas`. Signed with the
+# Apple Distribution certificate and wrapped in a `.pkg` by the Mac Installer Distribution
+# certificate, both found in the keychain (`CSC_LINK` carries the first, `CSC_INSTALLER_LINK` the
+# second). The provisioning profile is a secret written to the path below by the upload lane.
+# Hardened runtime is for notarization, which the store replaces with review.
+mas:
+  category: public.app-category.developer-tools
+  icon: icon-macos.png
+  artifactName: mas-${arch}-JxStudio.${ext}
+  hardenedRuntime: false
+  type: distribution
+  entitlements: build-resources/entitlements.mas.plist
+  entitlementsInherit: build-resources/entitlements.mas.inherit.plist
+  provisioningProfile: build-resources/embedded.provisionprofile
+
 win:
   target:
     - target: nsis

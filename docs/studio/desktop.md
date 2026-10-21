@@ -6,6 +6,7 @@ spec:
   - desktop.md#3.4
   - desktop.md#4
   - desktop.md#7.5
+  - desktop.md#7.7
   - desktop.md#9.5
   - desktop.md#9.7
 code:
@@ -47,7 +48,7 @@ Once installed, updates take care of themselves. The app checks for a new releas
 
 To see where you stand, click **About** at the foot of the Navigator rail. The dialog shows the app version, its release channel, and the current update status.
 
-Where an update comes from depends on how you installed. The macOS app, the Windows installer and the Linux AppImage update themselves as described above. A Microsoft Store install is updated by the Store, the Ubuntu snap by the Snap Store, and the NixOS build by your package manager.
+Where an update comes from depends on how you installed. The macOS app, the Windows installer and the Linux AppImage update themselves as described above. A Microsoft Store or Mac App Store install is updated by its store, the Ubuntu snap by the Snap Store, and the NixOS build by your package manager.
 
 ## Open a project
 
