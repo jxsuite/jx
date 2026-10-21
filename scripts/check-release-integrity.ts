@@ -48,7 +48,31 @@
  * TAG AND NO RELEASE — not merely a missing publish — so this catches it. And it cannot fail the
  * way the npm probe did: `gh release view` is read-after-write consistent, so a 404 means the
  * release is genuinely absent rather than merely not replicated yet.
+ *
+ * ## Except on the daily sweep, behind a one-hour floor (`--npm`)
+ *
+ * What the release check cannot see is a release that exists while its publish does not. On the
+ * 2026-10-17 release the publish loop died at `@jxsuite/catalog` (a new package with no npm trusted
+ * publisher yet) and never attempted `@jxsuite/site@2.0.5` or `@jxsuite/runtime@5.0.0` behind it.
+ * Both had a tag and a GitHub release, so this gate was green, and every package published after
+ * them depended on versions npm did not have.
+ *
+ * So the SCHEDULED run passes `--npm`, and asks the registry about every npm-publishable component
+ * whose GitHub release is MORE THAN ONE HOUR OLD, never about a younger one, and never on the
+ * post-merge run. The lag that made the old probe 0-for-3 is at most minutes (187s was the worst
+ * ever measured); an hour is about nineteen times that, so the floor cannot race it, which is the
+ * difference between this and the "longer retry" the old probe would have needed. It is a floor on
+ * the RELEASE's age, not a wait, and it also keeps the scheduled run from judging a release it
+ * created itself minutes earlier. The sweep runs at 05:00 UTC, so a real gap is reported at the
+ * first sweep more than an hour after the release: within 25 hours at worst. It would have reported
+ * runtime and site at 05:00 on 2026-10-18, 12.8h after their releases.
+ *
+ * A registry answer that is neither 200 nor 404 (an outage, a rate limit) is printed as unknown and
+ * does not fail the run: only a definite 404 is a finding.
  */
+
+import { backfillCommand } from "./publish-released.ts";
+import { readWorkspaces } from "./lib/workspaces.ts";
 
 /** Release-please's config and the manifest it writes, repo-relative. */
 export const RELEASE_PLEASE_CONFIG = "release-please-config.json";
@@ -156,27 +180,152 @@ export function report(gaps: ReleaseTarget[]): string {
       "`release-please` job log for “Pull request contains releases, but not for component” " +
       "and read the header of `commitlint.config.ts`.",
     "",
-    "Nothing was published for a component with no release, so re-running `publish.yml` for it " +
-      "once the release exists is the second half of the fix — it is idempotent.",
+    "Nothing was published for a component with no release, so once the release exists, " +
+      "publish it with `gh workflow run release-please.yml -f backfill_paths='[\"<path>\"]' " +
+      "-f backfill_sha=<tag>` — it is idempotent.",
+  ].join("\n");
+}
+
+/** The npm half only judges releases older than this. See the header for why a day. */
+export const NPM_AGE_FLOOR_MS = 60 * 60 * 1000;
+
+/** A released, npm-publishable component, with when its GitHub release was published. */
+export interface NpmTarget extends ReleaseTarget {
+  /** The npm package name, e.g. `@jxsuite/runtime`. */
+  name: string;
+  releasedAt: Date;
+}
+
+/**
+ * The targets the npm half may ask about: npm-publishable (`desktop` ships as installers and is
+ * not), with a GitHub release (a missing one is the release half's finding), and released more than
+ * `floor` before `now`.
+ */
+export function npmCandidates(
+  targets: readonly ReleaseTarget[],
+  workspaces: readonly { dir: string; name: string; publishable: boolean }[],
+  releasedAt: ReadonlyMap<string, Date>,
+  now: Date,
+  floor = NPM_AGE_FLOOR_MS,
+): NpmTarget[] {
+  const candidates: NpmTarget[] = [];
+  for (const target of targets) {
+    const ws = workspaces.find((w) => w.dir === target.path);
+    const at = releasedAt.get(target.tag);
+    if (ws?.publishable && at && now.getTime() - at.getTime() > floor) {
+      candidates.push({ ...target, name: ws.name, releasedAt: at });
+    }
+  }
+  return candidates;
+}
+
+/** What the registry said about one version: a definite yes, a definite no, or no answer. */
+export type NpmVersionState = "present" | "absent" | "unknown";
+
+/** Ask the registry for one version's document: 200 is present, 404 absent, anything else unknown. */
+export async function registryProbe(
+  name: string,
+  version: string,
+  fetcher: (url: string) => Promise<{ status: number }> = (url) => fetch(url),
+): Promise<NpmVersionState> {
+  const url = `https://registry.npmjs.org/${name.replace("/", "%2f")}/${version}`;
+  try {
+    const { status } = await fetcher(url);
+    if (status === 200) {
+      return "present";
+    }
+    return status === 404 ? "absent" : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** Split candidates by what the registry answered. */
+export async function findUnpublished(
+  candidates: readonly NpmTarget[],
+  probe: (name: string, version: string) => Promise<NpmVersionState>,
+): Promise<{ absent: NpmTarget[]; unknown: NpmTarget[] }> {
+  const absent: NpmTarget[] = [];
+  const unknown: NpmTarget[] = [];
+  for (const c of candidates) {
+    const state = await probe(c.name, c.version);
+    if (state === "absent") {
+      absent.push(c);
+    } else if (state === "unknown") {
+      unknown.push(c);
+    }
+  }
+  return { absent, unknown };
+}
+
+export function npmReport(absent: readonly NpmTarget[], now: Date): string {
+  const hours = (d: Date) => Math.floor((now.getTime() - d.getTime()) / 3_600_000);
+  return [
+    ...absent.map(
+      (a) =>
+        `- **${a.name}@${a.version}** has had a GitHub release (\`${a.tag}\`) for ${hours(a.releasedAt)}h ` +
+        "and is NOT on npm",
+    ),
+    "",
+    "Anything that depends on these fails to install. The publish job attempts every package and " +
+      "names each failure in its summary; fix the cause there (an `E404` on `PUT` for a new package " +
+      "means npm has no trusted publisher for it yet), then publish from each release tag:",
+    "",
+    ...absent.map((a) => `    ${backfillCommand([a.path], a.tag)}`),
   ].join("\n");
 }
 
 if (import.meta.main) {
-  const releaseExists: ReleaseExists = async (tag) =>
-    Bun.spawnSync(["gh", "release", "view", tag, "--json", "tagName"], {
-      stderr: "ignore",
-      stdout: "ignore",
-    }).exitCode === 0;
+  const checkNpm = process.argv.includes("--npm");
+  const releasedAt = new Map<string, Date>();
+  const releaseExists: ReleaseExists = async (tag) => {
+    const proc = Bun.spawnSync(
+      ["gh", "release", "view", tag, "--json", "publishedAt", "--jq", ".publishedAt"],
+      { stderr: "ignore" },
+    );
+    if (proc.exitCode !== 0) {
+      return false;
+    }
+    const at = new Date(proc.stdout.toString().trim());
+    if (!Number.isNaN(at.getTime())) {
+      releasedAt.set(tag, at);
+    }
+    return true;
+  };
 
   const targets = await readTargets();
   const gaps = await findGaps(targets, releaseExists);
+  let failed = false;
 
   if (gaps.length === 0) {
     console.log(`All ${targets.length} released components have a GitHub release.`);
-    process.exit(0);
+  } else {
+    failed = true;
+    console.error(`${gaps.length} of ${targets.length} released components never shipped:\n`);
+    console.error(report(gaps));
   }
 
-  console.error(`${gaps.length} of ${targets.length} released components never shipped:\n`);
-  console.error(report(gaps));
-  process.exit(1);
+  if (checkNpm) {
+    const now = new Date();
+    const candidates = npmCandidates(targets, await readWorkspaces(), releasedAt, now);
+    const { absent, unknown } = await findUnpublished(candidates, (name, version) =>
+      registryProbe(name, version),
+    );
+    for (const u of unknown) {
+      console.log(`::warning::npm gave no definite answer for ${u.name}@${u.version}; not judged`);
+    }
+    if (absent.length === 0) {
+      console.log(
+        `All ${candidates.length} npm packages released more than an hour ago are readable on npm.`,
+      );
+    } else {
+      failed = true;
+      console.error(
+        `\n${absent.length} of ${candidates.length} npm packages released more than an hour ago are not on npm:\n`,
+      );
+      console.error(npmReport(absent, now));
+    }
+  }
+
+  process.exit(failed ? 1 : 0);
 }

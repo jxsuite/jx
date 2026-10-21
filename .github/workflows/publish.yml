@@ -2,31 +2,29 @@ name: Publish to npm
 permissions:
   id-token: write
   contents: read
+  # The publish step files unpublished packages on the release-incomplete issue.
+  issues: write
 
+# `workflow_call` ONLY, from release-please.yml, for every publish INCLUDING a backfill.
+#
+# Authentication is npm trusted publishing (OIDC): npm accepts the token only when the workflow
+# file that requested it is the one each package's trusted publisher names. Called as a reusable
+# workflow, that file is release-please.yml. Dispatched directly, it was publish.yml, and npm
+# refused every package with `E404 Not Found - PUT` (run 39607367057, and a July dispatch before
+# it). So the backfill entry point is release-please.yml's own `workflow_dispatch`:
+#
+#   gh workflow run release-please.yml -f backfill_paths='["packages/runtime"]' -f backfill_sha=<release commit or tag>
+#
+# There is deliberately no `workflow_dispatch` here: a trigger that can only fail is a trap.
 on:
   workflow_call:
     inputs:
       paths_released:
-        description: JSON array of package paths release-please released this run.
+        description: JSON array of package paths to publish (released this run, or a backfill).
         required: true
         type: string
       sha:
         description: Release commit (all component tags point here).
-        required: false
-        type: string
-        default: ""
-  # Manual entry point for backfilling a publish that release-please released but
-  # never pushed to npm (e.g. a package missing from the old hardcoded allowlist).
-  # Point `sha` at the release commit so package.json carries the released versions;
-  # the step is idempotent, so already-published packages are skipped.
-  workflow_dispatch:
-    inputs:
-      paths_released:
-        description: 'JSON array of package paths to publish, e.g. ["packages/collab","packages/protocol"].'
-        required: true
-        type: string
-      sha:
-        description: Commit or tag to check out and publish from (defaults to the branch head).
         required: false
         type: string
         default: ""
@@ -49,33 +47,50 @@ jobs:
       - run: npm install -g npm@latest
       - run: bun install
       - run: bun run build
-      - name: Publish released packages (topological, idempotent)
+      # The publish TOOLING comes from the caller's ref (github.sha is the dispatched branch head,
+      # or the release commit on a normal run), while the packages above come from `inputs.sha`.
+      # A backfill from a release tag checks out a tree that may predate publish-released.ts
+      # entirely (runtime-v5.0.0 does), so running the script from that tree would fail with
+      # module-not-found before publishing anything. Every script it runs reads the workspace from
+      # the working directory, so the old tree's packages and versions are what gets published.
+      # Checked out AFTER the build so nothing in it can join the install or the build.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tools
+          sparse-checkout: scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      # scripts/publish-released.ts takes the publish set and its topological order from
+      # scripts/publish-order.ts (released AND npm-publishable, derived, never a hand-kept list),
+      # then attempts EVERY package even when one fails. It used to be a `set -e` bash loop, which
+      # died at a new package with no trusted publisher (@jxsuite/catalog, run 39048400671) and
+      # never attempted site@2.0.5 or runtime@5.0.0 behind it. It writes a per-package table to the
+      # job summary and exits 1 at the end when anything failed. Idempotent: a version already on
+      # npm is skipped.
+      - name: Publish released packages (topological, every package attempted)
         env:
           PATHS_RELEASED: ${{ inputs.paths_released }}
+          RELEASE_SHA: ${{ inputs.sha || github.sha }}
+        run: bun .release-tools/scripts/publish-released.ts --issue-body publish-issue.md
+      # The publish job's own deterministic outcome, filed on the ONE issue verify-release-integrity
+      # also uses. It is not a registry probe, so it cannot race npm's write lag the way the removed
+      # one did (.github/AGENTS.md, "The post-merge gate does not ask npm").
+      - name: File unpublished packages on the release-incomplete issue
+        if: failure() && hashFiles('publish-issue.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          set -euo pipefail
-          # The publish set is derived from the released paths (not a hand-maintained
-          # list): scripts/publish-order.ts emits the package dirs to publish this run —
-          # those release-please released AND that are npm-publishable (not `private`,
-          # with a `publishConfig`; `desktop` ships as installers and is excluded because
-          # it has none) — in topological order so deps publish before dependents. The old
-          # hardcoded array silently dropped newly-added packages (protocol, collab).
-          order_out="$(bun scripts/publish-order.ts)"
-          mapfile -t order < <(printf '%s' "$order_out")
-          if [ "${#order[@]}" -eq 0 ]; then
-            echo "No npm packages released this run; nothing to publish."
-            exit 0
+          set -uo pipefail
+          title="Released versions that never shipped"
+          open="$(gh issue list --state open --label release-incomplete \
+                    --search "$title in:title" --json number --jq '.[0].number // empty')"
+          if [ -z "$open" ]; then
+            gh label create release-incomplete --color B60205 \
+              --description "A release shipped incomplete: a missing asset, publish, tag or cache entry" \
+              2>/dev/null || true
+            gh issue create --title "$title" --label release-incomplete --body-file publish-issue.md
+          else
+            gh issue comment "$open" --body-file publish-issue.md
           fi
-          # publish-order.ts emits full repo-relative workspace paths
-          # (packages/* and extensions/*).
-          for pkg in "${order[@]}"; do
-            name="$(node -p "require('./$pkg/package.json').name")"
-            ver="$(node -p "require('./$pkg/package.json').version")"
-            echo "::group::$pkg -> $name@$ver"
-            if npm view "$name@$ver" version >/dev/null 2>&1; then
-              echo "already published, skipping"
-            else
-              ( cd "$pkg" && bun pm pack && npm publish --provenance *.tgz )
-            fi
-            echo "::endgroup::"
-          done
