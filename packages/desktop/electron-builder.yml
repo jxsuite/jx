@@ -7,7 +7,7 @@
 # Electron is pinned here rather than installed: the npm `electron` package downloads a ~100 MB
 # binary in a postinstall this repository avoids, and electron-builder fetches the same release
 # itself. Keep the version equal to nixpkgs' `electron`, which the Nix package runs.
-appId: com.jxsuite.jx-studio
+appId: com.jxsuite.studio
 productName: Jx Studio
 copyright: Copyright © Avunu LLC
 electronVersion: 43.7.7

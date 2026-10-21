@@ -12,10 +12,6 @@
 import { resolve } from "node:path";
 
 const desktopDir = resolve(import.meta.dir, "..");
-/* The identifier registered in the Apple developer portal and named by the provisioning profile and
-   the application-identifier entitlement. The DMG keeps `appId` from electron-builder.yml, so only
-   the Mac App Store build is overridden. */
-const MAS_APP_ID = "com.jxsuite.studio";
 const PLATFORMS = { linux: "linux", mac: "darwin", mas: "darwin", win: "win32" } as const;
 type Target = keyof typeof PLATFORMS;
 
@@ -77,7 +73,7 @@ await run([
   "--config",
   "electron-builder.yml",
   // Electron-builder has no `--mas` switch: the Mac App Store build is `--mac mas`.
-  ...(target === "mas" ? ["--mac", "mas", `-c.appId=${MAS_APP_ID}`] : [`--${target}`]),
+  ...(target === "mas" ? ["--mac", "mas"] : [`--${target}`]),
   `--${arch}`,
   ...passthrough,
 ]);
