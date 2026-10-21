@@ -44,6 +44,13 @@
 
 import type { SyncRule, UserConfig } from "@commitlint/types";
 
+import {
+  PARSE_ADVICE,
+  describeFailures,
+  findParseFailures,
+  stripGitComments,
+} from "./scripts/lib/release-please-commits.ts";
+
 /**
  * Anything a browser's HTML parser would treat as a tag: an element (`<picture>`, `</details>`,
  * `<img src="…">`) or a comment opener. Deliberately NOT matched: `a < b`, `->`, `<3` — the
@@ -129,6 +136,22 @@ export function changelogSafetyAdvice(problems: readonly ChangelogUnsafePart[]):
 }
 
 /**
+ * The message release-please would parse must be one it CAN parse: an unparseable message is
+ * dropped from every component's changelog and release, silently. The reproduction of
+ * release-please's reading, and the PR #466 incident that motivated it, are in
+ * `scripts/lib/release-please-commits.ts`; `scripts/check-release-parse.ts` applies the same check
+ * in CI to the pull request's commits and to the squash message GitHub will compose.
+ */
+const releasePleaseParseable: SyncRule = (parsed) => {
+  const message = stripGitComments(parsed.raw ?? "");
+  const failures = findParseFailures("this commit message", message);
+  if (failures.length === 0) {
+    return [true, ""];
+  }
+  return [false, `\n${describeFailures(failures)}\n\n${PARSE_ADVICE}`];
+};
+
+/**
  * `parsed.raw` is the whole message; `SyncRule` types it as `string | null | undefined` because
  * `Commit` carries its non-standard fields through an index signature.
  */
@@ -147,6 +170,7 @@ const config: UserConfig = {
     {
       rules: {
         "changelog-safe-angle-brackets": changelogSafeAngleBrackets,
+        "release-please-parseable": releasePleaseParseable,
       },
     },
   ],
@@ -154,6 +178,8 @@ const config: UserConfig = {
     // An error rather than a warning because the failure it prevents is SILENT: nothing goes
     // Red when it happens, a package simply stops being released. See this file's header.
     "changelog-safe-angle-brackets": [2, "always"],
+    // An error for the same reason: release-please drops a message it cannot parse, quietly.
+    "release-please-parseable": [2, "always"],
     "subject-case": [2, "never", ["upper-case"]],
     "subject-empty": [2, "never"],
     "type-empty": [2, "never"],

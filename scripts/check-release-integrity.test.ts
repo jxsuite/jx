@@ -13,8 +13,20 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { UNRELEASED, findGaps, readTargets, report, tagFor } from "./check-release-integrity.ts";
-import type { ReleaseTarget } from "./check-release-integrity.ts";
+import {
+  NPM_AGE_FLOOR_MS,
+  UNRELEASED,
+  findGaps,
+  findUnpublished,
+  npmCandidates,
+  npmReport,
+  readTargets,
+  registryProbe,
+  report,
+  tagFor,
+} from "./check-release-integrity.ts";
+import type { NpmTarget, ReleaseTarget } from "./check-release-integrity.ts";
+import { readWorkspaces } from "./lib/workspaces.ts";
 
 const CONFIG = {
   "include-v-in-tag": true,
@@ -126,7 +138,10 @@ describe("report", () => {
     expect(text).toContain("starters-v1.5.0");
     expect(text).toContain("but not for component");
     expect(text).toContain("commitlint.config.ts");
-    expect(text).toContain("publish.yml");
+    // The publish backfill goes through release-please.yml: npm's trusted publisher refuses a
+    // Token requested by publish.yml dispatched on its own.
+    expect(text).toContain("gh workflow run release-please.yml -f backfill_paths=");
+    expect(text).not.toContain("gh workflow run publish.yml");
   });
 
   test("says nothing about npm, which this gate no longer asks and cannot answer for", async () => {
@@ -134,5 +149,99 @@ describe("report", () => {
     // The registry probe was 0-for-3 on real failures; see this file's counterpart header.
     expect(text).not.toContain("npm view");
     expect(text).not.toContain("not on npm");
+  });
+});
+
+/**
+ * The npm half, which only the daily scheduled sweep runs (`--npm`), and only for releases older
+ * than a day. The case is 2026-10-17: the publish loop died before `site@2.0.5` and
+ * `runtime@5.0.0`, both of which had a GitHub release, so the release half stayed green.
+ */
+describe("the npm half (--npm, scheduled sweep only)", () => {
+  const NOW = new Date("2026-10-18T05:00:00Z");
+  const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
+  const WORKSPACES = [
+    { dir: "packages/runtime", name: "@jxsuite/runtime", publishable: true },
+    { dir: "packages/site", name: "@jxsuite/site", publishable: true },
+    { dir: "packages/desktop", name: "@jxsuite/desktop", publishable: false },
+  ];
+  const runtime = target({ path: "packages/runtime", tag: "runtime-v5.0.0", version: "5.0.0" });
+  const site = target({ path: "packages/site", tag: "site-v2.0.5", version: "2.0.5" });
+  const desktop = target({ path: "packages/desktop", tag: "desktop-v3.0.0", version: "3.0.0" });
+
+  test("the floor is an hour: far above the worst write lag ever measured (187s)", () => {
+    expect(NPM_AGE_FLOOR_MS).toBe(3_600_000);
+    expect(NPM_AGE_FLOOR_MS).toBeGreaterThan(187_000 * 19);
+  });
+
+  test("asks only about releases OLDER than the floor, so it can never race the registry", () => {
+    const at = new Map([
+      ["runtime-v5.0.0", hoursAgo(1.5)],
+      ["site-v2.0.5", hoursAgo(0.9)],
+    ]);
+    const picked = npmCandidates([runtime, site], WORKSPACES, at, NOW);
+    expect(picked.map((c) => c.name)).toEqual(["@jxsuite/runtime"]);
+    // Exactly at the floor is still too young.
+    const edge = new Map([["runtime-v5.0.0", hoursAgo(1)]]);
+    expect(npmCandidates([runtime], WORKSPACES, edge, NOW)).toEqual([]);
+  });
+
+  test("skips what npm never receives, and what has no GitHub release (the other half's finding)", () => {
+    const at = new Map([["desktop-v3.0.0", hoursAgo(48)]]);
+    expect(npmCandidates([desktop, runtime], WORKSPACES, at, NOW)).toEqual([]);
+    const stranger = target({ path: "packages/unknown", tag: "unknown-v1.0.0" });
+    const old = new Map([["unknown-v1.0.0", hoursAgo(48)]]);
+    expect(npmCandidates([stranger], WORKSPACES, old, NOW)).toEqual([]);
+  });
+
+  test("the publishable filter is the repository's own: desktop is out, runtime and site are in", async () => {
+    const real = await readWorkspaces();
+    const publishable = new Set(real.filter((w) => w.publishable).map((w) => w.dir));
+    expect(publishable.has("packages/desktop")).toBe(false);
+    expect(publishable.has("packages/runtime")).toBe(true);
+    expect(publishable.has("packages/site")).toBe(true);
+  });
+
+  test("the 2026-10-17 case: both found at the next morning's sweep, each with its own recovery command", async () => {
+    // Released 2026-10-17T16:12:45Z; the 05:00 sweep on 2026-10-18 sees them 12.8h old.
+    const releasedOn1017 = new Date("2026-10-17T16:12:45Z");
+    const at = new Map([
+      ["runtime-v5.0.0", releasedOn1017],
+      ["site-v2.0.5", releasedOn1017],
+    ]);
+    const candidates = npmCandidates([runtime, site], WORKSPACES, at, NOW);
+    const { absent, unknown } = await findUnpublished(candidates, () => Promise.resolve("absent"));
+    expect(unknown).toEqual([]);
+    const text = npmReport(absent, NOW);
+    expect(text).toContain(
+      "**@jxsuite/runtime@5.0.0** has had a GitHub release (`runtime-v5.0.0`) for 12h",
+    );
+    expect(text).toContain(
+      `gh workflow run release-please.yml -f backfill_paths='["packages/site"]' -f backfill_sha=site-v2.0.5`,
+    );
+  });
+
+  test("an indefinite registry answer is reported apart and does not count as absent", async () => {
+    const outage: NpmTarget = { ...runtime, name: "@jxsuite/runtime", releasedAt: hoursAgo(30) };
+    const fine: NpmTarget = { ...site, name: "@jxsuite/site", releasedAt: hoursAgo(30) };
+    const result = await findUnpublished([outage, fine], (name) =>
+      Promise.resolve(name === outage.name ? "unknown" : "present"),
+    );
+    expect(result).toEqual({ absent: [], unknown: [outage] });
+  });
+
+  test("registryProbe: 200 present, 404 absent, anything else or a throw is unknown", async () => {
+    const urls: string[] = [];
+    const answer = (status: number) => (url: string) => {
+      urls.push(url);
+      return Promise.resolve({ status });
+    };
+    expect(await registryProbe("@jxsuite/runtime", "5.0.0", answer(200))).toBe("present");
+    expect(await registryProbe("@jxsuite/runtime", "5.0.0", answer(404))).toBe("absent");
+    expect(await registryProbe("@jxsuite/runtime", "5.0.0", answer(503))).toBe("unknown");
+    expect(
+      await registryProbe("@jxsuite/runtime", "5.0.0", () => Promise.reject(new Error("offline"))),
+    ).toBe("unknown");
+    expect(urls[0]).toBe("https://registry.npmjs.org/@jxsuite%2fruntime/5.0.0");
   });
 });

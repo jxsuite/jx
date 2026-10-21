@@ -265,6 +265,10 @@ jobs:
   # and the 87s mutation gate is its own job below.
   checks:
     runs-on: ubuntu-latest
+    # `pull-requests: read` lets check-release-parse.ts fetch the current title and body.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -441,6 +445,28 @@ jobs:
           bun scripts/check-changelog-safety.ts \
             --from ${{ github.event.pull_request.base.sha }} \
             --to ${{ github.event.pull_request.head.sha }}
+      # Parseability: release-please DROPS a commit message @conventional-commits/parser cannot
+      # parse, from every component at once, and logs it only at DEBUG. PR #466's squash message
+      # concatenated 56 branch commits and one body line opened with `toBe(strip())`, so runtime,
+      # site and connector got no release. This parses every branch commit (a rebase merge lands
+      # each) and the squash message GitHub will compose, or only the BEGIN_COMMIT_OVERRIDE block
+      # when the body has one. The title and body are fetched, not read from the event payload,
+      # so re-running after adding an override block sees it. See
+      # scripts/lib/release-please-commits.ts.
+      - name: Commit messages must be parseable by release-please
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Fallbacks for when the API is unreachable. Passed through env, never interpolated
+          # into the script, because both are attacker-controlled text on a fork's pull request.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          bun scripts/check-release-parse.ts \
+            --from ${{ github.event.pull_request.base.sha }} \
+            --to ${{ github.event.pull_request.head.sha }} \
+            --pr ${{ github.event.pull_request.number }}
 
   # Its own job because it is 87 of the 159 seconds `checks` used to take, and everything else
   # in there is 0-4s. It is gated on studio's OWN tree — not on studio merely being retested —
