@@ -2,9 +2,9 @@
 
 ## Extension Packages, Schema Composition, and the Capability Contract
 
-**Version:** 0.4.9-draft\
+**Version:** 0.4.11-draft\
 **Status:** Partial\
-**Updated:** 2026-10-17\
+**Updated:** 2026-10-21\
 **License:** MIT
 
 Supersedes v1 ("Format-Extension Classes and the Capability Contract"). The format-class contract from v1 survives unchanged (§6–§8); v2 adds the package layer around it: extension packages, manifest-driven registration, JSON-Schema composition, project sections, server mounts, and the studio settings vocabulary. The relationships vocabulary has a companion spec: [relationships.md](./relationships.md).
@@ -781,6 +781,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.11-draft** (2026-10-21) — §9.1: a $studio.settings block may declare group (general, integrations or advanced; integrations by default), which places the section in the studio's settings nav.
+- **0.4.10-draft** (2026-10-21) — §9.1 $studio.settings gains intro (the section's own opening sentence) and entry.noun (what one map entry is called).
 - **0.4.9-draft** (2026-10-17) — §8: `projectData` may be asked for a section on demand (`lazy`); on-demand data offers `complete()`, and a host completes it for any class that does not declare `static projectOnDemand = true`.
 - **0.4.8-draft** (2026-10-07) — An exportTarget sidecar is advertised from its page with a link rel=alternate (site-architecture.md 8.4.3); a format with no mediaType is exported but not advertised.
 - **0.4.7-draft** (2026-10-06) — §8 the resolvePaths context carries the expanding page's urlPattern and params and every dynamic page's pattern, discover takes an exclude option, an asset mount may carry a filter, and a host refuses a page URL that climbs out of the output directory.
@@ -817,4 +819,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Extensions Specification v0.4.9-draft_
+_Jx Extensions Specification v0.4.11-draft_

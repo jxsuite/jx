@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.2.33-draft\
+**Version:** 0.2.39-draft\
 **Status:** Partial\
-**Updated:** 2026-10-18\
+**Updated:** 2026-10-21\
 **License:** MIT
 
 ---
@@ -353,6 +353,12 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.39-draft** (2026-10-21) — §3 static files: a bare npm specifier is resolved through the active project's node_modules before the server root's.
+- **0.2.38-draft** (2026-10-21) — §4.1 DELETE file removes an empty folder and answers 409 for a folder that still holds files.
+- **0.2.37-draft** (2026-10-21) — §4.1 GET /__studio/file accepts optional=1, answering a missing file as 200 { content: null } with no-store instead of a 404.
+- **0.2.36-draft** (2026-10-21) — §4.1 a listing of a missing directory answers 404 notFound, and an entry beside the active project is reported relative to it (../../docs/…), as every response path already was to be.
+- **0.2.35-draft** (2026-10-21) — §4.1: every source-control route takes the project it acts on as ?dir=, under the file routes' access rule, so two Studio sessions on one server never act on each other's project; status lists every untracked file.
+- **0.2.34-draft** (2026-10-21) — §4.1 git log answers an unborn HEAD with an empty list.
 - **0.2.33-draft** (2026-10-18) — §3.5 records that the static file lanes answer from the server's one active project root, so two Studio tabs on different projects read each other's media; the git routes' per-request dir parameter cannot carry over to authored site-absolute URLs, and an origin per project is what closes it (Pending). The spec returns to Partial.
 - **0.2.32** (2026-10-17) — §3.2: the resolve proxy requests sections on demand and completes them for classes that read them synchronously.
 - **0.2.31** (2026-10-17) — §3: the per-project context cache shares an in-flight load, and serving a file no longer loads the extension sections.
@@ -400,4 +406,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.2.33-draft_
+_`@jxsuite/server` Specification v0.2.39-draft_

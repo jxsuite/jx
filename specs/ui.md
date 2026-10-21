@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.59-draft\
+**Version:** 0.1.61-draft\
 **Status:** Partial\
-**Updated:** 2026-10-17\
+**Updated:** 2026-10-21\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -441,6 +441,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.61-draft** (2026-10-21) — The jx-inline-edit rationale names the Page tab's title field rather than the removed Document Header card.
+- **0.1.60-draft** (2026-10-21) — The window-drag platform class is named app-region-drag, and the hint fallback note refers to the Electron build's bundled Chromium.
 - **0.1.59-draft** (2026-10-17) — Bound kit props render live in Design mode (§10).
 - **0.1.58-draft** (2026-10-07) — jx-dialog gains confirm-disabled and an xl size, and when open is a column whose body scrolls under a pinned header and footer (§5.2).
 - **0.1.57-draft** (2026-09-29) — Census against the code: §3, §5, §5.3, §9 and §10 are marked Implemented (§9 with the compiled distribution as a Future remainder), the overview markers on §1 and §4 are removed, §2, §5.1, §5.2, §5.4, §5.5, §6 and §7 are re-marked to name what is actually short, and §3.1, §3.2, §3.3 and §4.1 gain Partial markers for where the code and the text disagree.
@@ -504,4 +506,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.59-draft_
+_Jx UI Kit Specification v0.1.61-draft_

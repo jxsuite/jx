@@ -2,9 +2,9 @@
 
 ## Real-Time Co-Editing for Jx Projects
 
-**Version:** 0.2.8-draft\
+**Version:** 0.2.9-draft\
 **Status:** Partial\
-**Updated:** 2026-10-04\
+**Updated:** 2026-10-21\
 **License:** MIT
 
 ---
@@ -124,6 +124,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.9-draft** (2026-10-21) — The desktop launchers section names the one desktop adapter, chromium/platform.ts, in place of the retired ElectroBun adapter.
 - **0.2.8-draft** (2026-10-04) — §2 the collab socket reconnects on equal-jitter backoff, and a pending retry runs immediately on the online, back/forward-cache pageshow and visibilitychange wake signals.
 - **0.2.7-draft** (2026-10-04) — §4 a negative capability probe may carry a detail, which the client reports as its refusal instead of calling the room disabled.
 - **0.2.6-draft** (2026-09-29) — Census against the code: §1, §2, §3, §3.1 and §4 marked Partial, the §5 marker corrected to say that merge-granularity skew is unguarded, and the whole-spec marker updated to name the shipped modules the stub does not yet specify.
@@ -138,4 +139,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/collab` Specification v0.2.8-draft — a stub, subject to expansion._
+_Jx `@jxsuite/collab` Specification v0.2.9-draft — a stub, subject to expansion._

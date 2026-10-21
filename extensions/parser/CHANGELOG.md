@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.0.0](https://github.com/jxsuite/jx/compare/parser-v3.0.0...parser-v4.0.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **desktop:** installed Electrobun builds cannot update into this app; reinstall once.
+
+### Features
+
+* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([be1534f](https://github.com/jxsuite/jx/commit/be1534f616d7176b4a2098cd4d232808cf5c7482))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.0
+
 ## [3.0.0](https://github.com/jxsuite/jx/compare/parser-v2.0.1...parser-v3.0.0) (2026-10-17)
 
 

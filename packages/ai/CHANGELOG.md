@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.39.5](https://github.com/jxsuite/jx/compare/ai-v0.39.4...ai-v0.39.5) (2026-10-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 4.0.0
+
 ## [0.39.4](https://github.com/jxsuite/jx/compare/ai-v0.39.3...ai-v0.39.4) (2026-10-17)
 
 

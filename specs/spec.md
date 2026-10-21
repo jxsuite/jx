@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.7.2-draft\
+**Version:** 0.7.6-draft\
 **Status:** Partial\
-**Updated:** 2026-10-17\
+**Updated:** 2026-10-21\
 **License:** MIT
 
 ---
@@ -2680,6 +2680,10 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.7.6-draft** (2026-10-21) — The binding-bounce example names the build adapter picker, since the branch picker it cited was removed.
+- **0.7.5-draft** (2026-10-21) — §16.4: a throwing ${…} template binding is not a failed render, since it survives its expression throwing (§6.1); the report covers throws elsewhere in the render.
+- **0.7.4-draft** (2026-10-21) — §5.3 4c: the interpreter imports an npm: specifier through the host's resolver; §15.4: templates read $page and $site bare; §16.2: a $props binding of an HTMLElement-named prop reaches state after connection; §16.4: a render that threw is drawn again when its inputs change, and onMount runs with the host as this.
+- **0.7.3-draft** (2026-10-21) — §16.4: a render that throws at connection is reported on the console and as a jx-error event instead of escaping as an unhandled rejection; onMount does not run for that instance.
 - **0.7.2-draft** (2026-10-17) — §8.5 states one slot distribution rule (capture, group, place, forward) and the interpreter, the compiled component module and the static prerender all apply it: whitespace-only text is discarded, the first slot of a name takes its group, fallback follows a group with no content, a forwarded slot is grouped by its own slot attribute, and a prerendered instance recovers its bracketed children on upgrade; §16.6 names data-jx-slots among the hydration markers.
 - **0.7.1-draft** (2026-10-17) — A throwing template binding renders nothing and re-runs when its data arrives (§6.1); self-target reactive declarations use positional --jx-s<m> variables and share one rule set (§9.6); native-named props forward into state (§16.2).
 - **0.7.0-draft** (2026-10-17) — §5.3 Shape 3: a single-expression template keeps its own type in every tier (was a string in the runtime and the compiled targets).
@@ -2775,4 +2779,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.7.2-draft — subject to revision_
+_Jx Specification v0.7.6-draft — subject to revision_
