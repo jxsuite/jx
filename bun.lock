@@ -11,6 +11,7 @@
         "@commitlint/cli": "^21.2.4",
         "@commitlint/config-conventional": "^21.2.4",
         "@commitlint/types": "^21.2.3",
+        "@conventional-commits/parser": "0.4.1",
         "@types/bun": "1.4.3",
         "ai-deslop": "0.4.8",
         "bun-types": "^1.4.3",

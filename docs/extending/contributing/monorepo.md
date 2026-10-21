@@ -3,6 +3,9 @@ title: "Working in the monorepo"
 description: "Repo layout, running Studio from source, tests, and the conventions the Jx monorepo enforces in CI."
 code:
   - scripts/ci/affected.ts
+  - scripts/check-release-parse.ts
+  - scripts/publish-released.ts
+  - scripts/check-release-integrity.ts
   - scripts/docs/check-plans.ts
   - scripts/ci/approve-held-runs.ts
   - scripts/check-schema-freshness.ts
@@ -114,6 +117,26 @@ It is its own gate rather than part of `schema:verify`, which derives its file s
 Versions are release-please's job. Every publishable workspace is a component in `release-please-config.json` with a matching `.release-please-manifest.json` entry, and both lists are **derived-checked** by `scripts/release-config.test.ts`. A package that is publishable but unlisted is never versioned, tagged or published, and nothing else in the pipeline can notice. Two extensions sat in exactly that state before the check existed.
 
 A new package enters the manifest at `0.0.0`, which release-please reads as "no release yet", and names its first version with `initial-version` in its config entry (`0.1.0` for a pre-1.0 package; release-please's default is `1.0.0`). The integrity gate (`bun run release:integrity`) skips a `0.0.0` entry for the same reason: it claims nothing until the first release pull request lands. Seeding the manifest with a version that was never released is the other way round, and it is how `packages/catalog` came to claim a `0.1.0` no release ever shipped.
+
+A new package also needs a **trusted publisher on npm** before its first release, naming the `jxsuite/jx` repository and the workflow `release-please.yml`. Publishing authenticates through OIDC with no token, and npm refuses a package it has no trusted publisher for with `E404 Not Found` on the `PUT`. The publish job attempts every released package even when one fails, lists each outcome in its job summary, and files the unpublished ones on the `release-incomplete` issue with the command that publishes them:
+
+```sh
+gh workflow run release-please.yml -f backfill_paths='["packages/runtime"]' -f backfill_sha=runtime-v5.0.0
+```
+
+That dispatch skips release-please and runs only the npm publish. The packages and their versions come from the commit or tag you name, and the publish scripts come from the branch you dispatch on, so a tag older than the scripts still works. It goes through `release-please.yml` rather than `publish.yml` because npm matches the trusted publisher against the workflow that requested the token. A version already on npm is skipped, so a backfill of something that was never missing does nothing.
+
+**Every commit message must be one release-please can parse.** It drops a message its parser rejects from every component at once, with no changelog line and no version bump, and says so only in a debug log. A body line that opens with a call nested inside a call, such as `` `toBe(strip())` printed… ``, is enough. `checks` parses every commit on the pull request and the squash message GitHub will compose from them (`bun run release:parseable` runs the commit half locally, and the commit hook runs it as you commit). To fix a failure, reword the line it names, or add a block to the pull request description that release-please reads instead of every commit message:
+
+```text
+BEGIN_COMMIT_OVERRIDE
+feat(runtime): one conventional commit per paragraph
+
+fix(site): another one
+END_COMMIT_OVERRIDE
+```
+
+Then re-run the check. The same block on an already-merged pull request, followed by `gh workflow run release-please.yml`, puts a dropped change back into the next release.
 
 Two branches:
 

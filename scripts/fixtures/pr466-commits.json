@@ -1,0 +1,17 @@
+[
+  {
+    "author": "Kevin Shenk <test@test.com>",
+    "message": "feat(studio): five top-bar workspaces with tab ownership and frame presets\n\nReplace named layouts with Design, Content, Media, Styles and Publish\nworkspaces: a top-bar tablist (mod+1..5), per-workspace frame presets,\ntab ownership derived from each tab, workspace home tabs, the gear menu\nin the command bar, and the target-state spec for the redesign.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+    "sha": "c33341254f62f96b398c88e7dbd122ab200c695b"
+  },
+  {
+    "author": "Kevin Shenk <test@test.com>",
+    "message": "fix(studio): settle the quick-publish chevron test and print DOM nodes compactly on failure\n\nRoot cause: the chevron renders inside its own part=\"quick-slot\" wrapper, so\n`button.previousElementSibling` is always null. On CI (Bun 1.4.3) the failing\n`toBe(strip())` printed both live kit elements' reactive graphs (2.8M lines) and\nthe job stalled until its cap; on Bun 1.4.2 it silently passed. The test now\nasserts the slot follows the strip and holds only the chevron.\n\nGuard: @jxsuite/ui/testing/inspect-dom defines Bun's inspect.custom hook on\nhappy-dom's Node.prototype, installed by a bunfig preload in studio and ui, so a\nfailing toBe between elements prints one line per node. A spawned fixture\nproves it. Deep equality on live kit elements is still not covered.\n\nCI: bun test runs under a 12-minute `timeout` with an ::error:: naming the\nstalled workspace, a 14-minute step cap backs it, and setup-bun pins 1.4.3\nexactly instead of the floating 1.4.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+    "sha": "8d282434cfd878dd5edac669957ac0c4e5167eca"
+  },
+  {
+    "author": "jx-screenshots[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+    "message": "chore(screenshots): re-capture for 8679a5c099bf65dce8ec4ccef237cb7a9e9b0d6d\n\nWritten by .github/workflows/screenshots.yml. Review the pictures, not the bytes.",
+    "sha": "43bc2dd2ee37cf6804a996d5a68808de882298f1"
+  }
+]
