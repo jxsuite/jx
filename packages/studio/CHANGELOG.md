@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.0.1](https://github.com/jxsuite/jx/compare/studio-v8.0.0...studio-v8.0.1) (2026-10-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.17
+    * @jxsuite/formulas bumped to 0.0.23
+    * @jxsuite/runtime bumped to 5.1.0
+    * @jxsuite/site bumped to 2.1.0
+    * @jxsuite/ui bumped to 0.7.1
+
 ## [8.0.0](https://github.com/jxsuite/jx/compare/studio-v7.0.0...studio-v8.0.0) (2026-10-21)
 
 
