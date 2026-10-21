@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.21-draft\
+**Version:** 0.8.28-draft\
 **Status:** Partial\
-**Updated:** 2026-10-16\
+**Updated:** 2026-10-21\
 **Applies to:** `packages/studio/`
 
 ---
@@ -981,6 +981,13 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.28-draft** (2026-10-21) — The block action bar's step-aside rule no longer names the removed Document Header card, and §4.4's debounce status no longer cites its deleted panel module.
+- **0.8.27-draft** (2026-10-21) — §12.5 names what is left of the second action list now that Source Control is the Publish workspace and its no-repository bypass is gone, and §12.3 finds the renamed Create GitHub repository button in Publish › Review changes.
+- **0.8.26-draft** (2026-10-21) — §8.4 and §12.1 name the Command Bar's ⚙ Settings menu, which moved off the rail's foot.
+- **0.8.25-draft** (2026-10-21) — The waits-on-a-person set loses content.newEntry and library.newEntry, and file.new is named as the record that projects by never awaiting its dialog.
+- **0.8.24-draft** (2026-10-21) — §3.1: the pane's tab strip is drawn in Design and Content only, taken out of every cell by the tabs-hidden class in Media, Styles and Publish, whose context bar leads with a Back control instead.
+- **0.8.23-draft** (2026-10-21) — The Inspector dock admits document-level tabs beside selection ones, and its Element tab's sub-switch ships as a control inside the tab's body; §3.1 states which parts of the per-workspace frame ship.
+- **0.8.22-draft** (2026-10-21) — §3.1 draws the shell grid as it ships and the docks each workspace hides by an #app class, §3.2 gives each of the three docks its own anatomy with a three-tab Inspector, and §12.2 states that a tab's sub-switch and the workspace switcher are not dock tabs.
 - **0.8.21-draft** (2026-10-16) — §4.4 status note: seo-modal and settings-head now share HEAD_EDIT_DEBOUNCE (300ms) from ui/timing.ts instead of each keeping a local EDIT_DEBOUNCE_MS; the delay is unchanged.
 - **0.8.20-draft** (2026-10-06) — §3.1 The status bar's centre field is the breadcrumb trail, silenced in the live region; the 10px breadcrumb exception is gone (crumbs inherit the status bar's 11px).
 - **0.8.19-draft** (2026-09-29) — §9.3 is Partial: the name-to-callback renderer registry in store.ts, and the callers that repaint it by name, have not yet retired in favour of effects over reactive state.

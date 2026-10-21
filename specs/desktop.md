@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.5.11-draft\
+**Version:** 0.6.1-draft\
 **Status:** Partial\
-**Updated:** 2026-10-17\
+**Updated:** 2026-10-21\
 **License:** MIT
 
 ---
@@ -1192,6 +1192,14 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.6.1-draft** (2026-10-21) — §7.3: a declared collection source outside the project root is reachable for the file operations, as on the dev server.
+- **0.6.0-draft** (2026-10-21) — ElectroBun is removed and the Electron application is the one desktop framework: section 7 becomes the packaging chapter (electron-builder, the staged backend and its smoke test, self-updates through electron-updater, signing and the release lanes), the shared services server and the updater, window and canvas-URL RPC requests are gone, the Windows installer is NSIS with a Store appx in place of the MSI, Linux ships an AppImage, and section 9.3 graduates.
+- **0.5.17-draft** (2026-10-21) — Adds the Electron application: Electron as the root process owning every window, a Bun backend owning every project over a validated JSON IPC protocol, one session and server and token per window, single-instance launches, native dialogs and the macOS File menu.
+- **0.5.16-draft** (2026-10-21) — The NixOS build draws its window with a frameless Electron shell, so Studio's own titlebar, window buttons and drag region now ship on Linux; records why Chrome 155's windowing controls cannot do this.
+- **0.5.15-draft** (2026-10-21) — Records that the unpacked Linux arm64 application was built and run on Ubuntu 24.04, with its staged backend passing the smoke test, and that only the AppImages remain unrun.
+- **0.5.14-draft** (2026-10-21) — The Nix package runs the Electron application: a build-time bundle, a wrapper that starts Electron on it, a bare project argument that works unpackaged, and the application's name and profile pinned before its single-instance lock; Electron's default native Wayland replaces the launcher's Ozone flags.
+- **0.5.13-draft** (2026-10-21) — The snap runs the Electron application like every other channel (9.6); 9.7 is Implemented, and the snap's hardware-accelerated rendering is recorded as unmeasured rather than as a reason to keep a second shell.
+- **0.5.12-draft** (2026-10-21) — The launcher's Electron shell also runs on macOS (opt-in through ELECTRON_BIN): an application menu, the Dock identity and AppleScript pickers; --class is Linux-only and ELECTRON_RUN_AS_NODE no longer leaks into the shell.
 - **0.5.11-draft** (2026-10-17) — §6.1 names resolveCanvasDocument, not the removed collectTags.
 - **0.5.10-draft** (2026-10-07) — Open Project on the cloud picks a project folder within the chosen repository (listRepoProjects, and importProject's dir), and a cloud project's root key, editor URL and session revision carry that folder in git's rev:path notation (§4.1, §4.2, §10.1).
 - **0.5.9-draft** (2026-10-04) — §3.1 a backend that sets DirEntry.version may answer a documentBaseUrl request with an immutable cache lifetime only when ?v= is a version it issued and it returns exactly the bytes that version names, an older one included (the browser keeps that answer for good, so Studio keeps versions true); an unrecognized v and every unversioned URL keep the revalidating response. §10.1 the cloud adapter reports its event stream's first open as an "open" resync.
@@ -1264,4 +1272,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.5.11-draft_
+_Jx Studio Desktop Architecture Specification v0.6.1-draft_
