@@ -15,7 +15,7 @@
 
 ---
 
-[![codecov](https://codecov.io/gh/jxsuite/jx/graph/badge.svg?token=4ZDC9K0CDD)](https://codecov.io/gh/jxsuite/jx)
+[![codecov](https://codecov.io/gh/jxsuite/jx/graph/badge.svg?token=4ZDC9K0CDD)](https://codecov.io/gh/jxsuite/jx) [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/jxsuite/jx?utm_source=badge)
 
 ## What is Jx?
 

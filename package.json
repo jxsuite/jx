@@ -80,12 +80,14 @@
     "schema:clean-roots": "bun scripts/check-shadowed-core.ts --fix",
     "schema:generate-all": "bun run schema:clean-roots && bun scripts/generate-schemas.ts",
     "schema:sync": "bun scripts/check-schema-freshness.ts --fix",
-    "schema:validate-all": "bun scripts/validate-schemas.ts"
+    "schema:validate-all": "bun scripts/validate-schemas.ts",
+    "bench": "vitest bench --run --config bench/vitest.config.ts"
   },
   "dependencies": {
     "@jxsuite/server": "workspace:^"
   },
   "devDependencies": {
+    "@codspeed/vitest-plugin": "^6.1.0",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@commitlint/types": "^21.2.3",
@@ -104,7 +106,8 @@
     "release-please": "^17.11.2",
     "ts-migrate": "^0.1.35",
     "ts-migrate-plugins": "^0.1.35",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
   },
   "nano-staged": {
     "*.md": [
