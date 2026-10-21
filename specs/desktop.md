@@ -754,7 +754,7 @@ Installed ElectroBun builds cannot update into this application: their updater a
 
 ### 7.7 Mac App Store
 
-> **Status: Partial.** The `mas` target, its two entitlements files and the updater's refusal inside a Mac App Store install are built. Not built: Studio's access to a project folder the user picked, from the backend process, under the App Sandbox (below), the upload lane to App Store Connect, and a first run of any of it with a distribution identity.
+> **Status: Partial.** The `mas` target, its two entitlements files, the updater's refusal inside a Mac App Store install and the upload lane are built, and the lane has run once with the real distribution identities: it signed the app, wrapped the `.pkg`, and App Store Connect accepted the upload. Not known: whether App Store Connect finishes processing the build, whether the sandboxed app launches, and Studio's access to a project folder the user picked, from the backend process, under the App Sandbox (below).
 
 The Mac App Store is a second macOS channel beside the notarized DMG of §7.6, built from the same staged application by `bun run package --target mas --arch arm64`, which asks electron-builder for its `mas` target. It differs from the DMG in four ways, each forced by the store and not chosen:
 
