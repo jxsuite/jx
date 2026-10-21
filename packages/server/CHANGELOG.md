@@ -1,5 +1,23 @@
 # Changelog
 
+## [6.0.1](https://github.com/jxsuite/jx/compare/server-v6.0.0...server-v6.0.1) (2026-10-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 6.0.2
+    * @jxsuite/create bumped to 1.3.17
+    * @jxsuite/import bumped to 0.40.13
+    * @jxsuite/runtime bumped to 5.1.0
+    * @jxsuite/site bumped to 2.1.0
+    * @jxsuite/starters bumped to 3.0.1
+  * devDependencies
+    * @jxsuite/auth bumped to 0.7.0
+    * @jxsuite/connector bumped to 0.7.0
+    * @jxsuite/parser bumped to 4.0.1
+
 ## [6.0.0](https://github.com/jxsuite/jx/compare/server-v5.0.0...server-v6.0.0) (2026-10-21)
 
 

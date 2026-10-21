@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.1](https://github.com/jxsuite/jx/compare/ui-v0.7.0...ui-v0.7.1) (2026-10-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 5.1.0
+
 ## [0.7.0](https://github.com/jxsuite/jx/compare/ui-v0.6.0...ui-v0.7.0) (2026-10-21)
 
 
