@@ -525,7 +525,8 @@ export async function startApp(
     }
     restarting = true;
     const old = backend;
-    backend = null;
+    // Until the new backend says it is listening, messages wait in the queue rather than reach the old.
+    ready = false;
     for (const window of windows.values()) {
       window.destroy();
     }
@@ -573,11 +574,11 @@ export async function startApp(
       });
   }
   return {
+    // The backend a restart replaced is not the one a caller wants, so this reads the live one.
     get backend() {
-      if (!backend) {
-        throw new Error("the backend is being replaced");
-      }
-      return backend;
+      /* SAFETY: `startBackend()` ran above, before the handle existed, and a restart replaces the
+         backend in the same step that ends the old one, so `backend` is never null here. */
+      return backend as BackendProcess;
     },
     windows,
   };

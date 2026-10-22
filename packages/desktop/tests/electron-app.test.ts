@@ -918,6 +918,14 @@ describe("a Mac App Store build, which the App Sandbox lets into a folder only a
     ]);
   });
 
+  test("the handle answers with the live backend, which a restart replaces", async () => {
+    const app = await sandboxed();
+    expect(app.handle.backend).toBe(app.backends[0]?.process);
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/site"] });
+    await Bun.sleep(0);
+    expect(app.handle.backend).toBe(app.backends[1]?.process);
+  });
+
   test("the backend it replaced ending is not the app ending; the new one ending is", async () => {
     const app = await sandboxed();
     ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/site"] });
