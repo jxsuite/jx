@@ -10,6 +10,7 @@ import {
 } from "../src/electron-shell/app";
 import type { AppDeps } from "../src/electron-shell/app";
 import type { BackendProcess } from "../src/electron-shell/backend-process";
+import type { Grant } from "../src/electron-shell/folder-grants";
 import { posix } from "./_posix";
 import { fakeElectron } from "./_fake-electron";
 import { fakeSchedule, fakeUpdater } from "./_fake-updater";
@@ -784,5 +785,184 @@ describe("self-updates", () => {
     await Bun.sleep(0);
     expect(errors.mock.calls[0]?.[0]).toBe("[electron-app]");
     expect(handle.windows.size).toBe(0);
+  });
+});
+
+describe("a Mac App Store build, which the App Sandbox lets into a folder only after it is picked", () => {
+  const BARE = [
+    "/bin/electron",
+    "/b/app-main.js",
+    "--jx-bun=/bin/bun",
+    "--jx-backend=/src/hub/main.ts",
+    "--jx-preload=/b/preload.js",
+  ];
+
+  /** Start the app as a Mac App Store build over fakes, with a new fake backend per spawn. */
+  async function sandboxed(options: { argv?: string[]; granted?: Grant[] } = {}) {
+    const backends: ReturnType<typeof fakeBackend>[] = [];
+    const written: Grant[][] = [];
+    const accessedAtSpawn: string[][] = [];
+    let fakeRef: FakeElectron | undefined;
+    const app = await started({
+      argv: options.argv ?? BARE,
+      configure: (fake) => {
+        fakeRef = fake;
+      },
+      deps: {
+        grantStore: {
+          read: () => options.granted ?? [],
+          write: (grants) => written.push([...grants]),
+        },
+        exists: (path: string) => path.startsWith("/p/") && path.endsWith("/project.json"),
+        macAppStore: true,
+        platform: "darwin",
+        spawn: () => {
+          const next = fakeBackend();
+          backends.push(next);
+          accessedAtSpawn.push([...(fakeRef?.accessed ?? [])]);
+          return next.process;
+        },
+      },
+    });
+    return { ...app, accessedAtSpawn, backends, written };
+  }
+
+  /** Make the first backend say it is listening, then ask for a folder the way Studio does. */
+  function ask(
+    app: Awaited<ReturnType<typeof sandboxed>>,
+    kind: "directory" | "file",
+    pick: { bookmarks?: string[]; filePaths: string[] },
+  ) {
+    app.backends.at(-1)?.emit({ type: "ready" });
+    app.fake.openAnswer = { canceled: false, ...pick };
+    app.backends.at(-1)?.emit({ kind, requestId: 7, title: "Open", type: "dialog" });
+  }
+
+  test("takes up every stored grant before the backend is spawned, so the backend inherits them", async () => {
+    const app = await sandboxed({ granted: [{ bookmark: "OLD", path: "/Users/u/site" }] });
+    expect(app.accessedAtSpawn).toEqual([["OLD"]]);
+    expect(app.fake.accessed).toEqual(["OLD"]);
+  });
+
+  test("asks for the project's folder, with a bookmark, because a picked file grants only itself", async () => {
+    const app = await sandboxed();
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/site"] });
+    await Bun.sleep(0);
+    expect(app.fake.openDialogs[0]?.options).toEqual({
+      properties: ["openDirectory", "createDirectory"],
+      securityScopedBookmarks: true,
+      title: "Open project folder",
+    });
+  });
+
+  test("answers a pick inside a granted folder as usual, and does not restart", async () => {
+    const app = await sandboxed({ granted: [{ bookmark: "OLD", path: "/p" }] });
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/site"] });
+    await Bun.sleep(0);
+    expect(app.backends).toHaveLength(1);
+    expect(app.backends[0]?.sent).toContainEqual({
+      path: "/p/site/project.json",
+      requestId: 7,
+      type: "dialog-result",
+    });
+  });
+
+  test("a pick no grant covers keeps the bookmark and restarts the backend onto that project", async () => {
+    const app = await sandboxed();
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/site"] });
+    await Bun.sleep(0);
+    expect(app.written.at(-1)).toEqual([{ bookmark: "B", path: "/p/site" }]);
+    expect(app.backends[0]?.killed()).toBe(1);
+    expect(app.backends).toHaveLength(2);
+    // The new backend started after the grant was taken up, which is the whole point.
+    expect(app.accessedAtSpawn[1]).toContain("B");
+    expect(app.backends[0]?.sent.some((message) => message.type === "dialog-result")).toBe(false);
+    app.backends[1]?.emit({ type: "ready" });
+    expect(app.backends[1]?.sent).toContainEqual({ root: "/p/site", type: "open-project" });
+    expect(app.fake.messageBoxes).toEqual([]);
+  });
+
+  test("a folder picked to create a project in restarts onto a welcome window, not a project", async () => {
+    const app = await sandboxed();
+    ask(app, "directory", { bookmarks: ["B"], filePaths: ["/Users/u/Sites"] });
+    await Bun.sleep(0);
+    expect(app.written.at(-1)).toEqual([{ bookmark: "B", path: "/Users/u/Sites" }]);
+    app.backends[1]?.emit({ type: "ready" });
+    expect(app.backends[1]?.sent).toContainEqual({ root: null, type: "open-project" });
+  });
+
+  test("with a project open it asks first, and Cancel leaves everything as it was", async () => {
+    const app = await sandboxed({ argv: ARGV });
+    app.fake.messageAnswer = 1;
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/other"] });
+    await Bun.sleep(0);
+    expect(app.fake.messageBoxes).toHaveLength(1);
+    expect(app.backends).toHaveLength(1);
+    expect(app.backends[0]?.killed()).toBe(0);
+    expect(app.written).toEqual([]);
+  });
+
+  test("with a project open, Restart closes its windows and opens it again beside the new one", async () => {
+    const app = await sandboxed({ argv: ARGV });
+    app.backends[0]?.emit({ type: "ready" });
+    app.backends[0]?.emit(openWindow);
+    app.fake.messageAnswer = 0;
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/other"] });
+    await Bun.sleep(0);
+    expect(app.fake.windows[0]?.calls).toContain("destroy");
+    expect(app.fake.quit).not.toHaveBeenCalled();
+    app.backends[1]?.emit({ type: "ready" });
+    expect(app.backends[1]?.sent).toEqual([
+      { root: "/proj/alpha", type: "open-project" },
+      { root: "/p/other", type: "open-project" },
+    ]);
+  });
+
+  test("the handle answers with the live backend, which a restart replaces", async () => {
+    const app = await sandboxed();
+    expect(app.handle.backend).toBe(app.backends[0]?.process);
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/site"] });
+    await Bun.sleep(0);
+    expect(app.handle.backend).toBe(app.backends[1]?.process);
+  });
+
+  test("the backend it replaced ending is not the app ending; the new one ending is", async () => {
+    const app = await sandboxed();
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/site"] });
+    await Bun.sleep(0);
+    expect(app.backends).toHaveLength(2);
+    app.backends[0]?.exit();
+    expect(app.fake.quit.mock.calls).toEqual([]);
+    app.backends[1]?.exit();
+    expect(app.fake.quit.mock.calls).toHaveLength(1);
+  });
+
+  test("the File menu's Open Project goes through the same grants", async () => {
+    const app = await sandboxed();
+    app.backends[0]?.emit({ type: "ready" });
+    app.fake.openAnswer = {
+      bookmarks: ["B"],
+      canceled: false,
+      filePaths: ["/p/site"],
+    };
+    const file = app.fake.menuTemplates.at(0)?.find((item) => item.label === "File");
+    file?.submenu?.at(1)?.click?.();
+    await Bun.sleep(0);
+    expect(app.fake.openDialogs[0]?.options.securityScopedBookmarks).toBe(true);
+    expect(app.written.at(-1)).toEqual([{ bookmark: "B", path: "/p/site" }]);
+    expect(app.backends).toHaveLength(2);
+    app.backends[1]?.emit({ type: "ready" });
+    expect(app.backends[1]?.sent).toContainEqual({ root: "/p/site", type: "open-project" });
+  });
+
+  test("an app that is not a Mac App Store build never asks for bookmarks or restarts", async () => {
+    const app = await started({ argv: BARE });
+    app.backend.emit({ type: "ready" });
+    app.fake.openAnswer = { canceled: false, filePaths: ["/p/site"] };
+    app.backend.emit({ kind: "file", requestId: 3, title: "Open", type: "dialog" });
+    await Bun.sleep(0);
+    expect(app.fake.openDialogs[0]?.options.securityScopedBookmarks).toBeUndefined();
+    expect(app.fake.accessed).toEqual([]);
+    expect(app.backend.killed()).toBe(0);
   });
 });

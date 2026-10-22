@@ -11,6 +11,15 @@
     <string>5466QQ2CL8.com.jxsuite.studio</string>
     <key>com.apple.developer.team-identifier</key>
     <string>5466QQ2CL8</string>
+    <!-- Chromium's multi-process sandbox registers a Mach service named for this group. Without the
+         group, and an `ElectronTeamID` in Info.plist, the app dies at launch with
+         `bootstrap_check_in ... MachPortRendezvousServer ... Permission denied`. @electron/osx-sign
+         adds the Info.plist key when it signs with an identity; the group is written here so this
+         file says what the sandboxed app needs. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+      <string>5466QQ2CL8.com.jxsuite.studio</string>
+    </array>
     <!-- A project is a folder the user picks, and recents have to survive a relaunch. -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
