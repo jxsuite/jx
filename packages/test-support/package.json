@@ -15,6 +15,6 @@
     "test:coverage": "bun test --isolate --coverage"
   },
   "dependencies": {
-    "@happy-dom/global-registrator": "^21.0.3"
+    "@happy-dom/global-registrator": "^21.0.4"
   }
 }
