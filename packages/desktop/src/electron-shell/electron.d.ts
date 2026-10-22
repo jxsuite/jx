@@ -72,6 +72,8 @@ declare module "electron" {
     static getFocusedWindow(): BrowserWindow | null;
     readonly webContents: WebContents;
     close(): void;
+    /** Close without asking the page, so unsaved-change prompts do not run. */
+    destroy(): void;
     focus(): void;
     isMaximized(): boolean;
     isMinimized(): boolean;
@@ -116,6 +118,11 @@ declare module "electron" {
     /** Linux only: Electron does not define it elsewhere. */
     setDesktopName: (name: string) => void;
     setName: (name: string) => void;
+    /**
+     * Mac App Store builds only: take up a bookmark the open dialog returned, and so regain the
+     * folder it names. Returns the function that gives the access back.
+     */
+    startAccessingSecurityScopedResource: (bookmark: string) => () => void;
     setPath: (name: "sessionData" | "userData", path: string) => void;
     whenReady: () => Promise<void>;
   }
@@ -131,10 +138,14 @@ declare module "electron" {
   export interface OpenDialogOptions {
     filters?: { extensions: string[]; name: string }[];
     properties: ("createDirectory" | "openDirectory" | "openFile")[];
+    /** Mac App Store builds only: also return a bookmark for each pick. */
+    securityScopedBookmarks?: boolean;
     title: string;
   }
 
   export interface OpenDialogReturnValue {
+    /** One per path, in the same order, when `securityScopedBookmarks` was asked for. */
+    bookmarks?: string[];
     canceled: boolean;
     filePaths: string[];
   }

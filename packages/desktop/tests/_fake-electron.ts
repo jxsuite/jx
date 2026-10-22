@@ -33,6 +33,8 @@ export interface FakeElectron {
   handlers: Map<string, (event: Electron.IpcMainInvokeEvent) => void>;
   paths: Map<string, string>;
   desktopName: string[];
+  /** Each bookmark handed to `app.startAccessingSecurityScopedResource`. */
+  accessed: string[];
   appListeners: Map<string, (...args: never[]) => void>;
   /** Fire an `app` event as Electron would, with the arguments its listener takes. */
   emitApp: <Name extends keyof Electron.AppEvents>(
@@ -77,6 +79,7 @@ export interface FakeElectron {
 /** Build a fresh fake. */
 export function fakeElectron(): FakeElectron {
   const record: Omit<FakeElectron, "api"> = {
+    accessed: [],
     appListeners: new Map(),
     desktopName: [],
     dialogAnswer: 1,
@@ -156,6 +159,10 @@ export function fakeElectron(): FakeElectron {
     close(): void {
       this.fake.calls.push("close");
     }
+    destroy(): void {
+      this.fake.calls.push("destroy");
+      this.fake.closed?.();
+    }
     on(_event: "closed", listener: () => void): this {
       this.fake.closed = listener;
       return this;
@@ -222,6 +229,10 @@ export function fakeElectron(): FakeElectron {
     requestSingleInstanceLock: () => record.lock,
     setDesktopName: (name) => {
       record.desktopName.push(name);
+    },
+    startAccessingSecurityScopedResource: (bookmark) => {
+      record.accessed.push(bookmark);
+      return () => {};
     },
     setName: (name) => {
       record.names.push(name);
