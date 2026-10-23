@@ -48,7 +48,6 @@ import { previewFileSrc } from "../files/media-paths";
 import { elementForAsset } from "../editor/file-drop-action";
 import { readPageFacts } from "../content/collection-pages";
 import { listCollectionEntryIds } from "../grid/sources/content-source";
-import { loadUsages, onUsagesInvalidated, peekUsages, splitUsages } from "../services/references";
 import { projectMediaFiles } from "../ui/media-picker";
 import { runActiveReported } from "../commands/run-reported";
 import { emptySitePanelValues, mountSitePanelSurface } from "../surfaces/site-panel";
@@ -312,16 +311,6 @@ function defaultLayoutPath(): string | null {
   return isString(layout) ? layout.replace(/^\.\//, "") : null;
 }
 
-/** How many pages use a template, from the reference index — `null` where it cannot say yet. */
-function templateUsage(path: string): number | null {
-  const state = peekUsages({ path });
-  if (state === null) {
-    void loadUsages({ path }).then(repaint);
-    return null;
-  }
-  return state.status === "ready" ? splitUsages(state.result).pages : null;
-}
-
 // ─── The view ────────────────────────────────────────────────────────────────
 
 /** The filter, as typed. One per window: the panel is project-level and there is one project. */
@@ -366,12 +355,8 @@ export function sitePanelValues(): SitePanelValues {
     : [];
   const pages = filterPageRows(allPages, needle);
   const defaultLayout = defaultLayoutPath();
-  const allTemplates = index
-    ? templateRows(index.layouts, templateUsage, activePath, "", defaultLayout)
-    : [];
-  const templates = index
-    ? templateRows(index.layouts, templateUsage, activePath, needle, defaultLayout)
-    : [];
+  const allTemplates = index ? templateRows(index.layouts, activePath, "", defaultLayout) : [];
+  const templates = index ? templateRows(index.layouts, activePath, needle, defaultLayout) : [];
   const registryLoading = !_componentRegistryLoaded;
   const allComponents = componentRows("", activePath);
   const components = componentRows(needle, activePath);
@@ -537,9 +522,6 @@ export function mediaDragData(path: string): BlockDragData | null {
 
 /** Mount the surface into `host`, or bring the one already there up to date. */
 function mountInto(host: HTMLElement): void {
-  /* A page created, saved or deleted changes how many pages use a template, and the usage cache is
-     dropped for it: the Templates rows ask again on the repaint this asks for. */
-  _usagesUnlisten ??= onUsagesInvalidated(repaint);
   if (_standing && (_standing.host !== host || _standing.handle?.connected() === false)) {
     dispose(_standing);
     _standing = null;
@@ -585,9 +567,6 @@ function mountInto(host: HTMLElement): void {
   });
 }
 
-/** The usage-invalidation subscription, taken once the panel first mounts. */
-let _usagesUnlisten: (() => void) | null = null;
-
 /** Repaint the Navigator, which repaints this panel when it is the one showing. */
 function repaint(): void {
   renderOnly("leftPanel");
@@ -625,8 +604,6 @@ export function resetSitePanel(): void {
     dispose(_standing);
   }
   _standing = null;
-  _usagesUnlisten?.();
-  _usagesUnlisten = null;
   _filter = "";
   _epoch += 1;
   _index = null;

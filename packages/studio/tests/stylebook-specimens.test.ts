@@ -1,7 +1,6 @@
 /**
  * What each component's Project Styles card is drawn with (src/style/stylebook-specimens.ts):
- * sample props when the definition renders with them, a list's first row, the bare instance, or
- * nothing.
+ * sample props when the definition renders with them, the bare instance, or nothing.
  */
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -10,22 +9,16 @@ import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 let definition: JxDocument | null = { tagName: "x-card" };
 let examples = new Map<string, JsonValue>();
-let sample: { doc: JxDocument; file: string } | null = null;
 /** Whether the definition renders, by how many props it is given. */
 let renders = (_count: number): boolean => true;
-let defines = true;
 
 void mock.module("../src/browse/component-examples", () => ({
-  componentExampleProps: () => Promise.resolve(examples),
-  componentSampleRow: () => Promise.resolve(sample),
+  componentExampleProps: () => examples,
 }));
 void mock.module("../src/browse/library-preview", () => ({
   readDefinition: () => Promise.resolve(definition),
   rendersWith: (_d: JxDocument, _p: string, props: ReadonlyMap<string, JsonValue>) =>
     Promise.resolve(renders(props.size)),
-}));
-void mock.module("../src/panels/component-preview", () => ({
-  defineComponent: () => Promise.resolve(defines),
 }));
 
 const { componentSpecimen, loadStylebookSpecimens } =
@@ -36,9 +29,7 @@ const CARD: ComponentEntry = { path: "components/x-card.json", source: "local", 
 beforeEach(() => {
   definition = { tagName: "x-card" };
   examples = new Map();
-  sample = null;
   renders = () => true;
-  defines = true;
 });
 
 describe("componentSpecimen", () => {
@@ -50,15 +41,9 @@ describe("componentSpecimen", () => {
     });
   });
 
-  test("a list-only component is drawn as the list's first row", async () => {
-    sample = { doc: { tagName: "div" }, file: "pages/index.json" };
-    renders = (count) => count > 0;
-    expect(await componentSpecimen(CARD)).toEqual({ kind: "row", sample });
-  });
-
-  test("a row whose component cannot be defined is not used", async () => {
-    sample = { doc: { tagName: "div" }, file: "pages/index.json" };
-    defines = false;
+  test("sample props it cannot render with fall back to the bare instance", async () => {
+    examples = new Map([["date", ""]]);
+    renders = (count) => count === 0;
     expect(await componentSpecimen(CARD)).toEqual({ kind: "bare" });
   });
 
