@@ -63,13 +63,13 @@ Breakpoints layer in the same order a browser applies their media queries, so wh
 
 ## Define your breakpoints
 
-Breakpoints are defined in one place: **Settings › Advanced › Contexts**. Pick **Open Project Settings › Contexts** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Contexts** in the section list. From the canvas, the context bar's **Context** popover has a **Manage contexts…** button at the bottom that lands on the same section without losing your element selection.
+Breakpoints are defined in one place: **Settings › Advanced › Contexts**. Pick **Open Project Settings › Contexts** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Contexts** in the section list. From the canvas, the sliders button at the end of the context bar's **Context** controls opens a popover with a **Manage contexts…** button at the bottom that lands on the same section without losing your element selection.
 
 The section holds three groups, because all three are the same thing on disk and only differ in what their condition asks about:
 
 - **Size breakpoints** are width conditions like `(max-width: 768px)`. These are the ones that get their own canvas panel.
 - **Colour schemes** give you a Light/Dark picker that writes the `prefers-color-scheme` query for you, so a scheme can never be mistyped into something else.
-- **Feature queries** cover anything else a media query can ask: reduced motion, print, hover, orientation. These appear as toggles in the **Context** popover rather than as canvas panels.
+- **Feature queries** cover anything else a media query can ask: reduced motion, print, hover, orientation. These appear as toggles in the popover behind the sliders button at the end of the **Context** controls, rather than as canvas panels.
 
 Above them sits **Base width**, which sets how wide the Base canvas panel renders when no other context applies.
 
@@ -79,12 +79,12 @@ Whatever you declare here is also what a [design token](/docs/studio/design/toke
 
 The same popover carries a **Language** control on a [multilingual project](/docs/studio/interface/languages), which sets the language the artboard renders in: its `lang` and direction, not which file is open.
 
-A colour scheme is what turns on the **Auto / Light / Dark** control in the context bar's **Context** popover. Auto follows your OS preference; Light and Dark force that scheme on the canvas, exactly what a visitor's [color-scheme switcher](/docs/framework/concepts/color-schemes) does on the published site. The control appears only once the project declares a scheme.
+A colour scheme is what turns on the **Auto / Light / Dark** segments in the context bar's **Context** controls. Auto follows your OS preference; Light and Dark force that scheme on the canvas, exactly what a visitor's [color-scheme switcher](/docs/framework/concepts/color-schemes) does on the published site. The control appears only once the project declares a scheme.
 
 Forcing a scheme while the size is **Base** points your edits at that scheme's overrides, and the Target Line grows a segment to say so: `⌖ h1 · Base · Dark variant`. Base values show through as inherited, their chips reading **from Base**, and clicking one sets the control back to **Auto** so you can edit the value where it lives. A size breakpoint is always breakpoint-scoped: schemes and sizes don't compound into a single block.
 
 :::doc-note
-**Definition and selection are separate.** Settings › Contexts is the only place a context is created, renamed or deleted. The context bar's **Context** popover only _chooses_ among what is defined there, and the Style tab's Target Line only _states_ what was chosen. Clicking its breakpoint segment takes you to Settings › Contexts rather than offering a third list to disagree with.
+**Definition and selection are separate.** Settings › Contexts is the only place a context is created, renamed or deleted. The context bar's **Context** controls only _choose_ among what is defined there, and the Style tab's Target Line only _states_ what was chosen. Clicking its breakpoint segment takes you to Settings › Contexts rather than offering a third list to disagree with.
 
 Every choice in that popover is also a command, so you can make it without reaching for the mouse: press :kbd[⌘K] and run **Set Breakpoint**, **Set Color Scheme** or **Show Layout Elements**. Each one asks for the value it needs, and Set Breakpoint lists the breakpoints this page can actually render under if you name one it can't.
 :::

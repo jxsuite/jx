@@ -1010,6 +1010,9 @@ const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
   "media-home",
   "preview",
   "publish-home",
+  /* The Styles workspace's Variables view — `style/variables-view.ts`. An `overflow-y: auto`
+     column over the stage; without it here the wheel panned an artboard that does not exist. */
+  "tokens",
 ]);
 
 /**

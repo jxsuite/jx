@@ -523,8 +523,9 @@ describe("wheel handler", () => {
 
      `entry` is the same defect over the PANE FORM: the Entry editor scrolls its fields, so a wheel
      over it was preventDefaulted for a panzoom wrap the mode never mounts — the scrollbar could be
-     dragged, and the wheel did nothing. */
-  test.each(["grid", "content-home", "entry", "preview"])(
+     dragged, and the wheel did nothing. `tokens`, the Styles workspace's Variables view, is the
+     same defect a third time: a scrollbar the wheel never moved. */
+  test.each(["grid", "content-home", "entry", "preview", "tokens"])(
     "%s mode lets the surface scroll itself",
     (mode) => {
       canvasMode = mode;
@@ -538,7 +539,7 @@ describe("wheel handler", () => {
      pinch arrives as exactly this event — so a stage with no zoom of its own must block it like the
      rest of the app's chrome, or a pinch over a form scales the whole of Studio. Blocked is not
      panned: neither the stage offsets nor the tab's zoom may move. */
-  test.each(["grid", "content-home", "entry", "preview"])(
+  test.each(["grid", "content-home", "entry", "preview", "tokens"])(
     "%s mode blocks ctrl+wheel browser zoom without panning or zooming",
     (mode) => {
       canvasMode = mode;

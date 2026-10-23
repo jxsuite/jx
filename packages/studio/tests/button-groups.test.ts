@@ -260,7 +260,8 @@ describe("Studio's button groups", () => {
     /* A compact group refuses to wrap (ui.md §5.4): its seam is written in tree order, no selector
        can find the ends of a flex line, and a wrapped one therefore overhung the group's own edge
        by 1px, doubled the border between the two rows and squared both line ends. Studio's
-       wrapping rows are the pane context's breakpoint and feature chips and Add new's cards and field
+       wrapping rows are the pane context's feature chips (its breakpoints are a segmented group on
+       the bar now, which clips at the bar's end rather than wrapping) and Add new's cards and field
        presets, and a chip frames itself,
        so each member says `quiet: false` where a segment would have said nothing at all. */
     const wrapping: string[] = [];
@@ -286,7 +287,6 @@ describe("Studio's button groups", () => {
       "add-new.json presets",
       "add-new.json wrap-in",
       "add-new.json component-start",
-      "pane-context.json sizes",
       "pane-context.json features",
     ]);
   });

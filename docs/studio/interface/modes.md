@@ -18,7 +18,7 @@ code:
 
 # Editors and views
 
-Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Diff**, **Entry**, **Home**, or one of the Styles workspace's **Elements** and **Variables**. It lists only the editors this file supports, so there is nothing in it to be disabled. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
+Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Entry**, **Home**, or one of the Styles workspace's **Elements** and **Variables**. It lists only the editors this file supports, so there is nothing in it to be disabled. **Diff** is never one of the choices: it is the editor a comparison opens in, and it shows as the bar's Editor only while you are looking at one. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
 
 Those seven names come from one list in Studio, which is why the pane's context bar and the status bar can never print different words for the same editor.
 
@@ -95,7 +95,7 @@ Every file opens in its natural editor and view, and the two controls offer only
 | Vector images (`.svg`)             | **Media**         | **Code**                | —                       |
 | The project file (`project.json`)  | **Elements**      | **Variables**, **Code** | —                       |
 
-Any file with uncommitted changes also offers **Diff**, including files that have no other editor at all. Opening one of those from the Files tree still says Studio has no editor for it; Review changes asks the narrower question of what changed, and answers it.
+Any file with uncommitted changes can also be compared, including files that have no other editor at all, but not from the Editor control: you open a comparison by choosing the file in [Source control](/docs/studio/publish/source-control), which opens it in **Diff** in the Publish workspace, and **Back to Publish** leaves it. Opening a file with no editor from the Files tree still says Studio has no editor for it; the comparison asks the narrower question of what changed, and answers it.
 
 Opening `project.json` from the Files tree lands on **Elements**, and **Go to Styles** (:kbd[⌘4], or from :kbd[⌘K]) switches to the Styles workspace from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
 
@@ -107,7 +107,7 @@ Installed format extensions can add their own file types with their own lists, s
 
 **Preview** is a **toggle** beside the View control, not a third view. It applies to Edit and to Design alike: the base stays selected while you preview, so the bar always says which mode you are previewing and which one switching Preview off returns you to. Turn it on and the canvas shows the page with its real data resolved: dynamic text filled in, repeated lists expanded, exactly what a visitor gets.
 
-What it resolves _with_ comes from the two controls beside it. The **Context** popover holds what the page renders _in_: its breakpoint, colour scheme, feature queries, and a **Show layout elements** switch for pages that use a layout. The **resolving with** popover holds what it renders _from_, one field per line:
+What it resolves _with_ comes from the two controls beside it. The **Context** controls hold what the page renders _in_: its breakpoint and colour scheme as segments on the bar, and, behind the sliders button, feature queries and a **Show layout elements** switch for pages that use a layout. The **resolving with** popover holds what it renders _from_, one field per line:
 
 - For pages with dynamic addresses (a product page, a blog post), a picker per URL parameter so you choose which real record to preview.
 - For components, a field per component option so you can try test values.
@@ -118,7 +118,7 @@ Its button says how many you have set, so you can tell at a glance whether the c
 
 **Preview scrolls like a real page.** Instead of the open surface you pan around in Design, Preview puts one page-sized frame in the pane and lets it scroll itself, so sticky headers stick, elements that animate as they come into view actually do, and anything that reacts to scrolling behaves the way it will for a visitor. There is no zoom control in Preview for the same reason: it is showing you the page at its real size.
 
-**And at the size you picked.** Preview is as wide as the breakpoint chosen in the **Context** popover, the same width Edit gives its column and Design gives that artboard, so the same page at `md` is the same page whichever view the toggle is over. With no breakpoint chosen it fills the pane.
+**And at the size you picked.** Preview is as wide as the breakpoint chosen in the **Context** size segments, the same width Edit gives its column and Design gives that artboard, so the same page at `md` is the same page whichever view the toggle is over. With no breakpoint chosen it fills the pane.
 
 Switch **Preview** off to go back to editing, in whichever view you were in.
 

@@ -507,24 +507,49 @@ describe("a logic editor open in the dock", () => {
 // ─── Axis 1 · Editor kind ─────────────────────────────────────────────────────
 
 describe("editor kind", () => {
-  test("a document with several kinds gets a dropdown listing only those kinds", async () => {
+  test("a document with several kinds gets a segmented group listing only those kinds", async () => {
     openTestTab();
     await mountBar();
-    const picker = select("editor-kind")!;
-    expect(picker).not.toBeNull();
-    const options = [...picker.querySelectorAll("option")].map((o) => o.textContent.trim());
+    const strip = part("editor-kind")!;
+    expect(strip.tagName).toBe("JX-ACTION-GROUP");
+    expect(strip.getAttribute("role")).toBe("radiogroup");
+    expect(strip.getAttribute("aria-label")).toBe("Editor");
+    const segs = segments("editor-kind");
     // Edit/design/preview all name the Canvas; source names Code. No dead entry for grid or diff.
-    expect(options).toEqual(["Canvas", "Code"]);
-    expect(picker.value).toBe("canvas");
-    expect(picker.getAttribute("aria-label")).toBe("Editor");
+    expect(segs.map((s) => nameOf(s))).toEqual(["Canvas", "Code"]);
+    expect(segs.map((s) => control(s).getAttribute("aria-checked"))).toEqual(["true", "false"]);
   });
 
-  test("a document with one kind prints its name instead of an immovable dropdown", async () => {
+  test("leads the bar, ahead of the spacer that pushes the other axes right", async () => {
+    openTestTab();
+    await mountBar();
+    expect(part("spacer")!.contains(part("editor-kind"))).toBe(true);
+    expect(axes()).toEqual(["Editor", "View", "Context"]);
+  });
+
+  test("a document with one kind prints its name instead of an immovable group", async () => {
     const tab = openTestTab();
     tab.capabilities.modes = ["edit", "design", "preview"];
     await mountBar();
     expect(part("editor-kind")).toBeNull();
     expect(part("static")?.textContent.trim()).toBe("Canvas");
+  });
+
+  test("never offers Diff, even over a document that declares the mode", async () => {
+    const tab = openTestTab();
+    tab.capabilities.modes = ["edit", "design", "preview", "source", "git-diff"];
+    await mountBar();
+    expect(segments("editor-kind").map((s) => nameOf(s))).toEqual(["Canvas", "Code"]);
+  });
+
+  test("a tab IN a comparison names it and offers nothing else", async () => {
+    // Diff is entered from Publish and left by Back; the axis is not a second way out.
+    const tab = openTestTab();
+    tab.capabilities.modes = ["edit", "design", "preview", "source", "git-diff"];
+    tab.session.ui.canvasMode = "git-diff";
+    await mountBar(ctxInMode("git-diff"));
+    expect(part("editor-kind")).toBeNull();
+    expect(part("static")?.textContent.trim()).toBe("Diff");
   });
 
   test("choosing a kind lands on that kind's first mode and clears preview", async () => {
@@ -533,26 +558,23 @@ describe("editor kind", () => {
     const ctx = makeCtx();
     await mountBar(ctx);
 
-    choose(select("editor-kind")!, "code");
+    pointer(btn("Code"), "click");
     await flush(4);
     expect(ctx.setCanvasMode).toHaveBeenCalledWith(tab, "source");
     expect(tab.session.ui.preview).toBe(false);
   });
 
-  test("a kind this document does not support is refused rather than half-applied", async () => {
+  test("a kind this document no longer supports is refused rather than half-applied", async () => {
     const tab = openTestTab();
     const ctx = makeCtx();
     await mountBar(ctx);
 
-    /* A kind the document does NOT declare, reported by the control anyway. The picker only ever
-       offers declared kinds, so this is the shape a stale option or a programmatic write takes —
-       and the refusal has to hold for it, because `modeForEditorKind` answering nothing is the
-       only thing standing between it and a half-applied mode. */
-    const picker = select("editor-kind")!;
-    const rogue = document.createElement("option");
-    rogue.value = "library";
-    picker.append(rogue);
-    choose(picker, "library");
+    /* A segment pressed after its kind stopped being declared: the shape a stale segment takes. The
+       refusal has to hold for it, because `modeForEditorKind` answering nothing is the only thing
+       standing between it and a half-applied mode. */
+    const code = btn("Code");
+    tab.capabilities.modes = ["edit", "design", "preview"];
+    pointer(code, "click");
     await flush(4);
     expect(ctx.setCanvasMode).not.toHaveBeenCalled();
     expect(tab.session.ui.canvasMode).toBe("edit");
@@ -823,26 +845,50 @@ describe("rendering context", () => {
       })),
     });
 
-  /** What the rendering-context trigger reads, without the caret glyph beside it. */
+  /** What the More rendering context trigger reads beside its glyph; empty when it says nothing. */
   function summary(): string {
-    return part("context-trigger")!.querySelector('[part="label"] span')!.textContent!.trim();
+    return part("context-trigger")!.querySelector('[part="label"] span')?.textContent.trim() ?? "";
   }
 
-  test("summarises size and scheme on the trigger", async () => {
+  test("size and scheme are groups on the bar, not in the popover", async () => {
+    openTestTab();
+    await mountBar(withScheme());
+    const bar = part("bar")!;
+    expect(bar.contains(part("sizes"))).toBe(true);
+    expect(bar.contains(part("schemes"))).toBe(true);
+    expect(part("sizes")!.dataset["compact"]).toBe("");
+    expect(part("schemes")!.dataset["compact"]).toBe("");
+    expect(segments("schemes").map((s) => nameOf(s))).toEqual(["Auto", "Light", "Dark"]);
+    // The popover keeps only the rarer choices.
+    const popover = root.querySelector('[data-popover="context"]')!;
+    expect(popover.querySelector('[part="sizes"], [part="schemes"]')).toBeNull();
+  });
+
+  test("the trigger is a glyph at rest and does not repeat size or scheme", async () => {
     const tab = openTestTab();
     await mountBar(withScheme());
-    expect(summary()).toBe("Base · Auto");
+    expect(control(part("context-trigger")!).getAttribute("aria-label")).toBe(
+      "More rendering context",
+    );
+    expect(summary()).toBe("");
 
     tab.session.ui.activeMedia = "md";
     tab.session.ui.previewColorScheme = "dark";
     await flush(4);
-    expect(summary()).toBe("Md · Dark");
+    expect(summary()).toBe("");
+
+    tab.session.ui.featureToggles = { "--reduced-motion": true };
+    await flush(4);
+    expect(summary()).toBe("1 query");
   });
 
-  test("omits the scheme from the summary when the project declares no scheme query", async () => {
+  test("no size group without a breakpoint, and no scheme group without a scheme query", async () => {
     openTestTab();
     await mountBar();
-    expect(summary()).toBe("Base");
+    // Base alone is not a choice.
+    expect(part("sizes")).toBeNull();
+    expect(part("schemes")).toBeNull();
+    expect(part("context-trigger")).not.toBeNull();
   });
 
   test("the size segment writes activeMedia — the field a panel header writes", async () => {
@@ -910,7 +956,7 @@ describe("rendering context", () => {
   test("groups a document declares nothing for are absent", async () => {
     openTestTab();
     await mountBar();
-    expect(partAll("ctx-group-label").map((el) => el.textContent.trim())).toEqual(["Size"]);
+    expect(partAll("ctx-group-label").map((el) => el.textContent.trim())).toEqual([]);
   });
 
   // ─── The language segment ───────────────────────────────────────────────────
@@ -992,11 +1038,11 @@ describe("rendering context", () => {
     const tab = multilingual(["en", "fr"], "pages/fr/a-propos.json");
     await mountBar();
     // A French page in a French pane is not a rendering context worth reporting.
-    expect(summary()).toBe("Base");
+    expect(summary()).toBe("");
 
     tab.session.ui.previewLocale = "en";
     await flush(4);
-    expect(summary()).toBe(`Base · ${localeLabel("en")}`);
+    expect(summary()).toBe(localeLabel("en"));
   });
 
   // The artboard does not draw a tag the project dropped, so the bar must not report it either.
@@ -1004,7 +1050,7 @@ describe("rendering context", () => {
     const tab = multilingual(["en", "fr"], "pages/fr/a-propos.json");
     tab.session.ui.previewLocale = "ar";
     await mountBar();
-    expect(summary()).toBe("Base");
+    expect(summary()).toBe("");
     const french = segments("locales").find((b) => nameOf(b) === localeLabel("fr"))!;
     expect(control(french).getAttribute("aria-checked")).toBe("true");
   });
@@ -1023,6 +1069,8 @@ describe("rendering context", () => {
     input().dispatchEvent(new Event("change", { bubbles: true }));
     await flush(4);
     expect(tab.session.ui.showLayout).toBe(false);
+    // Hidden is not the rest state, so the trigger says so without being opened.
+    expect(summary()).toBe("No layout");
     expect(input().checked).toBe(false);
 
     input().dispatchEvent(new Event("change", { bubbles: true }));
@@ -1637,7 +1685,7 @@ describe("two bars, two panes", () => {
     focusPane(PRIMARY_PANE);
     await flush(4);
 
-    choose(select("editor-kind", sideHost)!, "code");
+    pointer(btn("Code", sideHost), "click");
     await flush(4);
 
     expect(away.session.ui.canvasMode).toBe("source");

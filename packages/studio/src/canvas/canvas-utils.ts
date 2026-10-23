@@ -925,6 +925,17 @@ export const CANVAS_MODES = [
 
 export type CanvasMode = (typeof CANVAS_MODES)[number];
 
+/**
+ * The modes a person, the assistant or a script may ASK for by name: every mode but `git-diff`.
+ *
+ * Diff is implicit (studio.md §3): a comparison is entered by choosing a changed file or a version
+ * in Publish, which says what it is compared against, and left by Back. Named here it would be a
+ * comparison of whatever file happened to be open against whatever HEAD happened to be, which is
+ * not a thing anyone asked to see. The mode stays in {@link CANVAS_MODES} because the stage draws
+ * it; the Source Control panel enters it through `setCanvasMode` directly.
+ */
+export const SELECTABLE_CANVAS_MODES = CANVAS_MODES.filter((mode) => mode !== "git-diff");
+
 /** The base modes the preview flag composes with — the two the Canvas view axis shows it beside. */
 const PREVIEWABLE_BASE_MODES = new Set(["edit", "design"]);
 
@@ -1166,7 +1177,10 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
   return [
     {
       args: argsSchema({
-        mode: enumProperty(CANVAS_MODES, "The canvas mode to switch the active pane to."),
+        mode: enumProperty(
+          SELECTABLE_CANVAS_MODES,
+          "The canvas mode to switch the active pane to.",
+        ),
       }),
       category: "View",
       id: "canvas.setMode",
@@ -1189,7 +1203,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         description:
           "Switch the active document's editor mode. edit and design put its element tree on " +
           "the canvas, where the document tools work; preview renders it as a visitor sees it; " +
-          "source shows the JSON; stylebook, tokens, grid and git-diff open other editors. Use it to " +
+          "source shows the JSON; stylebook, tokens and grid open other editors. Use it to " +
           "return a document to edit or design when the tree tools are refused.",
         name: "set_canvas_mode",
         /* `after.editor.kind` rather than the tab's own field: it is the gate's read (`treeEditable`
@@ -1197,7 +1211,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
            cannot disagree. The mode named is the one requested — `run` resolved, so it is the mode
            the tab is in. */
         report: ({ after, args }) => {
-          const mode = enumArg("canvas.setMode", args, "mode", CANVAS_MODES);
+          const mode = enumArg("canvas.setMode", args, "mode", SELECTABLE_CANVAS_MODES);
           const reach =
             after.editor.kind === "canvas"
               ? "the document tools address its element tree"
@@ -1206,7 +1220,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         },
       },
       run: (_commandCtx, args) => {
-        const mode = enumArg("canvas.setMode", args, "mode", CANVAS_MODES);
+        const mode = enumArg("canvas.setMode", args, "mode", SELECTABLE_CANVAS_MODES);
         const tab = requireTab("canvas.setMode");
         const { modes } = tab.capabilities;
         if (!modes.includes(mode)) {

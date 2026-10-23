@@ -26,15 +26,14 @@
       "overflow": "hidden"
     },
     "& [part=\"spacer\"]": {
-      "$description": "What pushes the three axes right, and where §18.4's preset trigger goes. It stays in a lens, which draws no trigger: dropping it would move the one control a lens does draw.",
+      "$description": "What pushes the other axes right, and where Back, the Editor axis and §18.4's preset trigger go. It stays in a lens, which draws no trigger: dropping it would move the one control a lens does draw. It grows but never shrinks below what it holds: at `min-width: 0` a narrow pane squeezed it under its own Editor segments, which then painted over the View and Context axes; now the bar's `overflow: hidden` clips at the trailing end instead.",
       "display": "flex",
-      "flex": "1",
+      "flex": "1 0 auto",
       "alignItems": "center",
-      "minWidth": "0"
+      "gap": "var(--jx-space-2)"
     },
     "& [part=\"back\"]": {
-      "flexShrink": "0",
-      "marginInlineEnd": "var(--jx-space-2)"
+      "flexShrink": "0"
     },
     "& [part=\"axis\"]": {
       "display": "flex",
@@ -56,8 +55,8 @@
       "whiteSpace": "nowrap"
     },
     "& [part=\"editor-kind\"]": {
-      "$description": "Capped so a long document name cannot push an axis off the end of a 28px band.",
-      "maxWidth": "140px"
+      "$description": "A segmented strip that holds its width: the spacer it sits in is what gives way.",
+      "flexShrink": "0"
     },
     "& [part=\"views\"]": {
       "flexShrink": "0"
@@ -77,9 +76,6 @@
     "& [part=\"resolving-trigger\"]": {
       "fontVariantNumeric": "tabular-nums",
       "flexShrink": "0"
-    },
-    "& [part=\"context-trigger-caret\"]": {
-      "--jx-icon-size": "12px"
     },
     "& [part=\"resolving-trigger-caret\"]": {
       "--jx-icon-size": "12px"
@@ -155,12 +151,12 @@
       "letterSpacing": "0.04em",
       "color": "var(--fg-dim)"
     },
-    "& [part=\"sizes\"], & [part=\"features\"]": {
-      "$description": "The two groups that WRAP, and the reason neither is a segmented control. A breakpoint or feature list is as long as the project makes it and this popover is a 240–340px column, so both fold onto a second line in any project with more than a few; a compact group cannot draw that — its seam is written in tree order, no selector can find the ends of a flex line, and it therefore refuses to wrap and would overflow the column instead (ui.md §5.4). Chips instead: each member draws its own rounded frame (`quiet: false`, since the group no longer frames it) and the chosen one takes the accent edge below. The gap is --jx-space-2 rather than the group's own 2px, which puts every small chip's hit area at the 24px floor on both axes instead of the 22px two overlapping extensions leave (§4.3).",
+    "& [part=\"features\"]": {
+      "$description": "The group that WRAPS, and the reason it is not a segmented control. A feature list is as long as the project makes it and this popover is a 240–340px column, so it folds onto a second line in any project with more than a few; a compact group cannot draw that — its seam is written in tree order, no selector can find the ends of a flex line, and it therefore refuses to wrap and would overflow the column instead (ui.md §5.4). Chips instead: each member draws its own rounded frame (`quiet: false`, since the group no longer frames it) and the chosen one takes the accent edge below. The gap is --jx-space-2 rather than the group's own 2px, which puts every small chip's hit area at the 24px floor on both axes instead of the 22px two overlapping extensions leave (§4.3). The size list used to wrap here beside it; it is a segmented group on the bar now, which clips at its trailing end rather than wrapping.",
       "flexWrap": "wrap",
       "gap": "var(--jx-space-2)"
     },
-    "& [part=\"sizes-item\"][data-selected] > [part=\"control\"], & [part=\"features-item\"][data-selected] > [part=\"control\"]": {
+    "& [part=\"features-item\"][data-selected] > [part=\"control\"]": {
       "$description": "A chosen chip reads the way a chosen segment does: the accent tint with an accent EDGE. A member's own selected state is a 15% tint over its neutral border, which among framed neighbours reads as a faint wash rather than as the one that is on — the measurement that gave the compact group its selected rule, restated here at the one place the group does not draw it. (0,4,0) over the member's own (0,3,0).",
       "borderColor": "var(--jx-accent)",
       "background": "var(--jx-accent-20)"
@@ -196,6 +192,10 @@
     },
     "& [part=\"manage\"]:hover": {
       "textDecoration": "underline"
+    },
+    "& [part=\"sizes\"], & [part=\"schemes\"]": {
+      "$description": "Segmented strips that hold their width; the bar clips at its trailing end rather than squeezing a segment.",
+      "flexShrink": "0"
     }
   },
   "children": [
@@ -261,6 +261,121 @@
                         {
                           "tagName": "span",
                           "textContent": "${state.backLabel}"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "editor-axis-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/editorState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "axis",
+                        "data-axis": "editor"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "axis-label"
+                          },
+                          "textContent": "Editor"
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "editor-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/editorMode"
+                          },
+                          "cases": {
+                            "static": {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "static",
+                                "data-static": "editor"
+                              },
+                              "textContent": "${state.editorLabel}"
+                            },
+                            "picker": {
+                              "tagName": "jx-action-group",
+                              "attributes": {
+                                "part": "editor-kind"
+                              },
+                              "$props": {
+                                "selects": "single",
+                                "compact": true,
+                                "label": "Editor"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/editors"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/key"
+                                  },
+                                  "map": {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "editor-kind-item",
+                                      "data-value": "${$map.item.value}"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "checked": {
+                                        "$ref": "$map/item/checked"
+                                      },
+                                      "hint": {
+                                        "$ref": "$map/item/hint"
+                                      }
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/chooseEditor"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/value"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "textContent": "${$map.item.label}"
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          "$description": "The Editor axis leads the bar, beside Back: which editor the document is open in is the first thing the pane says about it, and the axes to its right describe that editor. Drawn only in the full bar (`hidden` in a lens, whose tab is the pane beside it). Several declared kinds are a segmented `jx-action-group`, like the View axis: they are few, and every one of them stays on screen rather than behind a dropdown."
                         }
                       ]
                     }
@@ -360,77 +475,6 @@
                     "display": "contents"
                   },
                   "children": [
-                    {
-                      "tagName": "div",
-                      "attributes": {
-                        "part": "axis",
-                        "data-axis": "editor"
-                      },
-                      "children": [
-                        {
-                          "tagName": "span",
-                          "attributes": {
-                            "part": "axis-label"
-                          },
-                          "textContent": "Editor"
-                        },
-                        {
-                          "tagName": "div",
-                          "attributes": {
-                            "part": "editor-slot",
-                            "role": "none"
-                          },
-                          "style": {
-                            "display": "contents"
-                          },
-                          "$switch": {
-                            "$ref": "#/state/editorMode"
-                          },
-                          "cases": {
-                            "static": {
-                              "tagName": "span",
-                              "attributes": {
-                                "part": "static",
-                                "data-static": "editor"
-                              },
-                              "textContent": "${state.editorLabel}"
-                            },
-                            "picker": {
-                              "tagName": "jx-select",
-                              "attributes": {
-                                "part": "editor-kind"
-                              },
-                              "$props": {
-                                "label": "Editor",
-                                "size": "sm",
-                                "options": {
-                                  "$ref": "#/state/editorOptions"
-                                },
-                                "value": {
-                                  "$ref": "#/state/editorValue"
-                                }
-                              },
-                              "onchange": {
-                                "$prototype": "Function",
-                                "body": [
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/chooseEditor"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "event#/target/value"
-                                      }
-                                    ]
-                                  }
-                                ]
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    },
                     {
                       "tagName": "div",
                       "attributes": {
@@ -604,6 +648,156 @@
                             {
                               "tagName": "div",
                               "attributes": {
+                                "part": "sizes-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/sizesState"
+                              },
+                              "cases": {
+                                "shown": {
+                                  "tagName": "jx-action-group",
+                                  "attributes": {
+                                    "part": "sizes"
+                                  },
+                                  "$props": {
+                                    "selects": "single",
+                                    "compact": true,
+                                    "label": "Size"
+                                  },
+                                  "children": [
+                                    {
+                                      "$prototype": "Array",
+                                      "items": {
+                                        "$ref": "#/state/sizes"
+                                      },
+                                      "key": {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "map": {
+                                        "tagName": "jx-action-button",
+                                        "attributes": {
+                                          "part": "sizes-item",
+                                          "data-value": "${$map.item.value}"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "checked": {
+                                            "$ref": "$map/item/checked"
+                                          },
+                                          "hint": {
+                                            "$ref": "$map/item/hint"
+                                          }
+                                        },
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/setBreakpoint"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/value"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "textContent": "${$map.item.label}"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "scheme-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/schemeState"
+                              },
+                              "cases": {
+                                "shown": {
+                                  "tagName": "jx-action-group",
+                                  "attributes": {
+                                    "part": "schemes"
+                                  },
+                                  "$props": {
+                                    "selects": "single",
+                                    "compact": true,
+                                    "label": "Color scheme"
+                                  },
+                                  "children": [
+                                    {
+                                      "$prototype": "Array",
+                                      "items": {
+                                        "$ref": "#/state/schemes"
+                                      },
+                                      "key": {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "map": {
+                                        "tagName": "jx-action-button",
+                                        "attributes": {
+                                          "part": "schemes-item",
+                                          "data-value": "${$map.item.value}"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "checked": {
+                                            "$ref": "$map/item/checked"
+                                          },
+                                          "hint": {
+                                            "$ref": "$map/item/hint"
+                                          }
+                                        },
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/setScheme"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/value"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "textContent": "${$map.item.label}"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
                                 "part": "resolving-slot",
                                 "role": "none"
                               },
@@ -670,11 +864,13 @@
                               "$props": {
                                 "size": "sm",
                                 "quiet": true,
+                                "icon": "sliders-horizontal",
+                                "label": "More rendering context",
                                 "haspopup": "dialog",
                                 "expanded": {
                                   "$ref": "#/state/contextOpen"
                                 },
-                                "hint": "What this document is being rendered with"
+                                "hint": "Language, feature queries, layout, and Manage contexts"
                               },
                               "onclick": {
                                 "$prototype": "Function",
@@ -696,19 +892,11 @@
                                 {
                                   "tagName": "span",
                                   "textContent": "${state.contextSummary}"
-                                },
-                                {
-                                  "tagName": "jx-icon",
-                                  "attributes": {
-                                    "part": "context-trigger-caret"
-                                  },
-                                  "$props": {
-                                    "name": "caret-down"
-                                  }
                                 }
                               ]
                             }
-                          ]
+                          ],
+                          "$description": "The rendering context, on the bar: the size and the color scheme are segmented groups the reader picks from directly, because they are what a canvas is switched between all day; the resolving-with values and the rarer choices (language, feature queries, layout, Manage contexts) stay behind their popovers."
                         }
                       }
                     },
@@ -955,7 +1143,7 @@
         "id": "${state.contextPopoverId}"
       },
       "$props": {
-        "label": "Rendering context",
+        "label": "More rendering context",
         "placement": "block-end span-inline-start",
         "x": {
           "$ref": "#/state/contextX"
@@ -971,174 +1159,6 @@
             "part": "ctx"
           },
           "children": [
-            {
-              "tagName": "div",
-              "attributes": {
-                "part": "ctx-group",
-                "data-group": "size"
-              },
-              "children": [
-                {
-                  "tagName": "span",
-                  "attributes": {
-                    "part": "ctx-group-label"
-                  },
-                  "textContent": "Size"
-                },
-                {
-                  "tagName": "jx-action-group",
-                  "attributes": {
-                    "part": "sizes"
-                  },
-                  "$props": {
-                    "selects": "single",
-                    "compact": false,
-                    "label": "Size"
-                  },
-                  "children": [
-                    {
-                      "$prototype": "Array",
-                      "items": {
-                        "$ref": "#/state/sizes"
-                      },
-                      "key": {
-                        "$ref": "$map/item/key"
-                      },
-                      "map": {
-                        "tagName": "jx-action-button",
-                        "attributes": {
-                          "part": "sizes-item",
-                          "data-value": "${$map.item.value}"
-                        },
-                        "$props": {
-                          "size": "sm",
-                          "quiet": false,
-                          "checked": {
-                            "$ref": "$map/item/checked"
-                          },
-                          "hint": {
-                            "$ref": "$map/item/hint"
-                          }
-                        },
-                        "onclick": {
-                          "$prototype": "Function",
-                          "body": [
-                            {
-                              "operator": "call",
-                              "target": {
-                                "$ref": "#/state/setBreakpoint"
-                              },
-                              "value": [
-                                {
-                                  "$ref": "$map/item/value"
-                                }
-                              ]
-                            }
-                          ]
-                        },
-                        "children": [
-                          {
-                            "tagName": "span",
-                            "textContent": "${$map.item.label}"
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "tagName": "div",
-              "attributes": {
-                "part": "scheme-slot",
-                "role": "none"
-              },
-              "style": {
-                "display": "contents"
-              },
-              "$switch": {
-                "$ref": "#/state/schemeState"
-              },
-              "cases": {
-                "shown": {
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "ctx-group",
-                    "data-group": "scheme"
-                  },
-                  "children": [
-                    {
-                      "tagName": "span",
-                      "attributes": {
-                        "part": "ctx-group-label"
-                      },
-                      "textContent": "Color scheme"
-                    },
-                    {
-                      "tagName": "jx-action-group",
-                      "attributes": {
-                        "part": "schemes"
-                      },
-                      "$props": {
-                        "selects": "single",
-                        "compact": true,
-                        "label": "Color scheme"
-                      },
-                      "children": [
-                        {
-                          "$prototype": "Array",
-                          "items": {
-                            "$ref": "#/state/schemes"
-                          },
-                          "key": {
-                            "$ref": "$map/item/key"
-                          },
-                          "map": {
-                            "tagName": "jx-action-button",
-                            "attributes": {
-                              "part": "schemes-item",
-                              "data-value": "${$map.item.value}"
-                            },
-                            "$props": {
-                              "size": "sm",
-                              "checked": {
-                                "$ref": "$map/item/checked"
-                              },
-                              "hint": {
-                                "$ref": "$map/item/hint"
-                              }
-                            },
-                            "onclick": {
-                              "$prototype": "Function",
-                              "body": [
-                                {
-                                  "operator": "call",
-                                  "target": {
-                                    "$ref": "#/state/setScheme"
-                                  },
-                                  "value": [
-                                    {
-                                      "$ref": "$map/item/value"
-                                    }
-                                  ]
-                                }
-                              ]
-                            },
-                            "children": [
-                              {
-                                "tagName": "span",
-                                "textContent": "${$map.item.label}"
-                              }
-                            ]
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-              }
-            },
             {
               "tagName": "div",
               "attributes": {
@@ -1400,7 +1420,8 @@
             }
           ]
         }
-      ]
+      ],
+      "$description": "What is left of the rendering context once Size and Color scheme moved onto the bar: the language, the feature queries, the layout switch, and Manage contexts. They are chosen rarely, and Manage contexts is always here, so the trigger always is too."
     },
     {
       "tagName": "jx-popover",

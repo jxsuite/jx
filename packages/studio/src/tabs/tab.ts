@@ -304,12 +304,11 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
 }
 
 /*
- * `git-diff` is here because a comparison is a MODE of a document, and until now nothing said so.
- * The Source Control panel reached it through the injected `setCanvasMode`, which performs no
- * capability check — so the mode worked while `editorKindsOf` could never report `diff`, the Editor
- * picker could never offer it, and `canvas.setMode { mode: "git-diff" }` threw for every document in
- * the project. Declaring it makes the palette, the assistant and the screenshot runner able to open
- * a comparison by name, and puts Diff on the Editor axis where §18.4 already says it belongs.
+ * `git-diff` is here because a comparison is a MODE of a document: the stage draws a document in
+ * it, `editorKindOf` names it, and a tab moved into it by the Source Control panel is a tab in a
+ * mode it declares. Declaring it does NOT make it a choice. Diff is implicit (§3): nothing offers it
+ * by name, neither the Editor axis (`panels/pane-context.ts` leaves it out) nor `canvas.setMode`
+ * (`SELECTABLE_CANVAS_MODES`), because a comparison is entered by choosing what to compare.
  */
 const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff"];
 
