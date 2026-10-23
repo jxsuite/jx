@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.41.0](https://github.com/jxsuite/jx/compare/import-v0.40.13...import-v0.41.0) (2026-10-23)
+
+
+### Features
+
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * optionalDependencies
+    * @jxsuite/compiler bumped to 6.1.0
+
 ## [0.40.13](https://github.com/jxsuite/jx/compare/import-v0.40.12...import-v0.40.13) (2026-10-21)
 
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [6.1.0](https://github.com/jxsuite/jx/compare/desktop-v6.0.1...desktop-v6.1.0) (2026-10-23)
+
+
+### Features
+
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+
+
+### Bug Fixes
+
+* **desktop:** sandboxed Mac App Store build opens the folders the user picks ([#481](https://github.com/jxsuite/jx/issues/481)) ([054a71d](https://github.com/jxsuite/jx/commit/054a71d35e5a39bc9cc42e319ceaa76b588bcaaa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/auth bumped to 0.8.0
+    * @jxsuite/compiler bumped to 6.1.0
+    * @jxsuite/connector bumped to 0.8.0
+    * @jxsuite/create bumped to 1.4.0
+    * @jxsuite/parser bumped to 4.1.0
+    * @jxsuite/server bumped to 6.1.0
+    * @jxsuite/starters bumped to 3.1.0
+    * @jxsuite/studio bumped to 8.1.0
+  * devDependencies
+    * @jxsuite/server bumped to 6.1.0
+    * @jxsuite/ui bumped to 0.8.0
+
 ## [6.0.1](https://github.com/jxsuite/jx/compare/desktop-v6.0.0...desktop-v6.0.1) (2026-10-21)
 
 
