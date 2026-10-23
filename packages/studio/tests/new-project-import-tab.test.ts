@@ -67,7 +67,7 @@ function control(part: string): HTMLInputElement | HTMLSelectElement | HTMLTextA
 function inputOf(part: string): HTMLInputElement {
   const el = control(part);
   if (!(el instanceof HTMLInputElement)) {
-    throw new Error(`the "${part}" field draws a <${el.localName}>, not an <input>`);
+    throw new TypeError(`the "${part}" field draws a <${el.localName}>, not an <input>`);
   }
   return el;
 }
@@ -103,7 +103,7 @@ function commit(part: string, value: string): void {
 function flip(part: string, on: boolean): void {
   const box = npPart(part)?.querySelector('[part="input"]');
   if (!(box instanceof HTMLInputElement)) {
-    throw new Error(`no switch checkbox in the "${part}" field`);
+    throw new TypeError(`no switch checkbox in the "${part}" field`);
   }
   box.checked = on;
   box.dispatchEvent(new Event("change", { bubbles: true }));
@@ -113,7 +113,7 @@ function flip(part: string, on: boolean): void {
 function typeInto(part: string, value: string): void {
   const el = control(part);
   if (!(el instanceof HTMLTextAreaElement)) {
-    throw new Error(`the "${part}" field draws a <${el.localName}>, not a <textarea>`);
+    throw new TypeError(`the "${part}" field draws a <${el.localName}>, not a <textarea>`);
   }
   el.value = value;
   el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -543,7 +543,7 @@ describe("Import — the model picker", () => {
     await flush(6);
     const picker = npPart("model-island")!.querySelector('[part="model-picker"] [part="control"]');
     if (!(picker instanceof HTMLSelectElement)) {
-      throw new Error("the model picker draws no <select>");
+      throw new TypeError("the model picker draws no <select>");
     }
     picker.value = "o3-import";
     picker.dispatchEvent(new Event("change", { bubbles: true }));

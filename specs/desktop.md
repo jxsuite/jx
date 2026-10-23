@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.5.11-draft\
+**Version:** 0.6.1-draft\
 **Status:** Partial\
-**Updated:** 2026-10-17\
+**Updated:** 2026-10-21\
 **License:** MIT
 
 ---
@@ -752,6 +752,23 @@ Installed ElectroBun builds cannot update into this application: their updater a
 
 **Linux** ships an AppImage per architecture, the one Linux package electron-updater replaces in place. It needs FUSE 2, and on Ubuntu 24.04 and later the system restricts the sandbox Electron relies on for apps that are not installed from a package, so the snap is the recommended Ubuntu channel. There is no `.deb`: the snap and the Nix package already cover the package-manager channels, and the tool electron-builder needs for one does not ship for arm64.
 
+### 7.7 Mac App Store
+
+> **Status: Partial.** The `mas` target, its two entitlements files, the updater's refusal inside a Mac App Store install, the upload lane and the sandboxed folder access (below) are built. The lane has uploaded a signed package that App Store Connect processed, and a local sandboxed build opens projects the user picks. Not done: launching a package signed with the real distribution identities, and Git, which in the sandbox runs Apple's developer-tools shim and cannot read the user's Git configuration.
+
+The Mac App Store is a second macOS channel beside the notarized DMG of §7.6, built from the same staged application by `bun run package --target mas --arch arm64`, which asks electron-builder for its `mas` target. It differs from the DMG in four ways, each forced by the store and not chosen:
+
+- **A different identity and a different container.** The package is signed with the Apple Distribution certificate and wrapped in a `.pkg` signed with the Mac Installer Distribution certificate, and it carries an embedded provisioning profile for `com.jxsuite.studio`, the identifier registered in the Apple developer portal and the `appId` of every channel. The Developer ID certificate of §7.6 cannot sign it. Nothing is notarized: the store's review replaces notarization.
+- **The App Sandbox is on.** `build-resources/entitlements.mas.plist` grants the application `com.apple.security.app-sandbox`, user-selected read-write file access, app-scope bookmarks, and outbound and inbound network (the backend listens on loopback, and package installs and Git over HTTPS go out). Hardened-runtime exceptions the DMG needs (`disable-library-validation`) are not part of it; `allow-jit` and `allow-unsigned-executable-memory` stay, because V8 and the Bun backend's JavaScriptCore both JIT. `build-resources/entitlements.mas.inherit.plist` is what every nested executable is signed with, the pinned Bun included: it carries `app-sandbox` and `com.apple.security.inherit`, so a child runs inside its parent's sandbox.
+- **The store updates the app.** `process.mas` is true in the build, and `updatesEnabled` (§7.5) returns false for it, as it does for a Microsoft Store install. The feed in `electron-builder.yml` is never read.
+- **Some features do not exist in it.** The site import needs a Chromium that the sandbox will not let the app launch, and `CHROME_PATH` is only ever set by the Nix package and the snap, so the macOS application already ships without it (§9.5). Git runs the system's `git` from `PATH`, which in the sandbox is Apple's developer-tools shim: it may be absent, and it cannot read `~/.gitconfig`, SSH keys or credential helpers. Git over HTTPS to a public repository can work, and SSH remotes cannot.
+
+**Folder access.** A sandboxed application reads a folder only after the user has picked it, and the permission belongs to the process that received it and to the children that process starts afterwards. Studio's backend is such a child, so a folder picked after the backend started is invisible to it, and so is a folder granted by picking a file inside it: a picked `project.json` grants that one file and none of the pages beside it. This build therefore asks for the project's folder, stores the dialog's security-scoped bookmark for each folder (`folder-grants.json` in the user-data directory), takes every stored bookmark up again before it spawns the backend, and replaces the backend when a pick is not inside a folder it already holds. Replacing the backend closes every open window, so with a project open it asks first and does nothing on Cancel; the projects that were open reopen beside the new one. A folder picked as the place to create a project restarts onto a welcome window, since the request that asked is gone. All of it was measured on a local build of Electron's Mac App Store flavor, signed ad hoc with these entitlements: a project in a picked folder loads in full (pages, templates, components and media), and after a quit and relaunch it opens from Recent with no new pick.
+
+**Review.** The store's guideline 2.5.2 forbids an app that downloads or runs code that changes its features. Studio runs the user's own project and installs the npm packages the user asks for, as an editor or an IDE does; the review notes say so.
+
+**Updates are releases.** Each desktop release uploads its build to App Store Connect for TestFlight. Submitting a build to App Review is a person's decision and no lane makes it.
+
 ---
 
 ## 8. Chrome Development Mode
@@ -1192,6 +1209,14 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.6.1-draft** (2026-10-21) — §7.3: a declared collection source outside the project root is reachable for the file operations, as on the dev server.
+- **0.6.0-draft** (2026-10-21) — ElectroBun is removed and the Electron application is the one desktop framework: section 7 becomes the packaging chapter (electron-builder, the staged backend and its smoke test, self-updates through electron-updater, signing and the release lanes), the shared services server and the updater, window and canvas-URL RPC requests are gone, the Windows installer is NSIS with a Store appx in place of the MSI, Linux ships an AppImage, and section 9.3 graduates.
+- **0.5.17-draft** (2026-10-21) — Adds the Electron application: Electron as the root process owning every window, a Bun backend owning every project over a validated JSON IPC protocol, one session and server and token per window, single-instance launches, native dialogs and the macOS File menu.
+- **0.5.16-draft** (2026-10-21) — The NixOS build draws its window with a frameless Electron shell, so Studio's own titlebar, window buttons and drag region now ship on Linux; records why Chrome 155's windowing controls cannot do this.
+- **0.5.15-draft** (2026-10-21) — Records that the unpacked Linux arm64 application was built and run on Ubuntu 24.04, with its staged backend passing the smoke test, and that only the AppImages remain unrun.
+- **0.5.14-draft** (2026-10-21) — The Nix package runs the Electron application: a build-time bundle, a wrapper that starts Electron on it, a bare project argument that works unpackaged, and the application's name and profile pinned before its single-instance lock; Electron's default native Wayland replaces the launcher's Ozone flags.
+- **0.5.13-draft** (2026-10-21) — The snap runs the Electron application like every other channel (9.6); 9.7 is Implemented, and the snap's hardware-accelerated rendering is recorded as unmeasured rather than as a reason to keep a second shell.
+- **0.5.12-draft** (2026-10-21) — The launcher's Electron shell also runs on macOS (opt-in through ELECTRON_BIN): an application menu, the Dock identity and AppleScript pickers; --class is Linux-only and ELECTRON_RUN_AS_NODE no longer leaks into the shell.
 - **0.5.11-draft** (2026-10-17) — §6.1 names resolveCanvasDocument, not the removed collectTags.
 - **0.5.10-draft** (2026-10-07) — Open Project on the cloud picks a project folder within the chosen repository (listRepoProjects, and importProject's dir), and a cloud project's root key, editor URL and session revision carry that folder in git's rev:path notation (§4.1, §4.2, §10.1).
 - **0.5.9-draft** (2026-10-04) — §3.1 a backend that sets DirEntry.version may answer a documentBaseUrl request with an immutable cache lifetime only when ?v= is a version it issued and it returns exactly the bytes that version names, an older one included (the browser keeps that answer for good, so Studio keeps versions true); an unrecognized v and every unversioned URL keep the revalidating response. §10.1 the cloud adapter reports its event stream's first open as an "open" resync.
@@ -1264,4 +1289,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.5.11-draft_
+_Jx Studio Desktop Architecture Specification v0.6.1-draft_

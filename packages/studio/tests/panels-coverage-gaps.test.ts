@@ -81,7 +81,7 @@ const { initLayers } = await import("../src/ui/layers");
 function find<T extends Element>(root: ParentNode, selector: string, kind: new () => T): T {
   const el = root.querySelector(selector);
   if (!(el instanceof kind)) {
-    throw new Error(`expected a ${kind.name} at ${selector}`);
+    throw new TypeError(`expected a ${kind.name} at ${selector}`);
   }
   return el;
 }

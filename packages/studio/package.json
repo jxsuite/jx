@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/studio",
-  "version": "7.0.0",
+  "version": "8.0.1",
   "description": "Jx Studio — visual builder for Jx documents",
   "license": "MIT",
   "repository": {
@@ -76,16 +76,16 @@
     "ajv-formats": "^3.0.1",
     "lit-html": "^3.3.3",
     "monaco-editor": "^0.57.0",
-    "tabulator-tables": "^6.6.1",
+    "tabulator-tables": "^6.7.1",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^21.0.3",
+    "@happy-dom/global-registrator": "^21.0.4",
     "@jxsuite/test-support": "workspace:^",
     "@types/mdast": "^4.0.4",
-    "@webref/css": "^8.7.7",
+    "@webref/css": "^8.7.8",
     "@webref/elements": "^2.9.2",
-    "@webref/idl": "^3.85.2"
+    "@webref/idl": "^3.86.0"
   },
   "//vue-reactivity": "Exact pin required — must match @jxsuite/runtime to avoid cross-boundary proxy bugs"
 }

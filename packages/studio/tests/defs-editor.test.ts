@@ -107,7 +107,7 @@ function live(...path: string[]): JsonValue | undefined {
 function part(root: ParentNode, name: string): HTMLElement {
   const el = root.querySelector(`[part="${name}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no [part="${name}"] in the Data Shapes section`);
+    throw new TypeError(`no [part="${name}"] in the Data Shapes section`);
   }
   return el;
 }
@@ -176,7 +176,7 @@ async function selectDef(container: HTMLElement, name: string): Promise<void> {
 function card(container: HTMLElement, field: string): HTMLElement {
   const el = container.querySelector(`[data-field="${field}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no field card for "${field}"`);
+    throw new TypeError(`no field card for "${field}"`);
   }
   return el;
 }
@@ -190,7 +190,7 @@ function row(container: HTMLElement, field: string): HTMLElement {
 function nested(container: HTMLElement, parent: string, child: string): HTMLElement {
   const el = card(container, parent).querySelector(`[data-nested="${child}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no nested card for "${parent}.${child}"`);
+    throw new TypeError(`no nested card for "${parent}.${child}"`);
   }
   return el;
 }

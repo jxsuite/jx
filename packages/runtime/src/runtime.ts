@@ -535,7 +535,7 @@ export function transposeCanvasUnits(value: string): string {
   if (!_canvasViewportTranspose || !value.includes("v")) {
     return value;
   }
-  return value.replace(
+  return value.replaceAll(
     VIEWPORT_UNIT_RE,
     (_m, num: string, dim: string) =>
       `${num}${VIEWPORT_UNIT_MAP.get(dim.toLowerCase()) ?? `cq${dim}`}`,

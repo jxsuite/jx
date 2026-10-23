@@ -39,8 +39,8 @@ import { componentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
 import { loadFormats, formatForPath } from "../format/format-host";
 import { parseSourceForPath } from "../files/file-ops";
-import { defineComponent, renderComponentPreview } from "../panels/component-preview";
-import { componentExampleProps, componentSampleRow } from "./component-examples";
+import { renderComponentPreview } from "../panels/component-preview";
+import { componentExampleProps } from "./component-examples";
 import { loadProjectPreviewSheets } from "./preview-style";
 import type { ComponentEntry } from "../files/components";
 import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
@@ -170,7 +170,7 @@ export async function renderDocPreview(filePath: string): Promise<HTMLElement | 
 async function renderDocument(
   document_: JxDocument,
   filePath: string,
-  context = assetContextFor(filePath, hostAssetDeclarations()),
+  context: ReturnType<typeof assetContextFor>,
 ): Promise<HTMLElement | null> {
   setSkipServerFunctions(true);
   /* The document's own URL, as the canvas spells it, and the canvas's dev-proxy token. With the
@@ -195,8 +195,8 @@ async function renderDocument(
 }
 
 /**
- * A project component's preview: an instance given its sample props when it renders with them, else
- * the first row of a list that draws it (`component-examples.ts`), else none.
+ * A project component's preview: an instance given its declared sample props
+ * (`component-examples.ts`), or none when the definition does not render with them.
  */
 async function projectComponentPreview(
   component: ComponentEntry,
@@ -206,14 +206,7 @@ async function projectComponentPreview(
   if (!definition) {
     return null;
   }
-  const props = await componentExampleProps(definition, path);
-  if (props.size > 0 && (await rendersWith(definition, path, props))) {
-    return renderComponentPreview(component, props);
-  }
-  const sample = await componentSampleRow(definition, path);
-  if (sample && (await defineComponent(component))) {
-    return renderDocument(sample.doc, sample.file);
-  }
+  const props = componentExampleProps(definition);
   return (await rendersWith(definition, path, props))
     ? renderComponentPreview(component, props)
     : null;

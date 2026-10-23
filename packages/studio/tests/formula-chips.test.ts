@@ -63,7 +63,7 @@ function strip(node: ExpressionValue): string[] {
 function drawn(root: ParentNode, selector: string): HTMLElement {
   const el = root.querySelector(selector);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`the expression editor draws no ${selector}`);
+    throw new TypeError(`the expression editor draws no ${selector}`);
   }
   return el;
 }

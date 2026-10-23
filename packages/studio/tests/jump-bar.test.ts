@@ -128,7 +128,7 @@ function htmlElements(root: ParentNode, selector: string): HTMLElement[] {
 function htmlElement(root: ParentNode, selector: string): HTMLElement {
   const el = root.querySelector(selector);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no HTML element matches ${selector}`);
+    throw new TypeError(`no HTML element matches ${selector}`);
   }
   return el;
 }

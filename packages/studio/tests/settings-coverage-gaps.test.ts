@@ -69,7 +69,7 @@ function makeContainer(): HTMLElement {
 function overlayLayer(id: string): HTMLElement {
   const layer = document.querySelector(`#${id}`);
   if (!(layer instanceof HTMLElement)) {
-    throw new Error(`#${id} is not mounted; beforeAll creates every overlay layer`);
+    throw new TypeError(`#${id} is not mounted; beforeAll creates every overlay layer`);
   }
   return layer;
 }
@@ -96,7 +96,7 @@ function depsStatus(c: HTMLElement): string {
 function depsRow(c: HTMLElement, name: string): HTMLElement {
   const el = c.querySelector(`[part="row"][data-package="${name}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no row for "${name}"`);
+    throw new TypeError(`no row for "${name}"`);
   }
   return el;
 }
@@ -258,7 +258,7 @@ describe("dependencies editor gaps", () => {
     await flush(4);
     const field = c.querySelector('[part="add-field"] [part="input"]');
     if (!(field instanceof HTMLInputElement)) {
-      throw new Error("the add field rendered no native input");
+      throw new TypeError("the add field rendered no native input");
     }
     field.value = "lodash";
     field.dispatchEvent(new Event("input", { bubbles: true }));
@@ -373,7 +373,7 @@ describe("css vars editor gaps", () => {
        input the kit's swatch wraps. */
     const swatchInput = container.querySelector('[part="override"] input[type="color"]');
     if (!(swatchInput instanceof HTMLInputElement)) {
-      throw new Error("the scheme override rendered no colour input");
+      throw new TypeError("the scheme override rendered no colour input");
     }
     swatchInput.value = "#222222";
     swatchInput.dispatchEvent(new Event("input", { bubbles: true }));
@@ -396,7 +396,7 @@ describe("contributed section gaps", () => {
   function part(root: ParentNode, name: string): HTMLElement {
     const el = root.querySelector(`[part="${name}"]`);
     if (!(el instanceof HTMLElement)) {
-      throw new Error(`no [part="${name}"] in the contributed section`);
+      throw new TypeError(`no [part="${name}"] in the contributed section`);
     }
     return el;
   }

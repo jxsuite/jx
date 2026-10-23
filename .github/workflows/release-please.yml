@@ -16,7 +16,28 @@ on:
   # `releases_created`.
   schedule:
     - cron: "0 5 * * *"
+  # A plain dispatch is a release run like any other. With `backfill_paths` it is something else
+  # entirely: release-please is skipped and ONLY `publish` runs, for those paths, from
+  # `backfill_sha`. That is the npm backfill, and it has to live HERE: npm trusted publishing
+  # accepts the OIDC token only from the workflow file each package's trusted publisher names,
+  # which is this file whenever publish.yml runs as its reusable workflow. Dispatching publish.yml
+  # directly was refused with E404 on every package (run 39607367057). Every other job is gated on
+  # release-please's outputs, which are empty when it is skipped, and verify-release-integrity
+  # opts out explicitly, so a backfill touches npm and nothing else.
+  #
+  #   gh workflow run release-please.yml -f backfill_paths='["packages/runtime"]' -f backfill_sha=<release commit or tag>
   workflow_dispatch:
+    inputs:
+      backfill_paths:
+        description: 'Backfill npm ONLY: JSON array of package paths, e.g. ["packages/runtime","packages/site"]. Leave empty for a normal release run.'
+        required: false
+        type: string
+        default: ""
+      backfill_sha:
+        description: Backfill only. The release commit or tag to publish packages from (its package.json carries the released versions; the publish scripts still come from the dispatched branch). Defaults to the dispatched branch head.
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -25,6 +46,9 @@ permissions:
 
 jobs:
   release-please:
+    # Skipped in backfill mode, which leaves every output below empty and so every job gated on
+    # one of them skipped too.
+    if: ${{ !inputs.backfill_paths }}
     runs-on: ubuntu-latest
     outputs:
       releases_created: ${{ steps.rp.outputs.releases_created }}
@@ -45,15 +69,29 @@ jobs:
   # The release tags are created by release-please using GITHUB_TOKEN, which does
   # NOT trigger `on: push: tags` workflows. So we invoke the (now reusable)
   # publish + desktop-bundler workflows directly once releases exist.
+  #
+  # In backfill mode (workflow_dispatch with `backfill_paths`) release-please is skipped, so this
+  # needs `always()` to run at all, and publishes the given paths from `backfill_sha`. The OIDC
+  # token then still names release-please.yml, which is what npm's trusted publisher accepts.
   publish:
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: >-
+      !cancelled() &&
+      (inputs.backfill_paths ||
+       (needs.release-please.result == 'success' &&
+        needs.release-please.outputs.releases_created == 'true'))
+    # A job that calls a reusable workflow caps that workflow's token at these scopes: OIDC for
+    # npm, and issues for filing unpublished packages on the release-incomplete issue.
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
     uses: ./.github/workflows/publish.yml
     with:
       # Publish only the packages actually released this run; all component tags
       # point at github.sha (the release-PR merge commit).
-      paths_released: ${{ needs.release-please.outputs.paths_released }}
-      sha: ${{ github.sha }}
+      paths_released: ${{ inputs.backfill_paths || needs.release-please.outputs.paths_released }}
+      sha: ${{ inputs.backfill_sha || github.sha }}
     secrets: inherit
 
   # Desktop jobs gate on the DESKTOP component (not the global flag): they build
@@ -94,6 +132,17 @@ jobs:
     needs: [release-please, desktop-windows]
     if: needs.release-please.outputs.desktop_released == 'true' && needs.desktop-windows.result == 'success'
     uses: ./.github/workflows/store-publish.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.desktop_tag }}
+    secrets: inherit
+
+  # The Mac App Store, to TestFlight only. A lane of its own that builds the sandboxed package itself,
+  # so it needs nothing from desktop-macos and does not gate the release. A clean no-op until the
+  # MAS_* secrets exist (packages/desktop/AGENTS.md, "Mac App Store Publishing").
+  mas-publish:
+    needs: release-please
+    if: needs.release-please.outputs.desktop_released == 'true'
+    uses: ./.github/workflows/mas-publish.yml
     with:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
     secrets: inherit
@@ -467,13 +516,19 @@ jobs:
   # depending on `^1.5.0`, so `npm install @jxsuite/create` was unresolvable for everyone. Nothing
   # `needs:` this job, so a red X here blocks no other release work.
   #
-  # It used to assert the npm side too, and that half is GONE rather than merely more patient: the
-  # registry makes an accepted publish readable up to three minutes later, so the probe raced the
-  # write and filed #177, #199 and #264 against releases that were all completely fine — nought for
-  # three, no real catch, three investigations. The script header carries the measurements.
+  # It used to assert the npm side on EVERY run, and that probe is gone from the post-merge run
+  # rather than made more patient: the registry makes an accepted publish readable up to three
+  # minutes later, so it raced the write and filed #177, #199 and #264 against releases that were
+  # all completely fine. The daily SCHEDULED sweep asks npm again (`--npm`), but only about versions
+  # whose GitHub release is more than one hour old (about 19x the worst write lag ever measured, so
+  # it cannot race the registry). That sweep would have caught runtime@5.0.0 and site@2.0.5 at
+  # 05:00 the morning after the publish loop died before them (2026-10-17, 16:12 UTC). The script
+  # header carries the measurements.
+  #
+  # Skipped in backfill mode: a backfill touches npm and nothing else.
   verify-release-integrity:
     needs: [release-please]
-    if: always()
+    if: ${{ always() && !inputs.backfill_paths }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -486,13 +541,16 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           install: false
-      - name: Every version in the manifest must have a GitHub release
+      - name: Every version in the manifest has a GitHub release (and, daily, is on npm)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -uo pipefail
-          if bun scripts/check-release-integrity.ts 2>&1 | tee integrity.txt; then
+          npm_flag=""
+          if [ "$EVENT" = "schedule" ]; then npm_flag="--npm"; fi
+          if bun scripts/check-release-integrity.ts $npm_flag 2>&1 | tee integrity.txt; then
             exit 0
           fi
           echo "::error::the manifest claims versions that never shipped"

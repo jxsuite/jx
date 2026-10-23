@@ -1,6 +1,0 @@
----
-spec: studio.md
-level: minor
----
-
-Tab strips are drawn in the Design and Content workspaces only (§22.3, §14.4): Media, Styles and Publish draw their home alone, and a view opened beside the home (a media viewer, a comparison, project.json as Code) is left through the pane context bar's Back to <home> control or Escape (pane.backToHome), a close there landing on the home; the Styles workspace's Navigator is the new Styles panel (§7.3), listing the CSS custom properties first by group with counts and swatches, then the element defaults by tag name, then the color schemes, and the workspace opens on the Variables view and remembers the last of Variables and Elements for the session (§7.1, §22.7). Escape leaves a viewer or a comparison but stands down in the code editor, a text field and an open popover, and is never forwarded by a canvas frame; Back returns the keyboard to what opened the view, and a strip-less pane holds its home and one view (a new viewer replaces the last). A derived pane keeps its chip row, and its Close Side Pane, in every workspace, and closing it keeps the workspace. Styles' Inspector is drawn only beside the Elements view (§22.3, §22.7), and an element picked from the Variables view is panned to once the Elements canvas renders.

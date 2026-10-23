@@ -49,7 +49,7 @@ let uid = 0;
 function renderedRoot(parent: Element = host): HTMLElement {
   const el = parent.firstElementChild;
   if (!(el instanceof HTMLElement)) {
-    throw new Error("the mount rendered no element root");
+    throw new TypeError("the mount rendered no element root");
   }
   return el;
 }

@@ -48,7 +48,7 @@ function installWindowControls() {
 function edgeEl(edge: string): HTMLElement {
   const el = document.querySelector(`#resize-edges .resize-edge.${edge}`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no mounted "${edge}" resize handle`);
+    throw new TypeError(`no mounted "${edge}" resize handle`);
   }
   return el;
 }

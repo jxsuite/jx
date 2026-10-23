@@ -151,7 +151,7 @@ function requiredPart(name: string): HTMLElement {
 function control(scope: ParentNode, selector = '[part="control"]'): HTMLButtonElement {
   const el = scope.querySelector(selector);
   if (!(el instanceof HTMLButtonElement)) {
-    throw new Error(`${selector} is not a drawn <button>`);
+    throw new TypeError(`${selector} is not a drawn <button>`);
   }
   return el;
 }

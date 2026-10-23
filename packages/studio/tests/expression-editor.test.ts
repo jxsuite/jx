@@ -105,7 +105,7 @@ function row(host: HTMLElement, prop: string): HTMLElement {
   const el = host.querySelector(`[data-prop="${prop}"]`);
   expect(el).toBeTruthy();
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`No HTML row carries data-prop="${prop}"`);
+    throw new TypeError(`No HTML row carries data-prop="${prop}"`);
   }
   return el;
 }
@@ -114,7 +114,7 @@ function row(host: HTMLElement, prop: string): HTMLElement {
 function selectIn(el: Element | null): HTMLSelectElement {
   const control = el?.querySelector('[part="control"]');
   if (!(control instanceof HTMLSelectElement)) {
-    throw new Error("The kit select renders no native select control");
+    throw new TypeError("The kit select renders no native select control");
   }
   return control;
 }
@@ -123,7 +123,7 @@ function selectIn(el: Element | null): HTMLSelectElement {
 function inputIn(el: Element | null): HTMLInputElement | HTMLTextAreaElement {
   const input = el?.querySelector('[part="input"]');
   if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) {
-    throw new Error("The kit field renders no native input");
+    throw new TypeError("The kit field renders no native input");
   }
   return input;
 }
@@ -132,7 +132,7 @@ function inputIn(el: Element | null): HTMLInputElement | HTMLTextAreaElement {
 function checkboxIn(el: Element | null): HTMLInputElement {
   const input = el?.querySelector('[part="input"]');
   if (!(input instanceof HTMLInputElement)) {
-    throw new Error("The kit checkbox renders no native input");
+    throw new TypeError("The kit checkbox renders no native input");
   }
   return input;
 }

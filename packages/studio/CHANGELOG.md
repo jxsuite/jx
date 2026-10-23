@@ -1,5 +1,40 @@
 # Changelog
 
+## [8.0.1](https://github.com/jxsuite/jx/compare/studio-v8.0.0...studio-v8.0.1) (2026-10-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.17
+    * @jxsuite/formulas bumped to 0.0.23
+    * @jxsuite/runtime bumped to 5.1.0
+    * @jxsuite/site bumped to 2.1.0
+    * @jxsuite/ui bumped to 0.7.1
+
+## [8.0.0](https://github.com/jxsuite/jx/compare/studio-v7.0.0...studio-v8.0.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **desktop:** installed Electrobun builds cannot update into this app; reinstall once.
+
+### Features
+
+* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([be1534f](https://github.com/jxsuite/jx/commit/be1534f616d7176b4a2098cd4d232808cf5c7482))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.39.5
+    * @jxsuite/create bumped to 1.3.16
+    * @jxsuite/markup bumped to 1.0.0
+    * @jxsuite/protocol bumped to 4.0.0
+    * @jxsuite/ui bumped to 0.7.0
+
 ## [7.0.0](https://github.com/jxsuite/jx/compare/studio-v6.1.2...studio-v7.0.0) (2026-10-17)
 
 

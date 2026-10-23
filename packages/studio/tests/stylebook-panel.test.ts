@@ -147,7 +147,7 @@ function chromeBar(): HTMLElement {
 function filterControl(): HTMLInputElement {
   const el = chromeBar().querySelector('[part="filter"] [part="input"]');
   if (!(el instanceof HTMLInputElement)) {
-    throw new Error("no control in the chrome bar's filter field");
+    throw new TypeError("no control in the chrome bar's filter field");
   }
   return el;
 }
@@ -156,7 +156,7 @@ function filterControl(): HTMLInputElement {
 function customizedControl(): HTMLButtonElement {
   const el = chromeBar().querySelector('[part="customized"] [part="control"]');
   if (!(el instanceof HTMLButtonElement)) {
-    throw new Error("no control in the chrome bar's Customized toggle");
+    throw new TypeError("no control in the chrome bar's Customized toggle");
   }
   return el;
 }

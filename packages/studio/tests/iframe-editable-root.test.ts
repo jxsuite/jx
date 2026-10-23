@@ -166,6 +166,40 @@ describe("activation follows the caret", () => {
   });
 });
 
+describe("pressing on uneditable content", () => {
+  // The browser leaves the selection alone when the press lands where no caret can go, so the caret
+  // Went on blinking in the block clicked before while the component was the selected node.
+  const WITH_ISLAND = `<p data-jx-path='["children",0]'>Page</p><x-card data-jx-path='["children",1]' contenteditable="false"><span>Internals</span><p data-jx-path='["children",1,"children",0]' contenteditable="true">Slot</p></x-card>`;
+
+  test("a press inside a component island drops the stale caret", () => {
+    const { container } = mount(WITH_ISLAND);
+    caretInto(nth(container, "p"), 2);
+    nth(container, "span").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(window.getSelection()?.rangeCount).toBe(0);
+  });
+
+  test("a press on slotted page content inside the island keeps the caret", () => {
+    const { container } = mount(WITH_ISLAND, { onPropActivate: () => true });
+    caretInto(nth(container, "p"), 2);
+    nth(container, "p", 1).dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(window.getSelection()?.rangeCount).toBe(1);
+  });
+
+  test("a press on an ordinary block keeps the caret", () => {
+    const { container } = mount(WITH_ISLAND);
+    caretInto(nth(container, "p"), 2);
+    nth(container, "p").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(window.getSelection()?.rangeCount).toBe(1);
+  });
+
+  test("outside the editing modes the press leaves the selection alone", () => {
+    const { container } = mount(WITH_ISLAND, { getMode: () => "preview" });
+    caretInto(nth(container, "p"), 2);
+    nth(container, "span").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(window.getSelection()?.rangeCount).toBe(1);
+  });
+});
+
 describe("prop-bound nested hosts", () => {
   const WITH_PROP = `<p data-jx-path='["children",0]'>Page</p><x-card data-jx-path='["children",1]' contenteditable="false"><span data-jx-bound-prop="title">Card</span></x-card>`;
 

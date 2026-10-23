@@ -1,5 +1,51 @@
 # Changelog
 
+## [6.0.1](https://github.com/jxsuite/jx/compare/desktop-v6.0.0...desktop-v6.0.1) (2026-10-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/auth bumped to 0.7.0
+    * @jxsuite/compiler bumped to 6.0.2
+    * @jxsuite/connector bumped to 0.7.0
+    * @jxsuite/create bumped to 1.3.17
+    * @jxsuite/parser bumped to 4.0.1
+    * @jxsuite/server bumped to 6.0.1
+    * @jxsuite/starters bumped to 3.0.1
+    * @jxsuite/studio bumped to 8.0.1
+  * devDependencies
+    * @jxsuite/server bumped to 6.0.1
+    * @jxsuite/ui bumped to 0.7.1
+
+## [6.0.0](https://github.com/jxsuite/jx/compare/desktop-v5.4.8...desktop-v6.0.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **desktop:** installed Electrobun builds cannot update into this app; reinstall once.
+
+### Features
+
+* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([be1534f](https://github.com/jxsuite/jx/commit/be1534f616d7176b4a2098cd4d232808cf5c7482))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 6.0.1
+    * @jxsuite/create bumped to 1.3.16
+    * @jxsuite/parser bumped to 4.0.0
+    * @jxsuite/protocol bumped to 4.0.0
+    * @jxsuite/server bumped to 6.0.0
+    * @jxsuite/starters bumped to 3.0.0
+    * @jxsuite/studio bumped to 8.0.0
+  * devDependencies
+    * @jxsuite/server bumped to 6.0.0
+    * @jxsuite/ui bumped to 0.7.0
+
 ## [5.4.8](https://github.com/jxsuite/jx/compare/desktop-v5.4.7...desktop-v5.4.8) (2026-10-17)
 
 

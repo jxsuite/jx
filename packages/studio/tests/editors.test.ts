@@ -200,7 +200,7 @@ registerPrimaryStage();
 function shellElement(selector: string): HTMLElement {
   const el = document.querySelector(selector);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`the fixture shell has no ${selector}`);
+    throw new TypeError(`the fixture shell has no ${selector}`);
   }
   return el;
 }

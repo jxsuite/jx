@@ -22,6 +22,8 @@ import { shellEnv } from "../chromium/shell-command";
 import type { BackendMessage, DialogKind, ShellMessage } from "../hub/protocol";
 import { spawnBackend } from "./backend-process";
 import type { BackendProcess, SpawnBackend } from "./backend-process";
+import { fileGrantStore, openFolderGrants } from "./folder-grants";
+import type { GrantStore } from "./folder-grants";
 import { packagedLayout } from "./layout";
 import type { AppLayout } from "./layout";
 import {
@@ -59,8 +61,12 @@ export interface AppDeps {
   cwd: string;
   env: NodeJS.ProcessEnv;
   exists: (path: string) => boolean;
+  /** Where a Mac App Store build keeps the folders the user has granted it; a parameter for tests. */
+  grantStore?: GrantStore;
   /** Load electron-updater's `autoUpdater`; a parameter so a test never loads the real one. */
   loadUpdater: () => Promise<AutoUpdater>;
+  /** Whether this is a Mac App Store install, which the App Store updates. */
+  macAppStore: boolean;
   platform: NodeJS.Platform;
   /** Electron's `process.resourcesPath`, where a packaged app keeps its files. */
   resourcesPath: string;
@@ -203,6 +209,12 @@ export async function loadAutoUpdater(): Promise<AutoUpdater> {
   };
 }
 
+/** What the open dialog returned: the path, and the bookmark that regains it after a relaunch. */
+interface Picked {
+  bookmark: string | undefined;
+  path: string;
+}
+
 /**
  * Ask the user for a path with the native dialog, sheet-modal on the focused window when there is
  * one. Electron routes this through the desktop portal on Linux and the system panel elsewhere,
@@ -212,20 +224,28 @@ async function choosePath(
   electron: typeof Electron,
   kind: DialogKind,
   title: string,
-): Promise<string | null> {
+  sandboxed = false,
+): Promise<Picked | null> {
+  /* Under the App Sandbox a pick grants exactly what was picked: a project.json would grant that
+     one file, and none of the pages beside it. So a sandboxed build asks for the folder. */
+  const folder = kind === "directory" || sandboxed;
   const options: Electron.OpenDialogOptions = {
-    properties: kind === "directory" ? ["openDirectory", "createDirectory"] : ["openFile"],
-    title,
+    properties: folder ? ["openDirectory", "createDirectory"] : ["openFile"],
+    title: sandboxed && kind === "file" ? "Open project folder" : title,
   };
-  if (kind === "file") {
+  if (kind === "file" && !sandboxed) {
     options.filters = [{ extensions: ["json"], name: "Project files" }];
+  }
+  if (sandboxed) {
+    options.securityScopedBookmarks = true;
   }
   try {
     const parent = electron.BrowserWindow.getFocusedWindow();
     const result = await (parent
       ? electron.dialog.showOpenDialog(parent, options)
       : electron.dialog.showOpenDialog(options));
-    return result.canceled ? null : (result.filePaths[0] ?? null);
+    const path = result.canceled ? undefined : result.filePaths[0];
+    return path === undefined ? null : { bookmark: result.bookmarks?.[0], path };
   } catch (error) {
     console.error("[electron-app]", error);
     return null;
@@ -250,7 +270,9 @@ export async function startApp(
     cwd = process.cwd(),
     env = process.env,
     exists = existsSync,
+    grantStore,
     loadUpdater = loadAutoUpdater,
+    macAppStore = process.mas === true,
     platform = process.platform,
     resourcesPath = electronResourcesPath(),
     schedule = { ...DEFAULT_SCHEDULE, setInterval, setTimeout },
@@ -285,10 +307,27 @@ export async function startApp(
   const windows = new Map<number, BrowserWindow>();
   let backend: BackendProcess | null = null;
   let ready = false;
+  let restarting = false;
   const queue: ShellMessage[] = [];
+  /** The project folders asked for, in order: what a restarted backend is told to open again. */
+  const openRoots: string[] = [];
+
+  /* A Mac App Store build is sandboxed: it reads a folder only after the user picks it, and the
+     permission reaches the backend only if the backend started after it was given. Picked folders
+     are kept as bookmarks, taken up before the backend starts, and a pick that none covers
+     restarts the backend (specs/desktop.md §7.7). */
+  const grantsFile = join(app.getPath("appData"), "Jx Studio", "folder-grants.json");
+  const grants = macAppStore
+    ? openFolderGrants(grantStore ?? fileGrantStore(grantsFile), (bookmark) =>
+        app.startAccessingSecurityScopedResource(bookmark),
+      )
+    : null;
 
   /** Tell the backend, or hold the message until it says it is listening. */
   function post(message: ShellMessage): void {
+    if (message.type === "open-project" && message.root !== null) {
+      openRoots.push(message.root);
+    }
     if (ready && backend) {
       backend.send(message);
     } else {
@@ -307,7 +346,11 @@ export async function startApp(
     post({ root: projectDirOf(path), type: "open-project" });
   });
   // One window per project, and the app ends with the last of them.
-  app.on("window-all-closed", () => app.quit());
+  app.on("window-all-closed", () => {
+    if (!restarting) {
+      app.quit();
+    }
+  });
   app.on("will-quit", () => backend?.kill());
   post({ root: args.root, type: "open-project" });
 
@@ -315,9 +358,16 @@ export async function startApp(
   installApplicationMenu(electron, platform, {
     newWindow: () => post({ root: null, type: "open-project" }),
     openProject: () => {
-      void choosePath(electron, "file", "Open project.json").then((path) => {
-        if (path?.endsWith("project.json")) {
-          post({ root: dirname(path), type: "open-project" });
+      void choosePath(electron, "file", "Open project.json", grants !== null).then((picked) => {
+        if (!picked) {
+          return;
+        }
+        // A sandboxed build is handed the project's folder; the others, its project.json.
+        const isProject = grants
+          ? exists(join(picked.path, "project.json"))
+          : picked.path.endsWith("project.json");
+        if (isProject) {
+          void openPicked(picked, "file");
         }
       });
     },
@@ -364,9 +414,20 @@ export async function startApp(
         break;
       }
       case "dialog": {
-        void choosePath(electron, message.kind, message.title).then((path) => {
-          post({ path, requestId: message.requestId, type: "dialog-result" });
-        });
+        void choosePath(electron, message.kind, message.title, grants !== null).then(
+          async (picked) => {
+            if (picked && grants && (await needsRestart(picked, message.kind))) {
+              // The backend that asked cannot read this folder, and is replaced; its request ends.
+              await restartBackend(picked, message.kind);
+              return;
+            }
+            post({
+              path: answerPath(picked, message.kind),
+              requestId: message.requestId,
+              type: "dialog-result",
+            });
+          },
+        );
         break;
       }
       case "quit": {
@@ -387,12 +448,104 @@ export async function startApp(
     backendEnv.JX_STUDIO_ASSETS = args.studio;
     backendEnv.JX_STUDIO_CHANNEL = "stable";
   }
-  backend = spawn(args.bun, args.backend, backendEnv);
-  backend.onMessage(onBackend);
-  // A backend that is gone leaves windows with nothing to talk to; end rather than show them.
-  backend.onExit(() => app.quit());
 
-  if (updatesEnabled({ appImage: env.APPIMAGE, packaged, platform, windowsStore })) {
+  /** Start a backend, after taking up every folder grant, so it inherits all of them. */
+  function startBackend(): void {
+    grants?.restore();
+    ready = false;
+    const child = spawn(args.bun, args.backend, backendEnv);
+    backend = child;
+    child.onMessage(onBackend);
+    // A backend that is gone leaves windows with nothing to talk to; end rather than show them.
+    // One this app replaced on purpose is not that.
+    child.onExit(() => {
+      if (backend === child) {
+        app.quit();
+      }
+    });
+  }
+
+  /** The folder a pick grants: a sandboxed build is always handed the folder itself. */
+  function folderOf(picked: Picked, kind: DialogKind): string {
+    return grants || kind === "directory" ? picked.path : dirname(picked.path);
+  }
+
+  /** What the backend that asked is told was chosen: for a project, the project.json inside. */
+  function answerPath(picked: Picked | null, kind: DialogKind): string | null {
+    if (!picked) {
+      return null;
+    }
+    if (grants && kind === "file") {
+      const file = join(picked.path, "project.json");
+      return exists(file) ? file : null;
+    }
+    return picked.path;
+  }
+
+  /** Whether the running backend, which started before this pick, can see the picked folder. */
+  async function needsRestart(picked: Picked, kind: DialogKind): Promise<boolean> {
+    return !grants?.covers(folderOf(picked, kind));
+  }
+
+  /** Open a project the user picked: at once if the backend can read it, else after a restart. */
+  async function openPicked(picked: Picked, kind: DialogKind): Promise<void> {
+    if (grants && (await needsRestart(picked, kind))) {
+      await restartBackend(picked, kind);
+    } else {
+      post({ root: folderOf(picked, kind), type: "open-project" });
+    }
+  }
+
+  /**
+   * Replace the backend with one that starts after `picked` was granted, then open what was open.
+   *
+   * Every open window belongs to the old backend, so they close. Unsaved work is the user's to
+   * keep, so when a project is open this asks first and does nothing on Cancel.
+   */
+  async function restartBackend(picked: Picked, kind: DialogKind): Promise<void> {
+    const folder = folderOf(picked, kind);
+    const reopen = [...new Set(openRoots)];
+    if (reopen.length > 0) {
+      const { response } = await electron.dialog.showMessageBox({
+        buttons: ["Restart", "Cancel"],
+        cancelId: 1,
+        defaultId: 0,
+        detail:
+          "The Mac App Store allows Jx Studio into a folder only for a backend that starts after you choose it. Open projects close and reopen; save your work first.",
+        message: "Jx Studio needs to restart to open this folder.",
+        title: "Jx Studio",
+        type: "info",
+      });
+      if (response !== 0) {
+        return;
+      }
+    }
+    if (picked.bookmark) {
+      grants?.add(folder, picked.bookmark);
+    }
+    restarting = true;
+    const old = backend;
+    // Until the new backend says it is listening, messages wait in the queue rather than reach the old.
+    ready = false;
+    for (const window of windows.values()) {
+      window.destroy();
+    }
+    windows.clear();
+    openRoots.length = 0;
+    queue.length = 0;
+    old?.kill();
+    startBackend();
+    restarting = false;
+    for (const root of reopen) {
+      post({ root, type: "open-project" });
+    }
+    // A project file opens its project; a folder picked for somewhere to create one opens nothing.
+    post({ root: kind === "file" ? folder : null, type: "open-project" });
+  }
+
+  startBackend();
+
+  if (updatesEnabled({ appImage: env.APPIMAGE, macAppStore, packaged, platform, windowsStore })) {
     loadUpdater()
       .then((updater) => {
         startUpdates(
@@ -420,5 +573,13 @@ export async function startApp(
         console.error("[electron-app]", error);
       });
   }
-  return { backend, windows };
+  return {
+    // The backend a restart replaced is not the one a caller wants, so this reads the live one.
+    get backend() {
+      /* SAFETY: `startBackend()` ran above, before the handle existed, and a restart replaces the
+         backend in the same step that ends the old one, so `backend` is never null here. */
+      return backend as BackendProcess;
+    },
+    windows,
+  };
 }

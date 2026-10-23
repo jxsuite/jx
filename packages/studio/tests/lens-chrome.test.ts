@@ -80,7 +80,7 @@ function lensOf(paneId: string): Extract<PaneDerivation, { kind: "lens" }> {
 function required(scope: ParentNode, selector: string): HTMLElement {
   const found = scope.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`nothing matches ${selector}`);
+    throw new TypeError(`nothing matches ${selector}`);
   }
   return found;
 }
@@ -181,7 +181,7 @@ function zoomControl(host: HTMLElement, title: string): HTMLElement {
   );
   expect(button).toBeDefined();
   if (!(button instanceof HTMLElement)) {
-    throw new Error(`no zoom control is titled ${title}`);
+    throw new TypeError(`no zoom control is titled ${title}`);
   }
   return button;
 }

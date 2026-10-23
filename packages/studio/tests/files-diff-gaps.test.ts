@@ -361,7 +361,7 @@ describe("the ↓ walk and the Loading… placeholder", () => {
 
     const tree = host.querySelector('[part="tree"]');
     if (!(tree instanceof HTMLElement)) {
-      throw new Error("the Files panel drew no tree");
+      throw new TypeError("the Files panel drew no tree");
     }
     // Model: assets · Loading… · one.json · two.json
     expect(
@@ -373,7 +373,7 @@ describe("the ↓ walk and the Loading… placeholder", () => {
     expect(tree.querySelector('[part="loading-row"]')?.getAttribute("role")).toBe("none");
     const assets = tree.querySelector('[part="row"][data-value="assets"]');
     if (!(assets instanceof HTMLElement)) {
-      throw new Error("the tree drew no assets row");
+      throw new TypeError("the tree drew no assets row");
     }
     assets.focus();
 

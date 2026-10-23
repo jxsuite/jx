@@ -51,7 +51,7 @@ async function navLabels(): Promise<(string | undefined)[]> {
 function body(): HTMLElement {
   const island = host.querySelector('[part="section-host"]');
   if (!(island instanceof HTMLElement)) {
-    throw new Error('The settings editor rendered no [part="section-host"] island');
+    throw new TypeError('The settings editor rendered no [part="section-host"] island');
   }
   return island;
 }

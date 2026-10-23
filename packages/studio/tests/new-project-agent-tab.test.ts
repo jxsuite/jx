@@ -44,7 +44,7 @@ initLayers();
 function promptField(): HTMLTextAreaElement {
   const field = npPart("prompt")?.querySelector('[part="input"]');
   if (!(field instanceof HTMLTextAreaElement)) {
-    throw new Error("New Project wizard: the Agent prompt field is not on screen");
+    throw new TypeError("New Project wizard: the Agent prompt field is not on screen");
   }
   return field;
 }

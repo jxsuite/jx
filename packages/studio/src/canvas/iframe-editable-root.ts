@@ -439,14 +439,20 @@ export function startEditableRoot(
    * cannot put a caret in them. Capture-phase pointerdown gives the bridge a chance to open a
    * nested editing host BEFORE the browser computes the caret, so the click still lands where it
    * was aimed.
+   *
+   * Any other press inside uneditable content (a component's own internals, frozen layout chrome)
+   * drops the selection. The browser leaves the selection where it was when the press lands on
+   * something no caret can enter, so the caret went on blinking in the block clicked BEFORE, with
+   * the component now selected in the editor and every keystroke still typed into that block.
    */
   const onPointerDownCapture = (e: Event) => {
-    if (!editingAllowed() || !deps.onPropActivate) {
+    if (!editingAllowed()) {
       return;
     }
-    let el = e.target instanceof Element ? e.target : null;
+    const target = e.target instanceof Element ? e.target : null;
+    let el = deps.onPropActivate ? target : null;
     while (el && el !== container) {
-      if (hasDataset(el) && el.dataset.jxBoundProp) {
+      if (hasDataset(el) && el.dataset.jxBoundProp && deps.onPropActivate) {
         /* SAFETY: The runtime builds SVG and MathML nodes as `createElementNS(...) as HTMLElement`
            and stamps `data-jx-bound-prop` through that same `HTMLElement`-typed path, so a
            foreign-namespace prop host already travels downstream as an `HTMLElement`. */
@@ -463,9 +469,12 @@ export function startEditableRoot(
       }
       // A stamped page block first means this is ordinary page DOM, not component internals.
       if (hasDataset(el) && el.dataset.jxPath) {
-        return;
+        break;
       }
       el = el.parentElement;
+    }
+    if (target?.closest("[contenteditable]")?.getAttribute("contenteditable") === "false") {
+      doc.getSelection()?.removeAllRanges();
     }
   };
 

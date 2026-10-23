@@ -8,6 +8,7 @@
 
 import { defineElement, setSkipServerFunctions } from "@jxsuite/runtime";
 import { projectState } from "../store";
+import { fillPreviewImages } from "../canvas/preview-placeholder";
 import type { ComponentEntry } from "../files/components";
 import type { JsonValue } from "@jxsuite/schema/types";
 
@@ -43,6 +44,10 @@ export async function renderComponentPreview(
     for (const [name, value] of props) {
       properties[name] = value;
     }
+    /* Watched from now on: the instance draws its children when it connects, after this returns.
+       A preview shows the component's shape, so an image it has no source for is a placeholder,
+       not a broken glyph (`canvas/preview-placeholder.ts`). */
+    fillPreviewImages(el);
     return el;
   } catch (error) {
     console.warn("Component preview failed:", comp.tagName, error);

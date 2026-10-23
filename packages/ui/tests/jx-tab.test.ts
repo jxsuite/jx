@@ -72,7 +72,7 @@ function detailText(e: Event): string {
 function pinOf(row: Element): HTMLButtonElement {
   const pin = row.querySelector('[part="actions"] button');
   if (!(pin instanceof HTMLButtonElement)) {
-    throw new Error("the row has no button in its actions slot");
+    throw new TypeError("the row has no button in its actions slot");
   }
   return pin;
 }
@@ -81,7 +81,7 @@ function pinOf(row: Element): HTMLButtonElement {
 function probeIn(row: Element, part: string): HTMLElement {
   const probe = row.querySelector(`[part="${part}"] [data-probe]`);
   if (!(probe instanceof HTMLElement)) {
-    throw new Error(`the row has no mark in its ${part} slot`);
+    throw new TypeError(`the row has no mark in its ${part} slot`);
   }
   return probe;
 }

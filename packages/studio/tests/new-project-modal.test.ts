@@ -92,7 +92,7 @@ function createProjectOptions(state: MockPlatformState): JsonObject {
 function topmostDialog(): HTMLElement {
   const offer = [...document.querySelectorAll("#layer-dialog jx-dialog")].at(-1);
   if (!(offer instanceof HTMLElement)) {
-    throw new Error("no jx-dialog is open in the dialog layer");
+    throw new TypeError("no jx-dialog is open in the dialog layer");
   }
   return offer;
 }

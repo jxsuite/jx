@@ -86,6 +86,7 @@ export function filesCovers(patterns: readonly string[], path: string): boolean 
     if (p === path || path.startsWith(`${p}/`)) {
       return true;
     }
+    // oxlint-disable-next-line unicorn/prefer-regexp-test -- `Glob#match` is Bun's glob matcher, not `String#match`; it has no `.test`.
     if (p.includes("*") && new Glob(p).match(path)) {
       return true;
     }

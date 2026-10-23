@@ -24,7 +24,7 @@ try {
 function renderElement(def: JxElement, state: JxScope): HTMLElement {
   const node = renderNode(def, state);
   if (!(node instanceof HTMLElement)) {
-    throw new Error("renderNode returned a Text node for an element definition");
+    throw new TypeError("renderNode returned a Text node for an element definition");
   }
   return node;
 }

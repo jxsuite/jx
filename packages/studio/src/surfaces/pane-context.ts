@@ -110,10 +110,12 @@ export interface PaneContextView {
   /** The lens's stated rendering context — "Tablet · français". */
   summary: string;
 
+  /** The Editor axis at all: drawn in the full bar, never in a lens. */
+  editorState: "shown" | "hidden";
   editorMode: "static" | "picker";
   editorLabel: string;
-  editorValue: string;
-  editorOptions: SurfaceOption[];
+  /** The declared editor kinds, one segment each, when there are several to choose between. */
+  editors: PaneContextChoice[];
 
   viewState: "shown" | "hidden";
   views: PaneContextChoice[];
@@ -126,7 +128,10 @@ export interface PaneContextView {
   previewOn: boolean;
   previewHint: string;
 
-  /** "Base · Auto" — what the rendering-context trigger reads before it is opened. */
+  /**
+   * What the More rendering context trigger reads beside its glyph: only what its popover holds and
+   * is not at rest ("français", "No layout"); empty when there is nothing to say.
+   */
   contextSummary: string;
   resolvingState: "shown" | "hidden";
   /** "2 set", or "Defaults". */
@@ -135,6 +140,8 @@ export interface PaneContextView {
   params: PaneContextParam[];
   props: PaneContextProp[];
 
+  /** The size group on the bar: hidden when the project declares no breakpoint to choose. */
+  sizesState: "shown" | "hidden";
   sizes: PaneContextChoice[];
   schemeState: "shown" | "hidden";
   schemes: PaneContextChoice[];
@@ -237,10 +244,10 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.backHint = view.backHint;
   scope.bannerState = view.bannerState;
   scope.summary = view.summary;
+  scope.editorState = view.editorState;
   scope.editorMode = view.editorMode;
   scope.editorLabel = view.editorLabel;
-  scope.editorValue = view.editorValue;
-  scope.editorOptions = view.editorOptions;
+  scope.editors = view.editors;
   scope.viewState = view.viewState;
   scope.contextState = view.contextState;
   scope.views = view.views;
@@ -254,6 +261,7 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.params = view.params;
   scope.props = view.props;
   scope.sizes = view.sizes;
+  scope.sizesState = view.sizesState;
   scope.schemeState = view.schemeState;
   scope.schemes = view.schemes;
   scope.localeState = view.localeState;
@@ -281,11 +289,11 @@ export function emptyPaneContextView(): PaneContextView {
     barMode: "full",
     contextRegion: "",
     contextState: "shown",
-    contextSummary: "Base",
+    contextSummary: "",
     editorLabel: "",
     editorMode: "static",
-    editorOptions: [],
-    editorValue: "",
+    editorState: "hidden",
+    editors: [],
     exportState: "hidden",
     featureState: "hidden",
     features: [],
@@ -309,6 +317,7 @@ export function emptyPaneContextView(): PaneContextView {
     resolvingState: "hidden",
     schemes: [],
     schemeState: "hidden",
+    sizesState: "hidden",
     sizes: [],
     summary: "Base",
     views: [],
