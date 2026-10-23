@@ -106,6 +106,14 @@ describe("nothing at all", () => {
     expect(d.bundles).toEqual([]);
   });
 
+  test("a benchmark-only diff runs no test job", () => {
+    // `bench/` is a new top-level directory that would otherwise FAIL OPEN into every workspace.
+    const d = decide(["bench/runtime.bench.ts", "bench/vitest.config.ts"], workspaces);
+    expect(d.mode).not.toBe("all");
+    expect(d.testDirs).toEqual([]);
+    expect(d.bundles).toEqual([]);
+  });
+
   test("a plan landing with its code runs only that code's workspace", () => {
     const d = decide(
       ["plans/compiler/csp-emission.md", "packages/compiler/src/csp.ts"],

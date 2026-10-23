@@ -16,6 +16,7 @@
   "type": "module",
   "scripts": {
     "all-the-things": "bun run build && bun run test:workspaces && bun run lint && bun run lint:typecheck && bun run typecheck",
+    "bench": "vitest bench --run --config bench/vitest.config.ts",
     "build": "bun run build:parser && bun run build:search && bun run build:compiler && bun run build:runtime && bun run build:studio && bun run generate:schema",
     "build:compiler": "bun run --cwd packages/compiler build",
     "build:parser": "bun run --cwd extensions/parser build",
@@ -87,6 +88,7 @@
     "@jxsuite/server": "workspace:^"
   },
   "devDependencies": {
+    "@codspeed/vitest-plugin": "^6.1.0",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@commitlint/types": "^21.2.3",
@@ -106,7 +108,8 @@
     "release-please": "^17.11.2",
     "ts-migrate": "^0.1.35",
     "ts-migrate-plugins": "^0.1.35",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
   },
   "nano-staged": {
     "*.md": [

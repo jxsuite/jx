@@ -182,6 +182,9 @@ const NO_TESTS = [
   // Transient implementation plans (plans/README.md). Prose no suite reads; `plans:check` runs in
   // The ungated `checks` job, and `scripts/docs/**` above already keeps its own source off the matrix.
   "plans/**",
+  // CodSpeed benchmarks (codspeed.yml runs them on every pull request). No test suite imports them,
+  // And `tsc` in the ungated `checks` job is what proves their types.
+  "bench/**",
   "scripts/docs/**",
   "sites/**",
   ".github/**",
