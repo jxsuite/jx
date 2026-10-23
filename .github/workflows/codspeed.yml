@@ -1,0 +1,41 @@
+# CodSpeed continuous benchmarks.
+#
+# Runs the vitest benchmarks under bench/ (`bun run bench`) with CodSpeed's CPU simulation
+# instrument, which counts instructions instead of timing them, so results are stable on shared
+# GitHub runners and every pull request gets a per-benchmark comparison against main. The
+# benchmarks run under Node (vitest), not Bun: the simulation instrument supports Node only. Bun is
+# still set up for the workspace install, through the composite like every other job.
+name: CodSpeed
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # Lets CodSpeed trigger backtest runs to build initial history.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OpenID Connect authentication with CodSpeed
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  benchmarks:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: ./.github/actions/setup-bun
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@v5
+        with:
+          mode: simulation
+          run: bun run bench
