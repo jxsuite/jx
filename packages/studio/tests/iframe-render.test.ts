@@ -843,6 +843,32 @@ describe("installCanvasImageRetry", () => {
     });
   });
 
+  test("ignores an empty src, which resolves to the document itself", () => {
+    withCapturedTimers((runPending) => {
+      const root = document.createElement("div");
+      const img = document.createElement("img");
+      img.setAttribute("src", "");
+      root.append(img);
+      const stop = installCanvasImageRetry(root);
+
+      let setCount = 0;
+      // The property reads as the resolved url, as a browser's does for src="" — never "".
+      Object.defineProperty(img, "src", {
+        configurable: true,
+        get: () => "http://127.0.0.1/packages/studio/canvas.html?token=t",
+        set: () => {
+          setCount += 1;
+        },
+      });
+
+      fireError(img);
+      runPending();
+      expect(setCount).toBe(0);
+
+      stop();
+    });
+  });
+
   test("ignores an error from a non-image target", () => {
     withCapturedTimers((runPending) => {
       const root = document.createElement("div");

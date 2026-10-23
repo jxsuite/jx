@@ -994,6 +994,20 @@ export function makeStamper(ctx: PathMapCtx) {
  * so they're untouched. Returns a teardown that removes the listener. <img> error events don't
  * bubble, so listen in CAPTURE.
  */
+/**
+ * Whether a failed `<img>` is one a retry could ever fix.
+ *
+ * Read from the AUTHORED attribute, not `img.src`: the property is the RESOLVED url, and an empty
+ * `src=""` resolves to the document's own url, so a check on the property never saw the empty
+ * source it meant to skip. The frame then re-requested `canvas.html` as an image three times, and
+ * its quiescence report counted each failure as a pending retry, holding Studio's idle probe open
+ * for a component drawn without its image prop. A data: URL never errors transiently either.
+ */
+export function isRetryableImage(img: HTMLImageElement): boolean {
+  const raw = img.getAttribute("src")?.trim() ?? "";
+  return raw !== "" && !raw.startsWith("data:");
+}
+
 export function installCanvasImageRetry(root: HTMLElement, maxAttempts = 3): () => void {
   const attempts = new WeakMap<HTMLImageElement, number>();
   const onError = (event: Event): void => {
@@ -1001,8 +1015,8 @@ export function installCanvasImageRetry(root: HTMLElement, maxAttempts = 3): () 
     if (!(img instanceof HTMLImageElement)) {
       return;
     }
-    // A data: URL never errors (and an empty src isn't a real request) — nothing to retry.
-    if (!img.src || img.src.startsWith("data:")) {
+    // An empty or data: source is not a request a retry could fix.
+    if (!isRetryableImage(img)) {
       return;
     }
     const attempt = (attempts.get(img) ?? 0) + 1;
