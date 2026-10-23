@@ -189,7 +189,7 @@ async function windowedPane(): Promise<HTMLElement> {
   await flush();
   const body = host.querySelector('[part="body"]');
   if (!(body instanceof HTMLElement)) {
-    throw new Error('the Library pane drew no [part="body"] scroller');
+    throw new TypeError('the Library pane drew no [part="body"] scroller');
   }
   Object.defineProperty(body, "clientHeight", {
     configurable: true,

@@ -140,7 +140,7 @@ async function mountWindowed(): Promise<void> {
   host = outlineHost(true);
   const wrapper = document.querySelector("#scroller");
   if (!(wrapper instanceof HTMLElement)) {
-    throw new Error("outlineHost(true) drew no #scroller");
+    throw new TypeError("outlineHost(true) drew no #scroller");
   }
   scroller = wrapper;
   scroller.style.overflowY = "auto";

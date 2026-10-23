@@ -32,33 +32,33 @@ export const caddyfile: LanguageRegistration = {
   ],
   repository: {
     comment: {
-      match: "(?:^|(?<=\\s))#.*$",
+      match: String.raw`(?:^|(?<=\s))#.*$`,
       name: "comment.line.number-sign.caddyfile",
     },
     constant: {
-      match: "\\b(?:on|off|true|false|h1|h2|h2c|h3)\\b",
+      match: String.raw`\b(?:on|off|true|false|h1|h2|h2c|h3)\b`,
       name: "constant.language.caddyfile",
     },
     directive: {
       /* The first word of a line is a directive or subdirective. A word that carries a dot or a
          colon straight after it (`example.com`, `http://…`) is a site address, not a directive. */
-      match: "^\\s*([A-Za-z_][\\w]*)(?=\\s|$)",
+      match: String.raw`^\s*([A-Za-z_][\w]*)(?=\s|$)`,
       captures: { "1": { name: "entity.name.function.directive.caddyfile" } },
     },
     duration: {
-      match: "\\b\\d+(?:\\.\\d+)?(?:ns|us|ms|s|m|h|d)\\b",
+      match: String.raw`\b\d+(?:\.\d+)?(?:ns|us|ms|s|m|h|d)\b`,
       name: "constant.numeric.duration.caddyfile",
     },
     matcher: {
-      match: "(?<![\\w])@[\\w-]+",
+      match: String.raw`(?<![\w])@[\w-]+`,
       name: "entity.name.tag.matcher.caddyfile",
     },
     number: {
-      match: "\\b\\d+(?:\\.\\d+)?\\b",
+      match: String.raw`\b\d+(?:\.\d+)?\b`,
       name: "constant.numeric.caddyfile",
     },
     placeholder: {
-      match: "\\{[$%]?[\\w.>/:-]+\\}",
+      match: String.raw`\{[$%]?[\w.>/:-]+\}`,
       name: "constant.other.placeholder.caddyfile",
     },
     punctuation: {
@@ -67,7 +67,7 @@ export const caddyfile: LanguageRegistration = {
     },
     "site-address": {
       // A column-0 line that opens a block and names a host, a port or a wildcard.
-      match: "^(?=\\S)(?:[^\\s{#,]*[.:*/][^\\s{#,]*)(?:\\s*,\\s*[^\\s{#,]+)*(?=\\s*\\{\\s*$)",
+      match: String.raw`^(?=\S)(?:[^\s{#,]*[.:*/][^\s{#,]*)(?:\s*,\s*[^\s{#,]+)*(?=\s*\{\s*$)`,
       name: "entity.name.type.address.caddyfile",
     },
     string: {
@@ -76,7 +76,7 @@ export const caddyfile: LanguageRegistration = {
           begin: '"',
           end: '"',
           name: "string.quoted.double.caddyfile",
-          patterns: [{ match: "\\\\.", name: "constant.character.escape.caddyfile" }],
+          patterns: [{ match: String.raw`\\.`, name: "constant.character.escape.caddyfile" }],
         },
         { begin: "`", end: "`", name: "string.quoted.other.caddyfile" },
       ],

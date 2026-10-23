@@ -120,7 +120,7 @@ async function mount(): Promise<HTMLElement> {
 function drawn(selector: string, root: ParentNode = host): HTMLElement {
   const found = root.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`nothing is drawn for ${selector}`);
+    throw new TypeError(`nothing is drawn for ${selector}`);
   }
   return found;
 }

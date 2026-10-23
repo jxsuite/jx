@@ -50,7 +50,7 @@ const SPLITTER_SELECTOR = 'jx-split[part="splitter"]';
 function grid(): HTMLElement {
   const el = document.querySelector("#pane-grid");
   if (!(el instanceof HTMLElement)) {
-    throw new Error("no #pane-grid in the document");
+    throw new TypeError("no #pane-grid in the document");
   }
   return el;
 }
@@ -59,7 +59,7 @@ function grid(): HTMLElement {
 function splitterOf(): HTMLElement {
   const el = grid().querySelector(SPLITTER_SELECTOR);
   if (!(el instanceof HTMLElement)) {
-    throw new Error("the pane grid has no splitter");
+    throw new TypeError("the pane grid has no splitter");
   }
   return el;
 }

@@ -1,1 +1,0 @@
-{"$defs":{"methods":{"resolve":{"$prototype":"Function","access":"public","description":"Emit event","identifier":"resolve","parameters":[],"role":"method","scope":"instance"}},"parameters":{"channel":{"description":"Channel name","identifier":"channel","type":{"type":"string"}}}},"$prototype":"Class","description":"Emitter with no declared return type","title":"EventEmitter"}

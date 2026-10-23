@@ -93,7 +93,7 @@ function install(overrides: Partial<StudioPlatform> = {}) {
 async function validationFor(value: string): Promise<string> {
   const field = topDialog()?.querySelector('jx-textfield [part="input"]');
   if (!(field instanceof HTMLInputElement)) {
-    throw new Error("The open dialog has no text field input");
+    throw new TypeError("The open dialog has no text field input");
   }
   field.value = value;
   field.dispatchEvent(new Event("input", { bubbles: true }));

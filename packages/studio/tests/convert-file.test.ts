@@ -384,7 +384,7 @@ describe("choosing the target", () => {
     }
     const picker = topDialog()!.querySelector('[part="choice"] select');
     if (!(picker instanceof HTMLSelectElement)) {
-      throw new Error("the target dialog drew no format picker");
+      throw new TypeError("the target dialog drew no format picker");
     }
     expect(
       [...topDialog()!.querySelectorAll("option")].map((el) => el.getAttribute("value")),

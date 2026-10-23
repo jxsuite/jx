@@ -49,7 +49,7 @@ describe("the runtime seam", () => {
     await tick();
     const instance = host.querySelector(tag);
     if (!(instance instanceof HTMLElement)) {
-      throw new Error(`Jx did not render a <${tag}> into the host`);
+      throw new TypeError(`Jx did not render a <${tag}> into the host`);
     }
     const css = elementCSS(instance);
     // The definition's own declarations survive…
@@ -154,7 +154,7 @@ describe("the runtime seam", () => {
       scope,
     );
     if (!(el instanceof HTMLElement)) {
-      throw new Error("renderNode returned a Text node for an element definition");
+      throw new TypeError("renderNode returned a Text node for an element definition");
     }
     // The bare `$map/…` spelling already worked; `#/` is how every other pointer is written, and
     // A `$map` over it rendered zero rows with no warning.

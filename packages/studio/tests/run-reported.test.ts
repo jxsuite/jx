@@ -365,7 +365,7 @@ describe("a notice's recovery action, clicked in Problems", () => {
     await flush(4);
     const control = host.querySelector('[part="action"] [part="control"]');
     if (!(control instanceof HTMLElement)) {
-      throw new Error("the notice's action rendered no control");
+      throw new TypeError("the notice's action rendered no control");
     }
     expect(() => control.click()).not.toThrow();
     await flush();

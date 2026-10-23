@@ -86,7 +86,7 @@ function mount(doc: JxMutableNode): Mounted {
 function elAt(container: HTMLElement, path: (string | number)[]): HTMLElement {
   const el = container.querySelector(`[data-jx-path='${serializeJxPath(path)}']`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no element rendered at ${serializeJxPath(path)}`);
+    throw new TypeError(`no element rendered at ${serializeJxPath(path)}`);
   }
   return el;
 }

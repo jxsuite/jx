@@ -64,7 +64,7 @@ async function settle(): Promise<void> {
 function required(scope: ParentNode, selector: string): HTMLElement {
   const found = scope.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`nothing matches ${selector}`);
+    throw new TypeError(`nothing matches ${selector}`);
   }
   return found;
 }
@@ -89,7 +89,7 @@ function headSection(host: HTMLElement): HTMLElement {
 function field(scope: HTMLElement, dataKey: string): HTMLElement {
   const found = scope.querySelector(`[data-key="${dataKey}"]`);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`no field for ${dataKey}`);
+    throw new TypeError(`no field for ${dataKey}`);
   }
   return found;
 }
@@ -98,7 +98,7 @@ function field(scope: HTMLElement, dataKey: string): HTMLElement {
 function control(field_: Element): HTMLInputElement | HTMLTextAreaElement {
   const found = field_.querySelector("input, textarea");
   if (!(found instanceof HTMLInputElement || found instanceof HTMLTextAreaElement)) {
-    throw new Error("the field holds no native control");
+    throw new TypeError("the field holds no native control");
   }
   return found;
 }

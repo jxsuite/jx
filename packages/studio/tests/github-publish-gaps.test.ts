@@ -101,7 +101,7 @@ function dialogElement(): HTMLElement | null {
 function control(row: string): HTMLInputElement {
   const input = dialogElement()?.querySelector(`[data-field="${row}"] [part="input"]`);
   if (!(input instanceof HTMLInputElement)) {
-    throw new Error(`no native input in the publish dialog's "${row}" row`);
+    throw new TypeError(`no native input in the publish dialog's "${row}" row`);
   }
   return input;
 }

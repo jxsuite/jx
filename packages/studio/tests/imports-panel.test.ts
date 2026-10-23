@@ -100,7 +100,7 @@ function lastWrittenConfig(): JsonObject {
 /** Narrows a query result to the `<input>` it should be, failing the test when it is not one. */
 function inputOf(el: Element | null): HTMLInputElement {
   if (!(el instanceof HTMLInputElement)) {
-    throw new Error("expected the panel to draw an <input> here");
+    throw new TypeError("expected the panel to draw an <input> here");
   }
   return el;
 }

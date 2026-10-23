@@ -329,7 +329,7 @@ let root: HTMLElement;
 function panelBody(scope: HTMLElement): HTMLElement {
   const body = scope.querySelector(".panel-body");
   if (!(body instanceof HTMLElement)) {
-    throw new Error("the frame drew no .panel-body");
+    throw new TypeError("the frame drew no .panel-body");
   }
   return body;
 }
@@ -358,7 +358,7 @@ function part(host: HTMLElement, name: string): HTMLElement | null {
 function required(host: HTMLElement, selector: string): HTMLElement {
   const found = host.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`nothing matches ${selector}`);
+    throw new TypeError(`nothing matches ${selector}`);
   }
   return found;
 }

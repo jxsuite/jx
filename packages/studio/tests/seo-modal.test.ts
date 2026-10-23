@@ -354,7 +354,7 @@ function seoRow(key: string): HTMLElement {
 function chipButton(key: string): HTMLButtonElement {
   const chip = seoRow(key).querySelector('[part="chip"]');
   if (!(chip instanceof HTMLButtonElement)) {
-    throw new Error(`the ${key} chip is not a button`);
+    throw new TypeError(`the ${key} chip is not a button`);
   }
   return chip;
 }

@@ -284,7 +284,7 @@ describe("canvasPanelEntry", () => {
   function clickHeader(panel: CanvasPanel) {
     const header = panel.element.querySelector('[part="panel-header"]');
     if (!(header instanceof HTMLElement)) {
-      throw new Error("a labelled board draws a panel header");
+      throw new TypeError("a labelled board draws a panel header");
     }
     header.click();
   }

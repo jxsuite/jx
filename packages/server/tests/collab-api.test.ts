@@ -485,7 +485,7 @@ describe("registry external changes", () => {
       }
     });
     // A text frame is ignored outright — even before any connection state exists.
-    void registry.websocket.message(fakeWs.ws, "not a binary frame");
+    void registry.websocket.message?.(fakeWs.ws, "not a binary frame");
     const hostConnection = openHost(registry, fakeWs);
     hostConnection.handleMessage(
       encodeFrame({ message: { path: "doc.md", type: "open" }, type: "control" }),

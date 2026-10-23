@@ -183,7 +183,7 @@ describe("openCellValuePopover — reference", () => {
     const box = panel()!;
     const done = part(box, "done")?.querySelector('[part="control"]');
     if (!(done instanceof HTMLElement)) {
-      throw new Error("the cell panel drew no Done control");
+      throw new TypeError("the cell panel drew no Done control");
     }
     done.click();
     await flush(3);

@@ -32,7 +32,7 @@ function labels(): string[] {
 /** `el` as the HTMLElement the strip draws there, or a thrown error naming what is missing. */
 function drawn(el: Element | null, what: string): HTMLElement {
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`${what} is not drawn`);
+    throw new TypeError(`${what} is not drawn`);
   }
   return el;
 }

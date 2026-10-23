@@ -73,7 +73,7 @@ async function settle(): Promise<void> {
 function part(root: ParentNode, name: string): HTMLElement {
   const el = root.querySelector(`[part="${name}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no [part="${name}"] in the contributed section`);
+    throw new TypeError(`no [part="${name}"] in the contributed section`);
   }
   return el;
 }
@@ -93,7 +93,7 @@ function control(el: Element): HTMLInputElement {
 function field(root: ParentNode, prop: string): HTMLElement {
   const el = root.querySelector(`[data-prop="${prop}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`the form has no field for "${prop}"`);
+    throw new TypeError(`the form has no field for "${prop}"`);
   }
   return el;
 }
@@ -147,7 +147,7 @@ function entryKeys(container: HTMLElement): string[] {
 function entryRow(container: HTMLElement, name: string): HTMLElement {
   const row = container.querySelector(`[data-entry="${name}"]`);
   if (!(row instanceof HTMLElement)) {
-    throw new Error(`no entry row for "${name}"`);
+    throw new TypeError(`no entry row for "${name}"`);
   }
   return row;
 }

@@ -69,7 +69,7 @@ function must<T extends Element>(
 ): T {
   const found = root.querySelector(selector);
   if (!(found instanceof kind)) {
-    throw new Error(`expected a ${kind.name} at ${selector}`);
+    throw new TypeError(`expected a ${kind.name} at ${selector}`);
   }
   return found;
 }
@@ -82,7 +82,7 @@ function allOf<T extends Element>(
 ): T[] {
   return [...root.querySelectorAll(selector)].map((found) => {
     if (!(found instanceof kind)) {
-      throw new Error(`expected every ${selector} to be a ${kind.name}`);
+      throw new TypeError(`expected every ${selector} to be a ${kind.name}`);
     }
     return found;
   });

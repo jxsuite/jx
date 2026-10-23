@@ -80,7 +80,7 @@ function part(container: HTMLElement, name: string) {
 function input(container: HTMLElement, field: string) {
   const control = container.querySelector(`[part="${field}"] [part="input"]`);
   if (!(control instanceof HTMLInputElement)) {
-    throw new Error(`the ${field} field has no native input`);
+    throw new TypeError(`the ${field} field has no native input`);
   }
   return control;
 }

@@ -135,7 +135,7 @@ describe("monaco-setup — MonacoEnvironment workers", () => {
   const getWorker = (label: string): FakeWorker => {
     const worker = self.MonacoEnvironment?.getWorker?.("", label);
     if (!(worker instanceof FakeWorker)) {
-      throw new Error(`MonacoEnvironment.getWorker(${label}) did not construct a Worker`);
+      throw new TypeError(`MonacoEnvironment.getWorker(${label}) did not construct a Worker`);
     }
     return worker;
   };

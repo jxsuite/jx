@@ -207,7 +207,7 @@ function heading(host: HTMLElement, key: string): string {
 function row(scope: ParentNode, prop: string): HTMLElement {
   const el = scope.querySelector(`[data-prop="${prop}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`row not found: ${prop}`);
+    throw new TypeError(`row not found: ${prop}`);
   }
   return el;
 }
@@ -216,7 +216,7 @@ function row(scope: ParentNode, prop: string): HTMLElement {
 function widget(scope: ParentNode, prop: string): HTMLElement {
   const el = row(scope, prop).querySelector('[part="widget"]');
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`row ${prop} draws no widget`);
+    throw new TypeError(`row ${prop} draws no widget`);
   }
   return el;
 }
@@ -644,7 +644,7 @@ describe("add custom tag form", () => {
       `[part="add"] [data-field="${name}"] [part="input"], [part="add"] [data-field="${name}"] [part="control"]`,
     );
     if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement)) {
-      throw new Error(`the add form draws no ${name} control`);
+      throw new TypeError(`the add form draws no ${name} control`);
     }
     return el;
   }

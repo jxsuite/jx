@@ -224,7 +224,7 @@ describe("the Usage section", () => {
       b.textContent.includes("Retry"),
     );
     if (!(retry instanceof HTMLElement)) {
-      throw new Error("the failed Usage section offered no Retry action");
+      throw new TypeError("the failed Usage section offered no Retry action");
     }
     retry.click();
     await flush(4);

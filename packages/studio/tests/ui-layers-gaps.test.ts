@@ -23,7 +23,7 @@ function must<T extends Element>(
 ): T {
   const found = root.querySelector(selector);
   if (!(found instanceof kind)) {
-    throw new Error(`expected a ${kind.name} at ${selector}`);
+    throw new TypeError(`expected a ${kind.name} at ${selector}`);
   }
   return found;
 }

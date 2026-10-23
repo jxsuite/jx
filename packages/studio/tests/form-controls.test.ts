@@ -119,7 +119,7 @@ async function mountBuilder(
 function part(root: ParentNode, name: string): HTMLElement {
   const el = root.querySelector(`[part="${name}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no [part="${name}"] in the schema builder`);
+    throw new TypeError(`no [part="${name}"] in the schema builder`);
   }
   return el;
 }
@@ -161,7 +161,7 @@ function shows(el: Element): string {
 function card(m: BuilderMount, field: string): HTMLElement {
   const el = m.host.querySelector(`[data-field="${field}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no field card for "${field}"`);
+    throw new TypeError(`no field card for "${field}"`);
   }
   return el;
 }
@@ -185,7 +185,7 @@ function cardPart(m: BuilderMount, field: string, name: string): HTMLElement {
 function nested(m: BuilderMount, parent: string, child: string): HTMLElement {
   const el = card(m, parent).querySelector(`[data-nested="${child}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no nested card for "${parent}.${child}"`);
+    throw new TypeError(`no nested card for "${parent}.${child}"`);
   }
   return el;
 }

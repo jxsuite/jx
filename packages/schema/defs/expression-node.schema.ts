@@ -6,7 +6,7 @@ export const expressionPointerSchema = {
     "A JSON Pointer $ref operand within an expression node. $args/<name> resolves a named formula's parameter (callable entries only).",
   properties: {
     $ref: {
-      pattern: "^(\\$map/|\\$reduce/|\\$args/|event#/|#/|parent#/|window#/|document#/)",
+      pattern: String.raw`^(\$map/|\$reduce/|\$args/|event#/|#/|parent#/|window#/|document#/)`,
       type: "string",
     },
   },
@@ -16,7 +16,7 @@ export const expressionPointerSchema = {
 
 export const expressionLiteralSchema = {
   anyOf: [
-    { not: { pattern: "\\$\\{" }, type: "string" },
+    { not: { pattern: String.raw`\$\{` }, type: "string" },
     { type: "number" },
     { type: "boolean" },
     { type: "null" },
