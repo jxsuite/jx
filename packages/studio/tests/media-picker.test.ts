@@ -176,7 +176,7 @@ function closeFromPlatform() {
 function partIn(host: HTMLElement, name: string): HTMLElement {
   const found = host.querySelector(`[part="${name}"]`);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`the field drew no ${name} part`);
+    throw new TypeError(`the field drew no ${name} part`);
   }
   return found;
 }
@@ -703,7 +703,7 @@ describe("browse list metadata", () => {
   function firstThumb(): HTMLImageElement {
     const img = panel()!.querySelector('[part="row-thumb"]');
     if (!(img instanceof HTMLImageElement)) {
-      throw new Error("the first row drew no thumbnail");
+      throw new TypeError("the first row drew no thumbnail");
     }
     return img;
   }

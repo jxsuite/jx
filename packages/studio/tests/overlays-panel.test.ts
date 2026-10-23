@@ -63,7 +63,7 @@ function makePanel(mediaName = "base"): CanvasPanel {
 function headerOf(panel: CanvasPanel): HTMLElement {
   const header = panel.element.querySelector('[part="panel-header"]');
   if (!(header instanceof HTMLElement)) {
-    throw new Error(`panel "${panel.mediaName}" has no header`);
+    throw new TypeError(`panel "${panel.mediaName}" has no header`);
   }
   return header;
 }

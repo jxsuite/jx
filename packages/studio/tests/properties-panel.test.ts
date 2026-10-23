@@ -114,7 +114,7 @@ function firstChild(): JxMutableNode {
 function row(root: Element, prop: string): HTMLElement {
   const el = root.querySelector(`[data-prop="${prop}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no row for "${prop}"`);
+    throw new TypeError(`no row for "${prop}"`);
   }
   return el;
 }
@@ -192,7 +192,7 @@ function commit(el: Element, value: string): void {
 /** Toggle a checkbox the way a reader does. */
 function check(el: Element, next: boolean): void {
   if (!(el instanceof HTMLInputElement)) {
-    throw new Error("no checkbox input to toggle");
+    throw new TypeError("no checkbox input to toggle");
   }
   el.checked = next;
   el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -245,7 +245,7 @@ async function openSourceMenu(root: Element, prop: string): Promise<HTMLElement>
   await flush(6);
   const menu = document.querySelector('[data-jx-region="overlay.menu:value-source"] jx-menu');
   if (!(menu instanceof HTMLElement)) {
-    throw new Error(`the value-source menu did not open for "${prop}"`);
+    throw new TypeError(`the value-source menu did not open for "${prop}"`);
   }
   return menu;
 }
@@ -911,7 +911,7 @@ describe("what Content no longer draws", () => {
     const c = await renderPanel();
     const openLogic = c.querySelector('[part="empty-action"]');
     if (!(openLogic instanceof HTMLElement)) {
-      throw new Error("the repeating list offered no Open Logic action");
+      throw new TypeError("the repeating list offered no Open Logic action");
     }
     openLogic.click();
     // The dock is reached through a lazy import (Content must not statically depend on its host),
@@ -1497,7 +1497,7 @@ describe("custom attributes section", () => {
     const c = await renderPanel();
     const remove = section(c, "__custom")!.querySelector('[part="kv-remove"] [part="control"]');
     if (!(remove instanceof HTMLElement)) {
-      throw new Error("the custom attribute row drew no remove control");
+      throw new TypeError("the custom attribute row drew no remove control");
     }
     expect(remove.getAttribute("aria-label")).toBe("Remove data-x");
     remove.click();

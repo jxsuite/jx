@@ -103,7 +103,7 @@ function selectHost(container: HTMLElement) {
 function control(container: HTMLElement) {
   const select = container.querySelector('[part="select"] [part="control"]');
   if (!(select instanceof HTMLSelectElement)) {
-    throw new Error("the picker's select has no native control");
+    throw new TypeError("the picker's select has no native control");
   }
   return select;
 }

@@ -63,7 +63,7 @@ const { cellForPane, mount, paneGridReady, unmount } = await import("../src/pane
 function grid(): HTMLElement {
   const el = document.querySelector("#pane-grid");
   if (!(el instanceof HTMLElement)) {
-    throw new Error("no #pane-grid in the document");
+    throw new TypeError("no #pane-grid in the document");
   }
   return el;
 }

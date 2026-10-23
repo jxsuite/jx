@@ -96,7 +96,7 @@ function errorText(container: HTMLElement): string | undefined {
 function picker(container: HTMLElement): HTMLSelectElement {
   const select = container.querySelector('[part="adapter"] select');
   if (!(select instanceof HTMLSelectElement)) {
-    throw new Error("the Deploy section drew no adapter <select>");
+    throw new TypeError("the Deploy section drew no adapter <select>");
   }
   return select;
 }

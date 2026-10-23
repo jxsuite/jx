@@ -116,7 +116,7 @@ function at(path: JxPath): HTMLElement {
 function required(scope: ParentNode, selector: string): HTMLElement {
   const found = scope.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`nothing matches ${selector}`);
+    throw new TypeError(`nothing matches ${selector}`);
   }
   return found;
 }
@@ -125,7 +125,7 @@ function required(scope: ParentNode, selector: string): HTMLElement {
 function titleInput(scope: ParentNode): HTMLInputElement {
   const found = scope.querySelector('[part="title-input"]');
   if (!(found instanceof HTMLInputElement)) {
-    throw new Error("no rename input is drawn");
+    throw new TypeError("no rename input is drawn");
   }
   return found;
 }

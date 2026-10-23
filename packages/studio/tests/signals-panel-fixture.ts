@@ -205,7 +205,7 @@ export function dataOf(el: Element | null | undefined, key: string): string | un
     return undefined;
   }
   if (!(el instanceof HTMLElement || el instanceof SVGElement)) {
-    throw new Error(`<${el.localName}> carries no dataset to read "${key}" from`);
+    throw new TypeError(`<${el.localName}> carries no dataset to read "${key}" from`);
   }
   return el.dataset[key];
 }
@@ -290,7 +290,9 @@ export function nativeInput(scope: Element): HTMLInputElement | HTMLTextAreaElem
     throw new Error("no native control inside the field");
   }
   if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
-    throw new Error(`the field's [part="input"] is a <${el.localName}>, not an input or textarea`);
+    throw new TypeError(
+      `the field's [part="input"] is a <${el.localName}>, not an input or textarea`,
+    );
   }
   return el;
 }
@@ -346,7 +348,7 @@ export async function press(el: Element | null | undefined): Promise<void> {
   }
   const target = el.querySelector('[part="control"]') ?? el;
   if (!(target instanceof HTMLElement)) {
-    throw new Error(`the button to press is a <${target.localName}>, which has no click()`);
+    throw new TypeError(`the button to press is a <${target.localName}>, which has no click()`);
   }
   target.click();
   await settle();

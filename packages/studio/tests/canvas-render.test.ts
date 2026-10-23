@@ -501,7 +501,7 @@ function stageEl(): HTMLElement {
 function htmlEl(selector: string, root: ParentNode = stageEl()): HTMLElement {
   const found = root.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`nothing drawn matches ${selector}`);
+    throw new TypeError(`nothing drawn matches ${selector}`);
   }
   return found;
 }

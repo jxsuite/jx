@@ -93,7 +93,7 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => Number(setTimeo
 function chatHost(): HTMLElement {
   const host = document.querySelector("#assistant-tab");
   if (!(host instanceof HTMLElement)) {
-    throw new Error("beforeEach builds the #assistant-tab host");
+    throw new TypeError("beforeEach builds the #assistant-tab host");
   }
   return host;
 }

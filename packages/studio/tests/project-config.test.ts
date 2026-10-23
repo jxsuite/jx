@@ -348,7 +348,7 @@ describe("a rejected write", () => {
     expect(first.ok).toBe(false);
     const failure = first.error;
     if (!(failure instanceof Error)) {
-      throw new Error("commitProjectConfig reports the write's own Error");
+      throw new TypeError("commitProjectConfig reports the write's own Error");
     }
     expect(failure.message).toBe("EROFS");
 

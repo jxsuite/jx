@@ -299,7 +299,7 @@ function dialogWrapper(): HTMLElement | null {
 function dialogField(): HTMLInputElement {
   const field = dialogWrapper()!.querySelector('jx-textfield [part="input"]');
   if (!(field instanceof HTMLInputElement)) {
-    throw new Error("the open dialog has no text field");
+    throw new TypeError("the open dialog has no text field");
   }
   return field;
 }

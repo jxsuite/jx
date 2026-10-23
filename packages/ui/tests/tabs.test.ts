@@ -136,7 +136,7 @@ function panelsIn(root: ParentNode): PanelEl[] {
 function closeOf(row: Element): HTMLButtonElement {
   const close = row.querySelector('[part="close"]');
   if (!(close instanceof HTMLButtonElement)) {
-    throw new Error("the tab rendered no close button");
+    throw new TypeError("the tab rendered no close button");
   }
   return close;
 }

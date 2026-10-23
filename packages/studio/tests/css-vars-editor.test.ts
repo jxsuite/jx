@@ -93,7 +93,7 @@ function groupByTitle(container: HTMLElement, title: string): HTMLElement {
     (g) => g.querySelector('[part="group-title"]')?.textContent.trim() === title,
   );
   if (!(group instanceof HTMLElement)) {
-    throw new Error(`no token group titled "${title}"`);
+    throw new TypeError(`no token group titled "${title}"`);
   }
   return group;
 }
@@ -104,7 +104,7 @@ function tokenByName(group: HTMLElement, displayName: string): HTMLElement {
     (t) => t.querySelector('[part="name"]')?.textContent.trim() === displayName,
   );
   if (!(token instanceof HTMLElement)) {
-    throw new Error(`no token row named "${displayName}"`);
+    throw new TypeError(`no token row named "${displayName}"`);
   }
   return token;
 }
