@@ -9,9 +9,56 @@
  * `getBoundingClientRect`/`elementFromPoint`/`elementsFromPoint` calls exist elsewhere in `src`.
  */
 
-/** Bounding rect of an element, in viewport coordinates. */
+/**
+ * Whether an element is `display: contents`, so it generates no box of its own (CSS Display §2.5).
+ * Component hosts are the common case: the host steps aside and its rendered root does the layout.
+ */
+export function isDisplayContents(el: Element): boolean {
+  return el.ownerDocument.defaultView?.getComputedStyle(el).display === "contents";
+}
+
+/**
+ * Bounding rect of an element, in viewport coordinates.
+ *
+ * An element with no box (`display: contents`) answers a zero rect at the origin, which is useless
+ * for drawing a selection or hover box around it. Its visible extent is what its contents render,
+ * so it is measured as the union of its children's rects, each measured by this same rule. A Range
+ * over the contents is NOT enough: CSSOM View takes a selected child's own client rects and skips
+ * its descendants, so a component whose root is another `display: contents` component (a CTA
+ * wrapping a section) measured as only the text runs that happened to sit directly inside it. The
+ * style read happens only when the element's own rect is empty, so an ordinary element pays nothing
+ * for it.
+ */
 export function rectOf(el: Element): DOMRect {
-  return el.getBoundingClientRect();
+  const rect = el.getBoundingClientRect();
+  if (rect.width > 0 || rect.height > 0 || !el.hasChildNodes() || !isDisplayContents(el)) {
+    return rect;
+  }
+  let union: { bottom: number; left: number; right: number; top: number } | null = null;
+  for (const child of el.childNodes) {
+    let r: DOMRect | null = null;
+    if (child instanceof Element) {
+      r = rectOf(child);
+    } else if (child.nodeType === Node.TEXT_NODE) {
+      const range = el.ownerDocument.createRange();
+      range.selectNodeContents(child);
+      r = range.getBoundingClientRect();
+    }
+    if (!r || (r.width === 0 && r.height === 0)) {
+      continue;
+    }
+    union = union
+      ? {
+          bottom: Math.max(union.bottom, r.bottom),
+          left: Math.min(union.left, r.left),
+          right: Math.max(union.right, r.right),
+          top: Math.min(union.top, r.top),
+        }
+      : { bottom: r.bottom, left: r.left, right: r.right, top: r.top };
+  }
+  return union
+    ? new DOMRect(union.left, union.top, union.right - union.left, union.bottom - union.top)
+    : rect;
 }
 
 /**

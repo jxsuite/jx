@@ -8,7 +8,7 @@
 
 import { jxPathSelector, parseJxPath, serializeJxPath } from "./path-mapping";
 import { isFunction } from "@jxsuite/schema/guards";
-import { rectOf } from "../utils/geometry";
+import { isDisplayContents, rectOf } from "../utils/geometry";
 import { computeInsertZones, insertZonesKey } from "./iframe-insert";
 import { getActiveElement, isEditing } from "../editor/inline-edit";
 import type { IframeChannel } from "./iframe-channel";
@@ -76,11 +76,20 @@ export function nearestHit(target: EventTarget | null): NodeHit | null {
  *
  * An engine without `checkVisibility` gets the benefit of the doubt. Withholding a selection box
  * from a node that is on screen is a worse failure than drawing one for a node that is not.
+ *
+ * `checkVisibility` also answers false for an element with no box of its own, and a `display:
+ * contents` element never has one. A component host styled that way (its rendered root does the
+ * layout) is on screen whenever anything inside it is, so its children are asked instead. Without
+ * this, selecting such a component drew no selection box and no action bar, because every one of
+ * them was reported hidden.
  */
 function isRendered(el: Element): boolean {
   // Absent on engines that predate it, whatever lib.dom says.
   const check: Element["checkVisibility"] | undefined = el.checkVisibility;
-  return isFunction(check) ? check.call(el, { checkVisibilityCSS: true }) : true;
+  if (!isFunction(check) || check.call(el, { checkVisibilityCSS: true })) {
+    return true;
+  }
+  return isDisplayContents(el) && [...el.children].some((child) => isRendered(child));
 }
 
 /**
