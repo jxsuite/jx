@@ -93,5 +93,5 @@ Only _pure_ scheme queries participate: `(prefers-color-scheme: dark)` with noth
 :::
 
 :::doc-tip
-Studio shows an Auto/Light/Dark control in the context bar's **Context** popover whenever the project declares a scheme query, and the design token editor can author the `@--dark` values for you.
+Studio shows Auto/Light/Dark segments among the context bar's **Context** controls whenever the project declares a scheme query, and the design token editor can author the `@--dark` values for you.
 :::

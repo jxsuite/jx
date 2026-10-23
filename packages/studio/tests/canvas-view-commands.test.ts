@@ -253,10 +253,12 @@ describe("the records themselves", () => {
     expect(ids.some((id) => /\.toggle[A-Z]/.test(id))).toBe(false);
   });
 
-  test("canvas.setMode's enum is the observable mode set, preview included", () => {
+  test("canvas.setMode's enum is the observable mode set, preview included, Diff left out", () => {
     const modeEnum = registry.get("canvas.setMode")?.args?.properties?.mode?.enum;
-    expect(modeEnum).toEqual([...CANVAS_MODES]);
+    expect(modeEnum).toEqual(CANVAS_MODES.filter((mode) => mode !== "git-diff"));
     expect(modeEnum).toContain("preview");
+    // Implicit (studio.md §3): the stage draws it, nothing asks for it by name.
+    expect(modeEnum).not.toContain("git-diff");
   });
 });
 
@@ -347,6 +349,16 @@ describe("canvas.setMode", () => {
     expect(() => registry.run("canvas.setMode", { mode: "preview" })).toThrow(
       'composes with the edit and design base modes; this pane is in "source"',
     );
+  });
+
+  /* Diff is implicit (studio.md §3): a comparison is entered by choosing a changed file or a
+     version in Publish. Even a document that declares the mode cannot be put into it by name. */
+  test("refuses git-diff by name, even over a document that declares it", () => {
+    openWith(["edit", "design", "git-diff"]);
+    expect(() => registry.run("canvas.setMode", { mode: "git-diff" })).toThrow(
+      '"git-diff" is not declared',
+    );
+    expect(setCanvasMode).not.toHaveBeenCalled();
   });
 
   test("refuses an undeclared mode string", () => {

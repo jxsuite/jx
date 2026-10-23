@@ -134,7 +134,7 @@ Name a context in plain language; Studio derives the stored name ("Wide screen" 
 The check looks at the whole `project.json`, but only holds you responsible for what your edit changed. If the file already had a problem, such as a key from an extension you removed or a key something else wrote, that problem is reported once at the top of the section, naming the key, and your edit still saves.
 :::
 
-The context bar's **Context** popover only _chooses_ among what is defined here; its **Manage contexts…** footer opens this section, as do the breakpoint and colour-scheme labels in the Style tab, so you can add a breakpoint without losing your element selection.
+The context bar's **Context** controls only _choose_ among what is defined here; **Manage contexts…**, at the foot of the popover behind the sliders button, opens this section, as do the breakpoint and colour-scheme labels in the Style tab, so you can add a breakpoint without losing your element selection.
 
 ## Site head
 
