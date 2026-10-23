@@ -30,6 +30,7 @@ import {
   setStampPropBindings,
 } from "@jxsuite/runtime";
 import { resolveAssetRef } from "./asset-resolve";
+import { fillPreviewImages } from "./preview-placeholder";
 import { classifyRenderNode, jxPathSelector, serializeJxPath } from "./path-mapping";
 /* No cycle: `iframe-position.ts` imports only `path-mapping` and a type. It already owns the
    stamped-attribute lookup, escaping included, so a second query built here would be a second
@@ -1141,8 +1142,15 @@ export async function renderResolvedDocument(opts: {
   // Marks last, and for the same reason: they are resolved by querying stamped attributes, which
   // Only exist once the tree the stamper walked is actually in the container.
   applyDiffMarks(opts.container, opts.diffMarks ?? null);
+  /* Stylebook specimens are component previews: an image a specimen has no source for draws as a
+     placeholder (`preview-placeholder.ts`). Never in a page's canvas, where an empty image is
+     something its author should see. */
+  const stopPlaceholders = opts.mode === "stylebook" ? fillPreviewImages(opts.container) : null;
   return {
     ctx: { defs: $defs, docBase: opts.docBase, mapperCtx: opts.mapperCtx, mode: opts.mode },
-    dispose: stop,
+    dispose: () => {
+      stopPlaceholders?.();
+      stop();
+    },
   };
 }

@@ -104,6 +104,28 @@ describe("syncEditableRoot accessibility", () => {
 });
 
 describe("renderResolvedDocument", () => {
+  test("a Stylebook specimen's source-less image is a placeholder; a page's is left empty", async () => {
+    const doc: JxDocument = {
+      children: [{ attributes: { src: "" }, tagName: "img" }],
+      tagName: "div",
+    };
+    const srcIn = async (mode: "stylebook" | "design") => {
+      const container = document.createElement("div");
+      const handle = await renderResolvedDocument({
+        container,
+        doc,
+        docBase: "http://localhost:3000/page.json",
+        mapperCtx: ctx,
+        mode,
+      });
+      const src = container.querySelector("img")?.getAttribute("src");
+      handle.dispose();
+      return src;
+    };
+    expect(await srcIn("stylebook")).toStartWith("data:image/svg+xml,");
+    expect(await srcIn("design")).toBe("");
+  });
+
   test("renders a resolved doc into the container and stamps data-jx-path", async () => {
     const container = document.createElement("div");
     const doc: JxDocument = {
