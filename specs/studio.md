@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.13.53-draft\
+**Version:** 0.15.1-draft\
 **Status:** Partial\
-**Updated:** 2026-10-21\
+**Updated:** 2026-10-23\
 **License:** MIT
 
 ---
@@ -2216,6 +2216,11 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.15.1-draft** (2026-10-23) — §6.2: the size and colour-scheme choices are segmented groups on the pane context bar's Context axis; the language, feature queries, layout switch and Manage contexts stay in a More rendering context popover whose label names only what is set away from rest.
+- **0.15.0-draft** (2026-10-23) — §3: Diff is an implicit mode, entered from Publish's changed files or version history and left by Back; the Editor axis never offers it and canvas.setMode no longer accepts git-diff.
+- **0.14.2-draft** (2026-10-23) — §7.1 and §22.7: the switch between the project.json tab's Elements, Variables and Code views is named as the pane context bar's Editor switch, a segmented group at the bar's leading end rather than a dropdown.
+- **0.14.1-draft** (2026-10-23) — §5.7, §7.2: an image a component preview or a Project Styles specimen has no source for is drawn as a neutral placeholder rather than hidden or broken; document previews still hide an empty image.
+- **0.14.0-draft** (2026-10-23) — §5.7, §7.2: component previews and Project Styles cards use only the definition's declared examples, and Templates rows show no usage count, so neither panel asks the reference index once per item.
 - **0.13.53-draft** (2026-10-21) — §22.5: a file-backed collection's records are counted by the Site panel from the file, dated by their own date field in the Calendar, and opened in the file's grid on the record's own row; the form-only entry editor is the fallback for JSON entry files.
 - **0.13.52-draft** (2026-10-21) — §22.1–§22.3 ship: five workspaces with view.setWorkspace and the workspace.focus.* chord records on ⌘1–⌘5, derived tab ownership with a strip filter every pane follows, a Command Bar switcher with the Publish count and the ⚙ Settings menu, and per-workspace frames applied on every entry; §3.1, §5.1, §9.1.2, §14.8 and §17 drop the named layouts and the rail foot.
 - **0.13.51-draft** (2026-10-21) — Site panel and Content Pages name a locale folder's page with its locale (Home (ar)) and list only files the build routes; component previews render in an inert shadow root; a canvas drop selects the dropped node and a dropped image carries no alt; a page has one Description bound where the build reads it; the pin is drawn only on the current or a pinned chip; command records gain order.
@@ -2410,4 +2415,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.13.53-draft_
+_`@jxsuite/studio` Specification v0.15.1-draft_
