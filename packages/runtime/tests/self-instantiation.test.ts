@@ -52,7 +52,7 @@ async function settle(done: () => boolean, limit = 5000): Promise<void> {
 /** Fail the test unless a logged or dispatched error value is an `Error`. */
 function assertError(value: unknown): asserts value is Error {
   if (!(value instanceof Error)) {
-    throw new Error("expected an Error to be reported");
+    throw new TypeError("expected an Error to be reported");
   }
 }
 
@@ -144,7 +144,7 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
     expect(seen.length).toBe(1);
     const [event] = seen;
     if (!(event instanceof ErrorEvent)) {
-      throw new Error("no jx-error event was dispatched");
+      throw new TypeError("no jx-error event was dispatched");
     }
     expect(event.bubbles).toBe(true);
     expect(event.message).toContain(`renders itself: ${tag} → ${tag} → ${tag}.`);

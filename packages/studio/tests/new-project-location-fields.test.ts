@@ -49,7 +49,7 @@ initLayers();
 function choose(part: string, value: string): void {
   const select = npPart(part)?.querySelector('[part="control"]');
   if (!(select instanceof HTMLSelectElement)) {
-    throw new Error(`the "${part}" field draws no <select>`);
+    throw new TypeError(`the "${part}" field draws no <select>`);
   }
   select.value = value;
   select.dispatchEvent(new Event("change", { bubbles: true }));

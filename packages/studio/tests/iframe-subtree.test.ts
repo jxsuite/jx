@@ -38,7 +38,7 @@ const docOf = (...children: (JxMutableNode | string)[]): JxMutableNode => ({
 /** Narrows a rendered node (or query result) to an element, failing the test when it is not one. */
 function elementOf(node: Node | null): HTMLElement {
   if (!(node instanceof HTMLElement)) {
-    throw new Error("expected the render to produce an HTMLElement");
+    throw new TypeError("expected the render to produce an HTMLElement");
   }
   return node;
 }

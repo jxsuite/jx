@@ -120,7 +120,7 @@ async function mount(): Promise<HTMLElement> {
 async function layOutPane() {
   const body = host.querySelector('[part="body"]');
   if (!(body instanceof HTMLElement)) {
-    throw new Error("the pane drew no scroller");
+    throw new TypeError("the pane drew no scroller");
   }
   Object.defineProperty(body, "clientHeight", {
     configurable: true,

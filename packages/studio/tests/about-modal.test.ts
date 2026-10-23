@@ -29,7 +29,7 @@ initLayers();
 function modalLayer(): HTMLElement {
   const layer = document.querySelector("#layer-dialog");
   if (!(layer instanceof HTMLElement)) {
-    throw new Error("#layer-dialog is created at the top of this file");
+    throw new TypeError("#layer-dialog is created at the top of this file");
   }
   return layer;
 }

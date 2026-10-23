@@ -37,7 +37,7 @@
     "@vue/reactivity": "3.5.44"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^21.0.3",
+    "@happy-dom/global-registrator": "^21.0.4",
     "@jxsuite/test-support": "workspace:^"
   }
 }

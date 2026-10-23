@@ -26,7 +26,7 @@ import { view } from "../src/view";
 function need(root: ParentNode, selector: string): HTMLElement {
   const found = root.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`no element for ${selector}`);
+    throw new TypeError(`no element for ${selector}`);
   }
   return found;
 }

@@ -91,7 +91,7 @@ function part(row: HTMLElement | undefined, name: string): HTMLElement | null {
 function switchIn(row: HTMLElement | undefined): HTMLInputElement {
   const input = row?.querySelector('[part="toggle"] [part="input"]');
   if (!(input instanceof HTMLInputElement)) {
-    throw new Error("The row has no jx-switch with a native input");
+    throw new TypeError("The row has no jx-switch with a native input");
   }
   return input;
 }

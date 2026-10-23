@@ -88,7 +88,7 @@ describe("openAboutSurface", () => {
     await flush(3);
     const element = handle.host.firstElementChild;
     if (!(element instanceof HTMLElement)) {
-      throw new Error("the mount put no element into its host");
+      throw new TypeError("the mount put no element into its host");
     }
     expect(element.tagName.toLowerCase()).toBe("jx-dialog");
     expect(mountsOf("about")).toHaveLength(1);

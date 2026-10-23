@@ -132,7 +132,7 @@ function groupIds(root: ParentNode = host): string[] {
 function body(root: ParentNode = host): HTMLElement {
   const island = root.querySelector('[part="section-host"]');
   if (!(island instanceof HTMLElement)) {
-    throw new Error("the settings editor has drawn no section island");
+    throw new TypeError("the settings editor has drawn no section island");
   }
   return island;
 }

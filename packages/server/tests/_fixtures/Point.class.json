@@ -1,1 +1,0 @@
-{"$defs":{"fields":{"x":{"access":"public","default":0,"identifier":"x","role":"field","scope":"instance"},"y":{"access":"public","default":0,"identifier":"y","role":"field","scope":"instance"}}},"$prototype":"Class","title":"Point"}

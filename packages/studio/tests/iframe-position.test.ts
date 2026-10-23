@@ -52,7 +52,7 @@ function described(position: DomPosition | null): { node: string; offset: number
 /** The text node a fixture puts at `node`; markup there instead fails the test. */
 function textOf(node: Node | null): Text {
   if (!(node instanceof Text)) {
-    throw new Error("expected a text node");
+    throw new TypeError("expected a text node");
   }
   return node;
 }

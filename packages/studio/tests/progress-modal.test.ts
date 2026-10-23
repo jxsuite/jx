@@ -33,7 +33,7 @@ beforeAll(() => {
 function modalLayer(): HTMLElement {
   const layer = document.querySelector("#layer-modal");
   if (!(layer instanceof HTMLElement)) {
-    throw new Error("beforeAll() appends #layer-modal; it is missing");
+    throw new TypeError("beforeAll() appends #layer-modal; it is missing");
   }
   return layer;
 }

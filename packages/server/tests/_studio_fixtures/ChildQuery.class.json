@@ -1,1 +1,0 @@
-{"$defs":{"parameters":{"filter":{"identifier":"filter","type":{"type":"string"}}}},"$prototype":"Class","description":"Child without own resolve","extends":{"$ref":"./BaseQuery.class.json"},"title":"ChildQuery"}

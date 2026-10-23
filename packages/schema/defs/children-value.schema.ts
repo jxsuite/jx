@@ -15,7 +15,7 @@ export const arrayNamespaceSchema = {
         "removals; without a key, rows are keyed by index. $map/index is not a key — an index " +
         "names a position, not a row.",
       properties: {
-        $ref: { pattern: "^\\$map/item(/.+)?$", type: "string" },
+        $ref: { pattern: String.raw`^\$map/item(/.+)?$`, type: "string" },
       },
       required: ["$ref"],
       type: "object",
@@ -60,7 +60,7 @@ export const childrenValueSchema = {
         "Computed children — a ${…} template that resolves at build time to an array of child " +
         'definitions (e.g. "${state.entry.$children}" for parsed content). A bare plain-text ' +
         "string is NOT a valid children value; text children must be array items.",
-      pattern: "\\$\\{",
+      pattern: String.raw`\$\{`,
       type: "string",
     },
   ],

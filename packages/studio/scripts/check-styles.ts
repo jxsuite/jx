@@ -496,7 +496,7 @@ export function scanHex(rel: string, source: string): ScanFindings {
   for (let idx = 0; idx < lines.length; idx++) {
     const line = lines[idx]!;
     // Drop `var(--token, #hex)` fallbacks so their inner hex isn't flagged.
-    const stripped = line.replace(VAR_FALLBACK_RE, "");
+    const stripped = line.replaceAll(VAR_FALLBACK_RE, "");
 
     if (!isData) {
       const matches = stripped.match(HEX_RE) ?? [];
@@ -584,7 +584,7 @@ export function scanJsonStyle(rel: string, source: string): ScanFindings {
   for (const block of jsonStyleBlocks(source)) {
     const lines = block.text.split("\n");
     for (const [offset, line] of lines.entries()) {
-      const stripped = line.replace(VAR_FALLBACK_RE, "");
+      const stripped = line.replaceAll(VAR_FALLBACK_RE, "");
       const at = block.line + offset;
       const bad = (stripped.match(HEX_RE) ?? []).filter((h) => !ALLOWED_HEX.has(h.toLowerCase()));
       if (bad.length > 0) {
@@ -958,7 +958,7 @@ const CSS_RULE_BLOCK_RE = /\{[^{}]*[a-z-]{2,}\s*:\s*[^{}]+\}/;
  */
 export function extractSelectorPreludes(css: string): string[] {
   const out: string[] = [];
-  const text = css.replace(COMMENT_RE, " ");
+  const text = css.replaceAll(COMMENT_RE, " ");
   let buf = "";
   for (const c of text) {
     if (c === "{") {

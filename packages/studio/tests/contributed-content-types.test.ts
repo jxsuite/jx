@@ -90,7 +90,7 @@ async function settle(): Promise<void> {
 function part(root: ParentNode, name: string): HTMLElement {
   const el = root.querySelector(`[part="${name}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no [part="${name}"] in the Content Types section`);
+    throw new TypeError(`no [part="${name}"] in the Content Types section`);
   }
   return el;
 }
@@ -125,7 +125,7 @@ function shows(el: Element): string {
 function field(root: ParentNode, prop: string): HTMLElement {
   const el = root.querySelector(`[data-prop="${prop}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`the entry form has no field for "${prop}"`);
+    throw new TypeError(`the entry form has no field for "${prop}"`);
   }
   return el;
 }
@@ -155,7 +155,7 @@ function toggleSwitch(el: Element, checked: boolean): void {
 function fieldCard(container: HTMLElement, fieldName: string): HTMLElement {
   const card = container.querySelector(`[data-field="${fieldName}"]`);
   if (!(card instanceof HTMLElement)) {
-    throw new Error(`no field card for "${fieldName}"`);
+    throw new TypeError(`no field card for "${fieldName}"`);
   }
   return card;
 }

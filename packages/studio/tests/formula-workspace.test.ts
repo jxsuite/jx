@@ -100,7 +100,7 @@ const canvasWrap = registerPrimaryStage().wrap;
  */
 const dockBody = document.querySelector("#logic");
 if (!(dockBody instanceof HTMLElement)) {
-  throw new Error("the fixture above writes #logic, so it must be in the page");
+  throw new TypeError("the fixture above writes #logic, so it must be in the page");
 }
 const dock = dockBody;
 
@@ -224,7 +224,7 @@ function paletteItem(name: string): HTMLElement | undefined {
 function operatorPicker(): HTMLSelectElement {
   const picker = part("editor-host")?.querySelector('[part="operator"] [part="control"]');
   if (!(picker instanceof HTMLSelectElement)) {
-    throw new Error("no operator picker in the editor island");
+    throw new TypeError("no operator picker in the editor island");
   }
   return picker;
 }

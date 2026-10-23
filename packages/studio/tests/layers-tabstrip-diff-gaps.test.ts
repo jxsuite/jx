@@ -77,7 +77,7 @@ let onRerender: () => void;
 function required(scope: ParentNode, selector: string): HTMLElement {
   const found = scope.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`nothing matches ${selector}`);
+    throw new TypeError(`nothing matches ${selector}`);
   }
   return found;
 }

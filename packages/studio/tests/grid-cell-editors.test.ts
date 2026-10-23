@@ -163,7 +163,7 @@ describe("editorForColumn", () => {
 
     const remove = pops.host.querySelector(".jx-grid-chip-x");
     if (!(remove instanceof HTMLElement)) {
-      throw new Error("the pill editor drew no × on its remaining chip");
+      throw new TypeError("the pill editor drew no × on its remaining chip");
     }
     remove.click();
     expect(pops.host.querySelectorAll(".jx-grid-chip")).toHaveLength(0);

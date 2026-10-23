@@ -37,7 +37,7 @@ import { serializeJxPath } from "../src/canvas/path-mapping";
 function rendered(root: ParentNode, selector: string): HTMLElement {
   const el = root.querySelector(selector);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`nothing rendered for ${selector}`);
+    throw new TypeError(`nothing rendered for ${selector}`);
   }
   return el;
 }
@@ -46,7 +46,7 @@ function rendered(root: ParentNode, selector: string): HTMLElement {
 function firstElementOf(container: HTMLElement): HTMLElement {
   const el = container.firstElementChild;
   if (!(el instanceof HTMLElement)) {
-    throw new Error("the render left the container empty");
+    throw new TypeError("the render left the container empty");
   }
   return el;
 }

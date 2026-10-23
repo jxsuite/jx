@@ -62,7 +62,7 @@ async function setup(
 function control(container: HTMLElement, field: string): HTMLInputElement | HTMLTextAreaElement {
   const el = container.querySelector(`[data-field="${field}"] [part="input"]`);
   if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
-    throw new Error(`no control in the "${field}" row of the Overview section`);
+    throw new TypeError(`no control in the "${field}" row of the Overview section`);
   }
   return el;
 }
@@ -83,7 +83,7 @@ function errorText(container: HTMLElement): string | undefined {
 function part(container: HTMLElement, name: string): HTMLElement {
   const el = container.querySelector(`[part="${name}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no [part="${name}"] in the Overview section`);
+    throw new TypeError(`no [part="${name}"] in the Overview section`);
   }
   return el;
 }
@@ -120,7 +120,7 @@ function pickFavicon(container: HTMLElement): HTMLInputElement {
   // The last input created during the click is the one the upload listens on.
   const fileInput = created.findLast((el) => el instanceof HTMLInputElement);
   if (!(fileInput instanceof HTMLInputElement)) {
-    throw new Error("Upload Favicon opened no file input");
+    throw new TypeError("Upload Favicon opened no file input");
   }
   return fileInput;
 }

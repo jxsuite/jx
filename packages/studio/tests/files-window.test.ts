@@ -143,7 +143,7 @@ function pads(): number[] {
 function fixtureElement(selector: string): HTMLElement {
   const el = document.querySelector(selector);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`the fixture has no ${selector}`);
+    throw new TypeError(`the fixture has no ${selector}`);
   }
   return el;
 }

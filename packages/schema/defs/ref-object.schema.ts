@@ -1,7 +1,7 @@
 export const internalRefSchema = {
   description: "Reference to a $defs type definition in the current component.",
   examples: ["#/$defs/Count", "#/$defs/TodoItem", "#/$defs/Status"],
-  pattern: "^#/\\$defs/",
+  pattern: String.raw`^#/\$defs/`,
   type: "string",
 } as const;
 
@@ -15,7 +15,7 @@ export const stateRefSchema = {
 export const externalRefSchema = {
   description: "Reference to an external Jx component file.",
   examples: ["./card.json", "https://cdn.example.com/button.json"],
-  pattern: "^(\\./|\\.\\./).*\\.json$|^https?://",
+  pattern: String.raw`^(\./|\.\./).*\.json$|^https?://`,
   type: "string",
 } as const;
 
@@ -36,7 +36,7 @@ export const parentRefSchema = {
 export const mapRefSchema = {
   description: "Reference to the current Array map iteration context.",
   examples: ["$map/item", "$map/index", "$map/item/text", "$map/item/done"],
-  pattern: "^\\$map/(item|index)(/.*)?$",
+  pattern: String.raw`^\$map/(item|index)(/.*)?$`,
   type: "string",
 } as const;
 

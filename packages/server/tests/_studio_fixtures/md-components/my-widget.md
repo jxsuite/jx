@@ -1,4 +1,0 @@
----
-tagName: my-widget
----
-# Widget

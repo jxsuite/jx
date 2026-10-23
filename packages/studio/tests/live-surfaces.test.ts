@@ -176,7 +176,7 @@ describe("applyLiveSave", () => {
     /* A mark rather than the node: a failing `toBe` on a live element walks the DOM graph. */
     const bystander = other.firstElementChild;
     if (!(bystander instanceof HTMLElement)) {
-      throw new Error("the bystander surface drew nothing");
+      throw new TypeError("the bystander surface drew nothing");
     }
     bystander.dataset.mark = "kept";
     expect(host.querySelector("jx-live-probe b")?.textContent).toBe("[hi]");

@@ -110,7 +110,7 @@ function postsOfKind<K extends ParentToIframe["kind"]>(
 /** The element a selector found, narrowed to the HTMLElement the overlay code renders. */
 function renderedElement(found: Element | null | undefined, what: string): HTMLElement {
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`expected ${what} to be rendered as an HTMLElement`);
+    throw new TypeError(`expected ${what} to be rendered as an HTMLElement`);
   }
   return found;
 }

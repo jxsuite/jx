@@ -1,1 +1,0 @@
-{"$defs":{"parameters":{"category":{"description":"Filter by category","identifier":"category","type":{"type":"string"}}}},"$prototype":"Class","description":"Posts collection","extends":{"$ref":"./BaseCollection.class.json"},"title":"PostCollection"}

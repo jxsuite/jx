@@ -311,7 +311,7 @@ describe("context attach", () => {
     await flush(5);
     const panel = document.querySelector("#layer-popover jx-menu");
     if (!(panel instanceof HTMLElement)) {
-      throw new Error("the attach menu never reached the popover layer");
+      throw new TypeError("the attach menu never reached the popover layer");
     }
     expect(panel.style.getPropertyValue("--jx-s0") || panel.getAttribute("style")).toContain("px");
     expect(attachRows()).toHaveLength(2);

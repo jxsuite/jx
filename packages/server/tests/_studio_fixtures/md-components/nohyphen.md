@@ -1,4 +1,0 @@
----
-tagName: widget
----
-# Content

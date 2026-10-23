@@ -10,7 +10,7 @@ import {
 function part(root: ParentNode, selector: string): HTMLElement {
   const el = root.querySelector(selector);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`overlay layer has no ${selector} element`);
+    throw new TypeError(`overlay layer has no ${selector} element`);
   }
   return el;
 }

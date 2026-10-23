@@ -1036,7 +1036,7 @@ describe("runScoped", () => {
     const { result: el, stop } = runScoped(() => {
       const node = rn({ children: ["${state.msg}"], tagName: "p" }, state);
       if (!(node instanceof HTMLElement)) {
-        throw new Error("renderNode returned a Text node for a <p> definition");
+        throw new TypeError("renderNode returned a Text node for a <p> definition");
       }
       return node;
     });

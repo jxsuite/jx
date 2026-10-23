@@ -167,7 +167,7 @@ export const formatDefSchema = {
     },
     extensions: {
       description: 'File extensions this format claims, with leading dot (e.g. [".md"]).',
-      items: { pattern: "^\\.", type: "string" },
+      items: { pattern: String.raw`^\.`, type: "string" },
       minItems: 1,
       type: "array",
     },

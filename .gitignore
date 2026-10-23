@@ -49,12 +49,25 @@ docs/studio/interface/commands.md
 docs/studio/interface/shortcuts.md
 docs/studio/projects/starters.md
 
-# A test's own git repository. `git-new-endpoints.test.ts` creates it in `beforeAll` and removes it
-# in `afterAll`; a `git add -A` while a run was in flight once committed the leftover as a GITLINK
-# with no `.gitmodules` entry, so every CI job's checkout cleanup warned "No url found for
-# submodule path", and every local run of the server suite deleted a tracked path.
-packages/server/tests/_git_new_endpoints_fixture/
-packages/server/tests/_git_remote_fixture/
+# Scratch directories the test suites build beside their own test files (`_fixtures_*`, `_*_fixtures`,
+# `__test-*__`, `__tmp_*__`, ...). A test writes one in `beforeAll` or at module top and removes it
+# afterwards, so a run that dies in between (a crashed harness, a killed `bun test`) leaves it behind
+# for a `git add -A` to pick up. That already happened once: `git-new-endpoints.test.ts` builds a git
+# repository there, and the leftover was committed as a GITLINK with no `.gitmodules` entry, so every
+# CI job's checkout cleanup warned "No url found for submodule path", and every local run of the
+# server suite deleted a tracked path.
+#
+# The rule is the `_` prefix, not a list of names, so a new test that follows the convention is
+# covered without anyone remembering to edit this file. Directories only (the trailing slash), which
+# keeps the `_`-prefixed helper FILES beside them (`_fake-electron.ts`, `_rpc-server.ts`) trackable.
+**/tests/_*/
+
+# The one `_`-prefixed directory under `tests/` that is hand-authored input, not output: no test
+# writes its project, pages or content. Any other committed fixture directory needs an exception
+# here, because `git add -A` skips an ignored path without a word.
+!packages/desktop/tests/_fixtures_content/
+# What `content-collection.test.ts` generates inside it and removes in a `finally`.
+packages/desktop/tests/_fixtures_content/*.schema.json
 
 # Session plans a Claude Code run writes for itself. Program plans live in plans/ (plans/README.md),
 # where `bun run plans:check` can see them; six of these were once committed and went stale unseen.

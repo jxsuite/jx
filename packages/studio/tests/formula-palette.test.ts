@@ -60,7 +60,7 @@ function slot(): HTMLElement {
 function drawnPart(name: string): HTMLElement {
   const el = slot().querySelector(`[part="${name}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`formula palette draws no [part="${name}"]`);
+    throw new TypeError(`formula palette draws no [part="${name}"]`);
   }
   return el;
 }
@@ -77,7 +77,7 @@ function overlay(): HTMLElement | null {
 function searchInput(): HTMLInputElement {
   const input = drawnPart("input");
   if (!(input instanceof HTMLInputElement)) {
-    throw new Error("formula palette's search field is not an <input>");
+    throw new TypeError("formula palette's search field is not an <input>");
   }
   return input;
 }

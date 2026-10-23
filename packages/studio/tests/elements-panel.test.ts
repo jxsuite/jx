@@ -72,7 +72,7 @@ function panelContext(insertDeps: InsertPanelDeps): NavigatorPanelContext {
 function hostElement(selector: string, root: ParentNode = host): HTMLElement {
   const el = root.querySelector(selector);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no element matching ${selector}`);
+    throw new TypeError(`no element matching ${selector}`);
   }
   return el;
 }
@@ -186,7 +186,7 @@ function sectionNames(): (string | undefined)[] {
 function filterInput(): HTMLInputElement {
   const el = host.querySelector('[part="filter"] [part="input"]');
   if (!(el instanceof HTMLInputElement)) {
-    throw new Error("no control in the palette's filter field");
+    throw new TypeError("no control in the palette's filter field");
   }
   return el;
 }

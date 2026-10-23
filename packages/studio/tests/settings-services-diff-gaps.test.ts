@@ -99,7 +99,7 @@ describe("contextsError", () => {
 
     const base = container.querySelector('[data-context="base"] [part="input"]');
     if (!(base instanceof HTMLInputElement)) {
-      throw new Error("the base context row rendered no input");
+      throw new TypeError("the base context row rendered no input");
     }
     base.value = "wide";
     base.dispatchEvent(new Event("change", { bubbles: true }));

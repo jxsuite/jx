@@ -84,7 +84,7 @@ function category(panel: HTMLElement, name: string): Element {
 function detailsOf(item: Element): HTMLDetailsElement {
   const details = item.querySelector('[part="details"]');
   if (!(details instanceof HTMLDetailsElement)) {
-    throw new Error("the section drew no <details>");
+    throw new TypeError("the section drew no <details>");
   }
   return details;
 }
@@ -1032,7 +1032,7 @@ describe("the expression editor", () => {
     // The editor is a surface of its own: what this panel owns is that its edits reach the entry.
     const picker = host?.querySelector('[part="operator"] [part="control"]');
     if (!(picker instanceof HTMLSelectElement)) {
-      throw new Error("the expression editor drew no operator <select>");
+      throw new TypeError("the expression editor drew no operator <select>");
     }
     picker.value = "!";
     picker.dispatchEvent(new Event("change", { bubbles: true }));

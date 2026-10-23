@@ -82,7 +82,7 @@ function assertInstance<T>(
   ctor: abstract new (...args: never[]) => T,
 ): asserts value is T {
   if (!(value instanceof ctor)) {
-    throw new Error(`expected an instance of ${ctor.name}`);
+    throw new TypeError(`expected an instance of ${ctor.name}`);
   }
 }
 
@@ -106,7 +106,7 @@ try {
 function renderNode(...args: Parameters<typeof _renderNode>): HTMLElement {
   const node = _renderNode(...args);
   if (!(node instanceof HTMLElement)) {
-    throw new Error("renderNode did not return an HTML element");
+    throw new TypeError("renderNode did not return an HTML element");
   }
   return node;
 }

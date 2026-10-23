@@ -96,7 +96,7 @@ function htmlOrNull(el: Element | null | undefined): HTMLElement | null {
 /** A query result that must exist, failing the test when it does not. */
 function htmlOf(el: Element | null): HTMLElement {
   if (!(el instanceof HTMLElement)) {
-    throw new Error("expected the panel to draw this element");
+    throw new TypeError("expected the panel to draw this element");
   }
   return el;
 }
@@ -114,7 +114,7 @@ const chipState = (row: HTMLElement | null) => chip(row)?.dataset.state ?? "";
 function control(row: HTMLElement | null, part = "text"): HTMLInputElement {
   const input = row?.querySelector(`[part="${part}"] [part="input"]`);
   if (!(input instanceof HTMLInputElement)) {
-    throw new Error(`expected a native input under [part="${part}"]`);
+    throw new TypeError(`expected a native input under [part="${part}"]`);
   }
   return input;
 }

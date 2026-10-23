@@ -83,7 +83,7 @@ function alertText(container: HTMLElement): string | undefined {
 function tagInput(container: HTMLElement): HTMLInputElement {
   const input = container.querySelector('[part="add-field"] [part="input"]');
   if (!(input instanceof HTMLInputElement)) {
-    throw new Error("the section drew no tag input");
+    throw new TypeError("the section drew no tag input");
   }
   return input;
 }
@@ -92,7 +92,7 @@ function tagInput(container: HTMLElement): HTMLInputElement {
 function picker(container: HTMLElement, part: string): HTMLSelectElement {
   const select = container.querySelector(`[part="${part}"] select`);
   if (!(select instanceof HTMLSelectElement)) {
-    throw new Error(`the section drew no ${part} picker`);
+    throw new TypeError(`the section drew no ${part} picker`);
   }
   return select;
 }

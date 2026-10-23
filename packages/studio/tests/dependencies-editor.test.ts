@@ -216,7 +216,7 @@ describe("renderDependenciesEditor", () => {
     });
     const field = c.querySelector('[part="add-field"] [part="input"]');
     if (!(field instanceof HTMLInputElement)) {
-      throw new Error("the add field draws no native input");
+      throw new TypeError("the add field draws no native input");
     }
     field.value = "lodash";
     field.dispatchEvent(new Event("input", { bubbles: true }));

@@ -189,7 +189,7 @@ async function openSourceMenu(scope: HTMLElement, prop: string): Promise<HTMLEle
   await flush(6);
   const menu = document.querySelector('[data-jx-region="overlay.menu:value-source"] jx-menu');
   if (!(menu instanceof HTMLElement)) {
-    throw new Error(`the value-source menu did not open for ${prop}`);
+    throw new TypeError(`the value-source menu did not open for ${prop}`);
   }
   return menu;
 }

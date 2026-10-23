@@ -59,7 +59,7 @@ function contextText(): string | null {
 function promptControl(): HTMLTextAreaElement {
   const field = npPart("prompt")?.querySelector('[part="input"], [part="control"]');
   if (!(field instanceof HTMLTextAreaElement)) {
-    throw new Error("New Project wizard: the Agent prompt field is not on screen");
+    throw new TypeError("New Project wizard: the Agent prompt field is not on screen");
   }
   return field;
 }
@@ -124,7 +124,7 @@ describe("new-project wizard gaps", () => {
     expect(creds!.querySelector('[part="save"]')).toBeNull();
     const keyInput = creds!.querySelector('[part="key"] [part="input"]');
     if (!(keyInput instanceof HTMLInputElement)) {
-      throw new Error("the credentials form drew no key input");
+      throw new TypeError("the credentials form drew no key input");
     }
     keyInput.value = "sk-fresh-key";
     keyInput.dispatchEvent(new Event("input", { bubbles: true }));

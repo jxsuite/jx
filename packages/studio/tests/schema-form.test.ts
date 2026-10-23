@@ -131,7 +131,7 @@ async function mountForm(schema: JsonSchema, value: JsonObject, opts: Opts = {})
 function row(m: Mount, prop: string): HTMLElement {
   const el = m.container.querySelector(`[data-prop="${prop}"]`);
   if (!(el instanceof HTMLElement)) {
-    throw new Error(`no field row ${prop}`);
+    throw new TypeError(`no field row ${prop}`);
   }
   return el;
 }
@@ -189,7 +189,7 @@ function commit(el: Element, value: string): void {
 function check(m: Mount, prop: string, next: boolean): void {
   const box = part(m, prop, "checkbox").querySelector('[part="input"]');
   if (!(box instanceof HTMLInputElement)) {
-    throw new Error(`no native checkbox in row ${prop}`);
+    throw new TypeError(`no native checkbox in row ${prop}`);
   }
   box.checked = next;
   box.dispatchEvent(new Event("change", { bubbles: true }));
@@ -206,7 +206,7 @@ async function openSourceMenu(m: Mount, prop: string): Promise<HTMLElement> {
   await flush(6);
   const menu = document.querySelector('[data-jx-region="overlay.menu:value-source"] jx-menu');
   if (!(menu instanceof HTMLElement)) {
-    throw new Error("the value-source menu did not open");
+    throw new TypeError("the value-source menu did not open");
   }
   return menu;
 }

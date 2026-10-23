@@ -1,1 +1,0 @@
-{"$defs":{"parameters":{"input":{"description":"Input text","identifier":"input","type":{"type":"string"}}}},"$prototype":"Class","description":"Sibling auto-discovered schema","title":"Parser"}

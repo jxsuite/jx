@@ -48,7 +48,7 @@ async function build(): Promise<void> {
   await mountShellTree();
   const inspector = document.querySelector("#right-panel");
   if (!(inspector instanceof HTMLElement)) {
-    throw new Error("mountShellTree() drew no #right-panel");
+    throw new TypeError("mountShellTree() drew no #right-panel");
   }
   render(
     html`

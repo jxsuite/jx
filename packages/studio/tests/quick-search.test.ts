@@ -162,7 +162,7 @@ function overlay(): HTMLElement | null {
 function element(selector: string): HTMLElement {
   const found = document.querySelector(selector);
   if (!(found instanceof HTMLElement)) {
-    throw new Error(`no element matches ${selector}`);
+    throw new TypeError(`no element matches ${selector}`);
   }
   return found;
 }
@@ -171,7 +171,7 @@ function element(selector: string): HTMLElement {
 function input(): HTMLInputElement {
   const found = document.querySelector('[part="input"]');
   if (!(found instanceof HTMLInputElement)) {
-    throw new Error("the palette has no input");
+    throw new TypeError("the palette has no input");
   }
   return found;
 }

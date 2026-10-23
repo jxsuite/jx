@@ -178,11 +178,9 @@ function fillSlots(
         newChildren.push(...defaults);
         // Don't clear defaults — only one default slot should exist,
         // But if there are multiple, the first one wins
-      } else {
+      } else if (Array.isArray(child.children)) {
         // No matching content — keep slot's fallback children
-        if (Array.isArray(child.children)) {
-          newChildren.push(...child.children);
-        }
+        newChildren.push(...child.children);
       }
     } else {
       // Not a slot — recurse into it

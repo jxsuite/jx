@@ -15,7 +15,7 @@ try {
 function renderNode(...args: Parameters<typeof _renderNode>): HTMLElement {
   const node = _renderNode(...args);
   if (!(node instanceof HTMLElement)) {
-    throw new Error("renderNode returned a Text node for an element definition");
+    throw new TypeError("renderNode returned a Text node for an element definition");
   }
   return node;
 }

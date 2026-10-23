@@ -259,7 +259,7 @@ const row = (root: Element, prop: string) => htmlAt(root, `[data-prop="${prop}"]
 function detailsIn(item: HTMLElement): HTMLDetailsElement {
   const details = item.querySelector('[part="details"]');
   if (!(details instanceof HTMLDetailsElement)) {
-    throw new Error("The section renders no details element");
+    throw new TypeError("The section renders no details element");
   }
   return details;
 }
