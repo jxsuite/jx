@@ -59,7 +59,6 @@ const { getPanel, resetPanels } = await import("../src/panels/panel-registry");
 const { loadComponentRegistry } = await import("../src/files/components");
 const { refreshFormats } = await import("../src/format/format-host");
 const { invalidateMediaCache } = await import("../src/ui/media-picker");
-const { invalidateUsages } = await import("../src/services/references");
 const { closeAllTabs } = await import("../src/workspace/workspace");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext } = await import("../src/commands/context");
@@ -175,7 +174,6 @@ beforeEach(async () => {
   resetPanels();
   registerSitePanel();
   invalidateMediaCache();
-  invalidateUsages();
   openFileInTab.mockClear();
   sources.length = 0;
   released.mockClear();
@@ -247,54 +245,30 @@ describe("Pages — by route, home first, a collection's page nested under it", 
 });
 
 describe("Templates", () => {
-  test("lists the JSON layouts, with no count where the host has no reference index", async () => {
+  test("lists the JSON layouts with no usage count", async () => {
     await paint();
     expect(rowLabels("templates")).toEqual(["Base"]);
     expect(section("templates").querySelector('[part="row-detail"]')?.textContent).toBe("");
   });
 
-  test("counts the pages that use one when the host can answer", async () => {
+  test("never asks the reference index, even when the host can answer", async () => {
     const findReferences = mock(async (): Promise<ReferencesResult> => ({
-      files: [
-        { count: 1, path: "pages/index.json", refs: [] },
-        { count: 1, path: "pages/about.json", refs: [] },
-        { count: 1, path: "layouts/post.json", refs: [] },
-      ],
       errors: [],
-      filesReferencing: 3,
-      path: "layouts/base.json",
-      refsTotal: 3,
+      files: [],
+      filesReferencing: 0,
+      path: null,
+      refsTotal: 0,
       tagName: null,
     }));
     await project({ findReferences });
     await paint();
-    expect(section("templates").querySelector('[part="row-detail"]')?.textContent).toBe(
-      "used by 2 pages",
-    );
+    await flush(10);
+    expect(section("templates").querySelector('[part="row-detail"]')?.textContent).toBe("");
+    // Nothing on this panel sweeps the project: not the templates, not the component previews.
+    expect(findReferences).not.toHaveBeenCalled();
     host.querySelector<HTMLElement>('[part="template-row"]')!.click();
     await flush(4);
     expect(openFileInTab).toHaveBeenCalledWith("layouts/base.json");
-  });
-
-  test("a page created elsewhere moves the count without the panel being touched", async () => {
-    let pages = ["pages/index.json"];
-    const findReferences = mock(async (): Promise<ReferencesResult> => ({
-      errors: [],
-      files: pages.map((path) => ({ count: 1, path, refs: [] })),
-      filesReferencing: pages.length,
-      path: "layouts/base.json",
-      refsTotal: pages.length,
-      tagName: null,
-    }));
-    await project({ findReferences });
-    await paint();
-    const detail = () => section("templates").querySelector('[part="row-detail"]')?.textContent;
-    expect(detail()).toBe("used by 1 page");
-    // Add new writes a second page; the write drops the usage answers, and the panel asks again.
-    pages = ["pages/index.json", "pages/fr-ca/index.json"];
-    invalidateUsages();
-    await flush(10);
-    expect(detail()).toBe("used by 2 pages");
   });
 });
 

@@ -14,7 +14,6 @@ import {
   onUsagesInvalidated,
   peekUsages,
   retryUsages,
-  splitUsages,
   usageFiles,
   usageHeadline,
   usagesSupported,
@@ -198,11 +197,6 @@ describe("loadUsages", () => {
 });
 
 describe("the words", () => {
-  test("splits pages from everything else", () => {
-    expect(splitUsages(threeFiles)).toEqual({ others: 1, pages: 2 });
-    expect(splitUsages(result())).toEqual({ others: 0, pages: 0 });
-  });
-
   test("headline counts pages and other files separately", () => {
     expect(usageHeadline(threeFiles)).toBe("Used on 2 pages and 1 other file");
     expect(usageHeadline(result())).toBe("Not used yet");

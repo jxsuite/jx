@@ -14,7 +14,6 @@ import {
   pageRows,
   singularLabel,
   templateRows,
-  usedByLabel,
 } from "../src/panels/site-model";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { resolveI18n } from "@jxsuite/schema/locale";
@@ -180,10 +179,6 @@ describe("labels", () => {
     expect(entryCountLabel(1)).toBe("1 entry");
     expect(entryCountLabel(0)).toBe("0 entries");
     expect(entryCountLabel(null)).toBe("");
-    expect(usedByLabel(null)).toBe("");
-    expect(usedByLabel(0)).toBe("not used yet");
-    expect(usedByLabel(1)).toBe("used by 1 page");
-    expect(usedByLabel(4)).toBe("used by 4 pages");
   });
 });
 
@@ -212,22 +207,18 @@ describe("the filter narrows every section by name, route or path", () => {
     ]);
   });
 
-  test("templates are the JSON layouts, sorted, filtered, and counted when known", () => {
-    const usage = new Map([["layouts/base.json", 3]]);
+  test("templates are the JSON layouts, sorted and filtered, with the default layout marked", () => {
     const all = templateRows(
       ["layouts/post.json", "layouts/base.json", "layouts/notes.md"],
-      (path) => usage.get(path) ?? null,
       "layouts/post.json",
       "",
+      "layouts/base.json",
     );
     expect(all.map((row) => [row.label, row.detail, row.selected])).toEqual([
-      ["Base", "used by 3 pages", "false"],
+      ["Base", "default layout", "false"],
       ["Post", "", "true"],
     ]);
-    expect(templateRows(["layouts/base.json"], () => null, null, "post")).toEqual([]);
-    // The default layout is used by every page that names none, which no reference counts.
-    expect(
-      templateRows(["layouts/base.json"], () => 0, null, "", "layouts/base.json")[0]?.detail,
-    ).toBe("default layout");
+    expect(templateRows(["layouts/base.json"], null, "post")).toEqual([]);
+    expect(templateRows(["layouts/base.json"], null, "")[0]?.detail).toBe("");
   });
 });

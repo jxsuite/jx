@@ -3,8 +3,8 @@
  *
  * The panel lists the project as an author thinks of it: pages by address, then the templates,
  * components and media pages are made of. Everything here turns facts the flow has already gathered
- * (paths, `$paths.contentType`, entry counts, usage counts) into the rows the surface draws, so the
- * ordering, the nesting, the labels and the filter are testable without a project.
+ * (paths, `$paths.contentType`, entry counts) into the rows the surface draws, so the ordering, the
+ * nesting, the labels and the filter are testable without a project.
  *
  * **Routes come from the router.** Rows are ordered and labelled with `fileToRoute` and
  * `compareRoutes` from `@jxsuite/site/routes` — the functions the build's page discovery sorts with
@@ -64,7 +64,7 @@ export interface SiteTemplateRow {
   key: string;
   path: string;
   label: string;
-  /** "used by N pages", or empty where the host has no reference index (the count is omitted). */
+  /** "default layout" for the project's `defaults.layout`, else empty. */
   detail: string;
   selected: SiteSelected;
 }
@@ -320,28 +320,16 @@ export function filterPageRows(rows: readonly SitePageRow[], needle: string): Si
   return kept;
 }
 
-/** "used by 3 pages", "used by 1 page", "not used yet", or "" when the count is unknown. */
-export function usedByLabel(pages: number | null): string {
-  if (pages === null) {
-    return "";
-  }
-  if (pages === 0) {
-    return "not used yet";
-  }
-  return `used by ${pages} ${pages === 1 ? "page" : "pages"}`;
-}
-
 /**
  * The Templates section's rows: every JSON layout under `layouts/`, by path. Layouts are JSON only
  * (the layout resolver parses nothing else), so a non-JSON file there is not a template.
  *
- * The project's default layout (`defaults.layout`) says so instead of a count: every page that
- * names no layout uses it without referencing it, so the reference index's count would read "not
- * used yet" for the layout most pages are poured into.
+ * The project's default layout (`defaults.layout`) says so. No row says how many pages use it:
+ * counting would ask the reference index once per template on every paint, which is a project-wide
+ * sweep per row (`specs/studio.md` §5.7).
  */
 export function templateRows(
   paths: readonly string[],
-  usedBy: (path: string) => number | null,
   activePath: string | null,
   needle: string,
   defaultPath: string | null = null,
@@ -356,7 +344,7 @@ export function templateRows(
       }
       return [
         {
-          detail: path === defaultPath ? "default layout" : usedByLabel(usedBy(path)),
+          detail: path === defaultPath ? "default layout" : "",
           key: path,
           label,
           path,

@@ -159,6 +159,7 @@ describe("the frame's quiescence report", () => {
     expect(h.tick()).toBe(false); // Settled.
 
     const img = document.createElement("img");
+    img.setAttribute("src", "http://x/y.jpg");
     h.container.append(img);
     img.dispatchEvent(new Event("error"));
     h.tick();
@@ -174,6 +175,7 @@ describe("the frame's quiescence report", () => {
     // Missing file must stop being a reason to wait — otherwise a 404 favicon wedges every capture.
     const h = boot();
     const img = document.createElement("img");
+    img.setAttribute("src", "http://x/y.jpg");
     h.container.append(img);
     img.dispatchEvent(new Event("error"));
     h.tick();
@@ -181,6 +183,22 @@ describe("the frame's quiescence report", () => {
     h.advance(IMAGE_RETRY_WINDOW_MS + 1);
     h.tick();
     expect(h.idles.at(-1)).toMatchObject({ images: 0 });
+  });
+
+  test("an image with an empty or data: source is never a pending retry", () => {
+    /* `src=""` resolves to the frame's own url, so it fails without any request a retry could
+       fix. Counting it held Studio's idle probe open for a component drawn without its image. */
+    const h = boot();
+    for (const src of [null, "", "  ", "data:image/png;base64,AAAA"]) {
+      const img = document.createElement("img");
+      if (src !== null) {
+        img.setAttribute("src", src);
+      }
+      h.container.append(img);
+      img.dispatchEvent(new Event("error"));
+      h.tick();
+      expect(h.idles.at(-1)).toMatchObject({ images: 0 });
+    }
   });
 
   test("a load event for an image that never failed changes nothing", () => {

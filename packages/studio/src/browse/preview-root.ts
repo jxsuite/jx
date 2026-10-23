@@ -14,10 +14,13 @@ import { isFunction } from "@jxsuite/schema/guards";
 import { projectPreviewSheets } from "./preview-style";
 
 /**
- * The one rule a preview needs that its box cannot give it from outside: an image whose prop
- * defaults to nothing draws a broken-image icon and its alt text, which in a thumbnail is noise,
- * not the component. Everything else about the box (its size, its scale, its light surface) is the
- * surface document's, on the island itself.
+ * The one rule a preview needs that its box cannot give it from outside: an image with no source
+ * draws a broken-image icon and its alt text, which in a thumbnail is noise. A COMPONENT preview
+ * never reaches it — `renderComponentPreview` fills such an image with the preview placeholder
+ * (`canvas/preview-placeholder.ts`), whose `data:` source this selector does not match — so it
+ * hides the empty images of DOCUMENT previews (the Content home's cards), which draw what the page
+ * wrote. Everything else about the box (its size, its scale, its light surface) is the surface
+ * document's, on the island itself.
  */
 const PREVIEW_RULES = 'img:not([src]), img[src=""] { visibility: hidden; }';
 

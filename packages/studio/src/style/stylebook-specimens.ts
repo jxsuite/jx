@@ -5,14 +5,17 @@
  * component is rarely drawable that way: the museum starter's `<mu-exhibition-card>` formats a
  * `date` that defaults to `""`, so its card stayed empty and the canvas logged "was not rendered:
  * RangeError: Invalid time value" for it on every paint (`spec.md` §16.4). The Site panel's
- * previews already know where a component's sample props live (`browse/component-examples.ts`), so
- * a card asks the same three sources, in the same order, and draws:
+ * previews already know where a component's sample props live (`browse/component-examples.ts`: the
+ * definition's own `examples`), so a card asks the same source and draws:
  *
  * - `props`: an instance given its sample props, when the definition renders with them;
- * - `row`: the first row of a list that draws it, when it is only ever used as a list row;
- * - `bare`: the bare instance, when it renders with its defaults and nothing better was found;
- * - `none`: no live instance at all (the catalogue's placeholder box), when it renders with none of
- *   the above, because an instance that throws draws nothing and reports an error nobody can fix.
+ * - `bare`: the bare instance, when it renders with its defaults and has no sample props it renders
+ *   with;
+ * - `none`: no live instance at all (the catalogue's placeholder box), when it renders with neither,
+ *   because an instance that throws draws nothing and reports an error nobody can fix.
+ *
+ * Nothing here reads the rest of the project, so a catalogue of N components costs N definition
+ * reads and no usage queries.
  *
  * Answers are cached per component registry: the registry is replaced whenever the project's
  * components are re-read, so a changed definition is asked again.
@@ -20,17 +23,14 @@
  * @docs studio/design/stylebook
  */
 
-import { componentExampleProps, componentSampleRow } from "../browse/component-examples";
-import type { SampleRow } from "../browse/component-examples";
+import { componentExampleProps } from "../browse/component-examples";
 import { readDefinition, rendersWith } from "../browse/library-preview";
-import { defineComponent } from "../panels/component-preview";
 import type { ComponentEntry } from "../files/components";
 import type { JsonValue } from "@jxsuite/schema/types";
 
 /** How one component card is drawn; see the module comment. */
 export type StylebookSpecimen =
   | { kind: "props"; props: Record<string, JsonValue> }
-  | { kind: "row"; sample: SampleRow }
   | { kind: "bare" }
   | { kind: "none" };
 
@@ -49,13 +49,9 @@ export async function componentSpecimen(component: ComponentEntry): Promise<Styl
   if (!definition) {
     return { kind: "bare" };
   }
-  const props = await componentExampleProps(definition, path);
+  const props = componentExampleProps(definition);
   if (props.size > 0 && (await rendersWith(definition, path, props))) {
     return { kind: "props", props: Object.fromEntries(props) };
-  }
-  const sample = await componentSampleRow(definition, path);
-  if (sample && (await defineComponent(component))) {
-    return { kind: "row", sample };
   }
   return (await rendersWith(definition, path, new Map())) ? { kind: "bare" } : { kind: "none" };
 }
