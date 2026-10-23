@@ -73,6 +73,6 @@ describe("runtime/pointer", () => {
     for (let i = 0; i < 1000; i++) {
       city = readPath(state, "user/profile/address/city");
     }
-    return city;
+    void city;
   });
 });

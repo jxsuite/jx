@@ -41,6 +41,7 @@
     "packages/schema/types.ts",
     "packages/schema/defs/**/*",
     "extensions/**/src/**/*",
-    "extensions/**/tests/**/*"
+    "extensions/**/tests/**/*",
+    "bench/**/*"
   ]
 }

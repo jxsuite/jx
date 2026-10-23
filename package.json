@@ -16,6 +16,7 @@
   "type": "module",
   "scripts": {
     "all-the-things": "bun run build && bun run test:workspaces && bun run lint && bun run lint:typecheck && bun run typecheck",
+    "bench": "vitest bench --run --config bench/vitest.config.ts",
     "build": "bun run build:parser && bun run build:search && bun run build:compiler && bun run build:runtime && bun run build:studio && bun run generate:schema",
     "build:compiler": "bun run --cwd packages/compiler build",
     "build:parser": "bun run --cwd extensions/parser build",
@@ -80,8 +81,7 @@
     "schema:clean-roots": "bun scripts/check-shadowed-core.ts --fix",
     "schema:generate-all": "bun run schema:clean-roots && bun scripts/generate-schemas.ts",
     "schema:sync": "bun scripts/check-schema-freshness.ts --fix",
-    "schema:validate-all": "bun scripts/validate-schemas.ts",
-    "bench": "vitest bench --run --config bench/vitest.config.ts"
+    "schema:validate-all": "bun scripts/validate-schemas.ts"
   },
   "dependencies": {
     "@jxsuite/server": "workspace:^"
