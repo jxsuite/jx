@@ -1,1 +1,0 @@
-{"$defs":{"constructor":{"$prototype":"Function","parameters":[{"$ref":"#/$defs/parameters/src"}],"role":"constructor"},"parameters":{"itemSchema":{"description":"Schema for collection items","format":"json-schema","identifier":"itemSchema","type":{"type":"object"}},"src":{"identifier":"src","type":{"type":"string"}}}},"$prototype":"Class","title":"TypedCollection"}
