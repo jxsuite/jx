@@ -38,7 +38,7 @@ Your project file opens here, because that's the natural home for site-wide defa
 
 Project Styles shows the catalog at one breakpoint at a time, the one the context bar's size switcher names, so the specimens stay readable. Pick another size there and the catalog redraws at that width, so an element default that changes at Tablet is visibly different at Tablet. The catalog renders through the real runtime, exactly as the defaults will render on your pages.
 
-Each component card shows the component with real content, the same sample its preview in the Site panel uses: the example values its definition declares, or the values a page passes it. A component you only use as a row of a list is shown as that list's first row, with its data. A component that can't be drawn from any of these shows a plain box with its tag name instead of an empty card.
+Each component card shows the component with the same sample its preview in the Site panel uses: the example values its definition declares. A component with no examples is drawn with its defaults, and one that can't be drawn either way shows a plain box with its tag name instead of an empty card.
 
 Two controls sit above the canvas: a **Filter** box to narrow the catalog by name, and a **Customized** toggle to show only the elements you've already styled.
 

@@ -16,6 +16,7 @@ import {
   captureLocaleBaseline,
   applySiteStyle,
   installCanvasImageRetry,
+  isRetryableImage,
   renderResolvedDocument,
 } from "./iframe-render";
 import { measureHits, startInteraction } from "./iframe-interaction";
@@ -613,7 +614,8 @@ export function startCanvasIframe(opts: {
   }
 
   const onImageError = (event: Event): void => {
-    if (event.target instanceof HTMLImageElement) {
+    // Only a failure `installCanvasImageRetry` will retry is pending; an empty source settles broken.
+    if (event.target instanceof HTMLImageElement && isRetryableImage(event.target)) {
       retryingImages.set(event.target, Date.now() + IMAGE_RETRY_WINDOW_MS);
       armIdleWatch();
     }

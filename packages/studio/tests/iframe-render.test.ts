@@ -104,6 +104,28 @@ describe("syncEditableRoot accessibility", () => {
 });
 
 describe("renderResolvedDocument", () => {
+  test("a Stylebook specimen's source-less image is a placeholder; a page's is left empty", async () => {
+    const doc: JxDocument = {
+      children: [{ attributes: { src: "" }, tagName: "img" }],
+      tagName: "div",
+    };
+    const srcIn = async (mode: "stylebook" | "design") => {
+      const container = document.createElement("div");
+      const handle = await renderResolvedDocument({
+        container,
+        doc,
+        docBase: "http://localhost:3000/page.json",
+        mapperCtx: ctx,
+        mode,
+      });
+      const src = container.querySelector("img")?.getAttribute("src");
+      handle.dispose();
+      return src;
+    };
+    expect(await srcIn("stylebook")).toStartWith("data:image/svg+xml,");
+    expect(await srcIn("design")).toBe("");
+  });
+
   test("renders a resolved doc into the container and stamps data-jx-path", async () => {
     const container = document.createElement("div");
     const doc: JxDocument = {
@@ -837,6 +859,32 @@ describe("installCanvasImageRetry", () => {
       fireError(img);
       runPending();
       // No retry was scheduled, so src was never touched.
+      expect(setCount).toBe(0);
+
+      stop();
+    });
+  });
+
+  test("ignores an empty src, which resolves to the document itself", () => {
+    withCapturedTimers((runPending) => {
+      const root = document.createElement("div");
+      const img = document.createElement("img");
+      img.setAttribute("src", "");
+      root.append(img);
+      const stop = installCanvasImageRetry(root);
+
+      let setCount = 0;
+      // The property reads as the resolved url, as a browser's does for src="" — never "".
+      Object.defineProperty(img, "src", {
+        configurable: true,
+        get: () => "http://127.0.0.1/packages/studio/canvas.html?token=t",
+        set: () => {
+          setCount += 1;
+        },
+      });
+
+      fireError(img);
+      runPending();
       expect(setCount).toBe(0);
 
       stop();
