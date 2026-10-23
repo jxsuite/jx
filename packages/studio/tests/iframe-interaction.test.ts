@@ -55,6 +55,8 @@ function stampedTree(path: string, rect: Partial<DOMRect>) {
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  // The ancestor-hidden case hides the body itself.
+  document.body.removeAttribute("style");
 });
 
 describe("nearestHit", () => {
@@ -110,6 +112,20 @@ describe("measureHits", () => {
     const { outer } = stampedTree('["children",0]', { height: 8, width: 40, x: 1, y: 2 });
     outer.parentElement!.style.display = "none";
     expect(measureHits([["children", 0]]).hits).toEqual([]);
+  });
+
+  /*
+   * `checkVisibility` answers false for any element without a box, and a `display: contents`
+   * component host never has one, so every such component was reported hidden: no selection box
+   * and no action bar. happy-dom answers true for it, so the engine's answer is stubbed.
+   */
+  test("a display: contents host is rendered when something inside it is", () => {
+    const { inner, outer } = stampedTree('["children",0]', { height: 8, width: 40, x: 1, y: 2 });
+    outer.style.display = "contents";
+    outer.checkVisibility = () => false;
+    expect(measureHits([["children", 0]]).hits).toHaveLength(1);
+    inner.style.display = "none";
+    expect(measureHits([["children", 0]])).toEqual({ hidden: [["children", 0]], hits: [] });
   });
 });
 
