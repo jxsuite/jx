@@ -105,6 +105,7 @@ import { componentPropEntries, isComponentDoc } from "../component-props";
 import { mediaDisplayName } from "./shared";
 import type { CanvasView, FitMode } from "../canvas/canvas-utils";
 import { EDITOR_KIND_LABELS } from "../commands/context";
+import type { EditorKind } from "../commands/context";
 import type { ParamValues } from "../page-params";
 import type { CommandArgValues } from "../commands/command-args";
 import type { Tab } from "../tabs/tab";
@@ -781,22 +782,40 @@ function lensSummary(paneId: string): string {
 
 // ─── Axis 1 · Editor kind ────────────────────────────────────────────────────
 
+/**
+ * Editor kinds that are entered by a gesture elsewhere and never offered as a choice.
+ *
+ * A comparison (`diff`) is opened from Publish's changed files or its version history, which says
+ * what it is compared against; a Diff segment on every document would compare whatever is open
+ * against whatever HEAD is, and was a third way into a view two browsers already own. While a tab
+ * is IN one, the axis names it and offers nothing: the way out is Back, beside it.
+ */
+const IMPLICIT_EDITOR_KINDS: ReadonlySet<EditorKind> = new Set(["diff"]);
+
 function editorAxis(tab: Tab): Partial<PaneContextView> {
   /* What the DOCUMENT declares, and nothing else. This read `hostableKindsOf` — the declared kinds
      narrowed by what the tab's pane was allowed to host — so a page in the side pane was offered
      Code and not Design. The pane cap is gone; a control that cannot go anywhere is still the
      defect this axis exists to remove, and one declared kind still renders as text. */
-  const kinds = editorKindsOf(tab);
   const current = editorKindOf(tab);
+  const kinds = IMPLICIT_EDITOR_KINDS.has(current)
+    ? [current]
+    : editorKindsOf(tab).filter((kind) => !IMPLICIT_EDITOR_KINDS.has(kind));
   if (kinds.length < 2) {
-    // One kind is not a choice. Rendering it as a dropdown would be a control that cannot move —
+    // One kind is not a choice. Rendering it as a segmented group would be a control that cannot move —
     // Which is the defect this axis exists to remove, in miniature.
-    return { editorLabel: EDITOR_KIND_LABELS[current], editorMode: "static" };
+    return { editorLabel: EDITOR_KIND_LABELS[current], editorMode: "static", editorState: "shown" };
   }
   return {
     editorMode: "picker",
-    editorOptions: kinds.map((kind) => ({ label: EDITOR_KIND_LABELS[kind], value: kind })),
-    editorValue: current,
+    editorState: "shown",
+    editors: kinds.map((kind) => ({
+      checked: kind === current ? "true" : "false",
+      hint: `Open this document in ${EDITOR_KIND_LABELS[kind]}`,
+      key: kind,
+      label: EDITOR_KIND_LABELS[kind],
+      value: kind,
+    })),
   };
 }
 
@@ -895,25 +914,26 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
   const plainQueries = featureQueries.filter(({ query }) => !isSchemeQuery(query));
   const scheme = ui.previewColorScheme;
   const { activeMedia } = ui;
-  const sizeLabel = activeMedia ? mediaDisplayName(activeMedia) : "Base";
-  const schemeLabel = SCHEMES.find(([value]) => value === scheme)?.[1] ?? "Auto";
   const locale = localeOf(tab);
-  /* The language joins the trigger ONLY when the pane is not drawing the document's own — a French
-     page open in a French pane is not a rendering context worth three more characters, and a bar
-     that grew a third term in every multilingual project would stop reading as a state. */
-  const contextSummary = [
-    sizeLabel,
-    schemeQueries.length > 0 ? schemeLabel : null,
-    locale?.overridden ? localeLabel(locale.effective) : null,
-  ]
-    .filter((part) => part !== null)
-    .join(" · ");
   /* An entry written on the canvas is wrapped in its template's layout like a page (§22.5), so it
      offers the same "show layout" choice. Whether a layout resolves for it is read asynchronously
      by the canvas; the project default is the answer this bar can give synchronously. */
   const hasLayout =
     (isPageDoc(tab) && Boolean(getEffectiveLayoutPath(tab.doc.document.$layout))) ||
     (Boolean(projectState?.isSiteProject) && writesEntryOnCanvas(tab.documentPath));
+  /* The trigger names only what its popover holds and is NOT at rest. Size and scheme are on the bar
+     as groups now, so repeating them here would print the same state twice; and a trigger that read
+     "Base · Auto" over a popover that no longer offers either would be describing another control.
+     The language joins ONLY when the pane is not drawing the document's own — a French page open in
+     a French pane is not a rendering context worth three more characters. */
+  const featuresOn = plainQueries.filter(({ name }) => ui.featureToggles[name]).length;
+  const contextSummary = [
+    locale?.overridden ? localeLabel(locale.effective) : null,
+    featuresOn > 0 ? `${featuresOn} ${featuresOn === 1 ? "query" : "queries"}` : null,
+    hasLayout && ui.showLayout === false ? "No layout" : null,
+  ]
+    .filter((part) => part !== null)
+    .join(" · ");
   const page = isPageDoc(tab);
   const params = page ? paramRows(tab) : [];
   const props = page ? [] : propRows(tab, paneId);
@@ -952,6 +972,8 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
     })) satisfies PaneContextChoice[],
     schemeState: schemeQueries.length > 0 ? "shown" : "hidden",
     sizes: sizeRows(sizeBreakpoints, activeMedia),
+    // Base alone is not a choice: a one-segment group would be a control that cannot move.
+    sizesState: sizeBreakpoints.length > 0 ? "shown" : "hidden",
   };
 }
 
@@ -1134,7 +1156,10 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       if (!tab) {
         return;
       }
-      const editorKind = editorKindsOf(tab).find((candidate) => candidate === kind);
+      // An implicit kind is refused like an undeclared one: the axis never offers it.
+      const editorKind = editorKindsOf(tab).find(
+        (candidate) => candidate === kind && !IMPLICIT_EDITOR_KINDS.has(candidate),
+      );
       const mode = editorKind && modeForEditorKind(tab, editorKind);
       if (!mode) {
         return;
