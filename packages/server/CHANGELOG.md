@@ -1,5 +1,29 @@
 # Changelog
 
+## [6.1.0](https://github.com/jxsuite/jx/compare/server-v6.0.1...server-v6.1.0) (2026-10-23)
+
+
+### Features
+
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.40.0
+    * @jxsuite/compiler bumped to 6.1.0
+    * @jxsuite/create bumped to 1.4.0
+    * @jxsuite/import bumped to 0.41.0
+    * @jxsuite/runtime bumped to 5.2.0
+    * @jxsuite/site bumped to 2.2.0
+    * @jxsuite/starters bumped to 3.1.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.0
+    * @jxsuite/connector bumped to 0.8.0
+    * @jxsuite/parser bumped to 4.1.0
+
 ## [6.0.1](https://github.com/jxsuite/jx/compare/server-v6.0.0...server-v6.0.1) (2026-10-21)
 
 

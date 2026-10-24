@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.1.0](https://github.com/jxsuite/jx/compare/studio-v8.0.1...studio-v8.1.0) (2026-10-23)
+
+
+### Features
+
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **studio:** segmented Editor and Context axes, implicit Diff, scrollable Variables view ([#485](https://github.com/jxsuite/jx/issues/485)) ([1141de5](https://github.com/jxsuite/jx/commit/1141de56c27d9e5b0dcae56e33b0c69e9cb8ddb8))
+
+
+### Bug Fixes
+
+* **studio:** outline, action bar and caret for display: contents components ([#486](https://github.com/jxsuite/jx/issues/486)) ([a072fc1](https://github.com/jxsuite/jx/commit/a072fc137ee1cbbe51a13618422ff0ddf2500bac))
+
+
+### Performance Improvements
+
+* **studio:** stop sweeping the project for component previews and template counts ([#484](https://github.com/jxsuite/jx/issues/484)) ([30a8a2c](https://github.com/jxsuite/jx/commit/30a8a2c91627764a63c791f30ec4caddbd98ca2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.40.0
+    * @jxsuite/create bumped to 1.4.0
+    * @jxsuite/formulas bumped to 0.0.24
+    * @jxsuite/runtime bumped to 5.2.0
+    * @jxsuite/site bumped to 2.2.0
+    * @jxsuite/ui bumped to 0.8.0
+
 ## [8.0.1](https://github.com/jxsuite/jx/compare/studio-v8.0.0...studio-v8.0.1) (2026-10-21)
 
 

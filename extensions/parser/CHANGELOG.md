@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.1.0](https://github.com/jxsuite/jx/compare/parser-v4.0.1...parser-v4.1.0) (2026-10-23)
+
+
+### Features
+
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @jxsuite/runtime bumped to 5.2.0
+
 ## [4.0.1](https://github.com/jxsuite/jx/compare/parser-v4.0.0...parser-v4.0.1) (2026-10-21)
 
 

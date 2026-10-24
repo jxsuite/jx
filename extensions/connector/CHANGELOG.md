@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/jxsuite/jx/compare/connector-v0.7.0...connector-v0.8.0) (2026-10-23)
+
+
+### Features
+
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+
 ## [0.7.0](https://github.com/jxsuite/jx/compare/connector-v0.6.3...connector-v0.7.0) (2026-10-21)
 
 

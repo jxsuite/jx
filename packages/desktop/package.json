@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/desktop",
-  "version": "6.0.1",
+  "version": "6.1.0",
   "description": "Jx Studio — standalone desktop application built with Electron",
   "license": "MIT",
   "author": "Avunu LLC <support@jxsuite.com> (https://jxsuite.com)",
