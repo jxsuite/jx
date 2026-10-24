@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/jxsuite/jx/compare/ai-v0.39.5...ai-v0.40.0) (2026-10-23)
+
+
+### Features
+
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+
 ## [0.39.5](https://github.com/jxsuite/jx/compare/ai-v0.39.4...ai-v0.39.5) (2026-10-21)
 
 

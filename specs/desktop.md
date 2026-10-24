@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.6.1-draft\
+**Version:** 0.6.5-draft\
 **Status:** Partial\
-**Updated:** 2026-10-21\
+**Updated:** 2026-10-23\
 **License:** MIT
 
 ---
@@ -1209,6 +1209,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.6.5-draft** (2026-10-23) — §7.7: the sandboxed build asks for the project folder, keeps a bookmark per folder, restores them before the backend starts, and restarts the backend for a pick no bookmark covers.
+- **0.6.4-draft** (2026-10-23) — Adds §7.7, the Mac App Store channel: the mas target, the sandbox entitlements, no updater inside it, and the open question of the backend's access to a picked folder.
+- **0.6.3-draft** (2026-10-23) — §7.7: every channel shares the appId com.jxsuite.studio, the identifier registered in the developer portal.
+- **0.6.2-draft** (2026-10-23) — §7.7: the Mac App Store lane has uploaded a signed package to App Store Connect once; processing and the sandboxed launch are unmeasured.
 - **0.6.1-draft** (2026-10-21) — §7.3: a declared collection source outside the project root is reachable for the file operations, as on the dev server.
 - **0.6.0-draft** (2026-10-21) — ElectroBun is removed and the Electron application is the one desktop framework: section 7 becomes the packaging chapter (electron-builder, the staged backend and its smoke test, self-updates through electron-updater, signing and the release lanes), the shared services server and the updater, window and canvas-URL RPC requests are gone, the Windows installer is NSIS with a Store appx in place of the MSI, Linux ships an AppImage, and section 9.3 graduates.
 - **0.5.17-draft** (2026-10-21) — Adds the Electron application: Electron as the root process owning every window, a Bun backend owning every project over a validated JSON IPC protocol, one session and server and token per window, single-instance launches, native dialogs and the macOS File menu.
@@ -1289,4 +1293,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.6.1-draft_
+_Jx Studio Desktop Architecture Specification v0.6.5-draft_
