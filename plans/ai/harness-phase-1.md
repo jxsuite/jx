@@ -27,6 +27,7 @@ prs:
   - jxsuite/jx#418
   - jxsuite/jx#419
   - jxsuite/jx#489
+  - jxsuite/jx#490
 ---
 
 # Jx harness core: the Phase 1 plan
@@ -62,7 +63,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
 | J1.11 | `./harness` behind `runAgentLoop`                   | —           | merged jxsuite/jx#418 |
 | J1.12 | Pair repair                                         | —           | merged jxsuite/jx#419 |
 | J1.13 | Per-actor lanes                                     | —           | merged jxsuite/jx#489 |
-| J1.14 | Restore undoes the turn                             | —           | open                  |
+| J1.14 | Restore undoes the turn                             | —           | merged jxsuite/jx#490 |
 | J1.15 | Doc-op strictness in the old tools                  | —           | open                  |
 | J1.16 | `./jx-tools` producers                              | —           | open                  |
 | J1.17 | `./gateway` extraction                              | —           | merged jxsuite/jx#375 |
