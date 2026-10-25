@@ -26,7 +26,7 @@ import { jsonClone } from "../utils/studio-utils";
 import { cloneSelection } from "../tabs/selection";
 import {
   applyExternalDocOps,
-  isBatching,
+  isBatched,
   setBatchEndNotifier,
   setHistoryDelegate,
   setTransactGate,
@@ -318,7 +318,11 @@ function onBatchEnd(tab: Tab): void {
 
 function publishRecord(session: ActiveSession, record: TransactionRecord): void {
   const forward = record.docOps.map((pair) => pair.forward);
-  if (isBatching()) {
+  /* Buffered only while THIS tab has a lane segment open, which means the transaction just
+     observed was the lane owner's: anyone else's write closes the segment before it runs, and the
+     close flushes the buffer, so the Y document receives the owner's ops before the other writer's
+     and in local order. */
+  if (isBatched(session.tab)) {
     session.batchOps ??= [];
     if (forward.length === 0) {
       session.batchNeedsDiff = true;

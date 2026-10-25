@@ -58,7 +58,7 @@ An AI provider key is an application-level setting configured once, so it is not
 
 ### 3.3 State Model
 
-> **Status: Partial.** Only the 100-entry history limit and `projectState` / `setProjectState` hold. Documents belong to a tab and are edited in place inside `transactDoc()` (`packages/studio/src/tabs/transact.ts`), which records forward and inverse doc-op pairs with a checkpoint every 20 entries; the operations are `mutate*(tab, …)` with `undo(tab)` / `redo(tab)`, selection lives in `tab.session.selection`, and none of `createState`, `selectNode`, `hoverNode`, `pushDocument`, `popDocument` or a `state.js` exists (`packages/studio/src/state.ts` holds path utilities and `projectState` only).
+> **Status: Partial.** Only the 100-entry history limit and `projectState` / `setProjectState` hold. Documents belong to a tab and are edited in place inside `transactDoc()` (`packages/studio/src/tabs/transact.ts`), which records forward and inverse doc-op pairs with a checkpoint every 20 entries; the operations are `mutate*(tab, …)` with `undo(tab)` / `redo(tab)`; one actor's run of writes (an assistant turn) is folded by a batch lane (`openBatchLane`) into one entry per tab it wrote, tagged with the actor and the turn, and closed early by anyone else's write to that tab (`ai.md` §3.3); selection lives in `tab.session.selection`, and none of `createState`, `selectNode`, `hoverNode`, `pushDocument`, `popDocument` or a `state.js` exists (`packages/studio/src/state.ts` holds path utilities and `projectState` only).
 
 Immutable state with undo/redo history (100 entries). All mutations produce a new state object — no in-place edits.
 

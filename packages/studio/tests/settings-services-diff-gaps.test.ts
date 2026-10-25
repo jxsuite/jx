@@ -284,7 +284,6 @@ describe("ai-project-tools — write_file when the disk refuses", () => {
     const ctx: ProjectToolsCtx = {
       adoptProject: async () => {},
       findOpenTab: () => null,
-      getTab: () => null,
       reloadTab: async () => {},
       validate: async () => [],
     };

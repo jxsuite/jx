@@ -6,13 +6,12 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { TransactionRecord } from "../src/tabs/patch-ops";
 import {
   applyExternalDocOps,
-  beginBatch,
   canRedo,
   canUndo,
-  endBatch,
   getHistoryDelegate,
   mutateInsertNode,
   mutateUpdateProperty,
+  openBatchLane,
   redo,
   setBatchEndNotifier,
   setHistoryDelegate,
@@ -180,18 +179,20 @@ describe("history delegate", () => {
   });
 });
 
+const owner = { id: "assistant:local:seams", kind: "assistant", turnId: "seams" } as const;
+
 describe("batch end hook", () => {
-  test("notifier fires with the batched tab after endBatch", () => {
+  test("notifier fires with the batched tab when the lane closes", () => {
     const tab = makeTab();
     const notified: Tab[] = [];
     setBatchEndNotifier((t) => notified.push(t));
 
-    beginBatch(tab);
-    transactDoc(tab, (t) => mutateInsertNode(t, [], 1, { tagName: "span" }));
-    endBatch();
+    const lane = openBatchLane(owner);
+    transactDoc(tab, (t) => mutateInsertNode(t, [], 1, { tagName: "span" }), { actor: owner });
+    lane.close();
 
     expect(notified).toEqual([tab]);
-    // Default (no delegate) behavior still pushes the one batch snapshot.
+    // Default (no delegate) behavior still pushes the one batch entry.
     expect(tab.history.snapshots).toHaveLength(2);
     disposeTab(tab);
   });
@@ -205,9 +206,9 @@ describe("batch end hook", () => {
       undo: () => {},
     });
 
-    beginBatch(tab);
-    transactDoc(tab, (t) => mutateInsertNode(t, [], 1, { tagName: "span" }));
-    endBatch();
+    const lane = openBatchLane(owner);
+    transactDoc(tab, (t) => mutateInsertNode(t, [], 1, { tagName: "span" }), { actor: owner });
+    expect(lane.close()).toEqual([]);
 
     expect(tab.history.snapshots).toHaveLength(1);
     setHistoryDelegate(tab, null);

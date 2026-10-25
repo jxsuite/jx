@@ -134,6 +134,8 @@ Every step of the turn reaches `onEvent` as it happens, in order: the round star
 
 To keep two turns from running at once, pass the same `createTurnLock()` to each: a turn started while another holds the lock throws `LaneBusyError` straight away, before it sends anything.
 
+A host that keys something on the turn's actor before the turn starts, as Studio keys each turn's undo batch, builds the id with `assistantActorId(sessionId, turnId)`. It is the `id` every call's `ctx.actor` will carry, so the key the host opened and the actor its tools name cannot drift apart.
+
 :::doc-note
 A turn stopped between two tool calls never runs the second one, so the messages it appended end with a call that has no reply, and providers refuse a request like that. You do not have to fix it yourself: the next turn answers each such call with a failed result before it sends anything, and reports a `transcript_repaired` event when it does. If you keep your own transcript, call `repairToolPairs` from `@jxsuite/ai/messages` on it to apply the same repair, as Studio does before every send.
 :::

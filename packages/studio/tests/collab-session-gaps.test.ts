@@ -14,11 +14,13 @@ import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { collabState } from "../src/collab/collab-state";
-import { beginBatch, endBatch, mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
+import { mutateUpdateProperty, openBatchLane, transactDoc } from "../src/tabs/transact";
 import type { CollabAwarenessState } from "@jxsuite/collab/awareness-types";
 import type { CollabHandle } from "@jxsuite/collab/provider";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
+
+const assistant = { id: "assistant:local:gaps", kind: "assistant", turnId: "gaps" } as const;
 
 const actualCollab = await import("@jxsuite/collab");
 
@@ -159,10 +161,10 @@ describe("hook + watcher idempotence", () => {
 describe("batch publishing", () => {
   test("an empty batch flushes as a no-op", async () => {
     const hub = createMockCollabHub();
-    const tab = openCollabTab(hub);
+    openCollabTab(hub);
     await settleCollab();
-    beginBatch(tab);
-    expect(() => endBatch()).not.toThrow();
+    const lane = openBatchLane(assistant);
+    expect(() => lane.close()).not.toThrow();
     expect(serverJson(hub)).toEqual(HELLO_DOC);
   });
 
@@ -171,11 +173,15 @@ describe("batch publishing", () => {
     const tab = openCollabTab(hub);
     await settleCollab();
 
-    beginBatch(tab);
-    transactDoc(tab, (t) => {
-      t.doc.document.tagName = "main";
-    });
-    endBatch();
+    const lane = openBatchLane(assistant);
+    transactDoc(
+      tab,
+      (t) => {
+        t.doc.document.tagName = "main";
+      },
+      { actor: assistant },
+    );
+    lane.close();
     await settleCollab();
     expect(serverJson(hub).tagName).toBe("main");
   });
@@ -188,9 +194,11 @@ describe("batch publishing", () => {
     applyDocOpsImpl = () => {
       throw new Error("cannot apply");
     };
-    beginBatch(tab);
-    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Batched"));
-    endBatch();
+    const lane = openBatchLane(assistant);
+    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Batched"), {
+      actor: assistant,
+    });
+    lane.close();
     applyDocOpsImpl = realApplyDocOpsToY;
     await settleCollab();
 
