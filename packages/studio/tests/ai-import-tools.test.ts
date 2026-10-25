@@ -64,7 +64,7 @@ function harness(
     });
   const { state } = installMockPlatform(opts.noBackend ? {} : { importSite });
   const inner = createToolRegistry();
-  const toolsCtx: ImportToolsCtx = { getTab: () => null };
+  const toolsCtx: ImportToolsCtx = {};
   if (opts.adoptProject) {
     toolsCtx.adoptProject = opts.adoptProject;
   }

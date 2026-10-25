@@ -153,6 +153,13 @@ interface HistorySnapshot {
    * back through the prose one pause at a time instead of undoing the edit.
    */
   coalesceKey?: string | null;
+  /**
+   * Who made this step, when it is not the person at the keyboard: the id of the actor whose batch
+   * lane closed it (specs/ai.md §3.3). Absent on a person's own edits.
+   */
+  actor?: string;
+  /** The turn whose batch this step is, beside {@link HistorySnapshot.actor}. */
+  turnId?: string;
 }
 
 /**

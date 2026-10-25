@@ -26,6 +26,7 @@ prs:
   - jxsuite/jx#417
   - jxsuite/jx#418
   - jxsuite/jx#419
+  - jxsuite/jx#489
 ---
 
 # Jx harness core: the Phase 1 plan
@@ -60,7 +61,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
 | J1.10 | `./messages`                                        | —           | merged jxsuite/jx#417 |
 | J1.11 | `./harness` behind `runAgentLoop`                   | —           | merged jxsuite/jx#418 |
 | J1.12 | Pair repair                                         | —           | merged jxsuite/jx#419 |
-| J1.13 | Per-actor lanes                                     | —           | open                  |
+| J1.13 | Per-actor lanes                                     | —           | merged jxsuite/jx#489 |
 | J1.14 | Restore undoes the turn                             | —           | open                  |
 | J1.15 | Doc-op strictness in the old tools                  | —           | open                  |
 | J1.16 | `./jx-tools` producers                              | —           | open                  |
@@ -86,6 +87,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
   - J1.10: `toLiveMessages` carries no `result` rather than backfilling it: the reply is the outcome's one source, and Studio's `backfillToolResults` (with its `ask_user` and never-completed rules) stays the one backfill. `OpenAIWireOptions` and `Provenance.binding` wait for J1.24, their first caller; the default replay rule (openai-compat, unredacted) is built in. `toWireMessages` drops empty assistant turns, since the §2.2 rule binds every request. `JsonValue`'s array and object members became named interfaces, because Vue's `reactive()` cannot unwrap the inline recursive alias once a message can carry one.
   - J1.11: the goldens record every chat-state call with its arguments, so the adapter keeps them identical (none was re-recorded), and that decided several departures. Studio's transcript of record stays the chat store: its model function projects `chatState.toMessagesArray()`, and a parity test holds the engine's own conversation to the same request every round. So harness ids are not adopted (`beginAssistantTurn(id?)` and `pushToolResultMessage(…, id?)` wait for the slice that makes the engine the transcript of record), and the ledger is still filed under the chat store's anchor in the adapter's `finally`. The reducer follows today's calls rather than the §3.13 table: a `tool_call_end` event keeps `appendToolCallEnd`, `cancelled` calls nothing, `setError` takes no code until J1.18. The `usage` event carries the frame as streamed (`frame`). No abort check precedes round one, because the client is what refuses an aborted signal (J1.5) and the traces record that call. `round_start` carries no tool list. `refusal?` moved to J1.21: `invokeTool` parses first, as the loop did, and a refusal before the parse would change the texts. Hooks are `afterTool` and `onStreamError` only, the policy has the five fields today's loop uses, `TurnInput` gains `ledger`, and a model function that throws rejects `outcome` instead of ending the turn as `error`.
   - J1.12: `repairToolPairs` takes no `newId` or `now` options, because seal ids are deterministic (`sealed_<id>_<n>`, suffixed `_<k>` on collision), which keeps the repair pure and idempotent and matches the seal ids Studio already wrote. Seals carry no `meta`. A call with an empty id is never sealed, since its seal would be dropped as an id-less reply on the next repair. A second reply to a reused call id goes back to the earlier unanswered request of that id rather than being dropped.
+  - J1.13: a remote collaborator's ops neither join nor close a segment (they skip history and are never republished, so the old behaviour stands), and `TransactObserver` keeps its signature because collab reads `isBatched(tab)`. The lane owner's id comes from `assistantActorId` (new in `./harness`), which `runTurn` uses too, rather than being rebuilt by the host. While a segment is open `canUndo` is true and `canRedo` false, and undo or redo closes it first. The `getTab` seam that re-anchored the old batch left `adoptCreatedProject` and the project and import tool contexts. The bridge's attribution test drives stub verbs that write exactly as `duplicateSelection` and `deleteSelection` do, because `appCommandSet` in the test registry wires no selection writer to the test tab.
 
 ---
 

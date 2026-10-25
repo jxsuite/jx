@@ -64,7 +64,6 @@ interface ListedEntry {
 }
 
 export interface ProjectToolsCtx {
-  getTab: () => Tab | null;
   validate?: (doc: CandidateDocument) => Promise<string[]>;
   /**
    * Gate for `project.json` writes — the per-project entry document, not the document schema. It
@@ -113,7 +112,6 @@ export interface ProjectToolsCtx {
 export function registerProjectTools(
   registry: Pick<ToolRegistry, "register">,
   {
-    getTab,
     validate = validateDoc,
     validateProject = validateProjectConfig,
     renderCheck,
@@ -625,7 +623,6 @@ export function registerProjectTools(
          */
         const { adopted, error: adoptionError } = await adoptCreatedProject(result.root, {
           adopt: adoptProject,
-          getTab,
         });
         if (adopted) {
           onProjectAdopted?.(result.root);

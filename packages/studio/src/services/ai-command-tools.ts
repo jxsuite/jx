@@ -82,6 +82,7 @@ import type { WriteReportDeps, WriteSnapshot } from "./ai-write-report";
 import type { CommandContext } from "../commands/context";
 import type { AiToolReport, AnyCommand, CommandRegistry } from "../commands/registry";
 import type { Tab } from "../tabs/tab";
+import { runAsActor } from "../tabs/transact";
 
 /**
  * The record a selection-level projection composes through.
@@ -408,10 +409,10 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
         const { paths, ...rest } = args;
         await registry.run(SELECTOR, { paths });
         before = registry.context();
-        await registry.run(command.id, rest);
+        await runAsActor(ctx.actor, () => registry.run(command.id, rest));
       } else {
         before = registry.context();
-        await registry.run(command.id, args);
+        await runAsActor(ctx.actor, () => registry.run(command.id, args));
       }
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error), success: false };

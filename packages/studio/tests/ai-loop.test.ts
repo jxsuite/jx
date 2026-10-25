@@ -9,6 +9,7 @@ import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import { createTab, disposeTab } from "../src/tabs/tab";
 import type { Tab } from "../src/tabs/tab";
+import { undo } from "../src/tabs/transact";
 import { registerAiTools } from "../src/services/ai-tools";
 import type { CandidateDocument } from "../src/services/ai-write-report";
 import { EMPTY_TURN_TEXT, runAgentLoop } from "../src/services/tool-executor";
@@ -450,14 +451,44 @@ describe("ai agent loop — integration", () => {
   });
 });
 
-// ─── ai.md §3.3: the batch follows the tab it edits ──────────────────────────
+// ─── ai.md §3.3: the batch belongs to the assistant ──────────────────────────
 
 describe("cross-tab batching", () => {
+  test("a turn's writes to one document are one step, tagged with the turn's actor", async () => {
+    /* The lane is opened before the turn starts, under an id the loop builds itself; each tool
+       names the actor the engine built. If the two ids ever drifted apart, every write would close
+       the segment as a stranger's and the turn would undo one tool at a time. */
+    const tab = createTab({ document: { children: [], tagName: "div" }, id: "only" });
+    const chatState = createChatState({ model: "test" });
+    const toolRegistry = createToolRegistry();
+    registerAiTools(toolRegistry, { getTab: () => tab, validate: async () => [] });
+    const client = fakeClient([
+      toolCallRound("a", "set_property", { key: "id", path: [], value: "one" }),
+      toolCallRound("b", "set_property", { key: "title", path: [], value: "two" }),
+    ]);
+
+    chatState.sendMessage("edit twice");
+    await runAgentLoop({
+      chatState,
+      getTab: () => tab,
+      streamingClient: client,
+      systemPrompt: "",
+      toolRegistry,
+    });
+
+    expect(tab.history.snapshots).toHaveLength(2);
+    expect(tab.history.snapshots[1]!.actor).toStartWith("assistant:");
+    undo(tab);
+    expect(tab.doc.document.id).toBeUndefined();
+    expect(tab.doc.document.title).toBeUndefined();
+    disposeTab(tab);
+  });
+
   test("a turn that moves to a second document gives BOTH documents a history entry", async () => {
-    /* `beginBatch(getTab())` ran once, against whichever tab was active when the loop started,
-       and `endBatch()` pushed ITS snapshot. A turn whose tools then edited a second document
-       closed the batch against the FIRST tab, so the second document got neither a history
-       snapshot nor a collab publish — its edits were simply not undoable. */
+    /* The batch used to be opened once, against whichever tab was active when the loop started,
+       and closed against that same tab, so a second document the turn's tools edited got neither
+       a history entry nor a collab publish: its edits were simply not undoable. The lane belongs to
+       the assistant, so each document it writes gets its own segment. */
     const first = createTab({ document: { children: [], tagName: "div" }, id: "first" });
     const second = createTab({ document: { children: [], tagName: "section" }, id: "second" });
     let current: Tab = first;
@@ -466,6 +497,7 @@ describe("cross-tab batching", () => {
     const toolRegistry = createToolRegistry();
     registerAiTools(toolRegistry, { getTab: () => current, validate: async () => [] });
 
+    const beforeFirst = first.history.snapshots.length;
     const beforeSecond = second.history.snapshots.length;
     const client = fakeClient([
       toolCallRound("a", "set_property", { key: "id", path: [], value: "one" }),
@@ -492,7 +524,8 @@ describe("cross-tab batching", () => {
     });
 
     expect(second.doc.document.id).toBe("two");
-    expect(second.history.snapshots.length).toBeGreaterThan(beforeSecond);
+    expect(first.history.snapshots).toHaveLength(beforeFirst + 1);
+    expect(second.history.snapshots).toHaveLength(beforeSecond + 1);
     disposeTab(first);
     disposeTab(second);
   });

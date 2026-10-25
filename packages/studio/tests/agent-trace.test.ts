@@ -683,6 +683,26 @@ const LOOPT = inSuite("loopt", [
     },
   },
   {
+    name: "a turn's writes to one document are one step, tagged with the turn's actor",
+    async run(rec) {
+      const tab = createTab({ document: { children: [], tagName: "div" }, id: "only" });
+      const chatState = recordChatState(createChatState({ model: "test" }), rec.chatLog);
+      const toolRegistry = createToolRegistry();
+      registerAiTools(toolRegistry, { getTab: () => tab, validate: async () => [] });
+      const client = scripted([
+        toolCallRound("a", "set_property", { key: "id", path: [], value: "one" }),
+        toolCallRound("b", "set_property", { key: "title", path: [], value: "two" }),
+      ]);
+      chatState.sendMessage("edit twice");
+      await loop(rec, { chatState, client, getTab: () => tab, toolRegistry });
+      expect(tab.history.snapshots).toHaveLength(2);
+      return settleTab(chatState, tab, {
+        actor: tab.history.snapshots[1]!.actor ?? null,
+        snapshots: tab.history.snapshots.length,
+      });
+    },
+  },
+  {
     name: "a turn that moves to a second document gives BOTH documents a history entry",
     async run(rec) {
       const first = createTab({ document: { children: [], tagName: "div" }, id: "first" });
@@ -2000,6 +2020,7 @@ const LOOPT_MIRRORED = [
   "surfaces an upstream stream error and stops",
   "summarizes accumulated tool errors (and ignores unknown events) at the round cap",
   "reports a tool call whose arguments are malformed JSON",
+  "a turn's writes to one document are one step, tagged with the turn's actor",
   "a turn that moves to a second document gives BOTH documents a history entry",
   "a round that only asked does not spend the work budget",
   "a round that asked AND worked spends the budget",

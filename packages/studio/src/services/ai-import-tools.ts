@@ -35,7 +35,6 @@ import { adoptCreatedProject } from "./project-adoption";
 import type { AdoptCreatedOptions, AdoptOutcome } from "./project-adoption";
 
 import type { JsonValue, ToolRegistry } from "@jxsuite/ai/tools";
-import type { Tab } from "../tabs/tab";
 import type {
   ImportBreakpointPolicy,
   ImportReadyEvent,
@@ -62,8 +61,6 @@ const DEFAULT_MIN_FIDELITY = 25;
 const MAX_FIDELITY = 100;
 
 export interface ImportToolsCtx {
-  /** The active tab, read AFTER adoption to re-anchor the agent loop's undo batch. */
-  getTab: () => Tab | null;
   /** Open the imported project in this window. Defaults to the late-bound adopter. */
   adoptProject?: (root: string) => Promise<void>;
   /** Fired once adoption is VERIFIED — the session store re-keys the live chat here. */
@@ -269,7 +266,6 @@ function describeRun(id: string, root: string, summary?: ImportSiteSummary): str
 export function registerImportTools(
   registry: Pick<ToolRegistry, "register">,
   {
-    getTab,
     adoptProject,
     onProjectAdopted,
     brief: briefStore = { clear: clearPendingImportBrief, read: pendingImportBrief },
@@ -454,7 +450,7 @@ export function registerImportTools(
          * failure here is not the run's failure: the import continues either way, and the terminal
          * path below reports honestly on whichever state the window ended up in.
          */
-        const adoptOptions: AdoptCreatedOptions = { getTab };
+        const adoptOptions: AdoptCreatedOptions = {};
         if (adoptProject) {
           adoptOptions.adopt = adoptProject;
         }

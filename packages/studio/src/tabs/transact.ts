@@ -214,26 +214,33 @@ function rollbackFailedTransaction(
  * with no prompt. A refusal is not an exception (it is an ordinary, expected state of the room), so
  * it is a return value: `false` means the document is exactly as it was.
  *
+ * **AND IT SAYS WHO WROTE.** `actor` (else the scope {@link runAsActor} opened, else the person at
+ * the keyboard) decides where the step lands: an actor that owns an open {@link BatchLane} folds it
+ * into that lane's segment on this tab, and anyone else first closes whatever segment is open here,
+ * so their edit is never folded into someone else's step (specs/ai.md §3.3).
+ *
  * @param {Tab | null} tab
  * @param {(tab: Tab) => void} mutationFn
- * @param {{ skipHistory?: boolean; origin?: TransactOrigin }} [opts]
+ * @param {TransactOptions} [opts]
  * @returns {boolean} True when the mutation was applied; false when there was no tab, or the gate
  *   refused it.
  */
 export function transactDoc(
   tab: Tab | null,
   mutationFn: (tab: Tab) => void,
-  {
-    skipHistory = false,
-    origin = "user",
-    coalesceKey = null,
-  }: { skipHistory?: boolean; origin?: TransactOrigin; coalesceKey?: string | null } = {},
+  { skipHistory = false, origin = "user", coalesceKey = null, actor = null }: TransactOptions = {},
 ): boolean {
   if (!tab) {
     return false;
   }
   if (origin !== "remote" && _transactGate?.(tab, origin)) {
     return false;
+  }
+  const writer = actor ?? _scopeActor;
+  /* A remote collaborator's ops are the room's, not a local writer's: they skip history and are
+     never published back, so they neither join a lane nor close one. */
+  if (origin !== "remote") {
+    closeForeignSegment(tab, writer);
   }
   const selectionBefore = cloneSelection(tab.session.selection);
   const dirtyBefore = tab.doc.dirty;
@@ -287,8 +294,13 @@ export function transactDoc(
     }
   }
 
-  if (!skipHistory && !_batchTab) {
-    pushHistoryEntry(tab, raw, record, selectionBefore, coalesceKey);
+  if (!skipHistory) {
+    const lane = writer ? laneOwnedBy(writer) : null;
+    if (lane) {
+      joinSegment(lane, tab, record, selectionBefore);
+    } else {
+      pushHistoryEntry(tab, raw, record, selectionBefore, coalesceKey);
+    }
   }
 
   tab.doc.dirty = true;
@@ -404,7 +416,7 @@ function materializeState(
 export function transact(
   tab: Tab | null,
   fn: (doc: JxMutableNode) => void,
-  opts?: { skipHistory?: boolean; origin?: TransactOrigin },
+  opts?: TransactOptions,
 ): boolean {
   return transactDoc(tab, (t) => fn(t.doc.document), opts);
 }
@@ -504,11 +516,73 @@ function applyDocOp(tab: Tab, op: JxDocOp) {
   }
 }
 
-// ─── Batch (group multiple mutations into one undo step) ────────────────────
+// ─── Batch lanes (one actor's run of writes, one undo step per document) ─────
 
-let _batchTab: Tab | null = null;
+/**
+ * An actor that is not the person at the keyboard writing to a document. The assistant's
+ * `@jxsuite/ai` `Actor` is one: its `id` is `assistant:<sessionId|local>:<turnId>`.
+ */
+export interface ActorRef {
+  readonly kind: "user" | "assistant" | "remote";
+  readonly id: string;
+  readonly turnId?: string;
+}
 
-/** Module-level hook invoked when a batch closes (collab flushes its buffered ops as one step). */
+/** The options {@link transactDoc} takes. */
+export interface TransactOptions {
+  skipHistory?: boolean;
+  origin?: TransactOrigin;
+  coalesceKey?: string | null;
+  /** Who is writing; `null` (the default) is the person at the keyboard, or the open scope's. */
+  actor?: ActorRef | null;
+}
+
+/**
+ * One actor's run of writes that undoes as ONE step.
+ *
+ * A lane is open for a whole assistant turn. Each document it writes gets a **segment**, opened on
+ * the lane's first write there and closed when the lane flushes, or earlier when anyone else writes
+ * that document: the segment becomes one history entry and the other writer's edit becomes its own
+ * after it, so a person's edit is never folded into the assistant's step and the steps keep the
+ * order they happened in. A document the lane never wrote gets no entry at all.
+ */
+export interface BatchLane {
+  readonly owner: ActorRef;
+  /** Close every open segment now, one entry per document that recorded something. */
+  readonly flush: () => void;
+  /** Flush and retire the lane; returns where each of its entries landed, oldest first. */
+  readonly close: () => readonly BatchReceipt[];
+}
+
+/** Where one of a lane's segments landed in its tab's history. */
+export interface BatchReceipt {
+  readonly tab: Tab;
+  readonly entryIndex: number;
+  readonly turnId: string;
+}
+
+interface LaneState {
+  readonly owner: ActorRef;
+  readonly receipts: BatchReceipt[];
+}
+
+interface Segment {
+  readonly lane: LaneState;
+  readonly docOps: JxDocOpPair[];
+  readonly fmOps: TransactionRecord["fmOps"];
+  /** False once any write in it could not be inverted, or recorded no ops: the entry snapshots. */
+  invertible: boolean;
+  readonly selectionBefore: JxPath[];
+}
+
+/** The open lanes, by owner id. */
+const _lanes = new Map<string, LaneState>();
+/** The open segment on each tab: at most one, since a second writer closes the first's. */
+const _segments = new Map<Tab, Segment>();
+/** The actor {@link runAsActor} is running as, for a writer that cannot pass one. */
+let _scopeActor: ActorRef | null = null;
+
+/** Module-level hook invoked when a segment closes (collab flushes its buffered ops as one step). */
 export type BatchEndNotifier = (tab: Tab) => void;
 
 let _batchEndNotifier: BatchEndNotifier | null = null;
@@ -517,48 +591,127 @@ export function setBatchEndNotifier(fn: BatchEndNotifier | null) {
   _batchEndNotifier = fn;
 }
 
-export function beginBatch(tab: Tab | null) {
-  _batchTab = tab;
-}
-
-export function endBatch() {
-  const tab = _batchTab;
-  // A history delegate owns undo grouping while registered; the snapshot push would be dead weight.
-  if (tab && !_historyDelegates.has(tab)) {
-    const raw = toRaw(tab.doc.document);
-    const snapshot = {
-      document: jsonClone(raw),
-      selection: cloneSelection(tab.session.selection),
-    };
-    const truncated = tab.history.snapshots.slice(0, tab.history.index + 1);
-    truncated.push(snapshot);
-    if (truncated.length > HISTORY_LIMIT) {
-      truncated.shift();
-    }
-    tab.history.snapshots = truncated;
-    tab.history.index = truncated.length - 1;
+/**
+ * Open a lane for `owner`. Every transaction `owner` makes until {@link BatchLane.close} joins it;
+ * opening a second lane for the same owner replaces the first, after flushing it.
+ */
+export function openBatchLane(owner: ActorRef): BatchLane {
+  const previous = _lanes.get(owner.id);
+  if (previous) {
+    flushLane(previous);
   }
-  _batchTab = null;
-  if (tab) {
-    _batchEndNotifier?.(tab);
-  }
-}
-
-export function isBatching(): boolean {
-  return _batchTab !== null;
+  const lane: LaneState = { owner, receipts: [] };
+  _lanes.set(owner.id, lane);
+  return {
+    owner,
+    flush: () => flushLane(lane),
+    close: () => {
+      flushLane(lane);
+      if (_lanes.get(owner.id) === lane) {
+        _lanes.delete(owner.id);
+      }
+      return [...lane.receipts];
+    },
+  };
 }
 
 /**
- * Which tab the open batch belongs to, or `null` when none is open.
+ * Run `fn` with every transaction it makes attributed to `actor`.
  *
- * The agent loop needs this to keep a batch honest across a tab change. A batch is opened against
- * one tab and closed against the same one — {@link endBatch} pushes ITS history snapshot and fires
- * the collab notifier for IT — so a loop whose tools moved to a second document has to close the
- * first batch and open a second, or the second document's edits get neither a history entry nor a
- * collab publish. Reading the batched tab is how the loop can tell.
+ * **Synchronous only.** The scope ends when `fn` returns, before any await inside it resumes, so a
+ * write made after an await is the person's again. That is deliberate: a scope that outlived its
+ * call would attribute whatever the person did in the meantime to the assistant. A writer that
+ * awaits before it writes passes `actor` to {@link transactDoc} instead.
  */
-export function batchTab(): Tab | null {
-  return _batchTab;
+export function runAsActor<T>(actor: ActorRef, fn: () => T): T {
+  const previous = _scopeActor;
+  _scopeActor = actor;
+  try {
+    return fn();
+  } finally {
+    _scopeActor = previous;
+  }
+}
+
+/**
+ * Whether `tab` has an open segment: owned by `actor` when one is given, by anyone otherwise.
+ * Collab reads this to buffer the owner's ops until the segment closes.
+ */
+export function isBatched(tab: Tab, actor?: ActorRef | null): boolean {
+  const segment = _segments.get(tab);
+  return segment !== undefined && (!actor || segment.lane.owner.id === actor.id);
+}
+
+/** Close every open segment of every lane (a project is about to be replaced under them). */
+export function flushOpenBatches(): void {
+  for (const lane of _lanes.values()) {
+    flushLane(lane);
+  }
+}
+
+function laneOwnedBy(actor: ActorRef): LaneState | null {
+  return _lanes.get(actor.id) ?? null;
+}
+
+function flushLane(lane: LaneState): void {
+  // Deleting the entry being visited is safe: a Map iterator skips removed entries and goes on.
+  for (const [tab, segment] of _segments) {
+    if (segment.lane === lane) {
+      closeSegment(tab, segment);
+    }
+  }
+}
+
+/** Fold a lane owner's transaction into its segment on `tab`, opening the segment if needed. */
+function joinSegment(
+  lane: LaneState,
+  tab: Tab,
+  record: TransactionRecord,
+  selectionBefore: JxPath[],
+): void {
+  let segment = _segments.get(tab);
+  if (!segment) {
+    segment = { docOps: [], fmOps: [], invertible: true, lane, selectionBefore };
+    _segments.set(tab, segment);
+  }
+  segment.docOps.push(...record.docOps);
+  segment.fmOps.push(...record.fmOps);
+  /* An unrecorded mutation changed the document without saying how, so only a snapshot of the
+     result can undo the segment it is in. */
+  if (!record.invertible || (record.docOps.length === 0 && record.fmOps.length === 0)) {
+    segment.invertible = false;
+  }
+}
+
+/** A writer other than the segment's owner is about to write `tab`: close the segment first. */
+function closeForeignSegment(tab: Tab, writer: ActorRef | null): void {
+  const segment = _segments.get(tab);
+  if (segment && segment.lane.owner.id !== writer?.id) {
+    closeSegment(tab, segment);
+  }
+}
+
+/** Push the segment as one history entry tagged with its owner, then let collab publish it. */
+function closeSegment(tab: Tab, segment: Segment): void {
+  _segments.delete(tab);
+  const { owner } = segment.lane;
+  // A history delegate owns undo grouping while registered; an entry here would be dead weight.
+  if (!_historyDelegates.has(tab)) {
+    const record: TransactionRecord = {
+      docOps: segment.docOps,
+      fmOps: segment.fmOps,
+      invertible: segment.invertible,
+      ops: [],
+    };
+    pushHistoryEntry(tab, toRaw(tab.doc.document), record, segment.selectionBefore);
+    const entry = tab.history.snapshots[tab.history.index]!;
+    entry.actor = owner.id;
+    if (owner.turnId !== undefined) {
+      entry.turnId = owner.turnId;
+    }
+    segment.lane.receipts.push({ entryIndex: tab.history.index, tab, turnId: owner.turnId ?? "" });
+  }
+  _batchEndNotifier?.(tab);
 }
 
 // ─── Undo / Redo ─────────────────────────────────────────────────────────────
@@ -591,12 +744,17 @@ export function getHistoryDelegate(tab: Tab): HistoryDelegate | null {
 
 export function canUndo(tab: Tab): boolean {
   const delegate = _historyDelegates.get(tab);
-  return delegate ? delegate.canUndo(tab) : tab.history.index > 0;
+  // An open segment is a step that has not been pushed yet; undo closes it and then takes it back.
+  return delegate ? delegate.canUndo(tab) : tab.history.index > 0 || _segments.has(tab);
 }
 
 export function canRedo(tab: Tab): boolean {
   const delegate = _historyDelegates.get(tab);
-  return delegate ? delegate.canRedo(tab) : tab.history.index < tab.history.snapshots.length - 1;
+  /* An open segment has already changed the document past the redo stack, and closing it truncates
+     that stack, so there is nothing to redo while one is open. */
+  return delegate
+    ? delegate.canRedo(tab)
+    : !_segments.has(tab) && tab.history.index < tab.history.snapshots.length - 1;
 }
 
 /** Restore a materialized snapshot state (full-render path). */
@@ -627,6 +785,10 @@ function assertHistoryConsistency(tab: Tab, index: number) {
 
 /** @param {Tab} tab */
 export function undo(tab: Tab) {
+  /* Undo is the person's, so a segment open on this tab closes first and becomes the step undo
+     takes back. Without this, ⌘Z mid-turn would skip the assistant's pending edits and undo the
+     entry before them, leaving the segment's inverses pointing at a document they no longer fit. */
+  closeForeignSegment(tab, null);
   const delegate = _historyDelegates.get(tab);
   if (delegate) {
     delegate.undo(tab);
@@ -678,6 +840,8 @@ export function undo(tab: Tab) {
 
 /** @param {Tab} tab */
 export function redo(tab: Tab) {
+  // Same as {@link undo}: an open segment is history the redo stack is about to be measured against.
+  closeForeignSegment(tab, null);
   const delegate = _historyDelegates.get(tab);
   if (delegate) {
     delegate.redo(tab);

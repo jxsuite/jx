@@ -10,7 +10,15 @@ import {
   setProjectAdopter,
 } from "../src/services/project-adoption";
 import { workspace } from "../src/workspace/workspace";
-import { batchTab, beginBatch, endBatch, isBatching } from "../src/tabs/transact";
+import {
+  flushOpenBatches,
+  isBatched,
+  mutateUpdateProperty,
+  openBatchLane,
+  transactDoc,
+} from "../src/tabs/transact";
+
+const assistant = { id: "assistant:local:t1", kind: "assistant", turnId: "t1" } as const;
 
 describe("project-adoption", () => {
   test("adoptProject throws an actionable error while no adopter is registered", () => {
@@ -36,10 +44,8 @@ describe("project-adoption — adoptCreatedProject", () => {
   beforeEach(() => {
     resetStudioState();
     workspace.projectRoot = "";
-    // A batch left open by a failing case would flush against the next case's tab.
-    if (isBatching()) {
-      endBatch();
-    }
+    // A segment left open by a failing case would close against the next case's tab.
+    flushOpenBatches();
   });
 
   /** A repo initialiser and an adopter that records the order the two ran in. */
@@ -64,7 +70,7 @@ describe("project-adoption — adoptCreatedProject", () => {
       workspace.projectRoot = root;
     });
 
-    const outcome = await adoptCreatedProject("/abs/site", { adopt, getTab: () => null, initRepo });
+    const outcome = await adoptCreatedProject("/abs/site", { adopt, initRepo });
 
     expect(order).toEqual(["initRepo", "adopt"]);
     expect(initRepo).toHaveBeenCalledWith("/abs/site");
@@ -77,7 +83,7 @@ describe("project-adoption — adoptCreatedProject", () => {
        project that never opened. */
     const { adopt, initRepo } = seams();
 
-    const outcome = await adoptCreatedProject("/abs/site", { adopt, getTab: () => null, initRepo });
+    const outcome = await adoptCreatedProject("/abs/site", { adopt, initRepo });
 
     expect(adopt).toHaveBeenCalled();
     expect(outcome).toEqual({ adopted: false, error: null, openedElsewhere: false });
@@ -88,7 +94,6 @@ describe("project-adoption — adoptCreatedProject", () => {
       adopt: async () => {
         throw new Error("no such directory");
       },
-      getTab: () => null,
       initRepo: async () => false,
     });
 
@@ -102,42 +107,49 @@ describe("project-adoption — adoptCreatedProject", () => {
     const thirdPartyReason = "just a string";
     const outcome = await adoptCreatedProject("/abs/site", {
       adopt: () => Promise.reject(thirdPartyReason),
-      getTab: () => null,
       initRepo: async () => false,
     });
 
     expect(outcome.error).toBe("just a string");
   });
 
-  test("flushes an open undo batch and re-anchors it on the post-adoption tab", async () => {
-    /* The agent loop holds a batch on the pre-adoption tab, and adoption replaces every tab in the
-       workspace — so a batch left open would close against a tab that no longer exists. */
+  test("closes the open lane's segments before adoption and keeps the lane open after it", async () => {
+    /* The agent loop holds a lane with a segment on the pre-adoption tab, and adoption replaces
+       every tab in the workspace, so the segment is closed against the document it was written
+       into, before that document goes. */
     const before = resetWorkspaceWithTab(undefined, { documentPath: "/before.json", id: "before" });
     const after = resetWorkspaceWithTab(undefined, { documentPath: "/after.json", id: "after" });
-    beginBatch(before);
-    expect(batchTab()).toBe(before);
+    const lane = openBatchLane(assistant);
+    transactDoc(before, (t) => mutateUpdateProperty(t, [], "title", "Before"), {
+      actor: assistant,
+    });
+    expect(isBatched(before, assistant)).toBe(true);
 
+    const batchedDuringAdopt: boolean[] = [];
     await adoptCreatedProject("/abs/site", {
       adopt: async (root) => {
+        batchedDuringAdopt.push(isBatched(before));
         workspace.projectRoot = root;
       },
-      getTab: () => after,
       initRepo: async () => false,
     });
 
-    expect(isBatching()).toBe(true);
-    expect(batchTab()).toBe(after);
-    endBatch();
+    expect(batchedDuringAdopt).toEqual([false]);
+    expect(before.history.snapshots.at(-1)?.actor).toBe(assistant.id);
+    // The lane survived: the turn's next write opens a segment in the adopted project.
+    transactDoc(after, (t) => mutateUpdateProperty(t, [], "title", "After"), { actor: assistant });
+    expect(isBatched(after, assistant)).toBe(true);
+    expect(lane.close().map((receipt) => receipt.tab)).toEqual([before, after]);
   });
 
-  test("leaves the batch closed when the caller had none open", async () => {
+  test("adopts with no lane open, and opens none", async () => {
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "/only.json", id: "only" });
     await adoptCreatedProject("/abs/site", {
       adopt: async () => {},
-      getTab: () => null,
       initRepo: async () => false,
     });
 
-    expect(isBatching()).toBe(false);
+    expect(isBatched(tab)).toBe(false);
   });
 
   test("defaults to the real adopter and the real repo initialiser", async () => {
@@ -148,7 +160,7 @@ describe("project-adoption — adoptCreatedProject", () => {
     });
     setProjectAdopter(adopter);
 
-    const outcome = await adoptCreatedProject("/abs/defaulted", { getTab: () => null });
+    const outcome = await adoptCreatedProject("/abs/defaulted");
 
     expect(adopter).toHaveBeenCalledWith("/abs/defaulted");
     expect(outcome.adopted).toBe(true);
@@ -172,7 +184,6 @@ describe("project-adoption — adoptCreatedProject", () => {
 
     const outcome = await adoptCreatedProject("/abs/new-project", {
       adopt,
-      getTab: () => null,
       initRepo,
     });
 
@@ -198,7 +209,6 @@ describe("project-adoption — adoptCreatedProject", () => {
 
     const outcome = await adoptCreatedProject("/abs/new-project", {
       adopt,
-      getTab: () => null,
       initRepo,
     });
 

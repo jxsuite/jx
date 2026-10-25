@@ -11,9 +11,8 @@
 
 import { initProjectRepo } from "../files/files";
 import { getPlatform, hasPlatform } from "../platform";
-import { beginBatch, endBatch, isBatching } from "../tabs/transact";
+import { flushOpenBatches } from "../tabs/transact";
 import { workspace } from "../workspace/workspace";
-import type { Tab } from "../tabs/tab";
 
 let _adopter: ((root: string) => Promise<void>) | null = null;
 
@@ -52,8 +51,6 @@ export interface AdoptOutcome {
 
 /** The seams {@link adoptCreatedProject} runs through, so each caller keeps the one it already had. */
 export interface AdoptCreatedOptions {
-  /** The active tab, read AFTER adoption to re-anchor the agent loop's undo batch. */
-  getTab: () => Tab | null;
   /** The project-open flow. Defaults to this module's late-bound {@link adoptProject}. */
   adopt?: (root: string) => Promise<void>;
   /** Version-control init. Defaults to `files/files.ts`'s `initProjectRepo`. */
@@ -76,9 +73,8 @@ export interface AdoptCreatedOptions {
  * - **Verifying.** `openRecentProject` swallows its failures into a status message, so a resolved
  *   promise is not proof of adoption. The caller must be told which of the two happened.
  *
- * The batch dance is the third: the agent loop may hold an undo batch on the pre-adoption tab, and
- * adoption replaces every tab in the workspace. Flush it, adopt, re-open one on whatever tab
- * adoption left active.
+ * The third is the undo batch: the agent loop's lane may hold segments on pre-adoption tabs, and
+ * adoption replaces every tab in the workspace, so they are closed first (specs/ai.md §3.3).
  *
  * @param {string} root - Absolute root of the project that was just created.
  * @param {AdoptCreatedOptions} opts
@@ -86,7 +82,7 @@ export interface AdoptCreatedOptions {
  */
 export async function adoptCreatedProject(
   root: string,
-  { getTab, adopt = adoptProject, initRepo = initProjectRepo }: AdoptCreatedOptions,
+  { adopt = adoptProject, initRepo = initProjectRepo }: AdoptCreatedOptions = {},
 ): Promise<AdoptOutcome> {
   // Never fails the create: a project that was written stays written (initProjectRepo notifies).
   await initRepo(root);
@@ -117,19 +113,15 @@ export async function adoptCreatedProject(
     }
   }
 
-  const wasBatching = isBatching();
-  if (wasBatching) {
-    endBatch();
-  }
+  /* The tabs an open lane has segments on are about to be replaced: close each now, against the
+     document it was written into. The lane stays open, so the turn's next write opens a segment on
+     whatever document it writes in the adopted project. */
+  flushOpenBatches();
   let adoptionError: string | null = null;
   try {
     await adopt(root);
   } catch (error) {
     adoptionError = error instanceof Error ? error.message : String(error);
   }
-  if (wasBatching) {
-    beginBatch(getTab());
-  }
-
   return { adopted: workspace.projectRoot === root, error: adoptionError, openedElsewhere };
 }

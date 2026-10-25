@@ -35,7 +35,16 @@ import { fileTurn } from "../src/services/ai-writes";
 import { recordingContext } from "./harness/recording-context";
 import { createToolContext } from "@jxsuite/ai/tools";
 import type { JSONSchema, JsonObject, JsonValue } from "@jxsuite/ai/tools";
-import { mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
+import {
+  flushOpenBatches,
+  isBatched,
+  mutateDuplicateNodes,
+  mutateRemoveNodes,
+  mutateUpdateProperty,
+  openBatchLane,
+  transactDoc,
+} from "../src/tabs/transact";
+import type { Tab } from "../src/tabs/tab";
 import { resetProjectConfigDocument } from "../src/tabs/project-config";
 import { updateSiteConfig } from "../src/site-context";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
@@ -1018,4 +1027,56 @@ describe("the assistant's tool budget", () => {
       ]);
     }
   });
+});
+
+// ─── ai.md §3.3: a bridged record's write is the assistant's ─────────────────
+
+describe("a bridged record writes as the call's actor", () => {
+  afterEach(() => {
+    flushOpenBatches();
+  });
+
+  /*
+   * The records' own writers name no actor, because they are the verbs the person runs too:
+   * `duplicateSelection` and `deleteSelection` (`editor/shortcuts.ts`) are one synchronous
+   * `transactDoc` each. The stub's verb writes exactly that way, so what is under test is the
+   * bridge's `runAsActor` scope. Without it the write would close the turn's segment as if the
+   * person had made it, and the turn would undo as two steps.
+   */
+  const WRITERS = {
+    delete_node: (tab: Tab) => transactDoc(tab, (t) => mutateRemoveNodes(t, [["children", 0]])),
+    duplicate_node: (tab: Tab) =>
+      transactDoc(tab, (t) => mutateDuplicateNodes(t, [["children", 0]])),
+  };
+
+  for (const [name, writer] of Object.entries(WRITERS)) {
+    test(`${name} joins the turn's batch lane`, async () => {
+      const tab = resetWorkspaceWithTab({
+        children: [
+          { tagName: "p", textContent: "one" },
+          { tagName: "p", textContent: "two" },
+        ],
+        tagName: "div",
+      });
+      const { registry } = appRegistry(RICH);
+      const stub: CommandRegistry = {
+        ...registry,
+        run(id) {
+          if (id !== SELECTOR) {
+            writer(tab);
+          }
+        },
+      };
+      setActiveRegistry(stub);
+      const tools = createCommandToolRegistry({ getTab: () => tab, validate: async () => [] });
+      const ctx = createToolContext();
+      const lane = openBatchLane(ctx.actor);
+
+      const result = await tools.execute(name, { paths: [["children", 0]] }, ctx);
+
+      expect(result.success).toBe(true);
+      expect(isBatched(tab, ctx.actor)).toBe(true);
+      expect(lane.close().map((receipt) => receipt.tab)).toEqual([tab]);
+    });
+  }
 });
