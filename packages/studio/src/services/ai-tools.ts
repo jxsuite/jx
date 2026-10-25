@@ -9,7 +9,7 @@
  */
 
 import { createToolDefinition } from "@jxsuite/ai/tools";
-import type { ToolRegistry, ToolResult, WriteLedger } from "@jxsuite/ai/tools";
+import type { ToolContext, ToolRegistry, ToolResult } from "@jxsuite/ai/tools";
 import type { JsonObject, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import { getNodeAtPath } from "../state";
 import type { Tab } from "../tabs/tab";
@@ -68,7 +68,7 @@ function noDocError(): ToolResult {
  * way (optimistic apply + undo); reporting the errors lets the agent loop self-correct on the next
  * round. Both rules are specs/ai.md §3.1.
  *
- * @param {WriteLedger} ledger - The call's ledger (`ctx.ledger`)
+ * @param {Pick<ToolContext, "actor" | "ledger">} ctx - The call's actor and ledger
  * @param {import("../tabs/tab").Tab} tab
  * @param {(t: import("../tabs/tab").Tab) => void} mutationFn
  * @param {string} summary
@@ -78,7 +78,7 @@ function noDocError(): ToolResult {
  * @returns {Promise<import("@jxsuite/ai/tools").ToolResult>}
  */
 async function applyAndValidate(
-  ledger: WriteLedger,
+  { actor, ledger }: Pick<ToolContext, "actor" | "ledger">,
   tab: Tab,
   mutationFn: (t: Tab) => void,
   summary: string,
@@ -95,7 +95,9 @@ async function applyAndValidate(
      no new errors, so the tool answered `success: true`. The model then built its next three edits
      on a change that never existed. A refusal is an ordinary state of the room, so it is an error
      result with a reason the model can act on (wait, or ask the author), not a thrown exception. */
-  if (!transactDoc(tab, mutationFn)) {
+  /* Named, not inferred: the write joins the turn's batch lane by its actor (specs/ai.md §3.3), and
+     the `await` above means any scope opened around this call would already have ended. */
+  if (!transactDoc(tab, mutationFn, { actor })) {
     return {
       success: false,
       error:
@@ -259,7 +261,7 @@ export function registerAiTools(
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
         return applyAndValidate(
-          ctx.ledger,
+          ctx,
           tab,
           (t) => mutateUpdateProperty(t, path, key, value ?? undefined),
           `Set "${key}" at ${JSON.stringify(path)}.`,
@@ -343,7 +345,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
-          ctx.ledger,
+          ctx,
           tab,
           (t) => mutateInsertNode(t, parentPath, index, childNode),
           `Inserted node at ${JSON.stringify([...parentPath, "children", index])}.`,
@@ -403,7 +405,7 @@ export function registerAiTools(
         const prop = property;
         const val = value == null ? undefined : String(value);
         return applyAndValidate(
-          ctx.ledger,
+          ctx,
           tab,
           (t) => mutateUpdateStyle(t, path, prop, val),
           `Set style "${prop}" at ${JSON.stringify(path)}.`,
@@ -447,7 +449,7 @@ export function registerAiTools(
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
         return applyAndValidate(
-          ctx.ledger,
+          ctx,
           tab,
           /* Through the recording mutators, as two `set-key` ops, rather than by writing the node
              directly. An unrecorded write reaches the canvas only as a full re-render, history only
@@ -502,7 +504,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
-          ctx.ledger,
+          ctx,
           tab,
           /* `mutateAddDef` rather than `mutateUpdateProperty`: the latter deletes on "", which is
              wrong for a state default (`"title": ""`). It also records the op, so the canvas, the
@@ -559,7 +561,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
-          ctx.ledger,
+          ctx,
           tab,
           /* The recording def mutators, for the reason `add_state` gives. Removing the last key
              drops the empty `state` object, as the Inspector's own removal does. */
@@ -639,7 +641,7 @@ export function registerAiTools(
           };
         }
         return applyAndValidate(
-          ctx.ledger,
+          ctx,
           tab,
           (t) => mutateMoveNode(t, fromPath, toParentPath, toIndex),
           `Moved node from ${JSON.stringify(fromPath)} to ${JSON.stringify([...toParentPath, "children", toIndex])}.`,

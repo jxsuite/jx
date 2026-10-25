@@ -18,8 +18,6 @@ import { createTab, disposeTab } from "../src/tabs/tab";
 import { childList } from "../src/state";
 import { isString } from "@jxsuite/schema/guards";
 import {
-  beginBatch,
-  endBatch,
   mutateAddSwitchCase,
   mutateDuplicateNodes,
   mutateInsertNode,
@@ -36,6 +34,7 @@ import {
   mutateUpdateProperty,
   mutateUpdateStyle,
   mutateWrapNode,
+  openBatchLane,
   redo,
   transactDoc,
   undo,
@@ -212,10 +211,10 @@ describe("replay with no checkpoint to start from", () => {
 
 // ─── The batch's own history cap ─────────────────────────────────────────────
 
-describe("endBatch at the history limit", () => {
-  /* `pushHistoryEntry` has its own trim, and this is the second one: a batch closes by pushing a
-     snapshot directly, so the cap has to hold on that path too or a long session grows unbounded. */
-  test("closing a batch on a full history drops the oldest entry instead of growing", () => {
+describe("closing a batch lane at the history limit", () => {
+  /* A lane's segment closes through `pushHistoryEntry`, so the cap has to hold on that path too or a
+     long session grows unbounded. */
+  test("closing a segment on a full history drops the oldest entry instead of growing", () => {
     const tab = makeTab();
     // 99 edits + the initial snapshot = HISTORY_LIMIT entries.
     for (let i = 0; i < 99; i++) {
@@ -223,16 +222,20 @@ describe("endBatch at the history limit", () => {
     }
     expect(tab.history.snapshots).toHaveLength(100);
 
-    beginBatch(tab);
-    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "id", "batched"));
-    endBatch();
+    const owner = { id: "assistant:local:cap", kind: "assistant", turnId: "cap" } as const;
+    const lane = openBatchLane(owner);
+    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "id", "batched"), {
+      actor: owner,
+    });
+    lane.close();
 
     expect(tab.history.snapshots).toHaveLength(100);
     expect(tab.history.index).toBe(99);
-    // The entry that survived is the batch's, and it is a full snapshot.
-    const last = tab.history.snapshots.at(-1)!;
-    const stored = jsonClone(toRaw(last.document));
-    expect(firstElement(stored).id).toBe("batched");
+    // The entry that survived is the batch's, and undoing it lands on the edit before it.
+    expect(tab.history.snapshots.at(-1)!.actor).toBe(owner.id);
+    undo(tab);
+    const restored = jsonClone(toRaw(tab.doc.document));
+    expect(firstElement(restored).id).toBe("n98");
     disposeTab(tab);
   });
 });

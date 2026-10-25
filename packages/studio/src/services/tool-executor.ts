@@ -9,9 +9,10 @@
  *   happen (`services/harness/chat-reducer.ts`), and each round's request is projected from it, as
  *   it always was, so the provider sees the conversation the panel shows, with whatever the send
  *   path trimmed or sealed before the turn began.
- * - **A batch belongs to the tab it edits** (§3.3). The undo batch opens on the active tab and is
- *   re-anchored after every call whose tools moved to another document, so a turn that edits two
- *   documents gives each its own history step and collab publish.
+ * - **The batch belongs to the assistant** (§3.3). The turn opens a batch lane owned by its actor,
+ *   and every write the turn's tools make joins it, one segment per document written: each document
+ *   gets one history step and one collab publish, whichever tab is active, and a person's edit
+ *   during the turn closes the segment on that document rather than being folded into it.
  * - **The ledger is filed under the last message the turn drew** (§3.2), in this module's `finally`,
  *   so the transcript draws the turn's changed-files summary under it.
  *
@@ -19,7 +20,7 @@
  */
 
 import type { createChatState } from "@jxsuite/ai/chat-state";
-import { DEFAULT_TURN_POLICY, runTurn } from "@jxsuite/ai/harness";
+import { DEFAULT_TURN_POLICY, assistantActorId, runTurn } from "@jxsuite/ai/harness";
 import type { TurnInput, TurnRun } from "@jxsuite/ai/harness";
 import { toChatMessages, toOpenAITools } from "@jxsuite/ai/messages";
 import type { StreamingClient } from "@jxsuite/ai/streaming-client";
@@ -27,7 +28,7 @@ import { createSessionFacts } from "@jxsuite/ai/tools";
 import type { SessionFacts, ToolRegistry } from "@jxsuite/ai/tools";
 
 import type { Tab } from "../tabs/tab";
-import { batchTab, beginBatch, endBatch } from "../tabs/transact";
+import { openBatchLane } from "../tabs/transact";
 import { estimatePromptTokens } from "./context-manager";
 import { fileTurn, openTurnLedger, turnAnchor } from "./ai-writes";
 import { applyHarnessEvent } from "./harness/chat-reducer";
@@ -68,20 +69,16 @@ export async function runAgentLoop({
   const turnUserId = chatState.messages.findLast((m) => m.role === "user")?.id;
   const ledger = openTurnLedger(`turn:${chatState.messages.length}`);
 
-  // Batch all tool-call mutations into a single undo step, anchored on the tab being edited.
-  if (getTab) {
-    beginBatch(getTab());
-  }
-  const reanchorBatch = () => {
-    if (!getTab) {
-      return;
-    }
-    const current = getTab();
-    if (current !== batchTab()) {
-      endBatch();
-      beginBatch(current);
-    }
-  };
+  /* One undo step per document the turn writes. A loop with no `getTab` has no document of its own
+     (the evals), so it gets no lane and each tool is its own entry. The owner's id is the one each
+     call's context will carry, so a tool's write joins the lane by naming `ctx.actor`. */
+  const lane = getTab
+    ? openBatchLane({
+        id: assistantActorId(session.sessionId, ledger.turnId),
+        kind: "assistant",
+        turnId: ledger.turnId,
+      })
+    : null;
 
   /* The placeholder `sendMessage` pushed is round one's message, so the turn answers into it; the
      conversation the turn continues is everything before it. */
@@ -124,7 +121,6 @@ export async function runAgentLoop({
           superseded = true;
           run?.cancel("superseded");
         },
-        reanchor: reanchorBatch,
       }),
       session,
       ledger,
@@ -143,7 +139,7 @@ export async function runAgentLoop({
     run = runTurn(input);
     await run.outcome;
   } finally {
-    endBatch();
+    lane?.close();
     fileTurn(turnAnchor(chatState.messages, turnUserId) ?? "", ledger.writes);
   }
 }

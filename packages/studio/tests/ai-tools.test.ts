@@ -1,9 +1,10 @@
 import "./with-dom.ts";
 import { describe, expect, test } from "bun:test";
 import { createToolRegistry } from "@jxsuite/ai";
+import { createToolContext } from "@jxsuite/ai/tools";
 import { createTab, disposeTab } from "../src/tabs/tab";
 import type { Tab } from "../src/tabs/tab";
-import { beginBatch, endBatch, setTransactGate, undo } from "../src/tabs/transact";
+import { openBatchLane, setTransactGate, undo } from "../src/tabs/transact";
 import { registerAiTools } from "../src/services/ai-tools";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
@@ -285,13 +286,13 @@ describe("ai-tools — style & structure", () => {
 /*
  * There is no `open_document` block here any more: the tool is the projection of the
  * `document.open` record (`tests/document-open-command.test.ts`). The batching test below stays,
- * with the tab switch made the way the loop now sees it — `tool-executor.ts` re-anchors the batch
- * after EVERY tool, so the switch is a plain change of the active tab.
+ * with the tab switch a plain change of the active tab: the loop's lane belongs to the assistant,
+ * not to a tab, so nothing has to follow the switch.
  */
 describe("ai-tools — batching across a tab switch", () => {
   test("cross-document edits stay undoable inside a batch (mid-loop tab switch)", async () => {
-    // Reproduces the batching bug: the agent loop opens ONE batch on the tab active at start.
-    // Without the re-anchor, edits to a tab opened mid-loop get no history snapshot.
+    // The agent loop opens ONE lane for the turn, and each tool names the turn's actor, so the
+    // Second document gets a segment of its own on its first write.
     const tabA = createTab({
       document: { tagName: "div", children: [{ tagName: "h1", textContent: "A" }] },
       id: "pages/index.json",
@@ -309,21 +310,17 @@ describe("ai-tools — batching across a tab switch", () => {
       validate: async () => [],
     });
 
-    // Simulate the agent loop: one batch opened on the tab active at loop start (tab A).
-    beginBatch(tabA);
+    // Simulate the agent loop: one lane for the turn, owned by the actor each call names.
+    const ctx = createToolContext();
+    const lane = openBatchLane(ctx.actor);
 
-    // Edit tab A.
-    await registry.execute("set_text", { path: ["children", 0], value: "A edited" });
-    // Switch to tab B mid-loop, as the loop's `reanchorBatch` does after any tool moved the
-    // Active tab: flush A's batch and open one on B.
+    // Edit tab A, switch to tab B mid-loop, edit tab B.
+    await registry.execute("set_text", { path: ["children", 0], value: "A edited" }, ctx);
     active = tabs["pages/about.json"];
-    endBatch();
-    beginBatch(active);
-    // Edit tab B.
-    await registry.execute("set_text", { path: ["children", 0], value: "B edited" });
+    await registry.execute("set_text", { path: ["children", 0], value: "B edited" }, ctx);
 
-    // Loop end.
-    endBatch();
+    // Loop end: one entry per document, in the order each was first written.
+    expect(lane.close().map((receipt) => receipt.tab)).toEqual([tabA, tabB]);
 
     // Both documents reflect the edits.
     expect(childList(childAt(tabA.doc.document, 0))[0]).toBe("A edited");

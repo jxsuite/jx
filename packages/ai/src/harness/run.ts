@@ -137,6 +137,15 @@ function createEventQueue() {
 }
 
 /**
+ * The id a turn's {@link Actor} carries: `assistant:<sessionId|local>:<turnId>`. A host that keys
+ * anything on the actor before the turn starts (Studio's batch lane, specs/ai.md §3.3) builds it
+ * here, so the key it opens cannot drift from the one each call's context will name.
+ */
+export function assistantActorId(sessionId: string | null, turnId: string): string {
+  return `assistant:${sessionId ?? "local"}:${turnId}`;
+}
+
+/**
  * Start one turn. It begins at once and runs to its end whether or not anyone reads its events;
  * `onEvent` hears each one synchronously, in order, before the engine takes its next step.
  *
@@ -182,7 +191,7 @@ export function runTurn(input: TurnInput): TurnRun {
   const session = input.session ?? createSessionFacts();
   const ledger = input.ledger ?? createLedger();
   const sessionId = input.sessionId === undefined ? session.sessionId : input.sessionId;
-  const actorId = `assistant:${sessionId ?? "local"}:${turnId}`;
+  const actorId = assistantActorId(sessionId, turnId);
   const actor: Actor = input.modelInfo
     ? { id: actorId, kind: "assistant", model: input.modelInfo.model, sessionId, turnId }
     : { id: actorId, kind: "assistant", sessionId, turnId };

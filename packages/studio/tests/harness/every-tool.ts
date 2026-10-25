@@ -57,12 +57,11 @@ export async function withEveryTool<T>(fn: (tools: EveryTool) => T | Promise<T>)
 
   const hand = createToolRegistry();
   registerAskTool(hand);
-  registerImportTools(hand, { getTab: () => null });
+  registerImportTools(hand, {});
   registerAiTools(hand, { getTab: () => null, validate: async () => [] });
   registerProjectTools(hand, {
     adoptProject: async () => {},
     findOpenTab: () => null,
-    getTab: () => null,
     reloadTab: async () => {},
     validate: async () => [],
   });

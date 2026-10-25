@@ -346,10 +346,7 @@ function finish(result: { root: string; config: ProjectConfig } | null) {
  * runs this same sequence itself.
  */
 async function finishCreated(result: { root: string; config: ProjectConfig }) {
-  const { adopted, error, openedElsewhere } = await adoptCreatedProject(result.root, {
-    // The wizard runs outside the agent loop — there is never a batch to flush and re-anchor.
-    getTab: () => null,
-  });
+  const { adopted, error, openedElsewhere } = await adoptCreatedProject(result.root);
   if (!adopted && !openedElsewhere) {
     notify.warn(
       "Created the project, but could not open it here.",

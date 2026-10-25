@@ -64,7 +64,6 @@ function makeHarness(
   const ctx: ProjectToolsCtx = {
     adoptProject: async () => {},
     findOpenTab: () => null,
-    getTab: () => null,
     reloadTab: async () => {},
     validate: async () => [],
     ...ctxOverrides,

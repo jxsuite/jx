@@ -236,22 +236,20 @@ describe("applyHarnessEvent", () => {
 });
 
 describe("studioTurnHooks", () => {
-  test("after a call, the batch follows the document the tools moved to", () => {
+  test("after a call in the conversation on screen, nothing happens", () => {
     const effects: string[] = [];
     const hooks = studioTurnHooks({
       onSuperseded: () => effects.push("onSuperseded"),
-      reanchor: () => effects.push("reanchor"),
       superseded: () => false,
     });
     hooks.afterTool?.({ callId: "c", name: "n", result: { success: true } });
-    expect(effects).toEqual(["reanchor"]);
+    expect(effects).toEqual([]);
   });
 
-  test("after a call into a replaced conversation, the turn stops and nothing is re-anchored", () => {
+  test("after a call into a replaced conversation, the turn stops", () => {
     const effects: string[] = [];
     const hooks = studioTurnHooks({
       onSuperseded: () => effects.push("onSuperseded"),
-      reanchor: () => effects.push("reanchor"),
       superseded: () => true,
     });
     hooks.afterTool?.({ callId: "c", name: "n", result: { success: true } });
@@ -261,7 +259,6 @@ describe("studioTurnHooks", () => {
   test("a lapsed hosted grant re-probes; any other stream error does not", () => {
     const hooks = studioTurnHooks({
       onSuperseded: mock(() => {}),
-      reanchor: mock(() => {}),
       superseded: () => false,
     });
     hooks.onStreamError?.({ message: "Upstream 500", code: "cf_upstream_error" });

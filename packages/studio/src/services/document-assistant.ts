@@ -130,7 +130,6 @@ export function createDocumentAssistant() {
   });
   registerImportTools(innerRegistry, {
     adoptProject,
-    getTab: () => activeTab.value,
     // Same re-keying as `create_project`: an import bootstraps a project, so the bootstrap
     // Conversation has to follow it out of the unscoped store.
     onProjectAdopted: (root: string) => {
@@ -140,7 +139,6 @@ export function createDocumentAssistant() {
     },
   });
   registerProjectTools(innerRegistry, {
-    getTab: () => activeTab.value,
     renderCheck: probeRender,
     getProjectStyle,
     findOpenTab,

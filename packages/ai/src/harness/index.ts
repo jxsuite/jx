@@ -16,7 +16,7 @@
 export { LaneBusyError, createTurnLock } from "./lock.ts";
 export { fromStreamingClient, joinSystem } from "./model.ts";
 export { CHARS_PER_TOKEN, DEFAULT_TURN_POLICY } from "./policy.ts";
-export { runTurn } from "./run.ts";
+export { assistantActorId, runTurn } from "./run.ts";
 
 export type {
   HarnessEvent,

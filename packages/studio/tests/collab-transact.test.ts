@@ -5,11 +5,11 @@ import { jsonClone } from "../src/utils/studio-utils";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { resetCollabForTests } from "../src/collab/collab-session";
 import {
-  beginBatch,
-  endBatch,
+  isBatched,
   mutateInsertNode,
   mutateUpdateFrontmatter,
   mutateUpdateProperty,
+  openBatchLane,
   transact,
   transactDoc,
   undo,
@@ -28,6 +28,9 @@ const DOC: JxMutableNode = {
 };
 
 const PATH = "pages/page.json";
+const SECOND = "pages/second.json";
+
+const assistant = { id: "assistant:local:collab", kind: "assistant", turnId: "collab" } as const;
 
 async function openAttached(hub: ReturnType<typeof createMockCollabHub>) {
   installMockPlatform({ collab: hub.capability });
@@ -177,10 +180,15 @@ describe("batching", () => {
     hub.serverDoc(PATH).on("update", () => {
       serverTransactions += 1;
     });
-    beginBatch(tab);
-    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Step 1"));
-    transactDoc(tab, (t) => mutateInsertNode(t, [], 2, { tagName: "step-two" }));
-    endBatch();
+    const lane = openBatchLane(assistant);
+    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Step 1"), {
+      actor: assistant,
+    });
+    transactDoc(tab, (t) => mutateInsertNode(t, [], 2, { tagName: "step-two" }), {
+      actor: assistant,
+    });
+    expect(serverTransactions).toBe(0);
+    lane.close();
     await settleCollab();
 
     expect(serverTransactions).toBe(1);
@@ -192,5 +200,49 @@ describe("batching", () => {
     expect(childNode(doc, 0).textContent).toBe("Title");
     expect(doc.children).toHaveLength(2);
     expect(yDocToJson(hub.serverDoc(PATH))).toEqual(tabJson(tab));
+  });
+});
+
+describe("batching beside a person's edits", () => {
+  test("a person's edit on the batched tab publishes after the assistant's buffered ops", async () => {
+    /* The assistant's ops are buffered until its segment closes, and the person's edit closes it
+       first. Published the other way round, the Y tree would apply the person's insert at an index
+       computed after the assistant's, and the shared document would diverge from the tab. */
+    const hub = createMockCollabHub();
+    const tab = await openAttached(hub);
+    const lane = openBatchLane(assistant);
+    transactDoc(tab, (t) => mutateInsertNode(t, [], 0, { tagName: "assistant-first" }), {
+      actor: assistant,
+    });
+
+    transactDoc(tab, (t) => mutateInsertNode(t, [], 1, { tagName: "person-second" }));
+
+    expect(isBatched(tab)).toBe(false);
+    expect(yDocToJson(hub.serverDoc(PATH))).toEqual(tabJson(tab));
+    expect(childNode(tabJson(tab), 0).tagName).toBe("assistant-first");
+    expect(childNode(tabJson(tab), 1).tagName).toBe("person-second");
+    lane.close();
+  });
+
+  test("a person's edit on another collab tab publishes at once, not into the batch", async () => {
+    /* The batch used to be global, so the second tab's edit was buffered on ITS session and only
+       the batched tab's buffer was ever flushed: the person's change never reached the room. */
+    const hub = createMockCollabHub();
+    const tab = await openAttached(hub);
+    const other = openTab({ document: structuredClone(DOC), documentPath: SECOND, id: SECOND });
+    await settleCollab();
+    const lane = openBatchLane(assistant);
+    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Assistant"), {
+      actor: assistant,
+    });
+
+    transactDoc(other, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Person"));
+
+    const room = yDocToJson(hub.serverDoc(SECOND));
+    expect(childNode(room, 0).textContent).toBe("Person");
+    lane.close();
+    await settleCollab();
+    const batched = yDocToJson(hub.serverDoc(PATH));
+    expect(childNode(batched, 0).textContent).toBe("Assistant");
   });
 });
