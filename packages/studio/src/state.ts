@@ -154,19 +154,9 @@ export function pathsEqual(a: JxPath | null, b: JxPath | null) {
   return a.every((v, i) => v === b[i]);
 }
 
-/**
- * Returns true if `path` is an ancestor of (or equal to) `descendant`.
- *
- * @param {JxPath} path
- * @param {JxPath} descendant
- * @returns {boolean}
- */
-export function isAncestor(path: JxPath, descendant: JxPath) {
-  if (path.length > descendant.length) {
-    return false;
-  }
-  return path.every((v, i) => v === descendant[i]);
-}
+/* Lives beside the doc-op vocabulary (`@jxsuite/schema/doc-ops`), with the other structural-path
+   helpers; re-exported for the many callers that import it from here. */
+export { isAncestor } from "@jxsuite/schema/doc-ops";
 
 // ─── Tree flattening (for layer panel) ────────────────────────────────────────
 

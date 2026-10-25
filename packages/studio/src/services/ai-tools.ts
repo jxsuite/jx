@@ -11,6 +11,8 @@
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import type { ToolContext, ToolRegistry, ToolResult } from "@jxsuite/ai/tools";
 import type { JsonObject, JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import { coerceIndex, insertionSlot, isAncestor, isSpliceablePath } from "@jxsuite/schema/doc-ops";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "../state";
 import type { Tab } from "../tabs/tab";
 import {
@@ -20,6 +22,7 @@ import {
   mutateRemoveDef,
   mutateUpdateProperty,
   mutateUpdateStyle,
+  planMove,
   transactDoc,
 } from "../tabs/transact";
 import type { JxNodeValue } from "../tabs/transact";
@@ -49,6 +52,70 @@ const PATH_DESCRIPTION =
  */
 function nodeAt(doc: JxMutableNode, path: JxPath): JxMutableNode | undefined {
   return getNodeAtPath(doc, path);
+}
+
+/**
+ * A path as the model wrote it, with each index after a `"children"` segment that was written as a
+ * canonical numeric string (`"0"`, `"12"`) read as its number. The tool schema admits strings in a
+ * path because keys are strings, and the registry's validator admits a numeric string where an
+ * integer is declared; either way `["children", "1"]` resolves (an array answers `"1"` as it does
+ * `1`) and then fails every splice test downstream, which is how an edit succeeded without effect.
+ *
+ * @param {JxPath} path
+ * @returns {JxPath}
+ */
+function coercePath(path: JxPath): JxPath {
+  return path.map((segment, at) => {
+    const index = at > 0 && path[at - 1] === "children" ? coerceIndex(segment) : null;
+    return index ?? segment;
+  });
+}
+
+/** Refusal for an index that is not a non-negative integer, naming the argument and its value. */
+function indexError(name: string, value: JsonValue | undefined): ToolResult {
+  return {
+    success: false,
+    error: `${name} must be a non-negative integer, such as 0 or 2 (got ${JSON.stringify(value)}).`,
+  };
+}
+
+/** What {@link elementAt} answers: the element, or the refusal to hand back as the tool's result. */
+type ElementLookup = { node: JxMutableNode; refusal?: never } | { refusal: ToolResult };
+
+/**
+ * The element `path` names, or the sentence refusing a write there. A key set on a text child or a
+ * children array lands where nothing renders it, so the write would report success and change
+ * nothing; a primitive value cannot hold keys at all.
+ *
+ * @param {JxMutableNode} doc
+ * @param {JxPath} path
+ * @param {string} name - The argument the path came from, as the model knows it
+ * @returns {ElementLookup}
+ */
+function elementAt(doc: JxMutableNode, path: JxPath, name = "path"): ElementLookup {
+  const node = nodeAt(doc, path);
+  const where = `${name} ${JSON.stringify(path)}`;
+  if (node === undefined) {
+    return { refusal: { success: false, error: `No node exists at ${where}.` } };
+  }
+  if (Array.isArray(node)) {
+    return {
+      refusal: {
+        success: false,
+        error: `${where} points at a children array, not a node. Drop the trailing "children" segment.`,
+      },
+    };
+  }
+  if (!isNonNullObject(node)) {
+    const what = isString(node) ? "a text child" : "a value";
+    return {
+      refusal: {
+        success: false,
+        error: `${where} points at ${what}, not a node. Address the element that holds it.`,
+      },
+    };
+  }
+  return { node };
 }
 
 /** Steering error for document tools called with no active tab. */
@@ -208,7 +275,8 @@ export function registerAiTools(
         /* SAFETY: a strict tool runs only after the registry's `validate()` passed, which refuses
            a `path` that is present but not an array. Its items are not checked; a key that does
            not resolve makes `nodeAt` answer undefined, reported just below. */
-        const { path } = args as { path?: JxPath };
+        const { path: written } = args as { path?: JxPath };
+        const path = written && coercePath(written);
         const node = path && path.length > 0 ? nodeAt(tab.doc.document, path) : tab.doc.document;
         if (node === undefined) {
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
@@ -254,11 +322,20 @@ export function registerAiTools(
         /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `path` is a
            present array and `key` a present string. `value` declares no type, so it is any JSON
            value or absent, all of which `JxNodeValue` includes. A `path` whose items do not resolve
-           is caught by `nodeAt` just below. */
-        const { path, key, value } = args as { path: JxPath; key: string; value?: JxNodeValue };
-        const node = nodeAt(tab.doc.document, path);
-        if (node === undefined) {
-          return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
+           is caught by `elementAt` just below. */
+        const {
+          key,
+          path: written,
+          value,
+        } = args as {
+          key: string;
+          path: JxPath;
+          value?: JxNodeValue;
+        };
+        const path = coercePath(written);
+        const target = elementAt(tab.doc.document, path);
+        if (target.refusal) {
+          return target.refusal;
         }
         return applyAndValidate(
           ctx,
@@ -303,19 +380,19 @@ export function registerAiTools(
           return noDocError();
         }
         /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `parentPath` is
-           a present array, `node` a present object, and `index` a present number — or a numeric
-           string, which the validator also admits for an integer and `splice` coerces alike.
-           `node` is a model-written tree whose shape the schema check after the write judges, and
-           a `parentPath` that does not resolve is caught just below. */
-        const {
-          parentPath,
-          index,
-          node: childNode,
-        } = args as {
-          parentPath: JxPath;
-          index: number;
+           a present array and `node` a present object. `node` is a model-written tree whose shape
+           the schema check after the write judges, and a `parentPath` that does not resolve is
+           caught just below. `index` is read untyped: the validator admits a numeric string for an
+           integer, so `coerceIndex` decides what it names. */
+        const { node: childNode, parentPath: writtenParent } = args as {
           node: JxMutableNode;
+          parentPath: JxPath;
         };
+        const parentPath = coercePath(writtenParent);
+        const index = coerceIndex(args.index);
+        if (index === null || index < 0) {
+          return indexError("index", args.index);
+        }
         const parent = nodeAt(tab.doc.document, parentPath);
         if (parent === undefined) {
           return { success: false, error: `No node exists at path ${JSON.stringify(parentPath)}.` };
@@ -338,17 +415,23 @@ export function registerAiTools(
               `pass parentPath: ["children",0,"children",1].`,
           };
         }
+        const target = elementAt(tab.doc.document, parentPath, "parentPath");
+        if (target.refusal) {
+          return target.refusal;
+        }
         if (parent.children !== undefined && !Array.isArray(parent.children)) {
           return {
             success: false,
             error: "Cannot insert into mapped-array children; edit the map template instead.",
           };
         }
+        // Past the end appends, and the summary names the slot the node really landed in.
+        const slot = insertionSlot(index, parent.children?.length ?? 0);
         return applyAndValidate(
           ctx,
           tab,
-          (t) => mutateInsertNode(t, parentPath, index, childNode),
-          `Inserted node at ${JSON.stringify([...parentPath, "children", index])}.`,
+          (t) => mutateInsertNode(t, parentPath, slot, childNode),
+          `Inserted node at ${JSON.stringify([...parentPath, "children", slot])}.`,
           validate,
           renderCheck,
           styleOf(),
@@ -397,10 +480,23 @@ export function registerAiTools(
         /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `path` is a
            present array and `property` a present string; a `path` that does not resolve is caught
            just below. `value` is read untyped and stringified. */
-        const { path, property } = args as { path: JxPath; property: string };
+        const { path: written, property } = args as { path: JxPath; property: string };
         const { value } = args;
-        if (nodeAt(tab.doc.document, path) === undefined) {
-          return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
+        const path = coercePath(written);
+        const target = elementAt(tab.doc.document, path);
+        if (target.refusal) {
+          return target.refusal;
+        }
+        /* A nested key is a whole rule (`@media …`, `:hover`, `&.active`, `[open]`) whose value is an
+           object; written here it would be stringified to "[object Object]". */
+        if (/^[@:&[]/.test(property)) {
+          return {
+            success: false,
+            error:
+              `"${property}" is a nested style rule (a media query, pseudo-class or selector), ` +
+              'which set_style cannot write. Use set_property with key "style" and the whole ' +
+              "style object instead.",
+          };
         }
         const prop = property;
         const val = value == null ? undefined : String(value);
@@ -444,9 +540,11 @@ export function registerAiTools(
         /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `path` is a
            present array and `value` a present string; a `path` that does not resolve is caught
            just below. */
-        const { path, value } = args as { path: JxPath; value: string };
-        if (nodeAt(tab.doc.document, path) === undefined) {
-          return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
+        const { path: written, value } = args as { path: JxPath; value: string };
+        const path = coercePath(written);
+        const target = elementAt(tab.doc.document, path);
+        if (target.refusal) {
+          return target.refusal;
         }
         return applyAndValidate(
           ctx,
@@ -618,13 +716,16 @@ export function registerAiTools(
           return noDocError();
         }
         /* SAFETY: a strict tool runs only after the registry's `validate()` passed: both paths are
-           present arrays, and `toIndex` a present number or numeric string (the validator admits
-           both for an integer). Paths that do not resolve are caught just below. */
-        const { fromPath, toParentPath, toIndex } = args as {
-          fromPath: JxPath;
-          toParentPath: JxPath;
-          toIndex: number;
-        };
+           present arrays, and paths that do not resolve are caught just below. `toIndex` is read
+           untyped: the validator admits a numeric string for an integer, so `coerceIndex` decides
+           what it names. */
+        const written = args as { fromPath: JxPath; toParentPath: JxPath };
+        const fromPath = coercePath(written.fromPath);
+        const toParentPath = coercePath(written.toParentPath);
+        const toIndex = coerceIndex(args.toIndex);
+        if (toIndex === null || toIndex < 0) {
+          return indexError("toIndex", args.toIndex);
+        }
         if (fromPath.length < 2) {
           return { success: false, error: "Cannot move the document root." };
         }
@@ -634,17 +735,39 @@ export function registerAiTools(
             error: `No node exists at fromPath ${JSON.stringify(fromPath)}.`,
           };
         }
-        if (nodeAt(tab.doc.document, toParentPath) === undefined) {
+        if (!isSpliceablePath(fromPath)) {
           return {
             success: false,
-            error: `No node exists at toParentPath ${JSON.stringify(toParentPath)}.`,
+            error:
+              `fromPath ${JSON.stringify(fromPath)} is not a child in a children array, so it ` +
+              "cannot be moved. A $switch case or a repeater's template is changed with " +
+              "set_property on the node that holds it.",
           };
         }
+        const target = elementAt(tab.doc.document, toParentPath, "toParentPath");
+        if (target.refusal) {
+          return target.refusal;
+        }
+        if (isAncestor(fromPath, toParentPath)) {
+          return {
+            success: false,
+            error:
+              `Cannot move a node into itself or its own descendants: toParentPath ` +
+              `${JSON.stringify(toParentPath)} is inside fromPath ${JSON.stringify(fromPath)}.`,
+          };
+        }
+        /* SAFETY: `fromPath` resolves and is a splice coordinate, so its parent is a node with a
+           static children array holding it, and `toParentPath` resolves to a node: every case in
+           which `planMove` answers null was refused above. */
+        const planned = planMove(tab.doc.document, fromPath, toParentPath, toIndex)!;
+        // Where the node is after the move, which the summary must name for the next call to use.
+        const { fromIndex, fromParentPath } = planned.inverse;
+        const landed = [...fromParentPath, "children", fromIndex];
         return applyAndValidate(
           ctx,
           tab,
           (t) => mutateMoveNode(t, fromPath, toParentPath, toIndex),
-          `Moved node from ${JSON.stringify(fromPath)} to ${JSON.stringify([...toParentPath, "children", toIndex])}.`,
+          `Moved node from ${JSON.stringify(fromPath)} to ${JSON.stringify(landed)}.`,
           validate,
           renderCheck,
           styleOf(),
