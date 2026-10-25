@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - studio.md#5.1
-requires:
-  - studio/workspaces
+requires: []
 workspaces:
   - packages/studio
 size: M
@@ -14,14 +13,14 @@ size: M
 
 ## Context
 
-**Reconciled with the workspace redesign (2026-10-16).** `plan:studio/workspaces` rewrote §5.1 in place for the Design-only rail (Site, Outline, Data; Files and Packages behind a preference) and left this plan as the owner of §5.1's one remaining open item. Its marker now reads, in its last sentence: "Search does not ship either: its record is registered with `when: NOT_YET_BUILT` and a placeholder render, so there is no Search surface to reach." Three facts below are superseded and are not to be implemented as written:
+**Reconciled with the workspace redesign (2026-10-16).** The workspace redesign (§22, landed) rewrote §5.1 in place for the Design-only rail (Site, Outline, Data; Files and Packages behind a preference) and left this plan as the owner of §5.1's one remaining open item. Its marker now reads, in its last sentence: "Search does not ship either: its record is registered with `when: NOT_YET_BUILT` and a placeholder render, so there is no Search surface to reach." Three facts below are superseded and are not to be implemented as written:
 
 - **The Icon column is gone.** The rewrite removed it from the table rather than correcting it, so this plan's second part is closed.
 - **There is no rail slot and no ⌘2.** `⌘1`–`⌘5` select workspaces and `panel.focus.<id>` carries no chord (§5.1, §22.1), and Search is one of the panels registered `rail: false` whatever the developer-panels preference says. The Open decision on where Search sits is resolved below.
 - **§5.7 is the Site Panel.** Search's contract becomes §5.8.
-- **The rail-slot contradiction is closed.** The Design slice of `plan:studio/workspaces` (`WKS1.2`) registered the record `rail: false`, so `railPanelSet()` and `railDeclarations()` no longer list it and `tests/panel-registry.test.ts` asserts a synthetic hidden panel rather than Search for the "`when` does not reshuffle the roster" rule. What is left of this plan is the panel itself.
+- **The rail-slot contradiction is closed.** The workspace redesign's Design slice (§22.4) registered the record `rail: false`, so `railPanelSet()` and `railDeclarations()` no longer list it and `tests/panel-registry.test.ts` asserts a synthetic hidden panel rather than Search for the "`when` does not reshuffle the roster" rule. What is left of this plan is the panel itself.
 
-The implementation and test steps that assume a rail button, `railIds()` containing `search`, or ⌘2 are re-detailed against the shipped rail once the workspace slices that change the rail have landed, which is why this plan requires that one. The original context follows.
+The implementation and test steps that assume a rail button, `railIds()` containing `search`, or ⌘2 are re-detailed against the shipped rail: the workspace slices that change the rail have landed (§22.4), so nothing blocks the re-detailing. The original context follows.
 
 `specs/studio.md` §5.1, line 315, as the census found it (the section was unmarked before the census):
 
