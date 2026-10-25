@@ -25,6 +25,9 @@
 import type { LiveMessage } from "@jxsuite/ai/messages";
 import { createLedger } from "@jxsuite/ai/tools";
 import type { AiWrite, WriteLedger } from "@jxsuite/ai/tools";
+import { undo } from "../tabs/transact";
+import type { BatchReceipt } from "../tabs/transact";
+import type { Tab } from "../tabs/tab";
 
 export type { AiWrite } from "@jxsuite/ai/tools";
 
@@ -33,6 +36,8 @@ export interface AiTurn {
   /** The id of the assistant message the turn produced — how the panel finds its own ledger. */
   id: string;
   writes: AiWrite[];
+  /** Where each of the turn's undo steps landed, oldest first: what Restore takes back. */
+  batches: BatchReceipt[];
 }
 
 /** Completed turns, oldest first. Bounded: a session's history is the session store's job. */
@@ -70,13 +75,18 @@ export function openTurnLedger(turnId: string): TurnLedger {
  *
  * @param {string} anchor - The message the turn's changes are drawn under
  * @param {readonly AiWrite[]} writes - The turn's ledger
+ * @param {readonly BatchReceipt[]} [batches] - The receipts its batch lane returned on close
  * @returns {AiWrite[]} What was filed
  */
-export function fileTurn(anchor: string, writes: readonly AiWrite[]): AiWrite[] {
+export function fileTurn(
+  anchor: string,
+  writes: readonly AiWrite[],
+  batches: readonly BatchReceipt[] = [],
+): AiWrite[] {
   if (writes.length === 0) {
     return [];
   }
-  const turn: AiTurn = { id: anchor, writes: [...writes] };
+  const turn: AiTurn = { batches: [...batches], id: anchor, writes: [...writes] };
   turns.push(turn);
   while (turns.length > MAX_TURNS) {
     turns.shift();
@@ -93,6 +103,78 @@ export function fileTurn(anchor: string, writes: readonly AiWrite[]): AiWrite[] 
  */
 export function writesForTurn(id: string): AiWrite[] {
   return turns.find((turn) => turn.id === id)?.writes ?? [];
+}
+
+/**
+ * Undo every step one turn left, across every document it wrote, or nothing at all.
+ *
+ * `ai.md` §3.2. The turn's batch lane closed one step per document it wrote (two when a person's
+ * edit split it), and each receipt names its entry. A step is taken back only while it is the top
+ * of its tab's history, newest first, so Restore never undoes an edit that is not the turn's: a
+ * person's edit made since, a step already undone, a closed tab or a shared document whose undo the
+ * session owns each refuse the whole Restore with a sentence naming the document. Every receipt is
+ * checked before anything is undone, because a Restore that took back SOME of a turn would be worse
+ * than one that refused.
+ *
+ * @param {string} id - The message the turn is filed under
+ * @returns {string | Tab[]} Why it refused, or the tabs it undid
+ */
+export function restoreTurn(id: string): string | Tab[] {
+  const turn = turns.find((filed) => filed.id === id);
+  const lost = "There is no longer a record of what that turn changed.";
+  if (!turn) {
+    return lost;
+  }
+  const disk = turn.writes.filter((w) => w.disk).map((w) => w.path);
+  if (disk.length > 0) {
+    return (
+      `Cannot restore: ${disk.join(", ")} ${disk.length === 1 ? "was" : "were"} written straight ` +
+      "to disk, which undo cannot reach."
+    );
+  }
+  if (turn.batches.length === 0) {
+    return lost;
+  }
+  const byTab = new Map<Tab, BatchReceipt[]>();
+  for (const receipt of turn.batches) {
+    byTab.set(receipt.tab, [...(byTab.get(receipt.tab) ?? []), receipt]);
+  }
+  for (const [tab, receipts] of byTab) {
+    const refusal = refuseTab(tab, receipts);
+    if (refusal) {
+      return refusal;
+    }
+  }
+  for (const [tab, receipts] of byTab) {
+    for (const _ of receipts) {
+      undo(tab);
+    }
+  }
+  return [...byTab.keys()];
+}
+
+/** Why `tab`'s steps from one turn cannot be undone, or null when they are its newest entries. */
+function refuseTab(tab: Tab, receipts: readonly BatchReceipt[]): string | null {
+  const path = tab.documentPath ?? "(untitled)";
+  if (tab.scope.active === false) {
+    return `Cannot restore: ${path} was closed after that turn.`;
+  }
+  if (receipts.some((receipt) => receipt.entry === null)) {
+    return (
+      `Cannot restore: ${path} is shared live, and Restore cannot check its undo history. ` +
+      "Undo it in the document instead."
+    );
+  }
+  const { index, snapshots } = tab.history;
+  const top = snapshots.slice(index - receipts.length + 1, index + 1);
+  const matches =
+    index - receipts.length >= 0 && receipts.every((receipt, at) => top[at] === receipt.entry);
+  if (matches) {
+    return null;
+  }
+  return snapshots.indexOf(receipts.at(-1)!.entry!) > index
+    ? `Cannot restore: that turn's change to ${path} was already undone.`
+    : `Cannot restore: ${path} has edits made since that turn began, which Restore would undo too.`;
 }
 
 /**

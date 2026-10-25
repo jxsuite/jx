@@ -208,7 +208,7 @@ describe("batch end hook", () => {
 
     const lane = openBatchLane(owner);
     transactDoc(tab, (t) => mutateInsertNode(t, [], 1, { tagName: "span" }), { actor: owner });
-    expect(lane.close()).toEqual([]);
+    expect(lane.close().map((receipt) => receipt.entry)).toEqual([null]);
 
     expect(tab.history.snapshots).toHaveLength(1);
     setHistoryDelegate(tab, null);

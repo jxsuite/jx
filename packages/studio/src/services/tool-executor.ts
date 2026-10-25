@@ -139,7 +139,7 @@ export async function runAgentLoop({
     run = runTurn(input);
     await run.outcome;
   } finally {
-    lane?.close();
-    fileTurn(turnAnchor(chatState.messages, turnUserId) ?? "", ledger.writes);
+    const batches = lane?.close() ?? [];
+    fileTurn(turnAnchor(chatState.messages, turnUserId) ?? "", ledger.writes, batches);
   }
 }

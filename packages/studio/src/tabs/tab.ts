@@ -132,7 +132,7 @@ export interface StoredLivePreview {
   error: string | null;
 }
 
-interface HistorySnapshot {
+export interface HistorySnapshot {
   /** Full document at this state (checkpoint), or null when the ops describe the transition. */
   document: JxMutableNode | null;
   /** Selection after this state's transaction — the whole set, so a batch undoes back to it. */
@@ -193,6 +193,8 @@ export interface Tab {
   scope: {
     stop: () => void;
     run: <T>(fn: () => T) => T | undefined;
+    /** False once {@link disposeTab} stopped it: how a record that outlives the tab can tell. */
+    readonly active?: boolean;
   };
   doc: {
     document: JxMutableNode;
