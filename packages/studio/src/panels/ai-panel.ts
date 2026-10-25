@@ -28,9 +28,10 @@
 
 import { effect, effectScope } from "../reactivity";
 import { createDocumentAssistant } from "../services/document-assistant";
-import { writesForTurn } from "../services/ai-writes";
+import { restoreTurn } from "../services/ai-writes";
+import { isString } from "@jxsuite/schema/guards";
 import { notify } from "../services/notify";
-import { undo } from "../tabs/transact";
+import type { NotifyOptions } from "../services/notify";
 import { activeTab } from "../workspace/workspace";
 import { setOpenAiKey } from "../services/ai-settings";
 import { hasAiCredentials } from "../services/ai-models";
@@ -319,38 +320,31 @@ async function handleRetry(): Promise<void> {
 /**
  * Undo everything one assistant turn changed — ai.md §3.2's "Restore to here".
  *
- * The loop opens one batch per turn per document, so undoing the turn is undoing that batch. The
- * button is offered by the projection only when every recorded change was transactional; this guard
- * is the second half of the same promise, because a ledger can be trimmed (MAX_TURNS) between the
- * projection and the click and a Restore that silently restored SOME of a turn would be worse than
- * one that refused.
+ * The turn's batch lane left one step per document it wrote, and {@link restoreTurn} takes each
+ * back while it is still the top of its tab's history, or refuses the whole turn with a sentence.
+ * The button is offered by the projection only when every recorded change was transactional; the
+ * refusals are the second half of the same promise, because a ledger can be trimmed (MAX_TURNS) and
+ * a document edited between the projection and the click.
  *
  * @param {string} messageId
  */
 /* Exported so the guard can be exercised directly: the button is not DRAWN for a turn that touched
    disk, which would otherwise make the refusal path unreachable from the panel. */
 export function handleRestore(messageId: string): void {
-  const writes = writesForTurn(messageId);
-  if (writes.length === 0) {
-    notify.warn("There is no longer a record of what that turn changed.", { source: "Assistant" });
+  const restored = restoreTurn(messageId);
+  if (isString(restored)) {
+    notify.warn(restored, { source: "Assistant" });
     return;
   }
-  const disk = writes.filter((w) => w.disk).map((w) => w.path);
-  if (disk.length > 0) {
-    notify.warn(
-      `Cannot restore: ${disk.join(", ")} ${disk.length === 1 ? "was" : "were"} written straight ` +
-        "to disk, which undo cannot reach.",
-      { source: "Assistant" },
-    );
-    return;
+  /* Redo reaches the active tab only, so it is offered only when that is the one tab restored;
+     across documents it would bring back part of the turn. */
+  const [only, ...rest] = restored;
+  const redoable = rest.length === 0 && only === activeTab.value;
+  const options: NotifyOptions = { source: "Assistant" };
+  if (redoable) {
+    options.action = "edit.redo";
   }
-  const tab = activeTab.value;
-  if (!tab) {
-    notify.warn("Open the document that turn edited to restore it.", { source: "Assistant" });
-    return;
-  }
-  undo(tab);
-  notify.success("Restored to before that turn.", { action: "edit.redo", source: "Assistant" });
+  notify.success("Restored to before that turn.", options);
   renderAiPanel();
 }
 

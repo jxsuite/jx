@@ -14,7 +14,7 @@ import { registerAiTools } from "../src/services/ai-tools";
 import type { CandidateDocument } from "../src/services/ai-write-report";
 import { EMPTY_TURN_TEXT, runAgentLoop } from "../src/services/tool-executor";
 import { answerAsk, pendingAsk, registerAskTool, resetAsk } from "../src/services/ai-ask";
-import { resetAiWrites, writesForTurn } from "../src/services/ai-writes";
+import { resetAiWrites, restoreTurn, turnAnchor, writesForTurn } from "../src/services/ai-writes";
 import { projectChip } from "../src/panels/ai-chat/chat-view";
 
 /**
@@ -526,6 +526,10 @@ describe("cross-tab batching", () => {
     expect(second.doc.document.id).toBe("two");
     expect(first.history.snapshots).toHaveLength(beforeFirst + 1);
     expect(second.history.snapshots).toHaveLength(beforeSecond + 1);
+    // The loop filed the lane's receipts with the turn, so Restore takes back both documents.
+    expect(restoreTurn(turnAnchor(chatState.messages)!)).toEqual([first, second]);
+    expect(first.doc.document.id).toBeUndefined();
+    expect(second.doc.document.id).toBeUndefined();
     disposeTab(first);
     disposeTab(second);
   });
