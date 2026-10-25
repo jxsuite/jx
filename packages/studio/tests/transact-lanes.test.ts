@@ -70,7 +70,8 @@ describe("one step per document the lane writes", () => {
     expect(tab.history.snapshots[1]).toMatchObject({ actor: assistant.id, turnId: "t1" });
     expect(receipts).toHaveLength(1);
     expect(receipts[0]!.tab).toBe(tab);
-    expect(receipts[0]).toMatchObject({ entryIndex: 1, turnId: "t1" });
+    expect(receipts[0]!.entry).toBe(tab.history.snapshots[1]!);
+    expect(receipts[0]!.turnId).toBe("t1");
     undo(tab);
     expect(titleOf(tab)).toBe("start");
   });
@@ -110,7 +111,8 @@ describe("one step per document the lane writes", () => {
     write(tab, "two", assistant);
     expect(isBatched(tab, assistant)).toBe(true);
 
-    expect(lane.close().map((receipt) => receipt.entryIndex)).toEqual([1, 2]);
+    const entries = lane.close().map((receipt) => tab.history.snapshots.indexOf(receipt.entry!));
+    expect(entries).toEqual([1, 2]);
   });
 
   test("a write the lane's owner makes after the lane closes is its own step", () => {
@@ -283,7 +285,7 @@ describe("runAsActor", () => {
 });
 
 describe("segments on unusual tabs", () => {
-  test("a history-delegate tab gets no entry, and collab is still told the segment closed", () => {
+  test("a history-delegate tab gets no entry, a receipt naming none, and collab is told", () => {
     const tab = makeTab("a");
     setHistoryDelegate(tab, {
       canRedo: () => false,
@@ -296,8 +298,10 @@ describe("segments on unusual tabs", () => {
     const lane = openBatchLane(assistant);
     write(tab, "mine", assistant);
 
-    expect(lane.close()).toEqual([]);
+    const receipts = lane.close();
 
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]!.entry).toBeNull();
     expect(tab.history.snapshots).toHaveLength(1);
     expect(notified).toEqual([tab]);
     setHistoryDelegate(tab, null);

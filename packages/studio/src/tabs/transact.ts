@@ -21,7 +21,7 @@ import {
 
 import type { JxDocOp, JxDocOpPair, TransactionRecord } from "./patch-ops";
 
-import type { Tab } from "../tabs/tab";
+import type { HistorySnapshot, Tab } from "../tabs/tab";
 import type { JxPath } from "../state";
 
 import type { JsonValue } from "../types";
@@ -557,7 +557,12 @@ export interface BatchLane {
 /** Where one of a lane's segments landed in its tab's history. */
 export interface BatchReceipt {
   readonly tab: Tab;
-  readonly entryIndex: number;
+  /**
+   * The history entry the segment became, compared by identity: its index moves when the history
+   * limit drops the oldest entry, the entry does not. Null on a tab whose undo a history delegate
+   * owns (a shared live document), where the step is the delegate's and no entry names it.
+   */
+  readonly entry: HistorySnapshot | null;
   readonly turnId: string;
 }
 
@@ -695,8 +700,13 @@ function closeForeignSegment(tab: Tab, writer: ActorRef | null): void {
 function closeSegment(tab: Tab, segment: Segment): void {
   _segments.delete(tab);
   const { owner } = segment.lane;
-  // A history delegate owns undo grouping while registered; an entry here would be dead weight.
-  if (!_historyDelegates.has(tab)) {
+  const turnId = owner.turnId ?? "";
+  /* A history delegate owns undo grouping while registered; an entry here would be dead weight.
+     The receipt is still issued, with no entry, so Restore can tell a step it cannot check from a
+     document the turn never wrote. */
+  if (_historyDelegates.has(tab)) {
+    segment.lane.receipts.push({ entry: null, tab, turnId });
+  } else {
     const record: TransactionRecord = {
       docOps: segment.docOps,
       fmOps: segment.fmOps,
@@ -709,7 +719,7 @@ function closeSegment(tab: Tab, segment: Segment): void {
     if (owner.turnId !== undefined) {
       entry.turnId = owner.turnId;
     }
-    segment.lane.receipts.push({ entryIndex: tab.history.index, tab, turnId: owner.turnId ?? "" });
+    segment.lane.receipts.push({ entry, tab, turnId });
   }
   _batchEndNotifier?.(tab);
 }

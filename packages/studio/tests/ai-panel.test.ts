@@ -23,6 +23,7 @@ import { reactive } from "@vue/reactivity";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { LiveMessage } from "@jxsuite/ai/messages";
 import type { SessionMeta } from "../src/services/ai-session-store";
+import type { Tab } from "../src/tabs/tab";
 import { fetchAvailableModels, resetModelCache } from "../src/services/ai-models";
 
 const { platform: mockPlatform } = installMockPlatform();
@@ -663,6 +664,8 @@ describe("ai-panel", () => {
 const { fileTurn, resetAiWrites } = await import("../src/services/ai-writes");
 const { problems, resetNotifications, toasts } = await import("../src/services/notify");
 const { activeTab, closeAllTabs } = await import("../src/workspace/workspace");
+const { mutateUpdateProperty, openBatchLane, transactDoc } = await import("../src/tabs/transact");
+const { createTab, disposeTab } = await import("../src/tabs/tab");
 
 /** File a ledger entry against a message id, the way the agent loop does. */
 function ledger(id: string, writes: { disk: boolean; ok: boolean; path: string }[]) {
@@ -670,6 +673,15 @@ function ledger(id: string, writes: { disk: boolean; ok: boolean; path: string }
     id,
     writes.map((w) => ({ ...w, tool: "write_file" })),
   );
+}
+
+/** Run a turn the way the loop does: write `tab` inside the turn's batch lane and file its receipts. */
+function assistantTurn(id: string, tab: Tab) {
+  const actor = { id: "assistant:local:t1", kind: "assistant", turnId: "t1" } as const;
+  const lane = openBatchLane(actor);
+  transactDoc(tab, (t) => mutateUpdateProperty(t, [], "title", "assistant"), { actor });
+  const writes = [{ disk: false, ok: true, path: tab.documentPath ?? "(untitled)", tool: "x" }];
+  fileTurn(id, writes, lane.close());
 }
 
 /* The loop files its ledger in its `finally`. After a Stop mid-stream the turn's last reactive write
@@ -748,15 +760,34 @@ describe("restore to here", () => {
     chatState.status = "idle";
   });
 
-  test("a transactional turn restores through the tab's history", async () => {
+  test("a transactional turn restores through the tab's history, and offers Redo", async () => {
     pushMessage("assistant", "Done.");
     const { id } = chatState.messages.at(-1)!;
-    ledger(id, [{ disk: false, ok: true, path: "pages/index.json" }]);
+    const tab = activeTab.value!;
+    expect(tab).toBeDefined();
+    const before = tab.history.index;
+    assistantTurn(id, tab);
     await flush(3);
-    expect(activeTab.value).not.toBeNull();
     pointer(q('[part="changes-restore"]')!, "click");
     await flush(3);
     expect(notices()).toContain("Restored to before that turn.");
+    expect(tab.history.index).toBe(before);
+    expect(toasts.at(-1)!.action).toBe("edit.redo");
+  });
+
+  test("a turn restored in a tab that is not the active one offers no Redo", () => {
+    pushMessage("assistant", "Done.");
+    const { id } = chatState.messages.at(-1)!;
+    const tab = createTab({
+      document: { tagName: "div" },
+      documentPath: "pages/other.json",
+      id: "other",
+    });
+    assistantTurn(id, tab);
+    handleRestore(id);
+    expect(notices().at(-1)).toBe("Restored to before that turn.");
+    expect(toasts.at(-1)!.action).toBeUndefined();
+    disposeTab(tab);
   });
 
   test("a turn with no ledger left says so instead of restoring something else", async () => {
@@ -784,13 +815,15 @@ describe("restore to here", () => {
     expect(refusal).toContain("undo cannot reach");
   });
 
-  test("with no tab open it says where to go rather than restoring the wrong document", async () => {
+  test("a turn whose document was closed says so rather than restoring something else", () => {
     pushMessage("assistant", "Done.");
     const { id } = chatState.messages.at(-1)!;
-    ledger(id, [{ disk: false, ok: true, path: "pages/index.json" }]);
+    const tab = activeTab.value!;
+    assistantTurn(id, tab);
+    const path = tab.documentPath ?? "(untitled)";
     closeAllTabs();
     handleRestore(id);
-    expect(notices().at(-1)).toBe("Open the document that turn edited to restore it.");
+    expect(notices().at(-1)).toBe(`Cannot restore: ${path} was closed after that turn.`);
   });
 });
 
