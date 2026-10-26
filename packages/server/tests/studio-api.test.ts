@@ -1238,26 +1238,6 @@ describe("resolve-site", () => {
   });
 });
 
-// ─── find-project endpoint ───────────────────────────────────────────────────
-
-describe("find-project", () => {
-  test("returns 400 when name is missing", async () => {
-    const url = new URL("http://localhost/__studio/find-project");
-    const req = new Request(url, { method: "GET" });
-    const res = await callApi(req, url, FIXTURES);
-    const data = await res.json();
-    expect(data.error).toBe("Missing name");
-  });
-
-  test("returns null path when project not found", async () => {
-    const url = new URL("http://localhost/__studio/find-project?name=nonexistent-xyz-project-404");
-    const req = new Request(url, { method: "GET" });
-    const res = await callApi(req, url, FIXTURES);
-    const data = await res.json();
-    expect(data.path).toBeNull();
-  }, 15_000);
-});
-
 // ─── components — markdown discovery ────────────────────────────────────────
 
 describe("components — markdown discovery", () => {

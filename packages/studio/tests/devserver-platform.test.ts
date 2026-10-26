@@ -9,7 +9,6 @@
 import { clearSeededSettings, seedSettings } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createDevServerPlatform } from "../src/platforms/devserver";
-import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
 import type { ExtensionCatalogEntry, FsEvent, StudioPlatform } from "../src/types";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
@@ -115,74 +114,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  delete pickerSlot.showDirectoryPicker;
 });
-
-// ─── Fake directory handle for openProject ───────────────────────────────────
-
-function fakeDirHandle(name: string, config: JsonObject | null) {
-  return {
-    getFileHandle: async (_file: string) => {
-      if (config === null) {
-        throw new Error("NotFoundError");
-      }
-      return {
-        getFile: async () => ({ text: async () => JSON.stringify(config) }),
-      };
-    },
-    name,
-  };
-}
-
-function setPicker(fn: PickerStub): void {
-  pickerSlot.showDirectoryPicker = fn;
-}
-
-// ─── Fake directory handle for pickDirectory ─────────────────────────────────
-
-/**
- * A picked NEW-project destination. The folder is empty by definition, so the handle carries no
- * project.json — only the location-tag lifecycle the path recovery depends on. `written` holds the
- * id the picker put in the tag, which is what the server matches on.
- */
-function fakeDestHandle(name: string) {
-  const log: TagLog = { created: [], removed: [], written: [] };
-  const handle = {
-    getFileHandle: async (file: string) => {
-      log.created.push(file);
-      return {
-        createWritable: async () => ({
-          close: async () => {},
-          write: async (data: string) => {
-            log.written.push(data);
-          },
-        }),
-      };
-    },
-    name,
-    removeEntry: async (file: string) => {
-      log.removed.push(file);
-    },
-  };
-  return { handle, log };
-}
-
-/** What a picked destination's handle saw happen to its location tag. */
-interface TagLog {
-  created: string[];
-  removed: string[];
-  written: string[];
-}
-
-/** A stubbed chooser, settling with one of the two handle doubles above (or rejecting). */
-type PickerStub = () => Promise<
-  ReturnType<typeof fakeDirHandle> | ReturnType<typeof fakeDestHandle>["handle"]
->;
-
-/* SAFETY: the DOM lib declares no `showDirectoryPicker` (the adapter probes the window for it for
-   the same reason), so this only names the optional slot; the tests write every value it holds and
-   `afterEach` deletes it again. */
-const pickerSlot = window as Window & { showDirectoryPicker?: PickerStub };
 
 /* SAFETY: names only the `EventSource` slot so a fake can stand in it. subscribeFileEvents uses the
    constructor as `new EventSource(url)` and then calls only addEventListener and close on the
@@ -354,106 +286,6 @@ describe("path prefix logic", () => {
   });
 });
 
-// ─── openProject ─────────────────────────────────────────────────────────────
-
-describe("openProject", () => {
-  test("throws when showDirectoryPicker is unavailable", async () => {
-    const p = createDevServerPlatform();
-    expect(p.openProject()).rejects.toThrow(/showDirectoryPicker not available/);
-  });
-
-  test("returns null when the user cancels the picker", async () => {
-    setPicker(async () => {
-      throw Object.assign(new Error("user cancelled"), { name: "AbortError" });
-    });
-    const p = createDevServerPlatform();
-    expect(await p.openProject()).toBeNull();
-  });
-
-  test("rethrows non-abort picker errors", async () => {
-    setPicker(async () => {
-      throw new Error("permission denied");
-    });
-    const p = createDevServerPlatform();
-    expect(p.openProject()).rejects.toThrow("permission denied");
-  });
-
-  test("throws when the folder has no project.json", async () => {
-    setPicker(async () => fakeDirHandle("no-config", null));
-    const p = createDevServerPlatform();
-    expect(p.openProject()).rejects.toThrow(/No project.json found/);
-  });
-
-  test("throws when the site list fetch fails", async () => {
-    setPicker(async () => fakeDirHandle("demo", { name: "Demo" }));
-    route("/__studio/sites", () => json({ error: "nope" }, 500));
-    const p = createDevServerPlatform();
-    expect(p.openProject()).rejects.toThrow(/Failed to fetch site list/);
-  });
-
-  test("matches the config against known sites and activates the project", async () => {
-    const config = { description: "d", name: "Demo Site" };
-    setPicker(async () => fakeDirHandle("site-demo", config));
-    route("/__studio/sites", () =>
-      json([
-        { config: { name: "Other" }, path: "examples/other" },
-        { config, path: "examples/site-demo" },
-      ]),
-    );
-    route("/__studio/activate", () => json({ ok: true }));
-    const p = createDevServerPlatform();
-    const result = await p.openProject();
-    expect(result).not.toBeNull();
-    expect(result!.config).toEqual(config);
-    expect(result!.handle.name).toBe("Demo Site");
-    expect(result!.handle.root).toBe("examples/site-demo");
-    expect(result!.handle.projectConfig).toEqual(config);
-    expect(p.projectRoot).toBe("examples/site-demo");
-    expect(callsTo("/__studio/activate")[0]!.body).toEqual({ root: "examples/site-demo" });
-  });
-
-  test("falls back to handle name from root when config has no name", async () => {
-    const config = { adapter: "static" };
-    setPicker(async () => fakeDirHandle("unnamed", config));
-    route("/__studio/sites", () => json([{ config, path: "deep/nested/unnamed" }]));
-    route("/__studio/activate", () => json({ ok: true }));
-    const p = createDevServerPlatform();
-    const result = await p.openProject();
-    expect(result!.handle.name).toBe("unnamed");
-  });
-
-  test("uses find-project when the config matches no known site", async () => {
-    const config = { name: "Outside" };
-    setPicker(async () => fakeDirHandle("outside-dir", config));
-    route("/__studio/sites", () => json([]));
-    route("/__studio/find-project", (c) => {
-      expect(c.search.get("name")).toBe("outside-dir");
-      return json({ path: "../external/outside-dir" });
-    });
-    route("/__studio/activate", () => json({ ok: true }));
-    const p = createDevServerPlatform();
-    const result = await p.openProject();
-    expect(result!.handle.root).toBe("../external/outside-dir");
-    expect(p.projectRoot).toBe("../external/outside-dir");
-  });
-
-  test("throws when find-project request fails", async () => {
-    setPicker(async () => fakeDirHandle("ghost", { name: "Ghost" }));
-    route("/__studio/sites", () => json([]));
-    route("/__studio/find-project", () => json({ error: "x" }, 500));
-    const p = createDevServerPlatform();
-    expect(p.openProject()).rejects.toThrow(/Could not locate project on disk/);
-  });
-
-  test("throws when find-project returns no path", async () => {
-    setPicker(async () => fakeDirHandle("ghost", { name: "Ghost" }));
-    route("/__studio/sites", () => json([]));
-    route("/__studio/find-project", () => json({ path: null }));
-    const p = createDevServerPlatform();
-    expect(p.openProject()).rejects.toThrow('Could not find project directory "ghost"');
-  });
-});
-
 // ─── probeRootProject ────────────────────────────────────────────────────────
 
 describe("probeRootProject", () => {
@@ -497,84 +329,15 @@ describe("probeRootProject", () => {
 describe("createProject", () => {
   const dest = { kind: "path", parent: "/home/dev/Sites" } as const;
 
-  test("collects a path destination, with no picker when the browser lacks the API", () => {
-    // Typed as the interface, not the concrete literal: the point of the test is that an OPTIONAL
-    // Interface member is absent, which the literal's own type cannot express.
+  test("collects a path destination, and offers neither project picker", () => {
+    // Typed as the interface, not the concrete literal: the point of the test is that OPTIONAL
+    // Interface members are absent, which the literal's own type cannot express.
     const p: StudioPlatform = createDevServerPlatform();
     expect(p.createDestination).toBe("path");
-    // Without showDirectoryPicker there is no path-yielding folder chooser at all, so the modal
-    // Renders a typed Location field instead of a Browse… button.
+    // A dev-server window opens its project from `?project=`, so Open Project is not offered, and
+    // The New Project modal takes a typed Location rather than a Browse… button.
+    expect(p.openProject).toBeUndefined();
     expect(p.pickDirectory).toBeUndefined();
-  });
-
-  test("pickDirectory resolves the picked folder through /__studio/locate-directory", async () => {
-    const { handle, log } = fakeDestHandle("Sites");
-    setPicker(async () => handle);
-    route("/__studio/locate-directory", (c) => {
-      expect(c.search.get("name")).toBe("Sites");
-      // The id written INTO the tag file is what the server is asked to match on.
-      expect(c.search.get("id")).toBe(log.written[0]!);
-      return json({ path: "/home/dev/Sites" });
-    });
-    // The member is spread in at CONSTRUCTION time, so the stub must precede the platform.
-    const p: StudioPlatform = createDevServerPlatform();
-    expect(p.pickDirectory).toBeInstanceOf(Function);
-    expect(await p.pickDirectory!()).toBe("/home/dev/Sites");
-    expect(callsTo("/__studio/locate-directory").length).toBe(1);
-    // The tag is a throwaway with a fixed hidden name — it never outlives the pick.
-    expect(log.created).toEqual([LOCATION_ID_FILE]);
-    expect(log.removed).toEqual([LOCATION_ID_FILE]);
-  });
-
-  /* `null` from pickDirectory is the user cancelling, and nothing else. A lookup that failed
-     used to resolve `null` too, which is how Browse… came to pick a folder and then do nothing:
-     every case below now rejects with a sentence the modal shows under Location. The tag must
-     still be removed each time, since the server never matched it. */
-  test("pickDirectory rejects with the server's problem when the locate route responds non-ok", async () => {
-    const { handle, log } = fakeDestHandle("Elsewhere");
-    setPicker(async () => handle);
-    route("/__studio/locate-directory", () => json({ error: "no home directory" }, 500));
-    const p: StudioPlatform = createDevServerPlatform();
-    await expect(p.pickDirectory!()).rejects.toThrow(
-      'Jx Studio could not look up where "Elsewhere" is: no home directory. Type the folder\'s path into Location instead.',
-    );
-    expect(log.removed).toEqual([LOCATION_ID_FILE]);
-  });
-
-  test("pickDirectory rejects, saying the folder was not found, on a 200 with no path", async () => {
-    const { handle, log } = fakeDestHandle("Outside");
-    setPicker(async () => handle);
-    // The route's own "searched, no folder holds this id" answer: outside $HOME, for one.
-    route("/__studio/locate-directory", () => json({ path: null }));
-    const p: StudioPlatform = createDevServerPlatform();
-    await expect(p.pickDirectory!()).rejects.toThrow(/could not find where "Outside" is/);
-    expect(log.removed).toEqual([LOCATION_ID_FILE]);
-  });
-
-  /* The customer's case: a page no dev server is behind (a packaged `views://` document whose own
-     adapter never registered) has no route to reach, so fetch itself throws. */
-  test("pickDirectory rejects naming the network failure when fetch throws", async () => {
-    const { handle, log } = fakeDestHandle("Sites");
-    setPicker(async () => handle);
-    const unreachable = async (): Promise<Response> => {
-      throw new TypeError("Failed to fetch");
-    };
-    globalThis.fetch = Object.assign(unreachable, { preconnect: originalFetch.preconnect });
-    const p: StudioPlatform = createDevServerPlatform();
-    await expect(p.pickDirectory!()).rejects.toThrow(
-      /could not look up where "Sites" is: Failed to fetch\./,
-    );
-    expect(log.removed).toEqual([LOCATION_ID_FILE]);
-  });
-
-  test("pickDirectory falls back to the status when a non-ok body is not JSON", async () => {
-    const { handle, log } = fakeDestHandle("Sites");
-    setPicker(async () => handle);
-    // A proxy, or an older server without the route, answering with an HTML page.
-    route("/__studio/locate-directory", () => textRes("<!doctype html><h1>Not Found</h1>", 404));
-    const p: StudioPlatform = createDevServerPlatform();
-    await expect(p.pickDirectory!()).rejects.toThrow(/Request failed \(404\)/);
-    expect(log.removed).toEqual([LOCATION_ID_FILE]);
   });
 
   test("posts the options including the destination and returns the server response", async () => {

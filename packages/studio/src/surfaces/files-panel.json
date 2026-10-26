@@ -136,6 +136,18 @@
             }
           ]
         },
+        "address": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "Add ?project= and a project folder's absolute path to this page's address to open it."
+            }
+          ]
+        },
         "welcome": {
           "tagName": "div",
           "attributes": {

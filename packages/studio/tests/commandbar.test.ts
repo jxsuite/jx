@@ -491,7 +491,7 @@ async function openStudioMenu(): Promise<HTMLElement> {
 
 describe("the ⬢ Studio menu", () => {
   test("is the `menu` surface over what declared commandbar/overflow, with chords, and runs the picked one", async () => {
-    ctx = makeContext({ project: { open: true } });
+    ctx = makeContext({ capability: { openProject: true }, project: { open: true } });
     await mountBar();
     const button = await openStudioMenu();
 
@@ -512,7 +512,7 @@ describe("the ⬢ Studio menu", () => {
   });
 
   test("the button is a toggle: a second click closes the menu it opened", async () => {
-    ctx = makeContext({ project: { open: true } });
+    ctx = makeContext({ capability: { openProject: true }, project: { open: true } });
     await mountBar();
     const button = await openStudioMenu();
     expect(studioMenu()).not.toBeNull();
@@ -523,7 +523,7 @@ describe("the ⬢ Studio menu", () => {
   });
 
   test("a gated row is listed disabled, then vanishes in place when `when` turns false", async () => {
-    ctx = makeContext({ project: { open: true } });
+    ctx = makeContext({ capability: { openProject: true }, project: { open: true } });
     await mountBar();
     await openStudioMenu();
     const gated = rowFor("test.overflowGated")!;
@@ -537,7 +537,7 @@ describe("the ⬢ Studio menu", () => {
     expect(studioMenu()).not.toBeNull();
 
     // The menu stays up while its rows reconcile: the gated row leaves, the rest stay.
-    ctx = makeContext();
+    ctx = makeContext({ capability: { openProject: true } });
     toolbar.render();
     await flush();
     await flush();

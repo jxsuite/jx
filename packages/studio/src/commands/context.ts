@@ -31,6 +31,9 @@ export const CAPABILITIES = [
   "gitClone",
   "importSite",
   "openProjectInNewWindow",
+  /* Open Project's gate: a native dialog or the cloud's repository picker. A dev-server window opens
+     its project from `?project=`, so the command is not offered there. */
+  "openProject",
   "dataRows",
   "windowControls",
   "findReferences",
@@ -339,6 +342,7 @@ export function emptyContext(): CommandContext {
       gitClone: false,
       importSite: false,
       openProjectInNewWindow: false,
+      openProject: false,
       dataRows: false,
       windowControls: false,
       findReferences: false,
