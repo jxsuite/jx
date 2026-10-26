@@ -68,6 +68,7 @@ describe("the subpath carries what @jxsuite/site/site-style needs", () => {
       "resolveAtQuery",
       "resolveNestedSelector",
       "schemeSelectors",
+      "spliceNestingSelector",
       "splitSelectorList",
       "transposeCanvasOverlaySelector",
       "transposeCanvasPopoverSelector",
@@ -160,6 +161,18 @@ describe("buildStyleRules classifies what a rule points at", () => {
         target: "unscoped",
         text: "@position-try --flip { inset-block-start: auto }",
       },
+    ]);
+  });
+
+  test("with an & after a context, what follows the last & decides", () => {
+    const rules = css.buildStyleRules(
+      { ".wrap &": { color: "a" }, ".wrap &:hover": { color: "b" }, ".wrap & li": { color: "c" } },
+      { scope: ".s" },
+    );
+    expect(rules.map((r) => [r.selector, r.target])).toEqual([
+      [".wrap .s", "self"],
+      [".wrap .s:hover", "self"],
+      [".wrap .s li", "descendant"],
     ]);
   });
 
