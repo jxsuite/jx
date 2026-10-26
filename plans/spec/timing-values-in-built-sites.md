@@ -4,7 +4,6 @@ disposition: implement
 claims:
   - spec.md#11.3
 requires:
-  - _shared/compiled-server-call
   - compiler/client-external-class-hydration
   - spec/timing-values-in-built-sites-default
 workspaces:
@@ -25,7 +24,7 @@ The trailing `> **Status: Implemented.**` note (line 1236) describes the externa
 
 **Who closes what.** This plan owns the section and does the one piece no other plan claims, the compiler-timed `Request`:
 
-- The `"server"` row closes with `plan:_shared/compiled-server-call` (the compiled call). Its interpreting-host half has landed: the runtime no longer imports a server module in the browser (spec.md §11.4's Security Boundary), and the marker's clause saying it could was deleted then.
+- The `"server"` row's compiled call has landed (compiler.md §6.1, spec.md §11.4), and so has its interpreting-host half: the runtime no longer imports a server module in the browser (spec.md §11.4's Security Boundary), and the marker's clause saying it could was deleted then.
 - The `"client"` row, and the `"compiler"` row's self-contained half, close with `plan:compiler/client-external-class-hydration`. It also routes component documents through `resolvePrototypes` and turns every unresolvable entry into one build error; this plan extends that error list.
 - The unset-`timing` question is settled on paper by `plan:spec/timing-values-in-built-sites-default`, split from this stub because it is a `reconcile` that needs neither prerequisite.
 - The `"compiler"` row's `Request` half is this plan's. It is also `compiler.md` §10's ledger row "`timing: "compiler"`: bake fetch responses into HTML at build time", which `plan:compiler/superseded-ledger-rows` retires by pointing at this section.

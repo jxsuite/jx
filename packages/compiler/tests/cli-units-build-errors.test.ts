@@ -10,7 +10,12 @@ import { runCliCalls, runEntry, setBuildSite } from "./_cli-harness.ts";
 describe("jx cli — build completed with errors", () => {
   it("exits 1 and lists every build error", async () => {
     setBuildSite(() =>
-      Promise.resolve({ errors: ["page A failed", "page B failed"], files: 0, routes: 2 }),
+      Promise.resolve({
+        errors: ["page A failed", "page B failed"],
+        files: 0,
+        routes: 2,
+        serverEntries: [],
+      }),
     );
     const result = await runEntry("cli", ["build", "/tmp/jx-cli-site"]);
     expect(result.exited).toBe(true);

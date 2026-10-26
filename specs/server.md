@@ -53,8 +53,9 @@ Returns the `Bun.serve` server object (`idleTimeout: 120` so SSE heartbeats and 
 1. Builds the site up front via `@jxsuite/compiler/site` `buildSite()` (build errors print, the server still starts)
 2. Serves the built pages from `dist/` via a middleware (`createDistMiddleware`) ahead of the static-source fallback, mapping directory URLs to their `index.html` and injecting the SSE live-reload client into built HTML
 3. Passes `watch: { preReload: () => rebuild(), reloadOnAnyChange: true }` so every change rebuilds the site **before** the reload broadcast — the browser always reloads into fresh output
+4. Answers `POST /_jx/server/<export>` for every entry the last build collected, calling the export as `fn(args, env)` with `env` built as for the extension mounts (§3), and answering as the site worker does: the return value as JSON, `{ ok: false, error }` with status 500 when it throws, and 404 for an export the build did not collect (compiler.md §6.3). A built page calls that route, and `jx dev` has no worker to answer it, so the entry stands in for the worker's server-function routes the way §3's mount dispatch stands in for its mounts
 
-A non-site root gets a plain `createDevServer`. `parseDevArgs` and `createDistMiddleware` are exported for tests; the boot runs only under `import.meta.main`.
+A non-site root gets a plain `createDevServer`. `parseDevArgs`, `createDistMiddleware` and `createServerFunctionMiddleware` are exported for tests; the boot runs only under `import.meta.main`.
 
 ---
 
@@ -66,7 +67,7 @@ The request path is matched in this order (`src/server.ts`), after a leading **d
 1. `GET /__reload` — SSE live reload (when watching)
 2. `POST /__jx_resolve__` — `$prototype`/`$src` proxy
 3. `POST /__jx_server__` — `timing: "server"` function proxy
-4. `/_jx/*` — extension server mounts
+4. `/_jx/*` — extension server mounts; a `/_jx/server/*` path no mount owns falls through to the custom `middleware` (item 6), where `jx dev` answers it (§2)
 5. `/__studio/*` — Studio API (collab WebSocket/probe, activate, AI proxy, site import, code services, then the main studio handler)
 6. Custom `middleware`
 7. Static files (answered from the active project, not the request's: §3.5) — the active project's extension asset mounts ([extensions.md §8.5](./extensions.md)), then the server root, then the active project's `public/`, then the active project root, then npm bare specifiers resolved through the active project's `node_modules` first and the server root's after it (a project pins its own versions, and one outside the root has no other way to reach its packages), honouring each package's `exports`, and bundled on demand with `Bun.build`. Served HTML gets the live-reload client injected (except the Studio shell, which manages its own state); all responses carry `Cache-Control: no-cache`. Content types come from `Bun.file`'s own inference, corrected only where a registration disagrees with it — `.md` carries the `variant` that names its dialect and `.yaml` is `application/yaml` rather than the retired `text/yaml` (`MEDIA_TYPE_BY_EXTENSION` in `@jxsuite/schema/media-type`, shared with `jx preview`); every other extension keeps the inferred type.
@@ -274,10 +275,11 @@ There were four shapes before — `Response.json({error}, {status})`, a bare-tex
 
 **`error` is emitted as a deprecated alias of `detail`, for one release.** That is the whole sequencing device: every existing client reads `body.error`, so emitting both lets the server change shape without a synchronized release across every client call site. The clients follow, then a one-line change deletes the alias. Nothing new is written against it.
 
-**Three places where a problem document would be wrong**, and each stays as it is:
+**Four places where a problem document would be wrong**, and each stays as it is:
 
 - **The code services** (§5) answer **200**. A syntax error in the author's snippet is the _result_ of a lint or a format, not a failure of the request that asked for one.
 - **The AI model catalogue** answers **200** with an `upstreamError` field. It is degraded success: the catalogue is still delivered, from defaults.
+- **The server-function stand-in** (§2) answers `{ ok: false, error }` with status 500 for a function that cannot be called, exactly as the generated site worker does (compiler.md §6.1). A built page calls the worker in production and this route in `jx dev` with the same code, and the reader of that body is that compiled page, not a Studio client with a reader per shape.
 - **In-stream frames are not response bodies.** By the time an SSE `error` frame is written the response has begun with a 200 and no status can change. The adoption there is that the frame **carries** a problem (`problem` beside the existing `message`), rather than being replaced by one. The same reasoning covers the RPC bridge's `{error, id}` envelope in `project-server.ts`.
 
 **The client keeps one reader.** `problemDetail` reads a problem's `detail`, the legacy `error`, and finally the type's `title` — most-specific first, since a `title` describes the type rather than the occurrence. It answers `null` when a body says nothing, so a caller can supply better words than any generic fallback. A problem's `type` also **is** the structured error code the Studio UI already branched on: `problemSlug` derives it, and `installUrl` is the extension member (§3.2) that the `needs-installation-access` type documents.

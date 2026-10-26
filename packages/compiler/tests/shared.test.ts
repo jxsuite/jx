@@ -605,14 +605,19 @@ describe("collectServerEntries", () => {
     expect(collectServerEntries(doc)).toHaveLength(0);
   });
 
-  test("deduplicates by export name", () => {
+  test("returns one record per server entry, in document order", () => {
     const doc = {
+      children: [{ state: { c: { $export: "getMore", $src: "./more.js", timing: "server" } } }],
       state: {
         a: { $export: "getData", $src: "./api.js", timing: "server" },
         b: { $export: "getData", $src: "./api2.js", timing: "server" },
       },
     };
-    expect(collectServerEntries(doc)).toHaveLength(1);
+    expect(collectServerEntries(doc)).toEqual([
+      { exportName: "getData", key: "a", src: "./api.js" },
+      { exportName: "getData", key: "b", src: "./api2.js" },
+      { exportName: "getMore", key: "c", src: "./more.js" },
+    ]);
   });
 });
 

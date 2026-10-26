@@ -109,6 +109,8 @@ Functions marked `timing: "server"` never ship to the browser. In development th
 
 The server imports the module, invokes the export with the arguments object and an `env`, and returns the result as JSON. That `env` is `process.env` with your project's `.dev.vars` merged over it, plus `JX_PROJECT_ROOT`: the same environment the extension mounts below receive, so a function reads a local secret the way a mount does. The server keeps the module loaded once it has imported it, so after you edit a server module, restart the dev server (or the desktop app, which embeds its own) to run your change. In production the same calls hit the generated server handler (see [How compilation works](/docs/framework/build)).
 
+On a site project the built pages make a different call: a `POST` to `/_jx/server/<export>`, the route the deployed worker serves. The dev server has no worker, so it answers that route itself, from the server functions your last build collected. It calls the export with the request body and the same `env`, and answers as the worker does: the return value as JSON, `{ ok: false, error }` with status 500 when the function throws, and 404 for a name the build did not collect. The route needs a `build.adapter`, as it does in production.
+
 Extensions that declare server mounts (for example the data API) are served under `/_jx/*` with the same wire contract as the generated production worker, so data-backed documents work identically in both environments.
 
 ## Static files and npm packages

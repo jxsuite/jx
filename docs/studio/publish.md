@@ -88,7 +88,7 @@ The **status bar** carries the same chain in 24 pixels: its project field shows 
 
 The **deployment adapter** tells the build how to package the output for your target: Static, Bun, Node, Cloudflare Workers, or Cloudflare Pages. It isn't a creation-time decision: set it whenever you know where the site is going, from the **How it is built** picker in **Publish › Hosting**. Switching hosts means switching the adapter; your pages, components, and content stay the same.
 
-Every page is built ahead of time, so what the CDN serves is finished HTML however the site is put together. Pick one of the non-Static adapters and the same build writes a small worker beside those files for your host to run. That worker is what answers the `/_jx/*` routes behind a database, sign-ins, or server functions. A database or sign-ins make an adapter mandatory: the build stops with an error on **Static**. Server functions still build there, but nothing serves them without an adapter. **[Build output and adapters](/docs/framework/site/deployment)** lists what each adapter emits.
+Every page is built ahead of time, so what the CDN serves is finished HTML however the site is put together. Pick one of the non-Static adapters and the same build writes a small worker beside those files for your host to run. That worker is what answers the `/_jx/*` routes behind a database, sign-ins, or server functions. A database, sign-ins or server functions make an adapter mandatory: the build stops with an error on **Static**. **[Build output and adapters](/docs/framework/site/deployment)** lists what each adapter emits.
 
 ## The Publish commands
 

@@ -13,7 +13,13 @@
  */
 
 import { existsSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, normalize, resolve, sep } from "node:path";
+import { errorMessage } from "@jxsuite/schema/parse";
+import type { JsonObject } from "@jxsuite/schema/types";
+import { projectDevEnv } from "./dev-vars.ts";
+import { problem } from "./problem.ts";
+import { callServerExport } from "./resolve.ts";
 import { createDevServer } from "./server.ts";
 import { injectSSE } from "./watch.ts";
 
@@ -90,6 +96,84 @@ export function createDistMiddleware(
   };
 }
 
+/** One server entry the last build collected: the export, and where the site worker imports it from. */
+export interface ServerEntry {
+  exportName: string;
+  /** A `./` path from the project root, or a bare specifier, exactly as the worker bundle reads it. */
+  src: string;
+}
+
+/** The route every server function is served at, before the deployment base `server.ts` strips. */
+const SERVER_FUNCTION_ROUTE = "/_jx/server/";
+
+/**
+ * The arguments object a call posted. The worker reads its body the same way: anything that is not
+ * JSON is an empty argument object, so a function never sees the failure of a malformed request.
+ */
+async function readArguments(req: Request): Promise<JsonObject> {
+  try {
+    /* SAFETY: trust boundary. The body is whatever JSON the caller posted, and a compiled page posts
+       the entry's `arguments` object. The function receives it exactly as the worker passes it. */
+    return (await req.json()) as JsonObject;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Middleware that stands in for the site worker's server-function routes (server.md §2): answers
+ * `POST /_jx/server/<export>` for each entry the last build collected, and `null` for anything
+ * else, so the request falls through to the next middleware.
+ *
+ * It answers as the worker does, because a built page calls both the same way: the function's
+ * return value as JSON, `null` for `undefined`, and `{ ok: false, error }` with status 500 when it
+ * cannot be called. The function receives `env` as the extension mounts do (`projectDevEnv`:
+ * `process.env` under the project's `.dev.vars`), so it reads the same secrets in development.
+ *
+ * Each module is resolved as the worker bundle resolves it, from the project root: a `./` path
+ * against the root, any other specifier through the project's own `package.json`. It applies no
+ * containment check, because the module path comes from the build and never from the request;
+ * containment stays in the `/__jx_server__` proxy, where the request names the module.
+ *
+ * @param {string} root - Absolute project root
+ * @param {() => readonly ServerEntry[]} entries - The last build's collected entries, read per
+ *   request
+ * @returns {(req: Request, url: URL) => Promise<Response | null>}
+ */
+export function createServerFunctionMiddleware(
+  root: string,
+  entries: () => readonly ServerEntry[],
+): (req: Request, url: URL) => Promise<Response | null> {
+  const requireFromProject = createRequire(resolve(root, "package.json"));
+  return async (req, url) => {
+    if (req.method !== "POST" || !url.pathname.startsWith(SERVER_FUNCTION_ROUTE)) {
+      return null;
+    }
+    const name = url.pathname.slice(SERVER_FUNCTION_ROUTE.length);
+    const entry = entries().find((candidate) => candidate.exportName === name);
+    if (!entry) {
+      return problem("notFound", `The last build collected no server function "${name}"`);
+    }
+
+    let modulePath: string;
+    try {
+      modulePath =
+        entry.src.startsWith("./") || entry.src.startsWith("../")
+          ? resolve(root, entry.src)
+          : requireFromProject.resolve(entry.src);
+    } catch (error) {
+      return Response.json({ error: errorMessage(error), ok: false }, { status: 500 });
+    }
+
+    const args = await readArguments(req);
+    const result = await callServerExport(modulePath, entry.exportName, args, projectDevEnv(root));
+    if (result.ok) {
+      return Response.json(result.value ?? null);
+    }
+    return Response.json({ error: result.message, ok: false }, { status: 500 });
+  };
+}
+
 export interface DevServerHandle {
   port: number;
   stop: () => void;
@@ -106,10 +190,13 @@ export async function startDev({ port, root }: DevArgs): Promise<DevServerHandle
   const isSite = existsSync(join(root, "project.json"));
 
   let building = Promise.resolve();
+  // What the last build collected, which the server-function route answers from.
+  let serverEntries: readonly ServerEntry[] = [];
   const rebuild = () => {
     building = building.then(async () => {
       const { buildSite } = await import("@jxsuite/compiler/site");
       const result = await buildSite(root, { verbose: false });
+      ({ serverEntries } = result);
       if (result.errors.length > 0) {
         for (const err of result.errors) {
           console.error(`  build error: ${err}`);
@@ -124,6 +211,13 @@ export async function startDev({ port, root }: DevArgs): Promise<DevServerHandle
     await rebuild();
   }
 
+  // The built pages call the site worker's routes, and `jx dev` has no worker, so it answers them
+  // From the entries the last build collected, ahead of the built pages.
+  const serverFunctions = createServerFunctionMiddleware(root, () => serverEntries);
+  const distPages = createDistMiddleware(root);
+  const siteMiddleware = async (req: Request, url: URL) =>
+    (await serverFunctions(req, url)) ?? (await distPages(req, url));
+
   /* SAFETY: createDevServer always calls Bun.serve with a hostname and TCP port, never a unix
      socket, so the returned Server's `port` (typed `number | undefined` for the socket case) is a
      number; its promise-returning `stop()` satisfies `() => void`. */
@@ -131,7 +225,7 @@ export async function startDev({ port, root }: DevArgs): Promise<DevServerHandle
     port,
     root,
     ...(isSite && {
-      middleware: createDistMiddleware(root),
+      middleware: siteMiddleware,
       watch: { preReload: () => rebuild(), reloadOnAnyChange: true },
     }),
   })) as DevServerHandle;

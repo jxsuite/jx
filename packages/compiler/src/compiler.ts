@@ -6,7 +6,6 @@
  * - Fully static → compile-static.js (plain HTML/CSS, zero JS)
  * - Custom element (-) → compile-element.js (lit-html web component)
  * - Dynamic (standard) → compile-client.js (pre-rendered HTML + reactive bindings)
- * - Server → compile-server.js (Hono server handler)
  *
  * Usage (CLI): `bun packages/compiler/src/compile-cli.js <source.json> [output.html]`
  *
@@ -23,7 +22,6 @@ import {
   isDynamic,
   tagNameToClassName,
 } from "./shared.ts";
-import { compileServer } from "./targets/compile-server.ts";
 
 import { emitElementModule } from "./targets/compile-element.ts";
 import { compileStaticPage } from "./targets/compile-static.ts";
@@ -35,7 +33,7 @@ import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 
 // Re-exports for consumers
 export { isDynamic } from "./shared.ts";
-export { compileServer, compileSiteServer } from "./targets/compile-server.ts";
+export { compileSiteServer } from "./targets/compile-server.ts";
 export { compileElement, compileElementPage } from "./targets/compile-element.ts";
 export { compileClient } from "./targets/compile-client.ts";
 
@@ -49,6 +47,11 @@ export interface CompileOptions {
   formats?: FormatRegistry;
   /** Rewrite Function-def `$src` specifiers to served URLs (see CompileElementOptions). */
   rewriteSrc?: (specifier: string) => string;
+  /**
+   * The route prefix a `timing: "server"` entry posts to, deployment base included
+   * (`serverRoutePrefix`). Default `"/_jx/server"`, for a site served from its origin root.
+   */
+  serverBaseUrl?: string;
   /**
    * Inject the color-scheme pre-paint script when `$media` declares a pure scheme query (default
    * true). The site pipeline disables this and injects via the merged <head> instead.
@@ -132,7 +135,14 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   if (raw.tagName && raw.tagName.includes("-")) {
     const { tagName } = raw;
     const className = tagNameToClassName(tagName);
-    const moduleContent = emitElementModule(raw, className, [], opts.rewriteSrc);
+    const moduleContent = emitElementModule(
+      raw,
+      className,
+      [],
+      opts.rewriteSrc,
+      null,
+      opts.serverBaseUrl,
+    );
     const moduleFile = {
       content: moduleContent,
       path: `${tagName}.js`,
@@ -166,13 +176,17 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   }
 
   // Route 3: Dynamic with standard tagName → pre-rendered HTML + reactive bindings
-  return compileClient(raw, {
+  const clientOptions: Parameters<typeof compileClient>[1] = {
     litHtmlSrc,
     projectStyle,
     reactivitySrc,
     ...pageTargetOverrides(opts),
     title,
-  });
+  };
+  if (opts.serverBaseUrl !== undefined) {
+    clientOptions.serverBaseUrl = opts.serverBaseUrl;
+  }
+  return compileClient(raw, clientOptions);
 }
 
 /**
@@ -197,7 +211,7 @@ function pageTargetOverrides(opts: CompileOptions): PageTargetOverrides {
  * @param {string} [out]
  */
 export async function runCli(src: string, out?: string) {
-  const [result, server] = await Promise.all([compile(src), compileServer(src)]);
+  const result = await compile(src);
   const { writeFileSync, mkdirSync } = await import("node:fs");
   const { dirname, join } = await import("node:path");
   if (out) {
@@ -212,10 +226,5 @@ export async function runCli(src: string, out?: string) {
     }
   } else {
     process.stdout.write(result.html);
-  }
-  if (server && out) {
-    const serverOut = out.replace(/(\.[^.]+)?$/, "-server.js");
-    writeFileSync(serverOut, /** @type {string} */ server, "utf8");
-    console.error(`Server handler written to ${serverOut}`);
   }
 }

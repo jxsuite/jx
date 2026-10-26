@@ -107,7 +107,7 @@ A `#/state/…` miss does **not** fall through to `window`/`document`; those are
 
 ## How it works
 
-The runtime resolves each `$ref` at render time against the current scope: `$map/` and `parent#/` look up the enclosing iteration or prop scope, `#/state/` reads the document's reactive proxy, and deeper path segments walk nested objects step by step. Because reads happen inside reactive effects, any binding whose target changes re-runs automatically. An external `.json` `$ref` is loaded and rendered where the runtime supports it, as a [`$switch`](/docs/framework/concepts/switching) case or an `$elements` registration that backs a [component instance](/docs/framework/concepts/props-and-scope). A bare `{ "$ref": "./x.json" }` node is not (see spec §13).
+The runtime resolves each `$ref` at render time against the current scope: `$map/` and `parent#/` look up the enclosing iteration or prop scope, `#/state/` reads the document's reactive proxy, and deeper path segments walk nested objects step by step. A compiled [`$switch`](/docs/framework/concepts/switching) discriminant or [repeater](/docs/framework/concepts/lists) that reaches through a member that is still `null`, such as a server function's answer before it arrives, reads as `undefined`, so the switch shows nothing and the list is empty until the value arrives. Because reads happen inside reactive effects, any binding whose target changes re-runs automatically. An external `.json` `$ref` is loaded and rendered where the runtime supports it, as a [`$switch`](/docs/framework/concepts/switching) case or an `$elements` registration that backs a [component instance](/docs/framework/concepts/props-and-scope). A bare `{ "$ref": "./x.json" }` node is not (see spec §13).
 
 ## Rules
 

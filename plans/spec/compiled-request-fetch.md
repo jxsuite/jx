@@ -243,7 +243,7 @@ This is the only case that executes the real import line.
 - **No graduation.** spec.md does not graduate. The landing pull request also:
   - deletes this file;
   - removes `spec/compiled-request-fetch` from the `requires` of `plans/spec/request-url-params.md` and `plans/spec/web-api-prototype-parity.md`;
-  - rewrites every other `plan:spec/compiled-request-fetch` citation to cite spec.md §11.2 instead, since a citation of a deleted plan fails the gate (`citation-unknown`). Take the list from `grep -rln "plan:spec/compiled-request-fetch" plans/` at landing time; today it is those two files plus `plans/spec/web-api-prototype-parity-readable-stream.md`, `plans/spec/timing-values-in-built-sites.md`, `plans/schema/generator-inventory.md`, `plans/schema/prototype-property-declarations.md` and `plans/_shared/compiled-server-call.md`;
+  - rewrites every other `plan:spec/compiled-request-fetch` citation to cite spec.md §11.2 instead, since a citation of a deleted plan fails the gate (`citation-unknown`). Take the list from `grep -rln "plan:spec/compiled-request-fetch" plans/` at landing time; today it is those two files plus `plans/spec/web-api-prototype-parity-readable-stream.md`, `plans/spec/timing-values-in-built-sites.md`, `plans/schema/generator-inventory.md` and `plans/schema/prototype-property-declarations.md`;
   - re-reads `plan:spec/request-url-params`'s design against the integration contract above.
 
 ## Acceptance

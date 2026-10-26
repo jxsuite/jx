@@ -11,16 +11,23 @@
  * import time.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { isBoolean, isNonNullObject } from "@jxsuite/schema/guards";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JsonObject, JsonValue, JxDocument } from "@jxsuite/schema/types";
 import { Window } from "happy-dom";
 import type { Element } from "happy-dom";
 import { compileElement } from "../src/targets/compile-element";
+import { buildSite } from "../src/site/site-build";
 
 const TMP = resolve(import.meta.dir, "__test-element-render__");
+
+/** The default export of a bundled site worker: a Hono app, so `fetch` takes a request and env. */
+interface PortableWorkerModule {
+  default: { fetch: (req: Request, env: Record<string, string>) => Promise<Response> };
+}
 
 /** The element under test exercises issues #106, #107, #108 and #113 at once. */
 const DOC: JxDocument = {
@@ -257,5 +264,224 @@ describe("compiled element — examples/components/todo-app.json", () => {
     // Clause contains a bare `return`, and `state.$map` was never published for map handlers. Either
     // One alone left the checkbox doing nothing at all, with nothing thrown.
     expect(state.items.map((i) => i.done)).toEqual([false, true]);
+  });
+});
+
+// ── timing: "server" entries, called through a stubbed fetch ─────────────────
+
+describe("compiled element — timing server entries", () => {
+  /** One request the element made, held open until the test answers it. */
+  interface ServerCall {
+    url: string;
+    body: JsonObject;
+    respond: (status: number, json: JsonValue) => void;
+  }
+
+  /** The compiled element's reactive state, as its `state` property exposes it. */
+  interface ServerCardElement extends Element {
+    state: { who: string; hit: JsonValue };
+  }
+
+  function isServerCard(element: Element): element is ServerCardElement {
+    return (
+      "state" in element &&
+      isNonNullObject(element.state) &&
+      "who" in element.state &&
+      "hit" in element.state
+    );
+  }
+
+  const realFetch = globalThis.fetch;
+  const realConsoleError = console.error;
+  let calls: ServerCall[] = [];
+  let logged: string[] = [];
+
+  /** Mount a fresh `<ls-server-card>` and wait for its first render. */
+  async function mount(attributes = ""): Promise<ServerCardElement> {
+    win.document.body.innerHTML = `<ls-server-card ${attributes}></ls-server-card>`;
+    await tick();
+    const card = rendered(win.document.querySelector("ls-server-card"), "ls-server-card");
+    if (!isServerCard(card)) {
+      throw new Error("Expected <ls-server-card> to expose its state");
+    }
+    return card;
+  }
+
+  const tick = () =>
+    new Promise((r) => {
+      setTimeout(r, 15);
+    });
+
+  /** What the card currently shows. */
+  const shown = () => win.document.querySelector("#out")?.textContent;
+
+  beforeAll(async () => {
+    const { files } = await compileElement({
+      children: [{ id: "out", tagName: "span", textContent: "${state.hit?.n ?? 'none'}" }],
+      state: {
+        hit: {
+          $export: "hit",
+          $src: "./card.server.js",
+          arguments: { who: { $ref: "#/state/who" } },
+          timing: "server",
+        },
+        who: "ann",
+      },
+      tagName: "ls-server-card",
+    });
+    writeFileSync(resolve(TMP, "server-card.js"), files[0]!.content, "utf8");
+    await import(resolve(TMP, "server-card.js"));
+  });
+
+  beforeEach(() => {
+    calls = [];
+    logged = [];
+    // A request is parsed back out of its own body, then held open until the test answers it.
+    const stub = async (input: string | URL | Request, init?: RequestInit) => {
+      const body: JsonObject = await new Response(init?.body).json();
+      return await new Promise<Response>((resolveResponse) => {
+        calls.push({
+          body,
+          respond: (status, json) => {
+            resolveResponse(Response.json(json, { status }));
+          },
+          url: String(input),
+        });
+      });
+    };
+    globalThis.fetch = Object.assign(stub, { preconnect: realFetch.preconnect });
+    console.error = (...args: unknown[]) => {
+      logged.push(args.map(String).join(" "));
+    };
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    console.error = realConsoleError;
+  });
+
+  test("posts the arguments and renders the answer", async () => {
+    await mount('props.who="bea"');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("/_jx/server/hit");
+    // A prop the parent delivered is merged before the call, so it is the one sent.
+    expect(calls[0]!.body).toEqual({ who: "bea" });
+    expect(shown()).toBe("none");
+
+    calls[0]!.respond(200, { n: 7 });
+    await tick();
+    expect(shown()).toBe("7");
+  });
+
+  test("a 500 with { ok: false, error } keeps the rendered value and calls console.error", async () => {
+    const card = await mount();
+    calls[0]!.respond(200, { n: 7 });
+    await tick();
+    expect(shown()).toBe("7");
+
+    card.state.who = "cy";
+    await tick();
+    expect(calls).toHaveLength(2);
+    calls[1]!.respond(500, { error: "boom", ok: false });
+    await tick();
+
+    // A failed answer is never stored, so the last good value stays on the page.
+    expect(shown()).toBe("7");
+    const output = logged.join("\n");
+    expect(output).toContain("Jx server function hit:");
+    expect(output).toContain("boom");
+  });
+
+  test("a changed $ref prop re-posts, and a late answer to the first call is dropped", async () => {
+    const card = await mount();
+    card.state.who = "dee";
+    await tick();
+    expect(calls.map((c) => c.body)).toEqual([{ who: "ann" }, { who: "dee" }]);
+
+    // The second call answers first. The first, answering late, must not overwrite it.
+    calls[1]!.respond(200, { n: 2 });
+    await tick();
+    expect(shown()).toBe("2");
+    calls[0]!.respond(200, { n: 1 });
+    await tick();
+    expect(shown()).toBe("2");
+  });
+
+  test("disconnect stops the effect", async () => {
+    const card = await mount();
+    expect(calls).toHaveLength(1);
+
+    card.remove();
+    card.state.who = "eli";
+    await tick();
+    expect(calls).toHaveLength(1);
+  });
+});
+
+// ── A built site: the component's call reaches the site's own worker ─────────
+
+describe("compiled element — a built site's server call", () => {
+  const SITE = resolve(TMP, "site");
+  const realFetch = globalThis.fetch;
+  let portableDir = "";
+  let worker: PortableWorkerModule;
+
+  beforeAll(async () => {
+    const writeP = (p: string, c: string) => {
+      mkdirSync(resolve(SITE, ...p.split("/").slice(0, -1)), { recursive: true });
+      writeFileSync(resolve(SITE, p), c, "utf8");
+    };
+    const writeJ = (p: string, obj: JsonValue) => {
+      writeP(p, JSON.stringify(obj, null, 2));
+    };
+
+    writeJ("project.json", {
+      build: { adapter: "bun", outDir: "./dist" },
+      name: "Built Call Site",
+      url: "https://x.dev/m/site/",
+    });
+    writeJ("pages/index.json", { children: [{ tagName: "h1", textContent: "Hi" }], title: "Home" });
+    writeJ("components/ls-site-card.json", {
+      children: [{ id: "out", tagName: "span", textContent: "${state.hit?.n ?? 'none'}" }],
+      state: { hit: { $export: "hit", $src: "./card.server.js", timing: "server" } },
+      tagName: "ls-site-card",
+    });
+    writeP("components/card.server.js", "export function hit() { return { n: 42 }; }\n");
+
+    const { errors } = await buildSite(SITE, { verbose: false });
+    expect(errors).toEqual([]);
+
+    // The worker is copied out of the workspace, as the portability case does, so Bun does not
+    // Instrument the bundled hono it carries.
+    portableDir = mkdtempSync(join(tmpdir(), "jx-worker-portability-"));
+    const portable = join(portableDir, "worker.mjs");
+    copyFileSync(resolve(SITE, "dist/worker.js"), portable);
+    worker = await import(portable);
+    await import(resolve(SITE, "dist/components/ls-site-card.js"));
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+    rmSync(portableDir, { force: true, recursive: true });
+  });
+
+  test("renders the value the worker answers at the based route", async () => {
+    // The page's own `fetch` is routed straight into the built worker, whose routes sit under the
+    // Deployment base the component was compiled with.
+    const seen: string[] = [];
+    const routed = (input: string | URL | Request, init?: RequestInit) => {
+      seen.push(String(input));
+      const url = new URL(String(input), "http://localhost");
+      return worker.default.fetch(new Request(url, init), {});
+    };
+    globalThis.fetch = Object.assign(routed, { preconnect: realFetch.preconnect });
+
+    win.document.body.innerHTML = "<ls-site-card></ls-site-card>";
+    await new Promise((r) => {
+      setTimeout(r, 50);
+    });
+
+    expect(seen).toEqual(["/m/site/_jx/server/hit"]);
+    expect(win.document.querySelector("#out")?.textContent).toBe("42");
   });
 });

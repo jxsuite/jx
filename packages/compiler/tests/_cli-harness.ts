@@ -28,7 +28,7 @@ export class ExitSentinelError extends Error {
 }
 
 let buildSiteImpl: (root: string, opts: BuildSiteOptions) => ReturnType<typeof buildSite> = () =>
-  Promise.resolve({ errors: [], files: 0, routes: 0 });
+  Promise.resolve({ errors: [], files: 0, routes: 0, serverEntries: [] });
 
 export const buildSiteCalls: { root: string; opts: BuildSiteOptions }[] = [];
 

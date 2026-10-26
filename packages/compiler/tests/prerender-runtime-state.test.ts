@@ -51,6 +51,20 @@ describe("evaluateStaticTemplate — runtime-only state", () => {
     expect(evaluateStaticTemplate("${state.leads}", scope)).toBeNull();
   });
 
+  test("refuses a timing: server entry, whose value is an answer from the site worker", () => {
+    const scope = scopeOf({
+      metrics: { $export: "fetchMetrics", $src: "./api.server.js", timing: "server" },
+      summary: "n=${state.metrics?.n}",
+    });
+
+    // The definition object is not a build-time value, so a template that reads the entry (or reads
+    // Another entry that does) is left for the browser instead of baking `{ $src, $export, … }`.
+    expect(evaluateStaticTemplate("n: ${state.metrics?.n}", scope)).toBeNull();
+    expect(evaluateStaticTemplate("${state.metrics}", scope)).toBeNull();
+    expect(evaluateStaticTemplate("S: ${state.summary}", scope)).toBeNull();
+    expect(Object.keys(scope)).not.toContain("metrics");
+  });
+
   test("refuses a member read through a runtime-only value", () => {
     const scope = scopeOf({ biz: { $prototype: "Function", $src: "./lib.js" } });
 

@@ -27,6 +27,7 @@ import {
   createCompileContext,
   emitFormulaFn,
   emitRequestFetch,
+  emitServerCall,
   escapeHtml,
   isMutating,
   isRefObject,
@@ -36,6 +37,7 @@ import {
   PREFORMATTED_TAGS,
   pureSchemeOf,
   resolveStaticValue,
+  serverCallHelperSource,
   srcImportBinding,
   templateValueSource,
 } from "../shared.ts";
@@ -51,6 +53,7 @@ import {
   isNonNullObject,
   isNumber,
   isPrototypeDef,
+  isServerFnDef,
   isString,
   isTagExpression,
   paramNames,
@@ -62,6 +65,7 @@ import {
   objectKey,
   refAccessor,
   refBindingKey,
+  refReader,
   refSegments,
 } from "@jxsuite/runtime/pointer";
 import type {
@@ -97,6 +101,7 @@ interface HandlerDef {
  *   litHtmlSrc?: string;
  *   modulePath?: string;
  *   projectStyle?: JxStyle | null;
+ *   serverBaseUrl?: string;
  * }} opts
  * @returns {{ html: string; files: { path: string; content: string }[] }}
  */
@@ -110,6 +115,12 @@ export function compileClient(
     projectStyle?: JxStyle | null;
     prePaintScheme?: boolean;
     rewriteSrc?: (specifier: string) => string;
+    /**
+     * The route prefix a `timing: "server"` entry posts to, deployment base included
+     * (`serverRoutePrefix`). The call is written into the module, and no later pass rewrites a
+     * module, so the base has to be known when it is compiled.
+     */
+    serverBaseUrl?: string;
   },
 ) {
   const {
@@ -117,6 +128,7 @@ export function compileClient(
     reactivitySrc = DEFAULT_REACTIVITY_SRC,
     litHtmlSrc = DEFAULT_LIT_HTML_SRC,
     modulePath = "app.js",
+    serverBaseUrl = "/_jx/server",
   } = opts;
 
   const context = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
@@ -133,6 +145,7 @@ export function compileClient(
   const bindEntries: [string, string][] = []; // [key, bodyExpr]   → bind = {...}
   const onEntries: [string, HandlerDef][] = []; // [key, { args, body }] → on = {...}
   const initBlocks: string[] = []; // Lines emitted after state for prototype init
+  const serverCalls: string[] = []; // One block per `timing: "server"` entry, after the computed block
 
   // Map $src path → Set of function names to import
   const srcImportMap = new Map<string, Set<string>>();
@@ -241,6 +254,13 @@ export function compileClient(
       }
     }
 
+    // `timing: "server"`: null until the site worker's route answers (compiler.md §6.1)
+    if (isServerFnDef(def)) {
+      stateEntries.push([key, null]);
+      serverCalls.push(emitServerCall(key, def, { serverBaseUrl }));
+      continue;
+    }
+
     /*
      * Plain object → reactive state.
      * SAFETY: `raw.state` is parsed JSON, so this entry is structurally a JsonObject; the checks
@@ -272,6 +292,7 @@ export function compileClient(
     bindEntries,
     onEntries,
     initBlocks,
+    serverCalls,
     srcImportMap,
     counter,
     reactivitySrc,
@@ -540,7 +561,7 @@ function buildClientNode(
     const swKey = `_sw${counter.sw}`;
     counter.sw += 1;
     const discriminant = isRefObject(source.$switch)
-      ? `state.${refToBindingKey(source.$switch.$ref)}`
+      ? stateRead(source.$switch.$ref)
       : `\`${String(source.$switch)}\``;
     const cases = source.cases ?? {};
     // Parsed JSON, so a case slot can hold `null` or a bare value the declared type leaves out.
@@ -575,13 +596,9 @@ function buildClientNode(
     const arrayDef = source.children;
 
     // Resolve items source expression
-    let itemsExpr;
-    if (isRefObject(arrayDef.items)) {
-      const path = refToBindingKey(arrayDef.items.$ref);
-      itemsExpr = `state.${path}`;
-    } else {
-      itemsExpr = JSON.stringify(arrayDef.items);
-    }
+    const itemsExpr = isRefObject(arrayDef.items)
+      ? stateRead(arrayDef.items.$ref)
+      : JSON.stringify(arrayDef.items);
 
     // Compile the map template to a lit-html template string
     const litTemplate = emitLitMapTemplate(arrayDef.map);
@@ -845,9 +862,7 @@ function emitChildLit(c: JxMutableNode | JsonPrimitive, preformatted = false): s
  */
 function emitArrayHole(arrayDef: RepeaterSlot): string {
   const { items } = arrayDef;
-  const itemsExpr = isRefObject(items)
-    ? `state.${refToBindingKey(items.$ref)}`
-    : JSON.stringify(items ?? []);
+  const itemsExpr = isRefObject(items) ? stateRead(items.$ref) : JSON.stringify(items ?? []);
   const tpl = emitLitMapTemplate(arrayDef.map);
   return `\${(${itemsExpr} ?? []).map((item, index) => html\`${tpl}\`)}`;
 }
@@ -870,6 +885,7 @@ function mapRefsToLit(str: string) {
  * @param {[string, string][]} bindEntries
  * @param {[string, any][]} onEntries
  * @param {string[]} initBlocks
+ * @param {string[]} serverCalls
  * @param {Map<string, Set<string>>} srcImportMap
  * @param {{
  *   t: number;
@@ -889,6 +905,7 @@ function emitClientModule(
   bindEntries: [string, string][],
   onEntries: [string, HandlerDef][],
   initBlocks: string[],
+  serverCalls: string[],
   srcImportMap: Map<string, Set<string>>,
   counter: {
     t: number;
@@ -930,7 +947,11 @@ function emitClientModule(
   // State — reactive state
   /* The boolean-attribute rule, inlined because this module loads with `@vue/reactivity` and
      nothing else — see `attrHelperSource`. The hydration script below is its only caller. */
-  lines.push("", attrHelperSource(), "", "const state = reactive({");
+  lines.push("", attrHelperSource());
+  if (serverCalls.length > 0) {
+    lines.push("", serverCallHelperSource());
+  }
+  lines.push("", "const state = reactive({");
   for (const [key, val] of stateEntries) {
     /*
      * State keys come from the document, so `{"user.name": 1}` is legal input. Pasting one raw as
@@ -952,6 +973,15 @@ function emitClientModule(
   if (computedEntries.length > 0) {
     for (const [key, expr] of computedEntries) {
       lines.push(`${refAccessor("state", escapeToken(key))} = computed(${expr});`);
+    }
+    lines.push("");
+  }
+
+  // Server-function calls, after the computed block so a reference to a computed reads its value on
+  // The first run
+  if (serverCalls.length > 0) {
+    for (const block of serverCalls) {
+      lines.push(block);
     }
     lines.push("");
   }
@@ -1124,6 +1154,18 @@ function mapRefToClientExpr(ref: string) {
     return refAccessor("state", ref.slice("#/state/".length));
   }
   return refAccessor("state", ref);
+}
+
+/**
+ * The read of the state a `$ref` names, for a binding whose value arrives later: a `$switch`
+ * discriminant and a repeater's `items`. A server entry or a `Request` is `null` until it answers,
+ * so `#/state/contact/status` must read `state.contact?.status` rather than throw on the first run,
+ * which inside the hydration loop would end it before any later binding or handler was attached.
+ * The path is the ref's own, never its flattened binding key: `contact/status` is two members, not
+ * `contact_status`.
+ */
+function stateRead(ref: string) {
+  return refReader("state", ref.startsWith("#/state/") ? ref.slice("#/state/".length) : ref);
 }
 
 /**

@@ -3,7 +3,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { createDistMiddleware, parseDevArgs, startDev } from "../src/dev.ts";
+import {
+  createDistMiddleware,
+  createServerFunctionMiddleware,
+  parseDevArgs,
+  startDev,
+} from "../src/dev.ts";
+import type { ServerEntry } from "../src/dev.ts";
 
 describe("parseDevArgs", () => {
   test("defaults to cwd and port 3000", () => {
@@ -81,6 +87,119 @@ describe("createDistMiddleware", () => {
       new URL("http://localhost/"),
     );
     expect(post).toBeNull();
+  });
+});
+
+describe("createServerFunctionMiddleware", () => {
+  const TMP = resolve(import.meta.dir, "__test-dev-server-fns__");
+  let entries: ServerEntry[] = [];
+  const middleware = createServerFunctionMiddleware(TMP, () => entries);
+  const post = (path: string, body = "{}") =>
+    middleware(
+      new Request(`http://localhost${path}`, { body, method: "POST" }),
+      new URL(`http://localhost${path}`),
+    );
+
+  beforeAll(() => {
+    rmSync(TMP, { force: true, recursive: true });
+    mkdirSync(join(TMP, "node_modules/jx-test-pkg"), { recursive: true });
+    writeFileSync(join(TMP, ".dev.vars"), "JX_TEST_SECRET=hunter2\n", "utf8");
+    writeFileSync(
+      join(TMP, "api.server.js"),
+      [
+        "export function hit(args, env) {",
+        "  return { args, secret: env.JX_TEST_SECRET, root: env.JX_PROJECT_ROOT };",
+        "}",
+        "export function nothing() {}",
+        'export function boom() { throw new Error("boom"); }',
+        'export const notAFunction = "data";',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    writeFileSync(join(TMP, "broken.server.js"), "export function x( {", "utf8");
+    writeFileSync(
+      join(TMP, "node_modules/jx-test-pkg/package.json"),
+      JSON.stringify({ main: "index.js", name: "jx-test-pkg" }),
+      "utf8",
+    );
+    writeFileSync(
+      join(TMP, "node_modules/jx-test-pkg/index.js"),
+      "export function fromPkg() { return { from: 'pkg' }; }\n",
+      "utf8",
+    );
+  });
+
+  afterAll(() => {
+    rmSync(TMP, { force: true, recursive: true });
+  });
+
+  test("answers a collected export with its value, env carrying a .dev.vars key", async () => {
+    entries = [{ exportName: "hit", src: "./api.server.js" }];
+    const res = await post("/_jx/server/hit", '{"who":"ann"}');
+    expect(res?.status).toBe(200);
+    expect(await res!.json()).toEqual({ args: { who: "ann" }, root: TMP, secret: "hunter2" });
+  });
+
+  test("resolves a bare-specifier entry from the project's node_modules", async () => {
+    entries = [{ exportName: "fromPkg", src: "jx-test-pkg" }];
+    const res = await post("/_jx/server/fromPkg");
+    expect(await res!.json()).toEqual({ from: "pkg" });
+  });
+
+  test("a function that returns nothing answers a JSON null, as the worker does", async () => {
+    entries = [{ exportName: "nothing", src: "./api.server.js" }];
+    const res = await post("/_jx/server/nothing");
+    expect(res?.status).toBe(200);
+    expect(await res!.json()).toBeNull();
+  });
+
+  test("a body that is not JSON reaches the function as an empty argument object", async () => {
+    entries = [{ exportName: "hit", src: "./api.server.js" }];
+    const res = await post("/_jx/server/hit", "not json");
+    const answer = await res!.json();
+    expect(answer.args).toEqual({});
+  });
+
+  test("404 for an export the build did not collect", async () => {
+    entries = [{ exportName: "hit", src: "./api.server.js" }];
+    const res = await post("/_jx/server/missing");
+    expect(res?.status).toBe(404);
+    expect(res!.headers.get("content-type")).toContain("application/problem+json");
+  });
+
+  test("a throw answers { ok: false, error } with status 500", async () => {
+    entries = [{ exportName: "boom", src: "./api.server.js" }];
+    const res = await post("/_jx/server/boom");
+    expect(res?.status).toBe(500);
+    expect(await res!.json()).toEqual({ error: "boom", ok: false });
+  });
+
+  test("a module that cannot load, an export that is not a function, or a specifier that does not resolve answers the same 500", async () => {
+    const cases: ServerEntry[] = [
+      { exportName: "x", src: "./broken.server.js" },
+      { exportName: "notAFunction", src: "./api.server.js" },
+      { exportName: "fromNowhere", src: "jx-no-such-package" },
+    ];
+    for (const entry of cases) {
+      entries = [entry];
+      const res = await post(`/_jx/server/${entry.exportName}`);
+      expect(res?.status).toBe(500);
+      const body = await res!.json();
+      expect(body.ok).toBe(false);
+      expect(body.error).toBeString();
+    }
+  });
+
+  test("ignores GET and paths outside /_jx/server/", async () => {
+    entries = [{ exportName: "hit", src: "./api.server.js" }];
+    const get = await middleware(
+      new Request("http://localhost/_jx/server/hit"),
+      new URL("http://localhost/_jx/server/hit"),
+    );
+    expect(get).toBeNull();
+    expect(await post("/_jx/data/hit")).toBeNull();
+    expect(await post("/other")).toBeNull();
   });
 });
 
@@ -193,6 +312,54 @@ describe("startDev", () => {
     }
     expect(errors.some((e) => e.includes("build error:"))).toBe(true);
   });
+
+  test("an adapter site answers POST /_jx/server/<export> at the bare and the based path", async () => {
+    const ADAPTED = resolve(import.meta.dir, "__test-dev-adapter__");
+    rmSync(ADAPTED, { force: true, recursive: true });
+    mkdirSync(join(ADAPTED, "pages"), { recursive: true });
+    writeFileSync(
+      join(ADAPTED, "project.json"),
+      JSON.stringify({
+        build: { adapter: "bun", outDir: "./dist" },
+        name: "Adapter Dev",
+        url: "https://x.dev/m/site/",
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(ADAPTED, "pages/index.json"),
+      JSON.stringify({
+        children: [{ tagName: "p", textContent: "${state.loadData?.n}" }],
+        state: {
+          loadData: { $export: "loadData", $src: "./api.server.js", timing: "server" },
+        },
+        title: "Home",
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(ADAPTED, "pages/api.server.js"),
+      "export function loadData() { return { n: 1 }; }\n",
+      "utf8",
+    );
+    try {
+      const server = await startDev({ port: 0, root: ADAPTED });
+      servers.push(server);
+      for (const path of ["/_jx/server/loadData", "/m/site/_jx/server/loadData"]) {
+        const res = await fetch(`http://localhost:${server.port}${path}`, {
+          body: "{}",
+          method: "POST",
+        });
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ n: 1 });
+      }
+      // The built page calls the based route, which is the one the deployed worker serves.
+      const script = await fetch(`http://localhost:${server.port}/app.js`);
+      expect(await script.text()).toContain("/m/site/_jx/server/loadData");
+    } finally {
+      rmSync(ADAPTED, { force: true, recursive: true });
+    }
+  }, 30_000);
 
   test("boots a non-site root without the dist middleware", async () => {
     const server = await startDev({ port: 0, root: PLAIN });
