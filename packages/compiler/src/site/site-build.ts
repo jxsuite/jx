@@ -68,7 +68,9 @@ import { collectAssetRefs, copyMountedAssets, loadAssetMounts } from "./asset-mo
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import { resolveLayout } from "./layout-resolver.ts";
+import { layoutChain, resolveLayout } from "./layout-resolver.ts";
+import { dedupeServerEntries, documentServerEntries } from "./server-entries.ts";
+import type { ServerEntryRecord } from "./server-entries.ts";
 import { mergeHead, renderHead, withPageDescription } from "@jxsuite/site/head-merger";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
@@ -81,7 +83,6 @@ import {
   buildComponentCSS,
   buildInitialScope,
   buildInstanceScope,
-  collectServerEntries,
   collectStyles,
   colorSchemePrePaintScript,
   createSlotFill,
@@ -445,6 +446,8 @@ export async function buildSite(
   const compiledComponentTags: string[] = [];
   const componentCSS = new Map<string, string>(); // TagName → CSS text
   const componentDefs = new Map<string, JxElement>(); // TagName → parsed component definition
+  // TagName → the absolute path its definition was read from, for what is relative to that file.
+  const componentPathByTag = new Map<string, string>();
   if (existsSync(componentsDir)) {
     log("Compiling components...");
     const componentExtensions = [".json", ...formatRegistry.documentExtensions("component")];
@@ -528,6 +531,7 @@ export async function buildSite(
         const doc = await readPageDocument(componentPath, formatRegistry);
         if (doc.tagName) {
           componentDefs.set(doc.tagName, doc);
+          componentPathByTag.set(doc.tagName, componentPath);
           const componentShadow = resolveShadowMode(doc, projectConfig.defaults);
           const css = buildComponentCSS(
             doc.tagName,
@@ -561,19 +565,31 @@ export async function buildSite(
     );
   }
 
-  // ── 5b. Collect server entries from components (for site-wide bundling) ──
-  const siteServerEntries: { exportName: string; src: string }[] = [];
-  if (projectConfig.build.adapter) {
-    for (const [, doc] of componentDefs) {
-      const entries = collectServerEntries(doc);
-      for (const entry of entries) {
-        const resolvedSrc = `./components/${entry.src.replace(/^\.\//, "")}`;
-        siteServerEntries.push({
-          exportName: entry.exportName,
-          src: resolvedSrc,
-        });
-      }
-    }
+  // ── 5b. Collect server entries ──────────────────────────────────────────
+  /*
+   * Every `timing: "server"` entry the site declares, before deduplication: each compiled
+   * component's here, then `project.json`'s `state`, which every page that does not shadow a key
+   * inherits (site-architecture.md §3.2), then each route's page and the layouts it is wrapped in,
+   * pushed as the route compiles. Each document is read as written, so a relative `$src` resolves
+   * against the file that declares it (`server-entries.ts`). Collected whatever the adapter; step
+   * 6c deduplicates and serves them when there is one.
+   */
+  const siteServerEntries: ServerEntryRecord[] = [];
+  for (const [tag, doc] of componentDefs) {
+    siteServerEntries.push(
+      ...documentServerEntries(doc, componentPathByTag.get(tag)!, projectRoot),
+    );
+  }
+  if (projectConfig.state) {
+    siteServerEntries.push(
+      ...documentServerEntries(
+        /* SAFETY: `ProjectConfig.state` is a plain record of state entries, and the collector reads
+           only a document's `state`, so a document carrying that one member is all it needs. */
+        { state: projectConfig.state } as JxElement,
+        resolve(projectRoot, "project.json"),
+        projectRoot,
+      ),
+    );
   }
 
   // ── 6. Compile each route ───────────────────────────────────────────────
@@ -741,6 +757,7 @@ export async function buildSite(
         runtimeImports,
         registerElementBundle,
       );
+      siteServerEntries.push(...result.serverEntries);
 
       for (const relation of result.unregisteredRelations) {
         if (!warnedRelations.has(relation)) {
@@ -913,11 +930,16 @@ export async function buildSite(
     const { adapter } = projectConfig.build;
     log("Generating site-wide server worker...");
 
-    const deduped = new Map<string, { exportName: string; src: string }>();
-    for (const entry of siteServerEntries) {
-      if (!deduped.has(entry.exportName)) {
-        deduped.set(entry.exportName, entry);
-      }
+    /*
+     * One route per export name (compiler.md §6.3). Two modules claiming one name is a build
+     * error, not a silent choice: the worker can serve only one of them, and a page calling the
+     * other would receive its answer. The first module is still kept, so the worker is written
+     * and `jx dev` keeps serving the pages while the author renames one.
+     */
+    const { entries: serverEntries, errors: clashErrors } = dedupeServerEntries(siteServerEntries);
+    for (const error of clashErrors) {
+      errors.push(error);
+      console.error(error);
     }
 
     // Extension server mounts: static imports of the mount modules and used connector classes,
@@ -932,10 +954,11 @@ export async function buildSite(
     // Cloudflare Pages uses advanced mode (_worker.js inside the build output) — the
     // Functions/ directory convention only works from the project root, not from dist/.
     // A static-only Pages site needs no worker at all; sites with mounts always get one.
-    const skipWorker = adapter === "cloudflare-pages" && deduped.size === 0 && mounts.length === 0;
+    const skipWorker =
+      adapter === "cloudflare-pages" && serverEntries.length === 0 && mounts.length === 0;
     const workerSource = skipWorker
       ? null
-      : compileSiteServer([...deduped.values()], {
+      : compileSiteServer(serverEntries, {
           adapter,
           base: basePath,
           connectors,
@@ -955,7 +978,7 @@ export async function buildSite(
           projectRoot,
         });
         fileCount += 1;
-        log(`  Generated dist/${workerName} (bundled, ${deduped.size} server function(s))`);
+        log(`  Generated dist/${workerName} (bundled, ${serverEntries.length} server function(s))`);
       } catch (error) {
         const msg = `Error bundling dist/${workerName}: ${errorMessage(error)}`;
         errors.push(msg);
@@ -966,12 +989,18 @@ export async function buildSite(
         // Only invoke the worker for server routes; everything else stays static.
         writeFileSync(
           resolve(outDir, "_routes.json"),
-          // `/` joins the include list only when there is a locale to negotiate: Pages invokes
-          // The worker for included paths only, so an uninvoked middleware is an inert one.
+          /*
+           * `/` joins the include list only when there is a locale to negotiate: Pages invokes the
+           * worker for included paths only, so an uninvoked middleware is an inert one. Both carry
+           * the deployment base, because Pages matches them against the request path, and the
+           * worker's own routes are registered under it (site-architecture.md §14.7).
+           */
           `${JSON.stringify(
             {
               exclude: [],
-              include: i18n && i18n.locales.length > 1 ? ["/", "/_jx/*"] : ["/_jx/*"],
+              include: (i18n && i18n.locales.length > 1 ? ["/", "/_jx/*"] : ["/_jx/*"]).map(
+                (pattern) => withBase(basePath, pattern),
+              ),
               version: 1,
             },
             null,
@@ -1309,6 +1338,7 @@ interface PageRoute {
  *   html: string;
  *   files: { path: string; content: string; tagName?: string }[];
  *   serverHandler: string | null;
+ *   serverEntries: ServerEntryRecord[];
  *   doc: JxDocument;
  * }>}
  *   Every parameter is required. There is exactly one caller and it passes all fifteen, so the
@@ -1343,6 +1373,19 @@ async function compilePage(
 
   // Resolve layout (wraps page in layout with slot distribution)
   const layoutDoc = await resolveLayout(pageDoc, projectConfig, projectRoot);
+
+  /*
+   * This page's and its layouts' server entries, each read from the file that declares it, so a
+   * relative `$src` resolves against that file (compiler.md §6.3). Read here, before
+   * `injectContext`: with no layout `resolveLayout` hands back `pageDoc` itself, and injection
+   * then adds project.json's state to it, which `buildSite` collects once, as project.json's own.
+   */
+  const serverEntries = [
+    ...documentServerEntries(pageDoc, route.sourcePath, projectRoot),
+    ...layoutChain(pageDoc, projectConfig, projectRoot).flatMap((level) =>
+      documentServerEntries(level.doc, level.path, projectRoot),
+    ),
+  ];
 
   // Extract head arrays before they get lost in the merge
   /* SAFETY: `_pageHead` is written only by `resolveLayout`, which copies the page's `$head` (a
@@ -1643,6 +1686,7 @@ async function compilePage(
      */
     unregisteredRelations: unregisteredHeadRelations(mergedHead),
     serverHandler,
+    serverEntries,
   };
 }
 

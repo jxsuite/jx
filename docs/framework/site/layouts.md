@@ -111,7 +111,7 @@ Saved as `layouts/blog-post.json`, this wraps blog pages in blog chrome while in
 Compiling a page against its layout produces one document:
 
 - **Children**: page children are distributed into the layout's slots.
-- **State**: the layout's `state` is kept and the page's is merged over it; **the page wins** on any shared key. Layouts can carry state of their own; jxsuite.com's docs layout loads the sidebar nav with a `ContentEntry`.
+- **State**: the layout's `state` is kept and the page's is merged over it; **the page wins** on any shared key. Layouts can carry state of their own; jxsuite.com's docs layout loads the sidebar nav with a `ContentEntry`. In a built site, a layout's `timing: "server"` entries are served like a page's, with a relative `$src` resolved from the layout's own file (see [Timing](/docs/framework/concepts/timing)).
 - **`$media`, `style`, `attributes`**: merged the same way, page over layout.
 - **`$head`**: merged site → layout → page, later entries winning for singletons like `<title>`; see [SEO and metadata](/docs/framework/site/seo).
 

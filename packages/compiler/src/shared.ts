@@ -1625,24 +1625,27 @@ function _walkSrc(def: JxElement | JxMutableNode | string, srcs: Set<string>) {
 }
 
 /**
- * Recursively collect all `timing: "server"` entries from the document tree.
+ * Recursively collect all `timing: "server"` entries from the document tree: one record per entry,
+ * in walk order (the root's `state` keys, then `children` depth-first). Nothing is deduplicated, so
+ * two keys naming one export are both listed; which of them a handler serves is the caller's rule
+ * (compiler.md §6.3).
  *
  * @param {JxElement} doc
  * @returns {{ key: string; exportName: string; src: string }[]}
  */
 export function collectServerEntries(doc: JxElement) {
-  const entries = new Map<string, { key: string; exportName: string; src: string }>();
+  const entries: { key: string; exportName: string; src: string }[] = [];
   _walkServerEntries(doc, entries);
-  return [...entries.values()];
+  return entries;
 }
 
 /**
  * @param {JxElement | JxMutableNode | string} def
- * @param {Map<string, { key: string; exportName: string; src: string }>} entries
+ * @param {{ key: string; exportName: string; src: string }[]} entries
  */
 function _walkServerEntries(
   def: JxElement | JxMutableNode | string,
-  entries: Map<string, { key: string; exportName: string; src: string }>,
+  entries: { key: string; exportName: string; src: string }[],
 ) {
   if (!isNonNullObject(def)) {
     return;
@@ -1650,7 +1653,7 @@ function _walkServerEntries(
   if (def.state) {
     for (const [key, d] of Object.entries(def.state)) {
       if (isServerFnDef(d)) {
-        entries.set(d.$export, { exportName: d.$export, key, src: d.$src });
+        entries.push({ exportName: d.$export, key, src: d.$src });
       }
     }
   }

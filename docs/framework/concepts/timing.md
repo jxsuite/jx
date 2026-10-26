@@ -95,7 +95,7 @@ During development the runtime never requests a server module's source: every ca
 
 For each `timing: "server"` entry, the [compiler](/docs/framework/build) emits two artifacts: a client-side `POST /_jx/server/<export>` fetch that stores the JSON response in a signal (wrapped in an effect when any argument is reactive), and a server-side Hono handler that imports the export from `$src` and serves that route.
 
-When `build.adapter` is set in `project.json`, every server entry across the whole site is collected, deduplicated by export name, and bundled into a single worker (`dist/_worker.js` plus a `_routes.json` limiting invocation to `/_jx/*` on Cloudflare Pages). Without an adapter, a standalone per-document handler is generated instead. During development the [dev server](/docs/framework/build/dev-server) stands in for both.
+When `build.adapter` is set in `project.json`, every server entry a page, its layouts, `project.json`'s `state` or a component declares is collected and bundled into a single worker, one route per export name (`dist/worker.js`, or `dist/_worker.js` plus a `_routes.json` on Cloudflare Pages; see [Build output and adapters](/docs/framework/site/deployment#what-the-worker-serves)). Without an adapter, a standalone per-document handler is generated instead. During development the [dev server](/docs/framework/build/dev-server) stands in for both.
 
 Compiler-timed entries never produce runtime artifacts at all. The site build resolves them, bakes the values into the static HTML, and strips the entries from the document.
 
@@ -106,6 +106,8 @@ Compiler-timed entries never produce runtime artifacts at all. The site build re
 - The server function's signature is `(args, env)`; `arguments` is one named-values object.
 - A reactive `$ref` in `arguments` makes the RPC call reactive.
 - `env` and everything reachable through it stay server-side; only the return value is serialized to the browser.
+- In a built site, a relative `$src` resolves against the file that declares the entry (a page, layout, component or `project.json`). Studio's preview still resolves a layout's or `project.json`'s against the page it renders, so such an entry may not answer there.
+- An export name means one function across the whole site: two modules exporting the same name stop the build.
 - `timing: "compiler"` values are fixed at build time, so rebuild the site to refresh them.
 
 ## Related

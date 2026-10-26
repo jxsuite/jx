@@ -69,6 +69,20 @@ describe("compileServer", () => {
     expect(result).toContain("import { saveUser } from './user.js'");
   });
 
+  test("compileServer keeps one route per export name, the last declared", async () => {
+    const doc = {
+      state: {
+        first: { $export: "getData", $src: "./api.js", timing: "server" },
+        second: { $export: "getData", $src: "./api2.js", timing: "server" },
+      },
+    };
+    const result = (await compileServer(doc)) ?? "";
+    expect(result.match(/^import \{ getData \}/gm)).toHaveLength(1);
+    expect(result).toContain("import { getData } from './api2.js'");
+    expect(result).not.toContain("'./api.js'");
+    expect(result.match(/app\.post\('\/_jx\/server\/getData'/g)).toHaveLength(1);
+  });
+
   test("generated code includes json parsing", async () => {
     const doc = {
       state: {

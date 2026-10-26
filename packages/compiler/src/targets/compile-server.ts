@@ -37,7 +37,11 @@ export async function compileServer(
      replaces each `$ref` node with the value it points to, so the result is that same document
      with its references inlined. A file read from disk is not re-validated here. */
   const doc = (await dereference(sourcePath)) as JxElement;
-  const entries = collectServerEntries(doc);
+  /* One route per export name, the last declared winning: a Map keeps each name where it first
+     appeared and the value it was last given. */
+  const entries = [
+    ...new Map(collectServerEntries(doc).map((entry) => [entry.exportName, entry])).values(),
+  ];
   if (entries.length === 0) {
     return null;
   }

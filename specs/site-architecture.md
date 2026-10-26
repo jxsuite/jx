@@ -42,7 +42,7 @@ Jx Studio is a visual IDE for the development and management of local-first, sta
 
 2. **Convention over configuration.** Sensible defaults derived from well-known prior art (Astro, Next.js, Eleventy). A `pages/` directory means file-based routing. A `content/` directory means content collections. A `layouts/` directory means shared page shells. Zero configuration required — but overridable.
 
-3. **Static-first, with a real server tier.** All page output is static HTML/CSS/JS: the compiler prerenders every page at build time, and interactivity hydrates as islands in the browser. There is no per-request page rendering. **No server runtime ships by default** — the worker is opt-in via `build.adapter`, and a project that leaves it unset deploys as plain static files. Setting an adapter emits a worker serving `/_jx/*` alongside the same prerendered pages: a single Hono app carrying the site's server entries, deduplicated by export name, plus registry-driven extension mounts (§14.1). With no adapter, a page's own `timing: "server"` entries still compile to a per-route `_server.js` written beside that page, but nothing site-wide is produced.
+3. **Static-first, with a real server tier.** All page output is static HTML/CSS/JS: the compiler prerenders every page at build time, and interactivity hydrates as islands in the browser. There is no per-request page rendering. **No server runtime ships by default** — the worker is opt-in via `build.adapter`, and a project that leaves it unset deploys as plain static files. Setting an adapter emits a worker serving `/_jx/*` alongside the same prerendered pages: a single Hono app carrying every server entry the site's pages, layouts, components and `project.json` declare, one route per export name, plus registry-driven extension mounts (§14.1). With no adapter, a page's own `timing: "server"` entries still compile to a per-route `_server.js` written beside that page, but nothing site-wide is produced.
 
 4. **JSON all the way down.** Site configuration is JSON. Page templates are JSON. Content schemas are JSON Schema. Layouts are JSON. The only non-JSON files are content entries (Markdown, CSV, media) and user-authored JavaScript sidecar functions. This makes the entire project machine-readable and Studio-editable.
 
@@ -1444,7 +1444,7 @@ These cascade without explicit import:
 
 ### 10.3 Component Scoping
 
-> **Status: Partial.** Project scoping ships: no other project's components reach the palette, and project `imports` apply project-wide (`packages/site/src/context.ts`). Discovery is not limited to `components/`: the dev server (`/__studio/components` in `packages/server/src/studio-api.ts`), the desktop (`discoverComponents` in `packages/desktop/src/project-session.ts`) and the cloud host (`discoverComponents` in `packages/studio/src/platforms/cloud.ts`) find a component document anywhere in the project tree, which is what §2.2's co-located components need. The build compiles a narrower set than it discovers, so the second bullet does not hold for `jx build`: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` (a non-recursive listing) and never reads a page's or layout's `{ "$ref" }` `$elements` entries, so `../components/nested/deep-card.json` or `./_blog-card.json` named there ships as an empty custom-element tag with no module and no build error, and only a component's own `$elements` dependencies compile from elsewhere in the tree.
+> **Status: Partial.** Project scoping ships: no other project's components reach the palette, and project `imports` apply project-wide (`packages/site/src/context.ts`). Discovery is not limited to `components/`: the dev server (`/__studio/components` in `packages/server/src/studio-api.ts`), the desktop (`discoverComponents` in `packages/desktop/src/project-session.ts`) and the cloud host (`discoverComponents` in `packages/studio/src/platforms/cloud.ts`) find a component document anywhere in the project tree, which is what §2.2's co-located components need. The build compiles a narrower set than it discovers, so the second bullet does not hold for `jx build`: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` (a non-recursive listing) and never reads a page's or layout's `{ "$ref" }` `$elements` entries, so `../components/nested/deep-card.json` or `./_blog-card.json` named there ships as an empty custom-element tag with no module and no build error, and only a component's own `$elements` dependencies compile from elsewhere in the tree. Those dependencies add no server entry to the worker either: the site build reads component `timing: "server"` entries only from the files directly in `components/` (`componentDefs` in `packages/compiler/src/site/site-build.ts`, compiler.md §6.3), so an entry that a dependency compiled from elsewhere declares gets no `/_jx/server/<export>` route and no build error.
 
 Components are scoped to the site project. When a site context is active:
 
@@ -1602,11 +1602,13 @@ Discover content/       → content index
 Resolve $paths          → expand dynamic routes
     ↓
 Compile components/     → element modules + CSS
-Collect server entries  → from componentDefs (if adapter set)
+Collect server entries  → from components and project.json state
     ↓
 For each route:
     Load page.json
     Resolve $layout     → wrap in layout
+    Collect server entries → from the page and each layout, each $src
+                             resolved against its own file (compiler.md §6.3)
     Resolve $head       → merge site + layout + page heads
     Resolve state       → inject content entries, site state
     Transform images    → generate responsive variants, inject srcset/sizes
@@ -1878,7 +1880,7 @@ Both readings are derived from one grouping, so they cannot come to disagree abo
 
 ### 13.6 Locale Negotiation
 
-> **Status: Partial.** `locale-negotiation.ts` implements RFC 4647 Lookup and emits it into the generated worker (`packages/compiler/src/targets/compile-server.ts`); that adapter-less static output cannot negotiate is the output shape, not a gap (see below). Two things do not match this section: under `"cloudflare-pages"` a site with no server entries and no active mounts gets no worker (`skipWorker` in `packages/compiler/src/site/site-build.ts` ignores `i18n`), so it neither negotiates nor gets the prefix-always root warning; and `*` selects the first declared locale rather than `defaultLocale` whenever the default is declared later in `locales` (`resolveI18n` in `packages/schema/src/locale.ts` moves it to the front only when it is missing).
+> **Status: Partial.** `locale-negotiation.ts` implements RFC 4647 Lookup and emits it into the generated worker (`packages/compiler/src/targets/compile-server.ts`); that adapter-less static output cannot negotiate is the output shape, not a gap (see below). Three things do not match this section: under `"cloudflare-pages"` a site with no server entries and no active mounts gets no worker (`skipWorker` in `packages/compiler/src/site/site-build.ts` ignores `i18n`), so it neither negotiates nor gets the prefix-always root warning; on a site whose `url` has a path (§14.7), the middleware is registered at the bare `/` and redirects to homes without the base (`localeNegotiationMiddleware` in `packages/compiler/src/site/locale-negotiation.ts`), so the site's root is never negotiated, although `_routes.json` names it (§14.1.1), and a redirect from the origin's own `/` drops the base; and `*` selects the first declared locale rather than `defaultLocale` whenever the default is declared later in `locales` (`resolveI18n` in `packages/schema/src/locale.ts` moves it to the front only when it is missing).
 
 **Which deployments can negotiate, and which cannot.** Negotiation needs a request, and adapter-less static output has no runtime that sees one: `dist/` is files, and the preview server is a pure file mapper. That is a property of the output shape, not missing work, and it is stated here rather than tracked as a gap so nobody sets out to close it. A site with `build.adapter` set gets a generated worker, the worker sees the request, and negotiation runs there.
 
@@ -1927,7 +1929,7 @@ A document formats through **blessed `Intl` helpers**, listed once in `packages/
 
 ## 14. Deployment
 
-> **Status: Implemented.** The adapters, their worker output, the response-header file and `.nojekyll` all ship; what does not, a page's own server function under an adapter, is recorded in §14.1.1. `vercel.json` is declined rather than missing: there is no Vercel adapter, and the file belongs at the repository root rather than inside `build.outDir`.
+> **Status: Implemented.** The adapters, their worker output, the response-header file and `.nojekyll` all ship. `vercel.json` is declined rather than missing: there is no Vercel adapter, and the file belongs at the repository root rather than inside `build.outDir`.
 
 ### 14.1 Output Targets
 
@@ -1954,23 +1956,24 @@ Configured in `project.json`:
 
 #### 14.1.1 `build.adapter` Properties
 
-> **Status: Partial.** The keys, their defaults and adapter-gated worker generation ship (`packages/compiler/src/site/site-loader.ts`, `compileSiteServer` in `packages/compiler/src/targets/compile-server.ts`). Step 3's known gap is unbuilt: the step-5b collector in `packages/compiler/src/site/site-build.ts` walks `componentDefs` only, so once `adapter` is set a `timing: "server"` entry declared on a page is dropped with no warning. Step 5 also understates `_routes.json`: for a site declaring more than one locale its `include` list is `/` and `/_jx/*`, so the worker can negotiate the root (§13.6).
+| Property        | Type             | Default       | Description                                                                                                                                                                                                                                                                                               |
+| --------------- | ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `outDir`        | `string`         | `"./dist"`    | Output directory for static assets                                                                                                                                                                                                                                                                        |
+| `format`        | `string`         | `"directory"` | **Reserved; currently unused.** Accepted for forward compatibility with single-file output — the build emits per-route directories regardless                                                                                                                                                             |
+| `trailingSlash` | `string`         | `"always"`    | `"always"` or `"never"`: the output layout, and the form of the canonical, `og:url`, sitemap and `hreflang` URLs (§8.4.1)                                                                                                                                                                                 |
+| `sitemap`       | `boolean`        | `true`        | Generate `sitemap.xml` from the route table (requires `url`; §8.4.1)                                                                                                                                                                                                                                      |
+| `adapter`       | `string \| null` | `null`        | Deployment adapter: `"cloudflare-workers"`, `"cloudflare-pages"`, `"node"`, `"bun"`. `"static"`, Studio's explicit choice of none, is the same as unset                                                                                                                                                   |
+| `deploy`        | `object`         | —             | The hosting project the site publishes to, which Studio records when it connects one: `provider` (`"cloudflare-pages"`), `accountId`, `projectName`, optional `productionUrl`; identifiers only. The build reads it once: a build with neither `adapter` nor `deploy` gets §14.3's `public/CNAME` warning |
 
-| Property        | Type             | Default       | Description                                                                                                                                   |
-| --------------- | ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `outDir`        | `string`         | `"./dist"`    | Output directory for static assets                                                                                                            |
-| `format`        | `string`         | `"directory"` | **Reserved; currently unused.** Accepted for forward compatibility with single-file output — the build emits per-route directories regardless |
-| `trailingSlash` | `string`         | `"always"`    | `"always"` or `"never"`: the output layout, and the form of the canonical, `og:url`, sitemap and `hreflang` URLs (§8.4.1)                     |
-| `sitemap`       | `boolean`        | `true`        | Generate `sitemap.xml` from the route table (requires `url`; §8.4.1)                                                                          |
-| `adapter`       | `string \| null` | `null`        | Deployment adapter: `"cloudflare-workers"`, `"cloudflare-pages"`, `"node"`, `"bun"`                                                           |
+`build.headers` is specified in §14.3, and `build.minify` in compiler.md §12.
 
 Worker generation is gated on `adapter` alone — not on the project having server functions or extension mounts. When `adapter` is set, the compiler:
 
-1. Collects `timing: "server"` entries from the project's components
-2. Deduplicates by export name
-3. Skips per-route `_server.js` generation. Because that per-route path is the only one that reads a page's own server entries, a `timing: "server"` entry declared directly on a page is not served once an adapter is set — declare server functions on a component. **This is a known gap, not a design intent**: the site-wide collector in step 1 walks `componentDefs` only, so a page-level entry is dropped silently, with no build warning. Until the collector also walks page documents, a page-level server function is a build-time footgun.
+1. Collects `timing: "server"` entries from every page, from each layout in the page's chain, from `project.json`'s `state` (which every page inherits, §3.2) and from every component directly in `components/` (§10.3), resolving a relative `$src` against the directory of the document that declares it
+2. Deduplicates by export name, since each entry is served at `/_jx/server/<export>`: one module declared by several documents is one route, and two different modules exporting one name fail the build with an error naming each module and a document declaring it
+3. Skips per-route `_server.js` generation: the worker serves every entry step 1 collects, a page's own included
 4. Collects the active extension server mounts (§15.1) and registers each under its `basePath` in `order`
-5. Emits a single Hono worker via `compileSiteServer()` — `dist/worker.js`, or `dist/_worker.js` for `"cloudflare-pages"` ([advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/), the only Functions convention that lives inside the build output; the root-level `functions/` directory convention is not used). For Pages, a `dist/_routes.json` limiting worker invocation to `/_jx/*` is emitted alongside, so static assets are served without invoking the worker.
+5. Emits a single Hono worker via `compileSiteServer()` — `dist/worker.js`, or `dist/_worker.js` for `"cloudflare-pages"` ([advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/), the only Functions convention that lives inside the build output; the root-level `functions/` directory convention is not used). For Pages, a `dist/_routes.json` is emitted alongside so that static assets are served without invoking the worker: its `include` list is `/_jx/*`, plus `/` when `i18n` declares more than one locale so that the worker can negotiate the root (§13.6), each under the deployment base (§14.7).
 6. Adds the Cloudflare asset fallback (`app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw))`) for both Cloudflare adapters
 
 `"cloudflare-pages"` is the one adapter that can decline: with no server entries _and_ no active mounts, no worker and no `_routes.json` are emitted and the deployment stays purely static. The other adapters emit their worker unconditionally — with nothing to serve, it carries only the asset fallback (`"cloudflare-workers"`) or no routes at all (`"node"` / `"bun"`). The generated worker is a build artifact inside `dist/` and is excluded by the standard `dist/` gitignore rule.
@@ -2046,7 +2049,7 @@ Two cache rules, and the reasoning is the whole design.
 **Which hosts read it.** `_headers` is a Cloudflare/Netlify convention, not a web standard. **Cloudflare Pages, Cloudflare Workers assets and Netlify** read it; **GitHub Pages and most other plain static hosts ignore it entirely** and serve their own `Cache-Control` — 10 minutes, in GitHub Pages' case, applied to everything including the content-addressed images the file marks immutable for a year. The build cannot know where a `dist/` is going, so it says what it can:
 
 - Under the `node` or `bun` adapter, which serves no static assets at all, the build warns that the file is documentation rather than configuration — apply the headers at the reverse proxy.
-- With no adapter and a `public/CNAME` — GitHub Pages' custom-domain marker, and nothing else's — the build warns that the file will be ignored.
+- With no adapter, no `build.deploy` (§14.1.1) and a `public/CNAME` — GitHub Pages' custom-domain marker, and nothing else's — the build warns that the file will be ignored.
 - Otherwise a verbose-only note names the hosts that read it.
 
 The warnings exist because the failure is silent in the worst way: the build writes a caching policy, reports success, and the site ships with none.
@@ -2146,6 +2149,7 @@ Every output a host reads carries the base, not only the page:
 | `sw.js` (§14.6)                | Precache entries, the cache-first prefix and the registration's scope are all request paths; a scope the worker's own URL is not inside fails to register                                                                                             |
 | `manifest.webmanifest` (§14.5) | `start_url`, `scope` and icon `src` are fetched or navigated to                                                                                                                                                                                       |
 | The generated worker (§14.1)   | It IS the origin: the request it sees carries the prefix, so its routes and its extension mounts are registered under the base                                                                                                                        |
+| `_routes.json` (§14.1.1)       | Cloudflare Pages matches its `include` patterns against the request path, so an unprefixed pattern never invokes the worker                                                                                                                           |
 
 **What the page rewrite cannot reach.** It reads HTML, and a component or a page module is JavaScript the page loads, so a URL the compiler writes into one is re-rooted at the point it is written (`rewriteSrc`, with `withBase`). A URL an AUTHOR writes into a string a script holds, or into a prop that a component renders at runtime, is data to this pass, not a reference: it keeps the form it was written in, and a site served from a path builds such a URL from `$site.url` in the document that supplies it.
 
@@ -2165,15 +2169,15 @@ Sections 1–14 describe a project's static surface: pages prerendered from file
 
 ### 15.1 The Three Mechanisms
 
-| Mechanism            | Declared as                                                            | Serves                                                                                                                                          |
-| -------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Server functions** | a `state` entry with `timing: "server"` on a component (spec.md §11.4) | `POST /_jx/server/<export>` — the named export runs on the server, called as `(args, env)`                                                      |
-| **Authentication**   | the `auth` section of `project.json`, from `@jxsuite/auth`             | `/_jx/auth/*` — Better Auth sessions, email/password and social sign-in, roles, and the system tables `user`/`session`/`account`/`verification` |
-| **Application data** | the `data` section of `project.json`, from `@jxsuite/connector`        | `/_jx/data/*` — CRUD over rows in a connected database (Cloudflare D1, Supabase, SQLite); wire contract in extensions.md §11                    |
+| Mechanism            | Declared as                                                                                                  | Serves                                                                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Server functions** | a `state` entry with `timing: "server"` on a page, its layout, a component or `project.json` (spec.md §11.4) | `POST /_jx/server/<export>` — the named export runs on the server, called as `(args, env)`                                                      |
+| **Authentication**   | the `auth` section of `project.json`, from `@jxsuite/auth`                                                   | `/_jx/auth/*` — Better Auth sessions, email/password and social sign-in, roles, and the system tables `user`/`session`/`account`/`verification` |
+| **Application data** | the `data` section of `project.json`, from `@jxsuite/connector`                                              | `/_jx/data/*` — CRUD over rows in a connected database (Cloudflare D1, Supabase, SQLite); wire contract in extensions.md §11                    |
 
 All three land in the **same** generated worker (§14.1). Extension mounts are registry-driven: the compiler collects every class carrying a `server` block that is _active_ — one owning no project section, or one whose section is present and non-empty in `project.json` — imports its mount module, and registers it under its `basePath` in `order`. No extension name is hardcoded in the compiler. Auth mounts first and publishes `ctx.auth` on the shared server context; the data mount consumes it to enforce per-table permission rules, and fails closed when it is absent.
 
-Two scoping rules are easy to trip over. First, `@jxsuite/connector` also contributes a `connections` section, naming the databases a `data` table binds to — but `Connections` carries no `server` block, so it is configuration rather than a mount: it serves no routes, and a project that declares connections while leaving `data` and `auth` empty has no active mounts at all. Second, only component-declared server functions reach the generated worker; an entry declared directly on a page is served by the per-route `_server.js` path, which the build skips as soon as an adapter is set (§14.1).
+Two scoping rules are easy to trip over. First, `@jxsuite/connector` also contributes a `connections` section, naming the databases a `data` table binds to — but `Connections` carries no `server` block, so it is configuration rather than a mount: it serves no routes, and a project that declares connections while leaving `data` and `auth` empty has no active mounts at all. Second, the generated worker serves a server function wherever it is declared (a page, a layout it uses, `project.json`'s `state` or a component), one route per export name (§14.1.1). With no adapter there is no worker, and only a page's own entries compile, to a per-route `_server.js` (§15.4).
 
 ### 15.2 Configuration Surface
 
@@ -2193,7 +2197,7 @@ Reads and form actions against `data` tables lower at build time (extensions.md 
 
 ### 15.4 Consequences for the Build
 
-> **Status: Partial.** The build error for an active mount with no adapter, worker emission gated on `build.adapter` alone and the `"cloudflare-pages"` skip ship (`buildSite` in `packages/compiler/src/site/site-build.ts`). A server tier of `timing: "server"` state alone does build with no adapter, but nothing serves its entries: the `_server.js` written beside a page's HTML imports each `$src` exactly as the page wrote it, a path `dist/` does not contain (`compileServer` in `packages/compiler/src/targets/compile-server.ts`, `compiler.md` §6.2), and a component's entries are collected only when an adapter is set, so without one they reach no handler at all.
+> **Status: Partial.** The build error for an active mount with no adapter, worker emission gated on `build.adapter` alone and the `"cloudflare-pages"` skip ship (`buildSite` in `packages/compiler/src/site/site-build.ts`). A server tier of `timing: "server"` state alone does build with no adapter, but nothing serves its entries: the `_server.js` written beside a page's HTML imports each `$src` exactly as the page wrote it, a path `dist/` does not contain (`compileServer` in `packages/compiler/src/targets/compile-server.ts`, `compiler.md` §6.2), and a component's, a layout's or `project.json`'s entries are served only by the worker an adapter emits, so without one they reach no handler at all.
 
 A project with an **active extension mount** — a non-empty `auth` or `data` section — **requires a server-capable adapter**. `build.adapter` must be `"cloudflare-workers"`, `"cloudflare-pages"`, `"node"`, or `"bun"`; with no adapter (a purely static build) the build **fails** with an error naming the offending sections, because a static deployment cannot serve them.
 

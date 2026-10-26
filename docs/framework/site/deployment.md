@@ -6,6 +6,7 @@ spec:
   - site-architecture.md#14.7
 code:
   - packages/compiler/src/site/site-build.ts
+  - packages/compiler/src/site/server-entries.ts
   - packages/compiler/src/site/headers-emitter.ts
   - packages/compiler/src/site/csp.ts
   - packages/compiler/src/site/well-known.ts
@@ -272,15 +273,15 @@ Three route families, and nothing else:
 | ---------------------- | -------------------------------------------------------------- |
 | `/_jx/auth/*`          | The auth extension: sign-up, sign-in, sign-out, session lookup |
 | `/_jx/data/*`          | The connector extension: table CRUD                            |
-| `/_jx/server/<export>` | One route per `timing: "server"` state entry                   |
+| `/_jx/server/<export>` | One route per server function export name                      |
 
 **Pages are never rendered per request.** Every route is prerendered at build time and served as static HTML; the worker answers the `/_jx/*` API surface and falls through to the assets for everything else. Interactivity arrives by hydration, so a page that shows signed-in content ships its signed-out state in the HTML and swaps once the session resolves in the browser. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
 
 Details worth knowing:
 
-- Server functions are collected from every component and page, deduplicated by export name, and bundled once, so there are no per-route server files when an adapter is set.
+- Server functions are collected from every page, the layouts it uses, `project.json`'s `state` and every component, and bundled once, so there are no per-route server files when an adapter is set. A relative `$src` is resolved from the file that declares it. Each export name is one route: one module declared in several places is served once, and two modules exporting the same name stop the build with an error naming both files.
 - The worker is **self-contained**: hono, extension mounts, database connectors, and your server modules are inlined at build time, so `dist/` deploys and runs with no `node_modules` and no deploy-time bundling step.
-- On Cloudflare Pages, `_routes.json` limits worker invocation to `/_jx/*`, so static assets are served without waking the worker. A Pages site with no server functions and no mounts gets no worker at all, and the deployment stays purely static.
+- On Cloudflare Pages, `_routes.json` limits worker invocation to `/_jx/*`, plus `/` when the site has more than one locale so the worker can choose a language for the root, and static assets are served without waking the worker. A Pages site with no server functions and no mounts gets no worker at all, and the deployment stays purely static.
 - A project with dynamic sections (a non-empty `data`/`connections` or `auth` section, served by extension mounts) **must** set a server-capable adapter. On static the build stops with an error naming the offending sections, since a static site has nothing to serve live data with.
 - Switching hosts means switching the adapter; your source never changes.
 
@@ -296,7 +297,7 @@ You don't configure this. **Set `url` to where the site actually lives**, includ
 }
 ```
 
-That is the same `url` that already drives canonical links and the sitemap, and now it also tells the build where the site's root is. Everything follows from it: page links and images, the import map, component scripts, `_headers` patterns, `_redirects` on both sides, the service worker's precache list and scope, and `manifest.webmanifest`. Canonical links and `sitemap.xml` keep the folder in their absolute URLs instead of dropping it.
+That is the same `url` that already drives canonical links and the sitemap, and now it also tells the build where the site's root is. Everything follows from it: page links and images, the import map, component scripts, `_headers` patterns, `_redirects` on both sides, `_routes.json` and the worker's own routes, the service worker's precache list and scope, and `manifest.webmanifest`. Canonical links and `sitemap.xml` keep the folder in their absolute URLs instead of dropping it.
 
 Nothing changes for a site at a domain root. `"url": "https://example.com"` has no path, so there is no prefix and the output is byte-for-byte what it was.
 

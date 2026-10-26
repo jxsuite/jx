@@ -419,23 +419,23 @@ export default app;
 
 ### 6.3 Site-Wide Server Bundling (`compileSiteServer`)
 
-> **Status: Partial.** Entries are collected from components only: step 5b of `packages/compiler/src/site/site-build.ts` walks `componentDefs` and never a page, and with an adapter set the per-page `_server.js` is skipped as well, so a page's own `timing: "server"` entry gets no route at all. The worker, the Pages `_worker.js` and `_routes.json`, ordered mounts and the no-adapter build error ship as described (`packages/compiler/tests/connector-mounts.test.ts`, `site-build.test.ts`); the parameter table omits the `i18n` and `base` options `compileSiteServer` also takes.
-
-When `build.adapter` is set in `project.json`, the site build collects all `timing: "server"` entries across every component and page, deduplicates by export name, and emits a single Hono worker via `compileSiteServer()` — `dist/worker.js`, or `dist/_worker.js` ([Pages advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/)) plus a `dist/_routes.json` limiting invocation to `/_jx/*` for `"cloudflare-pages"`. Per-route `_server.js` files are not generated in this mode. A `"cloudflare-pages"` site with no server entries **and** no active extension mounts emits no worker at all.
+When `build.adapter` is set in `project.json`, the site build collects every `timing: "server"` entry declared by a page, by each layout in that page's chain, by `project.json`'s `state` (which every page inherits, site-architecture.md §3.2) and by every component directly in `components/` (site-architecture.md §10.3). Each document is read as written, before layout merging, so a relative `$src` (`./`, `../`) resolves against the directory of the document that declares it; any other specifier is kept as written, and the worker bundle resolves both from the project root (§12). Entries are deduplicated by export name, because each is served at `/_jx/server/<export>`: one module declared by several documents is one route, and two different modules exporting one name are a build error naming each module and a document declaring it. The build emits a single Hono worker via `compileSiteServer()` — `dist/worker.js`, or `dist/_worker.js` ([Pages advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/)) plus a `dist/_routes.json` for `"cloudflare-pages"` (site-architecture.md §14.1.1). Per-route `_server.js` files are not generated in this mode. A `"cloudflare-pages"` site with no server entries **and** no active extension mounts emits no worker at all.
 
 The function signature for server entries is `(args, env)` — the second parameter receives the platform's environment bindings (e.g., Cloudflare `env` with KV, D1, email, etc.). Old functions that accept only `(args)` are unaffected since the extra parameter is ignored.
 
 ```js
-compileSiteServer(entries, { adapter, baseUrl, mounts, connectors });
+compileSiteServer(entries, { adapter, base, baseUrl, connectors, i18n, mounts });
 ```
 
-| Parameter    | Type                                                   | Default         | Description                                                            |
-| ------------ | ------------------------------------------------------ | --------------- | ---------------------------------------------------------------------- |
-| `entries`    | `Array<{exportName, src}>`                             | —               | Pre-collected server entries from all components                       |
-| `adapter`    | `string \| null`                                       | `null`          | Deployment adapter; adds platform-specific output                      |
-| `baseUrl`    | `string`                                               | `"/_jx/server"` | Base path prefix for all server endpoints                              |
-| `mounts`     | `Array<{className, module, basePath, order, options}>` | `[]`            | Extension server mounts to register (extensions.md §11)                |
-| `connectors` | `Array<{provider, className, module}>`                 | `[]`            | Connector provider classes the mounts receive via `options.connectors` |
+| Parameter    | Type                                                   | Default         | Description                                                                                                              |
+| ------------ | ------------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `entries`    | `Array<{exportName, src}>`                             | —               | Collected server entries, one per export name, each `src` resolvable from the project root                               |
+| `adapter`    | `string \| null`                                       | `null`          | Deployment adapter; adds platform-specific output                                                                        |
+| `base`       | `string`                                               | `""`            | Deployment base path (site-architecture.md §14.7); the server routes register under `base` + `baseUrl`                   |
+| `baseUrl`    | `string`                                               | `"/_jx/server"` | Base path prefix for all server endpoints                                                                                |
+| `i18n`       | `ResolvedI18n \| null`                                 | `null`          | Locale routing; with two or more locales the `/` negotiation middleware is registered first (site-architecture.md §13.6) |
+| `mounts`     | `Array<{className, module, basePath, order, options}>` | `[]`            | Extension server mounts to register (extensions.md §11)                                                                  |
+| `connectors` | `Array<{provider, className, module}>`                 | `[]`            | Connector provider classes the mounts receive via `options.connectors`                                                   |
 
 **Extension server mounts.** Classes carrying a `server` block ([extensions.md §11](./extensions.md)) — `@jxsuite/auth` at `/_jx/auth`, the connector data mount at `/_jx/data` — are emitted into the same worker: a static import per mount module and per connector provider class, one shared `ctx` object, `mount()` awaited at module init in ascending `order`, and `app.all()` wrappers for both `<basePath>/*` and the bare `<basePath>` registered **before** the `/_jx/server` routes and the asset fallthrough. Mount options are inlined as JSON — the project's section manifest, identifiers and env-var names only, never secret values (extensions.md §13). A mount is active when its class owns no project section, or when the project declares a non-empty value for its section key.
 
@@ -471,7 +471,7 @@ app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 export default app;
 ```
 
-> **Status: Implemented.** `compile-server.js` exports `compileServer` (per-route) and `compileSiteServer` (site-wide). `site-build` orchestrates entry collection and worker generation when `build.adapter` is set. The worker is bundled self-contained (§12); server sources are no longer copied into `dist/components/`.
+> **Status: Implemented.** `compile-server.js` exports `compileServer` (per-route) and `compileSiteServer` (site-wide). `site-build` collects the entries of every page, each layout in its chain, `project.json` and every component directly in `components/` (`packages/compiler/src/site/server-entries.ts`), and generates the worker when `build.adapter` is set (`packages/compiler/tests/site-build.test.ts`, `connector-mounts.test.ts`). The worker is bundled self-contained (§12); server sources are no longer copied into `dist/components/`.
 
 ---
 
