@@ -3035,51 +3035,80 @@ describe("buildSite — lang attribute handling", () => {
   });
 });
 
-// ── Server handler (no adapter) ──────────────────────────────────────────────
+// ── Server entries (no adapter) ──────────────────────────────────────────────
 
-describe("buildSite — server handler without adapter", () => {
-  const SH_TMP = resolve(import.meta.dir, "__test-site-server-handler__");
+describe("buildSite — server entries need an adapter", () => {
+  const NA_TMP = resolve(import.meta.dir, "__test-site-server-no-adapter__");
+  let errors: string[] = [];
 
-  beforeAll(() => {
-    rmSync(SH_TMP, { force: true, recursive: true });
-    mkdirSync(SH_TMP, { recursive: true });
-    writeFileSync(
-      resolve(SH_TMP, "project.json"),
-      JSON.stringify({ build: { outDir: "./dist" }, name: "SH Test" }),
-      "utf8",
-    );
-    mkdirSync(resolve(SH_TMP, "pages"), { recursive: true });
-    writeFileSync(
-      resolve(SH_TMP, "pages/index.json"),
-      JSON.stringify({
-        children: [{ children: ["Data Page"], tagName: "p" }],
-        state: {
-          loadData: {
-            $export: "loadData",
-            $src: "./api.server.js",
-            timing: "server",
-          },
-        },
-        title: "Home",
-      }),
-      "utf8",
-    );
-    writeFileSync(
-      resolve(SH_TMP, "pages/api.server.js"),
-      "export function loadData() { return { items: [] }; }\n",
-      "utf8",
-    );
+  beforeAll(async () => {
+    rmSync(NA_TMP, { force: true, recursive: true });
+    const writeP = (p: string, c: string) => {
+      mkdirSync(resolve(NA_TMP, ...p.split("/").slice(0, -1)), { recursive: true });
+      writeFileSync(resolve(NA_TMP, p), c, "utf8");
+    };
+    const writeJ = (p: string, obj: JsonValue) => {
+      writeP(p, JSON.stringify(obj, null, 2));
+    };
+
+    writeJ("project.json", {
+      build: { outDir: "./dist" },
+      name: "No Adapter Test",
+      state: { siteStats: serverEntry("siteStats", "./lib/stats.server.js") },
+    });
+    writeP("lib/stats.server.js", serverModule("siteStats"));
+
+    writeJ("layouts/base.json", {
+      children: [{ children: [{ tagName: "slot" }], tagName: "main" }],
+      state: { trackVisit: serverEntry("trackVisit", "./visits.server.js") },
+      tagName: "div",
+    });
+    writeP("layouts/visits.server.js", serverModule("trackVisit"));
+
+    writeJ("pages/index.json", {
+      $layout: "./layouts/base.json",
+      children: [{ $props: {}, tagName: "test-contact" }],
+      state: { loadData: serverEntry("loadData", "./api.server.js") },
+      title: "Home",
+    });
+    writeP("pages/api.server.js", serverModule("loadData"));
+
+    // A second page on the same layout, declaring nothing: the layout's entry must still be named once.
+    writeJ("pages/about.json", {
+      $layout: "./layouts/base.json",
+      children: [{ children: ["About"], tagName: "h1" }],
+      title: "About",
+    });
+
+    writeJ("components/test-contact.json", {
+      children: [{ children: ["Contact"], tagName: "form" }],
+      state: { sendForm: serverEntry("sendForm", "./contact.server.js") },
+      tagName: "test-contact",
+    });
+    writeP("components/contact.server.js", serverModule("sendForm"));
+
+    ({ errors } = await buildSite(NA_TMP, { verbose: false }));
   });
 
   afterAll(() => {
-    rmSync(SH_TMP, { force: true, recursive: true });
+    rmSync(NA_TMP, { force: true, recursive: true });
   });
 
-  it("generates _server.js alongside page HTML when no adapter", async () => {
-    await buildSite(SH_TMP);
-    // The server handler may or may not be generated depending on compileServer behavior
-    // Either way, the page should build without errors
-    expect(existsSync(resolve(SH_TMP, "dist/index.html"))).toBe(true);
+  it("one error names every entry and the document declaring it", () => {
+    expect(errors).toHaveLength(1);
+    const [error] = errors;
+    expect(error).toContain("siteStats (project.json)");
+    expect(error).toContain("loadData (pages/index.json)");
+    expect(error).toContain("sendForm (components/test-contact.json)");
+    expect(error).toContain("build.adapter");
+    // Two pages use the layout, and it is still named once.
+    expect(error?.split("trackVisit (layouts/base.json)")).toHaveLength(2);
+  });
+
+  it("the pages still build and no server output is written", () => {
+    expect(existsSync(resolve(NA_TMP, "dist/index.html"))).toBe(true);
+    expect(existsSync(resolve(NA_TMP, "dist/_server.js"))).toBe(false);
+    expect(existsSync(resolve(NA_TMP, "dist/worker.js"))).toBe(false);
   });
 });
 

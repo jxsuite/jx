@@ -74,7 +74,7 @@ import type { ServerEntryRecord } from "./server-entries.ts";
 import { mergeHead, renderHead, withPageDescription } from "@jxsuite/site/head-merger";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
-import { compile, compileServer, compileSiteServer } from "../compiler.ts";
+import { compile, compileSiteServer } from "../compiler.ts";
 import type { CompileOptions } from "../compiler.ts";
 import { compileElement } from "../targets/compile-element.ts";
 import type { CompileElementOptions } from "../targets/compile-element.ts";
@@ -171,6 +171,13 @@ declare module "@jxsuite/schema/format-registry" {
     evaluateTemplate?: (value: string, scope: JxScope) => JxScope[string] | undefined;
   }
 }
+
+/**
+ * The remedy both adapter errors give: a dynamic section and a server function are served by the
+ * same worker, so a project that declares either needs one of the same four adapters.
+ */
+const ADAPTER_REMEDY =
+  'set build.adapter to "cloudflare-workers", "cloudflare-pages", "node", or "bun".';
 
 /**
  * Build an entire Jx site from a project directory.
@@ -365,8 +372,7 @@ export async function buildSite(
       .join(", ");
     throw new Error(
       `project.json declares dynamic section(s) ${sections} served by extension mounts, but ` +
-        `build.adapter is "static". Dynamic tables need a server-capable adapter — set ` +
-        `build.adapter to "cloudflare-workers", "cloudflare-pages", "node", or "bun".`,
+        `build.adapter is "static". Dynamic tables need a server-capable adapter — ${ADAPTER_REMEDY}`,
     );
   }
 
@@ -894,13 +900,6 @@ export async function buildSite(
         writeFileSync(filePath, file.content, "utf8");
         fileCount += 1;
       }
-
-      // Write server handler if present
-      if (result.serverHandler) {
-        const serverPath = resolve(dirname(outPath), "_server.js");
-        writeFileSync(serverPath, result.serverHandler, "utf8");
-        fileCount += 1;
-      }
     } catch (error) {
       const msg = `Error compiling ${route.urlPattern}: ${errorMessage(error)}`;
       errors.push(msg);
@@ -926,6 +925,29 @@ export async function buildSite(
   }
 
   // ── 6c. Generate site-wide server worker ────────────────────────────────
+  /*
+   * A server function is served by the site worker and by nothing else, so with no adapter its
+   * entry has no route, and a page built that way would ship without the value it declared. It is
+   * an error as an active mount is, but a server entry is only known once each page's layout is
+   * resolved, which is after `dist/` is cleaned: the error goes into `errors`, so the pages are
+   * still written and `jx dev` still serves them, and `jx build` exits non-zero. `siteServerEntries`
+   * holds one record per document that declares an entry, a shared layout's once per page using it,
+   * so each distinct export and document is named once, in the order first seen.
+   */
+  if (!projectConfig.build.adapter && siteServerEntries.length > 0) {
+    const named = [
+      ...new Set(
+        siteServerEntries.map(({ exportName, declaredIn }) => `${exportName} (${declaredIn})`),
+      ),
+    ];
+    const message =
+      `timing: "server" entries ${named.join(", ")} need a server-capable adapter, but ` +
+      `build.adapter is "static": a static deployment has nothing to serve /_jx/server — ${
+        ADAPTER_REMEDY
+      }`;
+    errors.push(message);
+    console.error(message);
+  }
   if (projectConfig.build.adapter) {
     const { adapter } = projectConfig.build;
     log("Generating site-wide server worker...");
@@ -1337,7 +1359,6 @@ interface PageRoute {
  * @returns {Promise<{
  *   html: string;
  *   files: { path: string; content: string; tagName?: string }[];
- *   serverHandler: string | null;
  *   serverEntries: ServerEntryRecord[];
  *   doc: JxDocument;
  * }>}
@@ -1659,19 +1680,6 @@ async function compilePage(
     result.html = injectNpmElementScripts(result.html, registerElementBundle(npmElements));
   }
 
-  // Compile server handler if applicable (skip when provider bundles site-wide)
-  let serverHandler: string | null = null;
-  if (!projectConfig.build.adapter) {
-    try {
-      const serverResult = await compileServer(route.sourcePath);
-      if (serverResult) {
-        serverHandler = serverResult;
-      }
-    } catch {
-      // No server entries — that's fine
-    }
-  }
-
   return {
     doc: layoutDoc,
     // A page opts out of the sitemap by setting `$sitemap: false` (interim escape hatch
@@ -1685,7 +1693,6 @@ async function compilePage(
      * say it once instead of four hundred times.
      */
     unregisteredRelations: unregisteredHeadRelations(mergedHead),
-    serverHandler,
     serverEntries,
   };
 }

@@ -279,10 +279,10 @@ Three route families, and nothing else:
 
 Details worth knowing:
 
-- Server functions are collected from every page, the layouts it uses, `project.json`'s `state` and every component, and bundled once, so there are no per-route server files when an adapter is set. A relative `$src` is resolved from the file that declares it. Each export name is one route: one module declared in several places is served once, and two modules exporting the same name stop the build with an error naming both files.
+- Server functions are collected from every page, the layouts it uses, `project.json`'s `state` and every component, and bundled once into the worker; no build writes per-route server files. A relative `$src` is resolved from the file that declares it. Each export name is one route: one module declared in several places is served once, and two modules exporting the same name stop the build with an error naming both files.
 - The worker is **self-contained**: hono, extension mounts, database connectors, and your server modules are inlined at build time, so `dist/` deploys and runs with no `node_modules` and no deploy-time bundling step.
 - On Cloudflare Pages, `_routes.json` limits worker invocation to `/_jx/*`, plus `/` when the site has more than one locale so the worker can choose a language for the root, and static assets are served without waking the worker. A Pages site with no server functions and no mounts gets no worker at all, and the deployment stays purely static.
-- A project with dynamic sections (a non-empty `data`/`connections` or `auth` section, served by extension mounts) **must** set a server-capable adapter. On static the build stops with an error naming the offending sections, since a static site has nothing to serve live data with.
+- A project with a non-empty `data` or `auth` section (served by extension mounts) or any `timing: "server"` entry **must** set a server-capable adapter. On static the build stops with an error naming the offending sections or entries, since a static site has nothing to serve them with.
 - Switching hosts means switching the adapter; your source never changes.
 
 ## Serving from a subfolder

@@ -84,7 +84,7 @@ The whole framework is reachable from JSON, so the ceiling is higher than "a sta
 
 One boundary is worth telling the agent up front: **pages are prerendered at build time**, and interactivity arrives as hydration islands. There is no per-request page rendering, and the route set is fixed when the build runs. A page that must exist per visitor is a client-side view over server data, not server-rendered HTML.
 
-The other thing to say up front is the adapter. A project with connection-backed data tables **must** set a server-capable `build.adapter` (`cloudflare-workers`, `cloudflare-pages`, `node`, or `bun`), and the build fails on static. Server functions want one too, since that is what packages them into a worker a host will actually run. See [Build output and adapters](/docs/framework/site/deployment).
+The other thing to say up front is the adapter. A project with connection-backed data tables **must** set a server-capable `build.adapter` (`cloudflare-workers`, `cloudflare-pages`, `node`, or `bun`), and the build fails on static. Server functions need one too, and the build fails on static for them the same way. See [Build output and adapters](/docs/framework/site/deployment).
 
 ## Related
 

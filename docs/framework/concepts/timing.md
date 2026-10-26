@@ -95,7 +95,7 @@ During development the runtime never requests a server module's source: every ca
 
 For each `timing: "server"` entry, the [compiler](/docs/framework/build) emits two artifacts: a client-side `POST /_jx/server/<export>` fetch that stores the JSON response in a signal (wrapped in an effect when any argument is reactive), and a server-side Hono handler that imports the export from `$src` and serves that route.
 
-When `build.adapter` is set in `project.json`, every server entry a page, its layouts, `project.json`'s `state` or a component declares is collected and bundled into a single worker, one route per export name (`dist/worker.js`, or `dist/_worker.js` plus a `_routes.json` on Cloudflare Pages; see [Build output and adapters](/docs/framework/site/deployment#what-the-worker-serves)). Without an adapter, a standalone per-document handler is generated instead. During development the [dev server](/docs/framework/build/dev-server) stands in for both.
+When `build.adapter` is set in `project.json`, every server entry a page, its layouts, `project.json`'s `state` or a component declares is collected and bundled into a single worker, one route per export name (`dist/worker.js`, or `dist/_worker.js` plus a `_routes.json` on Cloudflare Pages; see [Build output and adapters](/docs/framework/site/deployment#what-the-worker-serves)). Without an adapter the build stops with an error naming each server entry and the file declaring it, because a static deployment has nothing to run them on. During development the [dev server](/docs/framework/build/dev-server) stands in for the worker.
 
 Compiler-timed entries never produce runtime artifacts at all. The site build resolves them, bakes the values into the static HTML, and strips the entries from the document.
 

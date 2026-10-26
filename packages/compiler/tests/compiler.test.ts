@@ -733,18 +733,13 @@ describe("runCli", () => {
     }
   });
 
-  test("writes server handler file when server entries exist", async () => {
-    const { writeFileSync, readFileSync, mkdirSync, rmSync, existsSync } = await import("node:fs");
+  test("writes no -server.js for a document with server entries", async () => {
+    const { writeFileSync, mkdirSync, rmSync, existsSync } = await import("node:fs");
     const { join } = await import("node:path");
     const fixDir = join(import.meta.dir, "_fixtures_cli4");
     mkdirSync(fixDir, { recursive: true });
     const srcPath = join(fixDir, "app.json");
     const outPath = join(fixDir, "index.html");
-    const handlerPath = join(fixDir, "handler.js");
-    writeFileSync(
-      handlerPath,
-      "export function saveData(ctx) { return ctx.json({ ok: true }); }\n",
-    );
     writeFileSync(
       srcPath,
       JSON.stringify({
@@ -760,10 +755,8 @@ describe("runCli", () => {
     );
     try {
       await runCli(srcPath, outPath);
-      const serverPath = join(fixDir, "index-server.js");
-      expect(existsSync(serverPath)).toBe(true);
-      const serverContent = readFileSync(serverPath, "utf8");
-      expect(serverContent).toContain("saveData");
+      expect(existsSync(outPath)).toBe(true);
+      expect(existsSync(join(fixDir, "index-server.js"))).toBe(false);
     } finally {
       rmSync(fixDir, { force: true, recursive: true });
     }

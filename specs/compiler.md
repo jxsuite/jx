@@ -13,7 +13,7 @@
 
 The Jx compiler transforms `.json` component files into optimized production artifacts. It erases all Jx abstractions at build time — no JSON, no runtime, and no Jx code ships to production. The compiler auto-detects the appropriate output target based on document analysis.
 
-Pages are always prerendered at build time — there is no per-request page rendering — and interactive regions compile to custom elements that hydrate in place. Server output is gated on `build.adapter`: when it is set, every `timing: "server"` entry and every enabled extension server mount (authentication, data) is bundled into a single generated Hono worker serving `/_jx/*` alongside the static output (§6.3). With no adapter, no site worker is emitted at all: `timing: "server"` entries compile instead to a standalone per-page `_server.js` handler (§6.2). A mount has no such fallback, so a project with a non-empty `data` or `auth` section fails the build until an adapter is chosen (§6.3).
+Pages are always prerendered at build time — there is no per-request page rendering — and interactive regions compile to custom elements that hydrate in place. Server output is gated on `build.adapter`: when it is set, every `timing: "server"` entry and every enabled extension server mount (authentication, data) is bundled into a single generated Hono worker serving `/_jx/*` alongside the static output (§6.3). With no adapter no server output is emitted at all, so a project with a `timing: "server"` entry, or with a non-empty `data` or `auth` section, fails the build until an adapter is chosen (§6.3).
 
 **Production dependencies:** `@vue/reactivity` (~7 kB gzip) + `lit-html` (~3 kB gzip).
 
@@ -25,13 +25,12 @@ Pages are always prerendered at build time — there is no per-request page rend
 
 The compiler inspects each input document and routes to the appropriate compilation target:
 
-| Route              | Condition                               | Output                                 | Status          |
-| ------------------ | --------------------------------------- | -------------------------------------- | --------------- |
-| 0 — Class          | Input is `.class.json`                  | ES class module                        | **Implemented** |
-| 1 — Static         | `isDynamic()` returns false             | Plain HTML/CSS, zero JS                | **Implemented** |
-| 2 — Custom Element | Root `tagName` contains hyphen          | `class extends HTMLElement` + lit-html | **Implemented** |
-| 3 — Dynamic Page   | `isDynamic()` returns true, no hyphen   | Pre-rendered HTML + reactive JS        | **Implemented** |
-| 4 — Server         | Document has `timing: "server"` entries | Hono server handler file               | **Implemented** |
+| Route              | Condition                             | Output                                 | Status          |
+| ------------------ | ------------------------------------- | -------------------------------------- | --------------- |
+| 0 — Class          | Input is `.class.json`                | ES class module                        | **Implemented** |
+| 1 — Static         | `isDynamic()` returns false           | Plain HTML/CSS, zero JS                | **Implemented** |
+| 2 — Custom Element | Root `tagName` contains hyphen        | `class extends HTMLElement` + lit-html | **Implemented** |
+| 3 — Dynamic Page   | `isDynamic()` returns true, no hyphen | Pre-rendered HTML + reactive JS        | **Implemented** |
 
 ### 2.1 Static Detection (`isDynamic`)
 
@@ -386,40 +385,20 @@ A file is a `.class.json` document when:
 
 ### 6.1 `timing: "server"` Entries
 
-> **Status: Partial.** The server-side artifact is emitted (§6.2, §6.3). The client side is not: no target emits the `POST /_jx/server/$export` fetch, the signal holding its response or the effect around reactive `arguments`, because `compile-client.ts` and `compile-element.ts` serialise the entry into reactive state as a literal object. Only the interpreted runtime calls a server function, in process or through the dev-server proxy (`/__jx_server__`; `resolveServerFunction` in `packages/runtime/src/runtime.ts`), and nothing requests `/_jx/server/*`.
+> **Status: Partial.** The server-side artifact is emitted (§6.3). The client side is not: no target emits the `POST /_jx/server/$export` fetch, the signal holding its response or the effect around reactive `arguments`, because `compile-client.ts` and `compile-element.ts` serialise the entry into reactive state as a literal object. Only the interpreted runtime calls a server function, in process or through the dev-server proxy (`/__jx_server__`; `resolveServerFunction` in `packages/runtime/src/runtime.ts`), and nothing requests `/_jx/server/*`.
 
 For each `timing: "server"` entry, the compiler emits two artifacts:
 
 1. **Client-side:** A `POST /_jx/server/$export` fetch call that stores the JSON response in a signal. If any `arguments` value is reactive, the fetch is wrapped in an effect.
-2. **Server-side:** A Hono handler file that imports the `$export` from `$src` and exposes it at `/_jx/server/$export`.
+2. **Server-side:** A route in the site worker (§6.3) that imports the `$export` from `$src` and exposes it at `/_jx/server/$export`.
 
 ### 6.2 Per-Route Server Handler (`compileServer`)
 
-> **Status: Partial.** The handler is emitted but cannot load where the site build puts it. `compileServer` (`packages/compiler/src/targets/compile-server.ts`) copies each `$src` into its import as written, relative to the source page; the site build writes the result to `_server.js` beside the page's HTML in `dist/` (`packages/compiler/src/site/site-build.ts`) and neither copies nor bundles the modules it names, unlike the §6.3 worker, which is bundled self-contained (§12). So the import names a file `dist/` does not contain, and the per-page handler is not the standalone app this section and §1 describe.
-
-Generates a standalone Hono app for a single document's server entries. Used when no `build.adapter` is set:
-
-```js
-import { Hono } from "hono";
-import { fetchMetrics } from "./dashboard.server";
-
-const app = new Hono();
-
-app.post("/_jx/server/fetchMetrics", async (c) => {
-  const args = await c.req.json().catch(() => ({}));
-  try {
-    return c.json(await fetchMetrics(args, c.env));
-  } catch (e) {
-    return c.json({ ok: false, error: e?.message ?? "Server error" }, 500);
-  }
-});
-
-export default app;
-```
+> **Status: Removed.** The site build no longer writes a per-page handler, and `compileServer` is no longer exported. Every such handler registered the same absolute `/_jx/server/` routes, so two pages with server entries emitted two apps claiming one URL space; nothing in the toolchain ran one, and a build with no adapter names no runtime to bundle it for. A site's server entries are served by the site worker (§6.3), which a `timing: "server"` entry requires as an active mount does.
 
 ### 6.3 Site-Wide Server Bundling (`compileSiteServer`)
 
-When `build.adapter` is set in `project.json`, the site build collects every `timing: "server"` entry declared by a page, by each layout in that page's chain, by `project.json`'s `state` (which every page inherits, site-architecture.md §3.2) and by every component directly in `components/` (site-architecture.md §10.3). Each document is read as written, before layout merging, so a relative `$src` (`./`, `../`) resolves against the directory of the document that declares it; any other specifier is kept as written, and the worker bundle resolves both from the project root (§12). Entries are deduplicated by export name, because each is served at `/_jx/server/<export>`: one module declared by several documents is one route, and two different modules exporting one name are a build error naming each module and a document declaring it. The build emits a single Hono worker via `compileSiteServer()` — `dist/worker.js`, or `dist/_worker.js` ([Pages advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/)) plus a `dist/_routes.json` for `"cloudflare-pages"` (site-architecture.md §14.1.1). Per-route `_server.js` files are not generated in this mode. A `"cloudflare-pages"` site with no server entries **and** no active extension mounts emits no worker at all.
+When `build.adapter` is set in `project.json`, the site build collects every `timing: "server"` entry declared by a page, by each layout in that page's chain, by `project.json`'s `state` (which every page inherits, site-architecture.md §3.2) and by every component directly in `components/` (site-architecture.md §10.3). Each document is read as written, before layout merging, so a relative `$src` (`./`, `../`) resolves against the directory of the document that declares it; any other specifier is kept as written, and the worker bundle resolves both from the project root (§12). Entries are deduplicated by export name, because each is served at `/_jx/server/<export>`: one module declared by several documents is one route, and two different modules exporting one name are a build error naming each module and a document declaring it. The build emits a single Hono worker via `compileSiteServer()` — `dist/worker.js`, or `dist/_worker.js` ([Pages advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/)) plus a `dist/_routes.json` for `"cloudflare-pages"` (site-architecture.md §14.1.1). A `"cloudflare-pages"` site with no server entries **and** no active extension mounts emits no worker at all.
 
 The function signature for server entries is `(args, env)` — the second parameter receives the platform's environment bindings (e.g., Cloudflare `env` with KV, D1, email, etc.). Old functions that accept only `(args)` are unaffected since the extra parameter is ignored.
 
@@ -439,7 +418,7 @@ compileSiteServer(entries, { adapter, base, baseUrl, connectors, i18n, mounts })
 
 **Extension server mounts.** Classes carrying a `server` block ([extensions.md §11](./extensions.md)) — `@jxsuite/auth` at `/_jx/auth`, the connector data mount at `/_jx/data` — are emitted into the same worker: a static import per mount module and per connector provider class, one shared `ctx` object, `mount()` awaited at module init in ascending `order`, and `app.all()` wrappers for both `<basePath>/*` and the bare `<basePath>` registered **before** the `/_jx/server` routes and the asset fallthrough. Mount options are inlined as JSON — the project's section manifest, identifiers and env-var names only, never secret values (extensions.md §13). A mount is active when its class owns no project section, or when the project declares a non-empty value for its section key.
 
-**Dynamic sections require a server-capable adapter.** A project with active extension mounts and no `build.adapter` fails the build with an error naming the offending sections: a static-only output cannot serve `/_jx/data` or `/_jx/auth`. Set `build.adapter` to `"cloudflare-workers"`, `"cloudflare-pages"`, `"node"`, or `"bun"`.
+**Dynamic sections and server functions require a server-capable adapter.** A project with active extension mounts and no `build.adapter` fails the build with an error naming the offending sections: a static-only output cannot serve `/_jx/data` or `/_jx/auth`. A project with a `timing: "server"` entry anywhere the worker would collect one (a page, a layout in its chain, a compiled component or `project.json`'s `state`) fails too, with one error naming each entry and the document declaring it, reported once the pages are compiled. Set `build.adapter` to `"cloudflare-workers"`, `"cloudflare-pages"`, `"node"`, or `"bun"`.
 
 Adapter-specific behavior:
 
@@ -471,7 +450,7 @@ app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 export default app;
 ```
 
-> **Status: Implemented.** `compile-server.js` exports `compileServer` (per-route) and `compileSiteServer` (site-wide). `site-build` collects the entries of every page, each layout in its chain, `project.json` and every component directly in `components/` (`packages/compiler/src/site/server-entries.ts`), and generates the worker when `build.adapter` is set (`packages/compiler/tests/site-build.test.ts`, `connector-mounts.test.ts`). The worker is bundled self-contained (§12); server sources are no longer copied into `dist/components/`.
+> **Status: Implemented.** `compile-server.js` exports `compileSiteServer` (site-wide). `site-build` collects the entries of every page, each layout in its chain, `project.json` and every component directly in `components/` (`packages/compiler/src/site/server-entries.ts`), and generates the worker when `build.adapter` is set (`packages/compiler/tests/site-build.test.ts`, `connector-mounts.test.ts`). The worker is bundled self-contained (§12); server sources are no longer copied into `dist/components/`.
 
 ---
 

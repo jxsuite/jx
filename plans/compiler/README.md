@@ -39,7 +39,7 @@ Audited against b900b326 on 2026-09-26.
   - §4.1 with `spec.md` §16.4 (`plan:_shared/compiled-element-lifecycle`).
   - §4.4 with `spec.md` §13.2 and §16.2 (`plan:_shared/compiled-prop-bridge`).
   - §6.1 with `spec.md` §11.4 (`plan:_shared/compiled-server-call`).
-  - §6.2 with `site-architecture.md` §15.4 (`plan:_shared/no-adapter-server-tier`, which also rewrites the per-page handler sentence in `spec.md` §11.4's Security Boundary).
+  - §6.2 with `site-architecture.md` §15.4 (one shared plan, landed: §6.2 is Removed, §15.4 Implemented, and `spec.md` §11.4's Security Boundary names only the worker).
   - §6.3 with `site-architecture.md` §14.1.1 (one shared plan, landed; both Implemented).
   - §7.1–§7.7 with `site-architecture.md` §9.2.2, §9.2.3 and §9.2.5 (`plan:_shared/image-pipeline-text`); both are reconciles of one pipeline's prose.
   - §10's `timing: "compiler"` row with `spec.md` §11.3's `"compiler"` row: `plan:compiler/superseded-ledger-rows` retires the row, and `plan:spec/timing-values-in-built-sites` owns the `Request` it named.

@@ -4,8 +4,7 @@ disposition: implement
 claims:
   - compiler.md#6.1
   - spec.md#11.4
-requires:
-  - _shared/no-adapter-server-tier
+requires: []
 workspaces:
   - packages/compiler
   - packages/server
@@ -41,7 +40,7 @@ Two census stubs merged here, one from each spec, because both specify the same 
 **Prerequisites** (each checked against its current text)
 
 - Landed: the server-entry collector (compiler.md §6.3, site-architecture.md §14.1.1). The worker serves every entry a page, its layouts, `project.json`'s `state` or a compiled component declares, so a compiled page's call has a route. Step 6c's `serverEntries` (from `dedupeServerEntries` in `packages/compiler/src/site/server-entries.ts`, each `src` `./`-project-relative or a bare specifier as written) is the list the `jx dev` route answers from; returning it from `buildSite` is this plan's. It also left this plan an open sentence in §11.4's leading marker: the site worker resolves a layout's or `project.json`'s relative `$src` against the declaring file, while an interpreting host (Studio's canvas and live preview, which merge the layout or inject project `state` before the runtime sees it) resolves it against the page. The last Open below decides how §11.4 closes it.
-- `plan:_shared/no-adapter-server-tier`: makes an adapter mandatory for any server entry and retires the per-page `_server.js`, so the compiled call has one target, the site worker. It rewrites §6.1's item 2, §11.4's no-adapter sentence (line 1295) and the trailing note's `compileServer` clause.
+- Landed: the no-adapter server tier (compiler.md §6.2 Removed, §6.3; site-architecture.md §15.4). An adapter is mandatory for any server entry and no build writes a per-page `_server.js`, so the compiled call has one target, the site worker. It rewrote §6.1's item 2, §11.4's no-adapter sentence and the trailing note's `compileServer` clause.
 - Landed: the proxy-first enabling plan, which §11.4 needed before it could say Implemented. An interpreting host no longer imports a server module in the browser (spec.md §11.4's Security Boundary), and `projectDevEnv(root)` is exported from `packages/server/src/dev-vars.ts`, shared by the `/__jx_server__` proxy and the extension mounts, for CSC1.2 to reuse.
 
 **Related, no edge.** `plan:_shared/compiled-prop-bridge` and `plan:_shared/compiled-element-lifecycle` rewrite the same `connectedCallback`. The server calls go last, after the `Request` fetches, and read `this.state` inside an effect, so props those plans deliver later reach a reactive argument without further change. `plan:spec/compiled-request-fetch` adds abort to the `Request` fetch; this plan uses no abort. `plan:compiler/client-external-class-hydration` rewrites the §3 marker sentence this plan deletes (see Specs & docs). `plan:compiler/superseded-ledger-rows` deletes `compileStaticPage`'s island branch, which this plan does not touch. `plan:spec/timing-values-in-built-sites` requires this plan for §11.3's `"server"` cell.
@@ -154,7 +153,7 @@ CSC1.2:
     > **Status: Implemented.** Both targets emit the call (`emitServerCall` in `packages/compiler/src/shared.ts`), and the site worker serves it (§6.3).
 
   - Item 1 becomes: "**Client-side:** a `POST` to `<base>/_jx/server/$export`, `<base>` being the deployment base (site-architecture.md §14.7), whose JSON body is the entry's `arguments` with each top-level `$ref` resolved (`#/state/`, `parent#/`, `window#/`, `document#/`; any other scheme fails the compile). The entry is `null` until a call answers and then holds the parsed response. When an argument is a `$ref` the call runs in an effect, so a change calls again and the answer to a superseded call is dropped. A non-2xx answer is not stored: the entry keeps its last value and the error is logged to the console. A page calls when its module loads, and an element calls in `connectedCallback`, after its props are merged, and stops on disconnect."
-  - Item 2, as `plan:_shared/no-adapter-server-tier` leaves it, becomes: "**Server-side:** a route in the site worker (§6.3) that imports `$export` from `$src`, registered at `<base>/_jx/server/$export`, and answers the function's return value as JSON (`null` for `undefined`), or `{ ok: false, error }` with status 500 when it throws."
+  - Item 2 becomes: "**Server-side:** a route in the site worker (§6.3) that imports `$export` from `$src`, registered at `<base>/_jx/server/$export`, and answers the function's return value as JSON (`null` for `undefined`), or `{ ok: false, error }` with status 500 when it throws."
 - `compiler.md` §4.1: the `Request` paragraph gains "A `timing: "server"` entry is initialised the same way and calls its route from `connectedCallback` after the `Request` fetches, its effect joining the same registry (§6.1)."
 - `compiler.md` §3's marker: delete the §6.1 sentence in whichever form stands ("The server-function row's missing client fetch is marked on §6.1.", or `plan:compiler/client-external-class-hydration`'s "The server-function row's client half is specified, and marked, on §6.1."). The section stays that plan's.
 - `site-architecture.md` §14.7's table gains, after `manifest.webmanifest`: "Page and component modules" | "A `timing: "server"` entry's call is a request path (compiler.md §6.1), and no pass rewrites a module, so the build gives the call its base when it compiles the module".
@@ -162,7 +161,7 @@ CSC1.2:
   - `bun run spec:change compiler.md minor -m "§6.1 and §4.1: both compile targets emit the server-function call, a POST to the based /_jx/server route carrying the resolved arguments, re-run from an effect when an argument is a reference"`
   - `bun run spec:change site-architecture.md minor -m "§14.7: a compiled page or component module carries the deployment base in its server-function URL, set when the module is compiled"`
 - Docs, from `docs:sync`:
-  - `docs/framework/build.md` (`code:` `compile-client.ts`, `shared.ts`, `site-build.ts`): the "Dynamic pages" paragraph gains "and one `POST` to the site's worker for each `timing: "server"` entry". Its line 133 belongs to `plan:_shared/no-adapter-server-tier`.
+  - `docs/framework/build.md` (`code:` `compile-client.ts`, `shared.ts`, `site-build.ts`): the "Dynamic pages" paragraph gains "and one `POST` to the site's worker for each `timing: "server"` entry". Its sentence on `timing: "server"` entries already names the site-wide worker.
   - `docs/framework/site/deployment.md` (`spec:` `site-architecture.md#14.7`): the "Serving from a subfolder" list, after "`_routes.json` and the worker's own routes", gains "the calls a page makes to its server functions".
   - `docs/framework/concepts/timing.md` (`spec:` `compiler.md#6`): "How it works" states the call as item 1 above, in docs prose with no em dash.
   - The concept pages whose `code:` lists `compile-element.ts` or `compile-client.ts` (`functions.md`, `components.md`, `lists.md`) describe no server entry and do not change. `functions.md`'s line 167 and `docs/framework/agents/authoring-rules.md`'s line 365 become true as written.
@@ -182,7 +181,7 @@ CSC1.2:
   - §3's item 4 notes that a `/_jx/server/*` path no mount owns falls through to that middleware (item 6).
 - `site-architecture.md`:
   - §15.4's last paragraph: "it dispatches to the same mount handlers directly" gains "and answers the server-function routes for the entries the build collected (server.md §2)".
-  - §15's marker clause "and are proxied in development by `server.md` §3.3" becomes "and are answered in development by `jx dev` on a site project (server.md §2) or through the proxy in an interpreting host (server.md §3.3)". Its per-route clause is `plan:_shared/no-adapter-server-tier`'s.
+  - §15's marker clause "and are proxied in development by `server.md` §3.3" becomes "and are answered in development by `jx dev` on a site project (server.md §2) or through the proxy in an interpreting host (server.md §3.3)". Its per-route clause is already gone.
 - Fragments:
   - `bun run spec:change spec.md minor -m "§11.4: a built page calls its server entries over HTTP at the site worker route, and jx dev on a site project answers the same route"`
   - `bun run spec:change server.md minor -m "§2: jx dev on a site project answers the server-function routes the build collected, as the site worker does"`

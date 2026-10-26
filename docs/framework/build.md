@@ -132,7 +132,7 @@ They used to load from `https://esm.sh`. Self-hosting removes a third party from
 
 When the page document itself is dynamic (it declares live `state`, binds `$ref`s, or uses runtime template strings), the compiler still pre-renders the full HTML, marks bound elements with `data-bind` attributes, and emits one small module that wires reactivity onto the existing DOM: reactive state, `computed()` for derived values, `effect()` per binding, and event handler hookup. There is no client-side re-render of the initial view; the JS only maintains what changes.
 
-Two more outputs sit alongside these tiers: `.class.json` documents compile to ES class modules, and `timing: "server"` entries generate server handlers, either a per-route `_server.js` or a single site-wide worker when `build.adapter` is set.
+Two more outputs sit alongside these tiers: `.class.json` documents compile to ES class modules, and `timing: "server"` entries compile into the site-wide worker, which needs `build.adapter`: without one the build stops with an error naming each entry.
 
 Across all three tiers the emitter indents nested children so the generated HTML stays readable, except inside `pre`, `textarea`, and the rest of the tags browsers render with `white-space: pre`. There, and everywhere below them (`white-space` inherits), children are concatenated with no separator, because indentation between elements would be content rather than formatting. This is what keeps a syntax-highlighted code block, one `<span>` per token, rendering as the code you wrote.
 
