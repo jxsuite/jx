@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveLayout } from "../src/site/layout-resolver";
+import { layoutChain, resolveLayout } from "../src/site/layout-resolver";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isString } from "@jxsuite/schema/guards";
@@ -342,6 +342,69 @@ describe("resolveLayout", () => {
       const result = await resolveLayout(page, {}, FIXTURES);
       expect(result.style?.color).toBe("red");
       expect(result.style?.fontSize).toBe("16px");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── layoutChain ────────────────────────────────────────────────────────────
+
+describe("layoutChain", () => {
+  test("layoutChain lists every layout a page is wrapped in, innermost first, with its path", () => {
+    setup();
+    try {
+      writeLayout("outer.json", { children: [{ tagName: "slot" }], tagName: "html" });
+      writeLayout("inner.json", {
+        $layout: "./layouts/outer.json",
+        children: [{ tagName: "slot" }],
+        className: "inner-wrapper",
+        tagName: "div",
+      });
+
+      const chain = layoutChain({ $layout: "./layouts/inner.json" }, {}, FIXTURES);
+      expect(chain.map((level) => level.path)).toEqual([
+        join(FIXTURES, "layouts", "inner.json"),
+        join(FIXTURES, "layouts", "outer.json"),
+      ]);
+      expect(chain[0]?.doc.className).toBe("inner-wrapper");
+      expect(chain[1]?.doc.tagName).toBe("html");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("layoutChain is empty for `$layout: false` and with no default layout", () => {
+    const project = { defaults: { layout: "./layouts/default.json" } };
+    // `false` opts the page out even when the project names a default, so nothing is read.
+    expect(layoutChain({ $layout: false }, project, FIXTURES)).toEqual([]);
+    expect(layoutChain({}, {}, FIXTURES)).toEqual([]);
+    expect(layoutChain({}, { defaults: { layout: null } }, FIXTURES)).toEqual([]);
+  });
+
+  test("layoutChain stops at a layout that names itself", () => {
+    setup();
+    try {
+      writeLayout("loop.json", {
+        $layout: "./layouts/loop.json",
+        children: [{ tagName: "slot" }],
+        tagName: "div",
+      });
+
+      const chain = layoutChain({ $layout: "./layouts/loop.json" }, {}, FIXTURES);
+      expect(chain.map((level) => level.path)).toEqual([join(FIXTURES, "layouts", "loop.json")]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("layoutChain falls back to defaults.layout", () => {
+    setup();
+    try {
+      writeLayout("default.json", { children: [{ tagName: "slot" }], tagName: "div" });
+
+      const chain = layoutChain({}, { defaults: { layout: "./layouts/default.json" } }, FIXTURES);
+      expect(chain.map((level) => level.path)).toEqual([join(FIXTURES, "layouts", "default.json")]);
     } finally {
       cleanup();
     }

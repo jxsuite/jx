@@ -93,9 +93,9 @@ During development the runtime never requests a server module's source: every ca
 
 ## How it works
 
-For each `timing: "server"` entry, the [compiler](/docs/framework/build) emits two artifacts: a client-side `POST /_jx/server/<export>` fetch that stores the JSON response in a signal (wrapped in an effect when any argument is reactive), and a server-side Hono handler that imports the export from `$src` and serves that route.
+For each `timing: "server"` entry, the [compiler](/docs/framework/build) emits two artifacts. On the client it emits a `POST` to `/_jx/server/<export>` (under the [deployment base](/docs/framework/site/deployment#serving-from-a-subfolder) when the site has one), whose JSON body is the entry's `arguments`. A top-level `$ref` argument is read from `#/state/`, `parent#/`, `window#/` or `document#/`, and any other scheme fails the build. The entry is `null` until a call answers, and then holds the parsed response. When an argument is a `$ref` the call runs in an effect, so a change calls again and the answer to a superseded call is dropped. A failed call keeps the entry's last value and logs the error to the console. A page calls when its module loads, and a custom element calls from `connectedCallback`, after its props are merged, and stops when it disconnects. On the server it emits a route in the site worker that imports the export from `$src` and answers with the function's return value as JSON, or `{ ok: false, error }` with status 500 when it throws.
 
-When `build.adapter` is set in `project.json`, every server entry across the whole site is collected, deduplicated by export name, and bundled into a single worker (`dist/_worker.js` plus a `_routes.json` limiting invocation to `/_jx/*` on Cloudflare Pages). Without an adapter, a standalone per-document handler is generated instead. During development the [dev server](/docs/framework/build/dev-server) stands in for both.
+When `build.adapter` is set in `project.json`, every server entry a page, its layouts, `project.json`'s `state` or a component declares is collected and bundled into a single worker, one route per export name (`dist/worker.js`, or `dist/_worker.js` plus a `_routes.json` on Cloudflare Pages; see [Build output and adapters](/docs/framework/site/deployment#what-the-worker-serves)). Without an adapter the build stops with an error naming each server entry and the file declaring it, because a static deployment has nothing to run them on. During development the [dev server](/docs/framework/build/dev-server) stands in for the worker: on a site project it answers the same `/_jx/server/<export>` route from the entries the last build collected, with your `.dev.vars` merged into `env`.
 
 Compiler-timed entries never produce runtime artifacts at all. The site build resolves them, bakes the values into the static HTML, and strips the entries from the document.
 
@@ -106,6 +106,8 @@ Compiler-timed entries never produce runtime artifacts at all. The site build re
 - The server function's signature is `(args, env)`; `arguments` is one named-values object.
 - A reactive `$ref` in `arguments` makes the RPC call reactive.
 - `env` and everything reachable through it stay server-side; only the return value is serialized to the browser.
+- In a built site, a relative `$src` resolves against the file that declares the entry (a page, layout, component or `project.json`). Studio's preview still resolves a layout's or `project.json`'s against the page it renders, so such an entry may not answer there.
+- An export name means one function across the whole site: two modules exporting the same name stop the build.
 - `timing: "compiler"` values are fixed at build time, so rebuild the site to refresh them.
 
 ## Related

@@ -492,33 +492,68 @@ export async function handleServerFunction(req: Request, root: string, projectRo
     return new Response(`$src "${$src}" escapes the project root`, { status: 403 });
   }
 
+  // Match the production contract `fn(args, env)` (compiler emits `fn(args, c.env)`): the dev proxy
+  // Runs server-side, so its `env` is the extension mounts' own, `process.env` merged under the
+  // Project's `.dev.vars` plus `JX_PROJECT_ROOT` (server.md §3.3).
+  const result = await callServerExport(moduleAbsPath, xport, args, projectDevEnv(projectRoot));
+  if (result.ok) {
+    return Response.json(result.value ?? null);
+  }
+  if (result.stage === "import") {
+    return new Response(`Failed to import "${$src}": ${result.message}`, { status: 500 });
+  }
+  if (result.stage === "export") {
+    return new Response(`Export "${xport}" not found in "${$src}"`, { status: 500 });
+  }
+  return problem("internalError", result.message);
+}
+
+/** What {@link callServerExport} answers: the function's value, or the stage that failed and why. */
+export type ServerExportResult =
+  | { ok: true; value: ServerFunctionResult }
+  | { ok: false; stage: "import" | "export" | "call"; message: string };
+
+/**
+ * Import a module, read one export and call it as `fn(args, env)`, the contract a `timing:
+ * "server"` function has in production (compiler.md §6.3).
+ *
+ * The one place a dev host runs a server function, so the `/__jx_server__` proxy and the site
+ * worker's stand-in route in `jx dev` agree on what an export is (a named export, else a member of
+ * a default export) and on where each failure belongs. It decides nothing about WHICH module may
+ * run: the proxy's caller names one in a request and checks containment first, while the stand-in
+ * route's modules come from the build, so each does its own checking before it gets here.
+ *
+ * @param {string} modulePath - Absolute path of the module, or a specifier already resolved
+ * @param {string} exportName - The export to call
+ * @param {JsonObject} args - The function's first argument
+ * @param {ProjectDevEnv} env - The function's second argument: the platform environment
+ * @returns {Promise<ServerExportResult>}
+ */
+export async function callServerExport(
+  modulePath: string,
+  exportName: string,
+  args: JsonObject,
+  env: ProjectDevEnv,
+): Promise<ServerExportResult> {
   let mod: ModuleNamespace;
   try {
-    mod = await importModule(moduleAbsPath);
+    mod = await importModule(modulePath);
   } catch (error) {
-    return new Response(`Failed to import "${$src}": ${errorMessage(error)}`, {
-      status: 500,
-    });
+    return { message: errorMessage(error), ok: false, stage: "import" };
   }
 
-  const fn = mod[xport] ?? mod.default?.[xport];
+  const fn = mod[exportName] ?? mod.default?.[exportName];
   if (!isExportedFunction(fn)) {
-    return new Response(`Export "${xport}" not found in "${$src}"`, {
-      status: 500,
-    });
+    return { message: `Export "${exportName}" not found`, ok: false, stage: "export" };
   }
 
   try {
-    /* Match the production contract `fn(args, env)` (compiler emits `fn(args, c.env)`): the dev
-       proxy runs server-side, so its `env` is the extension mounts' own, `process.env` merged under
-       the project's `.dev.vars` plus `JX_PROJECT_ROOT` (server.md §3.3). */
     /* SAFETY: trust boundary. A `timing: "server"` module exports its functions with the signature
        `fn(args, env)` and a JSON answer (spec.md §11.4); this one is a function, checked above. */
     const serverFn = fn as ServerFunction;
-    const result = await serverFn(args, projectDevEnv(projectRoot));
-    return Response.json(result ?? null);
+    return { ok: true, value: await serverFn(args, env) };
   } catch (error) {
-    return problem("internalError", errorMessage(error));
+    return { message: errorMessage(error), ok: false, stage: "call" };
   }
 }
 

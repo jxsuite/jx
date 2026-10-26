@@ -51,7 +51,7 @@ Found while detailing: three ways the module route 0 writes is wrong, each in co
 
 Also found, outside this plan's claims: `jx build` never compiles a class document (`compileClassJson`'s only caller is route 0, and the site build calls `compile()` only for pages), so `docs/framework/build.md`'s "`.class.json` documents compile to ES class modules" overstates; the runtime's `classFromSchema` ignores `extends` altogether; and `spec.md` §12.4's example repeats both of §5.2's defects (the wrong `$schema`, no `$prototype`).
 
-**Related.** `schema.md` §3.3 (the class schema; its role list omits `rewrite`, `head` and `assets`, which `plan:schema/generator-inventory` carries); `spec.md` §12.2 and §12.4 (the `.class.json` entrypoint; `plan:spec/external-class-contract` owns §12.4); `extensions.md` §4, §5.4 and §6 (manifests, `jx validate`, admission blocks); `plan:compiler/client-external-class-hydration`, which will call `compileClassJson` for the browser and owns §5.4. `plan:_shared/no-adapter-server-tier` deletes §2's route-4 row under its second Open; the §2 sentence below is written for either order (Specs & docs).
+**Related.** `schema.md` §3.3 (the class schema; its role list omits `rewrite`, `head` and `assets`, which `plan:schema/generator-inventory` carries); `spec.md` §12.2 and §12.4 (the `.class.json` entrypoint; `plan:spec/external-class-contract` owns §12.4); `extensions.md` §4, §5.4 and §6 (manifests, `jx validate`, admission blocks); `plan:compiler/client-external-class-hydration`, which will call `compileClassJson` for the browser and owns §5.4. §2's route-4 row is gone (compiler.md §6.2 is Removed), so the §2 sentence below does not mention route 4 (Specs & docs).
 
 ## Outcome
 
@@ -105,7 +105,7 @@ Coverage: `packages/compiler/bunfig.toml` gates every file at lines 0.982 and fu
 
 ## Specs & docs
 
-**compiler.md §2**, in place: delete the Partial blockquote. Append to "The compiler inspects each input document and routes to the appropriate compilation target:" the sentence "Routes 0 to 3 are tried in that order and the first match wins; route 4's server output is compiled beside whichever of them the document takes (§6)." If `plan:_shared/no-adapter-server-tier` has already deleted the route-4 row, the sentence ends at "the first match wins." Route 0's Condition cell becomes ``Root `$prototype` is `"Class"` (§5.6)``; re-pad the table.
+**compiler.md §2**, in place: delete the Partial blockquote. Append to "The compiler inspects each input document and routes to the appropriate compilation target:" the sentence "Routes 0 to 3 are tried in that order and the first match wins." (the route-4 row is already gone, compiler.md §6.2). Route 0's Condition cell becomes ``Root `$prototype` is `"Class"` (§5.6)``; re-pad the table.
 
 **compiler.md §5.2**, in place: replace the Partial blockquote, the lead-in and the example with:
 
