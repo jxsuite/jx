@@ -9,6 +9,7 @@ import { createToolDefinition, toolError } from "../tools.ts";
 import type { ToolDefinition } from "../tools.ts";
 import { coercePath, DOC_TOOLS, nodeAt, PATH_DESCRIPTION } from "./doc-tools.ts";
 import type { DocEdit, DocTool, DocumentHost, WriteReporter } from "./types.ts";
+import { JX_TOOL_FACTS } from "./facts.ts";
 import { isString } from "@jxsuite/schema/guards";
 import type { JxPath } from "@jxsuite/schema/types";
 
@@ -21,6 +22,8 @@ export const FROZEN_SENTENCE =
 function readDocument(host: DocumentHost): ToolDefinition {
   return createToolDefinition({
     name: "read_document",
+    title: "Read the document",
+    annotations: JX_TOOL_FACTS.read_document.annotations,
     description:
       "Read the current Jx document, or the subtree at a given path. Use this to discover " +
       "node paths before calling set_property, add_child, or delete_node.",
@@ -67,8 +70,10 @@ function treeTool<Before>(
 ): ToolDefinition {
   return createToolDefinition({
     name: tool.name,
+    title: tool.title,
     description: tool.description,
     parameters: tool.parameters,
+    annotations: JX_TOOL_FACTS[tool.name].annotations,
     async execute(args, ctx) {
       const ref = host.resolve(ctx);
       if (isString(ref)) {

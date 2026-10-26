@@ -28,7 +28,6 @@ import {
   SELECTOR,
   advertisedCommandTools,
   commandToolBlurbs,
-  composeToolRegistries,
   createCommandToolRegistry,
 } from "../src/services/ai-command-tools";
 import { fileTurn } from "../src/services/ai-writes";
@@ -48,7 +47,6 @@ import type { Tab } from "../src/tabs/tab";
 import { resetProjectConfigDocument } from "../src/tabs/project-config";
 import { updateSiteConfig } from "../src/site-context";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
-import { createToolRegistry } from "@jxsuite/ai";
 import { isString } from "@jxsuite/schema/guards";
 
 /** The declarations the app ships, keyed by tool name. */
@@ -892,64 +890,6 @@ describe("a required argument with an empty derived enum withholds the tool", ()
     });
     setActiveRegistry(registry);
     expect(advertisedCommandTools(registry).map((t) => t.name)).toEqual(["optional_choice"]);
-  });
-});
-
-// ─── The composite ───────────────────────────────────────────────────────────
-
-describe("composeToolRegistries", () => {
-  test("routes by name, hand first, and answers Unknown tool for neither side", async () => {
-    const hand = createToolRegistry();
-    hand.register({
-      description: "hand",
-      execute: async () => ({ success: true, summary: "hand ran" }),
-      llmStrict: false,
-      name: "hand_tool",
-      parameters: { properties: {}, type: "object" },
-      strict: false,
-    });
-    setActiveRegistry(appRegistry(RICH).registry);
-    const commands = createCommandToolRegistry(noDeps);
-    const composite = composeToolRegistries(hand, commands);
-
-    expect(
-      composite
-        .list()
-        .map((t) => t.name)
-        .slice(0, 1),
-    ).toEqual(["hand_tool"]);
-    expect(composite.list()).toHaveLength(1 + commands.list().length);
-    expect(composite.listForLLM()).toHaveLength(1 + commands.list().length);
-    expect(composite.getDefinition("hand_tool")?.description).toBe("hand");
-    expect(composite.getDefinition("delete_node")?.name).toBe("delete_node");
-    expect(composite.getDefinition("nope")).toBeUndefined();
-
-    expect(composite.validate("hand_tool", {})).toEqual({ valid: true });
-    expect(composite.validate("delete_node", {})).toEqual({ valid: true });
-    expect(composite.validate("nope", {})).toEqual({
-      errors: ['Unknown tool: "nope"'],
-      valid: false,
-    });
-
-    expect(await composite.execute("hand_tool", {})).toEqual({
-      success: true,
-      summary: "hand ran",
-    });
-    expect(await composite.execute("nope", {})).toEqual({
-      error: 'Unknown tool: "nope"',
-      success: false,
-    });
-
-    // `register` goes to the hand side; the view refuses one.
-    composite.register({
-      description: "second",
-      execute: async () => ({ success: true }),
-      llmStrict: false,
-      name: "second_hand",
-      parameters: { properties: {}, type: "object" },
-      strict: false,
-    });
-    expect(hand.getDefinition("second_hand")).toBeDefined();
   });
 });
 

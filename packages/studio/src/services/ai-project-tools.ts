@@ -14,6 +14,7 @@
  * @license MIT
  */
 
+import { JX_TOOL_FACTS } from "@jxsuite/ai/jx-tools";
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import { isJsonObject, isNumber } from "@jxsuite/schema/guards";
 import type { CreateProjectDestination, StudioPlatform } from "../types";
@@ -128,6 +129,8 @@ export function registerProjectTools(
   registry.register(
     createToolDefinition({
       name: "list_files",
+      title: "List files",
+      annotations: JX_TOOL_FACTS.list_files.annotations,
       description:
         "List the project's files recursively (paths relative to the project root, with type and " +
         "size). Use this to discover pages, layouts, components, content, data, and styles before " +
@@ -197,6 +200,8 @@ export function registerProjectTools(
   registry.register(
     createToolDefinition({
       name: "read_file",
+      title: "Read a file",
+      annotations: JX_TOOL_FACTS.read_file.annotations,
       description:
         "Read a project file's content by its project-relative path. Works for any text file " +
         "(Jx documents, markdown, CSS, data). Large files are truncated.",
@@ -245,6 +250,8 @@ export function registerProjectTools(
   registry.register(
     createToolDefinition({
       name: "write_file",
+      title: "Write a file",
+      annotations: JX_TOOL_FACTS.write_file.annotations,
       description:
         "Write a project file (create or overwrite) at a project-relative path. Jx documents " +
         "(.json under pages/, layouts/, components/) are schema-validated and render-checked " +
@@ -420,6 +427,8 @@ export function registerProjectTools(
   registry.register(
     createToolDefinition({
       name: "search_files",
+      title: "Search files",
+      annotations: JX_TOOL_FACTS.search_files.annotations,
       description:
         "Search project files by file NAME (not content). Returns matching paths. Use list_files " +
         "for a directory overview and read_file to inspect contents.",
@@ -463,6 +472,8 @@ export function registerProjectTools(
   registry.register(
     createToolDefinition({
       name: "create_project",
+      title: "Create a project",
+      annotations: JX_TOOL_FACTS.create_project.annotations,
       description:
         "Create a new Jx project (project.json, conventional directories, starter pages) and open " +
         "it in the studio. Only available while no project is open. After it succeeds, the file " +
@@ -650,6 +661,8 @@ export function registerProjectTools(
   registry.register(
     createToolDefinition({
       name: "list_starters",
+      title: "List starters",
+      annotations: JX_TOOL_FACTS.list_starters.annotations,
       description:
         "List the starter templates available for new projects (id, name, description). " +
         "Currently informational — create_project scaffolds from built-in template variants.",

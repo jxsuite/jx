@@ -6,6 +6,7 @@ spec:
   - ai.md#2.3 # the neutral conversation model
   - ai.md#3.8 # the turn engine
   - ai.md#3.9 # portable document tools
+  - ai.md#3.10 # catalog membership
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
@@ -21,8 +22,13 @@ code:
   - packages/ai/src/jx-tools/index.ts
   - packages/ai/src/jx-tools/doc-tools.ts
   - packages/ai/src/jx-tools/entries.ts
+  - packages/ai/src/jx-tools/facts.ts
+  - packages/ai/src/catalog/index.ts
+  - packages/ai/src/catalog/catalog.ts
+  - packages/ai/src/catalog/mcp.ts
   - packages/studio/src/services/tool-executor.ts
   - packages/studio/src/services/harness/studio-documents.ts
+  - packages/studio/src/services/harness/assistant-tools.ts
 ---
 
 # Writing assistant tools
@@ -144,6 +150,36 @@ A host that keys something on the turn's actor before the turn starts, as Studio
 :::doc-note
 A turn stopped between two tool calls never runs the second one, so the messages it appended end with a call that has no reply, and providers refuse a request like that. You do not have to fix it yourself: the next turn answers each such call with a failed result before it sends anything, and reports a `transcript_repaired` event when it does. If you keep your own transcript, call `repairToolPairs` from `@jxsuite/ai/messages` on it to apply the same repair, as Studio does before every send.
 :::
+
+## Which tools the model sees
+
+A host's tools are one catalog. `createCatalog` from `@jxsuite/ai/catalog` takes your tools in groups and keeps them in order, and it refuses to build when two tools share a name, a name is not 1 to 64 letters, digits, `_` or `-`, a tool's parameters are not an object schema, or a tool has no `title` or no `annotations`. The annotations are MCP's four behaviour hints, and every one is stated:
+
+```ts
+import { catalogRegistry, createCatalog } from "@jxsuite/ai/catalog";
+
+const renamePage = createToolDefinition({
+  name: "rename_page",
+  title: "Rename a page",
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  // description, parameters and execute as before
+});
+
+const tools = catalogRegistry(createCatalog([renamePage, ...fileTools]), {
+  gate: (entry) => (entry.name === "rename_page" && !projectOpen() ? "an open project" : null),
+});
+```
+
+`catalogRegistry` is the registry you hand to `runTurn`. Every member is listed by `list()`, but the model is offered only those your view admits. Return what a tool requires from `gate` and the tool is left out of the listing, and a call to it anyway is answered `Tool "rename_page" is not available right now — it requires an open project.` Use `advertise` instead to leave a tool out of the listing while still letting a call to it run. Both are asked every round, so a tool can become available in the middle of a turn. When your set of tools itself changes with your host's state, pass a function that builds the catalog, and it is read on every call.
+
+The Jx assistant's own tools take their hints from `JX_TOOL_FACTS` in `@jxsuite/ai/jx-tools`, which also says where each tool's change lands: nowhere, in the view, in the open document, in the project's configuration, or on disk.
+
+To serve a catalog over the Model Context Protocol, `toMcpTool(entry, { undoable })` gives a member in the shape MCP lists tools in, and `toCallToolResult(result)` gives a result in the shape MCP returns one.
 
 ## Document tools on your own host
 
