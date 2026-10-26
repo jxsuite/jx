@@ -65,6 +65,7 @@ import {
   objectKey,
   refAccessor,
   refBindingKey,
+  refReader,
   refSegments,
 } from "@jxsuite/runtime/pointer";
 import type {
@@ -560,7 +561,7 @@ function buildClientNode(
     const swKey = `_sw${counter.sw}`;
     counter.sw += 1;
     const discriminant = isRefObject(source.$switch)
-      ? `state.${refToBindingKey(source.$switch.$ref)}`
+      ? stateRead(source.$switch.$ref)
       : `\`${String(source.$switch)}\``;
     const cases = source.cases ?? {};
     // Parsed JSON, so a case slot can hold `null` or a bare value the declared type leaves out.
@@ -595,13 +596,9 @@ function buildClientNode(
     const arrayDef = source.children;
 
     // Resolve items source expression
-    let itemsExpr;
-    if (isRefObject(arrayDef.items)) {
-      const path = refToBindingKey(arrayDef.items.$ref);
-      itemsExpr = `state.${path}`;
-    } else {
-      itemsExpr = JSON.stringify(arrayDef.items);
-    }
+    const itemsExpr = isRefObject(arrayDef.items)
+      ? stateRead(arrayDef.items.$ref)
+      : JSON.stringify(arrayDef.items);
 
     // Compile the map template to a lit-html template string
     const litTemplate = emitLitMapTemplate(arrayDef.map);
@@ -865,9 +862,7 @@ function emitChildLit(c: JxMutableNode | JsonPrimitive, preformatted = false): s
  */
 function emitArrayHole(arrayDef: RepeaterSlot): string {
   const { items } = arrayDef;
-  const itemsExpr = isRefObject(items)
-    ? `state.${refToBindingKey(items.$ref)}`
-    : JSON.stringify(items ?? []);
+  const itemsExpr = isRefObject(items) ? stateRead(items.$ref) : JSON.stringify(items ?? []);
   const tpl = emitLitMapTemplate(arrayDef.map);
   return `\${(${itemsExpr} ?? []).map((item, index) => html\`${tpl}\`)}`;
 }
@@ -1159,6 +1154,18 @@ function mapRefToClientExpr(ref: string) {
     return refAccessor("state", ref.slice("#/state/".length));
   }
   return refAccessor("state", ref);
+}
+
+/**
+ * The read of the state a `$ref` names, for a binding whose value arrives later: a `$switch`
+ * discriminant and a repeater's `items`. A server entry or a `Request` is `null` until it answers,
+ * so `#/state/contact/status` must read `state.contact?.status` rather than throw on the first run,
+ * which inside the hydration loop would end it before any later binding or handler was attached.
+ * The path is the ref's own, never its flattened binding key: `contact/status` is two members, not
+ * `contact_status`.
+ */
+function stateRead(ref: string) {
+  return refReader("state", ref.startsWith("#/state/") ? ref.slice("#/state/".length) : ref);
 }
 
 /**

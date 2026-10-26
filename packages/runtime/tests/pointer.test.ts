@@ -5,6 +5,7 @@ import {
   readPath,
   refAccessor,
   refBindingKey,
+  refReader,
   refSegments,
   unescapeToken,
 } from "../src/pointer.ts";
@@ -106,6 +107,32 @@ describe("refAccessor", () => {
 
   test("an empty path is the base alone", () => {
     expect(refAccessor("s", "")).toBe("s");
+  });
+});
+
+describe("refReader", () => {
+  test("is the accessor with every step after the first optional", () => {
+    expect(refReader("s", "user")).toBe("s.user");
+    expect(refReader("s", "user/name")).toBe("s.user?.name");
+    expect(refReader("s", "a/b/c")).toBe("s.a?.b?.c");
+  });
+
+  test("brackets a segment that is not an identifier, optionally past the first", () => {
+    expect(refReader("s", "items/0")).toBe('s.items?.["0"]');
+    expect(refReader("s", "a-b")).toBe('s["a-b"]');
+    expect(refReader("s", "user.name/x")).toBe('s["user.name"]?.x');
+  });
+
+  test("an empty path is the base alone", () => {
+    expect(refReader("s", "")).toBe("s");
+  });
+
+  test("reads through a missing intermediate as undefined, as the interpreter does", () => {
+    const state = { contact: null, nested: { deep: 42 } };
+    for (const path of ["contact/status", "missing/deeper", "nested/deep", "nested/none/x"]) {
+      const compiled: unknown = new Function("s", `return ${refReader("s", path)}`)(state);
+      expect(compiled).toEqual(readPath(state, path));
+    }
   });
 });
 

@@ -1397,3 +1397,68 @@ describe("compileClient — timing server entries", () => {
     await expect(call(answer("", 404))("/x", {})).rejects.toThrow();
   });
 });
+
+describe("compileClient — nested state refs in $switch and repeaters", () => {
+  test("a $switch over a nested ref reads the path, not a flattened key", () => {
+    const { files } = compileClient(
+      {
+        children: [
+          {
+            $switch: { $ref: "#/state/contact/status" },
+            cases: { sent: { tagName: "p", textContent: "Thanks" } },
+            tagName: "div",
+          },
+        ],
+        state: { contact: null },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    const js = files[0]!.content;
+    /* `contact` is null until a server call or a fetch answers, so the read must not throw: an
+       exception on the first run would end the hydration loop before later handlers attach. */
+    expect(js).toContain("[String(state.contact?.status)]");
+    expect(js).not.toContain("contact_status");
+  });
+
+  test("a $switch over a top-level ref reads it as before", () => {
+    const { files } = compileClient(
+      {
+        children: [
+          {
+            $switch: { $ref: "#/state/mode" },
+            cases: { a: { tagName: "p", textContent: "A" } },
+            tagName: "div",
+          },
+        ],
+        state: { mode: "a" },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    expect(files[0]!.content).toContain("[String(state.mode)]");
+  });
+
+  test("a repeater over a nested ref reads the path, in the bound list and the inline hole", () => {
+    const { files } = compileClient(
+      {
+        children: [
+          {
+            children: {
+              $prototype: "Array",
+              items: { $ref: "#/state/page/rows" },
+              map: { tagName: "li", textContent: "${$map.item.name}" },
+            },
+            tagName: "ul",
+          },
+        ],
+        state: { page: null },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    const js = files[0]!.content;
+    expect(js).toContain("(state.page?.rows ?? []).map(");
+    expect(js).not.toContain("page_rows");
+  });
+});

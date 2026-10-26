@@ -658,7 +658,7 @@ For dynamic documents that are not custom elements, the compiler emits:
 
 ### 9.2 `$switch` on a Dynamic Page
 
-A `$switch` node compiles to a render binding on its container element, mirroring the mapped-array binding in the same target: the container carries `data-bind :render="_swN"`, and the module holds a case-keyed lookup over lit templates matched on `String(discriminant)`, with an empty template as the fallback. The discriminant may be a `#/state/…` pointer or a template string. An external `$ref` case cannot be fetched at compile time and is skipped, exactly as in the static renderer.
+A `$switch` node compiles to a render binding on its container element, mirroring the mapped-array binding in the same target: the container carries `data-bind :render="_swN"`, and the module holds a case-keyed lookup over lit templates matched on `String(discriminant)`, with an empty template as the fallback. The discriminant may be a `#/state/…` pointer or a template string. A pointer reads the path it names, one member per `/` segment, and answers `undefined` (so the fallback template) while a parent member is still `null`, as the interpreter's read does: state that a server call or a fetch fills in starts as `null`. A repeater's `items` pointer is read the same way. An external `$ref` case cannot be fetched at compile time and is skipped, exactly as in the static renderer.
 
 The container is emitted **empty**, with the matched case supplied at hydration. lit's `render` inserts into a container rather than replacing its existing children, so a prerendered branch would survive alongside the rendered one — the same reason the mapped-array binding prerenders nothing.
 

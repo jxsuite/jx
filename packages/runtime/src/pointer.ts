@@ -96,6 +96,32 @@ export function refAccessor(base: string, path: string): string {
 }
 
 /**
+ * A JavaScript expression reading `path` from `base` that answers `undefined` through a missing
+ * step instead of throwing: `s.user?.name`, where {@link refAccessor} emits `s.user.name`.
+ *
+ * Same member forms as `refAccessor` (dotted where a segment is an identifier, bracketed and
+ * JSON-quoted where it is not), with every step after the first optional. That is what the
+ * interpreter's {@link readPath} already answers for a missing intermediate, so a compiled read of
+ * state a server call or a fetch fills in later agrees with it while the value is still `null`. The
+ * accessor stays as it is for the reads that predate this, because making every compiled read
+ * optional is a change to what every compiled site does at runtime (see the equivalence tests).
+ *
+ * @param {string} base - Receiver expression, e.g. `state`
+ * @param {string} path
+ * @returns {string}
+ */
+export function refReader(base: string, path: string): string {
+  let expr = base;
+  for (const [index, key] of refSegments(path).entries()) {
+    const optional = index === 0 ? "" : "?.";
+    expr += IDENTIFIER.test(key)
+      ? `${index === 0 ? "." : optional}${key}`
+      : `${optional}[${JSON.stringify(key)}]`;
+  }
+  return expr;
+}
+
+/**
  * An object-literal key: bare where it is an identifier, JSON-quoted where it is not.
  *
  * Both forms are valid JavaScript, so this is only about what the emitted module reads like — and
