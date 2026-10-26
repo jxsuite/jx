@@ -20,7 +20,8 @@
     "./chat-state": "./src/chat-state.ts",
     "./gateway": "./src/gateway/index.ts",
     "./harness": "./src/harness/index.ts",
-    "./messages": "./src/messages/index.ts"
+    "./messages": "./src/messages/index.ts",
+    "./jx-tools": "./src/jx-tools/index.ts"
   },
   "publishConfig": {
     "provenance": true
@@ -32,6 +33,7 @@
   },
   "dependencies": {
     "@jxsuite/protocol": "workspace:^",
+    "@jxsuite/schema": "workspace:^",
     "@vue/reactivity": "3.5.44"
   },
   "devDependencies": {

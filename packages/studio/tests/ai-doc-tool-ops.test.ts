@@ -16,7 +16,7 @@ import { afterEach, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { createToolRegistry } from "@jxsuite/ai/tools";
 import type { ToolArguments } from "@jxsuite/ai/tools";
-import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import type { JsonValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import { toRaw } from "../src/reactivity";
 import { registerAiTools } from "../src/services/ai-tools";
 import { createTab, disposeTab } from "../src/tabs/tab";
@@ -282,4 +282,14 @@ test("every probe that wrote is undone exactly, but for the children residue", a
       expect([probe.name, undone]).toEqual([probe.name, !CHILDREN_RESIDUE.has(probe.name)]);
     }
   }
+});
+
+test("the tree tools are offered to the model exactly as they were", () => {
+  const registry = createToolRegistry();
+  registerAiTools(registry, { getTab: () => null });
+  /* Recorded from the hand-registered tools, before they became producers in `@jxsuite/ai/jx-tools`.
+     SAFETY: a JSON round trip answers JSON, and the listing is what the request body serializes. */
+  // oxlint-disable-next-line unicorn/prefer-structured-clone -- the point is the JSON the request body carries
+  const listed = JSON.parse(JSON.stringify(registry.listForLLM())) as JsonValue;
+  matchGolden(resolve(import.meta.dir, "fixtures", "doc-tool-specs.json"), listed);
 });
