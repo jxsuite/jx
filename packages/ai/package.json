@@ -21,7 +21,8 @@
     "./gateway": "./src/gateway/index.ts",
     "./harness": "./src/harness/index.ts",
     "./messages": "./src/messages/index.ts",
-    "./jx-tools": "./src/jx-tools/index.ts"
+    "./jx-tools": "./src/jx-tools/index.ts",
+    "./catalog": "./src/catalog/index.ts"
   },
   "publishConfig": {
     "provenance": true

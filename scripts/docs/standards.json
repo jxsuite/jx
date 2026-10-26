@@ -189,6 +189,12 @@
       "url": "https://www.w3.org/TR/json-ld11/"
     },
     {
+      "id": "MCP 2026-07-28",
+      "org": "Other",
+      "title": "Model Context Protocol, revision 2026-07-28",
+      "url": "https://modelcontextprotocol.io/specification/2026-07-28"
+    },
+    {
       "id": "Media Queries 5",
       "org": "W3C",
       "title": "Media Queries Level 5",

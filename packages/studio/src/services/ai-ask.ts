@@ -23,6 +23,7 @@
  * @license MIT
  */
 
+import { JX_TOOL_FACTS } from "@jxsuite/ai/jx-tools";
 import { createToolDefinition, toolError, toolSuccess } from "@jxsuite/ai/tools";
 import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
@@ -181,6 +182,8 @@ export function registerAskTool(
   registry.register(
     createToolDefinition({
       name: "ask_user",
+      title: "Ask the user",
+      annotations: JX_TOOL_FACTS.ask_user.annotations,
       // It suspends the turn on the author, so a round that only asked spends no work budget.
       interactive: true,
       description:

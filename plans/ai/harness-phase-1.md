@@ -4,6 +4,7 @@ disposition: implement
 claims:
   - ai.md
   - ai.md#2.2
+  - ai.md#3.10
 size: L
 workspaces:
   - packages/ai

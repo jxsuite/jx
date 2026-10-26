@@ -61,10 +61,30 @@ export interface JSONSchema {
  */
 export type ToolArguments = Readonly<Record<string, JsonValue | undefined>>;
 
+/**
+ * What a tool does to the world, as MCP's four behaviour hints name it (specs/ai.md §3.10). Every
+ * hint is stated, never left to a default: a host decides approvals and an MCP client its warnings
+ * from them.
+ */
+export interface ToolAnnotations {
+  /** It changes nothing. */
+  readonly readOnlyHint: boolean;
+  /** It may destroy or overwrite something a person made. */
+  readonly destructiveHint: boolean;
+  /** Calling it twice with the same arguments does what calling it once did. */
+  readonly idempotentHint: boolean;
+  /** It reaches outside the project (the network, an installer). */
+  readonly openWorldHint: boolean;
+}
+
 export interface ToolDefinition {
   name: string;
+  /** A person-facing name for the tool. A catalog requires it. */
+  title?: string;
   description: string;
   parameters: JSONSchema;
+  /** Its behaviour hints. A catalog requires them. */
+  annotations?: ToolAnnotations;
   strict: boolean;
   llmStrict: boolean;
   /**
@@ -129,6 +149,8 @@ export function toolError(error: string): ToolResult {
  *   (default false). Only enable if the parameter schema is OpenAI-strict-compliant
  *   (additionalProperties:false everywhere, all properties in `required`, every property typed).
  * @param {boolean} [opts.interactive] - The call suspends the turn on a person (`ask_user`)
+ * @param {string} [opts.title] - A person-facing name, which a catalog requires
+ * @param {ToolAnnotations} [opts.annotations] - Its behaviour hints, which a catalog requires
  * @param {(args: ToolArguments, ctx: ToolContext) => Promise<ToolResult> | ToolResult} opts.execute -
  *   The tool implementation, handed the call's context
  * @returns {ToolDefinition}
@@ -140,6 +162,8 @@ export function createToolDefinition({
   strict = true,
   llmStrict = false,
   interactive,
+  title,
+  annotations,
   execute,
 }: {
   name: string;
@@ -148,12 +172,20 @@ export function createToolDefinition({
   strict?: boolean;
   llmStrict?: boolean;
   interactive?: boolean;
+  title?: string;
+  annotations?: ToolAnnotations;
   execute: (args: ToolArguments, ctx: ToolContext) => Promise<ToolResult> | ToolResult;
 }): ToolDefinition {
   const definition: ToolDefinition = { name, description, parameters, strict, llmStrict, execute };
   // After `execute` rather than before it: a definition serializes without its function either way.
   if (interactive !== undefined) {
     definition.interactive = interactive;
+  }
+  if (title !== undefined) {
+    definition.title = title;
+  }
+  if (annotations !== undefined) {
+    definition.annotations = annotations;
   }
   return definition;
 }

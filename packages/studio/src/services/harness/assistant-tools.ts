@@ -9,12 +9,11 @@
  * @license MIT
  */
 
+import { catalogRegistry, createCatalog } from "@jxsuite/ai/catalog";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
-import { composeToolRegistries } from "../ai-command-tools";
+import type { CommandToolRegistry } from "../ai-command-tools";
 import { AI_TOOL_TIERS, toolActive } from "../ai-system-prompt";
 import type { AiToolState, AiToolTier } from "../ai-system-prompt";
-import { createGatedToolRegistry } from "../gated-registry";
-import type { ToolAvailability } from "../gated-registry";
 
 /**
  * What each tier requires, as the sentence a refused call ends with. The model reads it, so it is
@@ -34,32 +33,36 @@ export const TIER_REQUIREMENTS: Readonly<Record<AiToolTier, string>> = {
 };
 
 /**
- * The assistant's tools: `hand` gated on live studio state by the same tier table the system prompt
- * renders, so the model is never shown a tool it cannot execute, then `commands`. The state is read
- * on every listing, and `listForLLM()` runs every agent-loop round, so a mid-loop `create_project`
- * unlocks the higher tiers immediately.
+ * The assistant's tools as one catalog (specs/ai.md §3.10): the hand tools, then the command
+ * records' projections. Membership is every tool either side has, rebuilt per call because the
+ * command side is a view over whichever command registry is active. A hand tool is gated on live
+ * studio state by the same tier table the system prompt renders, so the model is never shown a tool
+ * it cannot execute; a command tool is offered while its record is, and its record refuses a call
+ * itself. The state is read on every listing, and `listForLLM()` runs every agent-loop round, so a
+ * mid-loop `create_project` unlocks the higher tiers immediately.
  *
  * @param {ToolRegistry} hand - The hand-registered tools
- * @param {ToolRegistry} commands - The command records' projections
+ * @param {CommandToolRegistry} commands - The command records' projections
  * @param {() => AiToolState} state - The studio facts a tier is decided by, read live
  * @returns {ToolRegistry}
  */
 export function assistantToolRegistry(
   hand: ToolRegistry,
-  commands: ToolRegistry,
+  commands: CommandToolRegistry,
   state: () => AiToolState,
 ): ToolRegistry {
-  const availability = new Map<string, ToolAvailability>(
-    AI_TOOL_TIERS.map((t) => [
-      t.name,
-      {
-        when: () => toolActive(t, state()),
-        requires:
-          t.capability === "importSite"
-            ? "a platform with a site-import backend"
-            : TIER_REQUIREMENTS[t.tier],
-      },
-    ]),
-  );
-  return composeToolRegistries(createGatedToolRegistry(hand, availability), commands);
+  const tiers = new Map(AI_TOOL_TIERS.map((tool) => [tool.name, tool]));
+  return catalogRegistry(() => createCatalog(hand.list(), commands.members()), {
+    advertise: (entry) =>
+      hand.getDefinition(entry.name) !== undefined || commands.advertises(entry.name),
+    gate(entry) {
+      const tool = tiers.get(entry.name);
+      if (!tool || toolActive(tool, state())) {
+        return null;
+      }
+      return tool.capability === "importSite"
+        ? "a platform with a site-import backend"
+        : TIER_REQUIREMENTS[tool.tier];
+    },
+  });
 }

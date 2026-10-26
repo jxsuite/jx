@@ -60,6 +60,7 @@
  * @license MIT
  */
 
+import { toolFacts } from "@jxsuite/ai/jx-tools";
 import { createToolContext, toolError } from "@jxsuite/ai/tools";
 import type {
   ToolArguments,
@@ -215,8 +216,9 @@ function definitionOf(
   } else {
     parameters = command.args ?? EMPTY_ARGS;
   }
-  return {
+  const definition: ToolDefinition = {
     name: tool.name,
+    title: command.title,
     description: `${tool.description}${undoSuffix(command)}`,
     /* SAFETY: `parameters` is an `argsSchema()` object (or the selector's composed from one), a
        JSON Schema object whose only departures from `JSONSchema` are readonly arrays and a
@@ -228,6 +230,13 @@ function definitionOf(
     llmStrict: false,
     execute: (args, ctx) => execute(tool.name, args, ctx),
   };
+  /* The facts are the table's, by tool name (`@jxsuite/ai/jx-tools`). A record with none projects a
+     tool without them, which the catalog refuses: that is the test that keeps the table whole. */
+  const facts = toolFacts(tool.name);
+  if (facts) {
+    definition.annotations = facts.annotations;
+  }
+  return definition;
 }
 
 /**
@@ -348,13 +357,21 @@ function fileLedger(
   }
 }
 
+/** The command view, which also answers what the catalog asks of it. */
+export interface CommandToolRegistry extends ToolRegistry {
+  /** Every record's projection, offered or not: the catalog's members from this side. */
+  readonly members: () => ToolDefinition[];
+  /** Whether the record projecting `name` is offered this round (its gate, and a non-empty enum). */
+  readonly advertises: (name: string) => boolean;
+}
+
 /**
  * A ToolRegistry whose tools are the active registry's `aiTool` records. Nothing is registered.
  *
  * @param {CommandToolDeps} deps
- * @returns {ToolRegistry}
+ * @returns {CommandToolRegistry}
  */
-export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
+export function createCommandToolRegistry(deps: CommandToolDeps): CommandToolRegistry {
   /** The record projecting `name`, enabled or not — so `execute` can reach a refusal. */
   function commandFor(name: string): AnyCommand | undefined {
     return activeRegistry()
@@ -508,52 +525,24 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
       return { valid: true };
     },
     execute,
-  };
-}
-
-/**
- * Union of two registries for the loop: hand tools gated by tier, command tools gated by the
- * record.
- *
- * `list`/`listForLLM` concatenate (hand first); `getDefinition`/`validate`/`execute` go to
- * whichever side has the definition, hand first; an unknown name answers `Unknown tool: "<name>"`
- * as `@jxsuite/ai` does; `register` goes to `hand`. A name on both sides is a defect the parity
- * test in `tests/ai-system-prompt.test.ts` catches; the composite's hand-first order is not a
- * feature anyone may rely on.
- *
- * @param {ToolRegistry} hand
- * @param {ToolRegistry} commands
- * @returns {ToolRegistry}
- */
-export function composeToolRegistries(hand: ToolRegistry, commands: ToolRegistry): ToolRegistry {
-  function sideOf(name: string): ToolRegistry | undefined {
-    if (hand.getDefinition(name)) {
-      return hand;
-    }
-    return commands.getDefinition(name) ? commands : undefined;
-  }
-  return {
-    register(tool) {
-      hand.register(tool);
+    members() {
+      const registry = activeRegistry();
+      if (!registry) {
+        return [];
+      }
+      const definitions: ToolDefinition[] = [];
+      for (const command of projected(registry)) {
+        const definition = definitionOf(registry, command, execute);
+        if (definition) {
+          definitions.push(definition);
+        }
+      }
+      return definitions;
     },
-    list() {
-      return [...hand.list(), ...commands.list()];
-    },
-    listForLLM() {
-      return [...hand.listForLLM(), ...commands.listForLLM()];
-    },
-    getDefinition(name) {
-      return sideOf(name)?.getDefinition(name);
-    },
-    validate(name, args) {
-      const side = sideOf(name);
-      return side
-        ? side.validate(name, args)
-        : { valid: false, errors: [`Unknown tool: "${name}"`] };
-    },
-    async execute(name, args, ctx) {
-      const side = sideOf(name);
-      return side ? side.execute(name, args, ctx) : toolError(`Unknown tool: "${name}"`);
+    advertises(name) {
+      const registry = activeRegistry();
+      const command = commandFor(name);
+      return registry !== null && command !== undefined && advertised(registry, command);
     },
   };
 }

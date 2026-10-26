@@ -102,6 +102,9 @@ afterEach(() => {
   setExtensionCatalog([]);
 });
 
+/** A project with no extension enabled, so `disable_extension` has nothing it could take. */
+const NO_EXTENSIONS: string[] = [];
+
 /** The hand tools, registered the way the document assistant registers them. */
 function handTools(): ToolRegistry {
   const hand = createToolRegistry();
@@ -129,7 +132,7 @@ function assistantIn(state: StudioState): ToolRegistry {
   setProjectState({
     dirs: new Map(),
     expanded: new Set(),
-    projectConfig: { extensions: [] },
+    projectConfig: { extensions: NO_EXTENSIONS },
   } as ProjectState);
   const commands = createCommandRegistry({ getContext: () => makeContext(state.context) });
   commands.registerAll(appCommandSet());
