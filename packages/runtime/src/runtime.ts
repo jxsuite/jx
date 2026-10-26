@@ -4307,6 +4307,7 @@ export {
   resolveAtQuery,
   resolveNestedSelector,
   schemeSelectors,
+  spliceNestingSelector,
   splitSelectorList,
   transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,

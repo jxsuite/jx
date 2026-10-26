@@ -926,6 +926,19 @@ describe("resolveNestedSelector", () => {
     expect(resolveNestedSelector("#a", "& + &")).toBe("#a + #a");
   });
 
+  test("an & anywhere in a key is the scope, so a context before it does not compound", () => {
+    // `.wrap &` used to compound as `#a.wrap &`: a raw `&` the browser discards with the rule.
+    expect(resolveNestedSelector("#a", ".wrap &")).toBe(".wrap #a");
+    expect(resolveNestedSelector("#a", ":root &:hover")).toBe(":root #a:hover");
+    expect(resolveNestedSelector("#a", "[dir=rtl] & > li")).toBe("[dir=rtl] #a > li");
+    expect(resolveNestedSelector("#a, #b", ".wrap &")).toBe(".wrap #a, .wrap #b");
+    // An & inside a quoted value or an attribute selector is text, not the scope.
+    expect(resolveNestedSelector("#a", '[title="R&D"] &')).toBe('[title="R&D"] #a');
+    expect(resolveNestedSelector("#a", '[title="R&D"]')).toBe('#a[title="R&D"]');
+    expect(resolveNestedSelector("#a", "[data-x=a&b]")).toBe("#a[data-x=a&b]");
+    expect(resolveNestedSelector("#a", String.raw`.x\&y`)).toBe(String.raw`#a.x\&y`);
+  });
+
   test("a comma inside :is(), :not() or a quoted attribute value separates nothing", () => {
     expect(resolveNestedSelector("#a", "&:is(.x, .y)")).toBe("#a:is(.x, .y)");
     expect(resolveNestedSelector("#a", "&:not(.x, .y) .z")).toBe("#a:not(.x, .y) .z");

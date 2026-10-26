@@ -689,6 +689,15 @@ describe("buildComponentCSS", () => {
     expect(css).not.toContain("&");
   });
 
+  test("a top-level key with a context before its & scopes the &, rather than compounding", () => {
+    const css = buildComponentCSS("my-comp", {
+      ".dark &": { color: "white" },
+      '[title="R&D"] &': { margin: "0" },
+    });
+    expect(css).toContain(".dark my-comp { color: white }");
+    expect(css).toContain('[title="R&D"] my-comp { margin: 0 }');
+  });
+
   test("a :host list keeps its own translation, and a comma inside :host() is not a separator", () => {
     const light = buildComponentCSS("my-comp", { ":host(.a), :host(.b)": { color: "red" } });
     expect(light).toContain("my-comp.a, my-comp.b { color: red }");

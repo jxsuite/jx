@@ -122,7 +122,8 @@ export function isKeyframesAtRule(atKey: string): boolean {
 /**
  * Resolve one nested style key against its parent selector.
  *
- * `&` splices, `:`/`.`/`[` concatenate, anything else is a descendant. Extracted because the same
+ * A key with an `&` anywhere splices the scope in for each one (`& > li`, `.wrap &`), else
+ * `:`/`.`/`[` concatenate, and anything else is a descendant. Extracted because the same
  * four-branch decision was written THREE times in `applyStyle` — the top-level nested loop,
  * `emitNested`'s recursion and `emitMediaNested` — and three copies of one decision is three
  * chances for a selector to mean different things depending on how deeply it was nested.
@@ -143,13 +144,78 @@ export function resolveNestedSelector(scope: string, key: string): string {
 
 /** One member of a scope against one member of a key — the four-branch decision itself. */
 function resolveOneNestedSelector(scope: string, key: string): string {
-  if (key.startsWith("&")) {
-    return key.replaceAll("&", scope);
+  const spliced = spliceNestingSelector(key, scope);
+  if (spliced !== null) {
+    return spliced;
   }
   if (key.startsWith("[") || key.startsWith(":") || key.startsWith(".")) {
     return `${scope}${key}`;
   }
   return `${scope} ${key}`;
+}
+
+/**
+ * Where a selector member holds the nesting selector `&`: outside quoted strings and attribute
+ * brackets, where an `&` is text (`[title="R&D"]`) and not the scope.
+ *
+ * The scope is wherever `&` stands, not only at the start. `.wrap &` is the element when it sits
+ * inside a `.wrap`, and `:root &` is the element under the root. Splicing only a LEADING `&` read
+ * such a key as a compound and emitted `#box.wrap &`: a selector with a raw `&`, which the browser
+ * discards, so the rule never applied anywhere (spec.md §9.2).
+ *
+ * @param {string} member - One member of a selector list
+ * @returns {number[]} The indexes of its `&` characters, in order
+ */
+function nestingIndexes(member: string): number[] {
+  const found: number[] = [];
+  let quote: string | null = null;
+  let brackets = 0;
+  for (let i = 0; i < member.length; i += 1) {
+    const ch = member[i]!;
+    if (quote) {
+      if (ch === "\\") {
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === "\\") {
+      i += 1;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "[") {
+      brackets += 1;
+    } else if (ch === "]") {
+      brackets = Math.max(0, brackets - 1);
+    } else if (ch === "&" && brackets === 0) {
+      found.push(i);
+    }
+  }
+  return found;
+}
+
+/**
+ * Replace every nesting `&` of a selector member with `scope`, or null when it holds none: the one
+ * rule every resolver of a nested key shares, so `.wrap &` means the same in every emitter.
+ *
+ * @param {string} member - One member of a selector list
+ * @param {string} scope - What `&` stands for
+ * @returns {string | null}
+ */
+export function spliceNestingSelector(member: string, scope: string): string | null {
+  return nestingIndexes(member).length > 0 ? spliceScope(member, scope) : null;
+}
+
+/** Replace every nesting `&` of `member` ({@link nestingIndexes}) with `scope`. */
+function spliceScope(member: string, scope: string): string {
+  let out = "";
+  let from = 0;
+  for (const at of nestingIndexes(member)) {
+    out += member.slice(from, at) + scope;
+    from = at + 1;
+  }
+  return out + member.slice(from);
 }
 
 /**
@@ -609,7 +675,11 @@ function withoutKeyframes(block: JxStyle): JxStyle {
  * {@link CssRuleTarget}, so it is decided once, here.
  */
 function compoundsOntoScope(key: string): boolean {
-  const rest = key.startsWith("&") ? key.slice(1) : key;
+  /* With an `&` anywhere, what follows the last one decides: `.wrap &:hover` is the element in a
+     context, `.wrap & span` something inside it. */
+  const nesting = nestingIndexes(key);
+  const last = nesting.at(-1);
+  const rest = last === undefined ? key : key.slice(last + 1);
   return rest === "" || rest.startsWith(":") || rest.startsWith(".") || rest.startsWith("[");
 }
 
