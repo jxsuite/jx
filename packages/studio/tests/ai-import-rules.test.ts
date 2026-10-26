@@ -128,8 +128,15 @@ describe("the rule fires on every way of writing the import", () => {
  * Raising it needs the same written justification as lowering a coverage threshold.
  */
 describe("the size of @jxsuite/ai in the page", () => {
-  /** Minified bytes from packages/ai/src in a bundle of every subpath Studio imports at runtime. */
-  const CEILING = 25_600;
+  /**
+   * Minified bytes from packages/ai/src in a bundle of every subpath Studio imports at runtime.
+   *
+   * Raised from 25,600 when the tree tools moved into `./jx-tools` (34,749 bytes): a move, not
+   * growth. Their descriptions and producers left `services/ai-tools.ts` for the package, and a
+   * minified bundle of `ai-tools.ts` grew by 514 bytes across the move, the host and the new
+   * transaction door, not by the 9 KB this count moved.
+   */
+  const CEILING = 35_840;
 
   /** The `@jxsuite/ai` subpaths Studio imports or re-exports for their values, not only types. */
   function runtimeSubpaths(): string[] {
