@@ -40,10 +40,13 @@ const initialChatState: AssistantChatStateFixture = {
 };
 const assistantChatState = reactive(initialChatState);
 const assistantSend = mock(async (_text: string) => {});
+const { createInteractionStore } = await import("../src/services/harness/interaction-store");
+
 void mock.module("../src/services/document-assistant", () => ({
   createDocumentAssistant: () => ({
     activeSessionId: () => null,
     chatState: assistantChatState,
+    interactions: createInteractionStore(),
     deleteSession: () => {},
     isTurnActive: () => assistantChatState.status === "streaming",
     whenTurnEnds: () => Promise.resolve(),

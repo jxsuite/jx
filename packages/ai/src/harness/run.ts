@@ -35,8 +35,9 @@ import {
   createToolContext,
   invokeTool,
   linkCallSignal,
+  toolError,
 } from "../tools.ts";
-import type { Actor } from "../tools.ts";
+import type { Actor, ToolCall, ToolContext } from "../tools.ts";
 import { LaneBusyError } from "./lock.ts";
 import { joinSystem } from "./model.ts";
 import { DEFAULT_TURN_POLICY } from "./policy.ts";
@@ -225,6 +226,30 @@ export function runTurn(input: TurnInput): TurnRun {
   const drawnBefore = history
     .slice(answered + 1)
     .some((message) => message.role === "assistant" && !isEmptyAssistant(message));
+
+  const interactions = input.interactions ?? { mode: "none" };
+
+  /**
+   * Invoke one call to its result. A call that needs a person is put to the host's strategy and
+   * invoked again with the answer, so no tool body ever awaits a person (specs/ai.md §3.11).
+   */
+  async function invoke(call: ToolCall, ctx: ToolContext, callSignal: AbortSignal) {
+    let outcome = await invokeTool(input.tools, call, ctx, { approval: policy.approval });
+    while (outcome.status === "needs_input") {
+      if (interactions.mode === "none") {
+        return toolError(`${call.name} needs a person, and none is available here.`);
+      }
+      const { request } = outcome;
+      emit({ type: "interaction_request", callId: call.callId, request });
+      const response = await interactions.resolve(request, {
+        callId: call.callId,
+        signal: callSignal,
+      });
+      emit({ type: "interaction_settled", callId: call.callId, response });
+      outcome = await invokeTool(input.tools, call, ctx, { approval: policy.approval, response });
+    }
+    return outcome.result;
+  }
 
   async function loop(): Promise<TurnOutcome> {
     const appended: ChatMessage[] = [];
@@ -421,11 +446,11 @@ export function runTurn(input: TurnInput): TurnRun {
         });
         let result;
         try {
-          ({ result } = await invokeTool(
-            input.tools,
+          result = await invoke(
             { callId, name: call.name, argumentsText: call.argumentsText },
             ctx,
-          ));
+            link.signal,
+          );
         } finally {
           link.release();
         }

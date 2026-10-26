@@ -20,6 +20,7 @@ export { assistantActorId, runTurn } from "./run.ts";
 
 export type {
   HarnessEvent,
+  InteractionStrategy,
   ModelFn,
   ModelRequest,
   TurnError,

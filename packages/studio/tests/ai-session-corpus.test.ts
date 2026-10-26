@@ -76,7 +76,6 @@ void mock.module("@jxsuite/ai", () => ({
 
 const { createDocumentAssistant } = await import("../src/services/document-assistant");
 const { pruneOrphanToolMessages } = await import("../src/services/context-manager");
-const { answerAsk, isAwaitingAnswer, resetAsk } = await import("../src/services/ai-ask");
 const { getActiveSessionId } = await import("../src/services/ai-session-store");
 const { backfillToolResults } = await import("../src/services/tool-outcomes");
 const { projectChip } = await import("../src/panels/ai-chat/chat-view");
@@ -407,13 +406,13 @@ function callEvents(id: string, name: string, args: JsonObject): StreamEvent[] {
   ];
 }
 
-async function untilAsking() {
-  for (let i = 0; i < 500 && !isAwaitingAnswer(); i++) {
+async function untilAsking(assistant: ReturnType<typeof createDocumentAssistant>) {
+  for (let i = 0; i < 500 && assistant.interactions.pending === null; i++) {
     await new Promise((resolve) => {
       setTimeout(resolve, 0);
     });
   }
-  expect(isAwaitingAnswer()).toBe(true);
+  expect(assistant.interactions.pending).not.toBeNull();
 }
 
 /**
@@ -463,8 +462,8 @@ async function driveConversation() {
     ],
   ];
   const answering = assistant.sendMessage("Ask me which layout to use");
-  await untilAsking();
-  answerAsk("Two columns");
+  await untilAsking(assistant);
+  assistant.interactions.answer("Two columns");
   await answering;
 
   tick();
@@ -479,7 +478,7 @@ async function driveConversation() {
     ],
   ];
   const stopping = assistant.sendMessage("Style the footer, then add a contact link");
-  await untilAsking();
+  await untilAsking(assistant);
   assistant.stop();
   await stopping;
 
@@ -511,7 +510,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetAsk();
   localStorage.clear();
   clearSeededSettings();
   setWorkspaceProject(null);
@@ -592,7 +590,7 @@ describe("a reload while a question is open", () => {
       ],
     ];
     const sending = assistant.sendMessage("Style the footer");
-    await untilAsking();
+    await untilAsking(assistant);
 
     // The page goes away with the question open: its promise is gone, its transcript is not.
     const revived = createDocumentAssistant();
@@ -603,7 +601,7 @@ describe("a reload while a question is open", () => {
     expect(open!.result).toBeNull();
     expect(projectChip(open!).askState).toBe("unanswered");
 
-    resetAsk();
+    assistant.interactions.reset();
     await sending;
   });
 });

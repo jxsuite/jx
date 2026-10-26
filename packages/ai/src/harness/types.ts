@@ -7,7 +7,16 @@
  * @license MIT
  */
 
-import type { AiWrite, SessionFacts, ToolRegistry, ToolResult, WriteLedger } from "../tools.ts";
+import type {
+  AiWrite,
+  ApprovalPolicy,
+  InteractionRequest,
+  InteractionResponse,
+  SessionFacts,
+  ToolRegistry,
+  ToolResult,
+  WriteLedger,
+} from "../tools.ts";
 import type {
   ChatMessage,
   JsonValue,
@@ -74,7 +83,27 @@ export interface TurnPolicy {
   }) => string;
   /** What a turn that drew nothing says. */
   readonly emptyText: string;
+  /** Whether each call needs the author's approval before it runs. Defaults to `proceedAlways`. */
+  readonly approval: ApprovalPolicy;
 }
+
+/**
+ * How a turn gets a person's answer when a call needs one (specs/ai.md §3.11): `inline` asks the
+ * host and waits on the answer within the turn, and `none` answers that nobody is available.
+ */
+export type InteractionStrategy =
+  | {
+      readonly mode: "inline";
+      /**
+       * The person's answer to `request`. Resolve it when the call's `signal` aborts too, with the
+       * answer a stopped turn gives (for a question, unanswered and not skipped).
+       */
+      readonly resolve: (
+        request: InteractionRequest,
+        at: { readonly callId: string; readonly signal: AbortSignal },
+      ) => Promise<InteractionResponse>;
+    }
+  | { readonly mode: "none" };
 
 /** What a host can do between the engine's steps. */
 export interface TurnHooks {
@@ -123,6 +152,8 @@ export interface TurnInput {
   readonly now?: () => number;
   readonly policy?: Partial<TurnPolicy>;
   readonly hooks?: TurnHooks;
+  /** How a call that needs a person gets their answer. Defaults to `{ mode: "none" }`. */
+  readonly interactions?: InteractionStrategy;
   /** What the conversation's tools remember across turns. Defaults to a fresh set. */
   readonly session?: SessionFacts;
   /** Where the turn's tools record their writes. Defaults to a fresh ledger. */
@@ -217,6 +248,18 @@ export type HarnessEvent = EventBase &
         readonly callId: string;
         readonly name: string;
         readonly interactive: boolean;
+      }
+    | {
+        /** The call needs a person before it can run, and the host was asked. */
+        readonly type: "interaction_request";
+        readonly callId: string;
+        readonly request: InteractionRequest;
+      }
+    | {
+        /** The person answered (or the turn's stop answered for them). */
+        readonly type: "interaction_settled";
+        readonly callId: string;
+        readonly response: InteractionResponse;
       }
     | { readonly type: "tool_progress"; readonly callId: string; readonly progress: JsonValue }
     | { readonly type: "write"; readonly callId: string; readonly write: AiWrite }
