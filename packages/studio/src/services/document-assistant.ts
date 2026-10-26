@@ -23,20 +23,15 @@ import { componentRegistry } from "../files/components";
 import { activeRegistry } from "../commands/active-registry";
 import { registerAiTools } from "./ai-tools";
 import { cancelAsk, registerAskTool, resetAsk } from "./ai-ask";
-import {
-  commandToolBlurbs,
-  composeToolRegistries,
-  createCommandToolRegistry,
-} from "./ai-command-tools";
+import { commandToolBlurbs, createCommandToolRegistry } from "./ai-command-tools";
 import { registerProjectTools } from "./ai-project-tools";
 import { registerImportTools } from "./ai-import-tools";
-import { createGatedToolRegistry } from "./gated-registry";
-import type { ToolAvailability } from "./gated-registry";
+import { assistantToolRegistry } from "./harness/assistant-tools";
 import { adoptProject } from "./project-adoption";
 import { resetAiWrites } from "./ai-writes";
 import { abortImportRun, resetImportRuns } from "./import-run";
 import { runAgentLoop } from "./tool-executor";
-import { AI_TOOL_TIERS, buildSystemPrompt, toolActive } from "./ai-system-prompt";
+import { buildSystemPrompt } from "./ai-system-prompt";
 import type { ExtensionCatalogSummary } from "./ai-system-prompt";
 import { getBaseUrl, getOpenAiKey } from "./ai-settings";
 import { preferredModel } from "./ai-models";
@@ -167,24 +162,6 @@ export function createDocumentAssistant() {
     },
   });
 
-  /*
-   * Gate tool advertisement/execution on live studio state, derived from the same tier table the
-   * system prompt renders — the model is never shown a tool it cannot execute. listForLLM() runs
-   * every agent-loop round, so a mid-loop create_project unlocks the higher tiers immediately.
-   */
-  const TIER_REQUIREMENTS = {
-    /* Never refused, so the sentence is unreachable — it exists because the map is derived from
-       the tier union, and a tier without one would not compile. */
-    always: "nothing",
-    "no-project": "no project to be open (it bootstraps one)",
-    project: "an open project",
-    document: "an open document (use open_document first)",
-    "document-tree":
-      "an open document whose element tree the canvas is editing — Project Settings and the " +
-      "grid editors are documents, but not trees to restructure, and a page left in Code view " +
-      "returns to the canvas with set_canvas_mode",
-  } as const;
-
   /**
    * The HUMAN's own gate, read rather than reimplemented.
    *
@@ -201,26 +178,6 @@ export function createDocumentAssistant() {
     // The agent than for the person is the divergence this is here to remove.
     return registry ? registry.context().editor.kind === "canvas" : true;
   };
-  const availability = new Map<string, ToolAvailability>(
-    AI_TOOL_TIERS.map((t) => [
-      t.name,
-      {
-        when: () =>
-          toolActive(t, {
-            /* The platform's own answer, read live rather than captured: the assistant is
-               constructed at module load, before a platform is registered in some hosts. */
-            canImport: Boolean(getPlatform().importSite),
-            hasDocument: Boolean(activeTab.value),
-            hasProject: Boolean(workspace.projectRoot),
-            treeEditable: treeEditable(),
-          }),
-        requires:
-          t.capability === "importSite"
-            ? "a platform with a site-import backend"
-            : TIER_REQUIREMENTS[t.tier],
-      },
-    ]),
-  );
   /*
    * The other kind of tool: every command record that declares `aiTool`, as a VIEW over the active
    * registry (`services/ai-command-tools.ts`). Nothing is registered — the record IS the tool, its
@@ -235,10 +192,16 @@ export function createDocumentAssistant() {
     renderCheck: probeRender,
     validate: validateDoc,
   });
-  const toolRegistry = composeToolRegistries(
-    createGatedToolRegistry(innerRegistry, availability),
-    commandTools,
-  );
+  /* The hand tools gated on live studio state, then the command tools. The state is read on every
+     listing, so a mid-loop create_project unlocks the higher tiers the very next round. */
+  const toolRegistry = assistantToolRegistry(innerRegistry, commandTools, () => ({
+    /* The platform's own answer, read live rather than captured: the assistant is constructed at
+       module load, before a platform is registered in some hosts. */
+    canImport: Boolean(getPlatform().importSite),
+    hasDocument: Boolean(activeTab.value),
+    hasProject: Boolean(workspace.projectRoot),
+    treeEditable: treeEditable(),
+  }));
 
   let controller: AbortController | null = null;
 
