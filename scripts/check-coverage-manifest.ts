@@ -83,6 +83,8 @@ export const ALLOWLIST = new Set([
   "src/messages/types.ts",
   // The @jxsuite/ai turn engine's contract (TurnInput, HarnessEvent, TurnOutcome, ...): types only.
   "src/harness/types.ts",
+  // The @jxsuite/ai document tools' host contract (DocumentHost, DocEdit, SelectionEffect, ...): types only.
+  "src/jx-tools/types.ts",
 ]);
 
 /** Per-file totals as lcov records them: `FNF`/`FNH` for functions, `LF`/`LH` for lines. */

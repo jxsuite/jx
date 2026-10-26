@@ -1,0 +1,1209 @@
+{
+  "set a key": {
+    "args": {
+      "key": "id",
+      "path": ["children", 0],
+      "value": "intro"
+    },
+    "tool": "set_property",
+    "forward": [
+      {
+        "key": "id",
+        "op": "set-key",
+        "path": ["children", 0],
+        "value": "intro"
+      }
+    ],
+    "inverse": [
+      {
+        "key": "id",
+        "op": "set-key",
+        "path": ["children", 0]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set \"id\" at [\"children\",0]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set \"id\" at [\"children\",0]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "remove a key with null": {
+    "args": {
+      "key": "textContent",
+      "path": ["children", 1, "children", 0],
+      "value": null
+    },
+    "tool": "set_property",
+    "forward": [
+      {
+        "key": "textContent",
+        "op": "set-key",
+        "path": ["children", 1, "children", 0]
+      }
+    ],
+    "inverse": [
+      {
+        "key": "textContent",
+        "op": "set-key",
+        "path": ["children", 1, "children", 0],
+        "value": "a"
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set \"textContent\" at [\"children\",1,\"children\",0]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set \"textContent\" at [\"children\",1,\"children\",0]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "remove a key with an empty string": {
+    "args": {
+      "key": "textContent",
+      "path": ["children", 1, "children", 1],
+      "value": ""
+    },
+    "tool": "set_property",
+    "forward": [
+      {
+        "key": "textContent",
+        "op": "set-key",
+        "path": ["children", 1, "children", 1]
+      }
+    ],
+    "inverse": [
+      {
+        "key": "textContent",
+        "op": "set-key",
+        "path": ["children", 1, "children", 1],
+        "value": "b"
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set \"textContent\" at [\"children\",1,\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set \"textContent\" at [\"children\",1,\"children\",1]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "remove a key that is absent": {
+    "args": {
+      "key": "title",
+      "path": ["children", 2]
+    },
+    "tool": "set_property",
+    "forward": [
+      {
+        "key": "title",
+        "op": "set-key",
+        "path": ["children", 2]
+      }
+    ],
+    "inverse": [
+      {
+        "key": "title",
+        "op": "set-key",
+        "path": ["children", 2]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set \"title\" at [\"children\",2]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set \"title\" at [\"children\",2]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "replace children, pruning the selection under them": {
+    "args": {
+      "key": "children",
+      "path": ["children", 1],
+      "value": [
+        {
+          "tagName": "em"
+        }
+      ]
+    },
+    "tool": "set_property",
+    "forward": [
+      {
+        "key": "children",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": [
+          {
+            "tagName": "em"
+          }
+        ]
+      }
+    ],
+    "inverse": [
+      {
+        "key": "children",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": [
+          {
+            "tagName": "p",
+            "textContent": "a"
+          },
+          {
+            "tagName": "p",
+            "textContent": "b"
+          }
+        ]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set \"children\" at [\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set \"children\" at [\"children\",1]."
+    },
+    "selection": [["children", 1]],
+    "undone": true
+  },
+  "set an object value": {
+    "args": {
+      "key": "attributes",
+      "path": ["children", 2],
+      "value": {
+        "aria-hidden": "true"
+      }
+    },
+    "tool": "set_property",
+    "forward": [
+      {
+        "key": "attributes",
+        "op": "set-key",
+        "path": ["children", 2],
+        "value": {
+          "aria-hidden": "true"
+        }
+      }
+    ],
+    "inverse": [
+      {
+        "key": "attributes",
+        "op": "set-key",
+        "path": ["children", 2]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set \"attributes\" at [\"children\",2]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set \"attributes\" at [\"children\",2]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "set a document-level key": {
+    "args": {
+      "key": "state",
+      "path": [],
+      "value": {
+        "open": false
+      }
+    },
+    "tool": "set_property",
+    "forward": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "open": false
+        }
+      }
+    ],
+    "inverse": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "count": 0
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set \"state\" at []."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set \"state\" at []."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "a numeric-string index in a path": {
+    "args": {
+      "key": "id",
+      "path": ["children", "1"],
+      "value": "s"
+    },
+    "tool": "set_property",
+    "forward": [
+      {
+        "key": "id",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": "s"
+      }
+    ],
+    "inverse": [
+      {
+        "key": "id",
+        "op": "set-key",
+        "path": ["children", 1]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set \"id\" at [\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set \"id\" at [\"children\",1]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "style a node with none": {
+    "args": {
+      "path": ["children", 0],
+      "property": "color",
+      "value": "red"
+    },
+    "tool": "set_style",
+    "forward": [
+      {
+        "key": "style",
+        "op": "set-key",
+        "path": ["children", 0],
+        "value": {
+          "color": "red"
+        }
+      }
+    ],
+    "inverse": [
+      {
+        "key": "style",
+        "op": "set-key",
+        "path": ["children", 0]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set style \"color\" at [\"children\",0]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set style \"color\" at [\"children\",0]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "add a style property": {
+    "args": {
+      "path": ["children", 1],
+      "property": "margin",
+      "value": "0"
+    },
+    "tool": "set_style",
+    "forward": [
+      {
+        "key": "style",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": {
+          "padding": "1rem",
+          "margin": "0"
+        }
+      }
+    ],
+    "inverse": [
+      {
+        "key": "style",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": {
+          "padding": "1rem"
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set style \"margin\" at [\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set style \"margin\" at [\"children\",1]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "remove the last style property": {
+    "args": {
+      "path": ["children", 1],
+      "property": "padding",
+      "value": null
+    },
+    "tool": "set_style",
+    "forward": [
+      {
+        "key": "style",
+        "op": "set-key",
+        "path": ["children", 1]
+      }
+    ],
+    "inverse": [
+      {
+        "key": "style",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": {
+          "padding": "1rem"
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set style \"padding\" at [\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set style \"padding\" at [\"children\",1]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "a number style value is a string": {
+    "args": {
+      "path": ["children", 1],
+      "property": "zIndex",
+      "value": 2
+    },
+    "tool": "set_style",
+    "forward": [
+      {
+        "key": "style",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": {
+          "padding": "1rem",
+          "zIndex": "2"
+        }
+      }
+    ],
+    "inverse": [
+      {
+        "key": "style",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": {
+          "padding": "1rem"
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set style \"zIndex\" at [\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set style \"zIndex\" at [\"children\",1]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "set text, pruning the selection under the node": {
+    "args": {
+      "path": ["children", 1],
+      "value": "plain"
+    },
+    "tool": "set_text",
+    "forward": [
+      {
+        "key": "textContent",
+        "op": "set-key",
+        "path": ["children", 1]
+      },
+      {
+        "key": "children",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": ["plain"]
+      }
+    ],
+    "inverse": [
+      {
+        "key": "textContent",
+        "op": "set-key",
+        "path": ["children", 1]
+      },
+      {
+        "key": "children",
+        "op": "set-key",
+        "path": ["children", 1],
+        "value": [
+          {
+            "tagName": "p",
+            "textContent": "a"
+          },
+          {
+            "tagName": "p",
+            "textContent": "b"
+          }
+        ]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set text at [\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set text at [\"children\",1]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "set empty text on a leaf": {
+    "args": {
+      "path": ["children", 2],
+      "value": ""
+    },
+    "tool": "set_text",
+    "forward": [
+      {
+        "key": "textContent",
+        "op": "set-key",
+        "path": ["children", 2]
+      },
+      {
+        "key": "children",
+        "op": "set-key",
+        "path": ["children", 2],
+        "value": [""]
+      }
+    ],
+    "inverse": [
+      {
+        "key": "textContent",
+        "op": "set-key",
+        "path": ["children", 2]
+      },
+      {
+        "key": "children",
+        "op": "set-key",
+        "path": ["children", 2]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Set text at [\"children\",2]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Set text at [\"children\",2]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "insert first": {
+    "args": {
+      "index": 0,
+      "node": {
+        "tagName": "h1"
+      },
+      "parentPath": []
+    },
+    "tool": "add_child",
+    "forward": [
+      {
+        "index": 0,
+        "node": {
+          "tagName": "h1"
+        },
+        "op": "insert-child",
+        "parentPath": []
+      }
+    ],
+    "inverse": [
+      {
+        "index": 0,
+        "op": "remove-child",
+        "parentPath": []
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Inserted node at [\"children\",0]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Inserted node at [\"children\",0]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "insert past the end": {
+    "args": {
+      "index": 99,
+      "node": {
+        "tagName": "p"
+      },
+      "parentPath": ["children", 1]
+    },
+    "tool": "add_child",
+    "forward": [
+      {
+        "index": 2,
+        "node": {
+          "tagName": "p"
+        },
+        "op": "insert-child",
+        "parentPath": ["children", 1]
+      }
+    ],
+    "inverse": [
+      {
+        "index": 2,
+        "op": "remove-child",
+        "parentPath": ["children", 1]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Inserted node at [\"children\",1,\"children\",2]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Inserted node at [\"children\",1,\"children\",2]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "insert into a node with no children": {
+    "args": {
+      "index": 0,
+      "node": {
+        "tagName": "i"
+      },
+      "parentPath": ["children", 2]
+    },
+    "tool": "add_child",
+    "forward": [
+      {
+        "index": 0,
+        "node": {
+          "tagName": "i"
+        },
+        "op": "insert-child",
+        "parentPath": ["children", 2]
+      }
+    ],
+    "inverse": [
+      {
+        "index": 0,
+        "op": "remove-child",
+        "parentPath": ["children", 2]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Inserted node at [\"children\",2,\"children\",0]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Inserted node at [\"children\",2,\"children\",0]."
+    },
+    "selection": [],
+    "undone": false
+  },
+  "insert at numeric-string coordinates": {
+    "args": {
+      "index": "1",
+      "node": {
+        "tagName": "b"
+      },
+      "parentPath": ["children", "1"]
+    },
+    "tool": "add_child",
+    "forward": [
+      {
+        "index": 1,
+        "node": {
+          "tagName": "b"
+        },
+        "op": "insert-child",
+        "parentPath": ["children", 1]
+      }
+    ],
+    "inverse": [
+      {
+        "index": 1,
+        "op": "remove-child",
+        "parentPath": ["children", 1]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Inserted node at [\"children\",1,\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Inserted node at [\"children\",1,\"children\",1]."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "add a state entry": {
+    "args": {
+      "key": "open",
+      "value": false
+    },
+    "tool": "add_state",
+    "forward": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "count": 0,
+          "open": false
+        }
+      }
+    ],
+    "inverse": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "count": 0
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Added state \"open\"."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Added state \"open\"."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "add a typed state entry": {
+    "args": {
+      "key": "label",
+      "value": {
+        "default": "",
+        "type": "string"
+      }
+    },
+    "tool": "add_state",
+    "forward": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "count": 0,
+          "label": {
+            "default": "",
+            "type": "string"
+          }
+        }
+      }
+    ],
+    "inverse": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "count": 0
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Added state \"label\"."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Added state \"label\"."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "update a state entry": {
+    "args": {
+      "key": "count",
+      "value": 5
+    },
+    "tool": "update_state",
+    "forward": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "count": 5
+        }
+      }
+    ],
+    "inverse": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "count": 0
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Updated state \"count\"."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Updated state \"count\"."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "remove the last state entry": {
+    "args": {
+      "key": "count",
+      "value": null
+    },
+    "tool": "update_state",
+    "forward": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": []
+      }
+    ],
+    "inverse": [
+      {
+        "key": "state",
+        "op": "set-key",
+        "path": [],
+        "value": {
+          "count": 0
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Removed state \"count\"."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Removed state \"count\"."
+    },
+    "selection": [],
+    "undone": true
+  },
+  "move later in the same parent": {
+    "args": {
+      "fromPath": ["children", 0],
+      "toIndex": 3,
+      "toParentPath": []
+    },
+    "tool": "move_node",
+    "forward": [
+      {
+        "fromIndex": 0,
+        "fromParentPath": [],
+        "op": "move-child",
+        "toIndex": 2,
+        "toParentPath": []
+      }
+    ],
+    "inverse": [
+      {
+        "fromIndex": 2,
+        "fromParentPath": [],
+        "op": "move-child",
+        "toIndex": 0,
+        "toParentPath": []
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Moved node from [\"children\",0] to [\"children\",2]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Moved node from [\"children\",0] to [\"children\",2]."
+    },
+    "selection": [["children", 2]],
+    "undone": true
+  },
+  "move earlier in the same parent": {
+    "args": {
+      "fromPath": ["children", 2],
+      "toIndex": 0,
+      "toParentPath": []
+    },
+    "tool": "move_node",
+    "forward": [
+      {
+        "fromIndex": 2,
+        "fromParentPath": [],
+        "op": "move-child",
+        "toIndex": 0,
+        "toParentPath": []
+      }
+    ],
+    "inverse": [
+      {
+        "fromIndex": 0,
+        "fromParentPath": [],
+        "op": "move-child",
+        "toIndex": 2,
+        "toParentPath": []
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Moved node from [\"children\",2] to [\"children\",0]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Moved node from [\"children\",2] to [\"children\",0]."
+    },
+    "selection": [["children", 0]],
+    "undone": true
+  },
+  "move into a later sibling": {
+    "args": {
+      "fromPath": ["children", 0],
+      "toIndex": 1,
+      "toParentPath": ["children", 1]
+    },
+    "tool": "move_node",
+    "forward": [
+      {
+        "fromIndex": 0,
+        "fromParentPath": [],
+        "op": "move-child",
+        "toIndex": 1,
+        "toParentPath": ["children", 1]
+      }
+    ],
+    "inverse": [
+      {
+        "fromIndex": 1,
+        "fromParentPath": ["children", 0],
+        "op": "move-child",
+        "toIndex": 0,
+        "toParentPath": []
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Moved node from [\"children\",0] to [\"children\",0,\"children\",1]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Moved node from [\"children\",0] to [\"children\",0,\"children\",1]."
+    },
+    "selection": [["children", 0, "children", 1]],
+    "undone": true
+  },
+  "move out past the end": {
+    "args": {
+      "fromPath": ["children", 1, "children", 1],
+      "toIndex": 99,
+      "toParentPath": []
+    },
+    "tool": "move_node",
+    "forward": [
+      {
+        "fromIndex": 1,
+        "fromParentPath": ["children", 1],
+        "op": "move-child",
+        "toIndex": 3,
+        "toParentPath": []
+      }
+    ],
+    "inverse": [
+      {
+        "fromIndex": 3,
+        "fromParentPath": [],
+        "op": "move-child",
+        "toIndex": 1,
+        "toParentPath": ["children", 1]
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Moved node from [\"children\",1,\"children\",1] to [\"children\",3]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Moved node from [\"children\",1,\"children\",1] to [\"children\",3]."
+    },
+    "selection": [["children", 0]],
+    "undone": true
+  },
+  "move into a node with no children": {
+    "args": {
+      "fromPath": ["children", 0],
+      "toIndex": 0,
+      "toParentPath": ["children", 2]
+    },
+    "tool": "move_node",
+    "forward": [
+      {
+        "fromIndex": 0,
+        "fromParentPath": [],
+        "op": "move-child",
+        "toIndex": 0,
+        "toParentPath": ["children", 2]
+      }
+    ],
+    "inverse": [
+      {
+        "fromIndex": 0,
+        "fromParentPath": ["children", 1],
+        "op": "move-child",
+        "toIndex": 0,
+        "toParentPath": []
+      }
+    ],
+    "ledger": [
+      {
+        "disk": false,
+        "ok": true,
+        "path": "pages/probe.json",
+        "tool": "Moved node from [\"children\",0] to [\"children\",1,\"children\",0]."
+      }
+    ],
+    "result": {
+      "success": true,
+      "summary": "Moved node from [\"children\",0] to [\"children\",1,\"children\",0]."
+    },
+    "selection": [],
+    "undone": false
+  },
+  "refused: no node": {
+    "args": {
+      "key": "id",
+      "path": ["children", 9],
+      "value": "x"
+    },
+    "tool": "set_property",
+    "forward": null,
+    "inverse": null,
+    "ledger": [],
+    "result": {
+      "success": false,
+      "error": "No node exists at path [\"children\",9]."
+    },
+    "selection": [],
+    "undone": null
+  },
+  "refused: negative index": {
+    "args": {
+      "index": -1,
+      "node": {
+        "tagName": "b"
+      },
+      "parentPath": []
+    },
+    "tool": "add_child",
+    "forward": null,
+    "inverse": null,
+    "ledger": [],
+    "result": {
+      "success": false,
+      "error": "index must be a non-negative integer, such as 0 or 2 (got -1)."
+    },
+    "selection": [],
+    "undone": null
+  },
+  "refused: state exists": {
+    "args": {
+      "key": "count",
+      "value": 1
+    },
+    "tool": "add_state",
+    "forward": null,
+    "inverse": null,
+    "ledger": [],
+    "result": {
+      "success": false,
+      "error": "State key \"count\" already exists. Use update_state to change it, or remove it first."
+    },
+    "selection": [],
+    "undone": null
+  },
+  "refused: state missing": {
+    "args": {
+      "key": "nope",
+      "value": 1
+    },
+    "tool": "update_state",
+    "forward": null,
+    "inverse": null,
+    "ledger": [],
+    "result": {
+      "success": false,
+      "error": "State key \"nope\" does not exist. Use add_state to create it, or check the name. Current state keys: count"
+    },
+    "selection": [],
+    "undone": null
+  },
+  "refused: into its own subtree": {
+    "args": {
+      "fromPath": ["children", 1],
+      "toIndex": 0,
+      "toParentPath": ["children", 1, "children", 0]
+    },
+    "tool": "move_node",
+    "forward": null,
+    "inverse": null,
+    "ledger": [],
+    "result": {
+      "success": false,
+      "error": "Cannot move a node into itself or its own descendants: toParentPath [\"children\",1,\"children\",0] is inside fromPath [\"children\",1]."
+    },
+    "selection": [],
+    "undone": null
+  }
+}

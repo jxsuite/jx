@@ -11,5 +11,7 @@ coveragePathIgnorePatterns = [
   # 100% under packages/protocol's own run (gated there at 0.99). A sibling's files belong to its
   # own job, as in packages/server.
   "../protocol/**",
+  # `./jx-tools` imports @jxsuite/schema's doc-ops leaf at runtime, gated by packages/schema's own run.
+  "../schema/**",
 ]
 coverageThreshold = { lines = 0.99, functions = 0.99 }

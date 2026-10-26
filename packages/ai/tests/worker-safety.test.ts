@@ -1,12 +1,12 @@
 /**
  * The Worker-safety gate for @jxsuite/ai.
  *
- * `./streaming-client`, `./tools`, `./gateway`, `./messages` and `./harness` are the subpaths a
- * Worker backend (the `ai/chat` route on Cloudflare, for one) imports. Nothing structural keeps
- * them loadable there: one import of `./chat-state`, `node:path` or `@jxsuite/schema` and a Worker
- * bundle either fails or quietly ships Studio's reactivity engine. This file bundles each
- * Worker-safe entry the way a Worker build resolves it and fails on any module in the graph that
- * the policy below forbids.
+ * `./streaming-client`, `./tools`, `./gateway`, `./messages`, `./harness` and `./jx-tools` are the
+ * subpaths a Worker backend (the `ai/chat` route on Cloudflare, for one) imports. Nothing
+ * structural keeps them loadable there: one import of `./chat-state`, `node:path` or
+ * `@jxsuite/schema` and a Worker bundle either fails or quietly ships Studio's reactivity engine.
+ * This file bundles each Worker-safe entry the way a Worker build resolves it and fails on any
+ * module in the graph that the policy below forbids.
  *
  * It is one half of the gate. A bundle graph only sees what is IMPORTED; a global such as
  * `Bun.file` compiles to no import at all. `tsconfig.worker.json` is the other half (bare ES2023
@@ -42,6 +42,7 @@ const REPO_ROOT = resolve(PKG_DIR, "../..");
 const WORKER_SAFE_ENTRIES = {
   "./gateway": "./src/gateway/index.ts",
   "./harness": "./src/harness/index.ts",
+  "./jx-tools": "./src/jx-tools/index.ts",
   "./messages": "./src/messages/index.ts",
   "./streaming-client": "./src/streaming-client.ts",
   "./tools": "./src/tools.ts",
@@ -86,8 +87,10 @@ const NOT_WORKER_SAFE = {
  * that imports protocol at runtime, and only its two problem modules (for `problemDetails` and
  * `PROBLEM_MEDIA_TYPE`), never the root barrel, which would bring the route table too. Its
  * type-only imports (`gateway/types.ts`, and the frame types it borrows from streaming-client) are
- * erased the same way. When a change adds a module on purpose, confirm it passes FORBIDDEN
- * ("reaches no forbidden module" checks) and add it here.
+ * erased the same way. `./jx-tools` is the one entry that reaches @jxsuite/schema, and only its two
+ * leaves, `doc-ops` and the `guards` it imports, never the root that builds the schema. When a
+ * change adds a module on purpose, confirm it passes FORBIDDEN ("reaches no forbidden module"
+ * checks) and add it here.
  */
 const FROZEN_GRAPHS = new Map<string, readonly string[]>([
   [
@@ -118,6 +121,17 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
       "packages/ai/src/messages/openai.ts",
       "packages/ai/src/messages/repair.ts",
       "packages/ai/src/tools.ts",
+    ],
+  ],
+  [
+    "./jx-tools",
+    [
+      "packages/ai/src/jx-tools/doc-tools.ts",
+      "packages/ai/src/jx-tools/entries.ts",
+      "packages/ai/src/jx-tools/index.ts",
+      "packages/ai/src/tools.ts",
+      "packages/schema/src/doc-ops.ts",
+      "packages/schema/src/guards.ts",
     ],
   ],
   [

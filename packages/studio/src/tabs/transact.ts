@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { toRaw } from "../reactivity";
 import { jsonClone } from "../utils/studio-utils";
-import { childIndex, getNodeAtPath, parentElementPath, pathsEqual } from "../state";
+import { getNodeAtPath, pathsEqual } from "../state";
 import {
   cloneSelection,
   primarySelection,
@@ -10,7 +10,7 @@ import {
   structuralBatch,
 } from "./selection";
 import { applyDocOpToDoc, childArray, cloneValue, inverseOf } from "./doc-op-apply";
-import { insertionSlot, shiftPrefixedIndex } from "@jxsuite/schema/doc-ops";
+import { insertionSlot, planMove, shiftPrefixedIndex } from "@jxsuite/schema/doc-ops";
 import {
   beginRecording,
   endRecording,
@@ -21,6 +21,7 @@ import {
 } from "./patch-ops";
 
 import type { JxDocOp, JxDocOpPair, TransactionRecord } from "./patch-ops";
+import type { SelectionEffect } from "@jxsuite/ai/jx-tools";
 
 import type { HistorySnapshot, Tab } from "../tabs/tab";
 import type { JxPath } from "../state";
@@ -39,7 +40,6 @@ import {
   getNestedStyle,
   isEventBinding,
   isNonNullObject,
-  isNumber,
 } from "@jxsuite/schema/guards";
 
 const HISTORY_LIMIT = 100;
@@ -417,6 +417,63 @@ export function applyExternalDocOps(tab: Tab, ops: JxDocOp[]) {
   );
 }
 
+/** What {@link applyDocOpsAsUser} did: wrote, had nothing to write, or was refused by the gate. */
+export type ApplyDocOpsResult = "applied" | "unchanged" | "refused";
+
+/**
+ * Apply ops a tool PRODUCED (rather than a mutator performing the edit itself) as one ordinary
+ * transaction: history, lanes, the gate, the canvas patch and the collab observer all see it as
+ * they see any edit. Each op's inverse is computed against the raw document just before that op
+ * lands, so a later op may address what an earlier one created, and the selection rule the producer
+ * named is applied inside the same transaction, so a rollback restores it too.
+ *
+ * Empty ops are no transaction at all: no new root, no history entry, nothing published
+ * (specs/ai.md §3.9). An op that cannot apply throws from `inverseOf` before it lands, and
+ * `transactDoc` rolls back the ones before it and rethrows.
+ *
+ * @param {Tab} tab
+ * @param {readonly JxDocOp[]} ops
+ * @param {{ actor?: ActorRef | null; selection?: SelectionEffect }} [options]
+ * @returns {ApplyDocOpsResult}
+ */
+export function applyDocOpsAsUser(
+  tab: Tab,
+  ops: readonly JxDocOp[],
+  {
+    actor = null,
+    selection = { kind: "keep" },
+  }: { actor?: ActorRef | null; selection?: SelectionEffect } = {},
+): ApplyDocOpsResult {
+  if (ops.length === 0) {
+    return "unchanged";
+  }
+  const applied = transactDoc(
+    tab,
+    (t) => {
+      for (const op of ops) {
+        applyDocOp(t, op, inverseOf(toRaw(t.doc.document), op));
+      }
+      applySelectionEffect(t, selection);
+    },
+    { actor },
+  );
+  return applied ? "applied" : "refused";
+}
+
+/** Carry the tab's selection across an edit, as the producer's {@link SelectionEffect} says. */
+function applySelectionEffect(tab: Tab, effect: SelectionEffect) {
+  if (effect.kind === "prune") {
+    for (const under of effect.under) {
+      tab.session.selection = pruneSelection(tab.session.selection, under);
+    }
+  } else if (
+    effect.kind === "follow" &&
+    pathsEqual(primarySelection(tab.session.selection), effect.from)
+  ) {
+    tab.session.selection = [[...effect.to]];
+  }
+}
+
 // ─── Document-op application ─────────────────────────────────────────────────
 
 /** Document-level keys whose changes require a full scope/panel rebuild on the canvas. */
@@ -428,8 +485,10 @@ const DOC_META_KEYS = new Set(["state", "$media", "$head", "$elements", "imports
  *
  * @param {Tab} tab
  * @param {JxDocOp} op
+ * @param {JxDocOp} inverse - The op that undoes this one: replay passes none (see below), a new
+ *   edit its real inverse
  */
-function applyDocOp(tab: Tab, op: JxDocOp) {
+function applyDocOp(tab: Tab, op: JxDocOp, inverse: JxDocOp = op) {
   let prev: JxDocumentValue | undefined | null = null;
   if (op.op === "set-key") {
     const node = getNodeAtPath(tab.doc.document, op.path);
@@ -442,10 +501,10 @@ function applyDocOp(tab: Tab, op: JxDocOp) {
   // Classified as applicable (suppressing the full render), and the canvas silently kept showing
   // The pre-undo content. Replaying an op IS a forward op — record it as one.
   //
-  // History never reads the inverse here: undo/redo run with `skipHistory`, and the entry they
+  // On replay history never reads the inverse: undo/redo run with `skipHistory`, and the entry they
   // Replay already holds the pair. `markNonInvertible` would be wrong (it forces a whole-document
-  // Checkpoint), so the op is paired with itself.
-  recordDocOp({ forward: op, inverse: op });
+  // Checkpoint), so a replayed op is paired with itself.
+  recordDocOp({ forward: op, inverse });
   switch (op.op) {
     case "set-key": {
       if (DOC_META_KEYS.has(op.key)) {
@@ -1079,66 +1138,6 @@ export function mutateMoveNode(tab: Tab, fromPath: JxPath, toParentPath: JxPath,
   if (pathsEqual(primarySelection(tab.session.selection), fromPath)) {
     tab.session.selection = [[...inverse.fromParentPath, "children", inverse.fromIndex]];
   }
-}
-
-/** A move's forward and inverse ops, both `move-child`. */
-export interface PlannedMove {
-  forward: Extract<JxDocOp, { op: "move-child" }>;
-  inverse: Extract<JxDocOp, { op: "move-child" }>;
-}
-
-/**
- * The ops {@link mutateMoveNode} records for moving the node at `fromPath` to `toIndex` of
- * `toParentPath`'s children, without moving anything; null when the move cannot happen (the source
- * is no child in a static children array, or the target is no node).
- *
- * `toIndex` is read as the slot in the target's children BEFORE the move, the way a drop indicator
- * names it, so a move later in the same parent lands one earlier once the source is gone. A slot
- * past the end is clamped to the last one, so the recorded forward names where the node really
- * lands. Throws `doc-op-move-into-self` when the target is inside the moved node.
- *
- * @param {JxMutableNode} doc
- * @param {JxPath} fromPath
- * @param {JxPath} toParentPath
- * @param {number} toIndex
- * @returns {PlannedMove | null}
- */
-export function planMove(
-  doc: JxMutableNode,
-  fromPath: JxPath,
-  toParentPath: JxPath,
-  toIndex: number,
-): PlannedMove | null {
-  const fromParentPath = parentElementPath(fromPath);
-  const fromIdx = childIndex(fromPath);
-  if (!fromParentPath || !isNumber(fromIdx)) {
-    return null;
-  }
-  const fromParent = getNodeAtPath(doc, fromParentPath);
-  const toParent = getNodeAtPath(doc, toParentPath);
-  if (!fromParent || !Array.isArray(fromParent.children) || !toParent) {
-    return null;
-  }
-  if (fromParent.children[fromIdx] === undefined) {
-    return null;
-  }
-  const sameParent = fromParent === toParent;
-  const adjusted = sameParent && fromIdx < toIndex ? toIndex - 1 : toIndex;
-  const targetLength = Array.isArray(toParent.children) ? toParent.children.length : 0;
-  const forward: PlannedMove["forward"] = {
-    fromIndex: fromIdx,
-    fromParentPath,
-    op: "move-child",
-    toIndex: insertionSlot(adjusted, targetLength - (sameParent ? 1 : 0)),
-    toParentPath,
-  };
-  /* Computed BEFORE the splice, against the document the move applies to. The inverse runs against
-     the post-move document, so `inverseOf` writes both of its parent paths in post-move
-     coordinates: the removal shifted paths under the source parent, the insertion paths under the
-     target. One implementation of that rule, shared with every other host that moves a node. */
-  const inverse = inverseOf(doc, forward);
-  /* SAFETY: `inverseOf` answers a `move-child` for a `move-child`. */
-  return { forward, inverse: inverse as PlannedMove["inverse"] };
 }
 
 /**

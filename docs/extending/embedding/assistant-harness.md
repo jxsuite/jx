@@ -5,6 +5,7 @@ spec:
   - ai.md#3.7 # a tool call carries its context
   - ai.md#2.3 # the neutral conversation model
   - ai.md#3.8 # the turn engine
+  - ai.md#3.9 # portable document tools
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
@@ -17,7 +18,11 @@ code:
   - packages/ai/src/harness/lock.ts
   - packages/ai/src/harness/model.ts
   - packages/ai/src/harness/policy.ts
+  - packages/ai/src/jx-tools/index.ts
+  - packages/ai/src/jx-tools/doc-tools.ts
+  - packages/ai/src/jx-tools/entries.ts
   - packages/studio/src/services/tool-executor.ts
+  - packages/studio/src/services/harness/studio-documents.ts
 ---
 
 # Writing assistant tools
@@ -138,4 +143,43 @@ A host that keys something on the turn's actor before the turn starts, as Studio
 
 :::doc-note
 A turn stopped between two tool calls never runs the second one, so the messages it appended end with a call that has no reply, and providers refuse a request like that. You do not have to fix it yourself: the next turn answers each such call with a failed result before it sends anything, and reports a `transcript_repaired` event when it does. If you keep your own transcript, call `repairToolPairs` from `@jxsuite/ai/messages` on it to apply the same repair, as Studio does before every send.
+:::
+
+## Document tools on your own host
+
+The tools that edit a page's element tree (`read_document`, `set_property`, `add_child`, `set_style`, `set_text`, `add_state`, `update_state` and `move_node`) come from `@jxsuite/ai/jx-tools`, so a host outside Studio offers the model the same tools Studio does. Each one plans its edit as a list of document ops and writes nothing itself; your host applies the ops, which is how the same tool edits a Studio tab, a file on disk or a shared document.
+
+Give `docToolEntries` a `DocumentHost` and a write reporter, then register what it returns:
+
+```ts
+import { applyDocOpsWithInverse } from "@jxsuite/schema/doc-ops";
+import { docToolEntries } from "@jxsuite/ai/jx-tools";
+import type { DocumentHost } from "@jxsuite/ai/jx-tools";
+
+const ref = { id: "home", path: "pages/index.json" };
+const host: DocumentHost = {
+  undoable: "document",
+  resolve: () => ref,
+  snapshot: () => page,
+  edit(_ref, produce) {
+    const edit = produce(page);
+    if (!edit.ok) {
+      return { applied: false, reason: "refused", message: edit.error };
+    }
+    undoStack.push(applyDocOpsWithInverse(page, edit.ops));
+    return { applied: true, changed: edit.ops.length > 0 };
+  },
+};
+
+for (const tool of docToolEntries(host, { reporter })) {
+  registry.register(tool);
+}
+```
+
+`resolve` names the document a call edits, or returns a sentence for the model when there is none. `edit` must call `produce` and apply its ops in one synchronous step, so nothing can change the page between the plan and the write. The reporter's `before` and `after` bracket each write: `after` is where you validate the result and tell the model what the edit broke.
+
+A call the tool refuses (a path that names no element, an index that is not a whole number, a node moved inside itself) is answered before your host is asked for anything, so a refusal never reaches your reporter, your undo stack or the ledger.
+
+:::doc-note
+Set `undoable` to `"none"` when your host cannot take an edit back, such as one writing straight to a file. Its writes are then recorded as disk writes, which the transcript reports as not undoable, and your `edit` should validate before it applies the ops, answering `{ applied: false, reason: "invalid", message }` for an edit it will not commit.
 :::

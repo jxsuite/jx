@@ -28,10 +28,11 @@ const HAND_WRITERS = new Map<string, string>([
     "ai-tools.ts",
     "set_property, set_style, set_text, add_child, move_node, add_state and update_state address " +
       "a node by PATH; the person writes these through the Inspector, which is not a command " +
-      "surface. Gated by the document-tree tier, which reads editor.kind from the registry's " +
-      "context. create_page and create_component write a new file through the injected saveFile " +
-      "and have no command twin: the person's door is the Files tree's New File prompt, which " +
-      "waits on a name.",
+      "surface. They are the @jxsuite/ai/jx-tools producers, applied to the active tab through " +
+      "the Studio document host. Gated by the document-tree tier, which reads editor.kind from " +
+      "the registry's context. create_page and create_component write a new file through the " +
+      "injected saveFile and have no command twin: the person's door is the Files tree's New " +
+      "File prompt, which waits on a name.",
   ],
   [
     "ai-project-tools.ts",
@@ -54,6 +55,8 @@ const WRITER_PATTERNS: readonly [string, RegExp][] = [
     /import\s*\{[^}]*\b(?:transactDoc|mutate[A-Z]\w*)\b[^}]*\}\s*from\s*"\.\.\/tabs\/transact"/,
   ],
   ["a platform write", /\.(?:writeFile|createProject|importSite)\(/],
+  // The portable tree tools write through this host, which applies their ops to the tab.
+  ["the Studio document host", /\bstudioDocumentHost\(/],
   ["adoptProjectConfig", /\badoptProjectConfig\(/],
 ];
 

@@ -542,3 +542,58 @@ export function coerceIndex(value: JsonValue | undefined): number | null {
   }
   return isString(value) && /^(?:0|[1-9]\d*)$/.test(value) ? Number(value) : null;
 }
+
+/** A move's forward and inverse ops, both `move-child`. */
+export interface PlannedMove {
+  forward: Extract<JxDocOp, { op: "move-child" }>;
+  inverse: Extract<JxDocOp, { op: "move-child" }>;
+}
+
+/**
+ * The ops that move the node at `fromPath` to `toIndex` of `toParentPath`'s children, without
+ * moving anything; null when the move cannot happen (the source is no child in a static children
+ * array, or the target is no node).
+ *
+ * `toIndex` is read as the slot in the target's children BEFORE the move, the way a drop indicator
+ * names it, so a move later in the same parent lands one earlier once the source is gone. A slot
+ * past the end is clamped to the last one, so the forward names where the node really lands. Throws
+ * `doc-op-move-into-self` when the target is inside the moved node.
+ *
+ * @param {JxMutableNode} doc - The document the move applies to
+ * @param {JxPath} fromPath
+ * @param {JxPath} toParentPath
+ * @param {number} toIndex
+ * @returns {PlannedMove | null}
+ */
+export function planMove(
+  doc: JxMutableNode,
+  fromPath: JxPath,
+  toParentPath: JxPath,
+  toIndex: number,
+): PlannedMove | null {
+  const at = spliceCoordinate(fromPath);
+  const fromParent = at && getNodeAtPath(doc, at.parentPath);
+  const toParent = getNodeAtPath(doc, toParentPath);
+  if (!at || !fromParent || !Array.isArray(fromParent.children) || !toParent) {
+    return null;
+  }
+  if (fromParent.children[at.index] === undefined) {
+    return null;
+  }
+  const sameParent = fromParent === toParent;
+  const adjusted = sameParent && at.index < toIndex ? toIndex - 1 : toIndex;
+  const targetLength = Array.isArray(toParent.children) ? toParent.children.length : 0;
+  const forward: PlannedMove["forward"] = {
+    fromIndex: at.index,
+    fromParentPath: at.parentPath,
+    op: "move-child",
+    toIndex: insertionSlot(adjusted, targetLength - (sameParent ? 1 : 0)),
+    toParentPath,
+  };
+  /* Computed against the document the move applies to. The inverse runs against the post-move
+     document, so `inverseOf` writes both of its parent paths in post-move coordinates: the removal
+     shifted paths under the source parent, the insertion paths under the target. */
+  const inverse = inverseOf(doc, forward);
+  /* SAFETY: `inverseOf` answers a `move-child` for a `move-child`. */
+  return { forward, inverse: inverse as PlannedMove["inverse"] };
+}

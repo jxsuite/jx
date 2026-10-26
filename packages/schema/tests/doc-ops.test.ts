@@ -14,6 +14,7 @@ import {
   inverseOf,
   isAncestor,
   isSpliceablePath,
+  planMove,
   shiftPrefixedIndex,
   spliceCoordinate,
   structuralBatch,
@@ -757,5 +758,53 @@ describe("path helpers", () => {
     for (const bad of ["01", "1.0", " 2", "-1", "", "x", 1.5, Number.NaN, null, undefined, [1]]) {
       expect(coerceIndex(bad)).toBeNull();
     }
+  });
+});
+
+describe("planMove", () => {
+  function tree(): JxMutableNode {
+    return {
+      children: [
+        { tagName: "a" },
+        { children: [{ tagName: "x" }], tagName: "b" },
+        { tagName: "c" },
+        { children: { $prototype: "Array", items: [], map: { tagName: "li" } }, tagName: "ul" },
+      ],
+      tagName: "div",
+    };
+  }
+
+  test("a later slot in the same parent lands one earlier, and the inverse undoes it", () => {
+    const moved = tree();
+    const planned = planMove(moved, ["children", 0], [], 2);
+    expect(planned).toEqual({
+      forward: { fromIndex: 0, fromParentPath: [], op: "move-child", toIndex: 1, toParentPath: [] },
+      inverse: { fromIndex: 1, fromParentPath: [], op: "move-child", toIndex: 0, toParentPath: [] },
+    });
+    const before = structuredClone(moved);
+    applyDocOpToDoc(moved, planned!.forward);
+    applyDocOpToDoc(moved, planned!.inverse);
+    expect(moved).toEqual(before);
+  });
+
+  test("a slot past the end is clamped, across parents and into a node with no children", () => {
+    expect(planMove(tree(), ["children", 0], ["children", 1], 9)?.forward.toIndex).toBe(1);
+    expect(planMove(tree(), ["children", 0], ["children", 2], 9)?.forward.toIndex).toBe(0);
+  });
+
+  test("answers null when the move cannot happen", () => {
+    const moved = tree();
+    expect(planMove(moved, [], [], 0)).toBeNull();
+    expect(planMove(moved, ["children", 3, "children", "map"], [], 0)).toBeNull();
+    expect(planMove(moved, ["children", 9, "children", 0], [], 0)).toBeNull();
+    expect(planMove(moved, ["children", 0, "children", 0], [], 0)).toBeNull();
+    expect(planMove(moved, ["children", 9], [], 0)).toBeNull();
+    expect(planMove(moved, ["children", 0], ["children", 9], 0)).toBeNull();
+  });
+
+  test("throws for a move into the moved node's own subtree", () => {
+    expect(() => planMove(tree(), ["children", 1], ["children", 1, "children", 0], 0)).toThrow(
+      "doc-op-move-into-self",
+    );
   });
 });
