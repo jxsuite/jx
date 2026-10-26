@@ -19,6 +19,7 @@
  * @license MIT
  */
 
+import type { InteractionStore } from "./harness/interaction-store";
 import type { createChatState } from "@jxsuite/ai/chat-state";
 import { DEFAULT_TURN_POLICY, assistantActorId, runTurn } from "@jxsuite/ai/harness";
 import type { TurnInput, TurnRun } from "@jxsuite/ai/harness";
@@ -49,6 +50,8 @@ interface RunAgentLoopOptions {
   getTab?: () => Tab | null;
   /** The conversation's facts, which every call's context carries; a fresh set when omitted. */
   session?: SessionFacts;
+  /** Where a call that needs the author waits on them. Without one, such a call is refused. */
+  interactions?: InteractionStore;
 }
 
 /**
@@ -63,6 +66,7 @@ export async function runAgentLoop({
   signal,
   getTab,
   session = createSessionFacts(),
+  interactions,
 }: RunAgentLoopOptions): Promise<void> {
   /* The ledger is filed under the turn's last DRAWN assistant message (see services/ai-writes), so
      the scan starts at the message this turn answers. */
@@ -132,6 +136,9 @@ export async function runAgentLoop({
     };
     if (signal) {
       input.signal = signal;
+    }
+    if (interactions) {
+      input.interactions = interactions.strategy;
     }
     if (placeholder) {
       input.firstMessageId = placeholder.id;

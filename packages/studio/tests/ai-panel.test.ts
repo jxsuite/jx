@@ -125,10 +125,16 @@ const deleteSessionMock = mock((id: string) => {
   sessionList = sessionList.filter((s) => s.id !== id);
 });
 
+/* The assistant's interaction store is real: the panel reads and settles it exactly as it does the
+   live assistant's. */
+const { createInteractionStore } = await import("../src/services/harness/interaction-store");
+const interactions = createInteractionStore();
+
 void mock.module("../src/services/document-assistant", () => ({
   createDocumentAssistant: () => ({
     activeSessionId: () => activeId,
     chatState,
+    interactions,
     deleteSession: deleteSessionMock,
     isTurnActive: () => liveTurn.active || chatState.status === "streaming",
     whenTurnEnds: () =>
@@ -174,8 +180,30 @@ const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { hasAiCredentials } = await import("../src/services/ai-models");
-const { answerAsk, askUser, cancelAsk, pendingAsk, resetAsk } =
-  await import("../src/services/ai-ask");
+const { answerAsk, pendingAsk, resetAsk } = await import("./harness/ask");
+
+/** Put `request` to the panel's store, as a running turn does; settles with the person's answer. */
+function askUser(question: { id: string; question: string; options: string[]; context: string }) {
+  if (interactions.strategy.mode !== "inline") {
+    throw new Error("the store resolves inline");
+  }
+  return interactions.strategy
+    .resolve(
+      {
+        context: question.context,
+        kind: "question",
+        options: question.options,
+        question: question.question,
+      },
+      { callId: question.id, signal: new AbortController().signal },
+    )
+    .then((response) => {
+      if (response.kind !== "question") {
+        throw new Error("a question was answered as an approval");
+      }
+      return { answer: response.answer, skipped: response.skipped };
+    });
+}
 const { splitAttachedContext } = await import("../src/panels/ai-chat/attached-context");
 
 /** How many nodes the canvas has selected, as `live-context.ts` would report it. */
@@ -1035,7 +1063,7 @@ describe("a turn suspended on a question", () => {
   }
 
   beforeEach(() => {
-    resetAsk();
+    resetAsk(interactions);
     liveTurn.active = false;
     chatState.messages.length = 0;
     sendMessage.mockClear();
@@ -1049,7 +1077,7 @@ describe("a turn suspended on a question", () => {
     );
     expect(q('[part="ask-question"]')!.textContent!.trim()).toBe("Which pages matter?");
 
-    answerAsk("done");
+    answerAsk("done", interactions);
     await settled;
     await flush(3);
     expect(q('[part="composer-input"]')!.getAttribute("placeholder")).toContain(
@@ -1076,7 +1104,7 @@ describe("a turn suspended on a question", () => {
     expect(splitAttachedContext(answer!).body).toBe("the pricing page only");
     expect(skipped).toBe(false);
     expect(sendMessage).not.toHaveBeenCalled();
-    expect(pendingAsk()).toBeNull();
+    expect(pendingAsk(interactions)).toBeNull();
   });
 
   test("an option button answers it", async () => {
@@ -1106,7 +1134,7 @@ describe("a turn suspended on a question", () => {
     expect(isAssistantStreaming()).toBe(true);
     expect(registry.isEnabled("assistant.stop")).toBe(true);
 
-    cancelAsk();
+    interactions.cancel();
     expect(await settled).toEqual({ answer: null, skipped: false });
     liveTurn.active = false; // The loop ends once its question is settled.
     await flush(3);

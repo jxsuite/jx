@@ -122,7 +122,7 @@ const { selectionCommands } = await import("../src/canvas/canvas-render");
 const { isSpliceablePath } = await import("../src/tabs/selection");
 const { mutateRemoveNodes, transactDoc } = await import("../src/tabs/transact");
 const { writesForTurn } = await import("../src/services/ai-writes");
-const { answerAsk, pendingAsk } = await import("../src/services/ai-ask");
+const { pendingAsk } = await import("./harness/ask");
 
 /** Which editor the registry fixture reports the focused pane as showing. */
 let editorKind: "canvas" | "config" = "canvas";
@@ -385,7 +385,7 @@ describe("document-assistant", () => {
     const a = createDocumentAssistant();
     expect(a.isTurnActive()).toBe(false);
     const first = a.sendMessage("first");
-    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+    for (let tick = 0; tick < 50 && !pendingAsk(a.interactions); tick++) {
       await flush(1);
     }
     expect(a.chatState.status).toBe("idle");
@@ -399,7 +399,7 @@ describe("document-assistant", () => {
     ]);
 
     // Answering is not a send: the turn carries on with the reply and then ends.
-    answerAsk("yes");
+    a.interactions.answer("yes");
     await first;
     expect(a.isTurnActive()).toBe(false);
     expect(capturedTools).toHaveLength(streams + 1);
@@ -415,7 +415,7 @@ describe("document-assistant", () => {
     ];
     const a = createDocumentAssistant();
     const first = a.sendMessage("first");
-    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+    for (let tick = 0; tick < 50 && !pendingAsk(a.interactions); tick++) {
       await flush(1);
     }
     a.newChat();
@@ -463,10 +463,10 @@ describe("document-assistant", () => {
       toolCallRound("q1", "ask_user", { question: "Keep it?" }),
     ];
     const running = a.sendMessage("second chat");
-    for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+    for (let tick = 0; tick < 50 && !pendingAsk(a.interactions); tick++) {
       await flush(1);
     }
-    expect(pendingAsk()).not.toBeNull();
+    expect(pendingAsk(a.interactions)).not.toBeNull();
 
     a.openSession(firstId);
     await running;
