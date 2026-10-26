@@ -242,10 +242,11 @@ Standards the audit found relevant whose **owning spec section does not exist ye
 
 An entry names the spec that will own it. When that section is written, the entry moves out of this table and becomes a `Pending` row bound to it; `backlog-already-cited` fails if it is left in both places.
 
-| Standard                                                  | Target           | Why not yet                                                                                          |
-| --------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------- |
-| [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)     | `desktop.md` §10 | Passkeys need a registered relying-party id and a recovery story, neither of which is designed.      |
-| [CSS Containment 3](https://www.w3.org/TR/css-contain-3/) | `spec.md` §9     | `$media` is viewport-only. Container queries would need a named-container model in the style object. |
+| Standard                                                                   | Target           | Why not yet                                                                                                                                                                                |
+| -------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)                      | `desktop.md` §10 | Passkeys need a registered relying-party id and a recovery story, neither of which is designed.                                                                                            |
+| [CSS Containment 3](https://www.w3.org/TR/css-contain-3/)                  | `spec.md` §9     | `$media` is viewport-only. Container queries would need a named-container model in the style object.                                                                                       |
+| [MCP 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28) | `ai.md`          | The assistant's tools already project to MCP's tool and result shapes (`ai.md` §3.10), but nothing serves them yet: the MCP server that would bind the protocol has no section of its own. |
 
 Three entries this table used to carry — CSS Cascade Layers, Media Queries 5 and CSS Shadow Parts — moved to `ui.md` §11 when the UI kit gave each a section to bind: its theme sheet lives in a layer, honours the user-preference media features, and emits `part` on every internal node. The `@custom-media` caveat Media Queries 5 carried here is restated in that row.
 

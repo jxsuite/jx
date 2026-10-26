@@ -11,15 +11,14 @@
  * The caller's DOM test file imports `./with-dom.ts` first, as every such file must.
  */
 import { createToolRegistry } from "@jxsuite/ai";
+import { catalogRegistry, createCatalog } from "@jxsuite/ai/catalog";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
 import { registerAiTools } from "../../src/services/ai-tools";
 import { registerProjectTools } from "../../src/services/ai-project-tools";
 import { registerAskTool } from "../../src/services/ai-ask";
 import { registerImportTools } from "../../src/services/ai-import-tools";
-import {
-  composeToolRegistries,
-  createCommandToolRegistry,
-} from "../../src/services/ai-command-tools";
+import { createCommandToolRegistry } from "../../src/services/ai-command-tools";
+import type { CommandToolRegistry } from "../../src/services/ai-command-tools";
 import { appCommandSet } from "../../src/commands/app-commands";
 import { createCommandRegistry } from "../../src/commands/registry";
 import { makeContext } from "../../src/commands/context";
@@ -31,7 +30,7 @@ import type { ProjectState } from "../../src/types";
 /** The three registries: the hand tools, the command view, and their union the model is shown. */
 export interface EveryTool {
   hand: ToolRegistry;
-  commands: ToolRegistry;
+  commands: CommandToolRegistry;
   composite: ToolRegistry;
 }
 
@@ -79,7 +78,9 @@ export async function withEveryTool<T>(fn: (tools: EveryTool) => T | Promise<T>)
   setActiveRegistry(registry);
   try {
     const commands = createCommandToolRegistry({ getTab: () => null, validate: async () => [] });
-    return await fn({ hand, commands, composite: composeToolRegistries(hand, commands) });
+    // One catalog of every member with no view over it, so every tool is offered at once.
+    const composite = catalogRegistry(createCatalog(hand.list(), commands.members()));
+    return await fn({ hand, commands, composite });
   } finally {
     setActiveRegistry(null);
     setProjectState(null);

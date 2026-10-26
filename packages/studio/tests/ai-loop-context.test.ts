@@ -15,8 +15,8 @@ import {
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
 import type { ToolContext, ToolRegistry } from "@jxsuite/ai/tools";
 import { runAgentLoop } from "../src/services/tool-executor";
-import { createGatedToolRegistry } from "../src/services/gated-registry";
-import { composeToolRegistries, createCommandToolRegistry } from "../src/services/ai-command-tools";
+import { createCommandToolRegistry } from "../src/services/ai-command-tools";
+import { assistantToolRegistry } from "../src/services/harness/assistant-tools";
 import { resetAiWrites, writesForTurn } from "../src/services/ai-writes";
 import { beginImportRun, importRun, resetImportRuns } from "../src/services/import-run";
 
@@ -48,7 +48,14 @@ function probeRegistry(onCall?: (ctx: ToolContext) => void | Promise<void>) {
   registry.register(
     createToolDefinition({
       name: "probe",
+      title: "Probe",
       description: "keeps its context",
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
       parameters: { type: "object", properties: {} },
       async execute(_args, ctx) {
         seen.push(ctx);
@@ -153,12 +160,12 @@ describe("the context a call runs with", () => {
 /* T3: a registry that wraps another forwards the call's context unchanged, so the leaf tool gets
    the loop's signal, id, ledger and session rather than a detached context of its own. */
 describe("the context reaches the leaf through the composite", () => {
-  test("gated, then composed with the command tools", async () => {
+  test("through the assistant's catalog, beside the command tools", async () => {
     const { registry, seen } = probeRegistry();
-    const gated = createGatedToolRegistry(registry, new Map());
-    const composite = composeToolRegistries(
-      gated,
+    const composite = assistantToolRegistry(
+      registry,
       createCommandToolRegistry({ getTab: () => null, validate: async () => [] }),
+      () => ({ canImport: true, hasDocument: true, hasProject: true, treeEditable: true }),
     );
     const ctx = createToolContext({ callId: "call_9" });
     const result = await composite.execute("probe", {}, ctx);

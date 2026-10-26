@@ -144,6 +144,7 @@ const setProperty: DocTool = {
     };
   },
   name: "set_property",
+  title: "Set a property",
   parameters: {
     type: "object",
     properties: {
@@ -220,6 +221,7 @@ const addChild: DocTool = {
     };
   },
   name: "add_child",
+  title: "Add a child",
   parameters: {
     type: "object",
     properties: {
@@ -279,6 +281,7 @@ const setStyle: DocTool = {
     };
   },
   name: "set_style",
+  title: "Set a style",
   parameters: {
     type: "object",
     properties: {
@@ -325,6 +328,7 @@ const setText: DocTool = {
     };
   },
   name: "set_text",
+  title: "Set text",
   parameters: {
     type: "object",
     properties: {
@@ -365,6 +369,7 @@ const addState: DocTool = {
     };
   },
   name: "add_state",
+  title: "Add state",
   parameters: {
     type: "object",
     properties: {
@@ -407,6 +412,7 @@ const updateState: DocTool = {
     };
   },
   name: "update_state",
+  title: "Update state",
   parameters: {
     type: "object",
     properties: {
@@ -476,6 +482,7 @@ const moveNode: DocTool = {
     };
   },
   name: "move_node",
+  title: "Move a node",
   parameters: {
     type: "object",
     properties: {

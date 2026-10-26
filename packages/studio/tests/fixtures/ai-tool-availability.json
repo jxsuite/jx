@@ -1,0 +1,209 @@
+{
+  "an empty window": {
+    "listing": "b5787c56572d29f174580a4c9722fe10cd1d72eca84f323e7761e7adfe6be3c8",
+    "offered": ["ask_user", "import_site", "create_project", "list_starters"],
+    "refusals": [
+      "list_files: Tool \"list_files\" is not available right now — it requires an open project.",
+      "read_file: Tool \"read_file\" is not available right now — it requires an open project.",
+      "write_file: Tool \"write_file\" is not available right now — it requires an open project.",
+      "search_files: Tool \"search_files\" is not available right now — it requires an open project.",
+      "create_component: Tool \"create_component\" is not available right now — it requires an open project.",
+      "create_page: Tool \"create_page\" is not available right now — it requires an open project.",
+      "read_document: Tool \"read_document\" is not available right now — it requires an open document (use open_document first).",
+      "set_property: Tool \"set_property\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "set_style: Tool \"set_style\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "set_text: Tool \"set_text\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "add_child: Tool \"add_child\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "move_node: Tool \"move_node\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "add_state: Tool \"add_state\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "update_state: Tool \"update_state\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode."
+    ]
+  },
+  "an empty window with no import backend": {
+    "listing": "eb0ec676d2dbe66374350701f31a2ac6326cbca513753daf2a1703fc9df770ae",
+    "offered": ["ask_user", "create_project", "list_starters"],
+    "refusals": [
+      "import_site: Tool \"import_site\" is not available right now — it requires a platform with a site-import backend.",
+      "list_files: Tool \"list_files\" is not available right now — it requires an open project.",
+      "read_file: Tool \"read_file\" is not available right now — it requires an open project.",
+      "write_file: Tool \"write_file\" is not available right now — it requires an open project.",
+      "search_files: Tool \"search_files\" is not available right now — it requires an open project.",
+      "create_component: Tool \"create_component\" is not available right now — it requires an open project.",
+      "create_page: Tool \"create_page\" is not available right now — it requires an open project.",
+      "read_document: Tool \"read_document\" is not available right now — it requires an open document (use open_document first).",
+      "set_property: Tool \"set_property\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "set_style: Tool \"set_style\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "set_text: Tool \"set_text\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "add_child: Tool \"add_child\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "move_node: Tool \"move_node\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "add_state: Tool \"add_state\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "update_state: Tool \"update_state\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode."
+    ]
+  },
+  "a project with no document": {
+    "listing": "eec546f6eb7eedf549ff2e055deef1a1610469dab4d3a68b599972a6132893ae",
+    "offered": [
+      "ask_user",
+      "create_component",
+      "create_page",
+      "list_files",
+      "read_file",
+      "write_file",
+      "search_files",
+      "open_document",
+      "enable_extension",
+      "add_new",
+      "add_project_locale",
+      "validate_redirects"
+    ],
+    "refusals": [
+      "import_site: Tool \"import_site\" is not available right now — it requires a platform with a site-import backend.",
+      "create_project: Tool \"create_project\" is not available right now — it requires no project to be open (it bootstraps one).",
+      "list_starters: Tool \"list_starters\" is not available right now — it requires no project to be open (it bootstraps one).",
+      "read_document: Tool \"read_document\" is not available right now — it requires an open document (use open_document first).",
+      "set_property: Tool \"set_property\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "set_style: Tool \"set_style\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "set_text: Tool \"set_text\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "add_child: Tool \"add_child\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "move_node: Tool \"move_node\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "add_state: Tool \"add_state\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "update_state: Tool \"update_state\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode."
+    ]
+  },
+  "a document on the canvas": {
+    "listing": "816ceba4c474190316d6073eed6cb692ff92386d4ba2b29dd905aaaebba7baef",
+    "offered": [
+      "ask_user",
+      "read_document",
+      "set_property",
+      "add_child",
+      "set_style",
+      "set_text",
+      "add_state",
+      "update_state",
+      "move_node",
+      "create_component",
+      "create_page",
+      "list_files",
+      "read_file",
+      "write_file",
+      "search_files",
+      "duplicate_node",
+      "delete_node",
+      "open_document",
+      "set_canvas_mode",
+      "select_node",
+      "check_accessibility",
+      "check_popovers",
+      "enable_extension",
+      "add_new",
+      "add_project_locale",
+      "validate_redirects"
+    ],
+    "refusals": [
+      "import_site: Tool \"import_site\" is not available right now — it requires a platform with a site-import backend.",
+      "create_project: Tool \"create_project\" is not available right now — it requires no project to be open (it bootstraps one).",
+      "list_starters: Tool \"list_starters\" is not available right now — it requires no project to be open (it bootstraps one)."
+    ]
+  },
+  "a document in Code view": {
+    "listing": "15e140c7de54e36cd8ad0d2df32dc64712f4e9b2c91bab9ee2c05a0fc1e4ba60",
+    "offered": [
+      "ask_user",
+      "read_document",
+      "create_component",
+      "create_page",
+      "list_files",
+      "read_file",
+      "write_file",
+      "search_files",
+      "open_document",
+      "set_canvas_mode",
+      "select_node",
+      "check_accessibility",
+      "check_popovers",
+      "enable_extension",
+      "add_new",
+      "add_project_locale",
+      "validate_redirects"
+    ],
+    "refusals": [
+      "import_site: Tool \"import_site\" is not available right now — it requires a platform with a site-import backend.",
+      "create_project: Tool \"create_project\" is not available right now — it requires no project to be open (it bootstraps one).",
+      "list_starters: Tool \"list_starters\" is not available right now — it requires no project to be open (it bootstraps one).",
+      "set_property: Tool \"set_property\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "set_style: Tool \"set_style\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "set_text: Tool \"set_text\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "add_child: Tool \"add_child\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "move_node: Tool \"move_node\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "add_state: Tool \"add_state\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode.",
+      "update_state: Tool \"update_state\" is not available right now — it requires an open document whose element tree the canvas is editing — Project Settings and the grid editors are documents, but not trees to restructure, and a page left in Code view returns to the canvas with set_canvas_mode."
+    ]
+  },
+  "a single file with no project": {
+    "listing": "71148dcab94a6b407c3c53f6886b625dd35f5826cd35161f8b2107f68c87120d",
+    "offered": [
+      "ask_user",
+      "read_document",
+      "set_property",
+      "add_child",
+      "set_style",
+      "set_text",
+      "add_state",
+      "update_state",
+      "move_node",
+      "import_site",
+      "create_project",
+      "list_starters",
+      "duplicate_node",
+      "delete_node",
+      "set_canvas_mode",
+      "select_node",
+      "check_accessibility",
+      "check_popovers"
+    ],
+    "refusals": [
+      "list_files: Tool \"list_files\" is not available right now — it requires an open project.",
+      "read_file: Tool \"read_file\" is not available right now — it requires an open project.",
+      "write_file: Tool \"write_file\" is not available right now — it requires an open project.",
+      "search_files: Tool \"search_files\" is not available right now — it requires an open project.",
+      "create_component: Tool \"create_component\" is not available right now — it requires an open project.",
+      "create_page: Tool \"create_page\" is not available right now — it requires an open project."
+    ]
+  },
+  "a document on the canvas with no extension catalogue": {
+    "listing": "910e33ca80d94fe188d42fedf9d8cd8f89a24a9abea52032dff1192e8fe48a8e",
+    "offered": [
+      "ask_user",
+      "read_document",
+      "set_property",
+      "add_child",
+      "set_style",
+      "set_text",
+      "add_state",
+      "update_state",
+      "move_node",
+      "create_component",
+      "create_page",
+      "list_files",
+      "read_file",
+      "write_file",
+      "search_files",
+      "duplicate_node",
+      "delete_node",
+      "open_document",
+      "set_canvas_mode",
+      "select_node",
+      "check_accessibility",
+      "check_popovers",
+      "add_new",
+      "add_project_locale",
+      "validate_redirects"
+    ],
+    "refusals": [
+      "import_site: Tool \"import_site\" is not available right now — it requires a platform with a site-import backend.",
+      "create_project: Tool \"create_project\" is not available right now — it requires no project to be open (it bootstraps one).",
+      "list_starters: Tool \"list_starters\" is not available right now — it requires no project to be open (it bootstraps one)."
+    ]
+  }
+}

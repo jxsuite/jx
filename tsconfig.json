@@ -38,6 +38,7 @@
     "commitlint.config.ts",
     "packages/**/src/**/*",
     "packages/**/tests/**/*",
+    "packages/studio/evals/**/*",
     "packages/schema/types.ts",
     "packages/schema/defs/**/*",
     "extensions/**/src/**/*",

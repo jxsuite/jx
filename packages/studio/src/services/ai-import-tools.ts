@@ -21,6 +21,7 @@
  * @license MIT
  */
 
+import { JX_TOOL_FACTS } from "@jxsuite/ai/jx-tools";
 import { createToolDefinition, toolError, toolSuccess } from "@jxsuite/ai/tools";
 import { IMPORT_MAX_PAGES } from "@jxsuite/protocol";
 import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
@@ -274,6 +275,8 @@ export function registerImportTools(
   registry.register(
     createToolDefinition({
       name: "import_site",
+      title: "Import a site",
+      annotations: JX_TOOL_FACTS.import_site.annotations,
       description:
         "Clone a live website into a new Jx project and open it in the studio: pages, styles, " +
         "assets, a shared layout and recurring components. Only available while no project is " +

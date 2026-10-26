@@ -43,6 +43,8 @@ export type DocToolName =
 /** A tree tool as data: what the model is told, and the pure function that plans its edit. */
 export interface DocTool {
   readonly name: DocToolName;
+  /** A person-facing name for the tool. */
+  readonly title: string;
   readonly description: string;
   readonly parameters: JSONSchema;
   /**

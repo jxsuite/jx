@@ -11,7 +11,7 @@
 
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import type { ToolRegistry, ToolResult } from "@jxsuite/ai/tools";
-import { docToolEntries } from "@jxsuite/ai/jx-tools";
+import { docToolEntries, JX_TOOL_FACTS } from "@jxsuite/ai/jx-tools";
 import type { JsonObject } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import { validateDoc } from "./jx-validate";
@@ -114,6 +114,8 @@ export function registerAiTools(
   registry.register(
     createToolDefinition({
       name: "create_component",
+      title: "Create a component",
+      annotations: JX_TOOL_FACTS.create_component.annotations,
       description:
         "Create a new Jx component file on disk. Writes the component JSON to the given " +
         "relative path within the project. The content must be a valid Jx component document.",
@@ -202,6 +204,8 @@ export function registerAiTools(
   registry.register(
     createToolDefinition({
       name: "create_page",
+      title: "Create a page",
+      annotations: JX_TOOL_FACTS.create_page.annotations,
       description:
         "Create a new Jx page file on disk. A page typically includes a layout component and " +
         "section children. The content must be a valid Jx page document.",

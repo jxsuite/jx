@@ -41,9 +41,13 @@ function parseArgs(argv: string[]): CliArgs {
       i += 1;
       out.k = Number(argv[i]) || 3;
     } else if (argv[i] === "--tasks") {
-      while (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
+      for (
+        let next = argv[i + 1];
+        next !== undefined && !next.startsWith("--");
+        next = argv[i + 1]
+      ) {
         i += 1;
-        out.tasks.push(argv[i]);
+        out.tasks.push(next);
       }
     }
   }
@@ -78,7 +82,7 @@ function loadTasks(selectors: string[]): Task[] {
 /** ISO timestamp safe for a directory name (e.g. 20260618-141233). */
 function stampNow() {
   const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
+  const p = (n: number) => String(n).padStart(2, "0");
   return (
     `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
     `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`

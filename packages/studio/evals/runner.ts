@@ -27,9 +27,11 @@ import type { DirEntry, StudioPlatform } from "../src/types";
 import { createTab, disposeTab } from "../src/tabs/tab";
 import { registerAiTools } from "../src/services/ai-tools";
 import { registerProjectTools } from "../src/services/ai-project-tools";
-import { createGatedToolRegistry } from "../src/services/gated-registry";
+import { createCommandToolRegistry } from "../src/services/ai-command-tools";
+import { assistantToolRegistry } from "../src/services/harness/assistant-tools";
 import { runAgentLoop } from "../src/services/tool-executor";
-import { AI_TOOL_TIERS, buildSystemPrompt, toolActive } from "../src/services/ai-system-prompt";
+import { validateDoc } from "../src/services/jx-validate";
+import { buildSystemPrompt } from "../src/services/ai-system-prompt";
 import { renderCritic } from "./render-critic.js";
 import { schemaGrader } from "./schema-grader.js";
 
@@ -294,14 +296,10 @@ export async function runTrial(
       /* The assistant's own gate over the project-mode state, so the model is offered the tools the
          prompt names and no others: no document tool, no bootstrap tool. */
       const state = { canImport: false, hasDocument: false, hasProject: true, treeEditable: true };
-      const toolRegistry = createGatedToolRegistry(
+      const toolRegistry = assistantToolRegistry(
         inner,
-        new Map(
-          AI_TOOL_TIERS.map((t) => [
-            t.name,
-            { requires: `the ${t.tier} tier`, when: () => toolActive(t, state) },
-          ]),
-        ),
+        createCommandToolRegistry({ getTab: deps.getTab, validate: validateDoc }),
+        () => state,
       );
       await runAgentLoop({
         chatState,
