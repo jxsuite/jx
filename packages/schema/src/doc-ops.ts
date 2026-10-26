@@ -15,8 +15,8 @@
  * @module @jxsuite/schema/doc-ops
  */
 
-import { isNonNullObject, isNumber } from "./guards";
-import type { JxDocumentValue, JxMutableNode, JxPath } from "../types.ts";
+import { isNonNullObject, isNumber, isString } from "./guards";
+import type { JsonValue, JxDocumentValue, JxMutableNode, JxPath } from "../types.ts";
 
 /** Value-carrying document mutation, replayable in either direction. */
 export type JxDocOp =
@@ -161,8 +161,15 @@ function childArrayAt(doc: JxMutableNode, parentPath: JxPath): (JxMutableNode | 
  * insertion (delta +1, inclusive) shifts them up. Returns `path` unchanged when the splice does not
  * affect it — including when `path` IS `parentPath`, since a splice moves a node's children, never
  * the node.
+ *
+ * @param {JxPath} parentPath - The node whose children were spliced
+ * @param {JxPath} path - The path to translate
+ * @param {number} spliceIndex - Where the splice happened
+ * @param {number} delta - -1 for a removal, +1 for an insertion
+ * @param {boolean} inclusive - Whether a path AT the index shifts (an insertion's rule)
+ * @returns {JxPath}
  */
-function shiftThroughSplice(
+export function shiftPrefixedIndex(
   parentPath: JxPath,
   path: JxPath,
   spliceIndex: number,
@@ -201,7 +208,7 @@ function assertNotIntoOwnSubtree(op: Extract<JxDocOp, { op: "move-child" }>): vo
  * counts from the end and an index past the end appends. The applier inserts with `splice`, so an
  * inverse must name the slot the node really landed in, not the one the op asked for.
  */
-function insertionSlot(index: number, length: number): number {
+export function insertionSlot(index: number, length: number): number {
   return index < 0 ? Math.max(length + index, 0) : Math.min(index, length);
 }
 
@@ -236,11 +243,17 @@ function insertionSlot(index: number, length: number): number {
 export function inverseOf(doc: JxMutableNode, op: JxDocOp): JxDocOp {
   // Read before the switch: an op from outside may carry a kind the union does not name.
   const { op: kind } = op;
+  assertIntegerIndexes(op);
   switch (op.op) {
     case "set-key": {
       const node = getNodeAtPath(doc, op.path);
-      if (!node) {
+      if (node === undefined) {
         throw new Error(`doc-op-node-not-found:${op.path.join("/")}`);
+      }
+      /* A key set on a text child or a children array lands nowhere a renderer reads, so the edit
+         would succeed without effect; on `null` it would throw mid-transaction. */
+      if (!isNonNullObject(node) || Array.isArray(node)) {
+        throw new TypeError(`doc-op-not-a-node:${op.path.join("/")}`);
       }
       const before = cloneValue(node[op.key]);
       return before === undefined
@@ -273,7 +286,7 @@ export function inverseOf(doc: JxMutableNode, op: JxDocOp): JxDocOp {
       return {
         fromIndex: toIndex,
         // The removal shifted paths under the source parent; the insertion, under the target.
-        fromParentPath: shiftThroughSplice(
+        fromParentPath: shiftPrefixedIndex(
           op.fromParentPath,
           op.toParentPath,
           op.fromIndex,
@@ -282,7 +295,7 @@ export function inverseOf(doc: JxMutableNode, op: JxDocOp): JxDocOp {
         ),
         op: "move-child",
         toIndex: op.fromIndex,
-        toParentPath: shiftThroughSplice(op.toParentPath, op.fromParentPath, toIndex, 1, true),
+        toParentPath: shiftPrefixedIndex(op.toParentPath, op.fromParentPath, toIndex, 1, true),
       };
     }
     default: {
@@ -290,6 +303,26 @@ export function inverseOf(doc: JxMutableNode, op: JxDocOp): JxDocOp {
     }
   }
   throw new Error(`unknown-doc-op:${kind}`);
+}
+
+/**
+ * Throw `doc-op-index:<path>` unless every index the op carries is an integer. A numeric string, a
+ * fraction or `NaN` would reach `splice`, which coerces or truncates it, so the op would land in a
+ * slot its recorded inverse does not name. Producers coerce canonical numeric strings before they
+ * build an op; this is the defence behind them.
+ */
+function assertIntegerIndexes(op: JxDocOp): void {
+  const indexes: [JxPath, unknown][] = [];
+  if (op.op === "move-child") {
+    indexes.push([op.fromParentPath, op.fromIndex], [op.toParentPath, op.toIndex]);
+  } else if (op.op === "insert-child" || op.op === "remove-child" || op.op === "set-child") {
+    indexes.push([op.parentPath, op.index]);
+  }
+  for (const [parentPath, index] of indexes) {
+    if (!Number.isInteger(index)) {
+      throw new TypeError(`doc-op-index:${[...parentPath, "children", String(index)].join("/")}`);
+    }
+  }
 }
 
 /** The node's existing children array, or null when it has none (or is not a node). */
@@ -369,4 +402,143 @@ export function applyDocOpsWithInverse(doc: JxMutableNode, ops: readonly JxDocOp
     pairs.push({ forward, inverse });
   }
   return pairs;
+}
+
+// ─── Paths ───────────────────────────────────────────────────────────────────
+
+/**
+ * Whether `path` is an ancestor of (or equal to) `descendant`.
+ *
+ * @param {JxPath} path
+ * @param {JxPath} descendant
+ * @returns {boolean}
+ */
+export function isAncestor(path: JxPath, descendant: JxPath): boolean {
+  if (path.length > descendant.length) {
+    return false;
+  }
+  return path.every((v, i) => v === descendant[i]);
+}
+
+/**
+ * Order two paths the way the document reads: parents before children, siblings by index.
+ *
+ * Segments are compared pairwise; numbers numerically (so `children/10` follows `children/9`), and
+ * anything else by string order. A prefix sorts before what extends it.
+ *
+ * @param {JxPath} a
+ * @param {JxPath} b
+ * @returns {number}
+ */
+export function comparePaths(a: JxPath, b: JxPath): number {
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (x === y) {
+      continue;
+    }
+    if (isNumber(x) && isNumber(y)) {
+      return x - y;
+    }
+    return String(x) < String(y) ? -1 : 1;
+  }
+  return a.length - b.length;
+}
+
+/**
+ * Drop any path whose ancestor is also in the list.
+ *
+ * Deleting a `<section>` and one of its own paragraphs is one deletion, not two: the paragraph goes
+ * with its parent, and a second splice into coordinates that no longer exist is how a batch
+ * corrupts a document.
+ *
+ * @param {readonly JxPath[]} paths
+ * @returns {JxPath[]}
+ */
+export function topLevelSelection(paths: readonly JxPath[]): JxPath[] {
+  const top: JxPath[] = [];
+  for (const path of paths) {
+    if (!paths.some((q) => !samePath(q, path) && isAncestor(q, path))) {
+      top.push([...path]);
+    }
+  }
+  return top;
+}
+
+function samePath(a: JxPath, b: JxPath): boolean {
+  return a.length === b.length && isAncestor(a, b);
+}
+
+/** Where a structural verb splices: the parent element's path and the index in its children. */
+export interface SpliceCoordinate {
+  parentPath: JxPath;
+  index: number;
+}
+
+/**
+ * The splice coordinate `path` names, or `null` for no path and for every path
+ * {@link isSpliceablePath} refuses.
+ *
+ * @param {JxPath | null | undefined} path
+ * @returns {SpliceCoordinate | null}
+ */
+export function spliceCoordinate(path: JxPath | null | undefined): SpliceCoordinate | null {
+  const index = path?.at(-1);
+  return path && path.at(-2) === "children" && isNumber(index)
+    ? { index, parentPath: path.slice(0, -2) }
+    : null;
+}
+
+/**
+ * Whether `path` names a position a structural edit can splice: a tail of `"children"` + index.
+ *
+ * Every structural edit reaches its parent by dropping the last two segments and its position by
+ * taking the last. That produces a splice coordinate for exactly one path shape, and a document
+ * holds three others a caller can name: the document element (`[]`), a repeater's map template
+ * (`[…, "children", "map"]`) and a `$switch` case (`[…, "cases", "warn"]`). For the template, the
+ * parent resolves to a children ARRAY, so the splice throws mid-edit; for a case it splices at
+ * `NaN` and takes the wrong child.
+ *
+ * @param {JxPath} path
+ * @returns {boolean}
+ */
+export function isSpliceablePath(path: JxPath): boolean {
+  return spliceCoordinate(path) !== null;
+}
+
+/**
+ * The order a structural batch must run in: contained paths dropped, unspliceable paths dropped,
+ * then LAST node first.
+ *
+ * Descending document order is what makes a loop of splices safe. Removing or duplicating at index
+ * `n` renumbers every sibling after `n`, so a batch that starts at the end never touches a
+ * coordinate a later step still needs.
+ *
+ * Containment is decided BEFORE spliceability, on the paths as given: a repeater template still
+ * shadows its own descendants, so naming the template and something inside it yields nothing rather
+ * than quietly deleting the child nobody pointed at.
+ *
+ * @param {readonly JxPath[]} paths
+ * @returns {JxPath[]} Deepest/last first, every entry a splice coordinate.
+ */
+export function structuralBatch(paths: readonly JxPath[]): JxPath[] {
+  return topLevelSelection(paths)
+    .filter((path) => isSpliceablePath(path))
+    .toSorted((a, b) => comparePaths(b, a));
+}
+
+/**
+ * An index written as JSON a model or a form produced, as the integer it names: an integer passes,
+ * a canonical decimal string (`"0"`, `"12"`, never `"01"`, `"1.0"` or `" 2"`) becomes its number,
+ * and anything else is `null`. Negative integers pass; whether one is meaningful is the caller's.
+ *
+ * @param {JsonValue | undefined} value - A tool argument or form field, as parsed JSON
+ * @returns {number | null}
+ */
+export function coerceIndex(value: JsonValue | undefined): number | null {
+  if (isNumber(value) && Number.isInteger(value)) {
+    return value;
+  }
+  return isString(value) && /^(?:0|[1-9]\d*)$/.test(value) ? Number(value) : null;
 }

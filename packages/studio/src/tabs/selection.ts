@@ -42,10 +42,22 @@
  * standing between a mixed selection and a half-applied, unrecorded delete.
  */
 
-import { isNumber } from "@jxsuite/schema/guards";
+import { isAncestor } from "@jxsuite/schema/doc-ops";
 
 import type { JxPath } from "../state";
-import { isAncestor, pathsEqual } from "../state";
+import { pathsEqual } from "../state";
+
+/* The structural-path helpers live beside the doc-op vocabulary, so any host that edits a document
+   the way Studio does orders and filters a batch the same way. Re-exported here, where every
+   Studio caller already imports them. */
+export {
+  comparePaths,
+  isSpliceablePath,
+  spliceCoordinate,
+  structuralBatch,
+  topLevelSelection,
+} from "@jxsuite/schema/doc-ops";
+export type { SpliceCoordinate } from "@jxsuite/schema/doc-ops";
 
 /**
  * The path single-target surfaces address — the most recently added, or `null` when empty.
@@ -169,113 +181,6 @@ export function rangeSelection(
  */
 export function pruneSelection(selection: readonly JxPath[], removed: JxPath): JxPath[] {
   return clonePaths(selection.filter((p) => !isAncestor(removed, p)));
-}
-
-/**
- * Order two paths the way the document reads: parents before children, siblings by index.
- *
- * Segments are compared pairwise; numbers numerically (so `children/10` follows `children/9`), and
- * anything else by string order. A prefix sorts before what extends it.
- *
- * @param {JxPath} a
- * @param {JxPath} b
- * @returns {number}
- */
-export function comparePaths(a: JxPath, b: JxPath): number {
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    const x = a[i]!;
-    const y = b[i]!;
-    if (x === y) {
-      continue;
-    }
-    if (isNumber(x) && isNumber(y)) {
-      return x - y;
-    }
-    return String(x) < String(y) ? -1 : 1;
-  }
-  return a.length - b.length;
-}
-
-/**
- * Drop any path whose ancestor is also selected.
- *
- * Deleting a `<section>` and one of its own paragraphs is one deletion, not two: the paragraph goes
- * with its parent, and a second splice into coordinates that no longer exist is how a batch
- * corrupts a document.
- *
- * @param {readonly JxPath[]} selection
- * @returns {JxPath[]}
- */
-export function topLevelSelection(selection: readonly JxPath[]): JxPath[] {
-  return clonePaths(
-    selection.filter((p) => !selection.some((q) => !pathsEqual(q, p) && isAncestor(q, p))),
-  );
-}
-
-/**
- * Whether `path` names a position a structural verb can splice — a tail of `"children"` + index.
- *
- * Every structural mutator (`mutateRemoveNode`, `mutateDuplicateNode`, `mutateWrapNode`) reaches
- * its parent with `parentElementPath` — drop the last two segments — and its position with
- * `childIndex` — take the last. That produces a splice coordinate for exactly one path shape, and
- * the Outline emits three others as first-class rows: the document element (`[]`), a repeater's map
- * template (`[…, "children", 1, "map"]`) and a `$switch` case (`[…, "cases", "warn"]`). For the
- * template, `parentElementPath` resolves to the enclosing children ARRAY, whose `.children` is
- * `undefined`, so the splice throws mid-transaction; for a case it splices at `NaN` and takes the
- * wrong child.
- *
- * Selecting one of those beside an ordinary element is a single ctrl-click, so this is the
- * invariant that keeps a batch from mutating the document and then throwing before anything is
- * recorded.
- *
- * @param {JxPath} path
- * @returns {boolean}
- */
-export function isSpliceablePath(path: JxPath): boolean {
-  return spliceCoordinate(path) !== null;
-}
-
-/** Where a structural verb splices: the parent element's path and the index in its children. */
-export interface SpliceCoordinate {
-  parentPath: JxPath;
-  index: number;
-}
-
-/**
- * The splice coordinate `path` names, or `null` for no path and for every path
- * {@link isSpliceablePath} refuses.
- *
- * @param {JxPath | null | undefined} path
- * @returns {SpliceCoordinate | null}
- */
-export function spliceCoordinate(path: JxPath | null | undefined): SpliceCoordinate | null {
-  const index = path?.at(-1);
-  return path && path.at(-2) === "children" && isNumber(index)
-    ? { index, parentPath: path.slice(0, -2) }
-    : null;
-}
-
-/**
- * The order a structural batch must run in: contained paths dropped, unspliceable paths dropped,
- * then LAST node first.
- *
- * Descending document order is what makes a loop of splices safe. Removing or duplicating at index
- * `n` renumbers every sibling after `n`, so a batch that starts at the end never touches a
- * coordinate a later step still needs. It is also why duplicating a multi-selection inserts each
- * clone directly after its own original instead of walking the whole run forward.
- *
- * Containment is decided BEFORE spliceability, on the selection the user actually made: a selected
- * repeater template still shadows its own descendants, so selecting the template and something
- * inside it yields nothing rather than quietly deleting the child the user never pointed at.
- *
- * @param {readonly JxPath[]} selection
- * @returns {JxPath[]} Deepest/last first, every entry a splice coordinate.
- */
-export function structuralBatch(selection: readonly JxPath[]): JxPath[] {
-  return topLevelSelection(selection)
-    .filter((path) => isSpliceablePath(path))
-    .toSorted((a, b) => comparePaths(b, a));
 }
 
 /**
