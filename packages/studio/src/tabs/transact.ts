@@ -10,6 +10,7 @@ import {
   structuralBatch,
 } from "./selection";
 import { applyDocOpToDoc, childArray, cloneValue, inverseOf } from "./doc-op-apply";
+import { insertionSlot, shiftPrefixedIndex } from "@jxsuite/schema/doc-ops";
 import {
   beginRecording,
   endRecording,
@@ -79,33 +80,6 @@ function setKeyPair(
     forward: { key, op: "set-key", path, value: after },
     inverse: { key, op: "set-key", path, value: before },
   };
-}
-
-/**
- * Translate `path` into post-splice coordinates when it descends through `parentPath`'s children at
- * or beyond the spliced index: a removal (delta -1) at fromIndex shifts deeper paths down; an
- * insertion (delta +1, inclusive) shifts them up. Returns `path` unchanged when the splice doesn't
- * affect it. Used to express a move's inverse in post-mutation coordinates.
- */
-function shiftPrefixedIndex(
-  parentPath: JxPath,
-  path: JxPath,
-  spliceIndex: number,
-  delta: number,
-  inclusive: boolean,
-): JxPath {
-  const d = parentPath.length;
-  const isProperPrefix = d < path.length && parentPath.every((seg, i) => seg === path[i]);
-  const idx = path[d + 1];
-  if (!isProperPrefix || path[d] !== "children" || !isNumber(idx)) {
-    return path;
-  }
-  if (inclusive ? idx < spliceIndex : idx <= spliceIndex) {
-    return path;
-  }
-  const shifted = [...path];
-  shifted[d + 1] = idx + delta;
-  return shifted;
 }
 
 /** Any value that can sit at a document node key (undefined/null/"" deletes it). */
@@ -914,11 +888,16 @@ export function mutateInsertNode(
   if (!parent) {
     return;
   }
-  childArray(parent).splice(index, 0, structuredClone(nodeDef));
-  recordPatch({ index, op: "insert", parentPath });
+  const children = childArray(parent);
+  /* Recorded at the slot the node lands in, not the one asked for: `splice` appends past the end,
+     and an op naming index 9 of a two-child list replays wrongly anywhere that does not clamp (the
+     collab mirror throws on it) and undoes by removing nothing. */
+  const slot = insertionSlot(index, children.length);
+  children.splice(slot, 0, structuredClone(nodeDef));
+  recordPatch({ index: slot, op: "insert", parentPath });
   recordDocOp({
-    forward: { index, node: cloneValue(nodeDef), op: "insert-child", parentPath },
-    inverse: { index, op: "remove-child", parentPath },
+    forward: { index: slot, node: cloneValue(nodeDef), op: "insert-child", parentPath },
+    inverse: { index: slot, op: "remove-child", parentPath },
   });
 }
 
@@ -1079,28 +1058,78 @@ export function mutateWrapNode(tab: Tab, path: JxPath, wrapperTag = "div") {
  */
 export function mutateMoveNode(tab: Tab, fromPath: JxPath, toParentPath: JxPath, toIndex: number) {
   const doc = tab.doc.document;
+  const move = planMove(doc, fromPath, toParentPath, toIndex);
+  if (!move) {
+    return;
+  }
+  const { forward, inverse } = move;
+  /* SAFETY: `planMove` resolved both parents as nodes, and the source's children as a static
+     array holding a child at `fromIndex`. */
+  const fromParent = getNodeAtPath(doc, forward.fromParentPath)!;
+  const toParent = getNodeAtPath(doc, toParentPath)!;
+  // SAFETY: as above, the source parent's children are a static array (`planMove` checked).
+  const [node] = (fromParent.children as (JxMutableNode | string)[]).splice(forward.fromIndex, 1);
+  childArray(toParent).splice(forward.toIndex, 0, node!);
+  recordPatch({ fromPath, op: "move", toIndex: forward.toIndex, toParentPath });
+  recordDocOp({ forward, inverse });
+
+  /* The moved node's own post-move path is where its inverse picks it up. Writing the target path
+     as given would be wrong whenever the removal renumbered it: moving `children/0` into
+     `children/2` lands inside what is now `children/1`. */
+  if (pathsEqual(primarySelection(tab.session.selection), fromPath)) {
+    tab.session.selection = [[...inverse.fromParentPath, "children", inverse.fromIndex]];
+  }
+}
+
+/** A move's forward and inverse ops, both `move-child`. */
+export interface PlannedMove {
+  forward: Extract<JxDocOp, { op: "move-child" }>;
+  inverse: Extract<JxDocOp, { op: "move-child" }>;
+}
+
+/**
+ * The ops {@link mutateMoveNode} records for moving the node at `fromPath` to `toIndex` of
+ * `toParentPath`'s children, without moving anything; null when the move cannot happen (the source
+ * is no child in a static children array, or the target is no node).
+ *
+ * `toIndex` is read as the slot in the target's children BEFORE the move, the way a drop indicator
+ * names it, so a move later in the same parent lands one earlier once the source is gone. A slot
+ * past the end is clamped to the last one, so the recorded forward names where the node really
+ * lands. Throws `doc-op-move-into-self` when the target is inside the moved node.
+ *
+ * @param {JxMutableNode} doc
+ * @param {JxPath} fromPath
+ * @param {JxPath} toParentPath
+ * @param {number} toIndex
+ * @returns {PlannedMove | null}
+ */
+export function planMove(
+  doc: JxMutableNode,
+  fromPath: JxPath,
+  toParentPath: JxPath,
+  toIndex: number,
+): PlannedMove | null {
   const fromParentPath = parentElementPath(fromPath);
   const fromIdx = childIndex(fromPath);
   if (!fromParentPath || !isNumber(fromIdx)) {
-    return;
+    return null;
   }
   const fromParent = getNodeAtPath(doc, fromParentPath);
   const toParent = getNodeAtPath(doc, toParentPath);
   if (!fromParent || !Array.isArray(fromParent.children) || !toParent) {
-    return;
+    return null;
   }
   if (fromParent.children[fromIdx] === undefined) {
-    return;
+    return null;
   }
-  let adjustedIndex = toIndex;
-  if (fromParent === toParent && fromIdx < toIndex) {
-    adjustedIndex -= 1;
-  }
-  const forward: JxDocOp = {
+  const sameParent = fromParent === toParent;
+  const adjusted = sameParent && fromIdx < toIndex ? toIndex - 1 : toIndex;
+  const targetLength = Array.isArray(toParent.children) ? toParent.children.length : 0;
+  const forward: PlannedMove["forward"] = {
     fromIndex: fromIdx,
     fromParentPath,
     op: "move-child",
-    toIndex: adjustedIndex,
+    toIndex: insertionSlot(adjusted, targetLength - (sameParent ? 1 : 0)),
     toParentPath,
   };
   /* Computed BEFORE the splice, against the document the move applies to. The inverse runs against
@@ -1108,22 +1137,8 @@ export function mutateMoveNode(tab: Tab, fromPath: JxPath, toParentPath: JxPath,
      coordinates: the removal shifted paths under the source parent, the insertion paths under the
      target. One implementation of that rule, shared with every other host that moves a node. */
   const inverse = inverseOf(doc, forward);
-  const [node] = fromParent.children.splice(fromIdx, 1);
-  childArray(toParent).splice(adjustedIndex, 0, node!);
-  recordPatch({ fromPath, op: "move", toIndex: adjustedIndex, toParentPath });
-  recordDocOp({ forward, inverse });
-
-  if (pathsEqual(primarySelection(tab.session.selection), fromPath)) {
-    let idx = toIndex;
-    if (
-      fromParentPath.length === toParentPath.length &&
-      fromParentPath.every((v, i) => v === toParentPath[i]) &&
-      fromIdx < toIndex
-    ) {
-      idx = toIndex - 1;
-    }
-    tab.session.selection = [[...toParentPath, "children", idx]];
-  }
+  /* SAFETY: `inverseOf` answers a `move-child` for a `move-child`. */
+  return { forward, inverse: inverse as PlannedMove["inverse"] };
 }
 
 /**
@@ -1158,6 +1173,10 @@ export function mutateUpdateProperty(tab: Tab, path: JxPath, key: string, value?
     node[key] = value;
   }
   recordDocOp(setKeyPair(path, key, before, cloneValue(node[key])));
+  // Replacing the children replaces every node under them, so nothing selected there survives.
+  if (key === "children") {
+    tab.session.selection = pruneSelection(tab.session.selection, [...path, "children"]);
+  }
   if (key === "textContent") {
     recordPatch({ op: "set-text", path });
   } else if (key === "style") {

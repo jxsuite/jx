@@ -28,6 +28,7 @@ prs:
   - jxsuite/jx#419
   - jxsuite/jx#489
   - jxsuite/jx#490
+  - jxsuite/jx#492
 ---
 
 # Jx harness core: the Phase 1 plan
@@ -64,7 +65,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
 | J1.12 | Pair repair                                         | —           | merged jxsuite/jx#419 |
 | J1.13 | Per-actor lanes                                     | —           | merged jxsuite/jx#489 |
 | J1.14 | Restore undoes the turn                             | —           | merged jxsuite/jx#490 |
-| J1.15 | Doc-op strictness in the old tools                  | —           | open                  |
+| J1.15 | Doc-op strictness in the old tools                  | —           | merged jxsuite/jx#492 |
 | J1.16 | `./jx-tools` producers                              | —           | open                  |
 | J1.17 | `./gateway` extraction                              | —           | merged jxsuite/jx#375 |
 | J1.18 | One normaliser                                      | —           | open                  |
@@ -90,6 +91,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
   - J1.12: `repairToolPairs` takes no `newId` or `now` options, because seal ids are deterministic (`sealed_<id>_<n>`, suffixed `_<k>` on collision), which keeps the repair pure and idempotent and matches the seal ids Studio already wrote. Seals carry no `meta`. A call with an empty id is never sealed, since its seal would be dropped as an id-less reply on the next repair. A second reply to a reused call id goes back to the earlier unanswered request of that id rather than being dropped.
   - J1.13: a remote collaborator's ops neither join nor close a segment (they skip history and are never republished, so the old behaviour stands), and `TransactObserver` keeps its signature because collab reads `isBatched(tab)`. The lane owner's id comes from `assistantActorId` (new in `./harness`), which `runTurn` uses too, rather than being rebuilt by the host. While a segment is open `canUndo` is true and `canRedo` false, and undo or redo closes it first. The `getTab` seam that re-anchored the old batch left `adoptCreatedProject` and the project and import tool contexts. The bridge's attribution test drives stub verbs that write exactly as `duplicateSelection` and `deleteSelection` do, because `appCommandSet` in the test registry wires no selection writer to the test tab.
   - J1.14: a receipt names its history entry by identity (`entry`), not by `entryIndex`, because the history limit shifts every index; it holds the `Tab` rather than a `tabId`, and `closeAllTabs` disposing the tab is how a closed document is detected (`tab.scope.active`). A history-delegate (collab) tab now gets a receipt with `entry: null`, so Restore refuses a shared live document by name instead of mistaking it for one the turn never wrote; the Y.UndoManager's stack cannot be checked for a foreign item on top. A person's edit that split the turn's step refuses the whole Restore, since the turn cannot be taken back without it. `restoreTurn` lives in `ai-writes.ts` beside the ledger and returns the tabs it undid, so the panel offers Redo only when that is the active tab alone.
+  - J1.15: `coerceIndex` lives in `@jxsuite/schema/doc-ops` beside `insertionSlot` and the moved path helpers, rather than in `ai/jx-tools`, so J1.16 imports it from there. A tab stores a repeater as a member of an ordinary children array (`normalizeArrayChildren`), so a move next to one is a valid edit, the template's path is `[…, "children", n, "map"]`, and the move tool carries no mapped-children refusal (unreachable from a tab); `add_child` keeps its existing one. A word for an index (`"first"`) is refused by the registry's validator before the tool runs; `coerceIndex` refuses what the validator admits (`"01"`, `1.5`, negatives). `planMove` (Studio, `transact.ts`) computes a move's forward and inverse without applying it, shared by `mutateMoveNode` and the tool so the summary can name the landing path. The doc-ops map's probe table was never committed, so `ai-tools-strictness.test.ts` is built from §5.7's rows. The live eval was not run.
 
 ---
 

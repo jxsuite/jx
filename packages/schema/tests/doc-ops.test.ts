@@ -7,8 +7,17 @@ import {
   applyDocOpsWithInverse,
   childArray,
   cloneValue,
+  coerceIndex,
+  comparePaths,
   getNodeAtPath,
+  insertionSlot,
   inverseOf,
+  isAncestor,
+  isSpliceablePath,
+  shiftPrefixedIndex,
+  spliceCoordinate,
+  structuralBatch,
+  topLevelSelection,
 } from "../src/doc-ops.ts";
 
 function doc(): JxMutableNode {
@@ -627,5 +636,126 @@ describe("applyDocOpsWithInverse", () => {
     expect(caught).toBeInstanceOf(Error);
     expect(caught?.message).toBe("not an error");
     expect(caught?.applied).toEqual([]);
+  });
+});
+
+describe("inverseOf refuses an op that would succeed without effect", () => {
+  test("a non-integer index names the slot it was given", () => {
+    const d = doc();
+    // SAFETY: an op from outside, carrying the numeric string a model wrote, which only the index check reads.
+    const stringIndex = JSON.parse(
+      '{"index":"1","node":{"tagName":"p"},"op":"insert-child","parentPath":[]}',
+    ) as JxDocOp;
+    expect(() => inverseOf(d, stringIndex)).toThrow("doc-op-index:children/1");
+    expect(() => inverseOf(d, { index: 0.5, op: "remove-child", parentPath: [] })).toThrow(
+      "doc-op-index:children/0.5",
+    );
+    expect(() =>
+      inverseOf(d, {
+        fromIndex: 0,
+        fromParentPath: [],
+        op: "move-child",
+        toIndex: Number.NaN,
+        toParentPath: ["children", 1],
+      }),
+    ).toThrow("doc-op-index:children/1/children/NaN");
+  });
+
+  test("a set-key on a text child, a children array or null names it as not a node", () => {
+    const d: JxMutableNode = { children: ["text", { tagName: "p" }], tagName: "div", x: null };
+    expect(() => inverseOf(d, { key: "k", op: "set-key", path: ["children", 0] })).toThrow(
+      "doc-op-not-a-node:children/0",
+    );
+    expect(() => inverseOf(d, { key: "k", op: "set-key", path: ["children"] })).toThrow(
+      "doc-op-not-a-node:children",
+    );
+    expect(() => inverseOf(d, { key: "k", op: "set-key", path: ["x"] })).toThrow(
+      "doc-op-not-a-node:x",
+    );
+  });
+});
+
+describe("path helpers", () => {
+  test("isAncestor counts a path as its own ancestor, and not a longer one", () => {
+    expect(isAncestor(["children", 1], ["children", 1, "children", 0])).toBe(true);
+    expect(isAncestor(["children", 1], ["children", 1])).toBe(true);
+    expect(isAncestor(["children", 1, "children", 0], ["children", 1])).toBe(false);
+    expect(isAncestor(["children", 0], ["children", 1, "children", 0])).toBe(false);
+  });
+
+  test("comparePaths orders indexes numerically, keys by string, and a prefix first", () => {
+    expect(comparePaths(["children", 9], ["children", 10])).toBeLessThan(0);
+    expect(comparePaths(["cases", "b"], ["cases", "a"])).toBeGreaterThan(0);
+    expect(comparePaths(["children", 1], ["children", 1, "children", 0])).toBeLessThan(0);
+    expect(comparePaths(["children", 1], ["children", 1])).toBe(0);
+  });
+
+  test("topLevelSelection drops descendants and keeps the order given", () => {
+    const paths: JxPath[] = [
+      ["children", 1, "children", 0],
+      ["children", 1],
+      ["children", 0],
+    ];
+    expect(topLevelSelection(paths)).toEqual([
+      ["children", 1],
+      ["children", 0],
+    ]);
+  });
+
+  test("a splice coordinate exists only for a children tail", () => {
+    expect(spliceCoordinate(["children", 1, "children", 0])).toEqual({
+      index: 0,
+      parentPath: ["children", 1],
+    });
+    expect(spliceCoordinate([])).toBeNull();
+    expect(spliceCoordinate(null)).toBeNull();
+    expect(isSpliceablePath(["children", 0, "children", "map"])).toBe(false);
+    expect(isSpliceablePath(["children", 0, "cases", "warn"])).toBe(false);
+    expect(isSpliceablePath(["children", 0])).toBe(true);
+  });
+
+  test("structuralBatch drops contained and unspliceable paths and runs last first", () => {
+    const paths: JxPath[] = [
+      ["children", 0],
+      ["children", 2],
+      ["children", 2, "children", 0],
+      ["children", 1, "cases", "a"],
+      [],
+    ];
+    expect(structuralBatch(paths)).toEqual([]);
+    expect(structuralBatch(paths.slice(0, 4))).toEqual([
+      ["children", 2],
+      ["children", 0],
+    ]);
+  });
+
+  test("shiftPrefixedIndex moves only paths through the spliced parent at or past the index", () => {
+    expect(shiftPrefixedIndex([], ["children", 3, "children", 0], 1, -1, false)).toEqual([
+      "children",
+      2,
+      "children",
+      0,
+    ]);
+    expect(shiftPrefixedIndex([], ["children", 1], 1, -1, false)).toEqual(["children", 1]);
+    expect(shiftPrefixedIndex([], ["children", 1], 1, 1, true)).toEqual(["children", 2]);
+    expect(shiftPrefixedIndex([], [], 0, 1, true)).toEqual([]);
+    expect(shiftPrefixedIndex(["children", 0], ["cases", "x"], 0, 1, true)).toEqual(["cases", "x"]);
+  });
+
+  test("insertionSlot is the slot splice actually inserts at", () => {
+    expect(insertionSlot(9, 2)).toBe(2);
+    expect(insertionSlot(-1, 2)).toBe(1);
+    expect(insertionSlot(-9, 2)).toBe(0);
+    expect(insertionSlot(1, 2)).toBe(1);
+  });
+
+  test("coerceIndex accepts integers and canonical decimal strings only", () => {
+    expect(coerceIndex(3)).toBe(3);
+    expect(coerceIndex(-1)).toBe(-1);
+    expect(coerceIndex("0")).toBe(0);
+    expect(coerceIndex("12")).toBe(12);
+    for (const bad of ["01", "1.0", " 2", "-1", "", "x", 1.5, Number.NaN, null, undefined, [1]]) {
+      expect(coerceIndex(bad)).toBeNull();
+    }
   });
 });
