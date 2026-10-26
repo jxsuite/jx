@@ -1,4 +1,4 @@
-import { bench, describe } from "vitest";
+import { test } from "vitest";
 import { compileExpression, evaluateExpression } from "@jxsuite/runtime/expression";
 import { buildStyleRules } from "@jxsuite/runtime/css";
 import { readPath } from "@jxsuite/runtime/pointer";
@@ -47,32 +47,34 @@ const style: JxStyle = {
 };
 const mediaQueries = { "--md": "(min-width: 40rem)" };
 
-describe("runtime/expression", () => {
-  bench("evaluate filter+reduce over 500 rows", () => {
-    void evaluateExpression(totalNode, state, null);
-  });
+test("runtime/expression", async ({ bench }) => {
+  await bench.compare(
+    bench("evaluate filter+reduce over 500 rows", () => {
+      void evaluateExpression(totalNode, state, null);
+    }),
 
-  bench("evaluate map over 500 rows", () => {
-    void evaluateExpression(mapNode, state, null);
-  });
+    bench("evaluate map over 500 rows", () => {
+      void evaluateExpression(mapNode, state, null);
+    }),
 
-  bench("compile filter+reduce expression", () => {
-    compileExpression(totalNode);
-  });
+    bench("compile filter+reduce expression", () => {
+      compileExpression(totalNode);
+    }),
+  );
 });
 
-describe("runtime/css", () => {
-  bench("buildStyleRules nested style", () => {
+test("runtime/css", async ({ bench }) => {
+  await bench("buildStyleRules nested style", () => {
     buildStyleRules(style, { mediaQueries, scope: ".s" });
-  });
+  }).run();
 });
 
-describe("runtime/pointer", () => {
-  bench("readPath deep pointer x1000", () => {
+test("runtime/pointer", async ({ bench }) => {
+  await bench("readPath deep pointer x1000", () => {
     let city: unknown;
     for (let i = 0; i < 1000; i++) {
       city = readPath(state, "user/profile/address/city");
     }
     void city;
-  });
+  }).run();
 });

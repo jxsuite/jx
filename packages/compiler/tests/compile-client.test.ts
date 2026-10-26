@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { compileClient } from "../src/targets/compile-client";
-import type { JxAttributeValue, JxDocument } from "@jxsuite/schema/types";
+import type { JsonObject, JsonValue, JxAttributeValue, JxDocument } from "@jxsuite/schema/types";
+
+/** A stand-in for `fetch` that answers each call with a canned response. */
+type StubFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 /** A document whose children include primitives the schema rejects but the compiler must render. */
 interface PrimitiveChildrenFixture {
@@ -1227,5 +1230,235 @@ describe("compileClient — boolean attributes inside a repeater template", () =
       { title: "T" },
     );
     expect(files[0]!.content).not.toContain("open");
+  });
+});
+
+describe("compileClient — timing server entries", () => {
+  const entry = (exportName: string, args?: Record<string, JsonValue>) => {
+    const def: JsonObject = { $export: exportName, $src: "./api.server.js", timing: "server" };
+    if (args) {
+      def.arguments = args;
+    }
+    return def;
+  };
+
+  test("posts literal arguments once, outside any effect, and holds null until it answers", () => {
+    const { files } = compileClient(
+      {
+        children: [{ tagName: "p", textContent: "${state.metrics?.n}" }],
+        state: { metrics: entry("fetchMetrics", { filter: "active" }) },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    const js = files[0]!.content;
+    expect(js).toContain('__jxServerCall("/_jx/server/fetchMetrics", { filter: "active" })');
+    expect(js).toContain("metrics: null,");
+    expect(js).toContain("state.metrics = d;");
+    // No `$ref` argument, so nothing re-runs: the call is not inside an effect.
+    const callAt = js.indexOf('__jxServerCall("/_jx/server/fetchMetrics"');
+    expect(js.slice(js.lastIndexOf("\n// metrics", callAt), callAt)).not.toContain("effect(");
+    // The definition object is never serialised into state.
+    expect(js).not.toContain("api.server.js");
+  });
+
+  test("a $ref argument calls from an effect emitted after the computed block", () => {
+    const { files } = compileClient(
+      {
+        children: [],
+        state: {
+          id: 3,
+          label: "item ${state.id}",
+          loadItem: entry("loadItem", { id: { $ref: "#/state/id" }, kind: "full" }),
+        },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    const js = files[0]!.content;
+    expect(js).toContain('__jxServerCall("/_jx/server/loadItem", { id: state.id, kind: "full" })');
+    const computedAt = js.indexOf("state.label = computed(");
+    const callAt = js.indexOf("let _jxSeq = 0;");
+    expect(computedAt).toBeGreaterThan(-1);
+    expect(callAt).toBeGreaterThan(computedAt);
+    // Only the latest call may write: a superseded answer is dropped by its sequence number.
+    expect(js).toContain("const _seq = ++_jxSeq;");
+    expect(js).toContain("if (_seq === _jxSeq) state.loadItem = d;");
+    expect(js).toContain('if (_seq === _jxSeq) console.error("Jx server function loadItem:", e);');
+  });
+
+  test("serverBaseUrl prefixes the route", () => {
+    const { files } = compileClient(
+      { children: [], state: { stats: entry("siteStats") }, tagName: "div" },
+      { serverBaseUrl: "/m/site/_jx/server", title: "T" },
+    );
+    expect(files[0]!.content).toContain('__jxServerCall("/m/site/_jx/server/siteStats", {})');
+  });
+
+  test("a $map ref in arguments fails naming the entry", () => {
+    const doc = {
+      children: [],
+      state: { row: entry("loadRow", { id: { $ref: "$map/item/id" } }) },
+      tagName: "div",
+    };
+    expect(() => compileClient(doc, { title: "T" })).toThrow(/"row".*"id".*\$map\/item\/id/s);
+  });
+
+  test("event, $args and $reduce refs fail the same way", () => {
+    for (const ref of ["event#/target/value", "$args/n", "$reduce/acc"]) {
+      const doc = {
+        children: [],
+        state: { row: entry("loadRow", { v: { $ref: ref } }) },
+        tagName: "div",
+      };
+      expect(() => compileClient(doc, { title: "T" })).toThrow(ref);
+    }
+  });
+
+  test("a non-identifier argument key is quoted", () => {
+    const { files } = compileClient(
+      {
+        children: [],
+        state: { q: entry("search", { "page-size": 10 }) },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    expect(files[0]!.content).toContain('{ "page-size": 10 }');
+  });
+
+  test("window#/ and document#/ arguments read the global, and parent#/ reads state", () => {
+    const { files } = compileClient(
+      {
+        children: [],
+        state: {
+          theme: "dark",
+          q: entry("search", {
+            lang: { $ref: "document#/documentElement/lang" },
+            theme: { $ref: "parent#/theme" },
+            width: { $ref: "window#/innerWidth" },
+          }),
+        },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    const js = files[0]!.content;
+    expect(js).toContain("lang: document.documentElement.lang");
+    expect(js).toContain("theme: state.theme");
+    expect(js).toContain("width: window.innerWidth");
+  });
+
+  test("the helper is emitted once for two entries, and not at all without one", () => {
+    const two = compileClient(
+      {
+        children: [],
+        state: { a: entry("fnA"), b: entry("fnB") },
+        tagName: "div",
+      },
+      { title: "T" },
+    ).files[0]!.content;
+    expect(two.match(/async function __jxServerCall\(/g)).toHaveLength(1);
+    expect(two.match(/__jxServerCall\("/g)).toHaveLength(2);
+
+    const none = compileClient({ children: [], state: { n: 1 }, tagName: "div" }, { title: "T" })
+      .files[0]!.content;
+    expect(none).not.toContain("__jxServerCall");
+  });
+
+  test("the helper answers null for an empty body and rejects with the error a failure carries", async () => {
+    const { files } = compileClient(
+      { children: [], state: { a: entry("fnA") }, tagName: "div" },
+      { title: "T" },
+    );
+    const source = files[0]!.content;
+    const start = source.indexOf("async function __jxServerCall");
+    const end = source.indexOf("\n}\n", start) + 3;
+    /* The helper is a self-contained declaration; evaluate it against a stubbed `fetch`.
+       SAFETY: the source is the helper's one declaration followed by `return __jxServerCall`, so the
+       function built takes a `fetch` and returns the helper, which posts and answers parsed JSON. */
+    const call = new Function("fetch", `${source.slice(start, end)}\nreturn __jxServerCall;`) as (
+      fetch: StubFetch,
+    ) => (url: string, args: JsonObject) => Promise<JsonValue>;
+    const answer =
+      (body: string, status = 200) =>
+      async () =>
+        new Response(body, { status });
+
+    expect(await call(answer(""))("/x", {})).toBeNull();
+    expect(await call(answer('{"n":1}'))("/x", {})).toEqual({ n: 1 });
+    // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+    await expect(call(answer('{"ok":false,"error":"boom"}', 500))("/x", {})).rejects.toThrow(
+      "boom",
+    );
+    // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+    await expect(call(answer("plain text", 500))("/x", {})).rejects.toThrow("plain text");
+    // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+    await expect(call(answer("", 404))("/x", {})).rejects.toThrow();
+  });
+});
+
+describe("compileClient — nested state refs in $switch and repeaters", () => {
+  test("a $switch over a nested ref reads the path, not a flattened key", () => {
+    const { files } = compileClient(
+      {
+        children: [
+          {
+            $switch: { $ref: "#/state/contact/status" },
+            cases: { sent: { tagName: "p", textContent: "Thanks" } },
+            tagName: "div",
+          },
+        ],
+        state: { contact: null },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    const js = files[0]!.content;
+    /* `contact` is null until a server call or a fetch answers, so the read must not throw: an
+       exception on the first run would end the hydration loop before later handlers attach. */
+    expect(js).toContain("[String(state.contact?.status)]");
+    expect(js).not.toContain("contact_status");
+  });
+
+  test("a $switch over a top-level ref reads it as before", () => {
+    const { files } = compileClient(
+      {
+        children: [
+          {
+            $switch: { $ref: "#/state/mode" },
+            cases: { a: { tagName: "p", textContent: "A" } },
+            tagName: "div",
+          },
+        ],
+        state: { mode: "a" },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    expect(files[0]!.content).toContain("[String(state.mode)]");
+  });
+
+  test("a repeater over a nested ref reads the path, in the bound list and the inline hole", () => {
+    const { files } = compileClient(
+      {
+        children: [
+          {
+            children: {
+              $prototype: "Array",
+              items: { $ref: "#/state/page/rows" },
+              map: { tagName: "li", textContent: "${$map.item.name}" },
+            },
+            tagName: "ul",
+          },
+        ],
+        state: { page: null },
+        tagName: "div",
+      },
+      { title: "T" },
+    );
+    const js = files[0]!.content;
+    expect(js).toContain("(state.page?.rows ?? []).map(");
+    expect(js).not.toContain("page_rows");
   });
 });

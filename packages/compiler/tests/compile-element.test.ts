@@ -5,6 +5,7 @@ import { emitElementModule } from "../src/targets/compile-element";
 import { resolve } from "node:path";
 import type {
   JsonObject,
+  JsonValue,
   JxAttributeValue,
   JxElement,
   JxStateDefinition,
@@ -2007,5 +2008,107 @@ describe("compileElement — boolean attributes (spec.md §8.3)", () => {
     const emitted = /const __jxEnumAttrs = new Set\((\[[^\]]*])\);/.exec(content);
     expect(emitted).not.toBeNull();
     expect(JSON.parse(emitted![1]!)).toEqual(enumeratedAttrNames());
+  });
+});
+
+// ─── timing: "server" entries ─────────────────────────────────────────────────
+
+describe("compileElement — timing server entries", () => {
+  const hit = (args: Record<string, JsonValue>): JsonObject => ({
+    $export: "hit",
+    $src: "./c.server.js",
+    arguments: args,
+    timing: "server",
+  });
+
+  test("calls in connectedCallback after the props merge and the Request fetches, collecting the effect", async () => {
+    const result = await compileElement({
+      children: [{ tagName: "span", textContent: "${state.hit?.n}" }],
+      state: {
+        feed: { $prototype: "Request", url: "/api/feed" },
+        hit: hit({ who: { $ref: "#/state/who" } }),
+        who: "ann",
+      },
+      tagName: "test-server-order",
+    });
+    const { content } = result.files[0]!;
+
+    const merged = content.indexOf("data-jx-props");
+    const requestFetch = content.indexOf('const url = "/api/feed";');
+    const serverCall = content.indexOf(
+      '__jxServerCall("/_jx/server/hit", { who: this.state.who })',
+    );
+    expect(merged).toBeGreaterThan(-1);
+    expect(requestFetch).toBeGreaterThan(merged);
+    expect(serverCall).toBeGreaterThan(requestFetch);
+    // The effect joins the registry `disconnectedCallback` stops, so a disconnect ends the call.
+    expect(content.slice(content.lastIndexOf("let _jxSeq", serverCall), serverCall)).toContain(
+      "this.#effects.push(effect(() => {",
+    );
+    expect(content).toContain("for (const _e of this.#effects) { stop(_e); }");
+    expect(content).toContain("if (_seq === _jxSeq) this.state.hit = d;");
+  });
+
+  test("the entry is initialised to null and the definition object is never serialised", async () => {
+    const result = await compileElement({
+      children: [],
+      state: { hit: hit({}) },
+      tagName: "test-server-null",
+    });
+    const { content } = result.files[0]!;
+    expect(content).toContain("hit: null,");
+    expect(content).not.toContain("c.server.js");
+    expect(content).toContain('__jxServerCall("/_jx/server/hit", {})');
+  });
+
+  test("a parent#/ argument reads this.state, and a window#/ argument reads window", async () => {
+    const result = await compileElement({
+      children: [],
+      state: {
+        hit: hit({ w: { $ref: "window#/innerWidth" }, who: { $ref: "parent#/who" } }),
+        who: "ann",
+      },
+      tagName: "test-server-refs",
+    });
+    const { content } = result.files[0]!;
+    expect(content).toContain("w: window.innerWidth");
+    expect(content).toContain("who: this.state.who");
+  });
+
+  test("an entry with no $ref argument calls once, outside any effect", async () => {
+    const result = await compileElement({
+      children: [],
+      state: { hit: hit({ kind: "full" }) },
+      tagName: "test-server-once",
+    });
+    const { content } = result.files[0]!;
+    expect(content).toContain('__jxServerCall("/_jx/server/hit", { kind: "full" })');
+    expect(content).not.toContain("_jxSeq");
+  });
+
+  test("serverBaseUrl prefixes the route, and a document with no entry carries no helper", async () => {
+    const based = await compileElement(
+      { children: [], state: { hit: hit({}) }, tagName: "test-server-base" },
+      { serverBaseUrl: "/m/site/_jx/server" },
+    );
+    expect(based.files[0]!.content).toContain('__jxServerCall("/m/site/_jx/server/hit", {})');
+
+    const plain = await compileElement({
+      children: [],
+      state: { n: 1 },
+      tagName: "test-server-none",
+    });
+    expect(plain.files[0]!.content).not.toContain("__jxServerCall");
+  });
+
+  test("a $map ref in arguments fails naming the entry", async () => {
+    // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+    await expect(
+      compileElement({
+        children: [],
+        state: { hit: hit({ id: { $ref: "$map/item/id" } }) },
+        tagName: "test-server-badref",
+      }),
+    ).rejects.toThrow(/"hit".*"id"/s);
   });
 });

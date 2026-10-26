@@ -6,6 +6,8 @@ spec:
   - ai.md#2.3 # the neutral conversation model
   - ai.md#3.8 # the turn engine
   - ai.md#3.9 # portable document tools
+  - ai.md#3.10 # catalog membership
+  - ai.md#3.11 # interactions and approvals run before the tool body
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
@@ -21,8 +23,15 @@ code:
   - packages/ai/src/jx-tools/index.ts
   - packages/ai/src/jx-tools/doc-tools.ts
   - packages/ai/src/jx-tools/entries.ts
+  - packages/ai/src/jx-tools/facts.ts
+  - packages/ai/src/catalog/index.ts
+  - packages/ai/src/catalog/catalog.ts
+  - packages/ai/src/catalog/mcp.ts
   - packages/studio/src/services/tool-executor.ts
   - packages/studio/src/services/harness/studio-documents.ts
+  - packages/studio/src/services/harness/assistant-tools.ts
+  - packages/studio/src/services/harness/interaction-store.ts
+  - packages/studio/src/services/ai-ask.ts
 ---
 
 # Writing assistant tools
@@ -144,6 +153,66 @@ A host that keys something on the turn's actor before the turn starts, as Studio
 :::doc-note
 A turn stopped between two tool calls never runs the second one, so the messages it appended end with a call that has no reply, and providers refuse a request like that. You do not have to fix it yourself: the next turn answers each such call with a failed result before it sends anything, and reports a `transcript_repaired` event when it does. If you keep your own transcript, call `repairToolPairs` from `@jxsuite/ai/messages` on it to apply the same repair, as Studio does before every send.
 :::
+
+## Asking a person
+
+A tool that puts a question to a person never waits on them in its own code. It declares the question it asks, as `interaction`, and what the answer means, as `settle`:
+
+```ts
+const pickLayout = createToolDefinition({
+  name: "pick_layout",
+  description: "Ask which layout the page should use.",
+  parameters: { type: "object", properties: {} },
+  interactive: true,
+  interaction: () => ({
+    kind: "question",
+    question: "Which layout should the page use?",
+    options: ["One column", "Two columns"],
+    context: "",
+  }),
+  settle: (_args, response) =>
+    response.kind === "question" && response.answer !== null
+      ? { success: true, summary: `The user chose ${response.answer}.` }
+      : { success: false, error: "The user did not answer." },
+  execute: () => ({ success: false, error: "pick_layout needs a person." }),
+});
+```
+
+When the model calls it, the turn asks your host through the `interactions` strategy you pass to `runTurn`. With `{ mode: "inline", resolve }`, the turn calls `resolve(request, { callId, signal })` and waits on the answer you return, reporting `interaction_request` before and `interaction_settled` after. Resolve it when `signal` aborts too, because that is the turn being stopped: answer a question as unanswered and not skipped. Without a strategy, a tool that needs a person is answered as one nobody can reach, and the turn goes on.
+
+Set `interactive: true` on such a tool, so a round that only asked does not count against the turn's work budget.
+
+The same strategy carries approvals. Give the turn a policy as `policy.approval`, and every call is put to it before the tool runs: return `{ kind: "proceed" }`, `{ kind: "deny", message }` to refuse it with a sentence the model reads, or `{ kind: "confirm", reason, summary }` to ask the author first. A call the author declines never runs. The default policy, `proceedAlways`, approves everything.
+
+## Which tools the model sees
+
+A host's tools are one catalog. `createCatalog` from `@jxsuite/ai/catalog` takes your tools in groups and keeps them in order, and it refuses to build when two tools share a name, a name is not 1 to 64 letters, digits, `_` or `-`, a tool's parameters are not an object schema, or a tool has no `title` or no `annotations`. The annotations are MCP's four behaviour hints, and every one is stated:
+
+```ts
+import { catalogRegistry, createCatalog } from "@jxsuite/ai/catalog";
+
+const renamePage = createToolDefinition({
+  name: "rename_page",
+  title: "Rename a page",
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  // description, parameters and execute as before
+});
+
+const tools = catalogRegistry(createCatalog([renamePage, ...fileTools]), {
+  gate: (entry) => (entry.name === "rename_page" && !projectOpen() ? "an open project" : null),
+});
+```
+
+`catalogRegistry` is the registry you hand to `runTurn`. Every member is listed by `list()`, but the model is offered only those your view admits. Return what a tool requires from `gate` and the tool is left out of the listing, and a call to it anyway is answered `Tool "rename_page" is not available right now — it requires an open project.` Use `advertise` instead to leave a tool out of the listing while still letting a call to it run. Both are asked every round, so a tool can become available in the middle of a turn. When your set of tools itself changes with your host's state, pass a function that builds the catalog, and it is read on every call.
+
+The Jx assistant's own tools take their hints from `JX_TOOL_FACTS` in `@jxsuite/ai/jx-tools`, which also says where each tool's change lands: nowhere, in the view, in the open document, in the project's configuration, or on disk.
+
+To serve a catalog over the Model Context Protocol, `toMcpTool(entry, { undoable })` gives a member in the shape MCP lists tools in, and `toCallToolResult(result)` gives a result in the shape MCP returns one.
 
 ## Document tools on your own host
 

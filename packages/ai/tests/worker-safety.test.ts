@@ -40,6 +40,7 @@ const REPO_ROOT = resolve(PKG_DIR, "../..");
  * below hold it to that, and `tsconfig.worker.json`'s `include` must name the same files.
  */
 const WORKER_SAFE_ENTRIES = {
+  "./catalog": "./src/catalog/index.ts",
   "./gateway": "./src/gateway/index.ts",
   "./harness": "./src/harness/index.ts",
   "./jx-tools": "./src/jx-tools/index.ts",
@@ -94,6 +95,16 @@ const NOT_WORKER_SAFE = {
  */
 const FROZEN_GRAPHS = new Map<string, readonly string[]>([
   [
+    "./catalog",
+    [
+      "packages/ai/src/catalog/catalog.ts",
+      "packages/ai/src/catalog/index.ts",
+      "packages/ai/src/catalog/mcp.ts",
+      "packages/ai/src/tools.ts",
+      "packages/schema/src/guards.ts",
+    ],
+  ],
+  [
     "./gateway",
     [
       "packages/ai/src/cache-hints.ts",
@@ -128,6 +139,7 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
     [
       "packages/ai/src/jx-tools/doc-tools.ts",
       "packages/ai/src/jx-tools/entries.ts",
+      "packages/ai/src/jx-tools/facts.ts",
       "packages/ai/src/jx-tools/index.ts",
       "packages/ai/src/tools.ts",
       "packages/schema/src/doc-ops.ts",

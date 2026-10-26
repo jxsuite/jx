@@ -135,8 +135,12 @@ describe("the size of @jxsuite/ai in the page", () => {
    * growth. Their descriptions and producers left `services/ai-tools.ts` for the package, and a
    * minified bundle of `ai-tools.ts` grew by 514 bytes across the move, the host and the new
    * transaction door, not by the 9 KB this count moved.
+   *
+   * Raised again to 40,960 for `./catalog` and the tool facts table (38,344 bytes): the assistant's
+   * tools became one catalog with a title and four behaviour hints each, which is new code in the
+   * page rather than a move. The gated registry and the composite it replaced were Studio's bytes.
    */
-  const CEILING = 35_840;
+  const CEILING = 40_960;
 
   /** The `@jxsuite/ai` subpaths Studio imports or re-exports for their values, not only types. */
   function runtimeSubpaths(): string[] {

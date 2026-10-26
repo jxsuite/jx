@@ -11,7 +11,7 @@ A Jx site doesn't need a special host. The build turns your project into an ordi
 
 ## The recipe
 
-1. **Pick the deployment adapter.** Pick the adapter for your target under **How it is built** in **Publish › Hosting**; it is `build.adapter` in `project.json`. **Static** is the choice for a site made only of pages and content. It works on any host that serves files. If the project has a database, sign-ins, or `timing: "server"` functions, pick **Node**, **Bun**, **Cloudflare Workers**, or **Cloudflare Pages** instead: those also package the worker that serves your `/_jx/*` routes. A database or sign-ins make that mandatory, because the build stops with an error on **Static**. Server functions don't stop the build, but on **Static** nothing ends up serving them, so they need an adapter just the same. See **[Publish](/docs/studio/publish)**.
+1. **Pick the deployment adapter.** Pick the adapter for your target under **How it is built** in **Publish › Hosting**; it is `build.adapter` in `project.json`. **Static** is the choice for a site made only of pages and content. It works on any host that serves files. If the project has a database, sign-ins, or `timing: "server"` functions, pick **Node**, **Bun**, **Cloudflare Workers**, or **Cloudflare Pages** instead: those also package the worker that serves your `/_jx/*` routes. Any of the three makes that mandatory, because the build stops with an error on **Static**. See **[Publish](/docs/studio/publish)**.
 2. **Put the project on GitHub** (or another repository host) so your host can see it. **[GitHub](/docs/studio/publish/github)** does this from inside Studio.
 3. **Tell the host two things**: the build command is `bunx jx build`, and the folder to publish is `dist`.
 

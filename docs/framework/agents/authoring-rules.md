@@ -362,11 +362,11 @@ See [Custom classes](/docs/extending/extensions/classes).
 
 A brochure site is not the ceiling. Three additions turn a Jx project into an application, and an agent should know they exist:
 
-- **Server functions.** A state entry with `timing: "server"` names an async export via `$src` and `$export`, with no `$prototype`. It compiles to `POST /_jx/server/<exportName>`, and the function receives `(args, env)` where `env` carries the platform's bindings. Secrets stay in that process. See [Timing](/docs/framework/concepts/timing).
+- **Server functions.** A state entry with `timing: "server"` names an async export via `$src` and `$export`, with no `$prototype`. It compiles to `POST /_jx/server/<exportName>`, so an export name is one function across the whole site (two modules exporting one name stop the build), and the function receives `(args, env)` where `env` carries the platform's bindings. Secrets stay in that process. See [Timing](/docs/framework/concepts/timing).
 - **Databases.** Add `@jxsuite/connector` to `extensions`, then declare `connections` (D1, Supabase, or SQLite) and `data` tables in `project.json`. `jx db push` applies the schema additively. Form actions and table queries read and write over `/_jx/data`. See [Databases](/docs/studio/data).
 - **Accounts.** Add `@jxsuite/auth` and an `auth` section for sign-in, sessions, roles, and per-table permissions. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
 
-Two rules bind all three. **Secrets are never values in `project.json`**: the file records environment-variable _names_ only, and the values live in `.dev.vars` locally and in your host's environment when deployed. And any of this needs a server-capable `build.adapter` (`cloudflare-workers`, `cloudflare-pages`, `node`, or `bun`), which packages the server tier into a deployable worker; with connection-backed data tables it is not optional, because the build **fails** on static. See [Build output and adapters](/docs/framework/site/deployment).
+Two rules bind all three. **Secrets are never values in `project.json`**: the file records environment-variable _names_ only, and the values live in `.dev.vars` locally and in your host's environment when deployed. And any of this needs a server-capable `build.adapter` (`cloudflare-workers`, `cloudflare-pages`, `node`, or `bun`), which packages the server tier into a deployable worker; with connection-backed data tables or a server function it is not optional, because the build **fails** on static. See [Build output and adapters](/docs/framework/site/deployment).
 
 ## Hard rules
 

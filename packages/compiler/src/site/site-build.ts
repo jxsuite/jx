@@ -68,20 +68,22 @@ import { collectAssetRefs, copyMountedAssets, loadAssetMounts } from "./asset-mo
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import { resolveLayout } from "./layout-resolver.ts";
+import { layoutChain, resolveLayout } from "./layout-resolver.ts";
+import { dedupeServerEntries, documentServerEntries } from "./server-entries.ts";
+import type { DedupedServerEntries, ServerEntryRecord } from "./server-entries.ts";
 import { mergeHead, renderHead, withPageDescription } from "@jxsuite/site/head-merger";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
-import { compile, compileServer, compileSiteServer } from "../compiler.ts";
+import { compile, compileSiteServer } from "../compiler.ts";
 import type { CompileOptions } from "../compiler.ts";
 import { compileElement } from "../targets/compile-element.ts";
 import type { CompileElementOptions } from "../targets/compile-element.ts";
+import { serverRoutePrefix } from "../targets/compile-server.ts";
 import type { SiteConnectorSpec, SiteMountSpec } from "../targets/compile-server.ts";
 import {
   buildComponentCSS,
   buildInitialScope,
   buildInstanceScope,
-  collectServerEntries,
   collectStyles,
   colorSchemePrePaintScript,
   createSlotFill,
@@ -170,6 +172,13 @@ declare module "@jxsuite/schema/format-registry" {
     evaluateTemplate?: (value: string, scope: JxScope) => JxScope[string] | undefined;
   }
 }
+
+/**
+ * The remedy both adapter errors give: a dynamic section and a server function are served by the
+ * same worker, so a project that declares either needs one of the same four adapters.
+ */
+const ADAPTER_REMEDY =
+  'set build.adapter to "cloudflare-workers", "cloudflare-pages", "node", or "bun".';
 
 /**
  * Build an entire Jx site from a project directory.
@@ -364,8 +373,7 @@ export async function buildSite(
       .join(", ");
     throw new Error(
       `project.json declares dynamic section(s) ${sections} served by extension mounts, but ` +
-        `build.adapter is "static". Dynamic tables need a server-capable adapter — set ` +
-        `build.adapter to "cloudflare-workers", "cloudflare-pages", "node", or "bun".`,
+        `build.adapter is "static". Dynamic tables need a server-capable adapter — ${ADAPTER_REMEDY}`,
     );
   }
 
@@ -445,6 +453,8 @@ export async function buildSite(
   const compiledComponentTags: string[] = [];
   const componentCSS = new Map<string, string>(); // TagName → CSS text
   const componentDefs = new Map<string, JxElement>(); // TagName → parsed component definition
+  // TagName → the absolute path its definition was read from, for what is relative to that file.
+  const componentPathByTag = new Map<string, string>();
   if (existsSync(componentsDir)) {
     log("Compiling components...");
     const componentExtensions = [".json", ...formatRegistry.documentExtensions("component")];
@@ -478,6 +488,9 @@ export async function buildSite(
      * served from a path does not have.
      */
     const componentBase = siteBasePath(projectConfig.url);
+    // A component's server-function call is written into its module, which no later pass rewrites,
+    // So it is given the deployment base now (site-architecture.md §14.7).
+    const serverBaseUrl = serverRoutePrefix(componentBase);
 
     for (const file of componentFiles) {
       try {
@@ -491,6 +504,7 @@ export async function buildSite(
           },
           rewriteSrc: (specifier: string, docDir: string | null) =>
             withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),
+          serverBaseUrl,
         };
         if (projectConfig.$media) {
           elementOptions.$media = projectConfig.$media;
@@ -528,6 +542,7 @@ export async function buildSite(
         const doc = await readPageDocument(componentPath, formatRegistry);
         if (doc.tagName) {
           componentDefs.set(doc.tagName, doc);
+          componentPathByTag.set(doc.tagName, componentPath);
           const componentShadow = resolveShadowMode(doc, projectConfig.defaults);
           const css = buildComponentCSS(
             doc.tagName,
@@ -561,19 +576,31 @@ export async function buildSite(
     );
   }
 
-  // ── 5b. Collect server entries from components (for site-wide bundling) ──
-  const siteServerEntries: { exportName: string; src: string }[] = [];
-  if (projectConfig.build.adapter) {
-    for (const [, doc] of componentDefs) {
-      const entries = collectServerEntries(doc);
-      for (const entry of entries) {
-        const resolvedSrc = `./components/${entry.src.replace(/^\.\//, "")}`;
-        siteServerEntries.push({
-          exportName: entry.exportName,
-          src: resolvedSrc,
-        });
-      }
-    }
+  // ── 5b. Collect server entries ──────────────────────────────────────────
+  /*
+   * Every `timing: "server"` entry the site declares, before deduplication: each compiled
+   * component's here, then `project.json`'s `state`, which every page that does not shadow a key
+   * inherits (site-architecture.md §3.2), then each route's page and the layouts it is wrapped in,
+   * pushed as the route compiles. Each document is read as written, so a relative `$src` resolves
+   * against the file that declares it (`server-entries.ts`). Collected whatever the adapter; step
+   * 6c deduplicates and serves them when there is one.
+   */
+  const siteServerEntries: ServerEntryRecord[] = [];
+  for (const [tag, doc] of componentDefs) {
+    siteServerEntries.push(
+      ...documentServerEntries(doc, componentPathByTag.get(tag)!, projectRoot),
+    );
+  }
+  if (projectConfig.state) {
+    siteServerEntries.push(
+      ...documentServerEntries(
+        /* SAFETY: `ProjectConfig.state` is a plain record of state entries, and the collector reads
+           only a document's `state`, so a document carrying that one member is all it needs. */
+        { state: projectConfig.state } as JxElement,
+        resolve(projectRoot, "project.json"),
+        projectRoot,
+      ),
+    );
   }
 
   // ── 6. Compile each route ───────────────────────────────────────────────
@@ -741,6 +768,7 @@ export async function buildSite(
         runtimeImports,
         registerElementBundle,
       );
+      siteServerEntries.push(...result.serverEntries);
 
       for (const relation of result.unregisteredRelations) {
         if (!warnedRelations.has(relation)) {
@@ -877,13 +905,6 @@ export async function buildSite(
         writeFileSync(filePath, file.content, "utf8");
         fileCount += 1;
       }
-
-      // Write server handler if present
-      if (result.serverHandler) {
-        const serverPath = resolve(dirname(outPath), "_server.js");
-        writeFileSync(serverPath, result.serverHandler, "utf8");
-        fileCount += 1;
-      }
     } catch (error) {
       const msg = `Error compiling ${route.urlPattern}: ${errorMessage(error)}`;
       errors.push(msg);
@@ -909,15 +930,47 @@ export async function buildSite(
   }
 
   // ── 6c. Generate site-wide server worker ────────────────────────────────
+  // What the worker serves, handed back to the caller: `jx dev` answers the same routes from it.
+  // Empty with no adapter, where nothing is served (compiler.md §6.3).
+  let serverEntries: DedupedServerEntries["entries"] = [];
+  /*
+   * A server function is served by the site worker and by nothing else, so with no adapter its
+   * entry has no route, and a page built that way would ship without the value it declared. It is
+   * an error as an active mount is, but a server entry is only known once each page's layout is
+   * resolved, which is after `dist/` is cleaned: the error goes into `errors`, so the pages are
+   * still written and `jx dev` still serves them, and `jx build` exits non-zero. `siteServerEntries`
+   * holds one record per document that declares an entry, a shared layout's once per page using it,
+   * so each distinct export and document is named once, in the order first seen.
+   */
+  if (!projectConfig.build.adapter && siteServerEntries.length > 0) {
+    const named = [
+      ...new Set(
+        siteServerEntries.map(({ exportName, declaredIn }) => `${exportName} (${declaredIn})`),
+      ),
+    ];
+    const message =
+      `timing: "server" entries ${named.join(", ")} need a server-capable adapter, but ` +
+      `build.adapter is "static": a static deployment has nothing to serve /_jx/server — ${
+        ADAPTER_REMEDY
+      }`;
+    errors.push(message);
+    console.error(message);
+  }
   if (projectConfig.build.adapter) {
     const { adapter } = projectConfig.build;
     log("Generating site-wide server worker...");
 
-    const deduped = new Map<string, { exportName: string; src: string }>();
-    for (const entry of siteServerEntries) {
-      if (!deduped.has(entry.exportName)) {
-        deduped.set(entry.exportName, entry);
-      }
+    /*
+     * One route per export name (compiler.md §6.3). Two modules claiming one name is a build
+     * error, not a silent choice: the worker can serve only one of them, and a page calling the
+     * other would receive its answer. The first module is still kept, so the worker is written
+     * and `jx dev` keeps serving the pages while the author renames one.
+     */
+    const { entries: dedupedEntries, errors: clashErrors } = dedupeServerEntries(siteServerEntries);
+    serverEntries = dedupedEntries;
+    for (const error of clashErrors) {
+      errors.push(error);
+      console.error(error);
     }
 
     // Extension server mounts: static imports of the mount modules and used connector classes,
@@ -932,10 +985,11 @@ export async function buildSite(
     // Cloudflare Pages uses advanced mode (_worker.js inside the build output) — the
     // Functions/ directory convention only works from the project root, not from dist/.
     // A static-only Pages site needs no worker at all; sites with mounts always get one.
-    const skipWorker = adapter === "cloudflare-pages" && deduped.size === 0 && mounts.length === 0;
+    const skipWorker =
+      adapter === "cloudflare-pages" && serverEntries.length === 0 && mounts.length === 0;
     const workerSource = skipWorker
       ? null
-      : compileSiteServer([...deduped.values()], {
+      : compileSiteServer(serverEntries, {
           adapter,
           base: basePath,
           connectors,
@@ -955,7 +1009,7 @@ export async function buildSite(
           projectRoot,
         });
         fileCount += 1;
-        log(`  Generated dist/${workerName} (bundled, ${deduped.size} server function(s))`);
+        log(`  Generated dist/${workerName} (bundled, ${serverEntries.length} server function(s))`);
       } catch (error) {
         const msg = `Error bundling dist/${workerName}: ${errorMessage(error)}`;
         errors.push(msg);
@@ -966,12 +1020,18 @@ export async function buildSite(
         // Only invoke the worker for server routes; everything else stays static.
         writeFileSync(
           resolve(outDir, "_routes.json"),
-          // `/` joins the include list only when there is a locale to negotiate: Pages invokes
-          // The worker for included paths only, so an uninvoked middleware is an inert one.
+          /*
+           * `/` joins the include list only when there is a locale to negotiate: Pages invokes the
+           * worker for included paths only, so an uninvoked middleware is an inert one. Both carry
+           * the deployment base, because Pages matches them against the request path, and the
+           * worker's own routes are registered under it (site-architecture.md §14.7).
+           */
           `${JSON.stringify(
             {
               exclude: [],
-              include: i18n && i18n.locales.length > 1 ? ["/", "/_jx/*"] : ["/_jx/*"],
+              include: (i18n && i18n.locales.length > 1 ? ["/", "/_jx/*"] : ["/_jx/*"]).map(
+                (pattern) => withBase(basePath, pattern),
+              ),
               version: 1,
             },
             null,
@@ -1283,7 +1343,7 @@ export async function buildSite(
     log(`  ${errors.length} error(s)`);
   }
 
-  return { errors, files: fileCount, routes: routes.length };
+  return { errors, files: fileCount, routes: routes.length, serverEntries };
 }
 
 /** The route `compilePage` renders: a URL and the page document that produces it. */
@@ -1308,7 +1368,7 @@ interface PageRoute {
  * @returns {Promise<{
  *   html: string;
  *   files: { path: string; content: string; tagName?: string }[];
- *   serverHandler: string | null;
+ *   serverEntries: ServerEntryRecord[];
  *   doc: JxDocument;
  * }>}
  *   Every parameter is required. There is exactly one caller and it passes all fifteen, so the
@@ -1343,6 +1403,19 @@ async function compilePage(
 
   // Resolve layout (wraps page in layout with slot distribution)
   const layoutDoc = await resolveLayout(pageDoc, projectConfig, projectRoot);
+
+  /*
+   * This page's and its layouts' server entries, each read from the file that declares it, so a
+   * relative `$src` resolves against that file (compiler.md §6.3). Read here, before
+   * `injectContext`: with no layout `resolveLayout` hands back `pageDoc` itself, and injection
+   * then adds project.json's state to it, which `buildSite` collects once, as project.json's own.
+   */
+  const serverEntries = [
+    ...documentServerEntries(pageDoc, route.sourcePath, projectRoot),
+    ...layoutChain(pageDoc, projectConfig, projectRoot).flatMap((level) =>
+      documentServerEntries(level.doc, level.path, projectRoot),
+    ),
+  ];
 
   // Extract head arrays before they get lost in the merge
   /* SAFETY: `_pageHead` is written only by `resolveLayout`, which copies the page's `$head` (a
@@ -1559,6 +1632,8 @@ async function compilePage(
      */
     rewriteSrc: (specifier: string) =>
       withBase(basePath, rewriteSidecarSrc(specifier, dirname(route.sourcePath))),
+    // The page's own module calls the worker's routes, under the same base the worker registers.
+    serverBaseUrl: serverRoutePrefix(basePath),
     title,
   };
   /*
@@ -1616,19 +1691,6 @@ async function compilePage(
     result.html = injectNpmElementScripts(result.html, registerElementBundle(npmElements));
   }
 
-  // Compile server handler if applicable (skip when provider bundles site-wide)
-  let serverHandler: string | null = null;
-  if (!projectConfig.build.adapter) {
-    try {
-      const serverResult = await compileServer(route.sourcePath);
-      if (serverResult) {
-        serverHandler = serverResult;
-      }
-    } catch {
-      // No server entries — that's fine
-    }
-  }
-
   return {
     doc: layoutDoc,
     // A page opts out of the sitemap by setting `$sitemap: false` (interim escape hatch
@@ -1642,7 +1704,7 @@ async function compilePage(
      * say it once instead of four hundred times.
      */
     unregisteredRelations: unregisteredHeadRelations(mergedHead),
-    serverHandler,
+    serverEntries,
   };
 }
 

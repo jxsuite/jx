@@ -21,7 +21,8 @@
     "./gateway": "./src/gateway/index.ts",
     "./harness": "./src/harness/index.ts",
     "./messages": "./src/messages/index.ts",
-    "./jx-tools": "./src/jx-tools/index.ts"
+    "./jx-tools": "./src/jx-tools/index.ts",
+    "./catalog": "./src/catalog/index.ts"
   },
   "publishConfig": {
     "provenance": true
@@ -37,7 +38,7 @@
     "@vue/reactivity": "3.5.44"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261023.1",
+    "@cloudflare/workers-types": "^5.20261026.1",
     "@happy-dom/global-registrator": "^21.0.4"
   }
 }

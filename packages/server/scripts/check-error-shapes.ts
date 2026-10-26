@@ -43,8 +43,14 @@ const SRC = join(ROOT, "src");
  * envelope rather than an HTTP response — RFC 9457 describes a response body, and a frame that
  * arrives after the socket is up has no status to carry — so its `{error, id}` shape stays, and
  * §4.3 of the spec says why.
+ *
+ * `dev.ts` stands in for the site worker's server-function route, which answers `{ ok: false, error
+ * }` with status 500 for a function that cannot be called (compiler.md §6.1). A built page calls
+ * the worker in production and this route in `jx dev` with the same code, so the two have to answer
+ * alike. The reader of that body is the compiled page, not a Studio client with a reader per shape,
+ * which is the cost this guard exists to remove. §4.3 of the spec says so as well.
  */
-const HAND_WRITTEN_ALLOWED = new Set(["problem.ts", "project-server.ts"]);
+const HAND_WRITTEN_ALLOWED = new Set(["dev.ts", "problem.ts", "project-server.ts"]);
 
 /**
  * `Response.json({ … error: … }, { status: 4xx|5xx })` — the pre-RFC-9457 FAILURE body.

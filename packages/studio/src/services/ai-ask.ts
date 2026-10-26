@@ -1,12 +1,10 @@
 /**
  * Ai-ask.ts — the assistant's one way to stop and put a question to the author.
  *
- * The agent loop `await`s `toolRegistry.execute` (`services/tool-executor.ts`), so a tool that
- * returns a pending promise suspends the turn. That is the whole mechanism: `ask_user` registers a
- * question, hands back a promise, and the panel resolves it when the human answers. No new chat
- * status, no pre-execution hook, and nothing in the published `@jxsuite/ai` changes —
- * `finishStream` has already set the state to `"idle"` by the time tools run, so a suspended turn
- * is idle by construction and this store is what "waiting" means.
+ * `ask_user` declares what it asks (`interaction`) and what its answer means (`settle`), and has no
+ * body that waits: the invoker answers `needs_input` before any tool code runs, the turn engine
+ * puts the question to the assistant's interaction store (`harness/interaction-store.ts`), and the
+ * person's answer comes back through `settle` as the call's result (specs/ai.md §3.4 and §3.11).
  *
  * Two decisions are load-bearing and easy to get wrong on a rewrite:
  *
@@ -17,29 +15,16 @@
  *   between them is a 400. The answer travels as the tool result, and the chat view renders it into
  *   the question's own chip.
  *
- * Exactly one question can be outstanding, because `runAgentLoop` executes a round's tool calls
- * serially. The guard below is defensive, not load-bearing.
- *
  * @license MIT
  */
 
+import { JX_TOOL_FACTS } from "@jxsuite/ai/jx-tools";
 import { createToolDefinition, toolError, toolSuccess } from "@jxsuite/ai/tools";
 import { isString } from "@jxsuite/schema/guards";
-import { reactive } from "../reactivity";
 
-import type { ToolRegistry } from "@jxsuite/ai/tools";
+import type { InteractionResponse, ToolRegistry } from "@jxsuite/ai/tools";
 
-/** A question the assistant is waiting on. `id` is the tool-call id, so the chip and this agree. */
-export interface PendingAsk {
-  id: string;
-  question: string;
-  /** Short choices rendered as buttons. Free text is always allowed alongside them. */
-  options: string[];
-  /** One line of why-I'm-asking, rendered under the question. */
-  context: string;
-}
-
-/** How a question was settled. `answer: null` with `skipped` is the author saying "you decide". */
+/** What a settled question's result carries: the answer, or `null` with `skipped` for "you decide". */
 export interface AskAnswer {
   answer: string | null;
   skipped: boolean;
@@ -47,112 +32,6 @@ export interface AskAnswer {
 
 /** Max choices rendered as buttons; beyond this the question wants free text, not a menu. */
 const MAX_OPTIONS = 6;
-
-const state = reactive<{ pending: PendingAsk | null }>({ pending: null });
-
-/** The resolver for {@link state.pending}, kept out of the reactive object (it is not render data). */
-let settle: ((answer: AskAnswer) => void) | null = null;
-
-/** Torn down with the question so a stopped turn does not leave a listener on a dead signal. */
-let detachAbort: (() => void) | null = null;
-
-function clear() {
-  state.pending = null;
-  settle = null;
-  detachAbort?.();
-  detachAbort = null;
-}
-
-/**
- * The outstanding question, or null. Reactive — read it inside an `effect()` to repaint on it.
- *
- * @returns {PendingAsk | null}
- */
-export function pendingAsk(): PendingAsk | null {
-  return state.pending;
-}
-
-/** Whether a turn is suspended on the author. The composer's Send becomes Answer on this. */
-export function isAwaitingAnswer(): boolean {
-  return state.pending !== null;
-}
-
-/**
- * Register a question and suspend until it is settled.
- *
- * @param {PendingAsk} ask
- * @param {AbortSignal} [signal] - The asking call's signal. Without one the question can still be
- *   settled by {@link cancelAsk}, but a Stop would leave the turn awaiting a promise nothing could
- *   resolve.
- * @returns {Promise<AskAnswer>} Resolves on an answer, a skip, or the turn being stopped (`{
- *   answer: null, skipped: false }` — the shape the tool reports as a failure).
- */
-export function askUser(ask: PendingAsk, signal?: AbortSignal): Promise<AskAnswer> {
-  return new Promise<AskAnswer>((resolve) => {
-    state.pending = ask;
-    settle = resolve;
-
-    if (signal?.aborted) {
-      clear();
-      resolve({ answer: null, skipped: false });
-      return;
-    }
-    if (signal) {
-      const onAbort = () => {
-        cancelAsk();
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-      detachAbort = () => signal.removeEventListener("abort", onAbort);
-    }
-  });
-}
-
-/**
- * Answer the outstanding question.
- *
- * @param {string} text
- * @returns {boolean} False when nothing was pending, so a caller can fall through to a normal send.
- */
-export function answerAsk(text: string): boolean {
-  if (!settle) {
-    return false;
-  }
-  const resolve = settle;
-  clear();
-  resolve({ answer: text, skipped: false });
-  return true;
-}
-
-/**
- * Decline to answer — "you decide". Settles as a success, so the turn carries on.
- *
- * @returns {boolean} False when nothing was pending.
- */
-export function skipAsk(): boolean {
-  if (!settle) {
-    return false;
-  }
-  const resolve = settle;
-  clear();
-  resolve({ answer: null, skipped: true });
-  return true;
-}
-
-/** Settle an outstanding question as unanswered. Called from `stop()` and from the turn's abort. */
-export function cancelAsk(): void {
-  if (!settle) {
-    return;
-  }
-  const resolve = settle;
-  clear();
-  resolve({ answer: null, skipped: false });
-}
-
-/** Drop any outstanding question without settling a turn. For New Chat and for tests. */
-export function resetAsk(): void {
-  cancelAsk();
-  clear();
-}
 
 /**
  * Register `ask_user` into a tool registry.
@@ -163,24 +42,12 @@ export function resetAsk(): void {
  *
  * @param {Pick<ToolRegistry, "register">} registry
  */
-/** What the host that registers the question tool may hook. */
-export interface AskToolOptions {
-  /**
-   * Called once a question has been put to the author, before the turn waits on the answer. A host
-   * saves the conversation here: a turn suspended on a person may wait for as long as they like,
-   * and a reload in the meantime must still find the question to restore as open (`specs/ai.md`
-   * §3.4).
-   */
-  onPending?: () => void;
-}
-
-export function registerAskTool(
-  registry: Pick<ToolRegistry, "register">,
-  { onPending }: AskToolOptions = {},
-): void {
+export function registerAskTool(registry: Pick<ToolRegistry, "register">): void {
   registry.register(
     createToolDefinition({
       name: "ask_user",
+      title: "Ask the user",
+      annotations: JX_TOOL_FACTS.ask_user.annotations,
       // It suspends the turn on the author, so a round that only asked spends no work budget.
       interactive: true,
       description:
@@ -212,43 +79,32 @@ export function registerAskTool(
         },
         required: ["question"],
       },
-      execute: async (args, ctx) => {
+      interaction(args) {
         /* Every field is any JSON value, narrowed by a guard rather than by `?.`. The registry's
-           `validate()` is "a lightweight structural check, not a JSON Schema validator",
-           `strict: false` skips it entirely, and this tool may be registered into someone else's
-           registry — so an argument that is a number is a case, not an impossibility. Optional
-           chaining guards null, not type: `context?.trim()` threw on one. */
+           `validate()` is "a lightweight structural check, not a JSON Schema validator", and this
+           tool may be registered into someone else's registry, so an argument that is a number is
+           a case, not an impossibility. Optional chaining guards null, not type: `context?.trim()`
+           threw on one. */
         const { question, options, context } = args;
         if (!isString(question) || !question.trim()) {
-          return toolError('Pass "question" — the question to put to the user.');
-        }
-        if (isAwaitingAnswer()) {
-          return toolError("A question is already waiting for the user.");
+          return { refusal: 'Pass "question" — the question to put to the user.' };
         }
         const choices = Array.isArray(options)
           ? options
               .filter((o): o is string => isString(o) && o.trim().length > 0)
               .slice(0, MAX_OPTIONS)
           : [];
-
-        const answering = askUser(
-          {
-            context: isString(context) ? context.trim() : "",
-            /* The tool-call id, so the chip the transcript draws and the question this registers
-               are the same thing. Without it a restored, permanently unanswered question would
-               render identically to the live one. */
-            id: ctx.callId,
-            options: choices,
-            question: question.trim(),
-          },
-          ctx.signal,
-        );
-        // The question is published by now (`askUser` sets it synchronously); the answer is not.
-        if (isAwaitingAnswer()) {
-          onPending?.();
-        }
-        const { answer, skipped } = await answering;
-
+        return {
+          context: isString(context) ? context.trim() : "",
+          kind: "question",
+          options: choices,
+          question: question.trim(),
+        };
+      },
+      settle(_args, response) {
+        /* SAFETY: `ask_user` only ever asks a question, so the response the invoker hands back is
+           the answer to one. */
+        const { answer, skipped } = response as Extract<InteractionResponse, { kind: "question" }>;
         if (skipped) {
           /* A success: the model asked, and "you decide" is an answer. Rendering it as a failure
              would have the model apologise for having asked a fair question. */
@@ -262,6 +118,8 @@ export function registerAskTool(
         }
         return toolSuccess({ answer, skipped: false }, `The user answered: "${answer}"`);
       },
+      // Never reached through the invoker, which settles an interaction instead of executing it.
+      execute: () => toolError("ask_user needs a person, and none is available here."),
     }),
   );
 }

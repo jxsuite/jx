@@ -908,3 +908,80 @@ describe("the default policy", () => {
     expect(DEFAULT_TURN_POLICY.estimateTokens("123456789")).toBe(3);
   });
 });
+
+describe("a call that needs a person", () => {
+  function askRegistry(): ToolRegistry {
+    const reg = registry({ act: {} });
+    reg.register(
+      createToolDefinition({
+        name: "ask",
+        description: "ask",
+        interactive: true,
+        parameters: { type: "object", properties: {} },
+        interaction: () => ({ context: "", kind: "question", options: [], question: "Which?" }),
+        settle: (_args, response) => ({ data: response, success: true }),
+        execute: () => ({ success: false, error: "the body ran" }),
+      }),
+    );
+    return reg;
+  }
+
+  test("inline: the host is asked, the answer settles the call, and both are heard", async () => {
+    const { model } = scripted([callRound(["c1", "ask"]), textRound("Thanks.")]);
+    const asked: { callId: string; aborted: boolean }[] = [];
+    const { events } = await run({
+      interactions: {
+        mode: "inline",
+        resolve: async (_request, at) => {
+          asked.push({ aborted: at.signal.aborted, callId: at.callId });
+          return { answer: "This one", kind: "question", skipped: false };
+        },
+      },
+      model,
+      tools: askRegistry(),
+    });
+    expect(asked).toEqual([{ aborted: false, callId: "c1" }]);
+    const between = events.slice(
+      events.findIndex((e) => e.type === "tool_start"),
+      events.findIndex((e) => e.type === "tool_result") + 1,
+    );
+    expect(types(between)).toEqual([
+      "tool_start",
+      "interaction_request",
+      "interaction_settled",
+      "tool_result",
+    ]);
+    expect(between[1]).toMatchObject({ callId: "c1", request: { question: "Which?" } });
+    expect(between[3]).toMatchObject({
+      result: { data: { answer: "This one" }, success: true },
+    });
+  });
+
+  test("none: the call is refused, saying nobody can answer", async () => {
+    const { model } = scripted([callRound(["c1", "ask"]), textRound("OK.")]);
+    const { events } = await run({ model, tools: askRegistry() });
+    expect(events.find((e) => e.type === "tool_result")).toMatchObject({
+      result: { error: "ask needs a person, and none is available here.", success: false },
+    });
+    expect(types(events)).not.toContain("interaction_request");
+  });
+
+  test("the policy's approval is put to the host before the body runs", async () => {
+    const { model } = scripted([callRound(["c1", "act"]), textRound("Done.")]);
+    const { events } = await run({
+      interactions: {
+        mode: "inline",
+        resolve: async () => ({ approved: false, kind: "approval" }),
+      },
+      model,
+      policy: { approval: () => ({ kind: "confirm", reason: "not-undoable", summary: "Acts." }) },
+      tools: askRegistry(),
+    });
+    expect(events.find((e) => e.type === "interaction_request")).toMatchObject({
+      request: { kind: "approval", reason: "not-undoable", tool: "act" },
+    });
+    expect(events.find((e) => e.type === "tool_result")).toMatchObject({
+      result: { error: "The author declined this call.", success: false },
+    });
+  });
+});
