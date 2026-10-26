@@ -22,7 +22,8 @@ import type { Tab } from "../tabs/tab";
 import { componentRegistry } from "../files/components";
 import { activeRegistry } from "../commands/active-registry";
 import { registerAiTools } from "./ai-tools";
-import { cancelAsk, registerAskTool, resetAsk } from "./ai-ask";
+import { registerAskTool } from "./ai-ask";
+import { createInteractionStore } from "./harness/interaction-store";
 import { commandToolBlurbs, createCommandToolRegistry } from "./ai-command-tools";
 import { registerProjectTools } from "./ai-project-tools";
 import { registerImportTools } from "./ai-import-tools";
@@ -74,6 +75,7 @@ const probeRender = renderCheck as (doc: CandidateDocument) => Promise<RenderVer
  *
  * @returns {{
  *   chatState: ReturnType<typeof createChatState>;
+ *   interactions: import("./harness/interaction-store").InteractionStore;
  *   sendMessage: (text: string) => Promise<void>;
  *   stop: () => void;
  *   newChat: () => void;
@@ -106,12 +108,18 @@ export function createDocumentAssistant() {
     return null;
   };
 
+  /* Where a turn waits on the author: a question is put here, and the panel answers it. A question
+     suspends the turn for as long as they like, and the conversation is otherwise saved only when a
+     turn starts and ends; saving once it is pending is what lets a reload find the question to
+     restore as open rather than losing the whole unfinished turn. */
+  const interactions = createInteractionStore({ onPending: () => persistChat() });
+
   const innerRegistry = createToolRegistry();
   // Ungated: a question is not a function of what happens to be open.
   /* A question suspends the turn on the author, for as long as they like, and the conversation is
      otherwise saved only when a turn starts and ends. Saving here is what lets a reload find the
      question to restore as open rather than losing the whole unfinished turn. */
-  registerAskTool(innerRegistry, { onPending: () => persistChat() });
+  registerAskTool(innerRegistry);
   registerAiTools(innerRegistry, {
     getTab: () => activeTab.value,
     saveFile: async (relPath: string, content: string) => {
@@ -339,6 +347,7 @@ export function createDocumentAssistant() {
         signal,
         session: sessionFacts,
         getTab: () => activeTab.value,
+        interactions,
       });
     } catch (error) {
       /*
@@ -380,14 +389,14 @@ export function createDocumentAssistant() {
     /* The abort settles an outstanding question through the turn signal, but only when the turn
        HAS one — the evals runner and several tests drive the loop without. Settling here as well
        is what makes Stop terminal in every case rather than in most of them. */
-    cancelAsk();
+    interactions.cancel();
     abortImportRun();
     chatState.cancelStream();
   }
 
   function newChat() {
     stop();
-    resetAsk();
+    interactions.reset();
     resetImportRuns();
     /* The record of what each turn changed is drawn under that turn's message; with the messages
        gone there is nothing to draw it under, and a Restore offered from it would undo whatever
@@ -413,7 +422,7 @@ export function createDocumentAssistant() {
       return;
     }
     stop();
-    resetAsk();
+    interactions.reset();
     chatState.clearChat();
     pushRestoredMessages(msgs);
     sessionId = id;
@@ -425,7 +434,7 @@ export function createDocumentAssistant() {
     sessionStore.deleteSession(projectRoot(), id);
     if (sessionId === id) {
       stop();
-      resetAsk();
+      interactions.reset();
       chatState.clearChat();
       sessionId = null;
     }
@@ -488,6 +497,7 @@ export function createDocumentAssistant() {
 
   return {
     chatState,
+    interactions,
     isTurnActive,
     sendMessage,
     whenTurnEnds,

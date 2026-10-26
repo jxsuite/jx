@@ -13,7 +13,8 @@ import { undo } from "../src/tabs/transact";
 import { registerAiTools } from "../src/services/ai-tools";
 import type { CandidateDocument } from "../src/services/ai-write-report";
 import { EMPTY_TURN_TEXT, runAgentLoop } from "../src/services/tool-executor";
-import { answerAsk, pendingAsk, registerAskTool, resetAsk } from "../src/services/ai-ask";
+import { registerAskTool } from "../src/services/ai-ask";
+import { answerAsk, askStore, pendingAsk, resetAsk } from "./harness/ask";
 import { resetAiWrites, restoreTurn, turnAnchor, writesForTurn } from "../src/services/ai-writes";
 import { projectChip } from "../src/panels/ai-chat/chat-view";
 
@@ -162,6 +163,7 @@ describe("ai agent loop — integration", () => {
 
     chatState.sendMessage("change the text");
     await runAgentLoop({
+      interactions: askStore,
       chatState,
       streamingClient: client,
       toolRegistry,
@@ -186,6 +188,7 @@ describe("ai agent loop — integration", () => {
 
     chatState.sendMessage("change the text");
     await runAgentLoop({
+      interactions: askStore,
       chatState,
       streamingClient: client,
       toolRegistry,
@@ -244,6 +247,7 @@ describe("ai agent loop — integration", () => {
 
     chatState.sendMessage("do both");
     await runAgentLoop({
+      interactions: askStore,
       chatState,
       streamingClient: client,
       toolRegistry,
@@ -269,6 +273,7 @@ describe("ai agent loop — integration", () => {
 
     chatState.sendMessage("hello");
     await runAgentLoop({
+      interactions: askStore,
       chatState,
       streamingClient: client,
       toolRegistry,
@@ -469,6 +474,7 @@ describe("cross-tab batching", () => {
 
     chatState.sendMessage("edit twice");
     await runAgentLoop({
+      interactions: askStore,
       chatState,
       getTab: () => tab,
       streamingClient: client,
@@ -516,6 +522,7 @@ describe("cross-tab batching", () => {
 
     chatState.sendMessage("edit both");
     await runAgentLoop({
+      interactions: askStore,
       chatState,
       getTab: () => current,
       streamingClient: client,
@@ -584,6 +591,7 @@ describe("ai agent loop — the interactive round budget", () => {
 
     h.chatState.sendMessage("ask me things");
     await runAgentLoop({
+      interactions: askStore,
       chatState: h.chatState,
       streamingClient: client,
       systemPrompt: "",
@@ -613,6 +621,7 @@ describe("ai agent loop — the interactive round budget", () => {
 
     h.chatState.sendMessage("ask and work");
     await runAgentLoop({
+      interactions: askStore,
       chatState: h.chatState,
       streamingClient: client,
       systemPrompt: "",
@@ -632,6 +641,7 @@ describe("ai agent loop — the interactive round budget", () => {
 
     h.chatState.sendMessage("ask forever");
     await runAgentLoop({
+      interactions: askStore,
       chatState: h.chatState,
       streamingClient: client,
       systemPrompt: "",
@@ -653,6 +663,7 @@ describe("ai agent loop — the interactive round budget", () => {
 
     chatState.sendMessage("ask me");
     const running = runAgentLoop({
+      interactions: askStore,
       chatState,
       signal: controller.signal,
       streamingClient: client,
@@ -701,6 +712,7 @@ describe("ai agent loop — how a turn ended", () => {
     );
     const run = (client: StreamingClient) =>
       runAgentLoop({
+        interactions: askStore,
         chatState,
         signal: controller.signal,
         streamingClient: client,
@@ -723,6 +735,7 @@ describe("ai agent loop — how a turn ended", () => {
     ]);
     chatState.sendMessage("ask me");
     const running = runAgentLoop({
+      interactions: askStore,
       chatState,
       streamingClient: client,
       systemPrompt: "",

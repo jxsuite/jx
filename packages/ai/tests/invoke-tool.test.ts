@@ -7,8 +7,16 @@ import {
   invokeTool,
   normalizeToolResult,
 } from "../src/tools.ts";
-import type { ToolRegistry } from "../src/tools.ts";
+import type { InvokeOutcome, ToolRegistry } from "../src/tools.ts";
 import { nextMessageId } from "../src/message-id.ts";
+
+/** The outcome of a call that needed nobody; a question here fails the test. */
+function done(outcome: InvokeOutcome): Extract<InvokeOutcome, { status: "done" }> {
+  if (outcome.status !== "done") {
+    throw new Error(`expected a result, got ${JSON.stringify(outcome)}`);
+  }
+  return outcome;
+}
 
 /** A registry holding one `echo` tool, and every arguments object that tool was handed. */
 interface EchoRegistry {
@@ -44,7 +52,7 @@ describe("invokeTool", () => {
   test("parses the arguments, executes with the context, and normalizes the result", async () => {
     const { registry, seen } = echoRegistry();
     const ctx = createToolContext({ callId: "c1" });
-    const outcome = await invokeTool(registry, call('{"a":1}'), ctx);
+    const outcome = done(await invokeTool(registry, call('{"a":1}'), ctx));
     expect(seen).toEqual([{ a: 1 }]);
     expect(outcome).toEqual({
       status: "done",
@@ -66,7 +74,7 @@ describe("invokeTool", () => {
     ["7", /^Failed to parse arguments: arguments must be a JSON object, got number$/],
   ])("arguments %p never reach the registry", async (text, error) => {
     const { registry, seen } = echoRegistry();
-    const outcome = await invokeTool(registry, call(text), createToolContext());
+    const outcome = done(await invokeTool(registry, call(text), createToolContext()));
     expect(outcome.executed).toBe(false);
     expect(outcome.result.success).toBe(false);
     expect(outcome.result.error).toMatch(error);
@@ -75,14 +83,14 @@ describe("invokeTool", () => {
 
   test("the registry keeps its own texts, and one that throws is answered, not thrown", async () => {
     const { registry } = echoRegistry();
-    const unknown = await invokeTool(registry, call("{}", "nope"), createToolContext());
+    const unknown = done(await invokeTool(registry, call("{}", "nope"), createToolContext()));
     expect(unknown.result.error).toBe('Unknown tool: "nope"');
 
     const throwing: ToolRegistry = {
       ...registry,
       execute: () => Promise.reject(new Error("registry broke")),
     };
-    const outcome = await invokeTool(throwing, call("{}"), createToolContext());
+    const outcome = done(await invokeTool(throwing, call("{}"), createToolContext()));
     expect(outcome).toEqual({
       status: "done",
       executed: true,
@@ -103,7 +111,7 @@ describe("invokeTool", () => {
           execute: () => ({ success: true, data }),
         }),
       );
-      const outcome = await invokeTool(registry, call("{}", "odd"), createToolContext());
+      const outcome = done(await invokeTool(registry, call("{}", "odd"), createToolContext()));
       expect(outcome.executed).toBe(true);
       expect(outcome.result.success).toBe(false);
       expect(outcome.result.error).toStartWith(

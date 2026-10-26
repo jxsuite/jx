@@ -35,7 +35,6 @@ import type { NotifyOptions } from "../services/notify";
 import { activeTab } from "../workspace/workspace";
 import { setOpenAiKey } from "../services/ai-settings";
 import { hasAiCredentials } from "../services/ai-models";
-import { answerAsk, isAwaitingAnswer, pendingAsk, skipAsk } from "../services/ai-ask";
 import { activeImportRun, importRun } from "../services/import-run";
 import type { ImportBrief } from "../services/import-seed";
 import type { ImportBreakpointPolicy } from "../types";
@@ -125,7 +124,7 @@ export function bindAiPanelHost(el: HTMLElement | null) {
     run: runCommand,
     send: () => composer.send(),
     skip: () => {
-      skipAsk();
+      assistant.interactions.skip();
       renderAiPanel();
     },
     stop,
@@ -209,10 +208,10 @@ function watchAssistant() {
       // The registry is composed AFTER the bootstrap mounts this, and it is a reactive holder —
       // Reading it here is what turns the header's skeleton into its real buttons.
       void activeRegistry();
-      // The question is not chat state — it lives in `services/ai-ask.ts` — but it is drawn into
-      // This panel, so the same effect has to track it or a question would appear a turn late
-      // (and its ANSWER would never repaint the card at all).
-      void pendingAsk();
+      // The question is not chat state — it lives in the assistant's interaction store — but it is
+      // Drawn into this panel, so the same effect has to track it or a question would appear a turn
+      // Late (and its ANSWER would never repaint the card at all).
+      void assistant.interactions.pending;
       /* The run record, for the same reason: an import reports a line at a time from a store that
          is not chat state, and its chip has to follow every one of them. Reading the ACTIVE run
          tracks the whole record, so any field moving re-projects. */
@@ -269,7 +268,7 @@ async function handleAssistantSend(text: string) {
   }
   /* Answering comes first: a question is put by a turn that is still running, so a send while one
      waits is its answer, never a second turn. */
-  if (answerAsk(text.trim())) {
+  if (assistant.interactions.answer(text.trim())) {
     surface?.pin();
     renderAiPanel();
     return;
@@ -503,7 +502,7 @@ export function revealAssistant(): void {
  * turn waiting forever on a question nobody wants to answer is exactly what Stop is for.
  */
 export function isAssistantWaiting(): boolean {
-  return isAwaitingAnswer();
+  return assistant.interactions.pending !== null;
 }
 
 /**
@@ -611,7 +610,7 @@ function projectPanel(): AiChatView {
   const advice = error ? formatErrorAdvice(error) : "";
   const newChatCommand = projectCommand("assistant.newChat", { icon: "plus" });
   const rows = projectRows({
-    ask: { importRun, pendingId: pendingAsk()?.id ?? null },
+    ask: { importRun, pendingId: assistant.interactions.pending?.callId ?? null },
     messages: cs.messages,
     status: cs.status,
   });

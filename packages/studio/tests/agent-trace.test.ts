@@ -168,7 +168,8 @@ void mock.module("@jxsuite/ai", () => ({
 
 const { EMPTY_TURN_TEXT, runAgentLoop } = await import("../src/services/tool-executor");
 const { registerAiTools } = await import("../src/services/ai-tools");
-const { answerAsk, pendingAsk, registerAskTool, resetAsk } = await import("../src/services/ai-ask");
+const { registerAskTool } = await import("../src/services/ai-ask");
+const { answerAsk, askStore, pendingAsk, resetAsk } = await import("./harness/ask");
 const { createTab, disposeTab } = await import("../src/tabs/tab");
 const { createDocumentAssistant } = await import("../src/services/document-assistant");
 const { getActiveSessionId, listSessions, loadSession } =
@@ -312,6 +313,8 @@ function loop(
     streamingClient: spyStreamingClient(opts.client, rec.clientLog),
     systemPrompt: opts.systemPrompt ?? "",
     toolRegistry: opts.toolRegistry,
+    // The author's side of every question these scenarios put, answered through `./harness/ask`.
+    interactions: askStore,
   };
   if (opts.signal) {
     run.signal = opts.signal;
@@ -1351,7 +1354,7 @@ const DAT = inSuite("dat", [
       ];
       const a = createDocumentAssistant();
       const first = a.sendMessage("first");
-      for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      for (let tick = 0; tick < 50 && !pendingAsk(a.interactions); tick++) {
         await flush(1);
       }
       const activeWhileWaiting = a.isTurnActive();
@@ -1362,7 +1365,7 @@ const DAT = inSuite("dat", [
       expect(a.chatState.messages.filter((m) => m.role === "user").map((m) => m.content)).toEqual([
         "first",
       ]);
-      answerAsk("yes");
+      a.interactions.answer("yes");
       await first;
       expect(a.isTurnActive()).toBe(false);
       return datObserve(a, { activeWhileWaiting });
@@ -1377,7 +1380,7 @@ const DAT = inSuite("dat", [
       ];
       const a = createDocumentAssistant();
       const first = a.sendMessage("first");
-      for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      for (let tick = 0; tick < 50 && !pendingAsk(a.interactions); tick++) {
         await flush(1);
       }
       a.newChat();
@@ -1421,10 +1424,10 @@ const DAT = inSuite("dat", [
         toolCallRound("q1", "ask_user", { question: "Keep it?" }),
       ];
       const running = a.sendMessage("second chat");
-      for (let tick = 0; tick < 50 && !pendingAsk(); tick++) {
+      for (let tick = 0; tick < 50 && !pendingAsk(a.interactions); tick++) {
         await flush(1);
       }
-      expect(pendingAsk()).not.toBeNull();
+      expect(pendingAsk(a.interactions)).not.toBeNull();
       /* Past the millisecond the question's own save landed in. The recorded session list is most
          recently updated first, and two saves in one millisecond would tie on it. */
       await new Promise((settle) => {

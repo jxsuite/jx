@@ -5,6 +5,7 @@
  * @license MIT
  */
 
+import { proceedAlways } from "../tools.ts";
 import type { TurnPolicy } from "./types.ts";
 
 /** Average characters per token: the estimate every budget used before providers reported counts. */
@@ -36,4 +37,5 @@ export const DEFAULT_TURN_POLICY: TurnPolicy = {
     );
   },
   emptyText: "The model sent back an empty reply.",
+  approval: proceedAlways,
 };

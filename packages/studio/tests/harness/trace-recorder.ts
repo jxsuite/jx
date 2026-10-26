@@ -47,7 +47,7 @@ import type {
 import type { AiWrite, ToolResult } from "@jxsuite/ai/tools";
 import type { JsonObject, JsonPrimitive, JsonValue, JxMutableNode } from "@jxsuite/schema/types";
 /* Type-only, so they are erased: see the import rule above. */
-import type { PendingAsk } from "../../src/services/ai-ask";
+import type { PendingAskView } from "./ask";
 import type * as AiWritesExports from "../../src/services/ai-writes";
 import type { ProjectConfigCommit } from "../../src/tabs/project-config";
 
@@ -75,7 +75,7 @@ export type TraceSubject =
   | ChatCall
   | ClientCall
   | JxMutableNode
-  | PendingAsk
+  | PendingAskView
   | ProxyStreamingClientOptions
   | ProjectConfigCommit;
 
