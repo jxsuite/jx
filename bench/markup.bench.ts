@@ -1,4 +1,4 @@
-import { bench, describe } from "vitest";
+import { test } from "vitest";
 import { htmlToJx, markdownToHtml } from "@jxsuite/markup";
 
 const markdown = Array.from(
@@ -23,12 +23,14 @@ const html = Array.from(
     `<section class="card" data-i="${i}"><h2>Title ${i}</h2><p>Text <strong>bold</strong> <a href="/x/${i}">link</a></p><ul><li>a</li><li>b</li></ul></section>`,
 ).join("\n");
 
-describe("markup", () => {
-  bench("markdownToHtml 5 sections", () => {
-    markdownToHtml(markdown);
-  });
+test("markup", async ({ bench }) => {
+  await bench.compare(
+    bench("markdownToHtml 5 sections", () => {
+      markdownToHtml(markdown);
+    }),
 
-  bench("htmlToJx 50 cards", () => {
-    htmlToJx(html);
-  });
+    bench("htmlToJx 50 cards", () => {
+      htmlToJx(html);
+    }),
+  );
 });
