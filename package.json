@@ -109,7 +109,7 @@
     "ts-migrate": "^0.1.35",
     "ts-migrate-plugins": "^0.1.35",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.12"
+    "vitest": "^5.0.5"
   },
   "nano-staged": {
     "*.md": [

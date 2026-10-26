@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { handleStudioApi } from "../src/studio-api";
 import { join, resolve } from "node:path";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 /**
  * Test helper — calls handleStudioApi and asserts a response was returned.
@@ -1250,12 +1251,24 @@ describe("find-project", () => {
   });
 
   test("returns null path when project not found", async () => {
-    const url = new URL("http://localhost/__studio/find-project?name=nonexistent-xyz-project-404");
-    const req = new Request(url, { method: "GET" });
-    const res = await callApi(req, url, FIXTURES);
-    const data = await res.json();
-    expect(data.path).toBeNull();
-  }, 15_000);
+    /* The route walks all of HOME, so the real one makes this test as slow as the machine's home
+       directory is large: it timed out under the parallel workspace run. An empty home is hermetic. */
+    const originalHome = process.env.HOME;
+    const emptyHome = mkdtempSync(join(tmpdir(), "jx-find-project-"));
+    process.env.HOME = emptyHome;
+    try {
+      const url = new URL(
+        "http://localhost/__studio/find-project?name=nonexistent-xyz-project-404",
+      );
+      const req = new Request(url, { method: "GET" });
+      const res = await callApi(req, url, FIXTURES);
+      const data = await res.json();
+      expect(data.path).toBeNull();
+    } finally {
+      process.env.HOME = originalHome;
+      rmSync(emptyHome, { force: true, recursive: true });
+    }
+  });
 });
 
 // ─── components — markdown discovery ────────────────────────────────────────

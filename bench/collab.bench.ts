@@ -1,4 +1,4 @@
-import { bench, describe } from "vitest";
+import { test } from "vitest";
 import { deepEqual, diffDocs } from "@jxsuite/collab/diff-core";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -28,16 +28,18 @@ const inserted: JxMutableNode = {
   tagName: "main",
 };
 
-describe("collab/diff", () => {
-  bench("deepEqual identical 200-section docs", () => {
-    deepEqual(base, same);
-  });
+test("collab/diff", async ({ bench }) => {
+  await bench.compare(
+    bench("deepEqual identical 200-section docs", () => {
+      deepEqual(base, same);
+    }),
 
-  bench("diffDocs text edits in 200 sections", () => {
-    diffDocs(base, edited, { maxOps: 10_000 });
-  });
+    bench("diffDocs text edits in 200 sections", () => {
+      diffDocs(base, edited, { maxOps: 10_000 });
+    }),
 
-  bench("diffDocs single insertion in 200 sections", () => {
-    diffDocs(base, inserted, { maxOps: 10_000 });
-  });
+    bench("diffDocs single insertion in 200 sections", () => {
+      diffDocs(base, inserted, { maxOps: 10_000 });
+    }),
+  );
 });

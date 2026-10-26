@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { bench, describe } from "vitest";
+import { test } from "vitest";
 import { compileStaticPage } from "../packages/compiler/src/targets/compile-static.ts";
 import type { JxDocument } from "@jxsuite/schema/types";
 
@@ -31,16 +31,18 @@ const largePage: JxDocument = {
 
 const opts = { title: "Bench" };
 
-describe("compiler/static", () => {
-  bench("compileStaticPage examples index", () => {
-    compileStaticPage(examplesPage, opts);
-  });
+test("compiler/static", async ({ bench }) => {
+  await bench.compare(
+    bench("compileStaticPage examples index", () => {
+      compileStaticPage(examplesPage, opts);
+    }),
 
-  bench("compileStaticPage counter islands", () => {
-    compileStaticPage(counterPage, opts);
-  });
+    bench("compileStaticPage counter islands", () => {
+      compileStaticPage(counterPage, opts);
+    }),
 
-  bench("compileStaticPage 200 cards", () => {
-    compileStaticPage(largePage, opts);
-  });
+    bench("compileStaticPage 200 cards", () => {
+      compileStaticPage(largePage, opts);
+    }),
+  );
 });
