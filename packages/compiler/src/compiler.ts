@@ -48,6 +48,11 @@ export interface CompileOptions {
   /** Rewrite Function-def `$src` specifiers to served URLs (see CompileElementOptions). */
   rewriteSrc?: (specifier: string) => string;
   /**
+   * The route prefix a `timing: "server"` entry posts to, deployment base included
+   * (`serverRoutePrefix`). Default `"/_jx/server"`, for a site served from its origin root.
+   */
+  serverBaseUrl?: string;
+  /**
    * Inject the color-scheme pre-paint script when `$media` declares a pure scheme query (default
    * true). The site pipeline disables this and injects via the merged <head> instead.
    */
@@ -130,7 +135,14 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   if (raw.tagName && raw.tagName.includes("-")) {
     const { tagName } = raw;
     const className = tagNameToClassName(tagName);
-    const moduleContent = emitElementModule(raw, className, [], opts.rewriteSrc);
+    const moduleContent = emitElementModule(
+      raw,
+      className,
+      [],
+      opts.rewriteSrc,
+      null,
+      opts.serverBaseUrl,
+    );
     const moduleFile = {
       content: moduleContent,
       path: `${tagName}.js`,
@@ -164,13 +176,17 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   }
 
   // Route 3: Dynamic with standard tagName → pre-rendered HTML + reactive bindings
-  return compileClient(raw, {
+  const clientOptions: Parameters<typeof compileClient>[1] = {
     litHtmlSrc,
     projectStyle,
     reactivitySrc,
     ...pageTargetOverrides(opts),
     title,
-  });
+  };
+  if (opts.serverBaseUrl !== undefined) {
+    clientOptions.serverBaseUrl = opts.serverBaseUrl;
+  }
+  return compileClient(raw, clientOptions);
 }
 
 /**

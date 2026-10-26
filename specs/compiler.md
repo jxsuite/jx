@@ -57,7 +57,7 @@ Bare strings and numbers in `children` arrays compile to text nodes in all three
 
 ## 3. Output Tiers
 
-> **Status: Partial.** Two rows do not hold. An external class with `timing: "client"` reaches a compiled page as its literal definition object in reactive state (`compile-client.ts`, and `extractInitialValue` in `compile-element.ts`), never instantiated or resolved, and only a registry class with a `lower` capability compiles to a working definition (`packages/compiler/src/site/prototype-resolver.ts`). An external class with `timing: "compiler"` is baked only when its document names an `$implementation`: `resolveClassPrototype` in the same file refuses a self-contained class with a console warning, and the site build then strips the entry, so nothing is baked and the build reports no error (§5.4). The server-function row's missing client fetch is marked on §6.1. With `build.headers.security.csp` set, the site build emits a Content-Security-Policy naming both constant inline blocks by hash (`packages/compiler/src/site/csp.ts`, `site-architecture.md` §14.3.1), and the page loads nothing from a third party (§12, `site-architecture.md` §8.7).
+> **Status: Partial.** Two rows do not hold. An external class with `timing: "client"` reaches a compiled page as its literal definition object in reactive state (`compile-client.ts`, and `extractInitialValue` in `compile-element.ts`), never instantiated or resolved, and only a registry class with a `lower` capability compiles to a working definition (`packages/compiler/src/site/prototype-resolver.ts`). An external class with `timing: "compiler"` is baked only when its document names an `$implementation`: `resolveClassPrototype` in the same file refuses a self-contained class with a console warning, and the site build then strips the entry, so nothing is baked and the build reports no error (§5.4). With `build.headers.security.csp` set, the site build emits a Content-Security-Policy naming both constant inline blocks by hash (`packages/compiler/src/site/csp.ts`, `site-architecture.md` §14.3.1), and the page loads nothing from a third party (§12, `site-architecture.md` §8.7).
 
 | Component surface                        | Compiler output                                 |
 | ---------------------------------------- | ----------------------------------------------- |
@@ -90,7 +90,7 @@ For each custom element, the compiler emits a self-contained ES module:
 
 Lifecycle conformance (spec.md §16.4): `connectedCallback` invokes `state.onMount(state)` on a microtask after the first render, and `disconnectedCallback` invokes `state.onUnmount(state)` — the same contract as the runtime's interpreted elements.
 
-`$prototype: "Request"` entries initialize to `null` and fetch from `connectedCallback`, after the `$props`/property merge so a templated `url` interpolates the values the parent passed in. Each fetch runs inside its own `effect()`, so a reactive URL re-fetches when its inputs change; the runner joins the element's effect registry and is stopped on `disconnectedCallback` (§4.4). A `manual` entry emits no fetch. Handler parameters bind by name per spec.md §5.3 4d, and a bodyless `$src` entry is emitted as a computed or a callable according to the same section's classification rule.
+`$prototype: "Request"` entries initialize to `null` and fetch from `connectedCallback`, after the `$props`/property merge so a templated `url` interpolates the values the parent passed in. Each fetch runs inside its own `effect()`, so a reactive URL re-fetches when its inputs change; the runner joins the element's effect registry and is stopped on `disconnectedCallback` (§4.4). A `manual` entry emits no fetch. A `timing: "server"` entry is initialised the same way and calls its route from `connectedCallback` after the `Request` fetches, its effect joining the same registry (§6.1). Handler parameters bind by name per spec.md §5.3 4d, and a bodyless `$src` entry is emitted as a computed or a callable according to the same section's classification rule.
 
 The emitted module is named after the component's `tagName` — matching the loader `<script>` and the CSS sidecar (site-architecture.md §12.4) — and `$elements` import specifiers are derived from the dependency's tag for the same reason.
 
@@ -385,12 +385,12 @@ A file is a `.class.json` document when:
 
 ### 6.1 `timing: "server"` Entries
 
-> **Status: Partial.** The server-side artifact is emitted (§6.3). The client side is not: no target emits the `POST /_jx/server/$export` fetch, the signal holding its response or the effect around reactive `arguments`, because `compile-client.ts` and `compile-element.ts` serialise the entry into reactive state as a literal object. Only the interpreted runtime calls a server function, in process or through the dev-server proxy (`/__jx_server__`; `resolveServerFunction` in `packages/runtime/src/runtime.ts`), and nothing requests `/_jx/server/*`.
+> **Status: Implemented.** Both targets emit the call (`emitServerCall` in `packages/compiler/src/shared.ts`), and the site worker serves it (§6.3).
 
 For each `timing: "server"` entry, the compiler emits two artifacts:
 
-1. **Client-side:** A `POST /_jx/server/$export` fetch call that stores the JSON response in a signal. If any `arguments` value is reactive, the fetch is wrapped in an effect.
-2. **Server-side:** A route in the site worker (§6.3) that imports the `$export` from `$src` and exposes it at `/_jx/server/$export`.
+1. **Client-side:** a `POST` to `<base>/_jx/server/$export`, `<base>` being the deployment base (site-architecture.md §14.7), whose JSON body is the entry's `arguments` with each top-level `$ref` resolved (`#/state/`, `parent#/`, `window#/`, `document#/`; any other scheme fails the compile). The entry is `null` until a call answers and then holds the parsed response. When an argument is a `$ref` the call runs in an effect, so a change calls again and the answer to a superseded call is dropped. A non-2xx answer is not stored: the entry keeps its last value and the error is logged to the console. A page calls when its module loads, and an element calls in `connectedCallback`, after its props are merged, and stops on disconnect.
+2. **Server-side:** a route in the site worker (§6.3) that imports `$export` from `$src`, registered at `<base>/_jx/server/$export`, and answers the function's return value as JSON (`null` for `undefined`), or `{ ok: false, error }` with status 500 when it throws.
 
 ### 6.2 Per-Route Server Handler (`compileServer`)
 

@@ -32,6 +32,8 @@ code:
 
 Ordering is load-bearing: the privileged endpoints must be claimed before the static fallback can ever see their paths, and `middleware` deliberately sits after the protocol routes so an embedder cannot accidentally shadow them.
 
+`jx dev` on a site project passes a `middleware` (step 6) that answers `POST /_jx/server/<export>` for the server functions its last build collected, then serves the built pages from `dist/`. A built page calls that route, as it does the deployed worker, and the middleware stands in for it. It is exported as `createServerFunctionMiddleware` for embedders that host a built site.
+
 ## The Studio API mount and activation
 
 `handleStudioApi` (in `studio-api.ts`) implements the protocol's route table against the filesystem. Its central piece of state is the **active project root**: `POST /__studio/activate` stores an absolute path, and from then on file operations, static serving, and format dispatch resolve against it. This is what lets one server open projects that live outside its own `root`.

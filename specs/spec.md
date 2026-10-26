@@ -1254,7 +1254,7 @@ The cookie **name is data, never pattern syntax**: the reader splits the cookie 
 
 ### 11.4 Server Timing — RPC Function Boundary
 
-> **Status: Partial.** The server half ships under an adapter for every entry a page, its layouts, `project.json` or a component declares: `compileSiteServer` (`packages/compiler/src/targets/compile-server.ts`) emits the route and calls the function with `(args, env)`, and the dev server's `/__jx_server__` proxy does the same (`packages/server/src/resolve.ts`). With no adapter the build fails instead (compiler.md §6.3). An interpreting host calls a layout's or `project.json`'s entry with the page's own base, so a relative `$src` there resolves against the page's directory, where the site worker resolves it against the file that declares it (compiler.md §6.3; `resolveServerFunction` in `packages/runtime/src/runtime.ts`, `handleServerFunction` in `packages/server/src/resolve.ts`). The browser half does not ship in a built site: `compile-client.ts` treats a `timing: "server"` entry as plain reactive state and emits no fetch, `compile-element.ts` has no server-entry handling, and a built site ships no `@jxsuite/runtime`, so nothing calls the route. That includes `jx dev` on a site project, which serves the compiled pages (§16.7).
+> **Status: Implemented.** A built page's module calls each entry at `<base>/_jx/server/<export>` (compiler.md §6.1); the site worker serves every entry a page, its layouts, `project.json` or a component declares (compiler.md §6.3); `jx dev` answers the same route on a site project (server.md §2); and an interpreting host calls only the `/__jx_server__` proxy (server.md §3.3), unless the host registered the module itself (embedding.md §6).
 
 `timing: "server"` designates a cross-process function call. The entry points to a named export in a server-side module via `$src` and `$export`. No `$prototype` is used:
 
@@ -1305,7 +1305,7 @@ An optional `arguments` field passes named parameters. Values may be static or r
 }
 ```
 
-When any `arguments` value is a signal `$ref`, the call becomes reactive.
+When any `arguments` value is a signal `$ref`, the call becomes reactive. The entry is `null` until a call answers. A call that fails leaves the entry's last value and is reported to the console, and the answer to a call whose arguments have since changed is dropped. The compiled call and the interpreter's proxy call both behave this way.
 
 #### Security Boundary
 
@@ -1313,11 +1313,11 @@ When any `arguments` value is a signal `$ref`, the call becomes reactive.
 
 **In an interpreting host** (Studio's live preview and canvas, `jx dev` on a root without a `project.json`, or a page that calls `mount()`), the runtime never imports a `timing: "server"` module. Every call is a `POST` to the host's `/__jx_server__` proxy (server.md §3.3), which runs the function server-side with `env`, so the runtime never requests the module's source. A host may still serve the file at its URL (the development servers serve the project's files), so keep secrets out of the module body and read them from `env` inside the function. A host that answers no proxy leaves the entry `null` and reports the failed call. The one exception is the host's own act: a module it registered with `preloadModule` (embedding.md §6) is called in process.
 
+> **Status: Future.** An interpreting host resolves a relative `$src` declared by a layout or by `project.json`'s `state` against the page it renders, because it composes the page before the runtime sees the entry; the site worker and `jx dev` on a site project resolve it against the file that declares it (compiler.md §6.3). A bare specifier, and a relative one on the page itself, resolve the same in every host.
+
 #### Site-Wide Bundling
 
 When `build.adapter` is set in `project.json`, all `timing: "server"` entries across the entire site (pages, their layouts, `project.json`'s `state` and components) are collected, one route per export name (two modules exporting one name fail the build), and bundled into a single worker entry point — `dist/worker.js`, or `dist/_worker.js` for `"cloudflare-pages"`. That same worker also carries the extension server mounts (extensions.md §11): authentication at `/_jx/auth`, connector data CRUD at `/_jx/data`. See compiler spec §6.3 for details.
-
-> **Status: Implemented.** Runtime handles `timing: "server"` entries. Dev server provides `/__jx_server__` proxy. Compiler emits a site-wide bundled worker (`compileSiteServer`), which requires `build.adapter`.
 
 ---
 

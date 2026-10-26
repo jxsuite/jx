@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compileSiteServer } from "../src/targets/compile-server";
+import { compileSiteServer, serverRoutePrefix } from "../src/targets/compile-server";
 
 // ─── compileSiteServer ────────────────────────────────────────────────────
 
@@ -67,6 +67,20 @@ describe("compileSiteServer", () => {
     expect(result).toContain("app.post('/_jx/server/fnB'");
     expect(result).toContain("import { fnA } from './a.js'");
     expect(result).toContain("import { fnB } from './b.js'");
+  });
+
+  test("answers null for an undefined return, so every host sends the same body", () => {
+    const result = compileSiteServer([{ exportName: "fn", src: "./fn.js" }]);
+    expect(result).toContain("c.json((await fn(args, c.env)) ?? null)");
+  });
+
+  test("serverRoutePrefix re-roots under the base, and compileSiteServer registers there", () => {
+    expect(serverRoutePrefix("")).toBe("/_jx/server");
+    expect(serverRoutePrefix("/m/site")).toBe("/m/site/_jx/server");
+    expect(serverRoutePrefix("/m/site", "/api")).toBe("/m/site/api");
+
+    const result = compileSiteServer([{ exportName: "fn", src: "./fn.js" }], { base: "/m/site" });
+    expect(result).toContain("app.post('/m/site/_jx/server/fn'");
   });
 
   test("parses the body with a {} fallback", () => {

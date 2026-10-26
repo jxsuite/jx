@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { JsonValue } from "@jxsuite/schema/types";
-import { handleResolve, handleServerFunction } from "../src/resolve";
+import { callServerExport, handleResolve, handleServerFunction } from "../src/resolve";
 import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 
@@ -683,6 +683,88 @@ describe("handleServerFunction", () => {
       expect(await res.json()).toEqual([]);
     } finally {
       rmSync(join(FIXTURES, "keys.js"), { force: true });
+    }
+  });
+});
+
+// ─── callServerExport ──────────────────────────────────────────────────────
+
+describe("callServerExport", () => {
+  const ENV = { JX_PROJECT_ROOT: "/p", TOKEN: "t" };
+
+  /** Write a fixture module and return its absolute path. */
+  function module(name: string, source: string): string {
+    const path = join(FIXTURES, name);
+    writeFileSync(path, source);
+    return path;
+  }
+
+  test("calls a named export as fn(args, env) and answers its value", async () => {
+    const path = module(
+      "call-named.js",
+      "export function echo(a, env) { return { a, t: env.TOKEN }; }",
+    );
+    try {
+      const result = await callServerExport(path, "echo", { n: 1 }, ENV);
+      expect(result).toEqual({ ok: true, value: { a: { n: 1 }, t: "t" } });
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  test("reads the export off a default object when it is not a named export", async () => {
+    const path = module("call-default.js", "export default { viaDefault() { return 7; } };");
+    try {
+      expect(await callServerExport(path, "viaDefault", {}, ENV)).toEqual({ ok: true, value: 7 });
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  test("awaits an async export and answers undefined as undefined", async () => {
+    const path = module("call-async.js", "export async function later() {}");
+    try {
+      expect(await callServerExport(path, "later", {}, ENV)).toEqual({
+        ok: true,
+        value: undefined,
+      });
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  test("names the import stage when the module cannot load", async () => {
+    const missing = join(FIXTURES, "call-missing.js");
+    const result = await callServerExport(missing, "x", {}, ENV);
+    expect(result).toMatchObject({ ok: false, stage: "import" });
+  });
+
+  test("names the export stage when the export is absent or not a function", async () => {
+    const path = module("call-export.js", 'export const data = "x";');
+    try {
+      expect(await callServerExport(path, "absent", {}, ENV)).toMatchObject({
+        ok: false,
+        stage: "export",
+      });
+      expect(await callServerExport(path, "data", {}, ENV)).toMatchObject({
+        ok: false,
+        stage: "export",
+      });
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  test("names the call stage, with the thrown message, when the function throws", async () => {
+    const path = module("call-throw.js", 'export function bad() { throw new Error("boom"); }');
+    try {
+      expect(await callServerExport(path, "bad", {}, ENV)).toEqual({
+        message: "boom",
+        ok: false,
+        stage: "call",
+      });
+    } finally {
+      rmSync(path, { force: true });
     }
   });
 });

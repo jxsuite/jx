@@ -297,7 +297,7 @@ You don't configure this. **Set `url` to where the site actually lives**, includ
 }
 ```
 
-That is the same `url` that already drives canonical links and the sitemap, and now it also tells the build where the site's root is. Everything follows from it: page links and images, the import map, component scripts, `_headers` patterns, `_redirects` on both sides, `_routes.json` and the worker's own routes, the service worker's precache list and scope, and `manifest.webmanifest`. Canonical links and `sitemap.xml` keep the folder in their absolute URLs instead of dropping it.
+That is the same `url` that already drives canonical links and the sitemap, and now it also tells the build where the site's root is. Everything follows from it: page links and images, the import map, component scripts, `_headers` patterns, `_redirects` on both sides, `_routes.json` and the worker's own routes, the calls a page makes to its server functions, the service worker's precache list and scope, and `manifest.webmanifest`. Canonical links and `sitemap.xml` keep the folder in their absolute URLs instead of dropping it.
 
 Nothing changes for a site at a domain root. `"url": "https://example.com"` has no path, so there is no prefix and the output is byte-for-byte what it was.
 

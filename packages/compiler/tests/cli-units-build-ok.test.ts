@@ -11,7 +11,7 @@ import { buildSiteCalls, runCliCalls, runEntry, setBuildSite, setRunCli } from "
 describe("jx cli — successful build", () => {
   it("builds with a positional root and --verbose", async () => {
     buildSiteCalls.length = 0;
-    setBuildSite(() => Promise.resolve({ errors: [], files: 5, routes: 3 }));
+    setBuildSite(() => Promise.resolve({ errors: [], files: 5, routes: 3, serverEntries: [] }));
     const result = await runEntry("cli", ["build", "/tmp/jx-cli-site", "--verbose"]);
     expect(result.exited).toBe(false);
     expect(buildSiteCalls).toHaveLength(1);

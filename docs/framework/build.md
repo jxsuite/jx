@@ -130,7 +130,7 @@ They used to load from `https://esm.sh`. Self-hosting removes a third party from
 
 ### Dynamic pages
 
-When the page document itself is dynamic (it declares live `state`, binds `$ref`s, or uses runtime template strings), the compiler still pre-renders the full HTML, marks bound elements with `data-bind` attributes, and emits one small module that wires reactivity onto the existing DOM: reactive state, `computed()` for derived values, `effect()` per binding, and event handler hookup. There is no client-side re-render of the initial view; the JS only maintains what changes.
+When the page document itself is dynamic (it declares live `state`, binds `$ref`s, or uses runtime template strings), the compiler still pre-renders the full HTML, marks bound elements with `data-bind` attributes, and emits one small module that wires reactivity onto the existing DOM: reactive state, `computed()` for derived values, `effect()` per binding, event handler hookup, and one `POST` to the site's worker for each `timing: "server"` entry. There is no client-side re-render of the initial view; the JS only maintains what changes.
 
 Two more outputs sit alongside these tiers: `.class.json` documents compile to ES class modules, and `timing: "server"` entries compile into the site-wide worker, which needs `build.adapter`: without one the build stops with an error naming each entry.
 

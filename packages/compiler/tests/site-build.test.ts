@@ -656,8 +656,11 @@ function serverModule(exportName: string, from = exportName) {
   return `export function ${exportName}() { return { from: ${JSON.stringify(from)} }; }\n`;
 }
 
-/** Copy a built worker out of the workspace and POST to each route, as the portability case does. */
-async function postToWorker(workerPath: string, exportNames: readonly string[]) {
+/**
+ * Copy a built worker out of the workspace and POST to each route, as the portability case does.
+ * `prefix` is the deployment base the worker registers its routes under.
+ */
+async function postToWorker(workerPath: string, exportNames: readonly string[], prefix = "") {
   const portableDir = mkdtempSync(join(tmpdir(), "jx-worker-portability-"));
   try {
     const portable = join(portableDir, "worker.mjs");
@@ -670,7 +673,7 @@ async function postToWorker(workerPath: string, exportNames: readonly string[]) 
     const answers: Record<string, { status: number; body: unknown }> = {};
     for (const name of exportNames) {
       const response = await mod.default.fetch(
-        new Request(`http://localhost/_jx/server/${name}`, { body: "{}", method: "POST" }),
+        new Request(`http://localhost${prefix}/_jx/server/${name}`, { body: "{}", method: "POST" }),
         {},
       );
       answers[name] = { body: await response.json(), status: response.status };
@@ -684,6 +687,7 @@ async function postToWorker(workerPath: string, exportNames: readonly string[]) 
 describe("buildSite — server entries from pages, layouts, project state and components", () => {
   const ENTRIES_TMP = resolve(import.meta.dir, "__test-site-server-entries__");
   let errors: string[] = [];
+  let serverEntries: { exportName: string; src: string }[] = [];
 
   beforeAll(async () => {
     rmSync(ENTRIES_TMP, { force: true, recursive: true });
@@ -735,7 +739,7 @@ describe("buildSite — server entries from pages, layouts, project state and co
     });
     writeP("components/contact.server.js", serverModule("sendForm"));
 
-    ({ errors } = await buildSite(ENTRIES_TMP, { verbose: false }));
+    ({ errors, serverEntries } = await buildSite(ENTRIES_TMP, { verbose: false }));
   });
 
   afterAll(() => {
@@ -751,9 +755,103 @@ describe("buildSite — server entries from pages, layouts, project state and co
     }
   });
 
+  it("hands back the entries the worker serves, one per export, each src from the project root", () => {
+    const byName = Object.fromEntries(serverEntries.map((e) => [e.exportName, e.src]));
+    expect(byName).toEqual({
+      loadData: "./pages/api.server.js",
+      loadPost: "./pages/blog/post.server.js",
+      sendForm: "./components/contact.server.js",
+      siteStats: "./lib/stats.server.js",
+      trackVisit: "./layouts/visits.server.js",
+    });
+    expect(serverEntries).toHaveLength(5);
+  });
+
   it("a layout two pages share registers its route once", () => {
     const worker = readFileSync(resolve(ENTRIES_TMP, "dist/worker.js"), "utf8");
     expect(worker.split("/_jx/server/trackVisit")).toHaveLength(2);
+  });
+});
+
+describe("buildSite — compiled server calls", () => {
+  const CALLS_TMP = resolve(import.meta.dir, "__test-site-server-calls__");
+  let errors: string[] = [];
+
+  beforeAll(async () => {
+    rmSync(CALLS_TMP, { force: true, recursive: true });
+    const writeP = (p: string, c: string) => {
+      mkdirSync(resolve(CALLS_TMP, ...p.split("/").slice(0, -1)), { recursive: true });
+      writeFileSync(resolve(CALLS_TMP, p), c, "utf8");
+    };
+    const writeJ = (p: string, obj: JsonValue) => {
+      writeP(p, JSON.stringify(obj, null, 2));
+    };
+
+    writeJ("project.json", {
+      build: { adapter: "bun", outDir: "./dist" },
+      defaults: { lang: "en" },
+      name: "Server Calls Test",
+      url: "https://x.dev/m/site/",
+    });
+
+    writeJ("pages/index.json", {
+      children: [
+        { tagName: "p", textContent: "${state.loadData?.n}" },
+        { $props: {}, tagName: "test-card" },
+      ],
+      state: {
+        loadData: { ...serverEntry("loadData", "./api.server.js"), arguments: { id: 1 } },
+        ping: serverEntry("ping", "./api.server.js"),
+      },
+      title: "Home",
+    });
+    writeP(
+      "pages/api.server.js",
+      "export function loadData() { return { n: 1 }; }\nexport function ping() {}\n",
+    );
+
+    writeJ("components/test-card.json", {
+      children: [{ tagName: "span", textContent: "${state.hit?.n}" }],
+      state: { hit: serverEntry("hit", "./card.server.js") },
+      tagName: "test-card",
+    });
+    writeP("components/card.server.js", "export function hit() { return { n: 2 }; }\n");
+
+    ({ errors } = await buildSite(CALLS_TMP, { verbose: false }));
+  });
+
+  afterAll(() => {
+    rmSync(CALLS_TMP, { force: true, recursive: true });
+  });
+
+  it("builds without errors", () => {
+    expect(errors).toEqual([]);
+  });
+
+  it("the page module and the component module both name the based route", () => {
+    const page = readFileSync(resolve(CALLS_TMP, "dist/app.js"), "utf8");
+    expect(page).toContain('"/m/site/_jx/server/loadData"');
+    expect(page).toContain("loadData: null,");
+    const card = readFileSync(resolve(CALLS_TMP, "dist/components/test-card.js"), "utf8");
+    expect(card).toContain('"/m/site/_jx/server/hit"');
+  });
+
+  it("the page holds no baked value for a server entry", () => {
+    const html = readFileSync(resolve(CALLS_TMP, "dist/index.html"), "utf8");
+    expect(html).not.toContain("api.server.js");
+    expect(html).not.toContain("$export");
+  });
+
+  it("the bundled worker answers each route at the based path with the function's value", async () => {
+    const answers = await postToWorker(
+      resolve(CALLS_TMP, "dist/worker.js"),
+      ["loadData", "hit", "ping"],
+      "/m/site",
+    );
+    expect(answers.loadData).toEqual({ body: { n: 1 }, status: 200 });
+    expect(answers.hit).toEqual({ body: { n: 2 }, status: 200 });
+    // A function that returns nothing answers a JSON null, not an empty body the caller cannot parse.
+    expect(answers.ping).toEqual({ body: null, status: 200 });
   });
 });
 
@@ -3040,6 +3138,7 @@ describe("buildSite — lang attribute handling", () => {
 describe("buildSite — server entries need an adapter", () => {
   const NA_TMP = resolve(import.meta.dir, "__test-site-server-no-adapter__");
   let errors: string[] = [];
+  let serverEntries: { exportName: string; src: string }[] = [];
 
   beforeAll(async () => {
     rmSync(NA_TMP, { force: true, recursive: true });
@@ -3087,7 +3186,7 @@ describe("buildSite — server entries need an adapter", () => {
     });
     writeP("components/contact.server.js", serverModule("sendForm"));
 
-    ({ errors } = await buildSite(NA_TMP, { verbose: false }));
+    ({ errors, serverEntries } = await buildSite(NA_TMP, { verbose: false }));
   });
 
   afterAll(() => {
@@ -3103,6 +3202,10 @@ describe("buildSite — server entries need an adapter", () => {
     expect(error).toContain("build.adapter");
     // Two pages use the layout, and it is still named once.
     expect(error?.split("trackVisit (layouts/base.json)")).toHaveLength(2);
+  });
+
+  it("hands back no entries, because nothing serves them", () => {
+    expect(serverEntries).toEqual([]);
   });
 
   it("the pages still build and no server output is written", () => {

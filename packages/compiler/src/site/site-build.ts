@@ -70,7 +70,7 @@ import type { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registr
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import { layoutChain, resolveLayout } from "./layout-resolver.ts";
 import { dedupeServerEntries, documentServerEntries } from "./server-entries.ts";
-import type { ServerEntryRecord } from "./server-entries.ts";
+import type { DedupedServerEntries, ServerEntryRecord } from "./server-entries.ts";
 import { mergeHead, renderHead, withPageDescription } from "@jxsuite/site/head-merger";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
@@ -78,6 +78,7 @@ import { compile, compileSiteServer } from "../compiler.ts";
 import type { CompileOptions } from "../compiler.ts";
 import { compileElement } from "../targets/compile-element.ts";
 import type { CompileElementOptions } from "../targets/compile-element.ts";
+import { serverRoutePrefix } from "../targets/compile-server.ts";
 import type { SiteConnectorSpec, SiteMountSpec } from "../targets/compile-server.ts";
 import {
   buildComponentCSS,
@@ -487,6 +488,9 @@ export async function buildSite(
      * served from a path does not have.
      */
     const componentBase = siteBasePath(projectConfig.url);
+    // A component's server-function call is written into its module, which no later pass rewrites,
+    // So it is given the deployment base now (site-architecture.md §14.7).
+    const serverBaseUrl = serverRoutePrefix(componentBase);
 
     for (const file of componentFiles) {
       try {
@@ -500,6 +504,7 @@ export async function buildSite(
           },
           rewriteSrc: (specifier: string, docDir: string | null) =>
             withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),
+          serverBaseUrl,
         };
         if (projectConfig.$media) {
           elementOptions.$media = projectConfig.$media;
@@ -925,6 +930,9 @@ export async function buildSite(
   }
 
   // ── 6c. Generate site-wide server worker ────────────────────────────────
+  // What the worker serves, handed back to the caller: `jx dev` answers the same routes from it.
+  // Empty with no adapter, where nothing is served (compiler.md §6.3).
+  let serverEntries: DedupedServerEntries["entries"] = [];
   /*
    * A server function is served by the site worker and by nothing else, so with no adapter its
    * entry has no route, and a page built that way would ship without the value it declared. It is
@@ -958,7 +966,8 @@ export async function buildSite(
      * other would receive its answer. The first module is still kept, so the worker is written
      * and `jx dev` keeps serving the pages while the author renames one.
      */
-    const { entries: serverEntries, errors: clashErrors } = dedupeServerEntries(siteServerEntries);
+    const { entries: dedupedEntries, errors: clashErrors } = dedupeServerEntries(siteServerEntries);
+    serverEntries = dedupedEntries;
     for (const error of clashErrors) {
       errors.push(error);
       console.error(error);
@@ -1334,7 +1343,7 @@ export async function buildSite(
     log(`  ${errors.length} error(s)`);
   }
 
-  return { errors, files: fileCount, routes: routes.length };
+  return { errors, files: fileCount, routes: routes.length, serverEntries };
 }
 
 /** The route `compilePage` renders: a URL and the page document that produces it. */
@@ -1623,6 +1632,8 @@ async function compilePage(
      */
     rewriteSrc: (specifier: string) =>
       withBase(basePath, rewriteSidecarSrc(specifier, dirname(route.sourcePath))),
+    // The page's own module calls the worker's routes, under the same base the worker registers.
+    serverBaseUrl: serverRoutePrefix(basePath),
     title,
   };
   /*

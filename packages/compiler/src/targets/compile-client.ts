@@ -27,6 +27,7 @@ import {
   createCompileContext,
   emitFormulaFn,
   emitRequestFetch,
+  emitServerCall,
   escapeHtml,
   isMutating,
   isRefObject,
@@ -36,6 +37,7 @@ import {
   PREFORMATTED_TAGS,
   pureSchemeOf,
   resolveStaticValue,
+  serverCallHelperSource,
   srcImportBinding,
   templateValueSource,
 } from "../shared.ts";
@@ -51,6 +53,7 @@ import {
   isNonNullObject,
   isNumber,
   isPrototypeDef,
+  isServerFnDef,
   isString,
   isTagExpression,
   paramNames,
@@ -97,6 +100,7 @@ interface HandlerDef {
  *   litHtmlSrc?: string;
  *   modulePath?: string;
  *   projectStyle?: JxStyle | null;
+ *   serverBaseUrl?: string;
  * }} opts
  * @returns {{ html: string; files: { path: string; content: string }[] }}
  */
@@ -110,6 +114,12 @@ export function compileClient(
     projectStyle?: JxStyle | null;
     prePaintScheme?: boolean;
     rewriteSrc?: (specifier: string) => string;
+    /**
+     * The route prefix a `timing: "server"` entry posts to, deployment base included
+     * (`serverRoutePrefix`). The call is written into the module, and no later pass rewrites a
+     * module, so the base has to be known when it is compiled.
+     */
+    serverBaseUrl?: string;
   },
 ) {
   const {
@@ -117,6 +127,7 @@ export function compileClient(
     reactivitySrc = DEFAULT_REACTIVITY_SRC,
     litHtmlSrc = DEFAULT_LIT_HTML_SRC,
     modulePath = "app.js",
+    serverBaseUrl = "/_jx/server",
   } = opts;
 
   const context = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
@@ -133,6 +144,7 @@ export function compileClient(
   const bindEntries: [string, string][] = []; // [key, bodyExpr]   → bind = {...}
   const onEntries: [string, HandlerDef][] = []; // [key, { args, body }] → on = {...}
   const initBlocks: string[] = []; // Lines emitted after state for prototype init
+  const serverCalls: string[] = []; // One block per `timing: "server"` entry, after the computed block
 
   // Map $src path → Set of function names to import
   const srcImportMap = new Map<string, Set<string>>();
@@ -241,6 +253,13 @@ export function compileClient(
       }
     }
 
+    // `timing: "server"`: null until the site worker's route answers (compiler.md §6.1)
+    if (isServerFnDef(def)) {
+      stateEntries.push([key, null]);
+      serverCalls.push(emitServerCall(key, def, { serverBaseUrl }));
+      continue;
+    }
+
     /*
      * Plain object → reactive state.
      * SAFETY: `raw.state` is parsed JSON, so this entry is structurally a JsonObject; the checks
@@ -272,6 +291,7 @@ export function compileClient(
     bindEntries,
     onEntries,
     initBlocks,
+    serverCalls,
     srcImportMap,
     counter,
     reactivitySrc,
@@ -870,6 +890,7 @@ function mapRefsToLit(str: string) {
  * @param {[string, string][]} bindEntries
  * @param {[string, any][]} onEntries
  * @param {string[]} initBlocks
+ * @param {string[]} serverCalls
  * @param {Map<string, Set<string>>} srcImportMap
  * @param {{
  *   t: number;
@@ -889,6 +910,7 @@ function emitClientModule(
   bindEntries: [string, string][],
   onEntries: [string, HandlerDef][],
   initBlocks: string[],
+  serverCalls: string[],
   srcImportMap: Map<string, Set<string>>,
   counter: {
     t: number;
@@ -930,7 +952,11 @@ function emitClientModule(
   // State — reactive state
   /* The boolean-attribute rule, inlined because this module loads with `@vue/reactivity` and
      nothing else — see `attrHelperSource`. The hydration script below is its only caller. */
-  lines.push("", attrHelperSource(), "", "const state = reactive({");
+  lines.push("", attrHelperSource());
+  if (serverCalls.length > 0) {
+    lines.push("", serverCallHelperSource());
+  }
+  lines.push("", "const state = reactive({");
   for (const [key, val] of stateEntries) {
     /*
      * State keys come from the document, so `{"user.name": 1}` is legal input. Pasting one raw as
@@ -952,6 +978,15 @@ function emitClientModule(
   if (computedEntries.length > 0) {
     for (const [key, expr] of computedEntries) {
       lines.push(`${refAccessor("state", escapeToken(key))} = computed(${expr});`);
+    }
+    lines.push("");
+  }
+
+  // Server-function calls, after the computed block so a reference to a computed reads its value on
+  // The first run
+  if (serverCalls.length > 0) {
+    for (const block of serverCalls) {
+      lines.push(block);
     }
     lines.push("");
   }

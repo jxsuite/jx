@@ -24,7 +24,7 @@ type BuildOptions = NonNullable<Parameters<typeof buildSite>[1]>;
 type BuildResult = Awaited<ReturnType<typeof buildSite>>;
 
 const buildCalls: { options: BuildOptions; root: string }[] = [];
-let buildResult: BuildResult = { errors: [], files: 0, routes: 0 };
+let buildResult: BuildResult = { errors: [], files: 0, routes: 0, serverEntries: [] };
 let buildFailure: string | null = null;
 
 void mock.module("@jxsuite/compiler/site", () => ({
@@ -108,7 +108,7 @@ beforeEach(() => {
   buildCalls.length = 0;
   previewCalls.length = 0;
   findRefsCalls.length = 0;
-  buildResult = { errors: [], files: 0, routes: 0 };
+  buildResult = { errors: [], files: 0, routes: 0, serverEntries: [] };
   buildFailure = null;
   previewResult = { origin: "http://127.0.0.1:41234", port: 41_234 };
   findRefsResult = NO_REFERENCES;
@@ -168,7 +168,12 @@ describe("POST /__studio/build — the reply", () => {
   });
 
   test("reports build errors in the payload at 200, beside the counts and the origin", async () => {
-    buildResult = { errors: ["pages/broken.json: unresolved $ref"], files: 7, routes: 4 };
+    buildResult = {
+      errors: ["pages/broken.json: unresolved $ref"],
+      files: 7,
+      routes: 4,
+      serverEntries: [],
+    };
     const { req, url } = buildReq();
     const res = await callApi(req, url, SITE, null);
     expect(res.status).toBe(200);
@@ -183,7 +188,7 @@ describe("POST /__studio/build — the reply", () => {
 
   test("omits the origin when there is nothing built to serve", async () => {
     previewResult = null;
-    buildResult = { errors: [], files: 2, routes: 1 };
+    buildResult = { errors: [], files: 2, routes: 1, serverEntries: [] };
     const { req, url } = buildReq();
     const res = await callApi(req, url, SITE, null);
     expect(res.status).toBe(200);

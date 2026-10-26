@@ -27,7 +27,7 @@ Audited against b900b326 on 2026-09-26.
   - Kept: island serialization and bundle manifest, written down nowhere else.
 - §13's WHATWG HTML note says no shadow root is ever attached and that Declarative Shadow DOM and `ElementInternals` are unavailable. Opt-in `$shadow` now attaches one (packages/compiler/src/shadow.ts, compile-element.ts, `<template shadowrootmode>` in site-build.ts and shared.ts, packages/compiler/tests/shadow-dom.test.ts), and `spec.md` §18's WHATWG HTML row already says so. A Standards Alignment note is not a status marker and the census does not rewrite normative prose, so the correction rides with `plan:compiler/element-binding-table` as an editorial edit.
 - The whole-spec header stays `Partial`; there is no preamble marker, so it is not an item of its own.
-- Forwarded by the `spec.md` and `site-architecture.md` censuses: merging the two §6.3 stubs. Done at detailing, as one shared plan claiming §6.3 and `site-architecture.md` §14.1.1, which `plan:_shared/compiled-server-call` and `plan:_shared/no-adapter-server-tier` required. It has landed, and both sections are Implemented.
+- Forwarded by the `spec.md` and `site-architecture.md` censuses: merging the two §6.3 stubs. Done at detailing, as one shared plan claiming §6.3 and `site-architecture.md` §14.1.1, which the compiled server call and the no-adapter server tier required. It has landed, and both sections are Implemented.
 - Forwarded by the `spec.md` census: §13's WHATWG HTML Note is stale since `$shadow` shipped. Verified (`resolveShadowMode` in packages/compiler/src/shadow.ts; `#renderRoot` in compile-element.ts adopts a closed root through `attachInternals()`; packages/compiler/tests/shadow-dom.test.ts), and already dispositioned above as an editorial ride-along of `plan:compiler/element-binding-table`. §13 gets no marker: no spec's Standards Alignment section carries one, and `spec.md` §18's WHATWG DOM Note, the counterpart, is likewise a ride-along of `plan:spec/shadow-dom-parity`.
 
 ## Spec-wide decisions
@@ -38,7 +38,7 @@ Audited against b900b326 on 2026-09-26.
   - §3 and §5.4 with `spec.md` §12.3 and §12.4 and with `spec.md` §11.3's `"client"` cell. Not merged: `plan:compiler/client-external-class-hydration` is the enabling prerequisite that `plan:spec/external-class-contract` and `plan:spec/timing-values-in-built-sites` require, because their remaining work (runtime teardown, Studio, the build-time `Request`) shares no decision with it.
   - §4.1 with `spec.md` §16.4 (`plan:_shared/compiled-element-lifecycle`).
   - §4.4 with `spec.md` §13.2 and §16.2 (`plan:_shared/compiled-prop-bridge`).
-  - §6.1 with `spec.md` §11.4 (`plan:_shared/compiled-server-call`).
+  - §6.1 with `spec.md` §11.4 (one shared plan, landed: §6.1 is Implemented, and §11.4 is Implemented with a Future remainder for an interpreting host's resolution of a layout's relative `$src`).
   - §6.2 with `site-architecture.md` §15.4 (one shared plan, landed: §6.2 is Removed, §15.4 Implemented, and `spec.md` §11.4's Security Boundary names only the worker).
   - §6.3 with `site-architecture.md` §14.1.1 (one shared plan, landed; both Implemented).
   - §7.1–§7.7 with `site-architecture.md` §9.2.2, §9.2.3 and §9.2.5 (`plan:_shared/image-pipeline-text`); both are reconciles of one pipeline's prose.

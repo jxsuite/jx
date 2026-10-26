@@ -12,6 +12,22 @@ import type { ResolvedI18n } from "../site/i18n.ts";
 import type { JxDocumentValue } from "@jxsuite/schema/types";
 
 /**
+ * The route prefix the site worker registers its server functions under, and a compiled page or
+ * component posts to: the deployment base (site-architecture.md §14.7) in front of `baseUrl`.
+ *
+ * One function builds it for both sides. The worker IS the origin, so a route left at the bare path
+ * never matches on a site served from a subfolder, and no pass rewrites a module after it is
+ * compiled, so the caller has to be given the same prefix when the module is.
+ *
+ * @param {string} base - The deployment base, `""` for a site at an origin root
+ * @param {string} [baseUrl] - Route prefix before the base is applied, `"/_jx/server"` by default
+ * @returns {string}
+ */
+export function serverRoutePrefix(base: string, baseUrl = "/_jx/server"): string {
+  return withBase(base, baseUrl);
+}
+
+/**
  * One extension server mount to emit into the generated worker (specs/extensions.md §11). The
  * module is imported statically (Workers cannot dynamic-import), the options are inlined JSON
  * (identifiers only — never secrets), and every mount shares one context object, called in
@@ -80,7 +96,7 @@ export function compileSiteServer(
    * everything behind it routes on the bare path. Each is internally consistent: production serves
    * exactly one URL space, while `jx dev` deliberately answers both.
    */
-  const baseUrl = withBase(base, opts.baseUrl ?? "/_jx/server");
+  const baseUrl = serverRoutePrefix(base, opts.baseUrl);
   if (entries.length === 0 && mounts.length === 0 && !adapter) {
     return null;
   }
@@ -166,7 +182,7 @@ function buildRoute(exportName: string, baseUrl: string) {
 app.post('${baseUrl}/${exportName}', async (c) => {
   const args = await c.req.json().catch(() => ({}))
   try {
-    return c.json(await ${exportName}(args, c.env))
+    return c.json((await ${exportName}(args, c.env)) ?? null)
   } catch (e) {
     return c.json({ ok: false, error: e?.message ?? 'Server error' }, 500)
   }

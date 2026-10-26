@@ -23,7 +23,7 @@ import {
   isSingleExpression,
   splitSelectorList,
 } from "@jxsuite/runtime";
-import { evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
+import { compileOperandSource, evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
 import { runStatements } from "@jxsuite/runtime/statements";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import {
@@ -52,7 +52,7 @@ import {
 import type { TagNameSlot } from "@jxsuite/schema/guards";
 import { resolveShadowMode, styleScopePrefix } from "./shadow.ts";
 import type { ShadowMode } from "./shadow.ts";
-import { readPath } from "@jxsuite/runtime/pointer";
+import { escapeToken, objectKey, readPath, refAccessor } from "@jxsuite/runtime/pointer";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type {
   CemParameter,
@@ -63,6 +63,7 @@ import type {
   JxMutableNode,
   JxPrototypeDef,
   JxRef,
+  JxServerFnDef,
   JxStateDefinition,
   JxStyle,
   ProjectConfig,
@@ -255,6 +256,84 @@ export function emitRequestFetch(
     collect ? "}));" : "});",
   );
 
+  return lines.map((line) => `${indent}${line}`).join("\n");
+}
+
+/**
+ * A `$ref` scheme that names something only a loop, an event or a formula has. A state entry sits
+ * in none of those scopes, so lowering one would emit an identifier nothing declares.
+ */
+const SERVER_CALL_REFUSED_REFS = ["$map/", "event#/", "$args/", "$reduce/"];
+
+/**
+ * Emit the call a `timing: "server"` state entry makes to its route in the site worker (compiler.md
+ * §6.1): a `POST <serverBaseUrl>/<export>` whose JSON body is the entry's `arguments`, the answer
+ * written to the entry's state key.
+ *
+ * Shared by the client and element targets, as `emitRequestFetch` is, so one rule decides what an
+ * answer, a failure and a superseded call each do. A literal argument is sent as written. A
+ * top-level `$ref` argument is lowered by the runtime's own table (`compileOperandSource`) and read
+ * inside an `effect()`, so the call repeats when it changes. Only the latest call may write: a
+ * sequence number drops the answer to a call whose arguments have since moved on, because aborting
+ * a `POST` does not stop the function that is already running on the server. A non-2xx answer is
+ * never stored: the entry keeps its last value and the error goes to the console naming the
+ * export.
+ *
+ * @param {string} key - State key receiving the answer
+ * @param {JxServerFnDef} def - The server entry
+ * @param {{ statePrefix?: string; indent?: string; collect?: string; serverBaseUrl?: string }} [opts] -
+ *   `statePrefix` is the expression the emitted code assigns through (`state` for the client module
+ *   scope, `this.state` inside a custom element); `indent` prefixes every emitted line; `collect`,
+ *   when given, is an array expression the effect runner is pushed onto so the caller can `stop()`
+ *   it on teardown; `serverBaseUrl` is the route prefix, deployment base included.
+ * @returns {string}
+ */
+export function emitServerCall(
+  key: string,
+  def: JxServerFnDef,
+  opts: { statePrefix?: string; indent?: string; collect?: string; serverBaseUrl?: string } = {},
+): string {
+  const { statePrefix = "state", indent = "", collect, serverBaseUrl = "/_jx/server" } = opts;
+  const url = JSON.stringify(`${serverBaseUrl}/${def.$export}`);
+
+  const written = Object.entries(def.arguments ?? {});
+  const args = written.map(([name, value]) => {
+    if (!isRef(value)) {
+      return `${objectKey(name)}: ${JSON.stringify(value)}`;
+    }
+    if (SERVER_CALL_REFUSED_REFS.some((prefix) => value.$ref.startsWith(prefix))) {
+      throw new Error(
+        `Server function "${key}": argument "${name}" references "${value.$ref}", which a state ` +
+          `entry cannot read. Use a #/state/, parent#/, window#/ or document#/ reference.`,
+      );
+    }
+    return `${objectKey(name)}: ${compileOperandSource({ $ref: value.$ref }, { statePrefix })}`;
+  });
+  // Any top-level reference makes the call reactive: it is read inside an effect, so it repeats.
+  const reactive = written.some(([, value]) => isRef(value));
+  const call = `${SERVER_CALL_HELPER}(${url}, ${args.length > 0 ? `{ ${args.join(", ")} }` : "{}"})`;
+  const target = refAccessor(statePrefix, escapeToken(key));
+  const failed = `console.error(${JSON.stringify(`Jx server function ${def.$export}:`)}, e)`;
+
+  const lines = reactive
+    ? [
+        `// ${key}: server function ${def.$export}, called again when an argument changes`,
+        "{",
+        "  let _jxSeq = 0;",
+        collect ? `  ${collect}.push(effect(() => {` : "  effect(() => {",
+        "    const _seq = ++_jxSeq;",
+        `    ${call}`,
+        `      .then((d) => { if (_seq === _jxSeq) ${target} = d; })`,
+        `      .catch((e) => { if (_seq === _jxSeq) ${failed}; });`,
+        collect ? "  }));" : "  });",
+        "}",
+      ]
+    : [
+        `// ${key}: server function ${def.$export}, called once`,
+        call,
+        `  .then((d) => { ${target} = d; })`,
+        `  .catch((e) => { ${failed}; });`,
+      ];
   return lines.map((line) => `${indent}${line}`).join("\n");
 }
 
@@ -622,6 +701,12 @@ export function buildInitialScope(
     }
     if ("default" in def) {
       setOwnScopeValue(scope, key, cloneValue(def.default));
+      continue;
+    }
+    if (isServerFnDef(def)) {
+      // Its value is an answer from the site worker. Storing the definition object instead would
+      // Let a template that reads it bake `{ $src, $export, timing }` into the page.
+      runtimeOnly.add(key);
       continue;
     }
     if (!def.$prototype && !("$expression" in def) && !isSchemaOnlyDef(def)) {
@@ -1280,6 +1365,39 @@ export function attrHelperSource(): string {
     `  return v ? '' : null;\n` +
     `}`
   );
+}
+
+/** The name of the call helper a module holding a `timing: "server"` entry declares once. */
+export const SERVER_CALL_HELPER = "__jxServerCall";
+
+/**
+ * The request a compiled server-function call makes, as source for a generated module's preamble
+ * (compiler.md §6.1), declared once per module and called by every `emitServerCall` block in it.
+ *
+ * The response rule lives here, in one place: the body is read as text and parsed when it is not
+ * empty, so a function that returns nothing answers `null`; a non-2xx answer rejects with the
+ * parsed body's `error`, else the body text, else the status text. A body that is not JSON only
+ * matters on success, where it is a defect worth surfacing, and a failure still reports its text.
+ *
+ * @returns {string} One `async function` declaration.
+ */
+export function serverCallHelperSource(): string {
+  return [
+    `async function ${SERVER_CALL_HELPER}(url, args) {`,
+    "  const r = await fetch(url, {",
+    "    method: 'POST',",
+    "    headers: { 'Content-Type': 'application/json' },",
+    "    body: JSON.stringify(args),",
+    "  });",
+    "  const text = await r.text();",
+    "  let body = null;",
+    "  if (text !== '') {",
+    "    try { body = JSON.parse(text); } catch (e) { if (r.ok) throw e; }",
+    "  }",
+    "  if (!r.ok) throw new Error((body && body.error) || text || r.statusText);",
+    "  return body;",
+    "}",
+  ].join("\n");
 }
 
 /** The capture helper a light-DOM component module calls before its first render. */
