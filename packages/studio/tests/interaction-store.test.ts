@@ -1,7 +1,7 @@
 /**
- * Src/services/harness/interaction-store.ts — where a turn waits on the author (specs/ai.md §3.4
- * and §3.11): the four ways a pending question settles, and Stop reaching it through the call's
- * signal.
+ * Src/services/harness/interaction-store.ts — where a turn waits on the author (specs/ai.md §3.4,
+ * specs/ai.md §3.11): the four ways a pending question settles, and Stop reaching it through the
+ * call's signal.
  */
 import { describe, expect, test } from "bun:test";
 import type { InteractionRequest } from "@jxsuite/ai/tools";
