@@ -936,7 +936,7 @@ Base and nested declarations alike become rules in one stylesheet, keyed on a ha
 
 Nesting is **flattened by the emitter**, never handed to the browser as CSS Nesting: `&` is resolved before anything is written, and no `&` reaches the output. This is deliberate rather than incidental. A key like `.child` COMPOUNDS onto its scope here (`#box.child`), where CSS Nesting resolves the same key as a descendant, so a style object handed to a nesting parser would silently mean something else.
 
-A **selector list** on either side distributes, member by member, as CSS Nesting's implicit `:is()` would: a key `"& .a, & .b"` holding a `":hover"` block yields `#box .a:hover, #box .b:hover`, and every `&` in a member is the scope. A comma inside `:is()`, `:where()`, `:not()`, an attribute value or a quoted string is not a separator.
+A **selector list** on either side distributes, member by member, as CSS Nesting's implicit `:is()` would: a key `"& .a, & .b"` holding a `":hover"` block yields `#box .a:hover, #box .b:hover`, and every `&` in a member is the scope. A comma inside `:is()`, `:where()`, `:not()`, an attribute value or a quoted string is not a separator. A member that holds an `&` anywhere is resolved by substitution alone, wherever the `&` stands: `".wrap &"` is the element inside a `.wrap` (`.wrap #box`) and `":root &:hover"` is `:root #box:hover`, never a compound. A leading `:`, `.` or `[` compounds only in a member with no `&`, and an `&` inside an attribute selector or a quoted string is text, not the scope.
 
 Nesting is **recursive**: selector groups and at-rule groups (`@`-prefixed keys — named breakpoints per §9.4, or standard at-rules like `@starting-style`) may nest to arbitrary depth, e.g. breakpoint → selector → pseudo-class:
 

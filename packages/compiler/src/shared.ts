@@ -23,6 +23,7 @@ import {
   isSingleExpression,
   splitSelectorList,
 } from "@jxsuite/runtime";
+import { spliceNestingSelector } from "@jxsuite/runtime/css";
 import { evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
 import { runStatements } from "@jxsuite/runtime/statements";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
@@ -2346,8 +2347,9 @@ function resolveSelector(prop: string, scope: string): string {
 
 /** One member of {@link resolveSelector}'s list against the scope. */
 function resolveSelectorMember(prop: string, scope: string): string {
-  if (prop.startsWith("&")) {
-    return prop.replaceAll("&", scope);
+  const spliced = spliceNestingSelector(prop, scope);
+  if (spliced !== null) {
+    return spliced;
   }
   if (prop.startsWith(":host")) {
     const inner = /^:host\((.*)\)$/.exec(prop)?.[1];
