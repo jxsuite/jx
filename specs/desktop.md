@@ -752,7 +752,7 @@ Installed ElectroBun builds cannot update into this application: their updater a
 
 ### 7.7 Mac App Store
 
-> **Status: Partial.** The `mas` target, its two entitlements files, the updater's refusal inside a Mac App Store install, the upload lane and the sandboxed folder access (below) are built. The lane has uploaded a signed package that App Store Connect processed, and a local sandboxed build opens projects the user picks. Not done: launching a package signed with the real distribution identities, and Git, which in the sandbox runs Apple's developer-tools shim and cannot read the user's Git configuration.
+> **Status: Partial.** The `mas` target, its two entitlements files, the updater's refusal inside a Mac App Store install, the upload lane and the sandboxed folder access (below) are built, and a package signed with the distribution identities, installed from TestFlight, opens projects the user picks and reopens them from Recent. Not done: App Review, which refused that build because the pinned Bun imports the system ICU (`libicucore`), whose symbols Apple treats as non-public API, so the backend has to run without Bun; and Git, which in the sandbox runs Apple's developer-tools shim and cannot read the user's Git configuration.
 
 The Mac App Store is a second macOS channel beside the notarized DMG of §7.6, built from the same staged application by `bun run package --target mas --arch arm64`, which asks electron-builder for its `mas` target. It differs from the DMG in four ways, each forced by the store and not chosen:
 

@@ -3,6 +3,8 @@ status: drafted
 disposition: implement
 claims:
   - desktop.md#7.7
+requires:
+  - desktop/node-backend-runtime
 workspaces:
   - packages/desktop
   - .github
@@ -15,7 +17,7 @@ size: M
 
 `specs/desktop.md` §7.7 adds the Mac App Store as a second macOS channel. What exists: the `mas` target in `electron-builder.yml`, the two entitlements files, `bun run package --target mas`, and the updater's refusal inside a Mac App Store install. What does not: any run of it with a distribution identity, an upload lane, and an answer to how the backend reaches a folder the user picked.
 
-A sandboxed application reads a folder only after the user picks it, and the permission reaches a child process only if the child starts after it was given. The Bun backend started at launch, so a picked project was invisible to it. A local ad-hoc sandboxed build of the Mac App Store flavor showed it, and the fix (bookmarks, restored before the backend starts, plus a backend restart for a pick no bookmark covers) was measured to work, including after a relaunch. What is left is a build signed with the real identities, Git in the sandbox, and review.
+A sandboxed application reads a folder only after the user picks it, and the permission reaches a child process only if the child starts after it was given. The Bun backend started at launch, so a picked project was invisible to it. A local ad-hoc sandboxed build of the Mac App Store flavor showed it, and the fix (bookmarks, restored before the backend starts, plus a backend restart for a pick no bookmark covers) was measured to work, including after a relaunch. A build signed with the real identities (`6.1.0 (443)`, from TestFlight) was then measured the same way and passed: launch, pick, a full project, and Recent after a relaunch. App Review rejected it at the automated stage for two findings: 129 ICU symbols the pinned Bun imports from the system `libicucore` (non-public API), and the `network.server` entitlement. The first is closed only by removing Bun from the package, which is `plan:desktop/node-backend-runtime`; the second needs a reply, since the backend listens on loopback. What is left is that plan, Git in the sandbox, and review.
 
 ## Outcome
 
@@ -25,6 +27,7 @@ A sandboxed application reads a folder only after the user picks it, and the per
 
 - **Decided:** the lane uploads to TestFlight only. Submitting to App Review is a person's decision, and a bad build must not go straight to review.
 - **Decided:** the store's build has no updater, and no site import (its browser is never set on macOS, §9.5).
+- **Decided:** `com.apple.security.network.server` stays. Each window's backend server listens on loopback for its Studio window and canvas iframe (§9.7), and binding a listening socket in the sandbox needs it. The reply to App Review and the App Review Information notes say so.
 - **Decided:** the backend reaches a picked folder because it starts after the grant. The sandbox build asks for the project folder (a picked file grants only itself), keeps an app-scope bookmark per folder, restores them before spawning the backend, and restarts the backend when a pick is not covered, asking first when a project is open. Routing file access through the main process was not needed.
 - **Open:** whether `git` is worth keeping in the sandbox. The system's `git` is Apple's developer-tools shim and cannot read the user's Git configuration, keys or credential helpers. Options: keep it for HTTPS, disable the Git workflow in this build, or ship a Git of our own.
 
