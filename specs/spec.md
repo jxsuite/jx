@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.7.6-draft\
+**Version:** 0.8.0-draft\
 **Status:** Partial\
-**Updated:** 2026-10-21\
+**Updated:** 2026-10-27\
 **License:** MIT
 
 ---
@@ -2680,6 +2680,10 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.8.0-draft** (2026-10-27) — §5.3 and §11.4: a server-timed entry is served only by the site worker and so requires build.adapter; the per-page handler is gone.
+- **0.7.9-draft** (2026-10-27) — §11.4: a built page calls its server entries over HTTP at the site worker route, and jx dev on a site project answers the same route.
+- **0.7.8-draft** (2026-10-27) — §11.4: the site worker collects server entries from pages, their layouts and project.json state as well as components, and two modules exporting one name fail the build; the no-adapter per-page handler and interpreting hosts resolving a layout or project.json $src against the page remain open.
+- **0.7.7-draft** (2026-10-27) — §9.2: a nested key with an & after a context (.wrap &) substitutes the scope for the & instead of compounding onto it.
 - **0.7.6-draft** (2026-10-21) — The binding-bounce example names the build adapter picker, since the branch picker it cited was removed.
 - **0.7.5-draft** (2026-10-21) — §16.4: a throwing ${…} template binding is not a failed render, since it survives its expression throwing (§6.1); the report covers throws elsewhere in the render.
 - **0.7.4-draft** (2026-10-21) — §5.3 4c: the interpreter imports an npm: specifier through the host's resolver; §15.4: templates read $page and $site bare; §16.2: a $props binding of an HTMLElement-named prop reaches state after connection; §16.4: a render that threw is drawn again when its inputs change, and onMount runs with the host as this.
@@ -2779,4 +2783,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.7.6-draft — subject to revision_
+_Jx Specification v0.8.0-draft — subject to revision_

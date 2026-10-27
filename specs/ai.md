@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.33-draft\
+**Version:** 0.1.39-draft\
 **Status:** Partial\
-**Updated:** 2026-10-06\
+**Updated:** 2026-10-27\
 **License:** MIT
 
 ---
@@ -331,6 +331,12 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.39-draft** (2026-10-27) — §3.11 interactions and approvals run before the tool body: an interaction tool is asked and settled, never executed, an approval precedes the body, and the turn reaches a person through the host's strategy; §3.4 the mechanism is the invoker; §4 a host may require approval before a call runs.
+- **0.1.38-draft** (2026-10-27) — §3.10 a host's tools are one catalog: membership refuses a duplicate or malformed tool, every member states its title and four behaviour hints, the view decides what the model is offered, and members project to MCP; §3.6 the assistant's registry is that catalog.
+- **0.1.37-draft** (2026-10-27) — §3.9 the tree tools are portable producers of doc ops over a DocumentHost, and §3.1 binds every host: one that cannot undo validates before it commits.
+- **0.1.36-draft** (2026-10-27) — §3.1 a document tool refuses an edit that would corrupt the tree or succeed without effect, and coerces an index written as a numeric string.
+- **0.1.35-draft** (2026-10-27) — §3.2 Restore undoes the turn's own steps in every document it wrote, while each is the top of its tab's history, and refuses the whole turn otherwise.
+- **0.1.34-draft** (2026-10-27) — §3.3 the batch belongs to the assistant, one segment per document it writes, and a person's edit is never folded into it.
 - **0.1.33-draft** (2026-10-06) — §3.4 the send path repairs tool-call pairs per request: a separated reply moves back to its request, a reused call id pairs with the right round, and a seal says when a call was cut off; §3.8 the turn engine runs the same repair at turn start and reports transcript_repaired.
 - **0.1.32-draft** (2026-10-06) — §3.8 the turn engine: runTurn and its synchronous event stream, the six outcomes, the anchor, a system prompt fixed per turn with tools listed each round, the turn lock, the calls a Stop leaves unanswered, and invokeTool; §1 names ./harness Worker-safe.
 - **0.1.31-draft** (2026-10-06) — §2.3 the neutral conversation model: messages as typed blocks, meta never sent, a lossless v1 conversion, the OpenAI-compatible projection stated once, and ToolSpec; §2.2 names the projection; §1 names ./messages Worker-safe.
@@ -368,4 +374,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.33-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.39-draft — a stub, subject to expansion._
