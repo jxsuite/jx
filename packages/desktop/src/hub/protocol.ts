@@ -7,9 +7,8 @@
  * JSON-serialized so Bun, which is not Node, can read it (`serialization: "json"` on both ends).
  *
  * The protocol is deliberately small, and it carries no project I/O: that stays on each window's
- * token-gated WebSocket, exactly as under the Linux launcher. These messages exist for the things a
- * web page cannot do and a Bun process cannot do either: draw a window, raise it, ask the user for
- * a path.
+ * token-gated WebSocket. These messages exist for the things a web page cannot do and a Bun process
+ * cannot do either: draw a window, raise it, ask the user for a path.
  *
  * @docs studio/desktop
  */

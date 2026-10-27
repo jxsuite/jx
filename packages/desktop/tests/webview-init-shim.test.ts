@@ -1,4 +1,4 @@
-/* The chromium init shim (src/chromium/init.ts) when its adapter factory throws: the failure is
+/* The chromium init shim (src/webview/init.ts) when its adapter factory throws: the failure is
    recorded against the "chromium" launcher, nothing is registered, and the launch token is stripped
    from the address bar ANYWAY — a failed boot leaves the window open on Studio's failure screen, and
    the token must not sit in that URL. */
@@ -13,7 +13,7 @@ try {
   /* Already registered */
 }
 
-void mock.module("../src/chromium/platform", () => ({
+void mock.module("../src/webview/platform", () => ({
   createDesktopPlatform: () => {
     throw new Error("boom");
   },
@@ -34,7 +34,7 @@ test("a throwing chromium adapter is recorded, and the token is stripped regardl
   happyDOM.setURL("http://127.0.0.1:4000/?token=secret&project=1");
   const consoleError = spyOn(console, "error").mockImplementation(() => {});
 
-  await import("../src/chromium/init");
+  await import("../src/webview/init");
 
   expect(globalThis.__jxPlatform).toBeUndefined();
   expect(launcherSignal()?.launcher).toBe("chromium");

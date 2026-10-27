@@ -184,7 +184,7 @@ globalThis.setInterval = capture(true, realSetInterval);
 globalThis.clearTimeout = release(realClearTimeout);
 globalThis.clearInterval = release(realClearInterval);
 
-const { createDesktopPlatform } = await import("../src/chromium/platform");
+const { createDesktopPlatform } = await import("../src/webview/platform");
 
 let platform: ReturnType<typeof createDesktopPlatform>;
 

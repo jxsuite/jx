@@ -233,7 +233,7 @@ Object.defineProperty(globalThis, "window", {
   writable: true,
 });
 
-const { createDesktopPlatform } = await import("../src/chromium/platform");
+const { createDesktopPlatform } = await import("../src/webview/platform");
 const { getPreviewNavigateHandler } = await import("@jxsuite/studio/preview-navigate");
 
 // ─── Tests ─────────────────────────────────────────────────────────────────

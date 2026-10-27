@@ -4,7 +4,7 @@ import { isString } from "@jxsuite/schema/guards";
 import { decodeRequest } from "./_rpc-frame";
 import type { ReceivedMessage } from "./_rpc-frame";
 
-// Covers src/chromium/platform.ts's `findReferences` bridge — the usage query behind the delete
+// Covers src/webview/platform.ts's `findReferences` bridge — the usage query behind the delete
 // Confirmation and the inspector's "used on N pages". The target object is the params payload
 // Itself (no wrapper key), so a mock server that answers FROM the params it received proves both
 // The shape on the wire and the value handed back.
@@ -109,7 +109,7 @@ Object.defineProperty(globalThis, "window", {
 
 // ─── Import after globals are set ──────────────────────────────────────────
 
-const { createDesktopPlatform } = await import("../src/chromium/platform");
+const { createDesktopPlatform } = await import("../src/webview/platform");
 const platform = createDesktopPlatform();
 
 afterAll(() => {

@@ -138,13 +138,11 @@ let
 
   registryPort = "48732";
 
-  # Optional imports the launcher's graph names but never needs installed: dbus-ts is Linux-portal
-  # glue resolved at runtime, and oxfmt probes the Prettier plugins and the Astro compiler
-  # (@astrojs/compiler-rs, an optional peer since oxfmt 0.73) only for languages a project actually
-  # formats. This is `BACKEND_EXTERNALS` in scripts/lib/backend-bundle.ts, which the packaged
+  # Optional imports the backend's graph names but never needs installed: oxfmt probes the Prettier
+  # plugins and the Astro compiler (@astrojs/compiler-rs, an optional peer since oxfmt 0.73) only for
+  # languages a project actually formats. This is `BACKEND_EXTERNALS` in scripts/lib/backend-bundle.ts, which the packaged
   # application's backend bundle leaves out too, and tests/backend-bundle.test.ts holds the two equal.
   resolveExternals = [
-    "dbus-ts"
     "@prettier/plugin-oxc"
     "@prettier/plugin-hermes"
     "@prettier/plugin-pug"
@@ -324,20 +322,16 @@ stdenv.mkDerivation {
   '';
 
   # The installed tree is a production install with two libraries pruned by hand, so prove the
-  # launcher still resolves against it: Bun's bundler walks every static import from the entry and
+  # backend still resolves against it: Bun's bundler walks every static import from the entry and
   # fails on the first one with nothing on disk to answer it. That is how an undeclared runtime
   # dependency surfaces (@jxsuite/server imported oxfmt without declaring it, and only the root's
-  # dev tooling ever provided it) and how a too-eager prune would, here rather than on a user's machine.
+  # dev tooling ever provided it) and how a too-eager prune would, here rather than on a user's
+  # machine. The backend runs from source against this tree: it is the process every window's
+  # project lives in, and an undeclared dependency would otherwise fail on the first window a user
+  # opens.
   doInstallCheck = true;
   installCheckPhase = ''
     runHook preInstallCheck
-    bun build $out/lib/jx-studio/packages/desktop/src/chromium/index.ts \
-      --target=bun \
-      ${lib.concatMapStringsSep " " (e: "--external ${e}") resolveExternals} \
-      --outfile "$TMPDIR/resolve-check.js"
-    # The backend runs from source against this tree, so prove ITS imports resolve too: it is the
-    # process every window's project lives in, and an undeclared dependency would otherwise fail on
-    # the first window a user opens.
     bun build $out/lib/jx-studio/packages/desktop/src/hub/main.ts \
       --target=bun \
       ${lib.concatMapStringsSep " " (e: "--external ${e}") resolveExternals} \

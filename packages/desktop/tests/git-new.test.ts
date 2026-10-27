@@ -3,8 +3,15 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { setProjectRoot } from "../src/handlers";
-import { gitAddRemote, gitBranches, gitFetch, gitInit, gitPush, gitStatus } from "../src/git";
+import {
+  gitAddRemote,
+  gitBranches,
+  gitFetch,
+  gitInit,
+  gitPush,
+  gitStatus,
+  setProjectRoot,
+} from "./_session";
 
 const FIXTURES = join(import.meta.dir, "_fixtures_git_new");
 

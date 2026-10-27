@@ -23,7 +23,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { $ } from "bun";
-import { bundleElectronEntry } from "../src/electron-shell/bundle";
+import { bundleElectronApp } from "../src/electron-shell/bundle";
 import { BACKEND_DATA, BACKEND_EXTERNALS, BACKEND_MODULES } from "./lib/backend-bundle";
 import { bunRuntimeFor, matchesChecksum } from "./lib/bun-runtime";
 
@@ -49,7 +49,7 @@ function option(name: string): string | undefined {
  * electron-updater is bundled in, so the asar needs no node_modules.
  */
 async function stageApp(): Promise<void> {
-  const bundle = await bundleElectronEntry("app-main", appDir);
+  const bundle = await bundleElectronApp(appDir);
   console.log(`[stage] app: ${bundle.main}`);
   // SAFETY: this package's own committed manifest, whose fields are strings.
   const pkg = JSON.parse(readFileSync(join(desktopDir, "package.json"), "utf8")) as {

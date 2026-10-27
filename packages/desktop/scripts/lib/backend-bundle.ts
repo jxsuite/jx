@@ -7,11 +7,9 @@
  * get wrong, so they are written down once, here, for `stage-app.ts` to use and the tests to hold:
  *
  * - Some modules cannot be inlined and are not needed: the prettier plugins are optional formats the
- *   code service reaches by `import()` and answers "not installed" for when they are absent, and
- *   `dbus-ts` is the Linux portal client of the per-window launcher, which the application does not
- *   use. They stay external. `package.nix`'s `resolveExternals` is the same list, because its
- *   install check bundles the same entry, and `tests/nix-bundle-completeness.test.ts` holds the two
- *   equal.
+ *   code service reaches by `import()` and answers "not installed" for when they are absent. They
+ *   stay external. `package.nix`'s `resolveExternals` is the same list, because its install check
+ *   bundles the same entry, and `tests/nix-bundle-completeness.test.ts` holds the two equal.
  * - Inlined modules that read their own data files do it relative to `import.meta.dirname`, which in
  *   a bundle is the directory of `index.js`. The directories they read are staged beside it at
  *   exactly the names below.
@@ -27,7 +25,6 @@
 
 /** Modules the backend bundle leaves out. */
 export const BACKEND_EXTERNALS = [
-  "dbus-ts",
   "@prettier/plugin-oxc",
   "@prettier/plugin-hermes",
   "@prettier/plugin-pug",

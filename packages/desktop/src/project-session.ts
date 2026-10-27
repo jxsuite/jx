@@ -2,10 +2,7 @@
  * Per-window project session. Each Jx Studio window owns one ProjectSession, which holds that
  * window's project root and its format-registry cache, and exposes all the file/format/resolve
  * handlers bound to that root. This is what makes multiple windows track independent projects: the
- * module-level singletons that used to live in handlers.ts are now per-session closures.
- *
- * Handlers.ts keeps a single process-global default session and re-exports the legacy free
- * functions (used by the chromium/ dev launcher and the test suite) by delegating to it.
+ * module-level singletons that once held one process-global root are per-session closures.
  */
 
 import { mkdir, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
@@ -1173,8 +1170,8 @@ export function createProjectSession(initialRoot: string | null) {
 
   /**
    * Hand a URL to the OS (Studio's Preview link clicks). Wrapped in the RPC's params/response shape
-   * rather than re-exporting utils' bare `(url) => boolean`, so both launchers can register it
-   * straight into their handler map.
+   * rather than re-exporting a bare `(url) => boolean`, so the hub can register it straight into
+   * its handler map.
    */
   async function openExternalUrl(params: { url: string }): Promise<{ ok: boolean }> {
     return { ok: openExternal(params.url) };

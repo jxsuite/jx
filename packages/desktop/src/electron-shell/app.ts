@@ -2,8 +2,7 @@
  * The Electron application: one main process that owns every Studio window.
  *
  * This is the shell the packaged app runs. Electron is the root process, the Bun backend (`hub/`)
- * is its child, and a window is a `BrowserWindow` the backend asked for, where the per-window
- * launcher (`chromium/index.ts`) makes every window a process of its own. The division is the one
+ * is its child, and a window is a `BrowserWindow` the backend asked for. The division is the one
  * the OS draws: Electron does what only an app can (windows, the menu bar, native dialogs, the
  * single-instance lock, file associations), and the backend does everything about a project. They
  * speak the small protocol in `hub/protocol.ts`; project I/O never crosses it, and stays on each
@@ -18,7 +17,7 @@ import { existsSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type * as Electron from "electron";
 import type { BrowserWindow } from "electron";
-import { shellEnv } from "../chromium/shell-command";
+import { shellEnv } from "./command";
 import type { BackendMessage, DialogKind, ShellMessage } from "../hub/protocol";
 import { spawnBackend } from "./backend-process";
 import type { BackendProcess, SpawnBackend } from "./backend-process";
@@ -217,8 +216,8 @@ interface Picked {
 
 /**
  * Ask the user for a path with the native dialog, sheet-modal on the focused window when there is
- * one. Electron routes this through the desktop portal on Linux and the system panel elsewhere,
- * which is what let the launcher's D-Bus and AppleScript pickers go.
+ * one. Electron routes this through the desktop portal on Linux and the system panel elsewhere, so
+ * the backend needs no picker of its own.
  */
 async function choosePath(
   electron: typeof Electron,
@@ -259,7 +258,7 @@ async function choosePath(
  * @param argv The process argv.
  * @param deps The machine, replaceable by a test.
  * @returns The running app, or null when another instance holds the lock and has been told.
- * @throws {Error} When the launcher left out a switch.
+ * @throws {Error} When an unpackaged run left out a switch.
  */
 export async function startApp(
   electron: typeof Electron,
