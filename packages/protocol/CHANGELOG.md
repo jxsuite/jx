@@ -1,5 +1,23 @@
 # Changelog
 
+## [5.0.0](https://github.com/jxsuite/jx/compare/protocol-v4.0.0...protocol-v5.0.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** drop the dev server's Open Project ([#501](https://github.com/jxsuite/jx/issues/501))
+
+### Code Refactoring
+
+* **studio:** drop the dev server's Open Project ([#501](https://github.com/jxsuite/jx/issues/501)) ([bad1e62](https://github.com/jxsuite/jx/commit/bad1e627effa91d972542b0e4d321ec7e8bbc033))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 4.1.0
+
 ## [4.0.0](https://github.com/jxsuite/jx/compare/protocol-v3.0.0...protocol-v4.0.0) (2026-10-21)
 
 

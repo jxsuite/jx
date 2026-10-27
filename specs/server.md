@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.2.39-draft\
+**Version:** 0.3.0-draft\
 **Status:** Partial\
-**Updated:** 2026-10-21\
+**Updated:** 2026-10-27\
 **License:** MIT
 
 ---
@@ -355,6 +355,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.3.0-draft** (2026-10-27) — §4.1 GET /__studio/find-project and GET /__studio/locate-directory are removed with the dev-server Open Project and Browse… they served; neither scans the home directory any more.
+- **0.2.40-draft** (2026-10-27) — §2 and §4.3: jx dev on a site project answers the server-function routes the build collected, as the site worker does, with the worker's failure shape.
 - **0.2.39-draft** (2026-10-21) — §3 static files: a bare npm specifier is resolved through the active project's node_modules before the server root's.
 - **0.2.38-draft** (2026-10-21) — §4.1 DELETE file removes an empty folder and answers 409 for a folder that still holds files.
 - **0.2.37-draft** (2026-10-21) — §4.1 GET /__studio/file accepts optional=1, answering a missing file as 200 { content: null } with no-store instead of a 404.
@@ -408,4 +410,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.2.39-draft_
+_`@jxsuite/server` Specification v0.3.0-draft_

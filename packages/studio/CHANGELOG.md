@@ -1,5 +1,42 @@
 # Changelog
 
+## [9.0.0](https://github.com/jxsuite/jx/compare/studio-v8.1.0...studio-v9.0.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** drop the dev server's Open Project ([#501](https://github.com/jxsuite/jx/issues/501))
+
+### Features
+
+* **ai:** interactions and approvals run before the tool body ([#502](https://github.com/jxsuite/jx/issues/502)) ([74e5ae7](https://github.com/jxsuite/jx/commit/74e5ae761606d3b0c06b02e978744943a05fb339))
+* **ai:** the assistant's tools are one catalog in @jxsuite/ai/catalog ([#499](https://github.com/jxsuite/jx/issues/499)) ([365216b](https://github.com/jxsuite/jx/commit/365216bdd7c9d4acaee583792e0cc915a765f165))
+* **ai:** the tree tools are portable producers in @jxsuite/ai/jx-tools ([#493](https://github.com/jxsuite/jx/issues/493)) ([5d15022](https://github.com/jxsuite/jx/commit/5d150224721e61a399b50261daa05b47576126f0))
+* **studio:** document tools refuse corrupting or no-op edits ([#492](https://github.com/jxsuite/jx/issues/492)) ([6ace65d](https://github.com/jxsuite/jx/commit/6ace65d24afae65a687e12276f2fa347aa358fb5))
+* **studio:** per-actor batch lanes replace the global undo batch ([#489](https://github.com/jxsuite/jx/issues/489)) ([e4fd565](https://github.com/jxsuite/jx/commit/e4fd565f75da38cd6fb4ec276f6b36cce26a94b1))
+* **studio:** Restore undoes the turn across every document it wrote ([#490](https://github.com/jxsuite/jx/issues/490)) ([b23e307](https://github.com/jxsuite/jx/commit/b23e307f20470d094cfd0f29fe170272eaee5bb5))
+
+
+### Code Refactoring
+
+* **studio:** drop the dev server's Open Project ([#501](https://github.com/jxsuite/jx/issues/501)) ([bad1e62](https://github.com/jxsuite/jx/commit/bad1e627effa91d972542b0e4d321ec7e8bbc033))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.41.0
+    * @jxsuite/collab bumped to 0.11.3
+    * @jxsuite/create bumped to 1.4.1
+    * @jxsuite/formulas bumped to 0.0.25
+    * @jxsuite/markup bumped to 1.0.1
+    * @jxsuite/protocol bumped to 5.0.0
+    * @jxsuite/runtime bumped to 6.0.0
+    * @jxsuite/schema bumped to 4.1.0
+    * @jxsuite/site bumped to 2.2.1
+    * @jxsuite/ui bumped to 0.8.1
+
 ## [8.1.0](https://github.com/jxsuite/jx/compare/studio-v8.0.1...studio-v8.1.0) (2026-10-23)
 
 

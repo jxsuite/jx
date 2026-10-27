@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.6.5-draft\
+**Version:** 0.7.0-draft\
 **Status:** Partial\
-**Updated:** 2026-10-23\
+**Updated:** 2026-10-27\
 **License:** MIT
 
 ---
@@ -1154,6 +1154,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.0-draft** (2026-10-27) — The dev server has no Open Project: a window opens its project from ?project= (§8.2), openProject is optional and Studio offers Open Project only on a host that can carry it out (§4.2), and the dev-server adapter omits pickDirectory, so its Location field is typed (§8.2.1).
 - **0.6.5-draft** (2026-10-23) — §7.7: the sandboxed build asks for the project folder, keeps a bookmark per folder, restores them before the backend starts, and restarts the backend for a pick no bookmark covers.
 - **0.6.4-draft** (2026-10-23) — Adds §7.7, the Mac App Store channel: the mas target, the sandbox entitlements, no updater inside it, and the open question of the backend's access to a picked folder.
 - **0.6.3-draft** (2026-10-23) — §7.7: every channel shares the appId com.jxsuite.studio, the identifier registered in the developer portal.
@@ -1238,4 +1239,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.6.5-draft_
+_Jx Studio Desktop Architecture Specification v0.7.0-draft_

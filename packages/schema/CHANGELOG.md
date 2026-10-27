@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.1.0](https://github.com/jxsuite/jx/compare/schema-v4.0.0...schema-v4.1.0) (2026-10-27)
+
+
+### Features
+
+* **ai:** the tree tools are portable producers in @jxsuite/ai/jx-tools ([#493](https://github.com/jxsuite/jx/issues/493)) ([5d15022](https://github.com/jxsuite/jx/commit/5d150224721e61a399b50261daa05b47576126f0))
+* **studio:** document tools refuse corrupting or no-op edits ([#492](https://github.com/jxsuite/jx/issues/492)) ([6ace65d](https://github.com/jxsuite/jx/commit/6ace65d24afae65a687e12276f2fa347aa358fb5))
+
 ## [4.0.0](https://github.com/jxsuite/jx/compare/schema-v3.0.0...schema-v4.0.0) (2026-10-17)
 
 

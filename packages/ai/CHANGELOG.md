@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.41.0](https://github.com/jxsuite/jx/compare/ai-v0.40.0...ai-v0.41.0) (2026-10-27)
+
+
+### Features
+
+* **ai:** interactions and approvals run before the tool body ([#502](https://github.com/jxsuite/jx/issues/502)) ([74e5ae7](https://github.com/jxsuite/jx/commit/74e5ae761606d3b0c06b02e978744943a05fb339))
+* **ai:** the assistant's tools are one catalog in @jxsuite/ai/catalog ([#499](https://github.com/jxsuite/jx/issues/499)) ([365216b](https://github.com/jxsuite/jx/commit/365216bdd7c9d4acaee583792e0cc915a765f165))
+* **ai:** the tree tools are portable producers in @jxsuite/ai/jx-tools ([#493](https://github.com/jxsuite/jx/issues/493)) ([5d15022](https://github.com/jxsuite/jx/commit/5d150224721e61a399b50261daa05b47576126f0))
+* **studio:** per-actor batch lanes replace the global undo batch ([#489](https://github.com/jxsuite/jx/issues/489)) ([e4fd565](https://github.com/jxsuite/jx/commit/e4fd565f75da38cd6fb4ec276f6b36cce26a94b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 5.0.0
+    * @jxsuite/schema bumped to 4.1.0
+
 ## [0.40.0](https://github.com/jxsuite/jx/compare/ai-v0.39.5...ai-v0.40.0) (2026-10-23)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [6.0.0](https://github.com/jxsuite/jx/compare/runtime-v5.2.0...runtime-v6.0.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498))
+
+### Features
+
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([d47cd16](https://github.com/jxsuite/jx/commit/d47cd1629f23724191eac18b6895617d62580a78))
+
+
+### Bug Fixes
+
+* **runtime:** an & after a context in a nested style key is the scope ([#497](https://github.com/jxsuite/jx/issues/497)) ([6e7861d](https://github.com/jxsuite/jx/commit/6e7861d37ef8d65e2e34c9e18695ca1b3188b212))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 4.1.0
+
 ## [5.2.0](https://github.com/jxsuite/jx/compare/runtime-v5.1.0...runtime-v5.2.0) (2026-10-23)
 
 

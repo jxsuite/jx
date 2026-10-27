@@ -2,9 +2,9 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.4.6-draft\
+**Version:** 0.5.1-draft\
 **Status:** Partial\
-**Updated:** 2026-10-17\
+**Updated:** 2026-10-27\
 **License:** MIT
 
 ---
@@ -756,6 +756,10 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.5.1-draft** (2026-10-27) — §9.2: a compiled switch discriminant and a repeater's items read a nested pointer by its path and answer undefined through a null parent, as the interpreter does.
+- **0.5.0-draft** (2026-10-27) — §6.2 removed: the site build writes no per-page server handler and compileServer is no longer exported; §1 and §6.3 require build.adapter for a server-timed entry, as for an active mount.
+- **0.4.8-draft** (2026-10-27) — §6.3: the site worker serves every timing server entry a page, its layouts, project.json state or a compiled component declares, each relative $src resolved against its own document, and two modules exporting one name fail the build.
+- **0.4.7-draft** (2026-10-27) — §6.1 and §4.1: both compile targets emit the server-function call, a POST to the based /_jx/server route carrying the resolved arguments, re-run from an effect when an argument is a reference.
 - **0.4.6-draft** (2026-10-17) — §8.1 a prerendered component instance places its children by slot name, and a live one carries data-jx-slots with named comment brackets so its element recovers them on upgrade.
 - **0.4.5-draft** (2026-09-29) — Census against the code: §2, §2.2, §4.1, §4.3, §4.4, §5.2, §5.3, §5.4, §5.6, §6.1, §6.2, §6.3, §7.1, §7.2, §7.2.1, §7.3, §7.5, §7.7 and §11 marked Partial, §3's marker restated now that the opt-in CSP ships and widened to self-contained compiler-timed classes, the stale §6.3 and §7.7 markers corrected, and the §10 Pending Features ledger retired onto its feature sections except the three rows no other section yet tracks as open. §8.2 now leads with Partial, since the style handle keys rules on the author's first class rather than a generated one.
 - **0.4.4-draft** (2026-09-13) — §8.1: a component instance nested inside another component's definition is expanded — props, host style, stamping — recursively, with a cycle diagnostic and a depth cap; a template host style resolves for every instance, props or not.
@@ -801,4 +805,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.4.6-draft_
+_`@jxsuite/compiler` Specification v0.5.1-draft_
