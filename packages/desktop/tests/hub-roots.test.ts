@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { normalizeRoot } from "../src/hub/roots";
+import { normalizeRoot } from "../src/backend/roots";
 
 const ROOT = join(tmpdir(), `jx-hub-roots-${process.pid}`);
 

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CapabilityInfo, ExtensionCapability } from "@jxsuite/schema/format-registry";
 import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
-import type { ComponentMeta } from "../src/rpc-schema";
+import type { ComponentMeta } from "../src/shared/rpc-schema";
 import type { StudioSchema } from "./_session";
 import { expectStudioSchema } from "./_studio-schema";
 

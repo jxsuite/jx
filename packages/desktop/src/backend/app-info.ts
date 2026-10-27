@@ -2,9 +2,9 @@
  * Build info the backend can report to the About screen on its own.
  *
  * The packaged Electron application composes a richer answer: its updater has a feed and can say
- * "Update ready (1.4.2)" (`hub/window-hub.ts` merges that in). On its own the backend has no feed,
- * so it reports **no** `updateStatus` at all rather than an "Up to date" it has no way to have
- * checked. An absent field is how the About screen knows not to draw the row.
+ * "Update ready (1.4.2)" (`backend/window-hub.ts` merges that in). On its own the backend has no
+ * feed, so it reports **no** `updateStatus` at all rather than an "Up to date" it has no way to
+ * have checked. An absent field is how the About screen knows not to draw the row.
  */
 
 import type { AppInfo } from "@jxsuite/protocol";

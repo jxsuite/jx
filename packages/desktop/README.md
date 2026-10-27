@@ -48,7 +48,7 @@ Signing and notarization read their credentials from the environment (`CSC_LINK`
 ## Architecture
 
 ```
-Electron main process  ←→  JSON IPC  ←→  Bun backend (src/hub/main.ts)
+Electron main process  ←→  JSON IPC  ←→  Bun backend (src/backend/main.ts)
  windows · menu · dialogs                 one hub, N windows:
  single-instance lock · updater            ProjectSession + server + token each
         │                                           │

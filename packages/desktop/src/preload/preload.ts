@@ -8,6 +8,6 @@
  * @docs studio/desktop
  */
 import { contextBridge, ipcRenderer } from "electron";
-import { exposeShell } from "./bridge";
+import { exposeShell } from "../shared/bridge";
 
 exposeShell(contextBridge, ipcRenderer);

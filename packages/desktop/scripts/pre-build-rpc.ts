@@ -23,14 +23,14 @@ await $`bun build ./src/webview/init.ts --outdir ./assets/studio/dist --target b
   desktopDir,
 );
 
-/* `__jxLauncher` is the global src/boot.ts publishes before anything else runs; without it Studio
+/* `__jxLauncher` is the global src/webview/boot.ts publishes before anything else runs; without it Studio
    cannot tell a launcher that failed to boot from a browser with no launcher at all. A bundle that
    lacks it is not this launcher's init, whatever else is in it. */
 if (
   !readFileSync(resolve(desktopDir, "assets/studio/dist/init.js"), "utf8").includes("__jxLauncher")
 ) {
   throw new Error(
-    "assets/studio/dist/init.js lacks the launcher boot signal (no `__jxLauncher`): src/boot.ts did not make it into the bundle",
+    "assets/studio/dist/init.js lacks the launcher boot signal (no `__jxLauncher`): src/webview/boot.ts did not make it into the bundle",
   );
 }
 

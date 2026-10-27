@@ -8,8 +8,8 @@
  *
  * It lives here because THREE backends need the same answer and two of them had already written it
  * twice: `packages/server/src/studio-api.ts` (the dev server's `/__studio/components`) and
- * `packages/desktop/src/project-session.ts`. A third copy in the cloud adapter would have made
- * "which entries in `state` count as props" a question with three answers.
+ * `packages/desktop/src/backend/project-session.ts`. A third copy in the cloud adapter would have
+ * made "which entries in `state` count as props" a question with three answers.
  *
  * @license MIT
  */

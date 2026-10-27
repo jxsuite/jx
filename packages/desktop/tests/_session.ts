@@ -2,15 +2,15 @@
  * One project session for tests that drive the backend's handlers as free functions over a single
  * root: the session's handlers, its git operations and its package operations, all bound to it.
  *
- * The application never works this way. The hub creates a session per window (`hub/window-hub.ts`);
- * this is the test suite's shorthand for "a window, already open".
+ * The application never works this way. The hub creates a session per window
+ * (`backend/window-hub.ts`); this is the test suite's shorthand for "a window, already open".
  */
-import { createGitOps } from "../src/git";
-import { createPackageOps } from "../src/packages";
-import { createProjectSession } from "../src/project-session";
+import { createGitOps } from "../src/backend/git";
+import { createPackageOps } from "../src/backend/packages";
+import { createProjectSession } from "../src/backend/project-session";
 
-export { pickProjectFile, setDirectoryDialog, setFileDialog } from "../src/project-session";
-export type { ProjectSession, ProxyResult, StudioSchema } from "../src/project-session";
+export { pickProjectFile, setDirectoryDialog, setFileDialog } from "../src/backend/project-session";
+export type { ProjectSession, ProxyResult, StudioSchema } from "../src/backend/project-session";
 
 const session = createProjectSession(null);
 

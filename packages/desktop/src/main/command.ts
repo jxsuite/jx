@@ -55,7 +55,7 @@ export interface ElectronAppFiles {
 }
 
 /**
- * `electron <app-main.js> --jx-…`: the multi-window app (`electron-shell/app.ts`).
+ * `electron <app-main.js> --jx-…`: the multi-window app (`main/app.ts`).
  *
  * It is given no URL and no profile: the backend it spawns stands up a server and a storage
  * partition per window, and tells the app where each one is.

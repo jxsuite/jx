@@ -15,7 +15,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = readFileSync(join(import.meta.dir, "..", "src", "project-session.ts"), "utf8");
+const SRC = readFileSync(
+  join(import.meta.dir, "..", "src", "backend", "project-session.ts"),
+  "utf8",
+);
 
 describe("studio path-separator convention", () => {
   test("separator normalization is centralized in toPosix()", () => {

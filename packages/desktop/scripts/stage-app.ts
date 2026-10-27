@@ -2,7 +2,7 @@
  * Assemble everything electron-builder packs, under `packages/desktop/build/`.
  *
  *     build/app/            what becomes app.asar: the main process, the preload, package.json
- *     build/resources/      what stays a real file beside it (see src/electron-shell/layout.ts)
+ *     build/resources/      what stays a real file beside it (see src/main/layout.ts)
  *       backend/index.js      the backend, one Node bundle, with its data and node_modules beside it
  *       studio/               the studio assets the backend serves
  *
@@ -15,7 +15,7 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { $ } from "bun";
-import { bundleElectronApp } from "../src/electron-shell/bundle";
+import { bundleElectronApp } from "../src/main/bundle";
 import { bundleBackend } from "./lib/backend-bundle";
 
 const desktopDir = resolve(import.meta.dir, "..");

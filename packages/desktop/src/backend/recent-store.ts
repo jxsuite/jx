@@ -6,7 +6,7 @@
 
 import { configFile, migrateLegacyStore } from "./user-config";
 import { readJsonStore, writeStore } from "./user-store";
-import type { RecentProjectEntry } from "./rpc-schema";
+import type { RecentProjectEntry } from "../shared/rpc-schema";
 
 const STORE_NAME = "recent-projects.json";
 

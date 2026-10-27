@@ -2,7 +2,7 @@
 #
 # Run `bun run package` (see `scripts/package-app.ts`): it stages first, because everything below
 # that starts with `build/` is generated and gitignored. What a packaged app is made of, and where
-# it looks for each piece, is `src/electron-shell/layout.ts`; the contract is specs/desktop.md §7.
+# it looks for each piece, is `src/main/layout.ts`; the contract is specs/desktop.md §7.
 #
 # Electron is pinned here rather than installed: the npm `electron` package downloads a ~100 MB
 # binary in a postinstall this repository avoids, and electron-builder fetches the same release

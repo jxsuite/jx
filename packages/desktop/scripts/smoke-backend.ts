@@ -18,8 +18,8 @@
  * with `ELECTRON_RUN_AS_NODE=1` instead, and `--electron packaged` finds the one electron-builder
  * just wrote under `artifacts/`: that is what a release lane passes, so the Node that runs the
  * check is the one that ships. The channel is Node's IPC (`process.send`), not the utility
- * process's port, which is the one difference from the app and is covered by `hub/main.ts`'s tests.
- * `--allow` names RPCs whose failure is already known and tracked, so CI stays green on them
+ * process's port, which is the one difference from the app and is covered by `backend/main.ts`'s
+ * tests. `--allow` names RPCs whose failure is already known and tracked, so CI stays green on them
  * without going blind to the rest.
  */
 // oxlint-disable deslop/no-unknown-parameters, deslop/no-unknown-returns, deslop/no-runtime-typeof -- This script IS the I/O boundary: it sends arbitrary RPC params to the packaged backend and judges whatever comes back, so each verifier takes `unknown` and narrows it on purpose.

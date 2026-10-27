@@ -35,7 +35,7 @@ void mock.module("electron-updater", () => ({
   },
 }));
 
-const { loadAutoUpdater } = await import("../src/electron-shell/app");
+const { loadAutoUpdater } = await import("../src/main/app");
 
 describe("loadAutoUpdater", () => {
   test("hands the app electron-updater's autoUpdater behind the slice the app declares", async () => {

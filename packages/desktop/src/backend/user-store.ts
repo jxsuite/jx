@@ -29,7 +29,7 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
-import type { RecentProjectEntry } from "./rpc-schema";
+import type { RecentProjectEntry } from "../shared/rpc-schema";
 
 /**
  * What a store file holds, written whole as JSON: a string map (settings, credentials) or the

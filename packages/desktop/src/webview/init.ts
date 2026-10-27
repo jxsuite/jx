@@ -2,7 +2,7 @@
    starts recording page errors as its module body evaluates. ESM evaluates imports in order, so
    only from this position does it run before the modules below — and it is one of THEM throwing at
    import (desktop 5.0.0-5.1.3) that it exists to record. See boot.ts. */
-import { bootLauncher, stripLaunchToken } from "../boot";
+import { bootLauncher, stripLaunchToken } from "./boot";
 import { hydrateGithubToken } from "@jxsuite/studio/github-auth-status";
 import { createDesktopPlatform } from "./platform";
 

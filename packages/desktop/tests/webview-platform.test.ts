@@ -931,7 +931,7 @@ describe("chromium desktop platform", () => {
     expect(windowFocus.mock.calls.length).toBeGreaterThan(before);
   });
 
-  // ─── Electron shell (electron-shell/bridge.ts) ───────────────────────────
+  // ─── Electron shell (shared/bridge.ts) ───────────────────────────
 
   test("under Chromium --app there are no window controls: the browser frame has its own", () => {
     expect(platform.windowControls).toBeUndefined();

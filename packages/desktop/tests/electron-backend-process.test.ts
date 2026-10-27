@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { utilityBackend } from "../src/electron-shell/backend-process";
-import type { BackendMessage } from "../src/hub/protocol";
+import { utilityBackend } from "../src/main/backend-process";
+import type { BackendMessage } from "../src/shared/protocol";
 import { fakeElectron } from "./_fake-electron";
 
 /** A backend started through a fake `utilityProcess`, with the fork it made. */

@@ -7,7 +7,7 @@ import {
   iconFileFor,
   shellEnv,
   shellIcon,
-} from "../src/electron-shell/command";
+} from "../src/main/command";
 
 describe("findElectron", () => {
   test("is opt-in: without ELECTRON_BIN there is no Electron, even on PATH", () => {

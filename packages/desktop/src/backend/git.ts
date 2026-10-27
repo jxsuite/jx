@@ -1,5 +1,10 @@
 import { spawn } from "node:child_process";
-import type { GitBranchesResult, GitFileStatus, GitLogEntry, GitStatusResult } from "./rpc-schema";
+import type {
+  GitBranchesResult,
+  GitFileStatus,
+  GitLogEntry,
+  GitStatusResult,
+} from "../shared/rpc-schema";
 
 /**
  * The porcelain code → the one letter Studio's git panel understands. Copied from the dev server's

@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { bundleElectronApp } from "../src/electron-shell/bundle";
+import { bundleElectronApp } from "../src/main/bundle";
 
 const outDir = mkdtempSync(join(tmpdir(), "jx-shell-bundle-test-"));
 afterAll(() => rmSync(outDir, { force: true, recursive: true }));

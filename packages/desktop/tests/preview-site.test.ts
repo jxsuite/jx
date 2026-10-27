@@ -53,7 +53,7 @@ void mock.module("@jxsuite/server/refactor", () => ({
   invalidateReferenceCache: () => {},
 }));
 
-const { createProjectSession } = await import("../src/project-session");
+const { createProjectSession } = await import("../src/backend/project-session");
 
 function project(): string {
   const root = mkdtempSync(join(tmpdir(), "jx-preview-site-"));

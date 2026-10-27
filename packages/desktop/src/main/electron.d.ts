@@ -206,7 +206,7 @@ declare module "electron" {
 
   /**
    * A message as it crosses a utility process's channel: structured-cloned plain data. Both ends
-   * speak `hub/protocol.ts`, whose every message is discriminated by `type`; what ARRIVES is
+   * speak `shared/protocol.ts`, whose every message is discriminated by `type`; what ARRIVES is
    * checked against it before anything reads it.
    */
   export interface PortMessage {

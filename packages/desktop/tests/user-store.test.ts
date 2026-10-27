@@ -1,5 +1,5 @@
 /**
- * Tests for src/user-store.ts — the shared user-level JSON store primitive.
+ * Tests for src/backend/user-store.ts — the shared user-level JSON store primitive.
  *
  * The three properties here are the ones no consumer exercises in ordinary single-window use, and
  * each of them is a defect the stores this replaced actually had: an interrupted write leaving torn
@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { readJsonStore, readStringStore, updateStore, writeStore } from "../src/user-store";
+import { readJsonStore, readStringStore, updateStore, writeStore } from "../src/backend/user-store";
 
 const DIR = mkdtempSync(join(process.env.TMPDIR || "/tmp", "jx-user-store-"));
 

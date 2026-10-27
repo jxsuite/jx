@@ -12,7 +12,7 @@ code:
   - packages/studio/src/utils/base64.ts
   - packages/studio/src/files/asset-versions.ts
   - packages/desktop/src/webview/platform.ts
-  - packages/desktop/src/boot.ts
+  - packages/desktop/src/webview/boot.ts
   - packages/studio/src/platforms/default-platform.ts
 ---
 

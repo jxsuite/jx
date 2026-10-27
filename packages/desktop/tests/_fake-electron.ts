@@ -1,6 +1,6 @@
 /**
- * A stand-in for the slice of Electron the shell uses (`src/electron-shell/electron.d.ts`),
- * recording what the shell asked of it so a test can drive the window's events by hand.
+ * A stand-in for the slice of Electron the shell uses (`src/main/electron.d.ts`), recording what
+ * the shell asked of it so a test can drive the window's events by hand.
  */
 import { mock } from "bun:test";
 import type * as Electron from "electron";

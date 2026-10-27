@@ -8,10 +8,10 @@ import { join } from "node:path";
 import type { AppInfo } from "@jxsuite/protocol";
 import type { ImportApiOptions } from "@jxsuite/server/import-api";
 import type { JsonValue } from "@jxsuite/schema/types";
-import { createWindowHub } from "../src/hub/window-hub";
-import type { WindowHub, WindowHubOptions } from "../src/hub/window-hub";
-import type { OpenOutcome } from "../src/hub/handlers";
-import type { BackendMessage } from "../src/hub/protocol";
+import { createWindowHub } from "../src/backend/window-hub";
+import type { WindowHub, WindowHubOptions } from "../src/backend/window-hub";
+import type { OpenOutcome } from "../src/backend/handlers";
+import type { BackendMessage } from "../src/shared/protocol";
 
 /** A message the hub sent, narrowed by its `type`. */
 export type Sent<T extends BackendMessage["type"]> = Extract<BackendMessage, { type: T }>;

@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { pickProjectFile } from "../src/project-session";
-import { projectPartition, titleFor } from "../src/hub/window-hub";
+import { pickProjectFile } from "../src/backend/project-session";
+import { projectPartition, titleFor } from "../src/backend/window-hub";
 import { hubFixture } from "./_hub-harness";
 import type { Fixture, Sent } from "./_hub-harness";
 

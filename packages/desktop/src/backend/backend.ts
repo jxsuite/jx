@@ -12,7 +12,7 @@ import { isAbsolute, resolve } from "node:path";
 import type { ImportApiOptions } from "@jxsuite/server/import-api";
 import { appInfo } from "./app-info";
 import { findChromium } from "./import-browser";
-import type { BackendMessage, ShellMessage } from "./protocol";
+import type { BackendMessage, ShellMessage } from "../shared/protocol";
 import { createWindowHub } from "./window-hub";
 import type { WindowHub } from "./window-hub";
 

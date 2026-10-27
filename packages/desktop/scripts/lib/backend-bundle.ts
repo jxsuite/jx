@@ -1,14 +1,14 @@
 /**
  * What the packaged application's backend is made of, and the one function that makes it.
  *
- * The backend (`src/hub/main.ts`) is one ESM bundle, `index.js`, that inlines the JavaScript graph
- * of `@jxsuite/server`, `/create`, `/compiler` and the rest, and runs on the Node inside Electron
- * as a utility process (specs/desktop.md §7.1, §9.7). It is built for `target: "node"` with the
- * default export conditions, so every runtime seam (`#serve`, `#bundler-backend`) resolves to its
- * Node side and the bundle holds no Bun code; `tests/backend-bundle.test.ts` fails the moment it
- * does. `stage-app.ts` (the installers), `run-electron-app.ts` (a checkout) and `package.nix` all
- * call {@link bundleBackend}, so there is one bundle, not three. Four facts about it are easy to
- * get wrong, so they are written down once, here:
+ * The backend (`src/backend/main.ts`) is one ESM bundle, `index.js`, that inlines the JavaScript
+ * graph of `@jxsuite/server`, `/create`, `/compiler` and the rest, and runs on the Node inside
+ * Electron as a utility process (specs/desktop.md §7.1, §9.7). It is built for `target: "node"`
+ * with the default export conditions, so every runtime seam (`#serve`, `#bundler-backend`) resolves
+ * to its Node side and the bundle holds no Bun code; `tests/backend-bundle.test.ts` fails the
+ * moment it does. `stage-app.ts` (the installers), `run-electron-app.ts` (a checkout) and
+ * `package.nix` all call {@link bundleBackend}, so there is one bundle, not three. Four facts about
+ * it are easy to get wrong, so they are written down once, here:
  *
  * - Some modules cannot be inlined and are not needed: the prettier plugins are optional formats the
  *   code service reaches by `import()` and answers "not installed" for when they are absent. They
@@ -174,7 +174,7 @@ export async function bundleBackend(
   options: { stageModules: boolean },
 ): Promise<BackendBundle> {
   const result = await Bun.build({
-    entrypoints: [join(desktopDir, "src/hub/main.ts")],
+    entrypoints: [join(desktopDir, "src/backend/main.ts")],
     external: [...BACKEND_EXTERNALS, ...BACKEND_NATIVES],
     format: "esm",
     metafile: true,

@@ -10,8 +10,8 @@
  * @docs studio/desktop
  */
 import type { UtilityProcessFork } from "electron";
-import { isBackendMessage } from "../hub/protocol";
-import type { BackendMessage, ShellMessage } from "../hub/protocol";
+import { isBackendMessage } from "../shared/protocol";
+import type { BackendMessage, ShellMessage } from "../shared/protocol";
 
 /** What the app needs of the backend. */
 export interface BackendProcess {

@@ -1,20 +1,20 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import type { BackendMessage, ShellMessage } from "../src/hub/protocol";
-import { SHELL_CHANNELS } from "../src/electron-shell/bridge";
+import type { BackendMessage, ShellMessage } from "../src/shared/protocol";
+import { SHELL_CHANNELS } from "../src/shared/bridge";
 import {
   parseAppArgs as parseAppArgsRaw,
   projectDirOf,
   projectRootFrom as projectRootFromRaw,
   startApp,
-} from "../src/electron-shell/app";
-import type { AppDeps } from "../src/electron-shell/app";
-import type { BackendProcess } from "../src/electron-shell/backend-process";
-import type { Grant } from "../src/electron-shell/folder-grants";
+} from "../src/main/app";
+import type { AppDeps } from "../src/main/app";
+import type { BackendProcess } from "../src/main/backend-process";
+import type { Grant } from "../src/main/folder-grants";
 import { posix } from "./_posix";
 import { fakeElectron } from "./_fake-electron";
 import { fakeSchedule, fakeUpdater } from "./_fake-updater";
-import { packagedLayout } from "../src/electron-shell/layout";
+import { packagedLayout } from "../src/main/layout";
 import type { FakeElectron } from "./_fake-electron";
 
 /** `projectRootFrom`, answering in POSIX spelling and handing `exists` POSIX paths. */
@@ -557,7 +557,7 @@ describe("app-main.ts", () => {
     const spy = spyOn(console, "error").mockImplementation(errors);
     try {
       // This process's argv carries no --jx-backend, which is exactly a failed start.
-      await import("../src/electron-shell/app-main");
+      await import("../src/main/app-main");
       await Bun.sleep(0);
       expect(fake.quit).toHaveBeenCalled();
       expect(errors.mock.calls[0]?.[0]).toBe("[electron-app]");

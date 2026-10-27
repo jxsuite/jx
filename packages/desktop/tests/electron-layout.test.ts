@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { packagedLayout } from "../src/electron-shell/layout";
+import { packagedLayout } from "../src/main/layout";
 import { posix } from "./_posix";
 
 describe("packagedLayout", () => {

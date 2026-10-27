@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isBackendMessage, isShellMessage } from "../src/hub/protocol";
+import { isBackendMessage, isShellMessage } from "../src/shared/protocol";
 
 describe("isBackendMessage", () => {
   test("accepts every message the backend sends", () => {

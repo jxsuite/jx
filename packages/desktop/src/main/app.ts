@@ -1,12 +1,12 @@
 /**
  * The Electron application: one main process that owns every Studio window.
  *
- * This is the shell the packaged app runs. Electron is the root process, the backend (`hub/`) is
- * its utility process on Electron's own Node, and a window is a `BrowserWindow` the backend asked
- * for. The division is the one the OS draws: Electron does what only an app can (windows, the menu
- * bar, native dialogs, the single-instance lock, file associations), and the backend does
- * everything about a project. They speak the small protocol in `hub/protocol.ts`; project I/O never
- * crosses it, and stays on each window's token-gated WebSocket.
+ * This is the shell the packaged app runs. Electron is the root process, the backend (`backend/`)
+ * is its utility process on Electron's own Node, and a window is a `BrowserWindow` the backend
+ * asked for. The division is the one the OS draws: Electron does what only an app can (windows, the
+ * menu bar, native dialogs, the single-instance lock, file associations), and the backend does
+ * everything about a project. They speak the small protocol in `shared/protocol.ts`; project I/O
+ * never crosses it, and stays on each window's token-gated WebSocket.
  *
  * Takes the Electron API as a parameter, like `shell.ts`, so it can be exercised without Electron;
  * `app-main.ts` is the entry that passes the real one.
@@ -18,7 +18,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import type * as Electron from "electron";
 import type { BrowserWindow } from "electron";
 import { shellEnv } from "./command";
-import type { BackendMessage, DialogKind, ShellMessage } from "../hub/protocol";
+import type { BackendMessage, DialogKind, ShellMessage } from "../shared/protocol";
 import { utilityBackend } from "./backend-process";
 import type { BackendProcess, SpawnBackend } from "./backend-process";
 import { fileGrantStore, openFolderGrants } from "./folder-grants";

@@ -21,8 +21,8 @@ import type {
   DataRowUpdate,
   KeyValuePatch,
 } from "@jxsuite/protocol";
-import type { StudioRPC } from "../rpc-schema";
-import type { ShellBridge } from "../electron-shell/bridge";
+import type { StudioRPC } from "../shared/rpc-schema";
+import type { ShellBridge } from "../shared/bridge";
 
 /* Inferred return type with a `satisfies` conformance check at the bottom, so callers see which of
    the PAL's OPTIONAL members this launcher actually implements — annotating `StudioPlatform` made
@@ -87,7 +87,7 @@ interface PendingReply {
 }
 
 export function createDesktopPlatform() {
-  /* The Electron shell's preload bridge (electron-shell/bridge.ts), absent under Chromium `--app`.
+  /* The Electron shell's preload bridge (shared/bridge.ts), absent under Chromium `--app`.
      Read once: the preload runs before any page script and never changes. */
   const shell: ShellBridge | undefined = globalThis.__jxShell;
   // The project server gates the WS upgrade on the token. The launcher passes it in the shell URL

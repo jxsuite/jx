@@ -223,8 +223,8 @@ stdenv.mkDerivation {
     # installers use (scripts/lib/backend-bundle.ts), and runs on Electron's own Node as a utility
     # process (specs/desktop.md §7.1); its native packages resolve from the production install below.
     bun build \
-      packages/desktop/src/electron-shell/app-main.ts \
-      packages/desktop/src/electron-shell/preload.ts \
+      packages/desktop/src/main/app-main.ts \
+      packages/desktop/src/preload/preload.ts \
       --target=node --format=cjs --external electron \
       --outdir packages/desktop/assets/electron
     # Electron loads `app-main.js` as Node does, by the nearest package.json, and the desktop

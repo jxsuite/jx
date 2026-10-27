@@ -34,7 +34,10 @@ function ownedDirectory(): string {
  */
 export async function bundleElectronApp(outDir = ownedDirectory()): Promise<ShellBundle> {
   const result = await Bun.build({
-    entrypoints: [join(import.meta.dir, "app-main.ts"), join(import.meta.dir, "preload.ts")],
+    entrypoints: [
+      join(import.meta.dir, "app-main.ts"),
+      join(import.meta.dir, "../preload/preload.ts"),
+    ],
     external: ["electron"],
     format: "cjs",
     naming: "[name].js",

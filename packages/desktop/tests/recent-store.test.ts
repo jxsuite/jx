@@ -1,5 +1,5 @@
 /**
- * Tests for src/recent-store.ts — the user-level recent-projects file store.
+ * Tests for src/backend/recent-store.ts — the user-level recent-projects file store.
  *
  * Node:os is mocked to a temp home BEFORE the store (and env-paths, which captures homedir at
  * module load) is imported; $XDG_CONFIG_HOME is pinned under that home so the resolved config dir
@@ -18,8 +18,8 @@ void mock.module("node:os", () => {
   return { default: { homedir, tmpdir }, homedir, tmpdir };
 });
 
-const { readRecents, writeRecents } = await import("../src/recent-store");
-const { configFile } = await import("../src/user-config");
+const { readRecents, writeRecents } = await import("../src/backend/recent-store");
+const { configFile } = await import("../src/backend/user-config");
 
 /** The platform-conventional store path (XDG under the temp home on Linux). */
 function storePath(): string {

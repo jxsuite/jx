@@ -72,7 +72,7 @@ import { toPosixPath } from "./lib/posix-path";
 export const ALLOWLIST = new Set([
   "src/types.ts",
   // Desktop RPC schema: interfaces/type aliases only, no runtime exports.
-  "src/rpc-schema.ts",
+  "src/shared/rpc-schema.ts",
   // Collab provider contract: interfaces/type aliases only, no runtime exports.
   "src/provider.ts",
   // The @jxsuite/ai gateway's host contract (Upstream, GatewayRefusal, ...): interfaces only.

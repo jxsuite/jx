@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Subprocess } from "bun";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
-import type { DirEntry } from "../src/rpc-schema";
+import type { DirEntry } from "../src/shared/rpc-schema";
 
 const FIXTURES = join(import.meta.dir, "_fixtures_chromium_rpc");
 

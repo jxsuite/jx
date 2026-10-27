@@ -1,5 +1,5 @@
 import * as server from "@jxsuite/server/packages";
-import type { PackageInfo, PackageOpResult, PackageVersionInfo } from "./rpc-schema";
+import type { PackageInfo, PackageOpResult, PackageVersionInfo } from "../shared/rpc-schema";
 
 /** Build package operations bound to one project session (its projectRoot is the package cwd). */
 export function createPackageOps(session: { readonly projectRoot: string | null }) {

@@ -1,12 +1,7 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { describe, expect, mock, test } from "bun:test";
 import type * as Electron from "electron";
-import {
-  SHELL_CHANNELS,
-  SHELL_GLOBAL,
-  exposeShell,
-  shellBridge,
-} from "../src/electron-shell/bridge";
+import { SHELL_CHANNELS, SHELL_GLOBAL, exposeShell, shellBridge } from "../src/shared/bridge";
 import {
   createStudioWindow,
   installApplicationMenu,
@@ -18,7 +13,7 @@ import {
   registerWindowActions,
   shellWindowOptions,
   switchValue,
-} from "../src/electron-shell/shell";
+} from "../src/main/shell";
 import { fakeElectron } from "./_fake-electron";
 import type { FakeElectron, FakeWindow } from "./_fake-electron";
 
@@ -297,7 +292,7 @@ describe("entry points", () => {
   test("preload.ts publishes the bridge through the runtime's own modules", async () => {
     const fake = fakeElectron();
     void mock.module("electron", () => fake.api);
-    await import("../src/electron-shell/preload");
+    await import("../src/preload/preload");
     expect(fake.exposed.has(SHELL_GLOBAL)).toBe(true);
   });
 });

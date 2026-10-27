@@ -1,17 +1,17 @@
 /**
  * The backend's entry: hands the real message channel to `startBackend`.
  *
- * The Electron main process starts it as a utility process (`electron-shell/backend-process.ts`),
- * on the Node inside Electron, and talks to it over `process.parentPort`. A plain Node child
- * started with an IPC channel (`child_process.fork`, which is how `scripts/smoke-backend.ts` starts
- * the staged bundle) has `process.send` instead, and the same messages travel over it. Standing
- * alone it has no parent to speak to, so it says so and ends.
+ * The Electron main process starts it as a utility process (`main/backend-process.ts`), on the Node
+ * inside Electron, and talks to it over `process.parentPort`. A plain Node child started with an
+ * IPC channel (`child_process.fork`, which is how `scripts/smoke-backend.ts` starts the staged
+ * bundle) has `process.send` instead, and the same messages travel over it. Standing alone it has
+ * no parent to speak to, so it says so and ends.
  *
  * @docs studio/desktop
  */
 import { startBackend } from "./backend";
-import { isShellMessage } from "./protocol";
-import type { BackendMessage, ShellMessage } from "./protocol";
+import { isShellMessage } from "../shared/protocol";
+import type { BackendMessage, ShellMessage } from "../shared/protocol";
 
 /** The two channels a parent can open, reduced to what the backend uses. */
 interface Channel {

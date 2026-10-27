@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MAC_BROWSER_BUNDLES, findChromium } from "../src/hub/import-browser";
+import { MAC_BROWSER_BUNDLES, findChromium } from "../src/backend/import-browser";
 
 describe("findChromium", () => {
   const none = (): string | null => null;

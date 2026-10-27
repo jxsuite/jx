@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { appInfo, releaseChannel } from "../src/hub/app-info";
+import { appInfo, releaseChannel } from "../src/backend/app-info";
 import pkg from "../package.json" with { type: "json" };
 
 const assets = process.env.JX_STUDIO_ASSETS;

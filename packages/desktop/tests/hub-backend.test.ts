@@ -3,10 +3,10 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { importOptions, startBackend } from "../src/hub/backend";
-import type { BackendIo } from "../src/hub/backend";
-import type { BackendMessage, ShellMessage } from "../src/hub/protocol";
-import type { WindowHub } from "../src/hub/window-hub";
+import { importOptions, startBackend } from "../src/backend/backend";
+import type { BackendIo } from "../src/backend/backend";
+import type { BackendMessage, ShellMessage } from "../src/shared/protocol";
+import type { WindowHub } from "../src/backend/window-hub";
 
 const scratch = mkdtempSync(join(tmpdir(), "jx-backend-test-"));
 const root = join(scratch, "site");
@@ -97,7 +97,7 @@ describe("main.ts", () => {
     const original = process.send;
     process.send = undefined;
     try {
-      await import("../src/hub/main.ts");
+      await import("../src/backend/main.ts");
       expect(error.mock.calls[0]?.[0]).toContain("No IPC channel");
       expect(exit).toHaveBeenCalledWith(1);
       // The entry carried on past the (mocked) exit. Give it a channel and it answers the shell.

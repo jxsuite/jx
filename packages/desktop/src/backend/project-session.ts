@@ -70,7 +70,12 @@ import type {
 import type { ProjectOptions } from "@jxsuite/create/generate";
 import type { TemplateId } from "@jxsuite/create/templates";
 import type { FormatActionRequest } from "@jxsuite/studio/types";
-import type { ComponentMeta, DirEntry, FormatSummary, OpenProjectResult } from "./rpc-schema";
+import type {
+  ComponentMeta,
+  DirEntry,
+  FormatSummary,
+  OpenProjectResult,
+} from "../shared/rpc-schema";
 
 // ─── Internal schema types for class.json parsing ─────────────────────────────
 

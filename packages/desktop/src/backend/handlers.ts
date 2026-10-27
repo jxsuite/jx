@@ -14,14 +14,14 @@
 import type { AppInfo, KeyValuePatch } from "@jxsuite/protocol";
 import type { RpcHandler, RpcResult } from "@jxsuite/server/project-server";
 import { listStarters } from "@jxsuite/starters";
-import { createGitOps } from "../git";
-import { githubSignIn, githubSignOut, githubTokenStatus } from "../github-signin";
-import { createPackageOps } from "../packages";
-import { pickProjectFile } from "../project-session";
-import type { ProjectSession } from "../project-session";
-import { readRecents, writeRecents } from "../recent-store";
-import { patchSettings, readSettings } from "../settings-store";
-import type { RecentProjectEntry } from "../rpc-schema";
+import { createGitOps } from "./git";
+import { githubSignIn, githubSignOut, githubTokenStatus } from "./github-signin";
+import { createPackageOps } from "./packages";
+import { pickProjectFile } from "./project-session";
+import type { ProjectSession } from "./project-session";
+import { readRecents, writeRecents } from "./recent-store";
+import { patchSettings, readSettings } from "./settings-store";
+import type { RecentProjectEntry } from "../shared/rpc-schema";
 
 /** A window as the handlers see it: the session that answers for it, and nothing about its pixels. */
 export interface HubWindow {

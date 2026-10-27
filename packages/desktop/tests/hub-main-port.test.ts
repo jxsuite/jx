@@ -9,7 +9,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BackendMessage } from "../src/hub/protocol";
+import type { BackendMessage } from "../src/shared/protocol";
 
 /** A frame as the port delivers it. */
 type Frame = { readonly type?: string } | null;
@@ -36,7 +36,7 @@ test("talks to the shell over the utility process's port, and drops frames that 
     }
   };
   try {
-    await import("../src/hub/main.ts");
+    await import("../src/backend/main.ts");
     expect(posted).toEqual([{ type: "ready" }]);
     deliver({ type: "mystery" });
     deliver(null);

@@ -22,13 +22,13 @@ import type {
   CreateProjectServerOptions,
   ProjectServerHandle,
 } from "@jxsuite/server/project-server";
-import { setAuthorizationHost } from "../github-signin";
-import { createProjectSession, setDirectoryDialog, setFileDialog } from "../project-session";
-import { watchSettings } from "../settings-store";
+import { setAuthorizationHost } from "./github-signin";
+import { createProjectSession, setDirectoryDialog, setFileDialog } from "./project-session";
+import { watchSettings } from "./settings-store";
 import { buildWindowHandlers } from "./handlers";
 import { STUDIO_SHELL_PATH, normalizeRoot } from "./roots";
 import type { HubControl, HubWindow, OpenOutcome, WindowRow } from "./handlers";
-import type { BackendMessage, DialogKind, ShellMessage } from "./protocol";
+import type { BackendMessage, DialogKind, ShellMessage } from "../shared/protocol";
 
 /** What the hub is built from. */
 export interface WindowHubOptions {

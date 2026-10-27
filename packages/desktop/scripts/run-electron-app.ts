@@ -12,14 +12,9 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { bundleElectronApp } from "../src/electron-shell/bundle";
+import { bundleElectronApp } from "../src/main/bundle";
 import { bundleBackend } from "./lib/backend-bundle";
-import {
-  electronAppCommand,
-  findElectron,
-  shellEnv,
-  shellIcon,
-} from "../src/electron-shell/command";
+import { electronAppCommand, findElectron, shellEnv, shellIcon } from "../src/main/command";
 
 const electron = findElectron(process.env);
 if (!electron) {

@@ -18,7 +18,7 @@
  */
 import type * as Electron from "electron";
 import type { BrowserWindow, WebContents } from "electron";
-import { SHELL_CHANNELS } from "./bridge";
+import { SHELL_CHANNELS } from "../shared/bridge";
 
 /** What every window of the app shares. */
 export interface ShellArgs {
