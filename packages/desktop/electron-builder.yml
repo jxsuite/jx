@@ -10,7 +10,7 @@
 appId: com.jxsuite.studio
 productName: Jx Studio
 copyright: Copyright © Avunu LLC
-electronVersion: 43.7.7
+electronVersion: 43.7.11
 
 directories:
   # The main process and the preload, with the package.json that names them. electron-builder packs
