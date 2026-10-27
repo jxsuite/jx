@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -8,6 +8,7 @@ import {
   BACKEND_NATIVES,
   bundleBackend,
   moduleClosure,
+  stageModuleClosure,
   WORKSPACE_MODULES,
 } from "../scripts/lib/backend-bundle";
 import type { BackendBundle } from "../scripts/lib/backend-bundle";
@@ -101,6 +102,37 @@ describe("the backend bundle is a Node program", () => {
   test("leaves the native packages to the staged node_modules", () => {
     for (const name of BACKEND_NATIVES) {
       expect(bundle.code.includes(`"${name}"`) || bundle.code.includes(`'${name}'`)).toBe(true);
+    }
+  });
+});
+
+describe("staging and failure", () => {
+  test("a staged package arrives with its dependency closure, as real files", () => {
+    const outdir = mkdtempSync(join(tmpdir(), "jx-backend-stage-"));
+    try {
+      stageModuleClosure(outdir, ["@vue/reactivity"]);
+      for (const name of moduleClosure(["@vue/reactivity"])) {
+        expect(existsSync(join(outdir, "node_modules", name, "package.json"))).toBe(true);
+      }
+      expect(existsSync(join(outdir, "node_modules", "@vue/shared", "package.json"))).toBe(true);
+    } finally {
+      rmSync(outdir, { force: true, recursive: true });
+    }
+  });
+
+  test("a failed build is an error carrying the bundler's messages", async () => {
+    const build = spyOn(Bun, "build").mockResolvedValueOnce({
+      logs: [],
+      outputs: [],
+      success: false,
+    });
+    try {
+      // oxlint-disable-next-line typescript/await-thenable -- rejects.toThrow resolves a Promise at runtime.
+      await expect(bundleBackend(tmpdir(), { stageModules: false })).rejects.toThrow(
+        "Bundling the backend failed.",
+      );
+    } finally {
+      build.mockRestore();
     }
   });
 });

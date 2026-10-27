@@ -161,6 +161,21 @@ export interface BackendBundle {
 }
 
 /**
+ * Copy `names` and their installed dependency closure into `outdir/node_modules`, as real files, so
+ * the bundle resolves them from its own directory once the workspace is gone.
+ *
+ * @param outdir The directory the bundle is in.
+ * @param names The packages to stage.
+ */
+export function stageModuleClosure(outdir: string, names: readonly string[]): void {
+  for (const name of moduleClosure(names)) {
+    const target = join(outdir, "node_modules", name);
+    mkdirSync(dirname(target), { recursive: true });
+    cpSync(join(WORKSPACE_MODULES, name), target, { dereference: true, recursive: true });
+  }
+}
+
+/**
  * Bundle the backend into `outdir`: `index.js`, the `package.json` that makes Node read it as ESM,
  * and the data its inlined modules read. With `stageModules`, also the `node_modules` of
  * {@link BACKEND_NATIVES} and {@link BACKEND_MODULES} with their closure, which is what an
@@ -191,11 +206,7 @@ export async function bundleBackend(
     cpSync(join(desktopDir, from), join(outdir, to), { recursive: true });
   }
   if (options.stageModules) {
-    for (const name of moduleClosure([...BACKEND_NATIVES, ...BACKEND_MODULES])) {
-      const target = join(outdir, "node_modules", name);
-      mkdirSync(dirname(target), { recursive: true });
-      cpSync(join(WORKSPACE_MODULES, name), target, { dereference: true, recursive: true });
-    }
+    stageModuleClosure(outdir, [...BACKEND_NATIVES, ...BACKEND_MODULES]);
   }
   const inputs = Object.keys(result.metafile?.inputs ?? {}).map((input) => resolve(input));
   return { code: await output.text(), entry: join(outdir, "index.js"), inputs };
