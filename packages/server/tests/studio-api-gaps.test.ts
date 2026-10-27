@@ -175,12 +175,6 @@ beforeAll(() => {
   mkdirSync(join(ROOT, "bad-pkg-proj"), { recursive: true });
   writeFileSync(join(ROOT, "bad-pkg-proj", "package.json"), "{invalid");
 
-  // Local dependency for bun add / remove
-  mkdirSync(join(ROOT, "local-dep"), { recursive: true });
-  writeFileSync(
-    join(ROOT, "local-dep", "package.json"),
-    JSON.stringify({ name: "local-dep", version: "1.0.0" }),
-  );
   mkdirSync(join(ROOT, "pkg-proj"), { recursive: true });
   writeFileSync(
     join(ROOT, "pkg-proj", "package.json"),
@@ -741,80 +735,10 @@ describe("packages add/remove — gaps", () => {
     expect(res.status).toBe(400);
   });
 
-  test("add installs a local dependency with the dev flag", async () => {
-    const { req, url } = jsonReq("/__studio/packages/add", "POST", {
-      dev: true,
-      dir: "pkg-proj",
-      name: "../local-dep",
-    });
-    const res = await callApi(req, url);
-    // Bun records the devDependency in package.json before the node_modules link step. On Windows it
-    // Cannot copy a local file: dependency from cache into node_modules (EPERM), so `bun add` exits
-    // Non-zero even though the manifest was written; assert the manifest (the handler's observable
-    // Effect) everywhere, and the success response where the link step works.
-    if (process.platform !== "win32") {
-      expect(res.status).toBe(200);
-      const payload = await res.json();
-      expect(payload.ok).toBe(true);
-    }
-    const pkg = JSON.parse(readFileSync(join(ROOT, "pkg-proj", "package.json"), "utf8"));
-    expect(pkg.devDependencies["local-dep"]).toBeDefined();
-  });
-
   test("remove requires a name", async () => {
     const { req, url } = jsonReq("/__studio/packages/remove", "POST", {});
     const res = await callApi(req, url);
     expect(res.status).toBe(400);
-  });
-
-  test("remove uninstalls a dependency", async () => {
-    const { req, url } = jsonReq("/__studio/packages/remove", "POST", {
-      dir: "pkg-proj",
-      name: "local-dep",
-    });
-    const res = await callApi(req, url);
-    expect(res.status).toBe(200);
-    const payload = await res.json();
-    expect(payload.ok).toBe(true);
-    const pkg = JSON.parse(readFileSync(join(ROOT, "pkg-proj", "package.json"), "utf8"));
-    expect(pkg.devDependencies?.["local-dep"]).toBeUndefined();
-  });
-
-  test("add returns 500 when spawn fails", async () => {
-    const { req, url } = jsonReq("/__studio/packages/add", "POST", {
-      dir: "no-such-dir-xyz",
-      name: "anything",
-    });
-    const res = await callApi(req, url);
-    expect(res.status).toBe(500);
-  });
-
-  test("remove returns 500 when spawn fails", async () => {
-    const { req, url } = jsonReq("/__studio/packages/remove", "POST", {
-      dir: "no-such-dir-xyz",
-      name: "anything",
-    });
-    const res = await callApi(req, url);
-    expect(res.status).toBe(500);
-  });
-
-  test("remove reports a non-zero bun exit with its stderr", async () => {
-    // An empty dir outside any package tree: the spawn succeeds, but `bun remove` finds no
-    // Package.json and exits non-zero.
-    const emptyDir = mkdtempSync(join(tmpdir(), "jx-remove-fail-"));
-    try {
-      const { req, url } = jsonReq("/__studio/packages/remove", "POST", {
-        dir: emptyDir,
-        name: "anything",
-      });
-      const res = await callApi(req, url);
-      expect(res.status).toBe(500);
-      const { error } = await res.json();
-      expect(error).toBeTypeOf("string");
-      expect(error).not.toBe("");
-    } finally {
-      rmSync(emptyDir, { force: true, recursive: true });
-    }
   });
 });
 

@@ -1,23 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  addPackage,
-  bunExecutable,
   dependenciesNeedInstall,
   fetchLatestVersion,
-  installDependencies,
   isRegistryRange,
   listPackages,
   packageVersions,
-  removePackage,
   setPackageVersions,
   stripRange,
 } from "../src/packages";
 import type { JsonObject } from "@jxsuite/schema/types";
-
-const BUN = bunExecutable();
 
 let dir: string;
 
@@ -50,14 +44,6 @@ describe("stripRange / isRegistryRange", () => {
     expect(isRegistryRange("file:../x")).toBe(false);
     expect(isRegistryRange("*")).toBe(false);
     expect(isRegistryRange("latest")).toBe(false);
-  });
-});
-
-describe("bunExecutable", () => {
-  test("resolves to the bun running this process (not a bare PATH lookup)", () => {
-    // Packaged desktop apps have no system `bun`; we must spawn the bundled one via execPath.
-    expect(BUN).toBe(process.execPath);
-    expect(BUN).not.toBe("bun");
   });
 });
 
@@ -187,78 +173,20 @@ describe("packageVersions", () => {
   });
 });
 
-// ─── installDependencies / setPackageVersions (Bun.spawn stubbed) ───────────────
+// ─── setPackageVersions refusals (no installer runs) ───────────────────────────
+// The operations themselves are exercised against a fixture registry in packages-arborist.test.ts.
 
-describe("install / set-versions with stubbed spawn", () => {
-  let origSpawn: typeof Bun.spawn;
-  let spawned: string[][];
-
-  beforeEach(() => {
-    origSpawn = Bun.spawn;
-    spawned = [];
-    /* Object.assign rather than `Bun.spawn = …`: TypeScript refuses assignment to a namespace
-       function, and the stand-in only implements what runBun reads (exited, stdout, stderr). */
-    Object.assign(Bun, {
-      spawn: (cmd: string[]) => {
-        spawned.push(cmd);
-        return { exited: Promise.resolve(0), stderr: "", stdout: "done" };
-      },
-    });
-  });
-
-  afterEach(() => {
-    Object.assign(Bun, { spawn: origSpawn });
-  });
-
-  test("installDependencies runs `bun install` and reports ok", async () => {
-    const res = await installDependencies(dir);
-    expect(res.ok).toBe(true);
-    expect(spawned[0]).toEqual([BUN, "install"]);
-  });
-
-  test("addPackage runs `bun add`, with -d for dev deps", async () => {
-    await addPackage(dir, "hono");
-    expect(spawned.at(-1)).toEqual([BUN, "add", "hono"]);
-    await addPackage(dir, "vitest", true);
-    expect(spawned.at(-1)).toEqual([BUN, "add", "-d", "vitest"]);
-  });
-
-  test("removePackage runs `bun remove`", async () => {
-    await removePackage(dir, "hono");
-    expect(spawned.at(-1)).toEqual([BUN, "remove", "hono"]);
-  });
-
-  test("setPackageVersions fails on an unparseable package.json", async () => {
+describe("setPackageVersions refuses before installing", () => {
+  test("an unparseable package.json", async () => {
     writeFileSync(join(dir, "package.json"), "{broken");
     const res = await setPackageVersions(dir, [{ name: "x", version: "^1" }]);
     expect(res.ok).toBe(false);
-    expect(spawned.length).toBe(0);
+    expect(res.log).toContain("Unparseable");
   });
 
-  test("setPackageVersions preserves placement, adds new to deps, then reinstalls", async () => {
-    writePkg({
-      dependencies: { hono: "^4" },
-      devDependencies: { "@jxsuite/compiler": "^0.19.0" },
-    });
-    const res = await setPackageVersions(dir, [
-      { name: "@jxsuite/compiler", version: "^0.30.1" },
-      { name: "hono", version: "^4.5.0" },
-      { dev: false, name: "new-dep", version: "^1.0.0" },
-    ]);
-    expect(res.ok).toBe(true);
-    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-    expect(pkg.devDependencies["@jxsuite/compiler"]).toBe("^0.30.1"); // Stayed in devDeps
-    expect(pkg.dependencies.hono).toBe("^4.5.0"); // Stayed in deps
-    expect(pkg.dependencies["new-dep"]).toBe("^1.0.0"); // New -> deps
-    expect(spawned.at(-1)).toEqual([BUN, "install"]);
-  });
-
-  test("setPackageVersions no-ops on empty updates and fails without package.json", async () => {
-    const empty = await setPackageVersions(dir, []);
-    expect(empty.ok).toBe(true);
-    expect(spawned.length).toBe(0);
-
+  test("no updates is a no-op, and no package.json is a refusal", async () => {
+    expect(await setPackageVersions(dir, [])).toEqual({ ok: true });
     const missing = await setPackageVersions(dir, [{ name: "x", version: "^1" }]);
-    expect(missing.ok).toBe(false);
+    expect(missing).toEqual({ log: "No package.json in project root", ok: false });
   });
 });

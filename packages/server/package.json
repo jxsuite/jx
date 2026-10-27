@@ -64,8 +64,10 @@
     "@jxsuite/schema": "workspace:^",
     "@jxsuite/site": "workspace:^",
     "@jxsuite/starters": "workspace:^",
+    "@npmcli/arborist": "^10.0.4",
     "chokidar": "^6.0.0",
     "kysely": "^0.29.7",
+    "npm-package-arg": "^14.0.0",
     "oxfmt": "^0.74.0",
     "ws": "^8.22.0",
     "zod": "^4.6.7"
@@ -74,6 +76,8 @@
     "@jxsuite/auth": "workspace:^",
     "@jxsuite/connector": "workspace:^",
     "@jxsuite/parser": "workspace:^",
+    "@types/npm-package-arg": "^6.1.4",
+    "@types/npmcli__arborist": "^6.3.3",
     "@types/ws": "^8.18.1"
   }
 }

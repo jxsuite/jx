@@ -14,14 +14,14 @@ export function createPackageOps(session: { readonly projectRoot: string | null 
   async function addPackage(params: { name: string }): Promise<void> {
     const res = await server.addPackage(requireRoot(), params.name);
     if (!res.ok) {
-      throw new Error(`Failed to add package: ${res.log ?? "bun add failed"}`);
+      throw new Error(`Failed to add package: ${res.log ?? "the installer gave no reason"}`);
     }
   }
 
   async function removePackage(params: { name: string }): Promise<void> {
     const res = await server.removePackage(requireRoot(), params.name);
     if (!res.ok) {
-      throw new Error(`Failed to remove package: ${res.log ?? "bun remove failed"}`);
+      throw new Error(`Failed to remove package: ${res.log ?? "the installer gave no reason"}`);
     }
   }
 

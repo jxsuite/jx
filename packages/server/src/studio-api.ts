@@ -30,10 +30,11 @@ import {
 import { applyRename } from "./refactor/apply.ts";
 import { findReferences } from "./refactor/find-refs.ts";
 import {
-  bunExecutable,
+  addPackage,
   dependenciesNeedInstall,
   installDependencies,
   packageVersions,
+  removePackage,
   setPackageVersions,
 } from "./packages.ts";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
@@ -1109,9 +1110,9 @@ export async function handleStudioApi(
   // Add an npm package
   if (path === "/__studio/packages/add" && req.method === "POST") {
     try {
-      /* SAFETY: `name` reaches argv, so it is re-checked with isString below; `dir` is only
-         path-resolved and `dev` only tested for truthiness, and a wrongly typed `dir` throws in
-         isAbsolute inside this try and answers 500. */
+      /* SAFETY: `name` is re-checked with isString below; `dir` is only path-resolved and `dev`
+         only tested for truthiness, and a wrongly typed `dir` throws in isAbsolute inside this try
+         and answers 500. */
       const body = (await req.json()) as { name?: string; dir?: string; dev?: boolean };
       const { name } = body;
       if (!name || !isString(name)) {
@@ -1119,19 +1120,9 @@ export async function handleStudioApi(
       }
       const dir = body.dir || activeProjectRoot;
       const cwd = dir ? (isAbsolute(dir) ? dir : resolve(root, dir)) : root;
-      const args = ["add", name];
-      if (body.dev) {
-        args.splice(1, 0, "-d");
-      }
-      const proc = Bun.spawn([bunExecutable(), ...args], {
-        cwd,
-        stderr: "pipe",
-        stdout: "pipe",
-      });
-      const exitCode = await proc.exited;
-      if (exitCode !== 0) {
-        const stderr = await new Response(proc.stderr).text();
-        return problem("internalError", stderr || `bun add exited with ${exitCode}`);
+      const result = await addPackage(cwd, name, body.dev === true);
+      if (!result.ok) {
+        return problem("internalError", result.log ?? "Adding the package failed");
       }
       return Response.json({ ok: true });
     } catch (error) {
@@ -1142,8 +1133,8 @@ export async function handleStudioApi(
   // Remove an npm package
   if (path === "/__studio/packages/remove" && req.method === "POST") {
     try {
-      /* SAFETY: `name` reaches argv, so it is re-checked with isString below; a wrongly typed
-         `dir` throws in isAbsolute inside this try and answers 500. */
+      /* SAFETY: `name` is re-checked with isString below; a wrongly typed `dir` throws in
+         isAbsolute inside this try and answers 500. */
       const body = (await req.json()) as { name?: string; dir?: string };
       const { name } = body;
       if (!name || !isString(name)) {
@@ -1151,15 +1142,9 @@ export async function handleStudioApi(
       }
       const dir = body.dir || activeProjectRoot;
       const cwd = dir ? (isAbsolute(dir) ? dir : resolve(root, dir)) : root;
-      const proc = Bun.spawn([bunExecutable(), "remove", name], {
-        cwd,
-        stderr: "pipe",
-        stdout: "pipe",
-      });
-      const exitCode = await proc.exited;
-      if (exitCode !== 0) {
-        const stderr = await new Response(proc.stderr).text();
-        return problem("internalError", stderr || `bun remove exited with ${exitCode}`);
+      const result = await removePackage(cwd, name);
+      if (!result.ok) {
+        return problem("internalError", result.log ?? "Removing the package failed");
       }
       return Response.json({ ok: true });
     } catch (error) {
@@ -1167,7 +1152,7 @@ export async function handleStudioApi(
     }
   }
 
-  // Install all dependencies (bun install)
+  // Install all dependencies
   if (path === "/__studio/packages/install" && req.method === "POST") {
     try {
       /* SAFETY: `dir` is the only member read and is only path-resolved; a wrongly typed `dir`
