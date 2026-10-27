@@ -1,12 +1,12 @@
 /**
  * The Electron application: one main process that owns every Studio window.
  *
- * This is the shell the packaged app runs. Electron is the root process, the Bun backend (`hub/`)
- * is its child, and a window is a `BrowserWindow` the backend asked for. The division is the one
- * the OS draws: Electron does what only an app can (windows, the menu bar, native dialogs, the
- * single-instance lock, file associations), and the backend does everything about a project. They
- * speak the small protocol in `hub/protocol.ts`; project I/O never crosses it, and stays on each
- * window's token-gated WebSocket.
+ * This is the shell the packaged app runs. Electron is the root process, the backend (`hub/`) is
+ * its utility process on Electron's own Node, and a window is a `BrowserWindow` the backend asked
+ * for. The division is the one the OS draws: Electron does what only an app can (windows, the menu
+ * bar, native dialogs, the single-instance lock, file associations), and the backend does
+ * everything about a project. They speak the small protocol in `hub/protocol.ts`; project I/O never
+ * crosses it, and stays on each window's token-gated WebSocket.
  *
  * Takes the Electron API as a parameter, like `shell.ts`, so it can be exercised without Electron;
  * `app-main.ts` is the entry that passes the real one.
@@ -19,7 +19,7 @@ import type * as Electron from "electron";
 import type { BrowserWindow } from "electron";
 import { shellEnv } from "./command";
 import type { BackendMessage, DialogKind, ShellMessage } from "../hub/protocol";
-import { spawnBackend } from "./backend-process";
+import { utilityBackend } from "./backend-process";
 import type { BackendProcess, SpawnBackend } from "./backend-process";
 import { fileGrantStore, openFolderGrants } from "./folder-grants";
 import type { GrantStore } from "./folder-grants";
@@ -41,10 +41,8 @@ import type { AutoUpdater, UpdateSchedule } from "./updater";
  * packaged, the layout of its own resources, and one bare project path.
  */
 export interface AppArgs {
-  /** The backend entry the Bun runtime runs. */
+  /** The backend bundle, run as a utility process. */
   backend: string;
-  /** The Bun executable. */
-  bun: string;
   /** The window icon. */
   icon: string | null;
   /** The preload bundle every window shares. */
@@ -150,14 +148,12 @@ export function parseAppArgs(
   layout: AppLayout | null = null,
 ): AppArgs {
   const backend = switchValue(args, "backend") ?? layout?.backend;
-  const bun = switchValue(args, "bun") ?? layout?.bun;
   const preload = switchValue(args, "preload") ?? layout?.preload;
-  if (!backend || !bun || !preload) {
-    throw new Error("The Jx Studio app needs --jx-backend, --jx-bun and --jx-preload.");
+  if (!backend || !preload) {
+    throw new Error("The Jx Studio app needs --jx-backend and --jx-preload.");
   }
   return {
     backend,
-    bun,
     icon: switchValue(args, "icon") ?? layout?.icon ?? null,
     preload,
     root: projectRootFrom(args, env, cwd, exists, appPath),
@@ -275,7 +271,7 @@ export async function startApp(
     platform = process.platform,
     resourcesPath = electronResourcesPath(),
     schedule = { ...DEFAULT_SCHEDULE, setInterval, setTimeout },
-    spawn = spawnBackend,
+    spawn = utilityBackend(electron.utilityProcess),
     windowsStore = process.windowsStore === true,
   } = deps;
   const { app } = electron;
@@ -452,7 +448,7 @@ export async function startApp(
   function startBackend(): void {
     grants?.restore();
     ready = false;
-    const child = spawn(args.bun, args.backend, backendEnv);
+    const child = spawn(args.backend, backendEnv);
     backend = child;
     child.onMessage(onBackend);
     // A backend that is gone leaves windows with nothing to talk to; end rather than show them.

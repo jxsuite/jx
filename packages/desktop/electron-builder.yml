@@ -30,17 +30,17 @@ files:
   - "!node_modules"
   - "!**/node_modules/**"
 
-# Nothing here has a native module of its own to rebuild: the backend is Bun's, and Bun brings its own.
+# Nothing here is rebuilt against Electron: the backend's native packages (esbuild, sharp, oxfmt) are
+# N-API or standalone binaries staged by `scripts/stage-app.ts` from this host's install.
 npmRebuild: false
 
-# Files a child process has to execute or read from disk, which cannot live inside `app.asar`.
+# Files the backend utility process reads from disk, which stay real files rather than `app.asar`
+# entries: its bundle, the native modules beside it, and the studio assets it serves.
 extraResources:
   - from: build/resources/backend
     to: backend
   - from: build/resources/studio
     to: studio
-  - from: build/resources/bun
-    to: bun
   - from: icon.png
     to: icon.png
 

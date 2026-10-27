@@ -139,7 +139,7 @@ Integration contract for `plan:desktop/mac-app-store`: once this lands, nothing 
 | NB1.1 | Neutral primitives with parity tests                                | none   | open  |
 | NB1.2 | `serve()` seam, Node implementation, bundling through the compiler  | none   | open  |
 | NB1.3 | Package operations on Arborist, strict and all-or-nothing           | none   | open  |
-| NB1.4 | Utility-process backend, staging, smoke under Node, Bun removed     | none   | open  |
-| NB1.5 | Bun-free bundle test and the Mach-O scan                            | none   | open  |
+| NB1.4 | Utility-process backend, staging, smoke under Node, Bun removed     | none   | done  |
+| NB1.5 | Bun-free bundle test and the Mach-O scan                            | none   | done  |
 | NB1.8 | Cloud: lockfile-only service here, container and routes in platform | none   | done  |
 | NB1.6 | Reply, resubmit, TestFlight check (owned by the store plan)         | none   | open  |

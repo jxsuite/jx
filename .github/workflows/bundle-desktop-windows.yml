@@ -41,12 +41,13 @@ jobs:
       - name: Build the installer and the Store package
         run: bun run --cwd packages/desktop package --target win --arch x64 -- --publish never
 
-      # What was packaged, not the sources (packages/desktop/scripts/smoke-backend.ts). Not yet
-      # proven on Windows, so a failure here is reported without withholding the installer; make it
+      # What was packaged, not the sources (packages/desktop/scripts/smoke-backend.ts), under the
+      # packaged Electron run as Node, which is the Node the backend ships on. Not yet proven on
+      # Windows, so a failure here is reported without withholding the installer; make it
       # blocking once it has been green across a release.
       - name: Smoke-test the packaged backend
         continue-on-error: true
-        run: bun run --cwd packages/desktop smoke
+        run: bun run --cwd packages/desktop smoke --electron packaged
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

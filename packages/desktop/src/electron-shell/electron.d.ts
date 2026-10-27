@@ -204,6 +204,33 @@ declare module "electron" {
     invoke: (channel: string) => Promise<void>;
   }
 
+  /**
+   * A message as it crosses a utility process's channel: structured-cloned plain data. Both ends
+   * speak `hub/protocol.ts`, whose every message is discriminated by `type`; what ARRIVES is
+   * checked against it before anything reads it.
+   */
+  export interface PortMessage {
+    readonly type: string;
+  }
+
+  /** The utility process the backend runs as (`utilityProcess.fork`). */
+  export interface UtilityProcess {
+    kill: () => boolean;
+    on: {
+      (event: "exit", listener: (code: number) => void): void;
+      (event: "message", listener: (message: Partial<PortMessage> | null) => void): void;
+    };
+    postMessage: (message: PortMessage) => void;
+  }
+
+  export interface UtilityProcessFork {
+    fork: (
+      modulePath: string,
+      args: string[],
+      options: { env: NodeJS.ProcessEnv; serviceName: string; stdio: "inherit" },
+    ) => UtilityProcess;
+  }
+
   export const app: App;
   export const contextBridge: ContextBridge;
   export const dialog: Dialog;
@@ -211,6 +238,7 @@ declare module "electron" {
   export const ipcRenderer: IpcRenderer;
   export const Menu: ApplicationMenu;
   export const shell: Shell;
+  export const utilityProcess: UtilityProcessFork;
 }
 
 /** What Electron adds to Node's `process`, which Node's own `Process` type does not declare. */
@@ -222,5 +250,13 @@ declare namespace NodeJS {
     resourcesPath?: string;
     /** Set when the app runs as a Microsoft Store (appx) package. */
     windowsStore?: boolean;
+    /** A utility process's channel to the main process that forked it; absent anywhere else. */
+    parentPort?: {
+      on: (
+        event: "message",
+        listener: (event: { data: { readonly type?: string } | null }) => void,
+      ) => void;
+      postMessage: (message: { readonly type: string }) => void;
+    };
   }
 }

@@ -3,35 +3,25 @@
  *
  *     build/app/            what becomes app.asar: the main process, the preload, package.json
  *     build/resources/      what stays a real file beside it (see src/electron-shell/layout.ts)
- *       backend/index.js      the backend, one Bun bundle, with its data beside it
+ *       backend/index.js      the backend, one Node bundle, with its data and node_modules beside it
  *       studio/               the studio assets the backend serves
- *       bun/bun[.exe]         the pinned Bun that runs the backend
  *
  * `electron-builder.yml` places those, and `package-app.ts` runs this and then electron-builder.
  * Run on its own it stages for the host, which is what to do to inspect a build without packaging.
+ * It only ever stages for the host: the backend's native packages are the host's.
  *
  *     bun run stage [--platform darwin|linux|win32] [--arch arm64|x64]
  */
-import {
-  chmodSync,
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { $ } from "bun";
 import { bundleElectronApp } from "../src/electron-shell/bundle";
-import { BACKEND_DATA, BACKEND_EXTERNALS, BACKEND_MODULES } from "./lib/backend-bundle";
-import { bunRuntimeFor, matchesChecksum } from "./lib/bun-runtime";
+import { bundleBackend } from "./lib/backend-bundle";
 
 const desktopDir = resolve(import.meta.dir, "..");
 const buildDir = join(desktopDir, "build");
 const appDir = join(buildDir, "app");
 const resourcesDir = join(buildDir, "resources");
-const cacheDir = join(buildDir, "cache");
 
 /** The value of `--name <value>` or `--name=<value>`, if given. */
 function option(name: string): string | undefined {
@@ -76,72 +66,22 @@ async function stageApp(): Promise<void> {
   );
 }
 
-/** The backend as one Bun bundle, with the data the inlined modules read beside it. */
+/** The backend as one Node bundle, with its data and its staged packages beside it. */
 async function stageBackend(): Promise<void> {
-  const outdir = join(resourcesDir, "backend");
-  const result = await Bun.build({
-    entrypoints: [join(desktopDir, "src/hub/main.ts")],
-    external: [...BACKEND_EXTERNALS],
-    naming: "index.js",
-    outdir,
-    target: "bun",
-  });
-  if (!result.success) {
-    throw new AggregateError(result.logs, "Bundling the backend failed.");
-  }
-  for (const { from, to } of BACKEND_DATA) {
-    cpSync(join(desktopDir, from), join(outdir, to), { recursive: true });
-  }
-  for (const name of BACKEND_MODULES) {
-    // Hoisted to the repository root by the workspace install.
-    const source = join(desktopDir, "../../node_modules", name);
-    if (!existsSync(source)) {
-      throw new Error(`${name} is not installed; run \`bun install\` before staging.`);
-    }
-    cpSync(source, join(outdir, "node_modules", name), { recursive: true });
-  }
-  console.log(`[stage] backend: ${join(outdir, "index.js")}`);
-}
-
-/** The pinned Bun, downloaded once into the cache and verified before it is trusted. */
-async function stageBun(platform: string, arch: string): Promise<void> {
-  const runtime = bunRuntimeFor(platform, arch);
-  mkdirSync(cacheDir, { recursive: true });
-  const archive = join(cacheDir, `${runtime.file}-${runtime.version}.zip`);
-  const cached = existsSync(archive) ? new Uint8Array(await Bun.file(archive).arrayBuffer()) : null;
-  if (!cached || !matchesChecksum(cached, runtime.sha256)) {
-    console.log(`[stage] downloading ${runtime.url}`);
-    const response = await fetch(runtime.url);
-    if (!response.ok) {
-      throw new Error(`Downloading Bun failed: ${response.status} ${runtime.url}`);
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (!matchesChecksum(bytes, runtime.sha256)) {
-      throw new Error(
-        `The Bun archive at ${runtime.url} is not the pinned release (SHA-256 mismatch).`,
-      );
-    }
-    writeFileSync(archive, bytes);
-  }
-  const extracted = join(cacheDir, `${runtime.file}-${runtime.version}`);
-  rmSync(extracted, { force: true, recursive: true });
-  mkdirSync(extracted, { recursive: true });
-  // Windows' own tar reads zip; the Unix runners have unzip.
-  // It is named by path: Git Bash puts GNU tar first, which reads `C:` as a remote host.
-  const windowsTar = join(process.env.SystemRoot ?? String.raw`C:\Windows`, "System32", "tar.exe");
-  await (process.platform === "win32"
-    ? $`${windowsTar} -xf ${archive} -C ${extracted}`
-    : $`unzip -q -o ${archive} -d ${extracted}`);
-  const bunDir = join(resourcesDir, "bun");
-  mkdirSync(bunDir, { recursive: true });
-  const target = join(bunDir, runtime.binary);
-  cpSync(join(extracted, runtime.file, runtime.binary), target);
-  chmodSync(target, 0o755);
-  console.log(`[stage] bun ${runtime.version}: ${target}`);
+  const { entry } = await bundleBackend(join(resourcesDir, "backend"), { stageModules: true });
+  console.log(`[stage] backend: ${entry}`);
 }
 
 const platform = option("platform") ?? process.platform;
 const arch = option("arch") ?? process.arch;
+/* The staged packages carry this host's native binaries (esbuild's, sharp's, oxfmt's), so an
+   installer for another platform would ship binaries that cannot load there. The release lanes
+   build on native runners. */
+if (platform !== process.platform || arch !== process.arch) {
+  throw new Error(
+    `Staging for ${platform}-${arch} on a ${process.platform}-${process.arch} host would ship this host's native modules; stage on the target platform.`,
+  );
+}
 
 rmSync(appDir, { force: true, recursive: true });
 rmSync(resourcesDir, { force: true, recursive: true });
@@ -154,5 +94,4 @@ cpSync(join(desktopDir, "assets/studio"), join(resourcesDir, "studio"), { recurs
 
 await stageApp();
 await stageBackend();
-await stageBun(platform, arch);
 console.log(`[stage] done for ${platform}-${arch}`);

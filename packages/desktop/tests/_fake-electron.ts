@@ -74,6 +74,79 @@ export interface FakeElectron {
   dialogAnswer: number;
   /** Which window `fromWebContents` resolves; the latest one by default. */
   senderWindow: FakeWindow | null | undefined;
+  /** Each `utilityProcess.fork` call, and the fake child it returned. */
+  forks: FakeFork[];
+}
+
+/** One `utilityProcess.fork` call and its child, which a test drives. */
+export interface FakeFork {
+  modulePath: string;
+  args: string[];
+  options: { env: NodeJS.ProcessEnv; serviceName: string; stdio: "inherit" };
+  /** Messages the parent posted to the child. */
+  posted: Electron.PortMessage[];
+  killed: boolean;
+  /** Deliver `frame` to the parent's `message` listeners, as the child sending it. */
+  emitMessage: (frame: Partial<Electron.PortMessage> | null) => void;
+  /** End the child with `code`, as Electron reports it. */
+  emitExit: (code: number) => void;
+}
+
+/** A fake utility-process child and the record a test reads it through. */
+interface ForkedChild {
+  child: Electron.UtilityProcess;
+  fork: FakeFork;
+}
+
+/** A frame as a utility process delivers it to the parent. */
+type Frame = Partial<Electron.PortMessage> | null;
+
+/** A utility-process child that records what the parent does and lets a test speak for it. */
+function fakeFork(modulePath: string, args: string[], options: FakeFork["options"]): ForkedChild {
+  const exits: ((code: number) => void)[] = [];
+  const listeners: ((frame: Frame) => void)[] = [];
+  const fork: FakeFork = {
+    args,
+    emitExit: (code) => {
+      for (const listener of exits) {
+        listener(code);
+      }
+    },
+    emitMessage: (frame) => {
+      for (const listener of listeners) {
+        listener(frame);
+      }
+    },
+    killed: false,
+    modulePath,
+    options,
+    posted: [],
+  };
+  function on(event: "exit", listener: (code: number) => void): void;
+  function on(event: "message", listener: (frame: Frame) => void): void;
+  function on(
+    event: "exit" | "message",
+    listener: ((code: number) => void) | ((frame: Frame) => void),
+  ): void {
+    if (event === "exit") {
+      // SAFETY: the "exit" overload is the only one that pairs this event with a listener.
+      exits.push(listener as (code: number) => void);
+    } else {
+      // SAFETY: the "message" overload is the only one that pairs this event with a listener.
+      listeners.push(listener as (frame: Frame) => void);
+    }
+  }
+  const child: Electron.UtilityProcess = {
+    kill: () => {
+      fork.killed = true;
+      return true;
+    },
+    on,
+    postMessage: (message) => {
+      fork.posted.push(message);
+    },
+  };
+  return { child, fork };
 }
 
 /** Build a fresh fake. */
@@ -108,6 +181,7 @@ export function fakeElectron(): FakeElectron {
     paths: new Map(),
     quit: mock(() => {}),
     senderWindow: undefined,
+    forks: [],
     setApplicationMenu: mock((_menu: Electron.ElectronMenu | null) => {}),
     windows: [],
   };
@@ -289,6 +363,13 @@ export function fakeElectron(): FakeElectron {
       setApplicationMenu: (menu) => record.setApplicationMenu(menu),
     },
     shell: { openExternal: (url: string) => record.openExternal(url) },
+    utilityProcess: {
+      fork: (modulePath, args, options) => {
+        const { child, fork } = fakeFork(modulePath, args, options);
+        record.forks.push(fork);
+        return child;
+      },
+    },
   };
 
   /* The record itself, not a copy: `dialogAnswer` and `senderWindow` are read by the closures

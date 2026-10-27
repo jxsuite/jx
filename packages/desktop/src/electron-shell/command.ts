@@ -6,6 +6,7 @@
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import * as executables from "@jxsuite/schema/which";
 
 /** A program and its arguments, ready for `spawn`. */
 export interface ShellCommand {
@@ -17,11 +18,11 @@ export interface ShellCommand {
  * The Electron binary to use, or null when `ELECTRON_BIN` is unset or does not resolve.
  *
  * @param env The script's environment.
- * @param which `Bun.which`, injectable for tests.
+ * @param which `which` from `@jxsuite/schema/which`, injectable for tests.
  */
 export function findElectron(
   env: NodeJS.ProcessEnv,
-  which: (bin: string) => string | null = Bun.which,
+  which: (bin: string) => string | null = executables.which,
 ): string | null {
   const named = env.ELECTRON_BIN;
   return named ? which(named) : null;
@@ -43,10 +44,8 @@ export function shellEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 /** What the multi-window Electron app is started with. */
 export interface ElectronAppFiles {
-  /** The backend entry, run by Bun. */
+  /** The backend bundle, run as a utility process on Electron's own Node. */
   backend: string;
-  /** The Bun executable the backend runs under. */
-  bun: string;
   /** The window icon. */
   icon: string | null;
   /** The bundled main-process entry (`app-main.js`). */
@@ -76,7 +75,6 @@ export function electronAppCommand(
     // X11's WM_CLASS, on Linux only: elsewhere Electron hands an unknown leading switch to Node.
     ...(platform === "linux" ? ["--class=jx-studio"] : []),
     files.main,
-    `--jx-bun=${files.bun}`,
     `--jx-backend=${files.backend}`,
     `--jx-preload=${files.preload}`,
   ];

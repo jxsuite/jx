@@ -1,13 +1,15 @@
 /**
- * The Bun backend as the Electron main process sees it: a child with a JSON message channel.
+ * The backend as the Electron main process sees it: a utility process with a message channel.
  *
- * Wrapped so the app talks to four verbs rather than to `ChildProcess`, which is what lets its
- * tests substitute an array for a process, and so the one place `serialization: "json"` has to be
- * said is this one: Bun is not Node, and the two only agree on the channel's framing in JSON mode.
+ * The backend runs on the Node inside Electron, started with `utilityProcess.fork()`
+ * (specs/desktop.md §9.7). Being an Electron helper rather than a foreign binary is what lets a Mac
+ * App Store build sign it with the inherited sandbox entitlements and hand it the folder grants the
+ * main process holds. Wrapped so the app talks to four verbs rather than to `UtilityProcess`, which
+ * is what lets its tests substitute an array for a process.
  *
  * @docs studio/desktop
  */
-import { spawn } from "node:child_process";
+import type { UtilityProcessFork } from "electron";
 import { isBackendMessage } from "../hub/protocol";
 import type { BackendMessage, ShellMessage } from "../hub/protocol";
 
@@ -24,43 +26,49 @@ export interface BackendProcess {
 }
 
 /** How a backend is started; a parameter of the app so a test never starts a process. */
-export type SpawnBackend = (bin: string, script: string, env: NodeJS.ProcessEnv) => BackendProcess;
+export type SpawnBackend = (script: string, env: NodeJS.ProcessEnv) => BackendProcess;
 
 /**
- * Start `script` under `bin` (Bun) with a JSON IPC channel to this process.
+ * Start `script` as a utility process with a message channel to this process.
  *
  * Standard output and error are inherited, so the backend's log lines land where the app's do.
  *
- * @param bin The runtime to run the backend under.
- * @param script The backend entry (`hub/main.ts`, or its bundle).
- * @param env The backend's environment.
+ * @param utilityProcess Electron's `utilityProcess` module.
+ * @returns A {@link SpawnBackend} that forks through it.
  */
-export const spawnBackend: SpawnBackend = (bin, script, env) => {
-  const child = spawn(bin, [script], {
-    env,
-    serialization: "json",
-    stdio: ["inherit", "inherit", "inherit", "ipc"],
-  });
-  return {
-    kill: () => {
-      child.kill();
-    },
-    onExit: (listener) => {
-      child.on("exit", listener);
-      child.on("error", listener);
-    },
-    onMessage: (listener) => {
-      // The channel's peer is a process this app started, but the guard is still the boundary.
-      child.on("message", (frame) => {
-        if (isBackendMessage(frame)) {
-          listener(frame);
+export function utilityBackend(utilityProcess: UtilityProcessFork): SpawnBackend {
+  return (script, env) => {
+    const child = utilityProcess.fork(script, [], {
+      env,
+      serviceName: "Jx Studio Backend",
+      stdio: "inherit",
+    });
+    let alive = true;
+    child.on("exit", () => {
+      alive = false;
+    });
+    return {
+      kill: () => {
+        child.kill();
+      },
+      onExit: (listener) => {
+        child.on("exit", listener);
+      },
+      onMessage: (listener) => {
+        // The channel's peer is a process this app started, but the guard is still the boundary.
+        child.on("message", (frame) => {
+          if (isBackendMessage(frame)) {
+            listener(frame);
+          }
+        });
+      },
+      send: (message) => {
+        if (alive) {
+          // A channel to a process, not a window: there is no origin to name.
+          // oxlint-disable-next-line unicorn/require-post-message-target-origin
+          child.postMessage(message);
         }
-      });
-    },
-    send: (message) => {
-      if (child.connected) {
-        child.send(message);
-      }
-    },
+      },
+    };
   };
-};
+}

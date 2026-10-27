@@ -138,20 +138,14 @@ let
 
   registryPort = "48732";
 
-  # Optional imports the backend's graph names but never needs installed: oxfmt probes the Prettier
-  # plugins and the Astro compiler (@astrojs/compiler-rs, an optional peer since oxfmt 0.73) only for
-  # languages a project actually formats. This is `BACKEND_EXTERNALS` in scripts/lib/backend-bundle.ts, which the packaged
-  # application's backend bundle leaves out too, and tests/backend-bundle.test.ts holds the two equal.
-  resolveExternals = [
-    "@prettier/plugin-oxc"
-    "@prettier/plugin-hermes"
-    "@prettier/plugin-pug"
-    "prettier-plugin-astro"
-    "prettier-plugin-svelte"
-    "prettier-plugin-marko"
-    "@zackad/prettier-plugin-twig"
-    "@shopify/prettier-plugin-liquid"
-    "@astrojs/compiler-rs"
+  # The packages the backend bundle leaves external because they load files of their own by path
+  # (`BACKEND_NATIVES` in scripts/lib/backend-bundle.ts, held equal by tests/backend-bundle.test.ts).
+  # The installers stage them beside the bundle; here they resolve from the production install the
+  # bundle sits in, and the install check proves they do.
+  backendNatives = [
+    "esbuild"
+    "sharp"
+    "@npmcli/arborist"
   ];
 
   # Browser-only libraries the studio build has already bundled into `assets/studio`. They are
@@ -225,8 +219,9 @@ stdenv.mkDerivation {
     # The Electron application's main process and preload (specs/desktop.md §9.7). Electron runs
     # JavaScript, and a sandboxed preload must be CommonJS whose only `require` is `electron`, so
     # both are bundled here, where the workspace's full tree still resolves them. The result needs
-    # nothing from node_modules at runtime. The backend it spawns is NOT bundled: it runs from
-    # source under Bun against the production install below, as the launcher always has.
+    # nothing from node_modules at runtime. The backend is bundled here too, by the function the
+    # installers use (scripts/lib/backend-bundle.ts), and runs on Electron's own Node as a utility
+    # process (specs/desktop.md §7.1); its native packages resolve from the production install below.
     bun build \
       packages/desktop/src/electron-shell/app-main.ts \
       packages/desktop/src/electron-shell/preload.ts \
@@ -237,6 +232,7 @@ stdenv.mkDerivation {
     # dies on its first `require` before opening a window. electron-builder stages a package.json
     # into `build/app` for the same reason, and a checkout bundles into a temporary directory.
     echo '{ "type": "commonjs" }' > packages/desktop/assets/electron/package.json
+    bun run --cwd packages/desktop scripts/bundle-backend.ts assets/backend
 
     # The tree above is the WORKSPACE's: every member's dependencies plus the root's dev tooling
     # (release-please, oxlint, typescript, ts-migrate, …), which is what the app used to ship
@@ -289,8 +285,8 @@ stdenv.mkDerivation {
     ${lib.concatMapStringsSep "\n    " (p: "rm -rf $out/lib/jx-studio/node_modules/${p}") bundledIntoStudio}
     rm -rf $out/lib/jx-studio/packages/*/tests $out/lib/jx-studio/extensions/*/tests
 
-    # Electron is the root process and owns every window; the Bun backend is its child and owns
-    # every project (specs/desktop.md §9.7). The windows are frameless, so Studio draws its own
+    # Electron is the root process and owns every window; the backend is its utility process, on
+    # Electron's own Node, and owns every project (specs/desktop.md §9.7). The windows are frameless, so Studio draws its own
     # titlebar and window buttons (§9.5). Chromium stays for the site import's headless browser,
     # which puppeteer cannot drive in Electron.
     #
@@ -301,8 +297,7 @@ stdenv.mkDerivation {
     makeWrapper ${electron}/bin/electron $out/bin/jx-studio \
       --add-flags "--class=jx-studio" \
       --add-flags "$out/lib/jx-studio/packages/desktop/assets/electron/app-main.js" \
-      --add-flags "--jx-bun=${bun}/bin/bun" \
-      --add-flags "--jx-backend=$out/lib/jx-studio/packages/desktop/src/hub/main.ts" \
+      --add-flags "--jx-backend=$out/lib/jx-studio/packages/desktop/assets/backend/index.js" \
       --add-flags "--jx-preload=$out/lib/jx-studio/packages/desktop/assets/electron/preload.js" \
       --add-flags "--jx-icon=$out/lib/jx-studio/packages/desktop/icon.png" \
       --set CHROMIUM_BIN "${chromium}/bin/chromium" \
@@ -322,20 +317,26 @@ stdenv.mkDerivation {
   '';
 
   # The installed tree is a production install with two libraries pruned by hand, so prove the
-  # backend still resolves against it: Bun's bundler walks every static import from the entry and
-  # fails on the first one with nothing on disk to answer it. That is how an undeclared runtime
-  # dependency surfaces (@jxsuite/server imported oxfmt without declaring it, and only the root's
-  # dev tooling ever provided it) and how a too-eager prune would, here rather than on a user's
-  # machine. The backend runs from source against this tree: it is the process every window's
-  # project lives in, and an undeclared dependency would otherwise fail on the first window a user
-  # opens.
+  # backend still finds what it loads at run time: the bundle is self-contained except for the
+  # packages it leaves external, which must resolve from the bundle's own directory through this
+  # tree. That is how a too-eager prune, or a native package nobody declared, surfaces here rather
+  # than on a user's machine. Its data must be beside it, and it must hold no Bun code.
   doInstallCheck = true;
   installCheckPhase = ''
     runHook preInstallCheck
-    bun build $out/lib/jx-studio/packages/desktop/src/hub/main.ts \
-      --target=bun \
-      ${lib.concatMapStringsSep " " (e: "--external ${e}") resolveExternals} \
-      --outfile "$TMPDIR/hub-check.js"
+    backend=$out/lib/jx-studio/packages/desktop/assets/backend
+    test -s $backend/index.js
+    grep -q '"type":"module"' $backend/package.json
+    test -d $backend/templates
+    if grep -Eq '\bBun\.[A-Za-z]+' $backend/index.js; then
+      echo "the backend bundle calls a Bun API; it runs on Electron's Node" >&2
+      exit 1
+    fi
+    bun -e '
+      const { createRequire } = require("node:module");
+      const load = createRequire(process.argv[1] + "/index.js");
+      for (const name of process.argv.slice(2)) load.resolve(name);
+    ' $backend ${lib.concatStringsSep " " backendNatives}
     # The application's bundle was made at build time; prove it is the app and not an empty file,
     # and that nothing of this repository's was left outside it for the runtime to look for.
     app=$out/lib/jx-studio/packages/desktop/assets/electron
