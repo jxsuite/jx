@@ -81,8 +81,11 @@ export interface FileRowView {
 
 /** Everything the document draws, as one value. */
 export interface FilesPanelValues {
-  /** Which of three things the panel is: no project, a monorepo root, or a tree. */
-  view: "none" | "welcome" | "tree";
+  /**
+   * Which of four things the panel is: no project, a monorepo root on a host that can open a
+   * project, the same root on one that opens from the address (`?project=`), or a tree.
+   */
+  view: "none" | "welcome" | "address" | "tree";
   headerState: "hidden" | "shown";
   projectName: string;
   query: string;

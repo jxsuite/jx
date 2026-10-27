@@ -92,28 +92,28 @@ Immutable state with undo/redo history (100 entries). All mutations produce a ne
 
 Studio uses a platform abstraction (`src/platform.ts`) to decouple UI from backend. The table below is a sketch; `src/types.ts`'s `StudioPlatform` is the interface, and it is considerably wider:
 
-| Method                   | Description                                                                                                |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `listDirectory(dir)`     | List directory contents                                                                                    |
-| `readFile(path)`         | Read file content                                                                                          |
-| `writeFile(path, c)`     | Write file content                                                                                         |
-| `deleteFile(path)`       | Delete a file, or an empty folder; a folder that still holds files is refused, never emptied               |
-| `renameFile(old,new)`    | Rename/move file                                                                                           |
-| `discoverComponents()`   | Scan project for custom elements                                                                           |
-| `openProject()`          | Open project picker (unless `openProjectPicker: "repo-list"` routes it through Studio's repository picker) |
-| `probeRootProject()`     | Auto-detect project at startup                                                                             |
-| `createDestination`      | Whether New Project collects a folder (`"path"`) or a repository (`"repo"`) — see specs/desktop.md §4.5    |
-| `createProject(opts)`    | Scaffold a project at the user-chosen `opts.destination`; never defaults a location                        |
-| `pickDirectory?()`       | Folder picker behind **Browse…**: a path, `null` only for a cancel, else a rejection shown under Location  |
-| `fetchProjectSchemas?()` | The active project's generated entry documents, PRE-BUNDLED (extensions.md §5.2) — drives §4.2.1           |
-| `canvasUrl?`             | The canvas iframe document. Absent means the bundle-relative default (§11.2)                               |
-| `canvasUrlDeferred?`     | This platform resolves `canvasUrl` asynchronously; the host waits rather than mounting the default (§11.2) |
-| `assetSpace?`            | What the canvas ORIGIN answers for a site URL: `"site"` (the default when absent) or `"repo"` (below)      |
-| `assetCapabilities?`     | What this backend accepts as an upload — `maxUploadBytes`, `accept`. Absent means no declared limit (§9.3) |
-| `previewSite?(opts)`     | Serve the working tree as a site at `opts.route` → `SitePreviewResult` (§10.1)                             |
-| `setPreviewOverlay?`     | Publish the bytes a save would write for one document, so a preview shows the canvas (§10.1)               |
-| `clearPreviewOverlay?`   | Retract one document's unsaved bytes, or every one of this project's (§10.1)                               |
-| `buildSite?()`           | Compile the site and name where the output is browsable → `SiteBuildResult` (§10.2)                        |
+| Method                   | Description                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `listDirectory(dir)`     | List directory contents                                                                                     |
+| `readFile(path)`         | Read file content                                                                                           |
+| `writeFile(path, c)`     | Write file content                                                                                          |
+| `deleteFile(path)`       | Delete a file, or an empty folder; a folder that still holds files is refused, never emptied                |
+| `renameFile(old,new)`    | Rename/move file                                                                                            |
+| `discoverComponents()`   | Scan project for custom elements                                                                            |
+| `openProject?()`         | Native project dialog. Absent with no repository picker (the dev server): Open Project is not offered       |
+| `probeRootProject()`     | Auto-detect project at startup                                                                              |
+| `createDestination`      | Whether New Project collects a folder (`"path"`) or a repository (`"repo"`) — see specs/desktop.md §4.5     |
+| `createProject(opts)`    | Scaffold a project at the user-chosen `opts.destination`; never defaults a location                         |
+| `pickDirectory?()`       | Native folder dialog behind **Browse…**: a path, `null` for a cancel, else a rejection shown under Location |
+| `fetchProjectSchemas?()` | The active project's generated entry documents, PRE-BUNDLED (extensions.md §5.2) — drives §4.2.1            |
+| `canvasUrl?`             | The canvas iframe document. Absent means the bundle-relative default (§11.2)                                |
+| `canvasUrlDeferred?`     | This platform resolves `canvasUrl` asynchronously; the host waits rather than mounting the default (§11.2)  |
+| `assetSpace?`            | What the canvas ORIGIN answers for a site URL: `"site"` (the default when absent) or `"repo"` (below)       |
+| `assetCapabilities?`     | What this backend accepts as an upload — `maxUploadBytes`, `accept`. Absent means no declared limit (§9.3)  |
+| `previewSite?(opts)`     | Serve the working tree as a site at `opts.route` → `SitePreviewResult` (§10.1)                              |
+| `setPreviewOverlay?`     | Publish the bytes a save would write for one document, so a preview shows the canvas (§10.1)                |
+| `clearPreviewOverlay?`   | Retract one document's unsaved bytes, or every one of this project's (§10.1)                                |
+| `buildSite?()`           | Compile the site and name where the output is browsable → `SiteBuildResult` (§10.2)                         |
 
 **`assetSpace` is about the ORIGIN, not the backend.** A document references media by site URL (`/hero.jpg`) or relative to itself (`./images/hero.png`), and neither is a URL the canvas can use unless something on the canvas document's own origin serves the published site. A local editing server is that thing, so it declares nothing and `assetSpace` defaults to `"site"`: the origin already answers, and the only mapping Studio owes is the content-mount one in §4.1.
 
@@ -1557,21 +1557,21 @@ Because `mod` absorbs the platform's primary modifier, a physical **Ctrl+Tab** n
 
 One reactive record (`commands/context.ts`), derived from the reactive `shell` record, `workspace` and `activeTab`. Predicates read it; nothing writes to it from a predicate.
 
-| Group        | Keys                                                                                                                                                                 |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project`    | `open`, `isSite`, `isRepo`, `isMultilingual`                                                                                                                         |
-| `git`        | `ahead`, `behind`, `dirtyCount`                                                                                                                                      |
-| `document`   | `open`, `dirty`, `mode`, `canUndo`, `canRedo`                                                                                                                        |
-| `editor`     | `kind` — `canvas` \| `grid` \| `code` \| `diff` \| `config` \| `tokens` \| `entry` \| `media` \| `home` \| `none`                                                    |
-| `canvas`     | `view` — `edit` \| `design` \| `preview`                                                                                                                             |
-| `pane`       | `count`, `derived`                                                                                                                                                   |
-| `selection`  | `count`, `kind`, `isRoot`, `isComponentInstance`, `isLayoutNode`                                                                                                     |
-| `caret`      | `active` (§10), `inCanvas`                                                                                                                                           |
-| `focus`      | `region` — `rail` \| `navigator` \| `pane` \| `inspector` \| `dock` \| `status` \| `palette`                                                                         |
-| `modal`      | `open`                                                                                                                                                               |
-| `collab`     | `attached`, `readOnly`, `sourceCanonical`                                                                                                                            |
-| `ai`         | `configured`, `streaming`                                                                                                                                            |
-| `capability` | One boolean per PAL member: `gitClone`, `importSite`, `openProjectInNewWindow`, `dataRows`, `windowControls`, `findReferences`, `readFileBytes`, `publish` (`cfApi`) |
+| Group        | Keys                                                                                                                                                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `project`    | `open`, `isSite`, `isRepo`, `isMultilingual`                                                                                                                                                                                         |
+| `git`        | `ahead`, `behind`, `dirtyCount`                                                                                                                                                                                                      |
+| `document`   | `open`, `dirty`, `mode`, `canUndo`, `canRedo`                                                                                                                                                                                        |
+| `editor`     | `kind` — `canvas` \| `grid` \| `code` \| `diff` \| `config` \| `tokens` \| `entry` \| `media` \| `home` \| `none`                                                                                                                    |
+| `canvas`     | `view` — `edit` \| `design` \| `preview`                                                                                                                                                                                             |
+| `pane`       | `count`, `derived`                                                                                                                                                                                                                   |
+| `selection`  | `count`, `kind`, `isRoot`, `isComponentInstance`, `isLayoutNode`                                                                                                                                                                     |
+| `caret`      | `active` (§10), `inCanvas`                                                                                                                                                                                                           |
+| `focus`      | `region` — `rail` \| `navigator` \| `pane` \| `inspector` \| `dock` \| `status` \| `palette`                                                                                                                                         |
+| `modal`      | `open`                                                                                                                                                                                                                               |
+| `collab`     | `attached`, `readOnly`, `sourceCanonical`                                                                                                                                                                                            |
+| `ai`         | `configured`, `streaming`                                                                                                                                                                                                            |
+| `capability` | One boolean per PAL member: `gitClone`, `importSite`, `openProject` (`openProject`, or a complete repository picker), `openProjectInNewWindow`, `dataRows`, `windowControls`, `findReferences`, `readFileBytes`, `publish` (`cfApi`) |
 
 **`capability.*` replaces scattered platform branching.** A cloud/desktop/dev-server difference becomes one `when` clause on one record instead of an `if (platform.x)` in every template that touches the feature.
 

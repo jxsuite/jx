@@ -81,20 +81,20 @@ The PAL is a plain JavaScript object conforming to a `StudioPlatform` interface.
 
 The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — roughly 70 members today. This spec deliberately does not duplicate it; the summary below names the member families and the model that governs them. The transport-level view of the same contract is the `STUDIO_ROUTES` table in `@jxsuite/protocol` (§5.1).
 
-| Family                   | Representative members                                                                                                                                                                                                         |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Session / project**    | `id`, `projectRoot`, `activate`, `openProject`, `openProjectPicker?`, `probeRootProject`, `createDestination`, `createProject`, `pickDirectory?`, `listStarters?`, `importSite?`, `listProjects?`, recent-projects persistence |
-| **Filesystem**           | `listDirectory`, `readFile`, `readFileBytes?`, `writeFile`, `uploadFile`, `deleteFile`, `renameFile`, `findReferences?`, `createDirectory`, `locateFile`, `searchFiles`, `subscribeFileEvents?`                                |
-| **Documents / formats**  | `discoverComponents`, `listFormats?`, `listExtensions?`, `listExtensionCatalog?`, `fetchProjectSchemas?`, `formatAction?`, `fetchPluginSchema`                                                                                 |
-| **Packages**             | `listPackages`, `addPackage`, `removePackage`, `installDependencies?`, `packageVersions?`, `setPackageVersions?`                                                                                                               |
-| **Git**                  | `gitStatus`, `gitCommit`, `gitPush`, `gitPull`, `gitDiff`, `gitCheckout`, `gitClone?`, `createPullRequest?`, …                                                                                                                 |
-| **Collab**               | `collab?` (realtime co-editing handle per document)                                                                                                                                                                            |
-| **Data / secrets**       | `dataConnections?`, `dataRows?`, row CRUD, `dataPush?`, `listSecrets?`, `setSecrets?`                                                                                                                                          |
-| **Publish / identity**   | `getUser?`, `getAccountStatus?`, `listRepos?`, `listRepoProjects?`, `importProject?`, `cfConnection?`, `cfConnect?`, `cfApi?`                                                                                                  |
-| **Site preview / build** | `previewSite?`, `setPreviewOverlay?`, `clearPreviewOverlay?`, `buildSite?` (specs/studio.md §10.1, §10.2)                                                                                                                      |
-| **Code services / AI**   | `codeService` (§5.3), `resolveClass?`, `aiChatUrl`                                                                                                                                                                             |
-| **Multi-window / shell** | `openProjectInNewWindow?`, `pickProject?`, `newWindow?`, `setWindowProject?`, `getProjectRoot?`, `getAppInfo?`, `getSettings?`, `patchSettings?`                                                                               |
-| **Canvas**               | `canvasUrl?`, `canvasUrlDeferred?`, `documentBaseUrl?`, `assetSpace?`, `assetCapabilities?`                                                                                                                                    |
+| Family                   | Representative members                                                                                                                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Session / project**    | `id`, `projectRoot`, `activate`, `openProject?`, `openProjectPicker?`, `probeRootProject`, `createDestination`, `createProject`, `pickDirectory?`, `listStarters?`, `importSite?`, `listProjects?`, recent-projects persistence |
+| **Filesystem**           | `listDirectory`, `readFile`, `readFileBytes?`, `writeFile`, `uploadFile`, `deleteFile`, `renameFile`, `findReferences?`, `createDirectory`, `locateFile`, `searchFiles`, `subscribeFileEvents?`                                 |
+| **Documents / formats**  | `discoverComponents`, `listFormats?`, `listExtensions?`, `listExtensionCatalog?`, `fetchProjectSchemas?`, `formatAction?`, `fetchPluginSchema`                                                                                  |
+| **Packages**             | `listPackages`, `addPackage`, `removePackage`, `installDependencies?`, `packageVersions?`, `setPackageVersions?`                                                                                                                |
+| **Git**                  | `gitStatus`, `gitCommit`, `gitPush`, `gitPull`, `gitDiff`, `gitCheckout`, `gitClone?`, `createPullRequest?`, …                                                                                                                  |
+| **Collab**               | `collab?` (realtime co-editing handle per document)                                                                                                                                                                             |
+| **Data / secrets**       | `dataConnections?`, `dataRows?`, row CRUD, `dataPush?`, `listSecrets?`, `setSecrets?`                                                                                                                                           |
+| **Publish / identity**   | `getUser?`, `getAccountStatus?`, `listRepos?`, `listRepoProjects?`, `importProject?`, `cfConnection?`, `cfConnect?`, `cfApi?`                                                                                                   |
+| **Site preview / build** | `previewSite?`, `setPreviewOverlay?`, `clearPreviewOverlay?`, `buildSite?` (specs/studio.md §10.1, §10.2)                                                                                                                       |
+| **Code services / AI**   | `codeService` (§5.3), `resolveClass?`, `aiChatUrl`                                                                                                                                                                              |
+| **Multi-window / shell** | `openProjectInNewWindow?`, `pickProject?`, `newWindow?`, `setWindowProject?`, `getProjectRoot?`, `getAppInfo?`, `getSettings?`, `patchSettings?`                                                                                |
+| **Canvas**               | `canvasUrl?`, `canvasUrlDeferred?`, `documentBaseUrl?`, `assetSpace?`, `assetCapabilities?`                                                                                                                                     |
 
 **Every path across the PAL is project-relative, in both directions.** A caller passes `components/card.json`, and a member that reports paths reports them in that same space — including the refactor members, whose reports name files the sweep found. Where a backend speaks a different space, the adapter translates, and it translates in ONE direction only: an adapter that both prefixes a request and strips a prefix off the reply is asserting that the backend echoes its own input space, which is a property of a particular route rather than of the protocol. The dev server's own convention is stated in `server.md` §4.1.
 
@@ -234,7 +234,7 @@ Four properties are load-bearing, and each is a real attack or a real failure if
 A project is identified by its `project.json` file. This is the single point of entry for all deployment targets:
 
 - **Desktop:** User selects `project.json` via native file dialog. The parent directory becomes the project root.
-- **Dev server:** User selects the folder containing `project.json` via `showDirectoryPicker()`. Studio reads `project.json` from the directory to validate it.
+- **Dev server:** The window's `?project=` URL parameter names the folder containing `project.json` by its absolute path (§8.2). There is no picker.
 - **Cloud:** User picks from a repository list (`openProjectPicker: "repo-list"` — GitHub repositories with write access, Jx-tagged repos first), then a **project folder** within it. Confirming runs `importProject({ owner, name, dir })`, which probes `project.json` in that folder and resolves the catalogue root key Studio navigates to.
 
 The project folder is what lets a repository hold more than one project, or hold one below its root (a monorepo's `sites/marketing`): the folder holding `project.json` is the project root, exactly as the parent directory of the picked file is on the desktop. The picker's two steps:
@@ -261,6 +261,8 @@ The `project.json` file is **required** for project-level features. Studio can s
 
 ### 4.2 Project Open Flow
 
+Open Project is offered only by a host that can carry it out: one with `openProject()`, or with `openProjectPicker: "repo-list"` and the repository members behind it. The dev server has neither, because a dev-server window opens its project from the `?project=` URL parameter (§8.2), so the command, the welcome screen's action and the Files panel's button are all absent there rather than present and dead.
+
 ```
 User clicks "Open Project"
         │
@@ -275,11 +277,8 @@ User clicks "Open Project"
         ▼
 platform.openProject()
         │
-        ├─── Desktop: the shell's native open dialog (dialog.showOpenDialog), filtered to JSON
+        └─── Desktop: the shell's native open dialog (dialog.showOpenDialog), filtered to JSON
         │    → user picks project.json → read + parse → derive project root from parent dir
-        │
-        └─── Dev server: showDirectoryPicker()
-        │    → user picks folder → read project.json from dir → parse + validate
         │
         ▼
 Returns { config, handle } or null
@@ -389,8 +388,7 @@ User fills the Parameters step (name, destination, slug)
         │    Browse… renders only when the platform implements pickDirectory()
         │      ├── Electron desktop: native dialog.showOpenDialog (the XDG desktop portal on Linux)
         │      ├── Development launcher: native XDG desktop portal
-        │      ├── Dev server: showDirectoryPicker(), path recovered via a marker file (§8.2.1)
-        │      └── A browser without the File System Access API: omitted — the path is typed
+        │      └── Dev server: omitted — the path is typed (§8.2.1)
         │    null = the user cancelled → Location unchanged; a rejection → its message under Location
         │
         └─── createDestination: "repo"
@@ -442,7 +440,7 @@ The outcome is reported the same way §4.2a's is: `adopted` is `workspace.projec
 
 A live preview under the fields shows the resolved destination (`/home/you/Sites/my-site`, or `acme/my-site`) before anything is written.
 
-**Browse… is never a silent no-op.** `pickDirectory()` resolves `null` only when the user cancels; every other outcome that yields no path rejects with a sentence a person can act on, and the modal shows it in the destination fields' error slot, the same place a bad typed Location is reported, where typing a path clears it. The desktop adapter rejects when the RPC does (a timeout, a decode failure) or when the native dialog is unavailable in the build; the dev-server adapter rejects as §8.2.1 describes. `browseLocation` catches the rejection itself because the button is a fire-and-forget click: it used to have no `catch`, so a failure was an unhandled rejection with nothing on screen, and a picker that swallowed its failures into `null` looked exactly like a cancel.
+**Browse… is never a silent no-op.** `pickDirectory()` resolves `null` only when the user cancels; every other outcome that yields no path rejects with a sentence a person can act on, and the modal shows it in the destination fields' error slot, the same place a bad typed Location is reported, where typing a path clears it. The desktop adapter rejects when the RPC does (a timeout, a decode failure) or when the native dialog is unavailable in the build. `browseLocation` catches the rejection itself because the button is a fire-and-forget click: it used to have no `catch`, so a failure was an unhandled rejection with nothing on screen, and a picker that swallowed its failures into `null` looked exactly like a cancel.
 
 **Every created project is a git repository.** A scaffold that is not under version control has no undo for its first destructive action, and nothing in the app says so. On the create path — every source, including Import and Agent — Studio therefore binds the backend to the new root (`activate`), reads `gitStatus`, and runs `gitInit` when the tree is not already a repository. It is skipped entirely on `createDestination: "repo"` platforms, where the project _is_ a repository by construction, and a git failure is reported without failing the create: the project that was written stays written.
 
@@ -496,12 +494,12 @@ A few illustrative rows (see the table for the rest):
 
 ### 5.2 Project Operations
 
-| Operation        | `@jxsuite/server` endpoint       | PAL method                              |
-| ---------------- | -------------------------------- | --------------------------------------- |
-| Open project     | N/A (client-side dialog)         | `openProject()`                         |
-| Project metadata | `GET /__studio/project`          | Derived from `ProjectHandle`            |
-| Create project   | `POST /__studio/create-project`  | `createProject({ destination })` (§4.5) |
-| Pick a folder    | `GET /__studio/locate-directory` | `pickDirectory?()` (§8.2.1)             |
+| Operation        | `@jxsuite/server` endpoint      | PAL method                              |
+| ---------------- | ------------------------------- | --------------------------------------- |
+| Open project     | N/A (native dialog)             | `openProject?()` (§4.2)                 |
+| Project metadata | `GET /__studio/project`         | Derived from `ProjectHandle`            |
+| Create project   | `POST /__studio/create-project` | `createProject({ destination })` (§4.5) |
+| Pick a folder    | N/A (native dialog)             | `pickDirectory?()` (§8.2.1)             |
 
 ### 5.3 Code Services
 
@@ -783,43 +781,8 @@ export function createDevServerPlatform() {
   return {
     id: "devserver",
 
-    async openProject() {
-      // Use Chrome's showDirectoryPicker API
-      if (!("showDirectoryPicker" in window)) {
-        throw new Error("showDirectoryPicker not available");
-      }
-
-      const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-
-      // Read project.json from the chosen directory
-      let siteHandle;
-      try {
-        siteHandle = await dirHandle.getFileHandle("project.json");
-      } catch {
-        throw new Error("No project.json found in selected folder");
-      }
-
-      const file = await siteHandle.getFile();
-      const config = JSON.parse(await file.text());
-
-      // Resolve server-relative path by matching against known sites
-      const sitesRes = await fetch("/__studio/sites");
-      const sites = await sitesRes.json();
-      const match = sites.find((s) => JSON.stringify(s.config) === JSON.stringify(config));
-
-      if (!match) {
-        throw new Error("Selected project is not under the dev server root");
-      }
-
-      return {
-        config,
-        handle: {
-          root: match.path,
-          name: config.name || match.path.split("/").pop(),
-          projectConfig: config,
-        },
-      };
-    },
+    // No openProject and no pickDirectory: a dev-server window opens its project from
+    // `?project=` (§8.2), and the New Project Location field is typed (§8.2.1).
 
     async listDirectory(dir) {
       const serverDir = projectPath(dir);
@@ -849,39 +812,21 @@ export function createDevServerPlatform() {
 }
 ```
 
-### 8.2 Why showDirectoryPicker, Not showOpenFilePicker
+### 8.2 Opening a Project: the `?project=` Parameter
 
-In Chrome, `showOpenFilePicker` returns a `FileSystemFileHandle` with no way to access the parent directory or derive a filesystem path. The dev server needs a server-relative path to scope file operations. `showDirectoryPicker` solves this by:
+A dev-server window opens its project from its address: `?project=` (or `?open=`) followed by the project folder's absolute path, such as `http://localhost:3000/packages/studio/index.html?project=~/Sites/my-site`. With no parameter, the window probes the server root (`probeRootProject`) and opens it when it is itself a project.
 
-1. Giving the user a folder selection experience (they pick the project folder)
-2. Letting Studio read `project.json` from the `FileSystemDirectoryHandle` to validate
-3. Matching against the server's `/__studio/sites` endpoint to resolve the server-relative path
+There is no **Open Project** in this mode. A browser page cannot learn a filesystem path from a folder the user picks: `showOpenFilePicker` returns a file handle with no parent, and a `showDirectoryPicker` handle carries only the folder's name. The adapter used to recover a path anyway, by matching the picked `project.json` against `/__studio/sites` and, failing that, by scanning the whole home directory for a folder with the same name (`/__studio/find-project`), which took the first match and could open a different checkout of the same project. The address is exact, costs nothing, and is how the dev server is actually used, so the dialog, the scan and the route were removed rather than repaired. The adapter omits `openProject`, and Studio hides every way of offering it (§4.2).
 
-For the **desktop app**, `Utils.openFileDialog` with `canChooseFiles: true` and `allowedFileTypes: "json"` gives us the file path directly, so the user can pick `project.json` explicitly.
+For the **desktop app**, the native open dialog returns the path directly, so the user can pick `project.json` explicitly.
 
 #### 8.2.1 Picking a destination folder
 
 > **Status: Implemented.**
 
-Choosing where a **new** project goes (§4.5) cannot use any of the three steps above: the folder is empty by definition, so there is no `project.json` to read and nothing for `/__studio/sites` to match. The handle still carries no path.
+Choosing where a **new** project goes (§4.5) runs into the same limit as §8.2: a browser folder handle has no path. Every packaged build has a real native folder dialog that returns one directly — the Electron application uses `dialog.showOpenDialog` (the XDG desktop portal on Linux), and the development launcher uses the portal directly — and implements `pickDirectory` over it. A launcher window whose own adapter failed does not fall back to the dev-server adapter (§3.3); desktop 5.0.0 through 5.1.3 did, which is how a packaged macOS window showed Chromium's picker in place of its native dialog and then did nothing with the answer.
 
-**This applies only to the plain dev-server browser session.** Every packaged build already has a real native folder dialog that returns a filesystem path directly, and keeps it — the Electron application uses `dialog.showOpenDialog` (the XDG desktop portal on Linux), and the development launcher uses the portal directly. A browser page has no such option, so it gets the fallback below rather than no **Browse…** button at all. A launcher window whose own adapter failed no longer falls back to this path (§3.3); desktop 5.0.0 through 5.1.3 did, which is how a packaged macOS window showed Chromium's picker in place of its native dialog and then did nothing with the answer.
-
-There, the handle is made to identify itself. Using the `readwrite` grant the picker just issued, `pickDirectoryPath` (`@jxsuite/studio/directory-picker`) tags the folder with a hidden `LOCATION_ID_FILE` — `.jx-loc-id`, defined in `@jxsuite/protocol` because the writer and the reader must agree on it — whose **contents** are a freshly generated 128-bit id, and asks the backend which directory carries that id:
-
-```
-Browse… (user gesture)
-  → showDirectoryPicker({ id: "jx-new-project-location", mode: "readwrite" })
-  → write <random 32-hex id> into <picked>/.jx-loc-id
-  → GET /__studio/locate-directory?name=&id=
-      ($HOME/.jx-loc-id holds the id → $HOME; else scan **/<name>/.jx-loc-id under $HOME)
-      → on match: delete the tag, return the directory
-  → finally: handle.removeEntry(".jx-loc-id")
-```
-
-**Identity is in the contents, not the filename.** A candidate whose `.jx-loc-id` does not hold this exact id is skipped, so neither a second folder sharing the basename nor a tag left behind by a crashed session can redirect a create — a fixed filename plus a content match is exact where a path shape is only probable. `name` still narrows the scan the way `/__studio/find-project` does. The backend deletes the winning tag as soon as it has served its purpose, and the client removes it too, so nothing is left in the user's new project folder on any path.
-
-A cancel (`AbortError`) resolves `null`, and the modal leaves the Location field untouched. **Every other failure rejects** with a displayable sentence, which the modal shows under Location (§4.5): no folder chooser, a chooser that would not open (a lost user gesture), a read-only grant or an unwritable folder (the tag write fails, and a tag that was created is removed), a lookup that fails, and a folder the backend cannot place (`locate` answers `null`), whose message suggests typing the full path. They all used to resolve `null`, which made each of them look like a cancel: the user picked a folder and nothing happened. On a browser without the File System Access API the dev-server adapter omits `pickDirectory` entirely, so the button is hidden rather than dead, and the Location field is typed.
+The dev-server adapter omits `pickDirectory`, so the **Browse…** button is not drawn and the **Location** field is typed. It used to recover the picked folder's path by writing a random id into a hidden `.jx-loc-id` file there and asking the server to scan the home directory for it (`/__studio/locate-directory`); that went with §8.2's scan, for the same reason.
 
 ---
 

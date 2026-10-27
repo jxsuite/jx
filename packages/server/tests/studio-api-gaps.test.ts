@@ -1,9 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { assertCreatableParent, handleStudioApi, isOwnedProjectDir } from "../src/studio-api";
-import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
 import type { StudioApiOptions } from "../src/studio-api";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
-import { basename, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 
@@ -56,15 +55,10 @@ beforeAll(() => {
   // Destination parent outside the server root, for create-project's chosen-location path
   mkdirSync(OUTSIDE_PARENT, { recursive: true });
 
-  // Home dir for ~ expansion and find-project
+  // Home dir for ~ expansion
   mkdirSync(join(FIXTURES, "home", "my-site"), { recursive: true });
   writeFileSync(join(FIXTURES, "home", "my-site", "project.json"), JSON.stringify({ name: "s" }));
   writeFileSync(join(FIXTURES, "home", "my-site", "page.json"), "{}");
-  mkdirSync(join(FIXTURES, "home", "node_modules", "my-site"), { recursive: true });
-  writeFileSync(
-    join(FIXTURES, "home", "node_modules", "my-site", "project.json"),
-    JSON.stringify({ name: "shadow" }),
-  );
 
   // Broken project.json for resolve-site error path
   mkdirSync(join(ROOT, "broken-site"), { recursive: true });
@@ -297,209 +291,6 @@ describe("resolve-site — gaps", () => {
     expect(res.status).toBe(500);
     const payload = await res.json();
     expect(payload.error).toBeDefined();
-  });
-});
-
-// ─── find-project ────────────────────────────────────────────────────────────
-
-describe("find-project — gaps", () => {
-  test("returns null path when HOME is unset", async () => {
-    const originalHome = process.env.HOME;
-    const originalProfile = process.env.USERPROFILE;
-    delete process.env.HOME;
-    delete process.env.USERPROFILE;
-    try {
-      const { req, url } = getReq("/__studio/find-project?name=my-site");
-      const res = await callApi(req, url);
-      const payload = await res.json();
-      expect(payload.path).toBeNull();
-    } finally {
-      if (originalHome !== undefined) {
-        process.env.HOME = originalHome;
-      }
-      if (originalProfile !== undefined) {
-        process.env.USERPROFILE = originalProfile;
-      }
-    }
-  });
-
-  test("finds a project under HOME, skipping node_modules", async () => {
-    const originalHome = process.env.HOME;
-    process.env.HOME = join(FIXTURES, "home");
-    try {
-      const { req, url } = getReq("/__studio/find-project?name=my-site");
-      const res = await callApi(req, url);
-      const body = await res.json();
-      expect(body.path).toBe(join(FIXTURES, "home", "my-site"));
-    } finally {
-      process.env.HOME = originalHome;
-    }
-  });
-});
-
-// ─── locate-directory ────────────────────────────────────────────────────────
-
-/** Throwaway home directories handed to the locate-directory route, removed after the suite. */
-const LOCATE_HOMES: string[] = [];
-
-/**
- * Makes a private home directory for one locate-directory case. It lives under the real home so the
- * route — which only ever scans `$HOME` — stays inside the user's tree, and so the scan sees
- * nothing but the fixture the test just wrote.
- */
-function locateHome() {
-  const home = mkdtempSync(join(homedir(), "jx-locate-home-"));
-  LOCATE_HOMES.push(home);
-  return home;
-}
-
-/** Calls the route with `$HOME` pointed at `home`, restoring the ambient environment after. */
-async function locateDirectory(home: string, query: string) {
-  const originalHome = process.env.HOME;
-  process.env.HOME = home;
-  try {
-    const { req, url } = getReq(`/__studio/locate-directory?${query}`);
-    return await callApi(req, url);
-  } finally {
-    if (originalHome === undefined) {
-      delete process.env.HOME;
-    } else {
-      process.env.HOME = originalHome;
-    }
-  }
-}
-
-describe("locate-directory", () => {
-  /** A well-formed id — the route accepts only 32 lowercase hex characters. */
-  const ID = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
-  const OTHER_ID = "0f9e8d7c6b5a493827160f5e4d3c2b1a";
-
-  /** Shared by the validation cases, which are refused before anything touches the filesystem. */
-  let emptyHome = "";
-
-  /** Tag `dir` as the picked folder by writing `id` into its hidden location file. */
-  function tag(dir: string, id: string) {
-    writeFileSync(join(dir, LOCATION_ID_FILE), id);
-  }
-
-  beforeAll(() => {
-    emptyHome = locateHome();
-  });
-
-  afterAll(() => {
-    for (const home of LOCATE_HOMES) {
-      rmSync(home, { force: true, recursive: true });
-    }
-  });
-
-  test("rejects a missing name", async () => {
-    const res = await locateDirectory(emptyHome, `id=${ID}`);
-    expect(res.status).toBe(400);
-    const payload = await res.json();
-    expect(payload.error).toBe("Missing or invalid name/id");
-  });
-
-  test("rejects a missing id", async () => {
-    const res = await locateDirectory(emptyHome, "name=new-site");
-    expect(res.status).toBe(400);
-    const payload = await res.json();
-    expect(payload.error).toBe("Missing or invalid name/id");
-  });
-
-  test("rejects an id outside the generated 32-hex shape", async () => {
-    // The id is only ever compared, never used as a pattern — but a strict shape keeps a
-    // Malformed value from reaching the filesystem at all.
-    for (const bad of ["../escape", "not-hex-at-all", "A1B2C3D4E5F60718293A4B5C6D7E8F90", "abc"]) {
-      const res = await locateDirectory(emptyHome, `name=new-site&id=${encodeURIComponent(bad)}`);
-      expect(res.status).toBe(400);
-    }
-  });
-
-  test("rejects a name containing a separator", async () => {
-    // A directory handle's `.name` is a single path segment; anything else is not a real pick.
-    const nested = encodeURIComponent("nested/new-site");
-    const res = await locateDirectory(emptyHome, `name=${nested}&id=${ID}`);
-    expect(res.status).toBe(400);
-    const payload = await res.json();
-    expect(payload.error).toBe("Missing or invalid name/id");
-
-    const backslash = encodeURIComponent(String.raw`nested\new-site`);
-    const winRes = await locateDirectory(emptyHome, `name=${backslash}&id=${ID}`);
-    expect(winRes.status).toBe(400);
-  });
-
-  test("resolves a tag written straight into the home directory to the home directory", async () => {
-    // Picking the home directory itself is legitimate, and no `**/<name>/` glob can match it.
-    const home = locateHome();
-    tag(home, ID);
-    const res = await locateDirectory(home, `name=${basename(home)}&id=${ID}`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ path: home });
-    // The route cleans up the moment it matches, rather than leaving the tag for the client.
-    expect(existsSync(join(home, LOCATION_ID_FILE))).toBe(false);
-  });
-
-  test("resolves a tag in a nested directory to that directory, skipping node_modules", async () => {
-    const home = locateHome();
-    const target = join(home, "projects", "sites", "new-site");
-    mkdirSync(target, { recursive: true });
-    tag(target, ID);
-    // A same-named decoy inside node_modules must never win.
-    mkdirSync(join(home, "node_modules", "new-site"), { recursive: true });
-    tag(join(home, "node_modules", "new-site"), ID);
-
-    const res = await locateDirectory(home, `name=new-site&id=${ID}`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ path: target });
-    expect(existsSync(join(target, LOCATION_ID_FILE))).toBe(false);
-  });
-
-  test("ignores a same-named folder whose tag holds a different id", async () => {
-    // This is the whole reason identity lives in the CONTENTS: two folders can share a basename,
-    // And a tag left by a crashed session can still be on disk. Only the live id may win.
-    const home = locateHome();
-    const stale = join(home, "a", "new-site");
-    const live = join(home, "b", "new-site");
-    mkdirSync(stale, { recursive: true });
-    mkdirSync(live, { recursive: true });
-    tag(stale, OTHER_ID);
-    tag(live, ID);
-
-    const res = await locateDirectory(home, `name=new-site&id=${ID}`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ path: live });
-    // The loser's tag is left untouched — it belongs to someone else's pick.
-    expect(existsSync(join(stale, LOCATION_ID_FILE))).toBe(true);
-  });
-
-  test("returns a null path when no tag anywhere holds the id", async () => {
-    const home = locateHome();
-    const dir = join(home, "new-site");
-    mkdirSync(dir, { recursive: true });
-    tag(dir, OTHER_ID);
-    const res = await locateDirectory(home, `name=new-site&id=${ID}`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ path: null });
-  });
-
-  test("returns a null path when there is no home directory", async () => {
-    const originalHome = process.env.HOME;
-    const originalProfile = process.env.USERPROFILE;
-    delete process.env.HOME;
-    delete process.env.USERPROFILE;
-    try {
-      const { req, url } = getReq(`/__studio/locate-directory?name=new-site&id=${ID}`);
-      const res = await callApi(req, url);
-      expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({ path: null });
-    } finally {
-      if (originalHome !== undefined) {
-        process.env.HOME = originalHome;
-      }
-      if (originalProfile !== undefined) {
-        process.env.USERPROFILE = originalProfile;
-      }
-    }
   });
 });
 

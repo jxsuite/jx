@@ -50,6 +50,26 @@ declare global {
   var __jxLauncher: LauncherSignal | undefined;
 }
 
+/**
+ * Whether this host offers Open Project at all: a native dialog (`openProject`), or the cloud's
+ * repository picker. The dev server has neither, because its windows open a project from the
+ * `?project=` URL parameter, so every surface that offers Open Project asks this first rather than
+ * drawing a control that cannot do anything.
+ */
+export function canOpenProject(platform: StudioPlatform | null | undefined): boolean {
+  if (!platform) {
+    return false;
+  }
+  if (isFunction(platform.openProject)) {
+    return true;
+  }
+  return (
+    platform.openProjectPicker === "repo-list" &&
+    isFunction(platform.listRepos) &&
+    isFunction(platform.importProject)
+  );
+}
+
 /** @param {StudioPlatform} platform */
 export function registerPlatform(platform: StudioPlatform) {
   globalThis.__jxPlatform = platform;

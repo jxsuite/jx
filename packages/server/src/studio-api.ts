@@ -11,9 +11,8 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
-import { existsSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
 import {
   buildExtensionsPayload,
   buildProjectExtensionRegistry,
@@ -568,102 +567,6 @@ export async function handleStudioApi(
     }
   }
 
-  // Find a project directory by name — searches $HOME for the first matching directory with a
-  // Project.json. Dev-mode workaround for when showDirectoryPicker() can't provide absolute paths.
-  if (path === "/__studio/find-project" && req.method === "GET") {
-    const name = url.searchParams.get("name");
-    if (!name) {
-      return problem("invalidRequest", "Missing name");
-    }
-    try {
-      const home = process.env.HOME || process.env.USERPROFILE || "";
-      if (!home) {
-        return Response.json({ path: null });
-      }
-      const glob = new Bun.Glob(`**/${name}/project.json`);
-      try {
-        for await (const match of glob.scan({ cwd: home, dot: false })) {
-          if (match.includes("node_modules") || match.includes(".Trash")) {
-            continue;
-          }
-          const abs = resolve(home, dirname(match));
-          return Response.json({ path: abs });
-        }
-      } catch {}
-      return Response.json({ path: null });
-    } catch (error) {
-      return problem("internalError", errorMessage(error));
-    }
-  }
-
-  /*
-   * Recover the absolute path of a directory the browser picked with `showDirectoryPicker()`.
-   *
-   * A `FileSystemDirectoryHandle` exposes only `.name`, never a filesystem path (§8.2), and unlike
-   * /__studio/find-project there is no `project.json` to search for — the whole point is that the
-   * folder is empty. So the client tags the folder with a hidden LOCATION_ID_FILE holding a random
-   * id and asks us which directory carries that id.
-   *
-   * Identity lives in the file's CONTENTS, not its name: matching the id is exact where matching a
-   * path shape is only probable — two folders can share a basename, and a file left behind by a
-   * crashed session can still be on disk. A candidate whose contents do not equal `id` is skipped,
-   * so a stale tag can never redirect a create. The winning file is deleted here, the moment it has
-   * served its purpose, rather than being left for the client to tidy up.
-   */
-  if (path === "/__studio/locate-directory" && req.method === "GET") {
-    const name = url.searchParams.get("name");
-    const id = url.searchParams.get("id");
-    // `name` is interpolated into a glob; the id is only ever compared, never used as a pattern.
-    if (!name || !id || !/^[a-f0-9]{32}$/.test(id) || !/^[^/\\]+$/.test(name)) {
-      return problem("invalidRequest", "Missing or invalid name/id");
-    }
-    try {
-      const home = process.env.HOME || process.env.USERPROFILE || "";
-      if (!home) {
-        return Response.json({ path: null });
-      }
-      /** The tagged directory when this candidate holds our id, else null. */
-      const claim = (dir: string): string | null => {
-        const file = resolve(dir, LOCATION_ID_FILE);
-        try {
-          if (readFileSync(file, "utf8").trim() !== id) {
-            return null;
-          }
-        } catch {
-          return null;
-        }
-        try {
-          unlinkSync(file);
-        } catch {
-          // Read-only or already gone; the client's own cleanup is the backstop.
-        }
-        return dir;
-      };
-
-      // The home directory itself is a legitimate pick, and no `**/<name>/` glob can match it.
-      const atHome = claim(home);
-      if (atHome) {
-        return Response.json({ path: atHome });
-      }
-      // `dot: true` — the tag is a dotfile, so a dot-blind scan would never see it.
-      const glob = new Bun.Glob(`**/${name}/${LOCATION_ID_FILE}`);
-      try {
-        for await (const match of glob.scan({ cwd: home, dot: true })) {
-          if (match.includes("node_modules") || match.includes(".Trash")) {
-            continue;
-          }
-          const claimed = claim(resolve(home, dirname(match)));
-          if (claimed) {
-            return Response.json({ path: claimed });
-          }
-        }
-      } catch {}
-      return Response.json({ path: null });
-    } catch (error) {
-      return problem("internalError", errorMessage(error));
-    }
-  }
-
   // Discover site projects — find all project.json files under root
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
@@ -781,8 +684,7 @@ export async function handleStudioApi(
         await readFile(resolve(destPath, "project.json"), "utf8"),
       ) as ProjectConfig;
       // Root-relative while the project happens to sit under the server root (the historical
-      // Shape every caller already handles); absolute otherwise, which is the same shape
-      // /__studio/find-project returns for an external project.
+      // Shape every caller already handles); absolute otherwise.
       const inRoot = containedPath(destPath, root) !== null;
       opts.onProjectCreated?.(destPath);
       return Response.json({ config, root: inRoot ? fwd(relative(root, destPath)) : destPath });

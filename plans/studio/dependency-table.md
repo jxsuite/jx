@@ -28,7 +28,7 @@ The table has seven rows. Two of them (`yaml`, `unified` / `remark-*`) describe 
   - `@jxsuite/create`: only `updateWranglerConfig` from `@jxsuite/create/scaffold` (`src/publish/pages-service.ts`).
   - `@jxsuite/formulas`: the packaged catalogue (`src/ui/formula-catalog.ts`).
   - `@jxsuite/site`: `buildSiteStyleCSS` (`src/canvas/iframe-render.ts`) and the route patterns (`src/page-params.ts`).
-  - `@jxsuite/protocol`: the wire types, `LOCATION_ID_FILE`, and the Problem Details readers (`src/platform-errors.ts`, `src/platforms/*.ts`).
+  - `@jxsuite/protocol`: the wire types and the Problem Details readers (`src/platform-errors.ts`, `src/platforms/*.ts`).
   - `@jxsuite/collab`: negotiation and the WebSocket client (`src/platforms/*.ts`), the provider loaded on demand (`src/collab/collab-session.ts`), the Monaco binding, and `diff-core` for change review (`src/canvas/diff-marks.ts`).
   - `ajv` and `ajv-formats`: loaded on demand by `src/services/jx-validate.ts` for the assistant's writes, format conversion and Settings edits to `project.json`.
   - `tabulator-tables`: `src/grid/grid-view.ts` only, reached through `src/grid/grid-lazy.ts`.

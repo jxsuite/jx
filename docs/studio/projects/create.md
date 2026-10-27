@@ -4,7 +4,6 @@ description: "Every step of the New Project wizard in Jx Studio: the starter gal
 code:
   - packages/studio/src/new-project/new-project-modal.ts
   - packages/studio/src/new-project/location-fields.ts
-  - packages/studio/src/services/directory-picker.ts
   - packages/studio/src/new-project/import-tab.ts
   - packages/studio/src/surfaces/new-project.ts
   - packages/studio/src/services/ai-import-tools.ts
@@ -49,7 +48,7 @@ Pick a source and click **Next**. **Cancel** is available on this step and the n
 The second screen (**Name your project**) shows which source you picked, then asks for three things:
 
 1. **Project Name** (required): the human-readable name, e.g. "My Site".
-2. **Location** (required): the existing folder to create the project folder inside, e.g. `/home/you/Sites`. **Browse…** opens your system's folder picker. Cancelling it leaves the field as it was. If Studio can't use the folder you picked, the reason appears under **Location**, and you can type the path instead. In a browser that has no folder-picking support, the button is hidden and you type the path instead.
+2. **Location** (required): the existing folder to create the project folder inside, e.g. `/home/you/Sites`. **Browse…** opens your system's folder picker. Cancelling it leaves the field as it was. If Studio can't use the folder you picked, the reason appears under **Location**, and you can type the path instead. When Studio runs in a browser against the dev server, there is no **Browse…** button, and you type the path.
 3. **Directory**: the folder name for the project. Studio derives it from the name as you type (`My Site` becomes `my-site`); edit it to take over.
 
 Under **Location** and **Directory**, Studio shows exactly where the project will land (`/home/you/Sites/my-site`) before you commit to it.

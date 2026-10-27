@@ -143,6 +143,16 @@ describe("renderWelcome — start commands", () => {
     expect(ctx.cloneRepository).not.toHaveBeenCalled();
   });
 
+  test("hides Open Project on a host that has no way to open one", async () => {
+    // The dev server: a window there opens its project from `?project=`.
+    delete installMockPlatform().platform.openProject;
+    const host = await renderScreen(makeCtx());
+    const btns = actions(host);
+    expect(btns).toHaveLength(1);
+    expect(btns[0]!.textContent).toContain("New Project…");
+    expect(host.textContent).not.toContain("Open Project…");
+  });
+
   test("shows Add Existing Repository when the platform can browse + import repos", async () => {
     installMockPlatform({
       importProject: () => Promise.resolve({ root: "octocat/site@main" }),

@@ -14,7 +14,6 @@ code:
   - packages/desktop/src/chromium/platform.ts
   - packages/desktop/src/boot.ts
   - packages/studio/src/platforms/default-platform.ts
-  - packages/studio/src/services/directory-picker.ts
 ---
 
 # Writing a platform adapter
@@ -125,7 +124,7 @@ export function createMyPlatform() {
 }
 ```
 
-A browser-hosted adapter can still offer `pickDirectory`: `@jxsuite/studio/directory-picker` exports `canPickDirectory()` and `pickDirectoryPath(locate)`, which drive `showDirectoryPicker()` and hand you the picked folder's `name` plus the random id it wrote into a hidden `.jx-loc-id` there. Your `locate` callback resolves that pair to an absolute path (the dev server does it with `GET /__studio/locate-directory`), or `null` when nothing matches. `pickDirectoryPath` resolves `null` only when the user cancels. It rejects when it can't tag the folder or when `locate` answers `null` or throws, and Studio shows that message under **Location**. Hold your own `pickDirectory` to the same rule: `null` for a cancel, a thrown `Error` with a readable message for anything else. A `null` that means "failed" looks exactly like a cancel, so the user picks a folder and nothing happens. Omit the member when `canPickDirectory()` is false, so Studio hides the button.
+`pickDirectory` backs the New Project modal's **Browse…** button, so implement it only over a dialog that returns a real path, such as the desktop's native one. Resolve `null` only when the user cancels, and throw an `Error` with a readable message for anything else: Studio shows that message under **Location**, while a `null` that means "failed" looks exactly like a cancel, so the user picks a folder and nothing happens. A browser page can't learn a path from a folder the user picks, which is why the dev-server adapter omits the member and its **Location** field is typed.
 
 ## Registration
 
@@ -167,10 +166,10 @@ So register first, before any `await`, and call `announceLauncher()` from `@jxsu
 
 ## The project-open flow
 
-Opening a project is the one flow the adapter owns end to end, because the picking UI is inherently platform-specific:
+Opening a project is the one flow the adapter owns end to end, because the picking UI is inherently platform-specific. `openProject` is optional: Studio offers **Open Project** only when the adapter implements it, or declares the repository picker described below. Leave it out when your host has no dialog that returns a real path. The dev-server adapter does, because a browser page can't learn one; its windows open a project from the `?project=` address parameter instead.
 
 1. The user triggers **Open Project**; Studio calls `getPlatform().openProject()`.
-2. The adapter presents its own picker (a native file dialog on desktop, `showDirectoryPicker()` in Chrome, a project list on cloud) and resolves the choice to a project root containing `project.json`.
+2. The adapter presents its own picker (a native file dialog on desktop) and resolves the choice to a project root containing `project.json`.
 3. It returns `{ config, handle: { root, name, projectConfig } }`, or `null` if the user cancelled (never throw for a cancel).
 4. Studio initializes project state from the handle: file tree, component registry, expanded directories.
 
@@ -178,26 +177,13 @@ On a host that can hold several windows, step 1 has a question in front of it. A
 
 A host whose projects are repositories (`openProjectPicker: "repo-list"`) skips steps 1 to 3: Studio draws its own repository picker over `listRepos`, asks `listRepoProjects({ owner, name })` which folders of the chosen repository hold a `project.json`, and adopts the choice with `importProject({ owner, name, dir })`. `dir` is repository-relative with no leading or trailing slash, and absent for the repository root. Answer `listRepoProjects` with `{ branch, locations, truncated }`: each location is `{ dir, name? }`, the root first, and `truncated` says the repository was too large to list in full, which makes Studio tell the reader that a folder may be missing. Resolve `importProject` with a root key that names the folder, because the folder is part of the project's identity in Recent and in every later open.
 
-Two supporting members round out the flow. `activate(root)` tells the backend which project root subsequent operations (and static file serving) should resolve against. The dev-server adapter calls it whenever `projectRoot` is set. It must **reject when the backend refuses the root**, rather than resolving quietly: operations that carry no explicit directory resolve against the backend's own root, so a swallowed refusal leaves the session reading and writing the wrong tree. `probeRootProject()` runs at startup to auto-detect whether the backend's root is itself a project, powering the zero-click open in dev mode.
+Two supporting members round out the flow. `activate(root)` tells the backend which project root subsequent operations (and static file serving) should resolve against. The dev-server adapter calls it whenever `projectRoot` is set. It must **reject when the backend refuses the root**, rather than resolving quietly: operations that carry no explicit directory resolve against the backend's own root, so a swallowed refusal leaves the session reading and writing the wrong tree. `probeRootProject()` runs at startup to auto-detect whether the backend's root is itself a project, powering the zero-click open in dev mode when the address carries no `?project=`.
 
 ## Two real adapters
 
 ### Dev server (`packages/studio/src/platforms/devserver.ts`)
 
-The reference adapter is a stateless wrapper over `fetch`: every member maps 1:1 to a `/__studio/*` route, and its only state is the active project root, which it prefixes onto outgoing paths (`serverPath`). Whether a response needs the prefix stripped (`stripRoot`) depends on the route: `/__studio/files` echoes back the server-relative directory it was handed, while the refactor routes answer in the active project's own space and are passed through untouched. Its `openProject` shows how client-side picking meets a server-side backend. The browser picks a directory, then the adapter matches it to a server path:
-
-```ts
-// openProject, abbreviated: match the picked directory to a server-known project
-const sitesRes = await fetch("/__studio/sites");
-const sites = await readJson<SiteEntry[]>(sitesRes);
-const match = sites.find((s: SiteEntry) => JSON.stringify(s.config) === JSON.stringify(config));
-
-if (!match) {
-  // Project is outside dev server root — ask the server to find it by directory name
-  const findRes = await fetch(`/__studio/find-project?name=${encodeURIComponent(dirHandle.name)}`);
-  // …
-}
-```
+The reference adapter is a stateless wrapper over `fetch`: every member maps 1:1 to a `/__studio/*` route, and its only state is the active project root, which it prefixes onto outgoing paths (`serverPath`). Whether a response needs the prefix stripped (`stripRoot`) depends on the route: `/__studio/files` echoes back the server-relative directory it was handed, while the refactor routes answer in the active project's own space and are passed through untouched. It has no `openProject` and no `pickDirectory`: a dev-server window opens its project from the `?project=` address parameter, and `probeRootProject()` opens the server root when it is itself a project.
 
 ### Desktop (`packages/desktop/src/chromium/platform.ts`)
 

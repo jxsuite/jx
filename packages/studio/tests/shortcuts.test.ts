@@ -207,7 +207,7 @@ beforeAll(async () => {
   initShellRefs();
   registerPrimaryStage();
   initLayers();
-  installMockPlatform();
+  const { platform: mockPlatform } = installMockPlatform();
   // A site project, so `view.openInBrowser`'s `when` holds — ⌘⇧O is one of the chords the port adds.
   resetStudioState({ isSiteProject: true });
   // Happy-dom's pointer capture needs an active pointer; stub it out.
@@ -226,7 +226,9 @@ beforeAll(async () => {
       canvasMode: () => canvasMode,
       isCaretActive: () => caretActive,
       isModalOpen,
-      platform: () => null,
+      // The installed mock, so capability-gated chords (⌘O needs a host that can open a project)
+      // Are live as they are in a desktop window.
+      platform: () => mockPlatform,
     }),
     mac: false,
   });

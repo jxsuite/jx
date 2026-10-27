@@ -22,6 +22,7 @@
 import { getAccountStatus, getBannerNotices, needsAppInstall } from "../account-status";
 import { runOfferedAction } from "../account/action-flow";
 import { platformSupportsAddRepo } from "../new-project/add-repo-modal";
+import { canOpenProject, getPlatform } from "../platform";
 import { getProjectList } from "../project-list";
 import { reactive } from "../reactivity";
 import { MINUTE, now } from "../services/clock";
@@ -226,7 +227,9 @@ function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear" | "no
     // One entry, not two: the starter gallery IS the first step of New Project now, so the
     // Separate "Start from an Example…" button it used to hide behind is gone.
     { icon: "plus", id: "new", title: "New Project…" },
-    { icon: "folder-open", id: "open", title: "Open Project…" },
+    ...(canOpenProject(getPlatform())
+      ? [{ icon: "folder-open", id: "open", title: "Open Project…" } as const]
+      : []),
     ...(platformSupportsClone()
       ? [{ icon: "download-simple", id: "clone", title: "Clone Git Repository…" } as const]
       : []),

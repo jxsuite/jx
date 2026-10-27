@@ -361,16 +361,21 @@ export interface StudioPlatform {
    */
   assetCapabilities?: AssetCapabilities;
   activate: (root?: string) => Promise<void>;
-  openProject: () => Promise<{
+  /**
+   * Present a native project dialog and bind the chosen project to this window. Absent (the dev
+   * server, whose windows open a project from `?project=`), and with no `openProjectPicker` either,
+   * Studio offers no Open Project at all.
+   */
+  openProject?: () => Promise<{
     config: ProjectConfig;
     handle: { root: string; name: string; projectConfig: ProjectConfig };
   } | null>;
   /**
-   * How "Open Project" picks a project. Absent: `openProject()` owns picking (native dialog /
-   * showDirectoryPicker). `"repo-list"`: Studio shows its repository picker over `listRepos` +
-   * `importProject` (write-access repositories) and opens the choice through the recent-projects
-   * path — `openProject()` is never called. Cloud sets this: its sessions are URL-bound, so there
-   * is no backend dialog to delegate to.
+   * How "Open Project" picks a project. Absent: `openProject()` owns picking (the native dialog).
+   * `"repo-list"`: Studio shows its repository picker over `listRepos` + `importProject`
+   * (write-access repositories) and opens the choice through the recent-projects path —
+   * `openProject()` is never called. Cloud sets this: its sessions are URL-bound, so there is no
+   * backend dialog to delegate to.
    */
   openProjectPicker?: "repo-list";
   probeRootProject: () => Promise<{
@@ -677,8 +682,8 @@ export interface StudioPlatform {
   ) => Promise<{ root: string; config: ProjectConfig; result?: ImportSiteSummary }>;
   /**
    * Open a native directory picker and return the chosen absolute path. Backs the New Project
-   * modal's **Browse…** button on `createDestination: "path"` platforms: desktop (the system
-   * dialog), and the dev server in a browser that has `showDirectoryPicker` (Chromium-based).
+   * modal's **Browse…** button on `createDestination: "path"` platforms that have a native dialog
+   * (desktop). The dev server has none, so its Location field is typed.
    *
    * Resolves `null` only when the user cancels; rejects with a displayable Error otherwise. The
    * modal shows that message under the Location field, and typing a path clears it. A picker that

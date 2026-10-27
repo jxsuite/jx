@@ -170,7 +170,7 @@ describe("project binding", () => {
       },
     });
     const platform = createCloudPlatform(PROJECT);
-    const opened = await platform.openProject();
+    const opened = await platform.openProject!();
     expect(opened?.config.name).toBe("My Site");
     expect(opened?.handle.root).toBe("octocat/my-site@main");
   });
@@ -750,7 +750,7 @@ describe("project folders", () => {
     const p = createCloudPlatform(FOLDER);
     expect(p.projectRoot).toBe("Avunu/docs@main:Sites/avunu.net");
     expect(p.documentBaseUrl).toBe("/api/v1/p/Avunu/docs/main%3ASites%2Favunu.net/studio/raw/");
-    const opened = await p.openProject();
+    const opened = await p.openProject!();
     expect(opened?.handle).toEqual({
       root: "Avunu/docs@main:Sites/avunu.net",
       name: "Avunu",
@@ -926,7 +926,7 @@ describe("project-less mode (/studio)", () => {
     const calls = mockFetch();
     const p = createCloudPlatform(null);
     await p.activate();
-    expect(await p.openProject()).toBeNull();
+    expect(await p.openProject!()).toBeNull();
     expect(await p.probeRootProject()).toBeNull();
     expect(calls).toHaveLength(0);
   });

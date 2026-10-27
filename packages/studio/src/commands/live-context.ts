@@ -38,6 +38,7 @@ import { collabState } from "../collab/collab-state";
 
 import { canvasViewForMode, editorKindForMode, emptyContext } from "./context";
 import type { CommandContext } from "./context";
+import { canOpenProject } from "../platform";
 import type { StudioPlatform } from "../types";
 
 /** Elements that own the keyboard while focused. Matches the old listener's target test exactly. */
@@ -95,6 +96,7 @@ function capabilities(platform: StudioPlatform | null): CommandContext["capabili
     findReferences: has("findReferences"),
     gitClone: has("gitClone"),
     importSite: has("importSite"),
+    openProject: canOpenProject(platform),
     openProjectInNewWindow: has("openProjectInNewWindow"),
     readFileBytes: has("readFileBytes"),
     publish: has("cfApi"),
