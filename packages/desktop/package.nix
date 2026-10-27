@@ -283,6 +283,19 @@ stdenv.mkDerivation {
     find $out/lib/jx-studio/node_modules -xtype l -delete
 
     ${lib.concatMapStringsSep "\n    " (p: "rm -rf $out/lib/jx-studio/node_modules/${p}") bundledIntoStudio}
+
+    # sharp's prebuilt glibc binaries (the addon and the libvips it links) need libstdc++ and
+    # libgcc_s, which a generic Linux finds in /usr/lib and NixOS has nowhere global. The addon's
+    # RUNPATH only names libvips beside it, so the backend's `import("sharp")` failed with
+    # ERR_DLOPEN_FAILED under Electron's Node and image optimization was silently off. Adding the
+    # compiler's runtime library to just these files fixes them without putting an
+    # LD_LIBRARY_PATH on Electron and every process it starts. The musl builds are never loaded on
+    # glibc and are left alone.
+    find $out/lib/jx-studio/node_modules -type f \( \
+      -path '*/@img/sharp-linux-*/lib/*.node' -o -path '*/@img/sharp-libvips-linux-*/lib/*.so*' \
+    \) -print0 | while IFS= read -r -d "" binary; do
+      patchelf --add-rpath ${lib.getLib stdenv.cc.cc}/lib "$binary"
+    done
     rm -rf $out/lib/jx-studio/packages/*/tests $out/lib/jx-studio/extensions/*/tests
 
     # Electron is the root process and owns every window; the backend is its utility process, on
@@ -337,6 +350,12 @@ stdenv.mkDerivation {
       const load = createRequire(process.argv[1] + "/index.js");
       for (const name of process.argv.slice(2)) load.resolve(name);
     ' $backend ${lib.concatStringsSep " " backendNatives}
+    # Resolving is not loading: sharp resolves fine and then fails to dlopen its binary. Load it on
+    # the Node the backend actually runs on, which is Electron's.
+    ELECTRON_RUN_AS_NODE=1 ${electron}/bin/electron -e '
+      const { createRequire } = require("node:module");
+      createRequire(process.argv[1] + "/index.js")("sharp");
+    ' $backend
     # The application's bundle was made at build time; prove it is the app and not an empty file,
     # and that nothing of this repository's was left outside it for the runtime to look for.
     app=$out/lib/jx-studio/packages/desktop/assets/electron
