@@ -1431,7 +1431,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
 
     /* Each mutation runs npm's installer lockfile-only on the platform, which writes
        `package.json` and `package-lock.json` back into the shared tree as one change, so a commit
-       carries a lockfile a build can install from frozen (server.md §5). A failure changes
+       carries a lockfile a build can install from frozen (server.md §4.1). A failure changes
        nothing and its message names the cause. */
     async addPackage(name: string) {
       const res = await api("/packages/add", {

@@ -1,7 +1,11 @@
 ---
 title: "Dependencies and imports"
 description: "The Packages panel in Jx Studio: add npm packages, cherry-pick their components for the site or one document, and keep everything up to date."
+spec:
+  - server.md#4.1 # the package routes and how they install
 code:
+  - packages/server/src/packages.ts
+  - packages/server/src/packages-service.ts
   - packages/studio/src/panels/imports-panel.ts
   - packages/studio/src/settings/dependencies-editor.ts
   - packages/studio/src/packages/jxsuite-update.ts
@@ -16,7 +20,20 @@ Packages is where you decide which building blocks a document, or the whole site
 
 ## Opening a project that has never been installed
 
-When you open a project whose `node_modules` is missing, Studio runs `bun install` for you behind a progress dialog before the editor loads, so component and format resolution see the real dependency tree rather than an empty one. When that install runs, Studio re-reads the project's [extensions](/docs/extending/extensions/formats) afterwards, which is what puts `Markdown` in the [New File format picker](/docs/studio/interface#creating-a-file) on a project you have just cloned rather than in the session after.
+When you open a project whose `node_modules` is missing, Studio installs its dependencies for you behind a progress dialog before the editor loads, so component and format resolution see the real dependency tree rather than an empty one. When that install runs, Studio re-reads the project's [extensions](/docs/extending/extensions/formats) afterwards, which is what puts `Markdown` in the [New File format picker](/docs/studio/interface#creating-a-file) on a project you have just cloned rather than in the session after.
+
+## How Studio installs packages
+
+Studio installs with npm's own installer, built into the app, so it needs no package manager on your machine. It records exact versions in `package-lock.json`, the lockfile a build installs from. A project an earlier Studio installed with Bun has a `bun.lock` instead: the first install replaces it with `package-lock.json` and says so in the install's log, so Studio and your build always read the same lockfile.
+
+Installs are strict, and an install that fails changes nothing:
+
+- **Install scripts never run.** A package that needs a `postinstall` step to work has to be installed from a terminal.
+- **Conflicts are reported, not forced.** When two packages need incompatible versions of a third, the install stops and names the conflict.
+- **Only packages from the npm registry can be added.** A Git URL, a local folder or a `workspace:` version is refused before anything is installed.
+- **Only the public registry is used.** Studio does not read `.npmrc`, so a private package (a company scope, GitHub Packages, a registry mirror) fails with a message naming the registry and the answer it gave. Install those from a terminal.
+
+In the cloud editor nothing is installed, because a cloud project has no `node_modules`. Adding, removing or updating a package still updates `package.json` and `package-lock.json` together, so the lockfile you commit is always in step, and your build installs from it.
 
 ## Two contexts
 

@@ -2,12 +2,14 @@
  * Package operations, parameterized by a project root: npm's own installer (`@npmcli/arborist`) run
  * in-process. Shared by the desktop app (`createPackageOps`), the dev server's
  * `/__studio/packages*` endpoints and the cloud's lockfile service (`packages-service.ts`), so
- * every backend installs the same way and writes the same `package-lock.json` (server.md §5).
+ * every backend installs the same way and writes the same `package-lock.json` (server.md §4.1).
  *
  * Strict, on purpose: install scripts never run, a peer conflict fails rather than being forced, a
  * spec that is not a registry package is refused, and a failed operation leaves `package.json` and
  * the lockfile byte-identical. The public registry is the only one: a project `.npmrc` is not read,
  * so a private scope fails with an error that names the registry and the status.
+ *
+ * @docs studio/projects/dependencies
  */
 
 import { existsSync } from "node:fs";
