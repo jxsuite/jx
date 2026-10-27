@@ -1,7 +1,7 @@
 /**
- * User-level recent-projects store. Shared across all projects and windows (and, on chromium,
- * across the per-project browser profiles that can't see each other's localStorage) by writing a
- * single JSON file in the platform-conventional config directory (see user-config.ts).
+ * User-level recent-projects store. Shared across all projects and windows (whose per-project
+ * storage partitions can't see each other's localStorage) by writing a single JSON file in the
+ * platform-conventional config directory (see user-config.ts).
  */
 
 import { configFile, migrateLegacyStore } from "./user-config";

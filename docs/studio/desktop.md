@@ -14,10 +14,11 @@ code:
   - packages/studio/src/platforms/default-platform.ts
   - packages/studio/src/surfaces/boot-failure.ts
   - packages/studio/src/surfaces/boot-failure.json
-  - packages/desktop/src/chromium/platform.ts
-  - packages/desktop/src/chromium/shell-command.ts
+  - packages/desktop/src/webview/platform.ts
   - packages/desktop/src/open-external.ts
   - packages/desktop/src/hub/backend.ts
+  - packages/desktop/src/hub/import-browser.ts
+  - packages/desktop/src/hub/roots.ts
   - packages/desktop/src/hub/handlers.ts
   - packages/desktop/src/hub/main.ts
   - packages/desktop/src/hub/protocol.ts
@@ -27,8 +28,8 @@ code:
   - packages/desktop/src/electron-shell/backend-process.ts
   - packages/desktop/src/electron-shell/bridge.ts
   - packages/desktop/src/electron-shell/bundle.ts
+  - packages/desktop/src/electron-shell/command.ts
   - packages/desktop/src/electron-shell/layout.ts
-  - packages/desktop/src/electron-shell/main.ts
   - packages/desktop/src/electron-shell/preload.ts
   - packages/desktop/src/electron-shell/shell.ts
   - packages/desktop/src/electron-shell/updater.ts

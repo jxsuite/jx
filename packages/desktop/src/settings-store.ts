@@ -1,15 +1,15 @@
 /**
- * User-level settings store. Shared across all projects and windows (and, on chromium, across the
- * per-project browser profiles that can't see each other's localStorage) by writing a single JSON
- * file in the platform-conventional config directory (see user-config.ts).
+ * User-level settings store. Shared across all projects and windows (whose per-project storage
+ * partitions can't see each other's localStorage) by writing a single JSON file in the
+ * platform-conventional config directory (see user-config.ts).
  *
  * **Writes are patches, not replacements**, and that is the point of this module rather than a
  * refinement of it. The whole-map `writeSettings` it replaces let any window overwrite the file
- * with its own view of the settings — so a window that held none, which on the chromium launcher is
- * an ordinary welcome window with its own empty browser profile, could clear the credentials
- * another window had just stored. A key named by neither `set` nor `remove` is now left exactly as
- * it was found, so a writer can only ever change what it actually knows about. That also preserves
- * keys this build has never heard of: a setting written by a newer version, or by hand.
+ * with its own view of the settings — so a window that held none, such as an ordinary welcome
+ * window with its own empty storage partition, could clear the credentials another window had just
+ * stored. A key named by neither `set` nor `remove` is now left exactly as it was found, so a
+ * writer can only ever change what it actually knows about. That also preserves keys this build has
+ * never heard of: a setting written by a newer version, or by hand.
  *
  * Values (API keys included) are stored in plaintext — the same trust level as the localStorage
  * store this replaces — so the file is written owner-only (0600) on POSIX. See `user-store.ts` for
@@ -56,10 +56,10 @@ export async function patchSettings(patch: KeyValuePatch): Promise<Record<string
 /**
  * Call `onChange` with the settings whenever the store file changes on disk.
  *
- * A directory watch rather than in-process fan-out, because in-process fan-out cannot reach the
- * window that needs it: the chromium launcher gives every window its own OS process, so a change
- * made in one is invisible to another until something reads the file again. Watching the file is
- * also what makes a hand-edit of `settings.json` show up without a restart.
+ * A directory watch rather than in-process fan-out, because in-process fan-out cannot reach a
+ * writer in another process (a second Studio, a dev server, a hand-edit of `settings.json`): a
+ * change made there is invisible here until something reads the file again. Watching the file is
+ * what makes all of those show up without a restart.
  *
  * Fires for this process's own writes too. That is harmless and deliberately not filtered here —
  * the receiver applies the settings as a diff against what it already holds, so its own write

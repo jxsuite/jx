@@ -3,7 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ComponentMeta, DirEntry } from "../src/rpc-schema";
-import type { StudioSchema } from "../src/handlers";
+import type { StudioSchema } from "./_session";
 import { expectStudioSchema } from "./_studio-schema";
 
 const mockOpenExternal = mock((url: string) => url.startsWith("https://"));
@@ -33,7 +33,7 @@ const {
   openProject,
   createProject,
   openExternal,
-} = await import("../src/handlers");
+} = await import("./_session");
 
 // The folder picker lives on the session object (the legacy handlers shim does not re-export
 // PickDirectory), so the picker tests below drive it through a session of their own.

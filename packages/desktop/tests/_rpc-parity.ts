@@ -7,9 +7,8 @@
  * sees a rejected or never-answered call and degrades to "no results"), which is exactly how
  * `searchFiles` shipped unhandled and made ⌘P Quick Access look like an empty project.
  *
- * So the names are read back out of the source here, and both launchers' maps are checked against
- * them: hub/handlers.ts (the Electron application, one map per window) and chromium/index.ts (the
- * per-window launcher).
+ * So the names are read back out of the source here, and hub/handlers.ts's map (one per window of
+ * the Electron application) is checked against them.
  */
 
 import { readFileSync } from "node:fs";

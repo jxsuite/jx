@@ -117,8 +117,8 @@ describe("the runtime install is the desktop app's production graph", () => {
     expect(extensions.filter((name) => !declared.has(name))).toEqual([]);
   });
 
-  test("the install check resolves the launcher against the installed tree", () => {
+  test("the install check resolves the backend against the installed tree", () => {
     expect(nix).toContain("doInstallCheck = true;");
-    expect(nix).toContain("bun build $out/lib/jx-studio/packages/desktop/src/chromium/index.ts");
+    expect(nix).toContain("bun build $out/lib/jx-studio/packages/desktop/src/hub/main.ts");
   });
 });

@@ -1,4 +1,3 @@
-import { getProjectRoot } from "./handlers";
 import type { GitBranchesResult, GitFileStatus, GitLogEntry, GitStatusResult } from "./rpc-schema";
 
 /**
@@ -292,29 +291,3 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
     gitAddRemote,
   };
 }
-
-// ─── Legacy free functions (default process-global session via getProjectRoot) ──
-// Used by the chromium/ dev launcher and the test suite.
-
-const _legacy = createGitOps({
-  get projectRoot() {
-    return getProjectRoot();
-  },
-});
-
-export const { gitStatus } = _legacy;
-export const { gitBranches } = _legacy;
-export const { gitLog } = _legacy;
-export const { gitStage } = _legacy;
-export const { gitUnstage } = _legacy;
-export const { gitCommit } = _legacy;
-export const { gitPush } = _legacy;
-export const { gitPull } = _legacy;
-export const { gitFetch } = _legacy;
-export const { gitCheckout } = _legacy;
-export const { gitCreateBranch } = _legacy;
-export const { gitDiff } = _legacy;
-export const { gitShow } = _legacy;
-export const { gitDiscard } = _legacy;
-export const { gitInit } = _legacy;
-export const { gitAddRemote } = _legacy;

@@ -1,12 +1,12 @@
 /**
- * What this launcher can truthfully tell the About screen.
+ * What the backend can truthfully tell the About screen.
  *
  * The interesting assertion is the NEGATIVE one: no `updateStatus`. This build is replaced by the
  * system that packaged it, so an "Up to date" here would be a claim about a feed it never checked.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { appInfo, releaseChannel } from "../src/chromium/app-info";
+import { appInfo, releaseChannel } from "../src/hub/app-info";
 import pkg from "../package.json" with { type: "json" };
 
 const assets = process.env.JX_STUDIO_ASSETS;

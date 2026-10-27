@@ -108,7 +108,7 @@ void mock.module("@jxsuite/studio/import-client", () => ({
   streamImport: () => Promise.resolve(),
 }));
 
-const { createDesktopPlatform } = await import("../src/chromium/platform");
+const { createDesktopPlatform } = await import("../src/webview/platform");
 
 /** Close every live socket, the way a server hanging up does. Snapshotted: `close` mutates it. */
 function closeAll(): void {

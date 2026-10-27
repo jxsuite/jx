@@ -14,7 +14,7 @@ import {
   findElectron,
   shellEnv,
   shellIcon,
-} from "../src/chromium/shell-command";
+} from "../src/electron-shell/command";
 
 const electron = findElectron(process.env);
 if (!electron) {

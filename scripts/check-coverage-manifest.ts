@@ -64,7 +64,7 @@ import { toPosixPath } from "./lib/posix-path";
 // Files exempt from the every-source-file-is-tested rule: pure type
 // Declarations, erased at runtime, which never produce coverage rows.
 //
-// Desktop's two launcher shims (`src/init.ts`, `src/chromium/init.ts`) used to
+// Desktop's launcher shims (`src/init.ts`, now `src/webview/init.ts`) used to
 // Be listed here as side-effect entries with no testable logic. That exemption
 // Is how desktop 5.0.0-5.1.3 shipped a shim whose bundle threw on import with
 // No test to notice; they are now imported by `init-shim*.test.ts` and gated

@@ -31,7 +31,7 @@ workspaces:
 **What exists** (verified 2026-09-26)
 
 - `handleCodeApi(req, url)` in `packages/server/src/code-api.ts`: `format` from `oxfmt`'s Node API, `minify` from a module-level `Bun.Transpiler`, `lint` by spawning the path `resolveOxlintBin()` returns. server.md §5 is Implemented. `@jxsuite/server` has no `./code-api` export.
-- `codeService` in `project-session.ts` (`async function codeService(_request?: …) { return null; }`). It is registered by `hub/handlers.ts` (the Electron application's per-window map, `wire(session.codeService)`) and by `chromium/index.ts` (the development launcher's default session via `handlers.ts`), declared in `rpc-schema.ts`, and forwarded by `chromium/platform.ts`, the one adapter. `jxResolve` in the same file is the precedent for answering an RPC from a server module.
+- `codeService` in `project-session.ts` (`async function codeService(_request?: …) { return null; }`). It is registered by `hub/handlers.ts` (the Electron application's per-window map, `wire(session.codeService)`) and by `chromium/index.ts` (the development launcher's default session via `handlers.ts`), declared in `rpc-schema.ts`, and forwarded by `webview/platform.ts`, the one adapter. `jxResolve` in the same file is the precedent for answering an RPC from a server module.
 - The editor (`panels/editors.ts`) formats on open, lints on open and on a 750 ms debounce, and minifies in `closeFunctionEditor`. Each treats `null` as a no-op. There is no control to disable.
 - `devserver.ts:679` POSTs to `/__studio/code/<action>` and maps a non-OK response to `null`. `cloud.ts:835` returns `null`.
 - `STUDIO_ROUTES` (`packages/protocol/src/routes.ts:249`): `codeFormat`, `codeMinify`, `codeLint`. Two of their texts are wrong. The request bodies are `{code, args?}`, not `{code, path?}`, and `codeMinify`'s degradation ("Compiled-output minification is skipped.") describes nothing that exists, because minify runs when the function editor closes.
@@ -95,7 +95,7 @@ workspaces:
 **`packages/desktop`**
 
 4. `src/project-session.ts`: import `runCodeService` from `@jxsuite/server/code-api`. Replace the stub with `async function codeService(params: { action: string; payload: unknown }) { return runCodeService(params.action, params.payload); }`. Add a JSDoc saying it needs no project root, so it answers in a welcome window too.
-5. `src/chromium/index.ts`: `codeService: (params) => codeService(params as { action: string; payload: unknown })`. `hub/handlers.ts` already forwards `wire(session.codeService)`; `handlers.ts`, `rpc-schema.ts` and `chromium/platform.ts` do not change.
+5. `src/chromium/index.ts`: `codeService: (params) => codeService(params as { action: string; payload: unknown })`. `hub/handlers.ts` already forwards `wire(session.codeService)`; `handlers.ts`, `rpc-schema.ts` and `webview/platform.ts` do not change.
 6. `scripts/lib/backend-bundle.ts`: export `napiTriple(platform, arch)` (`darwin-<arch>`, `linux-<arch>-gnu`, `win32-<arch>-msvc`, else `<platform>-<arch>`) and `BACKEND_CODE_TOOLS(triple)`, a function returning in this order, as `BackendData` rows (sources relative to `packages/desktop`, destinations relative to the directory `index.js` is in):
    - `../../node_modules/@oxfmt/binding-<t>/oxfmt.<t>.node` → `oxfmt.<t>.node`
    - `../../node_modules/oxlint/package.json` → `oxlint/package.json`

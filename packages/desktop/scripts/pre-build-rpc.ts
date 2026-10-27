@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 import { stageStudioAssets } from "./stage-studio-assets";
 
 /**
- * Build the studio and stage what every launcher serves: `assets/studio`, the studio shell with the
- * launcher's PAL init bundle in its boot slot. The Nix derivation, the checkout runners (`bun run
- * desktop:electron`, `bun run desktop:chromium`) and `stage-app.ts` all start here.
+ * Build the studio and stage what every window serves: `assets/studio`, the studio shell with the
+ * desktop PAL init bundle in its boot slot. The Nix derivation, the checkout runner (`bun run
+ * desktop`) and `stage-app.ts` all start here.
  */
 
 const desktopDir = resolve(import.meta.dir, "..");
@@ -19,7 +19,7 @@ await $`bun run build`.cwd(resolve(desktopDir, "../studio"));
 // ── 2. Build the launcher's init script ────────────────────────────────────
 
 console.log("[prebuild-rpc] Building the launcher init script…");
-await $`bun build ./src/chromium/init.ts --outdir ./assets/studio/dist --target browser --sourcemap=linked`.cwd(
+await $`bun build ./src/webview/init.ts --outdir ./assets/studio/dist --target browser --sourcemap=linked`.cwd(
   desktopDir,
 );
 

@@ -3,7 +3,6 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { setProjectRoot } from "../src/handlers";
 import {
   gitBranches,
   gitCheckout,
@@ -19,7 +18,8 @@ import {
   gitStage,
   gitStatus,
   gitUnstage,
-} from "../src/git";
+  setProjectRoot,
+} from "./_session";
 
 const FIXTURES = join(import.meta.dir, "_fixtures_git");
 

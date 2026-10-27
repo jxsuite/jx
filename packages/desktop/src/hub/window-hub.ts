@@ -4,8 +4,8 @@
  * A `Map` of windows, one `ProjectSession` and one loopback server each, deduped by normalized
  * project root. The hub never draws a window. It tells the Electron main process to (`open-window`,
  * `focus-window`, `set-title`, over `protocol.ts`) and is told when one closes. Everything a
- * window's page asks of the project goes to that window's own server, as it does under the Linux
- * launcher, so the webview side is the same adapter and none of it changes.
+ * window's page asks of the project goes to that window's own server, through the webview adapter
+ * (`webview/platform.ts`).
  *
  * One server per window rather than one for all of them, though `createProjectServer` could route
  * by window id: a window's server holds its own token and its own session, so a canvas iframe,
@@ -22,12 +22,11 @@ import type {
   CreateProjectServerOptions,
   ProjectServerHandle,
 } from "@jxsuite/server/project-server";
-import { STUDIO_SHELL_PATH } from "../chromium/app-id";
-import { normalizeRoot } from "../chromium/window-registry";
 import { setAuthorizationHost } from "../github-signin";
 import { createProjectSession, setDirectoryDialog, setFileDialog } from "../project-session";
 import { watchSettings } from "../settings-store";
 import { buildWindowHandlers } from "./handlers";
+import { STUDIO_SHELL_PATH, normalizeRoot } from "./roots";
 import type { HubControl, HubWindow, OpenOutcome, WindowRow } from "./handlers";
 import type { BackendMessage, DialogKind, ShellMessage } from "./protocol";
 

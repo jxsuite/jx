@@ -134,7 +134,7 @@ export function createDesktopPlatform() {
       },
     ],
     [
-      /* Another window's settings change. Every chromium window is its own process, so this is the
+      /* Another window's settings change. Each window talks only to its own server, so this is the
          only way one hears about another. */
       "settingsChanged",
       (params) => {
@@ -770,10 +770,8 @@ export function createDesktopPlatform() {
     },
 
     // ─── Multi-window ───────────────────────────────────────────────────────────
-    /* A window is a launcher process under the per-window launcher and a BrowserWindow the hub
-       knows about in the Electron application. Studio cannot tell the difference: it asks which
-       project, then asks for it elsewhere, and both answer whether a window was opened or an
-       existing one raised. */
+    /* A window is a BrowserWindow the hub knows about. Studio asks which project, then asks for it
+       elsewhere, and the answer says whether a window was opened or an existing one raised. */
 
     /**
      * Pick a project WITHOUT binding this window to it — the New Window branch of Open Project.

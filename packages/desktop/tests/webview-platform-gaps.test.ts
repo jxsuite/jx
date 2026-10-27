@@ -4,7 +4,7 @@ import type { JsonValue } from "@jxsuite/schema/types";
 import { decodeRequest } from "./_rpc-frame";
 import type { ReceivedMessage } from "./_rpc-frame";
 
-// Covers the parts of src/chromium/platform.ts not exercised by
+// Covers the parts of src/webview/platform.ts not exercised by
 // Chromium-platform.test.ts: gitShow/gitInit/gitAddRemote, search, formats,
 // Package management, createProject, the AI assistant fetch helpers, and the
 // Unsolicited-message guard in the WebSocket dispatcher.
@@ -109,7 +109,7 @@ Object.defineProperty(globalThis, "window", {
 
 // ─── Import after globals are set ──────────────────────────────────────────
 
-const { createDesktopPlatform } = await import("../src/chromium/platform");
+const { createDesktopPlatform } = await import("../src/webview/platform");
 const platform = createDesktopPlatform();
 
 afterAll(() => {

@@ -135,7 +135,7 @@ Integration contract for `plan:desktop/mac-app-store`: once this lands, nothing 
 
 | Slice | Scope                                                               | Claims | State |
 | ----- | ------------------------------------------------------------------- | ------ | ----- |
-| NB1.7 | Chromium launcher deleted, shared modules moved (lands first)       | none   | open  |
+| NB1.7 | Chromium launcher deleted, shared modules moved (lands first)       | none   | done  |
 | NB1.1 | Neutral primitives with parity tests                                | none   | open  |
 | NB1.2 | `serve()` seam, Node implementation, bundling through the compiler  | none   | open  |
 | NB1.3 | Package operations on Arborist, strict and all-or-nothing           | none   | open  |

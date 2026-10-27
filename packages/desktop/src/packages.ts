@@ -1,13 +1,4 @@
-import {
-  addPackage as addPkg,
-  dependenciesNeedInstall as needInstall,
-  installDependencies as install,
-  listPackages as list,
-  packageVersions as versions,
-  removePackage as removePkg,
-  setPackageVersions as setVersions,
-} from "@jxsuite/server/packages";
-import { getProjectRoot } from "./handlers";
+import * as server from "@jxsuite/server/packages";
 import type { PackageInfo, PackageOpResult, PackageVersionInfo } from "./rpc-schema";
 
 /** Build package operations bound to one project session (its projectRoot is the package cwd). */
@@ -21,14 +12,14 @@ export function createPackageOps(session: { readonly projectRoot: string | null 
   }
 
   async function addPackage(params: { name: string }): Promise<void> {
-    const res = await addPkg(requireRoot(), params.name);
+    const res = await server.addPackage(requireRoot(), params.name);
     if (!res.ok) {
       throw new Error(`Failed to add package: ${res.log ?? "bun add failed"}`);
     }
   }
 
   async function removePackage(params: { name: string }): Promise<void> {
-    const res = await removePkg(requireRoot(), params.name);
+    const res = await server.removePackage(requireRoot(), params.name);
     if (!res.ok) {
       throw new Error(`Failed to remove package: ${res.log ?? "bun remove failed"}`);
     }
@@ -39,11 +30,11 @@ export function createPackageOps(session: { readonly projectRoot: string | null 
     if (!root) {
       return [];
     }
-    return list(root);
+    return server.listPackages(root);
   }
 
   async function installDependencies(): Promise<PackageOpResult> {
-    return install(requireRoot());
+    return server.installDependencies(requireRoot());
   }
 
   async function dependenciesNeedInstall(): Promise<boolean> {
@@ -51,7 +42,7 @@ export function createPackageOps(session: { readonly projectRoot: string | null 
     if (!root) {
       return false;
     }
-    return needInstall(root);
+    return server.dependenciesNeedInstall(root);
   }
 
   async function packageVersions(): Promise<PackageVersionInfo[]> {
@@ -59,13 +50,13 @@ export function createPackageOps(session: { readonly projectRoot: string | null 
     if (!root) {
       return [];
     }
-    return versions(root);
+    return server.packageVersions(root);
   }
 
   async function setPackageVersions(params: {
     updates: { name: string; version: string; dev?: boolean }[];
   }): Promise<PackageOpResult> {
-    return setVersions(requireRoot(), params.updates);
+    return server.setPackageVersions(requireRoot(), params.updates);
   }
 
   return {
@@ -78,19 +69,3 @@ export function createPackageOps(session: { readonly projectRoot: string | null 
     setPackageVersions,
   };
 }
-
-// ─── Legacy free functions (default process-global session via getProjectRoot) ──
-
-const _legacy = createPackageOps({
-  get projectRoot() {
-    return getProjectRoot();
-  },
-});
-
-export const { addPackage } = _legacy;
-export const { removePackage } = _legacy;
-export const { listPackages } = _legacy;
-export const { installDependencies } = _legacy;
-export const { dependenciesNeedInstall } = _legacy;
-export const { packageVersions } = _legacy;
-export const { setPackageVersions } = _legacy;

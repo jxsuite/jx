@@ -507,8 +507,8 @@ export interface StudioRPC {
       };
       /*
        * A PATCH, not the map. A whole-map write let any window overwrite the shared file with its
-       * own view — and on chromium every window is its own process with its own browser profile,
-       * so a window holding no settings could clear another's credentials. The resulting map comes
+       * own view — and every window has its own storage partition, so a window holding no
+       * settings could clear another's credentials. The resulting map comes
        * back so the caller learns what the store actually holds after composing with any concurrent
        * writer.
        */

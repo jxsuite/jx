@@ -26,7 +26,6 @@ Just `bun install` at the repo root. Neither Electron nor Bun is installed by ha
 
 ```bash
 ELECTRON_BIN=/path/to/electron bun run dev [project]   # The Electron application, from the checkout
-bun run chromium                                       # The per-window launcher in Chromium app mode
 ```
 
 A second `bun run dev <project>` hands its project to the running application instead of starting another copy.
@@ -70,12 +69,11 @@ Studio communicates with its backend through the [Platform Abstraction Layer](..
 
 ## Dependencies
 
-| Package            | Purpose                                                          |
-| ------------------ | ---------------------------------------------------------------- |
-| `@jxsuite/studio`  | Studio UI                                                        |
-| `dbus-ts`          | The freedesktop portal client of the per-window launcher (Linux) |
-| `electron-builder` | Packages the application (dev dependency)                        |
-| `electron-updater` | Self-updates, bundled into the main process (dev dependency)     |
+| Package            | Purpose                                                      |
+| ------------------ | ------------------------------------------------------------ |
+| `@jxsuite/studio`  | Studio UI                                                    |
+| `electron-builder` | Packages the application (dev dependency)                    |
+| `electron-updater` | Self-updates, bundled into the main process (dev dependency) |
 
 ## License
 

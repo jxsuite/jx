@@ -11,7 +11,7 @@ code:
   - packages/studio/src/platforms/devserver.ts
   - packages/studio/src/utils/base64.ts
   - packages/studio/src/files/asset-versions.ts
-  - packages/desktop/src/chromium/platform.ts
+  - packages/desktop/src/webview/platform.ts
   - packages/desktop/src/boot.ts
   - packages/studio/src/platforms/default-platform.ts
 ---
@@ -149,7 +149,7 @@ export function getPlatform() {
 The desktop app does this with a short init bundle loaded ahead of the Studio bundle. Its first import announces the launcher, and registration happens before anything asynchronous:
 
 ```ts
-// packages/desktop/src/chromium/init.ts, loaded before studio.js
+// packages/desktop/src/webview/init.ts, loaded before studio.js
 import { bootLauncher } from "./boot"; // first: publishes globalThis.__jxLauncher
 import { hydrateGithubToken } from "@jxsuite/studio/github-auth-status";
 import { createDesktopPlatform } from "./platform";
@@ -185,7 +185,7 @@ Two supporting members round out the flow. `activate(root)` tells the backend wh
 
 The reference adapter is a stateless wrapper over `fetch`: every member maps 1:1 to a `/__studio/*` route, and its only state is the active project root, which it prefixes onto outgoing paths (`serverPath`). Whether a response needs the prefix stripped (`stripRoot`) depends on the route: `/__studio/files` echoes back the server-relative directory it was handed, while the refactor routes answer in the active project's own space and are passed through untouched. It has no `openProject` and no `pickDirectory`: a dev-server window opens its project from the `?project=` address parameter, and `probeRootProject()` opens the server root when it is itself a project.
 
-### Desktop (`packages/desktop/src/chromium/platform.ts`)
+### Desktop (`packages/desktop/src/webview/platform.ts`)
 
 **Settings are written as patches.** `patchSettings({ set, remove })` changes only the keys it names and answers with the store as it then stands; a key named by neither must be left alone. That is a correctness rule and not an optimisation. A whole-map write means every writer implicitly claims the whole store, so a second window holding a different view of it silently overwrites the first. It also means a key your adapter has never heard of survives a write.
 

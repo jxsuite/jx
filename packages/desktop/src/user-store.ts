@@ -7,9 +7,9 @@
  *
  * - **Atomicity.** `settings-store.ts` and `recent-store.ts` called `writeFile` straight at the
  *   destination, which truncates first. An interrupted write — or one interleaved with another
- *   process's, which the chromium launcher makes routine by giving every window its own process —
- *   leaves torn JSON. Every reader here tolerates that by returning empty, so corruption presented
- *   to the user as _everything lost_ rather than as an error.
+ *   process's (a second Studio, a dev server writing the same store) — leaves torn JSON. Every
+ *   reader here tolerates that by returning empty, so corruption presented to the user as
+ *   _everything lost_ rather than as an error.
  * - **Permissions.** `writeFile`'s `mode` applies only when it CREATES the file.
  *   `credential-store.ts` knew this and chmod'd afterwards; the other two did not, so a store that
  *   arrived world-readable stayed that way — and `migrateLegacyStore`'s `copyFile` carries the
@@ -20,7 +20,7 @@
  * So: write to a sibling temp file, `chmod` the fresh inode, `rename` into place (atomic within a
  * directory), and serialize everything touching one path behind a per-path promise chain.
  *
- * The mutex is per PROCESS, which is the honest limit: it makes concurrent writes from one launcher
+ * The mutex is per PROCESS, which is the honest limit: it makes concurrent writes from one backend
  * safe, and the atomic rename is what keeps a write from a second process from producing a torn
  * file rather than merely a lost update.
  */
