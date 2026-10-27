@@ -117,8 +117,13 @@ describe("the runtime install is the desktop app's production graph", () => {
     expect(extensions.filter((name) => !declared.has(name))).toEqual([]);
   });
 
-  test("the install check resolves the backend against the installed tree", () => {
+  test("the backend is bundled at build time and its natives resolved against the installed tree", () => {
     expect(nix).toContain("doInstallCheck = true;");
-    expect(nix).toContain("bun build $out/lib/jx-studio/packages/desktop/src/hub/main.ts");
+    expect(nix).toContain("scripts/bundle-backend.ts assets/backend");
+    expect(nix).toContain(
+      "--jx-backend=$out/lib/jx-studio/packages/desktop/assets/backend/index.js",
+    );
+    expect(nix).toContain("load.resolve(name)");
+    expect(nix).not.toContain("--jx-bun");
   });
 });

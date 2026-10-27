@@ -100,6 +100,36 @@ jobs:
           CSC_INSTALLER_KEY_PASSWORD: ${{ secrets.MAS_INSTALLER_CERTIFICATE_PASSWORD }}
         run: bun run --cwd packages/desktop package --target mas --arch arm64 -- --publish never -c.mac.bundleVersion=${{ github.run_number }}
 
+      # App Review's automated check, run first: 6.1.0 was rejected for 129 non-public symbols, every
+      # one imported from the system ICU by the Bun it then shipped (specs/desktop.md §7.1). Every
+      # Mach-O in the application is listed with its undefined symbols, and any import from
+      # libicucore fails the lane, naming the binary, before anything reaches App Store Connect.
+      - name: No binary imports the system ICU
+        if: steps.credentials.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          app=$(find packages/desktop/artifacts -maxdepth 2 -name '*.app' -type d | head -n 1)
+          if [ -z "$app" ]; then
+            echo "::error::electron-builder produced no .app to scan"
+            exit 1
+          fi
+          found=0
+          while IFS= read -r -d '' file; do
+            if ! file -b "$file" | grep -q 'Mach-O'; then
+              continue
+            fi
+            if otool -L "$file" 2>/dev/null | grep -q 'libicucore'; then
+              icu=$(nm -u -m "$file" 2>/dev/null | grep -c 'libicucore' || true)
+              echo "::error file=$file::$file imports $icu symbol(s) from libicucore"
+              nm -u -m "$file" 2>/dev/null | grep 'libicucore' | head -n 20
+              found=1
+            fi
+          done < <(find "$app" -type f -print0)
+          if [ "$found" -ne 0 ]; then
+            exit 1
+          fi
+          echo "No Mach-O in $app imports libicucore."
+
       - name: Upload to App Store Connect
         if: steps.credentials.outputs.configured == 'true'
         run: |

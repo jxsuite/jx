@@ -34,7 +34,6 @@ function parseAppArgs(
   return {
     ...parsed,
     backend: posix(parsed.backend),
-    bun: posix(parsed.bun),
     icon: spelled(parsed.icon),
     preload: posix(parsed.preload),
     root: spelled(parsed.root),
@@ -77,8 +76,7 @@ function fakeBackend() {
 const ARGV = [
   "/bin/electron",
   "/b/app-main.js",
-  "--jx-bun=/bin/bun",
-  "--jx-backend=/src/hub/main.ts",
+  "--jx-backend=/build/backend/index.js",
   "--jx-preload=/b/preload.js",
   "--jx-icon=/share/icon.png",
   "--jx-project=/proj/alpha",
@@ -88,7 +86,7 @@ interface Started {
   backend: ReturnType<typeof fakeBackend>;
   fake: FakeElectron;
   handle: NonNullable<Awaited<ReturnType<typeof startApp>>>;
-  spawned: { bin: string; env: NodeJS.ProcessEnv; script: string }[];
+  spawned: { env: NodeJS.ProcessEnv; script: string }[];
 }
 
 /** Start the app over fakes. */
@@ -108,9 +106,8 @@ async function started(
     env: { ELECTRON_RUN_AS_NODE: "1", HOME: "/home/u" },
     exists: () => false,
     platform: "linux",
-    spawn: (bin, script, env) => {
+    spawn: (script, env) => {
       spawned.push({
-        bin: posix(bin),
         env: env.JX_STUDIO_ASSETS ? { ...env, JX_STUDIO_ASSETS: posix(env.JX_STUDIO_ASSETS) } : env,
         script: posix(script),
       });
@@ -197,8 +194,7 @@ describe("projectDirOf", () => {
 describe("parseAppArgs", () => {
   test("reads every switch", () => {
     expect(parseAppArgs(ARGV, {}, "/cwd", () => false)).toEqual({
-      backend: "/src/hub/main.ts",
-      bun: "/bin/bun",
+      backend: "/build/backend/index.js",
       icon: "/share/icon.png",
       preload: "/b/preload.js",
       root: "/proj/alpha",
@@ -207,17 +203,12 @@ describe("parseAppArgs", () => {
   });
 
   test("leaves the icon out, and the project, when they were not given", () => {
-    const args = parseAppArgs(
-      ["--jx-bun=/b", "--jx-backend=/m", "--jx-preload=/p"],
-      {},
-      "/cwd",
-      () => false,
-    );
+    const args = parseAppArgs(["--jx-backend=/m", "--jx-preload=/p"], {}, "/cwd", () => false);
     expect(args.icon).toBeNull();
     expect(args.root).toBeNull();
   });
 
-  test.each(["bun", "backend", "preload"])("refuses to start without --jx-%s", (missing) => {
+  test.each(["backend", "preload"])("refuses to start without --jx-%s", (missing) => {
     const argv = ARGV.filter((arg) => !arg.startsWith(`--jx-${missing}=`));
     expect(() => parseAppArgs(argv, {}, "/cwd", () => false)).toThrow("--jx-backend");
   });
@@ -244,11 +235,22 @@ describe("startApp", () => {
     expect(posix(fake.paths.get("userData") ?? "")).toBe("/appdata/Jx Studio");
   });
 
-  test("spawns the backend under Bun, without the variable that would make Electron a Node", async () => {
+  test("starts the backend bundle, without the variable that would make Electron a Node", async () => {
     const { spawned } = await started();
-    expect(spawned).toEqual([
-      { bin: "/bin/bun", env: { HOME: "/home/u" }, script: "/src/hub/main.ts" },
-    ]);
+    expect(spawned).toEqual([{ env: { HOME: "/home/u" }, script: "/build/backend/index.js" }]);
+  });
+
+  test("starts it as a utility process of this Electron when no spawn is injected", async () => {
+    const fake = fakeElectron();
+    const handle = await startApp(fake.api, ARGV, {
+      cwd: "/work",
+      env: { HOME: "/home/u" },
+      exists: () => false,
+      platform: "linux",
+    });
+    expect(posix(fake.forks[0]?.modulePath ?? "")).toBe("/build/backend/index.js");
+    expect(fake.forks[0]?.options.serviceName).toBe("Jx Studio Backend");
+    handle?.backend.kill();
   });
 
   test("holds the first open until the backend is listening, then sends it", async () => {
@@ -473,13 +475,7 @@ describe("launches and files", () => {
 
     // Packaged: no script, so the first bare argument is the project.
     const packaged = await started({
-      argv: [
-        "/Applications/Jx Studio",
-        "--jx-bun=/b",
-        "--jx-backend=/m",
-        "--jx-preload=/p",
-        "site",
-      ],
+      argv: ["/Applications/Jx Studio", "--jx-backend=/m", "--jx-preload=/p", "site"],
     });
     packaged.backend.emit({ type: "ready" });
     expect(packaged.backend.sent).toEqual([{ root: "/work/site", type: "open-project" }]);
@@ -591,7 +587,6 @@ describe("parseAppArgs for a packaged app", () => {
   test("takes everything from the layout when no switch says otherwise", () => {
     expect(parseAppArgs([], {}, "/cwd", () => false, "/R/app.asar", layout)).toEqual({
       backend: "/R/backend/index.js",
-      bun: "/R/bun/bun",
       icon: "/R/icon.png",
       preload: "/R/app.asar/preload.js",
       root: null,
@@ -601,15 +596,15 @@ describe("parseAppArgs for a packaged app", () => {
 
   test("lets a switch override the layout", () => {
     const args = parseAppArgs(
-      ["--jx-bun=/mine/bun"],
+      ["--jx-backend=/mine/index.js"],
       {},
       "/cwd",
       () => false,
       "/R/app.asar",
       layout,
     );
-    expect(args.bun).toBe("/mine/bun");
-    expect(args.backend).toBe("/R/backend/index.js");
+    expect(args.backend).toBe("/mine/index.js");
+    expect(args.preload).toBe("/R/app.asar/preload.js");
   });
 
   test("macOS gets no window icon, because the bundle draws its own", () => {
@@ -638,7 +633,6 @@ describe("startApp when packaged", () => {
   test("runs the backend from its own resources, with no switches", async () => {
     errorsQuiet();
     const { spawned } = await packaged();
-    expect(spawned[0]?.bin).toBe("/R/bun/bun");
     expect(spawned[0]?.script).toBe("/R/backend/index.js");
   });
 
@@ -792,8 +786,7 @@ describe("a Mac App Store build, which the App Sandbox lets into a folder only a
   const BARE = [
     "/bin/electron",
     "/b/app-main.js",
-    "--jx-bun=/bin/bun",
-    "--jx-backend=/src/hub/main.ts",
+    "--jx-backend=/build/backend/index.js",
     "--jx-preload=/b/preload.js",
   ];
 

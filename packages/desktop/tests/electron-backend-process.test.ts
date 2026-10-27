@@ -1,79 +1,57 @@
-import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { spawnBackend } from "../src/electron-shell/backend-process";
+import { describe, expect, test } from "bun:test";
+import { utilityBackend } from "../src/electron-shell/backend-process";
+import type { BackendMessage } from "../src/hub/protocol";
+import { fakeElectron } from "./_fake-electron";
 
-const scratch = mkdtempSync(join(tmpdir(), "jx-backend-process-test-"));
-afterAll(() => rmSync(scratch, { force: true, recursive: true }));
-
-/*
- * The real adapter against a real Bun child, because the one thing it exists to get right is a
- * channel whose framing both ends agree on, and a fake cannot disagree with it. The child echoes
- * what it is sent and exits when told to.
- */
-const script = join(scratch, "echo.ts");
-writeFileSync(
-  script,
-  `process.on("message", (m) => {
-     process.send?.({ id: 5, type: "focus-window", echo: m });
-     if (m.type === "dialog-result") process.exit(3);
-   });
-   process.send?.({ type: "mystery" });
-   process.send?.({ id: "not-a-number", partition: "p", title: "t", type: "open-window", url: "u" });
-   process.send?.({ type: "ready" });`,
-);
-
-/** Wait until `done()` holds, polling: a child's messages arrive when they arrive. */
-async function until(done: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100 && !done(); attempt += 1) {
-    await Bun.sleep(50);
+/** A backend started through a fake `utilityProcess`, with the fork it made. */
+function started() {
+  const fake = fakeElectron();
+  const backend = utilityBackend(fake.api.utilityProcess)("/r/backend/index.js", { HOME: "/h" });
+  const fork = fake.forks.at(0);
+  if (fork === undefined) {
+    throw new Error("no fork");
   }
-  expect(done()).toBe(true);
+  return { backend, fork };
 }
 
-describe("spawnBackend", () => {
-  test("carries JSON messages both ways, and reports the child's exit", async () => {
-    const backend = spawnBackend(process.execPath, script, { ...process.env });
-    const received: unknown[] = [];
-    const exited = new Promise<void>((resolve) => {
-      backend.onExit(resolve);
+describe("utilityBackend", () => {
+  test("forks the script as a named utility process with the environment and inherited output", () => {
+    const { fork } = started();
+    expect(fork.modulePath).toBe("/r/backend/index.js");
+    expect(fork.args).toEqual([]);
+    expect(fork.options).toEqual({
+      env: { HOME: "/h" },
+      serviceName: "Jx Studio Backend",
+      stdio: "inherit",
     });
+  });
+
+  test("delivers the backend's messages and drops any frame that is not one", () => {
+    const { backend, fork } = started();
+    const received: BackendMessage[] = [];
     backend.onMessage((message) => received.push(message));
-
-    await until(() => received.length > 0);
-    /* The child sent two frames that are not the backend's messages before this one, and neither
-       reached the listener. */
+    fork.emitMessage({ type: "mystery" });
+    fork.emitMessage(null);
+    fork.emitMessage({ type: "ready" });
     expect(received).toEqual([{ type: "ready" }]);
+  });
 
+  test("posts the shell's messages until the backend exits, then drops them", () => {
+    const { backend, fork } = started();
+    const exits: number[] = [];
+    backend.onExit(() => exits.push(1));
     backend.send({ root: "/p", type: "open-project" });
-    await until(() => received.length >= 2);
-    expect(received[1]).toEqual({
-      echo: { root: "/p", type: "open-project" },
-      id: 5,
-      type: "focus-window",
-    });
-
-    backend.send({ path: null, requestId: 1, type: "dialog-result" });
-    await exited;
-    // A send to a child that is gone is dropped, not thrown.
-    expect(() => backend.send({ root: null, type: "open-project" })).not.toThrow();
+    fork.emitExit(0);
+    backend.send({ root: null, type: "open-project" });
+    expect(fork.posted.map((message) => JSON.stringify(message))).toEqual([
+      JSON.stringify({ root: "/p", type: "open-project" }),
+    ]);
+    expect(exits).toEqual([1]);
   });
 
-  test("kill ends the child", async () => {
-    const backend = spawnBackend(process.execPath, script, { ...process.env });
-    const exited = new Promise<void>((resolve) => {
-      backend.onExit(resolve);
-    });
-    await Bun.sleep(200);
+  test("kill ends the child", () => {
+    const { backend, fork } = started();
     backend.kill();
-    await exited;
-  });
-
-  test("a child that cannot start counts as exited", async () => {
-    const backend = spawnBackend(join(scratch, "no-such-runtime"), script, { ...process.env });
-    await new Promise<void>((resolve) => {
-      backend.onExit(resolve);
-    });
+    expect(fork.killed).toBe(true);
   });
 });

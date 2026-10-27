@@ -515,7 +515,8 @@ jobs:
       - run: git diff --exit-code -- packages/studio/index.html
 
   # The desktop application's backend, staged the way a release stages it and then STARTED: under
-  # the Bun that ships beside it, through the same IPC the Electron main process uses, doing the
+  # Node 24, the major of the Node inside the pinned Electron (the release lanes run it under the
+  # packaged Electron itself), with the messages the Electron main process sends, doing the
   # things a bundle can lose (a data file nobody staged, a module resolved by name with no
   # node_modules to resolve from). Unit tests run the sources and cannot see any of that; the first
   # person to see it used to be whoever opened the packaged app. Gated on the desktop workspace
@@ -528,6 +529,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - run: bun run build
       - run: bun run --cwd packages/desktop stage
       - run: bun run --cwd packages/desktop smoke

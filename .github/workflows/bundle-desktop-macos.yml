@@ -58,7 +58,7 @@ jobs:
           echo "$APPLE_API_KEY_BASE64" | base64 --decode > ~/.apple/keys/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8
 
       # electron-builder imports CSC_LINK (a base64 .p12) into a keychain of its own, signs the
-      # application and the Bun inside it with the hardened runtime, notarizes, and staples.
+      # application and the native modules inside it with the hardened runtime, notarizes, and staples.
       - name: Build the installers
         env:
           CSC_LINK: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -84,10 +84,11 @@ jobs:
             fi
           done
 
-      # What was packaged, not the sources: the backend starts under the Bun that ships beside it
-      # and does the things a bundle can lose (packages/desktop/scripts/smoke-backend.ts).
+      # What was packaged, not the sources: the backend starts under the packaged Electron run as
+      # Node, which is the Node it ships on, and does the things a bundle can lose
+      # (packages/desktop/scripts/smoke-backend.ts).
       - name: Smoke-test the packaged backend
-        run: bun run --cwd packages/desktop smoke
+        run: bun run --cwd packages/desktop smoke --electron packaged
 
       - name: Verify the signature
         if: env.HAS_APPLE_API_KEY == 'true'

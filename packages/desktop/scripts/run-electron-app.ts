@@ -1,14 +1,19 @@
 /**
  * Run the multi-window Electron app from a checkout: `bun run desktop:electron [project]`.
  *
- * Bundles the app's main process and preload into a directory of its own, then starts Electron on
- * it with this checkout's Bun and backend. Needs `ELECTRON_BIN`: the Electron binary is never taken
- * from `node_modules`, because installing the npm package downloads one of ~100 MB.
+ * Bundles the app's main process, preload and backend into a directory of its own, then starts
+ * Electron on it. The backend is bundled exactly as an installer stages it (`bundleBackend`),
+ * because Electron's Node runs it and cannot run the TypeScript sources; its packages resolve from
+ * the checkout's own `node_modules`, so nothing is staged beside it. Needs `ELECTRON_BIN`: the
+ * Electron binary is never taken from `node_modules`, because installing the npm package downloads
+ * one of ~100 MB.
  */
 // oxlint-disable unicorn/no-process-exit -- a CLI whose exit code is its interface
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { bundleElectronApp } from "../src/electron-shell/bundle";
+import { bundleBackend } from "./lib/backend-bundle";
 import {
   electronAppCommand,
   findElectron,
@@ -23,11 +28,15 @@ if (!electron) {
 }
 
 const bundle = await bundleElectronApp();
+/* Inside the checkout, so its `node_modules` resolves what the bundle leaves external. */
+const buildDir = resolve(import.meta.dir, "../build");
+mkdirSync(buildDir, { recursive: true });
+const backendDir = mkdtempSync(join(buildDir, "dev-backend-"));
+const { entry: backend } = await bundleBackend(backendDir, { stageModules: false });
 const command = electronAppCommand(
   electron,
   {
-    backend: resolve(import.meta.dir, "../src/hub/main.ts"),
-    bun: process.execPath,
+    backend,
     icon: shellIcon(),
     ...bundle,
   },

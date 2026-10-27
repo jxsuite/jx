@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import * as executables from "@jxsuite/schema/which";
 import { join } from "node:path";
 import {
   electronAppCommand,
@@ -25,26 +26,24 @@ describe("findElectron", () => {
     expect(findElectron({ ELECTRON_BIN: "missing" }, () => null)).toBeNull();
   });
 
-  test("defaults to Bun.which", () => {
-    expect(findElectron({ ELECTRON_BIN: "sh" })).toBe(Bun.which("sh"));
+  test("defaults to a PATH lookup", () => {
+    expect(findElectron({ ELECTRON_BIN: "sh" })).toBe(executables.which("sh"));
   });
 });
 
 describe("electronAppCommand", () => {
   const files = {
-    backend: "/src/hub/main.ts",
-    bun: "/bin/bun",
+    backend: "/build/backend/index.js",
     icon: "/share/icon.png",
     main: "/b/app-main.js",
     preload: "/b/preload.js",
   };
 
-  test("starts the app on its bundle, and names the backend, Bun and the preload", () => {
+  test("starts the app on its bundle, and names the backend and the preload", () => {
     expect(electronAppCommand("/bin/electron", files, "/proj", "darwin")).toEqual({
       args: [
         "/b/app-main.js",
-        "--jx-bun=/bin/bun",
-        "--jx-backend=/src/hub/main.ts",
+        "--jx-backend=/build/backend/index.js",
         "--jx-preload=/b/preload.js",
         "--jx-icon=/share/icon.png",
         "--jx-project=/proj",
