@@ -85,6 +85,8 @@ export const ALLOWLIST = new Set([
   "src/harness/types.ts",
   // The @jxsuite/ai document tools' host contract (DocumentHost, DocEdit, SelectionEffect, ...): types only.
   "src/jx-tools/types.ts",
+  // @jxsuite/server's `serve()` contract (ServeServer, ServeSocket, ServeOptions): interfaces only.
+  "src/serve.ts",
 ]);
 
 /** Per-file totals as lcov records them: `FNF`/`FNH` for functions, `LF`/`LH` for lines. */

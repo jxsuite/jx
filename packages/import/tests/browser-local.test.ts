@@ -2,7 +2,7 @@
  * Chrome discovery and the browser singleton in browser-local.ts — the one module that loads
  * puppeteer-core as a value. puppeteer-core is mocked.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 interface FakeBrowser {
   connected: boolean;
@@ -27,11 +27,16 @@ const launch = mock((opts: { executablePath: string }) => {
 });
 void mock.module("puppeteer-core", () => ({ launch }));
 
+/** PATH discovery, answered by each test; nothing is found unless a test says so. */
+let whichAnswer: (name: string) => string | null = () => null;
+void mock.module("@jxsuite/schema/which", () => ({ which: (name: string) => whichAnswer(name) }));
+
 const { launchBrowser, closeBrowser } = await import("../src/browser-local.ts");
 
 const originalChromePath = process.env.CHROME_PATH;
 
 beforeEach(() => {
+  whichAnswer = () => null;
   launch.mockClear();
   launchedWith = null;
   delete process.env.CHROME_PATH;
@@ -60,25 +65,15 @@ describe("launchBrowser — Chrome discovery", () => {
   });
 
   test("falls back to which-discovery of chrome/chromium binaries", async () => {
-    const which = spyOn(Bun, "which").mockImplementation((name: string) =>
-      name === "chromium" ? "/usr/bin/chromium" : null,
-    );
-    try {
-      await launchBrowser();
-      expect(launchedWith?.executablePath).toBe("/usr/bin/chromium");
-    } finally {
-      which.mockRestore();
-    }
+    whichAnswer = (name) => (name === "chromium" ? "/usr/bin/chromium" : null);
+    await launchBrowser();
+    expect(launchedWith?.executablePath).toBe("/usr/bin/chromium");
   });
 
   test("throws when no browser can be found", async () => {
-    const which = spyOn(Bun, "which").mockImplementation(() => null);
-    try {
-      // oxlint-disable-next-line typescript/await-thenable -- rejects.toThrow resolves a Promise at runtime.
-      await expect(launchBrowser()).rejects.toThrow("Could not find Chrome/Chromium");
-    } finally {
-      which.mockRestore();
-    }
+    whichAnswer = () => null;
+    // oxlint-disable-next-line typescript/await-thenable -- rejects.toThrow resolves a Promise at runtime.
+    await expect(launchBrowser()).rejects.toThrow("Could not find Chrome/Chromium");
   });
 
   test("reuses the connected browser singleton", async () => {

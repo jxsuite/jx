@@ -7,8 +7,10 @@
  * during import.
  */
 
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { extname, join } from "node:path";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { createReadStream, readFileSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { isFunction } from "@jxsuite/schema/guards";
 import type { Browser, Page } from "puppeteer-core";
 import { launchBrowser, closeBrowser } from "./browser-local.ts";
@@ -240,37 +242,57 @@ const CONTENT_TYPES = new Map<string, string>(
 
 /** A running static server and the origin it answers on. */
 export interface ServedDirectory {
-  server: ReturnType<typeof Bun.serve>;
+  server: { stop: () => Promise<void> };
   baseUrl: string;
 }
 
+/** True when `path` names a regular file. */
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Serve a directory over HTTP using Bun's built-in server. Returns the server instance and the base
- * URL.
+ * Serve a directory over loopback HTTP. Resolves with a stop handle and the base URL once the
+ * server is listening.
+ *
+ * `node:http` rather than `Bun.serve`: verification runs inside the desktop backend, which is
+ * Electron's Node (specs/desktop.md §7.1), and a static server needs nothing either runtime lacks.
  */
-export function serveDirectory(dir: string): ServedDirectory {
-  const server = Bun.serve({
-    port: 0,
-    async fetch(req) {
-      let { pathname } = new URL(req.url);
-      if (pathname === "/") {
-        pathname = "/index.html";
-      } else if (!pathname.includes(".")) {
-        pathname = `${pathname}/index.html`;
-      }
-
-      const filePath = join(dir, pathname);
-      const file = Bun.file(filePath);
-      if (await file.exists()) {
-        const contentType =
-          CONTENT_TYPES.get(extname(filePath).toLowerCase()) ?? "application/octet-stream";
-        return new Response(file, { headers: { "Content-Type": contentType } });
-      }
-      return new Response("Not Found", { status: 404 });
-    },
+export async function serveDirectory(dir: string): Promise<ServedDirectory> {
+  const http: Server = createServer((req, res) => {
+    let { pathname } = new URL(req.url ?? "/", "http://localhost");
+    if (pathname === "/") {
+      pathname = "/index.html";
+    } else if (!pathname.includes(".")) {
+      pathname = `${pathname}/index.html`;
+    }
+    const filePath = join(dir, pathname);
+    if (!isFile(filePath)) {
+      res.writeHead(404).end("Not Found");
+      return;
+    }
+    const contentType =
+      CONTENT_TYPES.get(extname(filePath).toLowerCase()) ?? "application/octet-stream";
+    res.writeHead(200, { "Content-Type": contentType });
+    createReadStream(filePath).pipe(res);
   });
-
-  return { server, baseUrl: `http://localhost:${server.port}` };
+  await new Promise<void>((resolve) => {
+    http.listen(0, "127.0.0.1", resolve);
+  });
+  /* SAFETY: a TCP listener's `address()` is an `AddressInfo`; it is a string only for a pipe. */
+  const { port } = http.address() as { port: number };
+  const server = {
+    stop: () =>
+      new Promise<void>((resolve) => {
+        http.closeAllConnections();
+        http.close(() => resolve());
+      }),
+  };
+  return { server, baseUrl: `http://127.0.0.1:${port}` };
 }
 
 function resolveScreenshot(ref: Buffer | string): Buffer {
@@ -339,7 +361,7 @@ export async function verifyProject(opts: VerifyOptions): Promise<VerifyResult> 
 
   // Step 2: Serve the built output
   onProgress("Starting local server for rendered pages...");
-  const { server, baseUrl } = serveDirectory(distDir);
+  const { server, baseUrl } = await serveDirectory(distDir);
 
   const browser = opts.browser ?? (await launchBrowser());
   const results: PageVerifyResult[] = [];

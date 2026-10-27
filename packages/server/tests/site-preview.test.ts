@@ -166,7 +166,7 @@ await fetch(base + "/__studio/activate", {
 res = await fetch(base + "/__studio/build", { method: "POST" });
 if (res.status !== 400) errors.push("non-site build: expected 400, got " + res.status);
 
-stopSitePreviews();
+await stopSitePreviews();
 server.stop();
 if (errors.length) {
   console.error("FAILURES:\\n" + errors.join("\\n"));
@@ -201,14 +201,14 @@ describe("startSitePreview", () => {
     writeFileSync(join(SITE, "dist", "guide", "index.html"), "<html>guide</html>");
   }
 
-  afterAll(() => {
-    stopSitePreviews();
+  afterAll(async () => {
+    await stopSitePreviews();
     rmSync(ROOT, { force: true, recursive: true });
   });
 
   test("serves the built site, and only it", async () => {
     unitFixtures();
-    const preview = startSitePreview(SITE);
+    const preview = await startSitePreview(SITE);
     expect(preview).not.toBeNull();
     expect(preview!.origin).toBe(`http://127.0.0.1:${preview!.port}`);
     const home = await fetch(`${preview!.origin}/`);
@@ -224,28 +224,34 @@ describe("startSitePreview", () => {
     expect(traversal.status).toBe(404);
   });
 
-  test("one server per project — ten opened pages are one port", () => {
-    const first = startSitePreview(SITE);
-    const second = startSitePreview(SITE);
+  test("one server per project — ten opened pages are one port", async () => {
+    const first = await startSitePreview(SITE);
+    const second = await startSitePreview(SITE);
     expect(second!.port).toBe(first!.port);
-    expect(sitePreviewOrigin(SITE)).toBe(first!.origin);
+    expect(await sitePreviewOrigin(SITE)).toBe(first!.origin);
   });
 
-  test("a directory that builds no site gets no server", () => {
-    expect(startSitePreview(join(ROOT, "plain"))).toBeNull();
-    expect(sitePreviewOrigin(join(ROOT, "plain"))).toBeNull();
+  test("two starts racing the bind share one server", async () => {
+    await stopSitePreviews();
+    const [first, second] = await Promise.all([startSitePreview(SITE), startSitePreview(SITE)]);
+    expect(second!.port).toBe(first!.port);
+  });
+
+  test("a directory that builds no site gets no server", async () => {
+    expect(await startSitePreview(join(ROOT, "plain"))).toBeNull();
+    expect(await sitePreviewOrigin(join(ROOT, "plain"))).toBeNull();
   });
 
   test("a malformed URL is a bad request, not a crash", async () => {
-    const preview = startSitePreview(SITE)!;
+    const preview = (await startSitePreview(SITE))!;
     const res = await fetch(`${preview.origin}/%E0%A4%A`);
     expect(res.status).toBe(400);
   });
 
   test("stopping closes the port", async () => {
-    const preview = startSitePreview(SITE)!;
-    stopSitePreviews();
-    expect(sitePreviewOrigin(SITE)).toBeNull();
+    const preview = (await startSitePreview(SITE))!;
+    await stopSitePreviews();
+    expect(await sitePreviewOrigin(SITE)).toBeNull();
     await expect(fetch(`${preview.origin}/`)).rejects.toThrow();
   });
 });

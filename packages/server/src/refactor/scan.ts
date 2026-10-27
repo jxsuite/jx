@@ -61,13 +61,13 @@ export function skipScanPath(match: string): boolean {
   );
 }
 
-/** Build the recursive glob covering JSON plus every registered document/content extension. */
-export function documentGlob(registry: FormatRegistry): Bun.Glob {
+/** The recursive glob pattern covering JSON plus every registered document/content extension. */
+export function documentGlob(registry: FormatRegistry): string {
   const exts = new Set(["json"]);
   for (const ext of registry.documentExtensions()) {
     exts.add(ext.replace(/^\./, ""));
   }
-  return new Bun.Glob(`**/*.{${[...exts].join(",")}}`);
+  return `**/*.{${[...exts].join(",")}}`;
 }
 
 /**

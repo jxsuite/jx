@@ -19,6 +19,7 @@ import { refactorMounts } from "./mounts.ts";
 import type { RefChange } from "./refs.ts";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
+import { scanFiles } from "../fs-glob.ts";
 
 export interface FileChange {
   path: string;
@@ -117,7 +118,7 @@ export async function applyRename(opts: ApplyRenameOptions): Promise<RenameRepor
   let tagFilesChanged = 0;
   let tagRefsUpdated = 0;
 
-  for await (const match of documentGlob(opts.registry).scan({ cwd: opts.root, dot: false })) {
+  for await (const match of scanFiles(documentGlob(opts.registry), opts.root)) {
     if (skipScanPath(match)) {
       continue;
     }

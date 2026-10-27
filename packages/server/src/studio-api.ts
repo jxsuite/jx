@@ -43,6 +43,7 @@ import type { DesignOptions, ProjectOptions } from "@jxsuite/create/generate";
 import type { JsonObject, JsonPrimitive, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { problem } from "./problem.ts";
+import { scanFiles } from "./fs-glob.ts";
 
 /** Normalise a path to forward slashes (Windows `path` module returns backslashes). */
 const fwd = (p: string) => p.replaceAll("\\", "/");
@@ -570,9 +571,8 @@ export async function handleStudioApi(
   // Discover site projects — find all project.json files under root
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
-      const glob = new Bun.Glob("**/project.json");
       const sites = [];
-      for await (const match of glob.scan({ cwd: root, dot: false })) {
+      for await (const match of scanFiles("**/project.json", root)) {
         if (
           match.includes("node_modules") ||
           fwd(match).includes("dist/") ||
@@ -726,9 +726,8 @@ export async function handleStudioApi(
 
     try {
       if (pattern) {
-        const glob = new Bun.Glob(pattern);
         const files = [];
-        for await (const match of glob.scan({ cwd: absDir, dot: false })) {
+        for await (const match of scanFiles(pattern, absDir)) {
           const fp = resolve(absDir, match);
           try {
             const s = await stat(fp);
@@ -783,9 +782,9 @@ export async function handleStudioApi(
     try {
       const registry = await getFormatRegistry(scanRoot);
       const componentExts = registry.documentExtensions("component").map((e: string) => e.slice(1));
-      const glob = new Bun.Glob(`**/*.{${["json", ...componentExts].join(",")}}`);
       const components = [];
-      for await (const match of glob.scan({ cwd: scanRoot, dot: false })) {
+      const pattern = `**/*.{${["json", ...componentExts].join(",")}}`;
+      for await (const match of scanFiles(pattern, scanRoot)) {
         if (
           match.includes("node_modules") ||
           fwd(match).includes("dist/") ||
@@ -934,7 +933,7 @@ export async function handleStudioApi(
       // `clean: false` — this runs on the way to opening a page, and wiping the output directory
       // First would mean every asset 404s for as long as the build takes.
       const result = await buildSite(dir, { clean: false, verbose: false });
-      const preview = startSitePreview(dir);
+      const preview = await startSitePreview(dir);
       const built = { errors: result.errors, files: result.files, routes: result.routes };
       // `url` follows the build fields, and only when a preview origin exists.
       return Response.json(preview ? { ...built, url: preview.origin } : built);
@@ -1457,9 +1456,8 @@ export async function handleStudioApi(
     }
 
     try {
-      const glob = new Bun.Glob(`**/${name}`);
       const matches = [];
-      for await (const match of glob.scan({ cwd: root, dot: false })) {
+      for await (const match of scanFiles(`**/${name}`, root)) {
         // Skip node_modules / dist / hidden dirs
         if (match.includes("node_modules") || fwd(match).includes("dist/")) {
           continue;

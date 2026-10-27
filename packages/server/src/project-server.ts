@@ -1,8 +1,8 @@
 /**
- * Shared project server factory. Generalizes the chromium variant's ad-hoc in-process Bun.serve
- * into one createProjectServer() used by the chromium desktop launcher and the Electron hub.
+ * The desktop hub's per-window project server (`createProjectServer`).
  *
- * It serves three surfaces from a single loopback-bound Bun.serve:
+ * It serves three surfaces from a single loopback-bound server (`serve.ts`, which is `node:http` in
+ * the packaged app and `Bun.serve` under Bun):
  *
  * - The studio shell + canvas iframe doc + iframe bundle, under a non-colliding studio namespace (so
  *   a project's own asset tree never collides);
@@ -25,12 +25,13 @@
  */
 
 import { resolve, sep } from "node:path";
-import type { ServerWebSocket } from "bun";
+import { serve } from "#serve";
+import type { ServeServer, ServeSocket } from "./serve.ts";
 import { handleJxMounts } from "./jx-mounts.ts";
 import { handleResolve, handleServerFunction, projectAssetMounts } from "./resolve.ts";
 import { handleAiApi } from "./ai-api.ts";
 import { handleImportApi } from "./import-api.ts";
-import { resolveNpmPath } from "./server.ts";
+import { resolveNpmPath } from "./npm-path.ts";
 import type { ImportApiOptions } from "./import-api.ts";
 import {
   decodeAndNormalizePath,
@@ -44,6 +45,7 @@ import { createLoopbackAuthorizer, OAUTH_CALLBACK_PATH } from "./oauth-loopback.
 import type { LoopbackAuthorizer } from "./oauth-loopback.ts";
 import type { FsEventBatch } from "./sse.ts";
 import type { JsonPrimitive, JsonValue } from "@jxsuite/schema/types";
+import { bundleToString } from "@jxsuite/compiler/bundler";
 
 /**
  * What a handler answers, sent as the reply frame's `result`: anything `JSON.stringify` encodes,
@@ -98,7 +100,7 @@ export interface CreateProjectServerOptions {
 }
 
 export interface ProjectServerHandle {
-  server: ReturnType<typeof Bun.serve>;
+  server: ServeServer<{ winId: string | null }>;
   url: string;
   wsUrl: string;
   rpcToken: string;
@@ -129,7 +131,9 @@ export interface ProjectServerHandle {
  * @param options See {@link CreateProjectServerOptions}.
  * @returns A handle with the bound url/wsUrl, the rpcToken, the canvas iframe URL, and stop().
  */
-export function createProjectServer(options: CreateProjectServerOptions): ProjectServerHandle {
+export async function createProjectServer(
+  options: CreateProjectServerOptions,
+): Promise<ProjectServerHandle> {
   const {
     resolveSession,
     studioDir,
@@ -147,9 +151,9 @@ export function createProjectServer(options: CreateProjectServerOptions): Projec
   /* Live shell sockets, so the server can speak first (see ProjectServerHandle.push). Membership is
      the socket's whole lifetime — added on open, dropped on close — so a push after a window is
      gone reaches nobody rather than throwing. */
-  const sockets = new Set<ServerWebSocket<{ winId: string | null }>>();
+  const sockets = new Set<ServeSocket<{ winId: string | null }>>();
 
-  const server = Bun.serve<{ winId: string | null }>({
+  const server = await serve<{ winId: string | null }>({
     hostname,
     port,
     // Keep SSE/AI streams alive (mirrors the dev server's generous idle timeout).
@@ -327,14 +331,10 @@ export function createProjectServer(options: CreateProjectServerOptions): Projec
       if (resolved) {
         if (!bundleCache.has(resolved)) {
           try {
-            const result = await Bun.build({
-              entrypoints: [resolved],
-              format: "esm",
-              minify: false,
-            });
-            if (result.success && result.outputs.length > 0) {
-              bundleCache.set(resolved, await result.outputs[0]!.text());
-            }
+            bundleCache.set(
+              resolved,
+              await bundleToString(resolved, { minify: false, target: "browser" }),
+            );
           } catch (error) {
             console.error("Bundle failed for", resolved, error);
           }

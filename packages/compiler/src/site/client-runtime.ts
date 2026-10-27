@@ -16,14 +16,13 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import type { BundleResolver } from "./bundler.ts";
 import {
   bundleSource,
   isTransientEntry,
+  resolveBareSpecifier,
   resolveThroughBundler,
-  useNodeFallback,
 } from "./bundler.ts";
 import { DEFAULT_LIT_HTML_SRC, DEFAULT_REACTIVITY_SRC } from "../shared.ts";
 import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
@@ -230,18 +229,14 @@ export function renderImportMap(imports: Record<string, string>): string {
 /**
  * True when a bare specifier resolves from `resolveDir` under either backend.
  *
- * The backend choice is `bundler.ts`'s to make, not a second inline `typeof Bun` check: resolution
- * and bundling must agree about which one they are on, or the import map promises a module the
- * bundle then fails to produce.
+ * The backend's own resolver answers, not a second inline choice: resolution and bundling must
+ * agree about which one they are on, or the import map promises a module the bundle then fails to
+ * produce.
  */
 function canResolve(specifier: string, resolveDir: string): boolean {
   try {
-    // Both resolvers throw when the specifier does not resolve, and return its path when it does.
-    if (useNodeFallback()) {
-      createRequire(join(resolveDir, "x.js")).resolve(specifier);
-    } else {
-      Bun.resolveSync(specifier, resolveDir);
-    }
+    // The resolver throws when the specifier does not resolve, and returns its path when it does.
+    resolveBareSpecifier(specifier, resolveDir);
     return true;
   } catch {
     return false;

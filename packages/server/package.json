@@ -12,6 +12,12 @@
     "src/"
   ],
   "type": "module",
+  "imports": {
+    "#serve": {
+      "bun": "./src/serve.bun.ts",
+      "default": "./src/serve.node.ts"
+    }
+  },
   "exports": {
     ".": "./src/server.ts",
     "./dev": "./src/dev.ts",
@@ -29,7 +35,12 @@
     "./resolve": "./src/resolve.ts",
     "./types": "./src/types.ts",
     "./jx-mounts": "./src/jx-mounts.ts",
-    "./dev-vars": "./src/dev-vars.ts"
+    "./dev-vars": "./src/dev-vars.ts",
+    "./fs-glob": "./src/fs-glob.ts",
+    "./serve": {
+      "bun": "./src/serve.bun.ts",
+      "default": "./src/serve.node.ts"
+    }
   },
   "publishConfig": {
     "provenance": true
@@ -55,11 +66,13 @@
     "chokidar": "^6.0.0",
     "kysely": "^0.29.7",
     "oxfmt": "^0.74.0",
+    "ws": "^8.22.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@jxsuite/auth": "workspace:^",
     "@jxsuite/connector": "workspace:^",
-    "@jxsuite/parser": "workspace:^"
+    "@jxsuite/parser": "workspace:^",
+    "@types/ws": "^8.18.1"
   }
 }
