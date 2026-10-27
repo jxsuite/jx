@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.6.26-draft\
+**Version:** 0.7.3-draft\
 **Status:** Partial\
-**Updated:** 2026-10-21\
+**Updated:** 2026-10-27\
 **License:** MIT
 
 ---
@@ -2318,6 +2318,10 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.7.3-draft** (2026-10-27) — §15 and §15.4: jx dev stands in for the worker's server-function routes as it does for its mounts.
+- **0.7.2-draft** (2026-10-27) — §14.1.1: the worker serves server entries from pages, their layouts, project.json state and components, two modules exporting one name fail the build, the Pages _routes.json include list carries the locale root and the deployment base, and build.deploy joins the table.
+- **0.7.1-draft** (2026-10-27) — §14.7: a compiled page or component module carries the deployment base in its server-function URL, set when the module is compiled.
+- **0.7.0-draft** (2026-10-27) — §15.4: a server function with no build.adapter fails the build as an active mount does, and no build writes a per-route server handler.
 - **0.6.26-draft** (2026-10-21) — The usage engine answers every question from one per-tree-change index of the project's references.
 - **0.6.25-draft** (2026-10-21) — §8.6: Search appearance has one button, on the Inspector's Page tab for a page and a collection entry alike, now that Edit draws no Document Header card.
 - **0.6.24-draft** (2026-10-21) — §7.4: a CSV record opens in the form-only entry editor, and an image object is the media field with an alt text row.

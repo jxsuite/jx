@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.15.1-draft\
+**Version:** 0.16.0-draft\
 **Status:** Partial\
-**Updated:** 2026-10-23\
+**Updated:** 2026-10-27\
 **License:** MIT
 
 ---
@@ -2218,6 +2218,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.0-draft** (2026-10-27) — openProject is optional on the platform, and capability.openProject gates Open Project: the command, the welcome action and the Files panel's button are absent on a host with no dialog and no repository picker, where the Files panel says to open a project from ?project=.
+- **0.15.3-draft** (2026-10-27) — §3.3 one actor's run of writes is folded into one history entry per tab, tagged with the actor and the turn, and closed early by anyone else's write.
+- **0.15.2-draft** (2026-10-27) — §22's marker is Implemented, its open items left to the second markers of §22.5, §22.6 and §22.8; §22.8 defers Rollback and the Hosting source policy to a Future remainder, leaving Send for review without createPullRequest pending; §9.4 points the live-preview overlay at §10.1.
 - **0.15.1-draft** (2026-10-23) — §6.2: the size and colour-scheme choices are segmented groups on the pane context bar's Context axis; the language, feature queries, layout switch and Manage contexts stay in a More rendering context popover whose label names only what is set away from rest.
 - **0.15.0-draft** (2026-10-23) — §3: Diff is an implicit mode, entered from Publish's changed files or version history and left by Back; the Editor axis never offers it and canvas.setMode no longer accepts git-diff.
 - **0.14.2-draft** (2026-10-23) — §7.1 and §22.7: the switch between the project.json tab's Elements, Variables and Code views is named as the pane context bar's Editor switch, a segmented group at the bar's leading end rather than a dropdown.
@@ -2417,4 +2420,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.15.1-draft_
+_`@jxsuite/studio` Specification v0.16.0-draft_

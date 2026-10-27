@@ -13,10 +13,6 @@
   ...
 }:
 {
-  "@apidevtools/json-schema-ref-parser@16.0.5" = fetchurl {
-    url = "https://registry.npmjs.org/@apidevtools/json-schema-ref-parser/-/json-schema-ref-parser-16.0.5.tgz";
-    hash = "sha512-z3LiEMqTP2FNu6u8bdUgBYErVuwMSZReOJy1MCEIB0BDHMoNgBtkciby32HOlcrfWwrOSzRU8YIsZ0CogYRuYQ==";
-  };
   "@atlaskit/pragmatic-drag-and-drop-hitbox@3.0.0" = fetchurl {
     url = "https://registry.npmjs.org/@atlaskit/pragmatic-drag-and-drop-hitbox/-/pragmatic-drag-and-drop-hitbox-3.0.0.tgz";
     hash = "sha512-AGLp1ewjm07eRN2NL62awllSM19FrWVZMQYfZA/jugQlpaeoTr5ah2DE7zfiEt7yrg34htoKQVM+y6SGIQYs2A==";
@@ -1430,10 +1426,6 @@
     url = "https://registry.npmjs.org/@types/http-cache-semantics/-/http-cache-semantics-4.2.0.tgz";
     hash = "sha512-L3LgimLHXtGkWikKnsPg0/VFx9OGZaC+eN1u4r+OB1XRqH3meBIAVC2zr1WdMH+RHmnRkqliQAOHNJ/E0j/e0Q==";
   };
-  "@types/json-schema@7.0.15" = fetchurl {
-    url = "https://registry.npmjs.org/@types/json-schema/-/json-schema-7.0.15.tgz";
-    hash = "sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==";
-  };
   "@types/keyv@3.1.4" = fetchurl {
     url = "https://registry.npmjs.org/@types/keyv/-/keyv-3.1.4.tgz";
     hash = "sha512-BQ5aZNSCpj7D6K2ksrRCTmKRLEpnPvWDiLPfoGyhZ++8YtiK9d/3DBKPJgry359X/P1PfruyYwvnvwFjuEiEIg==";
@@ -1697,10 +1689,6 @@
   "argparse@2.0.1" = fetchurl {
     url = "https://registry.npmjs.org/argparse/-/argparse-2.0.1.tgz";
     hash = "sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==";
-  };
-  "argparse@3.0.3" = fetchurl {
-    url = "https://registry.npmjs.org/argparse/-/argparse-3.0.3.tgz";
-    hash = "sha512-Sn98ftV3KfsO8xfLPHG6oT8y+b0yvbrLgZjgPDXsharNY15tTAjqIsIju4S32nl6/iEUNNE4v+yL2Zhm8ooP3w==";
   };
   "argue-cli@3.2.0" = fetchurl {
     url = "https://registry.npmjs.org/argue-cli/-/argue-cli-3.2.0.tgz";
@@ -3061,10 +3049,6 @@
   "js-yaml@4.3.2" = fetchurl {
     url = "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.2.tgz";
     hash = "sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==";
-  };
-  "js-yaml@5.5.0" = fetchurl {
-    url = "https://registry.npmjs.org/js-yaml/-/js-yaml-5.5.0.tgz";
-    hash = "sha512-paNr4LFIFPjeeSmwNYdrb8FafLLG/Cr2Af3GjbsHJ5CxIjH4r0c2emlmRdAtpPAieP1gRVzk6buBbVP5gBMGAg==";
   };
   "jscodeshift@0.13.1" = fetchurl {
     url = "https://registry.npmjs.org/jscodeshift/-/jscodeshift-0.13.1.tgz";

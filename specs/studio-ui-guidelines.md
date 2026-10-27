@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.28-draft\
+**Version:** 0.8.29-draft\
 **Status:** Partial\
-**Updated:** 2026-10-21\
+**Updated:** 2026-10-27\
 **Applies to:** `packages/studio/`
 
 ---
@@ -981,6 +981,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.29-draft** (2026-10-27) — §12.4 the hand tree writers are the @jxsuite/ai/jx-tools producers over the Studio document host.
 - **0.8.28-draft** (2026-10-21) — The block action bar's step-aside rule no longer names the removed Document Header card, and §4.4's debounce status no longer cites its deleted panel module.
 - **0.8.27-draft** (2026-10-21) — §12.5 names what is left of the second action list now that Source Control is the Publish workspace and its no-repository bypass is gone, and §12.3 finds the renamed Create GitHub repository button in Publish › Review changes.
 - **0.8.26-draft** (2026-10-21) — §8.4 and §12.1 name the Command Bar's ⚙ Settings menu, which moved off the rail's foot.

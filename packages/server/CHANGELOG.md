@@ -1,5 +1,43 @@
 # Changelog
 
+## [7.0.0](https://github.com/jxsuite/jx/compare/server-v6.1.0...server-v7.0.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** drop the dev server's Open Project ([#501](https://github.com/jxsuite/jx/issues/501))
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498))
+
+### Features
+
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([d47cd16](https://github.com/jxsuite/jx/commit/d47cd1629f23724191eac18b6895617d62580a78))
+
+
+### Code Refactoring
+
+* **studio:** drop the dev server's Open Project ([#501](https://github.com/jxsuite/jx/issues/501)) ([bad1e62](https://github.com/jxsuite/jx/commit/bad1e627effa91d972542b0e4d321ec7e8bbc033))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.41.0
+    * @jxsuite/catalog bumped to 0.1.3
+    * @jxsuite/collab bumped to 0.11.3
+    * @jxsuite/compiler bumped to 7.0.0
+    * @jxsuite/create bumped to 1.4.1
+    * @jxsuite/import bumped to 0.41.1
+    * @jxsuite/protocol bumped to 5.0.0
+    * @jxsuite/runtime bumped to 6.0.0
+    * @jxsuite/schema bumped to 4.1.0
+    * @jxsuite/site bumped to 2.2.1
+    * @jxsuite/starters bumped to 3.1.1
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.1
+    * @jxsuite/connector bumped to 0.8.1
+    * @jxsuite/parser bumped to 4.1.1
+
 ## [6.1.0](https://github.com/jxsuite/jx/compare/server-v6.0.1...server-v6.1.0) (2026-10-23)
 
 

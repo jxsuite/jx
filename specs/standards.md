@@ -2,9 +2,9 @@
 
 ## Which External Standards Jx Adopts, and How That Is Recorded
 
-**Version:** 0.1.19-draft\
+**Version:** 0.1.20-draft\
 **Status:** Partial\
-**Updated:** 2026-09-29\
+**Updated:** 2026-10-27\
 **License:** MIT
 
 ---
@@ -264,6 +264,7 @@ This section is the whole declaration. Individual specifications do not repeat t
 
 ## Changelog
 
+- **0.1.20-draft** (2026-10-27) — §11 MCP 2026-07-28 joins the adoption backlog, owned by ai.md.
 - **0.1.19-draft** (2026-09-29) — Census against the code: §2.1 and §2.2 marked Partial for the catalog's issuing bodies outside the recognized eight, §5.2 marked Partial for the canonical-URL patterns that admit a second spelling or skip a body entirely, and §5.3 marked Partial because nothing stops a numbering body's document from taking a title-cased identifier or two catalog entries from sharing a URL.
 - **0.1.18-draft** (2026-09-14) — §9.2 the standards page is a gitignored build output the site writes before it builds, not a committed file diffed by docs:verify.
 - **0.1.17-draft** (2026-09-02) — §1 no longer links the deleted adoption plan.
@@ -287,4 +288,4 @@ This section is the whole declaration. Individual specifications do not repeat t
 
 ---
 
-_Jx Standards Alignment Specification v0.1.19-draft_
+_Jx Standards Alignment Specification v0.1.20-draft_
