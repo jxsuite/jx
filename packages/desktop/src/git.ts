@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import type { GitBranchesResult, GitFileStatus, GitLogEntry, GitStatusResult } from "./rpc-schema";
 
 /**
@@ -77,6 +78,32 @@ export function parsePorcelainV1(out: string): GitFileStatus[] {
   return files;
 }
 
+/** What one `git` run printed and how it exited. */
+interface GitRun {
+  exitCode: number;
+  stderr: string;
+  stdout: string;
+}
+
+/** Run `git` with `args` in `cwd`, collecting both streams; a spawn failure rejects. */
+function runGit(args: string[], cwd: string): Promise<GitRun> {
+  return new Promise((resolvePromise, reject) => {
+    const proc = spawn("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    proc.stdout.on("data", (chunk: Buffer) => out.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => err.push(chunk));
+    proc.once("error", reject);
+    proc.once("close", (code) => {
+      resolvePromise({
+        exitCode: code ?? 1,
+        stderr: Buffer.concat(err).toString("utf8"),
+        stdout: Buffer.concat(out).toString("utf8"),
+      });
+    });
+  });
+}
+
 /** Build git operations bound to one project session (its projectRoot is the git cwd). */
 export function createGitOps(session: { readonly projectRoot: string | null }) {
   async function git(...args: string[]): Promise<string> {
@@ -84,15 +111,8 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
     if (!root) {
       throw new Error("No project open");
     }
-    const proc = Bun.spawn(["git", ...args], {
-      cwd: root,
-      stderr: "pipe",
-      stdout: "pipe",
-    });
-    const exitCode = await proc.exited;
-    const stdout = await new Response(proc.stdout).text();
+    const { exitCode, stderr, stdout } = await runGit(args, root);
     if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
       throw new Error(`git ${args[0]} failed: ${stderr.trim()}`);
     }
     return stdout;

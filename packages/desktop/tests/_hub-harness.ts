@@ -10,6 +10,7 @@ import type { ImportApiOptions } from "@jxsuite/server/import-api";
 import type { JsonValue } from "@jxsuite/schema/types";
 import { createWindowHub } from "../src/hub/window-hub";
 import type { WindowHub, WindowHubOptions } from "../src/hub/window-hub";
+import type { OpenOutcome } from "../src/hub/handlers";
 import type { BackendMessage } from "../src/hub/protocol";
 
 /** A message the hub sent, narrowed by its `type`. */
@@ -50,6 +51,8 @@ export interface Fixture {
   /** Every window's socket is closed at teardown. */
   connect: (window: Sent<"open-window">) => Promise<WindowSocket>;
   hub: WindowHub;
+  /** `hub.openProject`, then wait for the window it opens to be announced (`hub.idle`). */
+  open: (root: string | null) => Promise<OpenOutcome>;
   /** Make a project directory under the fixture's scratch directory. */
   makeProject: (name: string) => string;
   /** The `open-window` messages sent so far. */
@@ -87,6 +90,11 @@ export function hubFixture(importApi?: ImportApiOptions): Fixture {
 
   return {
     appInfo,
+    open: async (root) => {
+      const outcome = hub.openProject(root);
+      await hub.idle();
+      return outcome;
+    },
     connect: (window) =>
       new Promise((resolve, reject) => {
         const url = new URL(window.url);

@@ -56,7 +56,7 @@ export function importOptions(chromePath: string | null): ImportApiOptions {
  * @returns The hub, so a caller can stop it.
  */
 export function startBackend(io: BackendIo): WindowHub {
-  const studioDir = io.env.JX_STUDIO_ASSETS || resolve(import.meta.dir, "../../assets/studio");
+  const studioDir = io.env.JX_STUDIO_ASSETS || resolve(import.meta.dirname, "../../assets/studio");
   /* The site import's headless browser: puppeteer cannot open a page in Electron, which answers
      `Target.createTarget` with "Not supported", so an installed Chromium or Chrome does it. */
   const importApi = importOptions((io.findBrowser ?? findChromium)(io.env));

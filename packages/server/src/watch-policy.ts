@@ -11,9 +11,9 @@
  *   it did.
  *
  * Both were reached at once by a launcher that adopted `$HOME` as a project root. That defect is
- * fixed where it was made (`packages/desktop/src/chromium/index.ts`), but a watcher must survive
- * being pointed at an ordinary directory rather than depend on never being pointed at one — so the
- * rules live here, stated once, because `watch.ts` (dev server) and `refactor/watcher.ts` (desktop
+ * fixed where it was made (the since-removed desktop launcher), but a watcher must survive being
+ * pointed at an ordinary directory rather than depend on never being pointed at one — so the rules
+ * live here, stated once, because `watch.ts` (dev server) and `refactor/watcher.ts` (desktop
  * session) both need them and neither owns the other.
  *
  * Symlinks are contained rather than banned: a link resolving back inside the root is project

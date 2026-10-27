@@ -51,11 +51,12 @@ describe("startBackend", () => {
     return { deliver, io, sent };
   }
 
-  test("announces itself, then opens what the shell asks for", () => {
+  test("announces itself, then opens what the shell asks for", async () => {
     const { deliver, io, sent } = channel();
     hub = startBackend(io);
     expect(sent).toEqual([{ type: "ready" }]);
     deliver({ root, type: "open-project" });
+    await hub.idle();
     expect(sent[1]).toMatchObject({ id: 1, title: "site — Jx Studio", type: "open-window" });
     expect(hub.windows()).toEqual([{ id: 1, projectRoot: root }]);
   });
@@ -106,6 +107,11 @@ describe("main.ts", () => {
         return true;
       }) as NonNullable<typeof original>;
       process.emit("message", { root, type: "open-project" }, null);
+      // The window is announced once its server has bound, which is a turn or two later.
+      for (let tries = 0; !sent.some((message) => message.type === "open-window"); tries += 1) {
+        expect(tries).toBeLessThan(200);
+        await Bun.sleep(5);
+      }
       expect(sent.at(-1)).toMatchObject({ title: "site — Jx Studio", type: "open-window" });
       // A frame that is not one of the shell's messages is dropped at the channel.
       const before = sent.length;

@@ -22,6 +22,7 @@ import {
 } from "@jxsuite/server/data";
 import { applyRename, createFsWatcher, findReferences } from "@jxsuite/server/refactor";
 import { startSitePreview } from "@jxsuite/server/site-preview";
+import { scanFiles } from "@jxsuite/server/fs-glob";
 import type { ClassJsonParam } from "@jxsuite/server/types";
 import {
   clearLivePreviewOverlay,
@@ -223,7 +224,7 @@ export async function pickProjectFile(): Promise<{
 // ─── Pure helpers (no session state) ──────────────────────────────────────────
 
 // Path convention: every path returned to the studio MUST be forward-slash and project-relative.
-// Node's relative() and Bun.Glob.scan() emit OS-native backslashes on Windows.
+// Node's relative() and glob emit OS-native backslashes on Windows.
 // Those break the studio's forward-slash assumptions (e.g. findContentTypeSchema's prefix match).
 // Route ALL studio-facing paths through toPosix()/relPosix(); a guard test enforces this.
 
@@ -464,7 +465,7 @@ export type ProjectSession = ReturnType<typeof createProjectSession>;
 /**
  * Order a directory listing so two identical requests answer identically.
  *
- * `readdir` and `Bun.Glob.scan` both answer in FILESYSTEM order, which varies with the directory's
+ * `readdir` and the glob scan both answer in FILESYSTEM order, which varies with the directory's
  * internal layout and so with the history of writes to it. Studio's collection grid inserts rows in
  * listing order on purpose (so that a concurrent read cannot decide it), which turns an unsorted
  * listing into a table that reshuffles itself between opens.
@@ -513,7 +514,7 @@ export function createProjectSession(initialRoot: string | null) {
     // `clean: false` — the reader is on their way to a page, and wiping the output first would
     // Mean every asset 404s for as long as the build takes.
     const result = await build(root, { clean: false, verbose: false });
-    const preview = startSitePreview(root);
+    const preview = await startSitePreview(root);
     const reply: BuildSiteResult = {
       errors: result.errors,
       files: result.files,
@@ -993,7 +994,8 @@ export function createProjectSession(initialRoot: string | null) {
     const root = requireRoot();
     const abs = resolve(root, params.path);
     assertReachable(abs, root);
-    return { data: Buffer.from(await Bun.file(abs).arrayBuffer()).toString("base64") };
+    const bytes = await readFile(abs);
+    return { data: bytes.toString("base64") };
   }
 
   async function writeFileHandler(params: { path: string; content: string }): Promise<void> {
@@ -1081,7 +1083,7 @@ export function createProjectSession(initialRoot: string | null) {
     assertReachable(abs, root);
     await mkdir(dirname(abs), { recursive: true });
     const buffer = Buffer.from(params.data, "base64");
-    await Bun.write(abs, buffer);
+    await writeFile(abs, buffer);
     /* The path this backend wrote is the one it was asked for — it is a filesystem, not a
        content-addressed store — but it REPORTS it, because the caller must not have to know
        which kind of backend it is talking to. */
@@ -1120,11 +1122,10 @@ export function createProjectSession(initialRoot: string | null) {
       assertUnderRoot(scanRoot, root);
     }
 
-    const glob = new Bun.Glob("**/*.json");
     const components: ComponentMeta[] = [];
 
-    for await (const rawMatch of glob.scan({ cwd: scanRoot, dot: false })) {
-      // Normalize first: Bun.Glob emits backslashes on Windows, which would both leak to the studio
+    for await (const rawMatch of scanFiles("**/*.json", scanRoot)) {
+      // Normalize first: the glob emits backslashes on Windows, which would both leak to the studio
       // And defeat the forward-slash "dist/" / ".claude/" exclusion checks below.
       const match = toPosix(rawMatch);
       if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/")) {
@@ -1179,10 +1180,9 @@ export function createProjectSession(initialRoot: string | null) {
 
   async function locateFile(params: { name: string }): Promise<string | null> {
     const root = requireRoot();
-    const glob = new Bun.Glob(`**/${params.name}`);
     const matches: string[] = [];
 
-    for await (const rawMatch of glob.scan({ cwd: root, dot: false })) {
+    for await (const rawMatch of scanFiles(`**/${params.name}`, root)) {
       const match = toPosix(rawMatch);
       if (match.includes("node_modules") || match.includes("dist/")) {
         continue;
@@ -1205,10 +1205,9 @@ export function createProjectSession(initialRoot: string | null) {
   }): Promise<DirEntry[]> {
     const root = requireRoot();
     const exts = ["json", ...(params.extensions ?? []).map((e) => e.replace(/^\./, ""))];
-    const glob = new Bun.Glob(`**/*${params.query}*.{${exts.join(",")}}`);
     const results: DirEntry[] = [];
 
-    for await (const rawMatch of glob.scan({ cwd: root, dot: false })) {
+    for await (const rawMatch of scanFiles(`**/*${params.query}*.{${exts.join(",")}}`, root)) {
       const match = toPosix(rawMatch);
       if (match.includes("node_modules") || match.includes("dist/")) {
         continue;

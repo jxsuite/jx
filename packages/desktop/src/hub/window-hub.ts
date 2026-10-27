@@ -56,6 +56,13 @@ export interface WindowHub {
   dispose: () => void;
   /** React to a message from the Electron main process. */
   handle: (message: ShellMessage) => void;
+  /**
+   * Resolve once every window being opened has its server and has been announced.
+   *
+   * Opening is asynchronous because a server binds asynchronously; `openProject` answers at once
+   * (the dedupe does not wait), and the `open-window` message follows when the port is known.
+   */
+  idle: () => Promise<void>;
   /** Open `root` (null for a welcome window) or raise the window that holds it. */
   openProject: (root: string | null) => OpenOutcome;
   /** Every open window and the project it holds. */
@@ -105,6 +112,10 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
   // What the updater last said, which only the shell hears; the About screen asks the backend.
   let updateStatus: string | null = null;
   let nextWindow = 1;
+  /** Windows whose server is still binding: their root (for the dedupe) and their partition. */
+  const opening = new Map<number, { done: Promise<void>; key: string | null; partition: string }>();
+  /** Set by `dispose`, so a server that finishes binding afterwards is stopped, not shown. */
+  let disposed = false;
   let nextDialog = 1;
 
   /** The window other than `except` that holds `root`, if any. */
@@ -121,7 +132,10 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
 
   /** The lowest `welcome-<n>` partition no open window is using, so a welcome window keeps its. */
   function welcomePartition(): string {
-    const used = new Set([...windows.values()].map((entry) => entry.partition));
+    const used = new Set([
+      ...[...windows.values()].map((entry) => entry.partition),
+      ...[...opening.values()].map((pending) => pending.partition),
+    ]);
     for (let index = 0; ; index += 1) {
       const partition = `persist:welcome-${index}`;
       if (!used.has(partition)) {
@@ -183,15 +197,33 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
       focus(existing);
       return { focused: true };
     }
-    openWindow(root);
+    const key = root ? normalizeRoot(root) : null;
+    if (key && [...opening.values()].some((pending) => pending.key === key)) {
+      // Its server is still binding; the window it becomes is the one this asked for.
+      return { focused: true };
+    }
+    void openWindow(root).catch((error) => {
+      console.error("[hub] opening a window failed:", error);
+    });
     return { focused: false };
   }
 
-  function openWindow(root: string | null): void {
+  async function openWindow(root: string | null): Promise<void> {
     const id = nextWindow;
     nextWindow += 1;
-    const session = createProjectSession(root);
     const partition = root ? projectPartition(root) : welcomePartition();
+    const done = bindWindow(id, root, partition);
+    opening.set(id, { done, key: root ? normalizeRoot(root) : null, partition });
+    try {
+      await done;
+    } finally {
+      opening.delete(id);
+    }
+  }
+
+  /** Start window `id`'s project server, then register the window and tell the shell to show it. */
+  async function bindWindow(id: number, root: string | null, partition: string): Promise<void> {
+    const session = createProjectSession(root);
     const window: HubWindow = { id, session };
     const handlers = buildWindowHandlers(window, control);
     const serverOptions: CreateProjectServerOptions = {
@@ -206,7 +238,13 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
     if (importApi) {
       serverOptions.importApi = importApi;
     }
-    const server = createProjectServer(serverOptions);
+    const server = await createProjectServer(serverOptions);
+    if (disposed) {
+      // The hub stopped while the server was binding; nobody will ever show this window.
+      server.stop();
+      session.setProjectRoot(null);
+      return;
+    }
     /* The same object the handlers closed over, completed: `findWindowByRoot(…, window)` compares by
        identity, and a copy here would make a window dedupe against itself. */
     windows.set(id, Object.assign(window, { partition, server }));
@@ -233,7 +271,7 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
    * is listening on.
    */
   function claimAuthorizationRedirect(server: ProjectServerHandle): void {
-    setAuthorizationHost({ authorizer: server.authorizer, port: server.server.port ?? 0 });
+    setAuthorizationHost({ authorizer: server.authorizer, port: server.server.port });
   }
 
   function closeWindow(id: number): void {
@@ -253,7 +291,7 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
   }
 
   /* Every window has its own webview and so its own settings kernel: a change made in one is news
-     to the others exactly as it is across processes under the Linux launcher. */
+     to the others exactly as it would be across processes. */
   const stopSettingsWatch = (options.watchSettings ?? watchSettings)((settings) => {
     for (const entry of windows.values()) {
       entry.server.push("settingsChanged", { settings });
@@ -265,6 +303,7 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
 
   return {
     dispose: () => {
+      disposed = true;
       stopSettingsWatch();
       // Deleting the visited entry mid-iteration is what a Map permits, and `closeWindow` does.
       for (const id of windows.keys()) {
@@ -276,6 +315,11 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
       dialogs.clear();
       setFileDialog(null);
       setDirectoryDialog(null);
+    },
+    idle: async () => {
+      while (opening.size > 0) {
+        await Promise.allSettled([...opening.values()].map((pending) => pending.done));
+      }
     },
     handle: (message) => {
       switch (message.type) {

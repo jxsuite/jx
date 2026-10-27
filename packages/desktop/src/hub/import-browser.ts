@@ -5,6 +5,7 @@
  * @docs studio/desktop
  */
 import { existsSync } from "node:fs";
+import * as executables from "@jxsuite/schema/which";
 
 /**
  * Where a macOS browser lives when nothing is on `PATH`: an app bundle's executable. Chrome first,
@@ -21,14 +22,14 @@ export const MAC_BROWSER_BUNDLES = [
  * @param env The backend's environment; `CHROMIUM_BIN` wins when it resolves.
  * @param platform On macOS a browser is an app bundle rather than a `PATH` entry, so the standard
  *   bundles are tried last.
- * @param which `Bun.which`, injectable for tests. It resolves on every platform, with no dependency
- *   on a POSIX `which`, which a stock Windows shell lacks.
+ * @param which `which` from `@jxsuite/schema/which`, injectable for tests. It resolves on every
+ *   platform, with no dependency on a POSIX `which`, which a stock Windows shell lacks.
  * @param exists `existsSync`, injectable for tests.
  */
 export function findChromium(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
-  which: (bin: string) => string | null = Bun.which,
+  which: (bin: string) => string | null = executables.which,
   exists: (path: string) => boolean = existsSync,
 ): string | null {
   const candidates = [

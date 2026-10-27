@@ -40,7 +40,8 @@
     "./serve": {
       "bun": "./src/serve.bun.ts",
       "default": "./src/serve.node.ts"
-    }
+    },
+    "./file-response": "./src/file-response.ts"
   },
   "publishConfig": {
     "provenance": true
