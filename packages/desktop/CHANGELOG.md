@@ -1,5 +1,37 @@
 # Changelog
 
+## [7.0.0](https://github.com/jxsuite/jx/compare/desktop-v6.1.0...desktop-v7.0.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498))
+
+### Features
+
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([d47cd16](https://github.com/jxsuite/jx/commit/d47cd1629f23724191eac18b6895617d62580a78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/auth bumped to 0.8.1
+    * @jxsuite/compiler bumped to 7.0.0
+    * @jxsuite/connector bumped to 0.8.1
+    * @jxsuite/create bumped to 1.4.1
+    * @jxsuite/feed bumped to 0.4.3
+    * @jxsuite/parser bumped to 4.1.1
+    * @jxsuite/protocol bumped to 5.0.0
+    * @jxsuite/schema bumped to 4.1.0
+    * @jxsuite/search bumped to 0.4.2
+    * @jxsuite/server bumped to 7.0.0
+    * @jxsuite/starters bumped to 3.1.1
+    * @jxsuite/studio bumped to 9.0.0
+  * devDependencies
+    * @jxsuite/server bumped to 7.0.0
+    * @jxsuite/ui bumped to 0.8.1
+
 ## [6.1.0](https://github.com/jxsuite/jx/compare/desktop-v6.0.1...desktop-v6.1.0) (2026-10-23)
 
 

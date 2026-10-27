@@ -1,5 +1,34 @@
 # Changelog
 
+## [7.0.0](https://github.com/jxsuite/jx/compare/compiler-v6.1.0...compiler-v7.0.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498))
+
+### Features
+
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([d47cd16](https://github.com/jxsuite/jx/commit/d47cd1629f23724191eac18b6895617d62580a78))
+
+
+### Bug Fixes
+
+* **runtime:** an & after a context in a nested style key is the scope ([#497](https://github.com/jxsuite/jx/issues/497)) ([6e7861d](https://github.com/jxsuite/jx/commit/6e7861d37ef8d65e2e34c9e18695ca1b3188b212))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.4.1
+    * @jxsuite/runtime bumped to 6.0.0
+    * @jxsuite/schema bumped to 4.1.0
+    * @jxsuite/site bumped to 2.2.1
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.1
+    * @jxsuite/parser bumped to 4.1.1
+
 ## [6.1.0](https://github.com/jxsuite/jx/compare/compiler-v6.0.2...compiler-v6.1.0) (2026-10-23)
 
 
