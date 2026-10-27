@@ -41,7 +41,8 @@
       "bun": "./src/serve.bun.ts",
       "default": "./src/serve.node.ts"
     },
-    "./file-response": "./src/file-response.ts"
+    "./file-response": "./src/file-response.ts",
+    "./packages-service": "./src/packages-service.ts"
   },
   "publishConfig": {
     "provenance": true
