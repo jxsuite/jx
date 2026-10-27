@@ -217,7 +217,7 @@ describe("an action-required refusal on the session", () => {
     expect(p.gitCommit("msg")).rejects.toThrow(REFUSAL.detail);
     expect(p.gitPush()).rejects.toThrow("Push failed");
     expect(p.listDirectory("pages")).rejects.toThrow("Read only");
-    expect(p.openProject()).rejects.toThrow();
+    expect(p.openProject!()).rejects.toThrow();
     await settle();
     expect(reports).toEqual([]);
   });

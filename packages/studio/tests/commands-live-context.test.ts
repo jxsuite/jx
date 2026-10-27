@@ -448,6 +448,7 @@ describe("collab, ai and capabilities", () => {
       findReferences: false,
       gitClone: false,
       importSite: false,
+      openProject: false,
       openProjectInNewWindow: false,
       publish: false,
       readFileBytes: false,
@@ -469,12 +470,34 @@ describe("collab, ai and capabilities", () => {
       findReferences: false,
       gitClone: true,
       importSite: false,
+      // The harness mock implements `openProject`, as the desktop adapter does.
+      openProject: true,
       openProjectInNewWindow: false,
       publish: false,
       // On: the harness's mock ships `readFileBytes`, which is what gates the image editor.
       readFileBytes: true,
       windowControls: true,
     });
+  });
+
+  /* Open Project is offered by a native dialog or by the cloud's repository picker, and by nothing
+     else: a dev-server window opens its project from `?project=`. */
+  test("openProject follows the dialog member or a complete repository picker", () => {
+    const capability = (overrides: Parameters<typeof installMockPlatform>[0] = {}) => {
+      const { platform } = installMockPlatform(overrides);
+      delete platform.openProject;
+      return createLiveContext(sources({ platform: () => platform }))().capability.openProject;
+    };
+    expect(capability()).toBe(false);
+    // A repository picker with nothing to list or import from is no picker at all.
+    expect(capability({ openProjectPicker: "repo-list" })).toBe(false);
+    expect(
+      capability({
+        importProject: async () => ({ root: "o/r@main" }),
+        listRepos: async () => [],
+        openProjectPicker: "repo-list",
+      }),
+    ).toBe(true);
   });
 
   /* The Publish family's host question: whether it can reach Cloudflare. It is the member it is

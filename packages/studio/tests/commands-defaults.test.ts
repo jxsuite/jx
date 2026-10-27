@@ -393,9 +393,23 @@ describe("gating", () => {
     registry.registerAll(defaultCommandSet());
     const live = registry.visible().map((c) => c.id);
     expect(live).toContain("palette.open");
-    expect(live).toContain("project.open");
+    expect(live).toContain("project.openRecent");
     expect(live).not.toContain("file.save");
     expect(live).not.toContain("selection.duplicate");
+  });
+
+  test("Open Project is offered only by a host that can open one", () => {
+    // The dev server has no dialog: its windows open a project from `?project=`.
+    const without = createCommandRegistry({ getContext: emptyContext, mac: true });
+    without.registerAll(defaultCommandSet());
+    expect(without.visible().map((c) => c.id)).not.toContain("project.open");
+
+    const withDialog = createCommandRegistry({
+      getContext: () => makeContext({ capability: { openProject: true } }),
+      mac: true,
+    });
+    withDialog.registerAll(defaultCommandSet());
+    expect(withDialog.visible().map((c) => c.id)).toContain("project.open");
   });
 
   test("Open in Browser hides on a non-site project and disables without a document", () => {

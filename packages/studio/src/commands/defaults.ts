@@ -563,6 +563,8 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       keybinding: "mod+o",
       menus: ["commandbar/overflow", "statusbar/project", "palette"],
       group: "1_file",
+      when: (ctx: CommandContext) => ctx.capability.openProject,
+      requires: "a host that can open a project from a dialog",
       run: () => deps.openProject(),
     },
     {

@@ -2,18 +2,16 @@
  * Devserver.js — Dev Server Platform Adapter
  *
  * Implements the StudioPlatform interface for the @jxsuite/server development workflow. All file
- * I/O goes through /__studio/* REST endpoints. Project opening uses the Chrome File System Access
- * API (showDirectoryPicker).
+ * I/O goes through /__studio/* REST endpoints. There is no Open Project: a dev-server window opens
+ * a project from its `?project=` URL parameter (specs/desktop.md §8.2).
  *
  * See spec/desktop.md §8 for the full specification.
  */
 
 import { streamImport } from "../services/import-client";
-import { canPickDirectory, pickDirectoryPath } from "../services/directory-picker";
 import { negotiateCollab } from "@jxsuite/collab/negotiate";
 import type { CollabNegotiation } from "@jxsuite/collab/negotiate";
 import type { WsCollabConnection } from "@jxsuite/collab/client";
-import { isFunction } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import type {
   DataConnectionsResponse,
@@ -78,16 +76,6 @@ interface ProjectInfoReply {
 /** The body of an `fs` event on the `/__reload` stream (the server's watcher batches them). */
 interface FsEventBatch {
   events?: FsEvent[];
-}
-
-/** `showDirectoryPicker()` (WICG File System Access), which only Chromium-based browsers expose. */
-type ShowDirectoryPicker = (options: { mode: string }) => Promise<FileSystemDirectoryHandle>;
-
-/** True when the window implements the File System Access directory picker. */
-function hasDirectoryPicker(
-  host: Window,
-): host is Window & { showDirectoryPicker: ShowDirectoryPicker } {
-  return "showDirectoryPicker" in host && isFunction(host.showDirectoryPicker);
 }
 
 /** The options object {@link StudioPlatform.createProject} takes. */
@@ -225,36 +213,6 @@ export function createDevServerPlatform() {
     return p.startsWith(`${_projectRoot}/`) ? p.slice(_projectRoot.length + 1) : p;
   }
 
-  /**
-   * Native folder chooser for the New Project modal's Browse… button. Present only when the browser
-   * implements `showDirectoryPicker` (Chromium-based); elsewhere the member stays undefined and the
-   * modal falls back to a typed Location field.
-   *
-   * The picked handle carries no filesystem path, so it is resolved by the id the picker tags the
-   * folder with (see `@jxsuite/studio/directory-picker`). Resolves `null` only when the user
-   * dismisses the chooser; every other failure rejects with a sentence the modal shows under
-   * Location. So `locate` keeps the helper's contract: `null` is "no folder holds this id" (the
-   * route's 200 `{ path: null }`), and a non-ok answer throws the problem the server sent rather
-   * than posing as a miss. A network failure (`TypeError: Failed to fetch`, e.g. a page that is not
-   * being served by the dev server at all) propagates as is, and the picker names it.
-   */
-  const directoryPicking: Pick<StudioPlatform, "pickDirectory"> = {};
-  if (canPickDirectory()) {
-    directoryPicking.pickDirectory = async (): Promise<string | null> =>
-      pickDirectoryPath(async ({ id, name }) => {
-        const res = await fetch(
-          `/__studio/locate-directory?name=${encodeURIComponent(name)}&id=${encodeURIComponent(id)}`,
-        );
-        if (!res.ok) {
-          // A proxy, or a `views://` host with no dev server behind it, may answer in HTML.
-          const body = await readJson<JsonValue>(res).catch(() => null);
-          throw new Error(problemMessage(body, res.status));
-        }
-        const found = await readJson<{ path?: string | null }>(res);
-        return found.path ?? null;
-      });
-  }
-
   return {
     id: "devserver",
 
@@ -291,80 +249,6 @@ export function createDevServerPlatform() {
      */
     async activate(root?: string) {
       await postActivate(root ?? _projectRoot);
-    },
-
-    // ─── Project opening ──────────────────────────────────────────────────
-
-    async openProject() {
-      // Use Chrome's showDirectoryPicker API
-      const host = window;
-      if (!hasDirectoryPicker(host)) {
-        throw new Error("showDirectoryPicker not available — use a Chromium-based browser");
-      }
-
-      let dirHandle;
-      try {
-        dirHandle = await host.showDirectoryPicker({ mode: "readwrite" });
-      } catch (error) {
-        // User cancelled the picker
-        if (error instanceof Error && error.name === "AbortError") {
-          return null;
-        }
-        throw error;
-      }
-
-      // Read project.json from the chosen directory
-      let siteHandle;
-      try {
-        siteHandle = await dirHandle.getFileHandle("project.json");
-      } catch {
-        throw new Error("No project.json found in selected folder");
-      }
-
-      const file = await siteHandle.getFile();
-      /* SAFETY: the user picked this folder as a project, and project.json is that project's own
-         config file; it is matched below against the server's parse of the same file, and every
-         adapter hands project.json to Studio as the ProjectConfig the session edits. */
-      const config = JSON.parse(await file.text()) as ProjectConfig;
-
-      // Resolve server-relative path by matching against known sites
-      const sitesRes = await fetch("/__studio/sites");
-      if (!sitesRes.ok) {
-        throw new Error("Failed to fetch site list from server");
-      }
-      const sites = await readJson<SiteEntry[]>(sitesRes);
-      const match = sites.find(
-        (s: SiteEntry) => JSON.stringify(s.config) === JSON.stringify(config),
-      );
-
-      if (!match) {
-        // Project is outside dev server root — ask the server to find it by directory name
-        const findRes = await fetch(
-          `/__studio/find-project?name=${encodeURIComponent(dirHandle.name)}`,
-        );
-        if (!findRes.ok) {
-          throw new Error("Could not locate project on disk");
-        }
-        const found = await readJson<{ path?: string }>(findRes);
-        if (!found.path) {
-          throw new Error(`Could not find project directory "${dirHandle.name}"`);
-        }
-        _projectRoot = found.path;
-      } else {
-        _projectRoot = match.path;
-      }
-
-      // Notify server of active project for static file resolution
-      await this.activate();
-
-      return {
-        config,
-        handle: {
-          name: config.name || _projectRoot.split("/").pop()!,
-          projectConfig: config,
-          root: _projectRoot,
-        },
-      };
     },
 
     /**
@@ -407,8 +291,6 @@ export function createDevServerPlatform() {
       }
       return await res.json();
     },
-
-    ...directoryPicking,
 
     /** List starter templates from the dev server. */
     async listStarters(): Promise<StarterInfo[]> {

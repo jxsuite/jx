@@ -391,6 +391,17 @@ describe("the panel's three states", () => {
     expect(ran).toEqual(["project.open"]);
   });
 
+  test("a monorepo root on a host with no Open Project says how to open one from the address", async () => {
+    // The dev server: its windows open a project from `?project=`, so a button would be dead.
+    delete installFsPlatform().platform.openProject;
+    siteState({ isSiteProject: false, projectConfig: null });
+    await mountTree();
+
+    expect(host.textContent).toContain("Add ?project=");
+    expect(host.querySelector('[part="open-project"]')).toBeNull();
+    expect(host.querySelector('[role="tree"]')).toBeNull();
+  });
+
   test("site header prefers projectConfig name, falls back to project name", async () => {
     installFsPlatform();
     siteState({ projectConfig: { name: "Config Name" } });

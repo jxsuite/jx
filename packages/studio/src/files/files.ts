@@ -39,7 +39,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { localeLabel, localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
 import { showPromptDialog } from "../ui/layers";
 import { projectState, requireProjectState, setProjectState } from "../store";
-import { getPlatform } from "../platform";
+import { canOpenProject, getPlatform } from "../platform";
 import { disarmPreviewOverlay } from "../preview/preview-overlay";
 import { notify } from "../services/notify";
 import { loadComponentRegistry } from "./components";
@@ -309,7 +309,8 @@ export async function openProject({
 }): Promise<boolean> {
   try {
     const platform = getPlatform();
-    const result = await platform.openProject();
+    // The command is gated on the capability, so a host without the member never gets here.
+    const result = await platform.openProject?.();
     if (!result) {
       return false;
     } // User cancelled
@@ -864,7 +865,9 @@ function filesPanelValues(): FilesPanelValues {
   }
   if (!projectState.isSiteProject && projectState.projectRoot === ".") {
     _fileRows = [];
-    const values: FilesPanelValues = { ...emptyFilesPanelValues(), view: "welcome" };
+    // A host with no Open Project (the dev server) is told how its windows DO open one instead.
+    const view = canOpenProject(getPlatform()) ? "welcome" : "address";
+    const values: FilesPanelValues = { ...emptyFilesPanelValues(), view };
     _lastValues = values;
     return values;
   }
