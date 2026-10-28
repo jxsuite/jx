@@ -226,7 +226,11 @@ stdenv.mkDerivation {
       packages/desktop/src/main/app-main.ts \
       packages/desktop/src/preload/preload.ts \
       --target=node --format=cjs --external electron \
+      --entry-naming '[name].[ext]' \
       --outdir packages/desktop/assets/electron
+    # `--entry-naming` keeps the two flat: the entry points live in different directories
+    # (src/main, src/preload), and Bun's default `[dir]/[name]` would nest them under `main/` and
+    # `preload/`, where neither the wrapper below nor the install check looks.
     # Electron loads `app-main.js` as Node does, by the nearest package.json, and the desktop
     # package's own says `"type": "module"`: without this the CJS bundle is read as ESM and the app
     # dies on its first `require` before opening a window. electron-builder stages a package.json
