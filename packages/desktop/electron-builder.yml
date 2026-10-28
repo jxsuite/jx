@@ -36,11 +36,16 @@ npmRebuild: false
 
 # Files the backend utility process reads from disk, which stay real files rather than `app.asar`
 # entries: its bundle, the native modules beside it, and the studio assets it serves.
+# They are copied from `build/resources`, not `build/resources/backend`: electron-builder always
+# drops a `node_modules` at the root of an extraResources source, whatever the filter says, so a
+# source of `build/resources/backend` loses the backend's `node_modules` (Arborist, esbuild, sharp)
+# and the packaged backend cannot start. One level up, it is `backend/node_modules` and is kept.
 extraResources:
-  - from: build/resources/backend
-    to: backend
-  - from: build/resources/studio
-    to: studio
+  - from: build/resources
+    to: .
+    filter:
+      - backend/**/*
+      - studio/**/*
   - from: icon.png
     to: icon.png
 
