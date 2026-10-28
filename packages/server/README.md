@@ -1,6 +1,6 @@
 # `@jxsuite/server`
 
-> Bun-native development server for Jx projects with live reload, proxy resolution, and Studio API.
+> Development server for Jx projects with live reload, proxy resolution, and Studio API, plus the project server, package operations and package service that also run on Node.
 
 ## Overview
 
@@ -73,7 +73,29 @@ OXC-powered tools for the Studio function body editor:
 | ---------- | ----------------------------- |
 | `chokidar` | File watching for live reload |
 
-Bun built-ins used: `Bun.serve`, `Bun.build`, `Bun.Transpiler`.
+| `@npmcli/arborist` | Package operations (npm's installer) |
+| `npm-package-arg` | Validating a package spec before anything is installed |
+| `ws` | WebSockets for `serve()` on Node |
+
+`createDevServer()` and the build pipeline run on Bun (`Bun.serve`, `Bun.build`, `Bun.Transpiler`).
+
+## Running on Node
+
+The desktop app runs the project server on the Node inside Electron, so everything it loads is runtime-neutral, with the Bun implementation chosen by the `bun` export condition:
+
+- **`@jxsuite/server/serve`**: `serve()`, one HTTP and WebSocket server over `Bun.serve` under Bun and `node:http` with `ws` under Node. It is async, because Node binds asynchronously.
+- **`@jxsuite/server/fs-glob`** and **`@jxsuite/server/file-response`**: globbing and file responses that answer as Bun's own built-ins do.
+- **`@jxsuite/server/packages`**: add, remove, install and update-versions, run in-process on npm's Arborist. Install scripts never run, only the public registry is read, and the operation writes `package-lock.json` (a project's `bun.lock` is replaced on its first install).
+- **`@jxsuite/server/packages-service`**: the same operations over HTTP, lockfile-only, for a host with no filesystem of its own. The Jx cloud platform runs it from the [jxsuite/package-manager](https://github.com/jxsuite/package-manager) container image.
+
+## Upgrading to 8.0
+
+8.0 is the release that made the server runtime-neutral. Code that imports these from `@jxsuite/server` needs to change:
+
+- `createProjectServer()`, `startSitePreview()`, `sitePreviewOrigin()` and `stopSitePreviews()` return promises. Await them.
+- `documentGlob()` returns the glob pattern as a string instead of a `Bun.Glob`. Scan it with `scanFiles()` from `@jxsuite/server/fs-glob`.
+- `bunExecutable()` is removed: package operations no longer run a package manager in a subprocess.
+- `installDependencies()`, `addPackage()`, `removePackage()` and `setPackageVersions()` take an options argument and write `package-lock.json` rather than `bun.lock`.
 
 ## License
 
