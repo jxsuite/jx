@@ -180,6 +180,8 @@ interface Check {
   name: string;
   params?: unknown;
   rpc: string;
+  /** How long the RPC may take, when longer than `call`'s default. */
+  timeoutMs?: number;
   verify: (result: unknown) => string | null;
 }
 
@@ -206,9 +208,33 @@ const checks: Check[] = [
     verify: isObject,
   },
   { name: "listExtensionCatalog", rpc: "listExtensionCatalog", verify: isNonEmptyArray("catalog") },
+  /* Before its install the new project resolves no extension, and these must still answer. */
   { name: "listExtensions", rpc: "listExtensions", verify: isArray },
   { name: "fetchProjectSchemas", rpc: "fetchProjectSchemas", verify: isObject },
   { name: "listFormats", rpc: "listFormats", verify: isArray },
+  /* The app ships no extension, first-party ones included: a project gets @jxsuite/parser the way
+     it gets any third-party extension, from its own install. So everything below that loads one
+     installs first, as the app does when a project opens, and an extension the host happened to
+     resolve (the monorepo's, when the staged backend runs from a checkout) proves nothing. */
+  {
+    name: "dependenciesNeedInstall",
+    rpc: "dependenciesNeedInstall",
+    verify: (result) => (result === true ? null : "a new project reports nothing to install"),
+  },
+  {
+    name: "installDependencies",
+    rpc: "installDependencies",
+    timeoutMs: 600_000,
+    verify: (result) =>
+      typeof result === "object" && result !== null && "ok" in result && result.ok === true
+        ? null
+        : `install failed: ${JSON.stringify(result).slice(0, 200)}`,
+  },
+  {
+    name: "listFormats (installed)",
+    rpc: "listFormats",
+    verify: isNonEmptyArray("format list"),
+  },
   {
     name: "listDirectory",
     params: { dir: "." },
@@ -307,7 +333,7 @@ for (const [name, probe] of Object.entries(nativeProbes)) {
 
 for (const check of checks) {
   try {
-    const result = await call(check.rpc, check.params);
+    const result = await call(check.rpc, check.params, check.timeoutMs);
     if (verbose) {
       console.log(`        ${check.name} ->`, JSON.stringify(result).slice(0, 400));
     }
@@ -330,8 +356,8 @@ for (const check of checks) {
 
 /* Package operations run npm's installer in-process, which only the bundle can lose (its files are
    staged beside the bundle). They run in a project of their own, re-rooted onto this window, with a
-   dependency-free package from the public registry: the new site above depends on the whole
-   published @jxsuite graph, which would make this a test of npm's bandwidth. */
+   dependency-free package from the public registry, so adding and removing one is not a second
+   install of the whole published @jxsuite graph the new site above already installed. */
 const packageProject = join(scratch, "packages");
 mkdirSync(packageProject, { recursive: true });
 writeFileSync(
