@@ -217,7 +217,7 @@ async function shareProjectSchemas(
  */
 export function refreshExtensionUi(platform: Pick<StudioPlatform, "fetchProjectSchemas">): void {
   void shareProjectSchemas(platform);
-  // `installed` and `bundled` are per-project facts, so an install or a project switch can move
+  // `installed` is a per-project fact, so an install or a project switch can move
   // Them even when the shipped half has not changed.
   void loadExtensionCatalog();
   void import("../settings/extension-sections")

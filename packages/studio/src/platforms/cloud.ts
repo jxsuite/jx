@@ -1276,10 +1276,12 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
      *
      * A Worker ships a fixed set of extension packages (specs/extensions.md §5.5), decided by the
      * platform build rather than by this repository's `extensions/` tree, so the gateway is the
-     * only thing that knows. Everything it returns is therefore `bundled: true`: enabling one is a
-     * `project.json` write alone, and an extension the Worker does not bundle is dropped from the
-     * registry before composition — advertising it would promise a toggle that silently does
-     * nothing.
+     * only thing that knows. An extension the Worker does not bundle is dropped from the registry
+     * before composition, so advertising it would promise a toggle that silently does nothing.
+     *
+     * What the Worker bundles is what it can EDIT with, not what the project gets: the site is
+     * built in Pages CI from the project's own install, so an entry the project has not declared is
+     * install-then-enable here exactly as on every other backend (specs/extensions.md §3).
      *
      * `installed` here means DECLARED. Nothing resolves a module in a Worker: `addPackage` is a
      * manifest edit and resolution happens later in Pages CI, so the manifest is the only fact this
@@ -1301,7 +1303,6 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           ...Object.keys(dependencyBlock(pkg, "devDependencies")),
         ]);
         for (const entry of entries) {
-          entry.bundled = true;
           entry.installed = declared.has(entry.name);
         }
         return entries;

@@ -110,7 +110,7 @@ The `id:` is **not** a replay cursor. It exists so the browser sends `Last-Event
 
 When the runtime encounters an external `$prototype` with `$src` during development, it POSTs to the dev server for server-side resolution. The server:
 
-1. Resolves the module at `$src` (supports `.js`/`.ts`, `.class.json`, and bare package specifiers via the project's `node_modules`)
+1. Resolves the module at `$src` (supports `.js`/`.ts`, `.class.json`, and bare package specifiers via the project's `node_modules` only, never the server's own graph: a class package is the project's dependency, extensions.md §3)
 2. For `.class.json`: parses the schema, follows `$implementation`, imports the JS module; without one, constructs the class dynamically from the schema (`classFromSchema`)
 3. For plain modules: imports directly and extracts the named export
 4. Instantiates the class with the provided config — with the project context (`project.json` plus extension-loaded sections such as `content`) available, so registry classes like `ContentEntry` resolve against real project data. The sections are requested on demand (`lazy`, extensions.md §8), because a request is for one page: the parser's `content` section then loads a collection the first time a class asks for it, and an entry's body only once the entry is returned (parser.md §9). A class that reads a section synchronously is handed it whole: unless its implementation declares `static projectOnDemand = true`, the server awaits each section's `complete()` before constructing it, so it sees exactly what a build gives it. A self-contained class (no `$implementation`) always gets them whole

@@ -42,6 +42,7 @@ import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
 import { applyRename, findReferences, invalidateReferenceCache } from "../src/refactor/index";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { ProjectConfig } from "@jxsuite/schema/types";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 const STARTERS = join(import.meta.dir, "../../starters/sites");
 const tmpRoots: string[] = [];
@@ -60,6 +61,13 @@ function stage(starter: string): string {
     filter: (src) => !src.includes("node_modules"),
     recursive: true,
   });
+  /* SAFETY: a committed starter's project.json, held to the project schema by
+     `schema:validate-all`; only its `extensions` array is read. */
+  const { extensions = [] } = JSON.parse(readFileSync(join(root, "project.json"), "utf8")) as {
+    extensions?: string[];
+  };
+  // The project's own install, as a user's would have: an extension never resolves from the host.
+  installWorkspaceExtension(root, ...extensions.filter((e) => !e.startsWith(".")));
   return root;
 }
 

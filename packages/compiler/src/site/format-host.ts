@@ -62,7 +62,23 @@ export async function importImplementation(path: string): Promise<Implementation
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-/** Create a node FormatHostIO rooted at a project (bare specifiers resolve via node_modules). */
+/**
+ * Resolve a bare specifier from the PROJECT's own node_modules, and nowhere else.
+ *
+ * There is deliberately no host fallback (specs/extensions.md §3). Extensions, first-party ones
+ * included, reach a project only through its own install, the way a third-party extension must: a
+ * host that answered for `@jxsuite/parser` would let a project missing that dependency edit on one
+ * machine and fail to build on the next.
+ *
+ * @param {string} projectRoot
+ * @param {string} specifier - Bare specifier, e.g. "@jxsuite/parser/jx-extension.json"
+ * @returns {string} Absolute resolved path
+ */
+export function resolveFromProject(projectRoot: string, specifier: string): string {
+  return createRequire(resolve(projectRoot, "package.json")).resolve(specifier);
+}
+
+/** Create a node FormatHostIO rooted at a project (bare specifiers resolve from its node_modules). */
 export function createNodeFormatIO(projectRoot: string): FormatHostIO {
   return {
     importModule: (path) => importImplementation(path),
@@ -74,75 +90,39 @@ export function createNodeFormatIO(projectRoot: string): FormatHostIO {
       if (isAbsolute(ref)) {
         return ref;
       }
-      // Bare specifier — prefer the project's own node_modules, then fall back to the host's
-      // Resolution (the desktop app and dev server ship @jxsuite/parser, so format classes work
-      // Even when the project's dependencies are not installed).
-      const projRequire = createRequire(resolve(projectRoot, "package.json"));
-      try {
-        return projRequire.resolve(ref);
-      } catch {
-        const selfRequire = createRequire(import.meta.url);
-        return selfRequire.resolve(ref);
-      }
+      return resolveFromProject(projectRoot, ref);
     },
   };
 }
 
-/**
- * Where an extension package's manifest resolves from — the two answers `createNodeFormatIO`
- * merges.
- */
+/** Where an extension package's manifest resolves from the project, if it does. */
 export interface ExtensionResolution {
-  /** Resolvable from the PROJECT's own node_modules. */
+  /** Resolvable from the PROJECT's own node_modules — the only place an extension resolves from. */
   project: boolean;
-  /** Resolvable from the HOST's module graph — `createNodeFormatIO`'s fallback branch. */
-  host: boolean;
-  /** The manifest path from whichever probe answered; the project wins, matching resolution order. */
+  /** The resolved manifest path, when `project` is true. */
   manifestPath?: string;
 }
 
 /**
- * Split `createNodeFormatIO`'s two-branch resolution into its two ANSWERS.
- *
- * The IO deliberately collapses them (project first, then host) because a caller loading a class
- * only needs the file. A catalogue needs them apart: "the project installed this" and "this host
- * ships it" are different affordances — install-then-enable versus enable — and a surface that
- * cannot tell them apart offers the wrong one.
+ * Probe whether a project resolves an extension package, without loading it.
  *
  * Probes the MANIFEST rather than the package directory, because the manifest is what the registry
  * resolves (see `loadExtension`): a package present in node_modules whose `exports` map omits
  * `./jx-extension.json` is one whose enablement would throw, so it must not read as resolvable.
  *
- * @param {string} projectRoot - The project whose node_modules is tried first
+ * @param {string} projectRoot - The project whose node_modules is probed
  * @param {string} name - Bare package specifier, e.g. "@jxsuite/parser"
  * @returns {ExtensionResolution}
  */
 export function probeExtension(projectRoot: string, name: string): ExtensionResolution {
-  const ref = `${name}/${EXTENSION_MANIFEST}`;
-  let manifestPath: string | undefined;
-
-  let project = false;
   try {
-    manifestPath = createRequire(resolve(projectRoot, "package.json")).resolve(ref);
-    project = true;
+    return {
+      manifestPath: resolveFromProject(projectRoot, `${name}/${EXTENSION_MANIFEST}`),
+      project: true,
+    };
   } catch {
-    // Not installed in the project. The host probe below decides whether it resolves at all.
+    return { project: false };
   }
-
-  let host = false;
-  try {
-    const fromHost = createRequire(import.meta.url).resolve(ref);
-    host = true;
-    manifestPath ??= fromHost;
-  } catch {
-    // Not shipped by this host either.
-  }
-
-  const resolution: ExtensionResolution = { host, project };
-  if (manifestPath !== undefined) {
-    resolution.manifestPath = manifestPath;
-  }
-  return resolution;
 }
 
 /** Build the extension registry for a project from its project.json `extensions` array. */
@@ -154,6 +134,76 @@ export async function buildProjectExtensionRegistry(
     projectConfig?.extensions,
     createNodeFormatIO(projectRoot),
     resolve(projectRoot, "project.json"),
+  );
+}
+
+/** A registry of what a project has installed, and the enabled packages it has not. */
+export interface InstalledExtensionRegistry {
+  registry: ExtensionRegistry;
+  /** Bare specifiers `project.json` enables whose manifest the project does not resolve. */
+  missing: string[];
+}
+
+/**
+ * Build the registry an EDITOR needs: every enabled extension the project resolves, skipping the
+ * package ones it has not installed yet.
+ *
+ * A build must fail on a missing extension, and does, through {@link buildProjectExtensionRegistry}.
+ * A studio must not: a project opened before its install has run resolves none of its package
+ * extensions, and the format list, the extensions panel and the class picker should answer with
+ * what is there rather than with an error. `missing` says what was skipped, so the host can say so
+ * once instead of logging a resolution stack per request. Relative (local) extensions are never
+ * skipped, because no install produces them.
+ *
+ * @param {string} projectRoot
+ * @param {ProjectConfig} [projectConfig]
+ * @returns {Promise<InstalledExtensionRegistry>}
+ */
+export async function buildInstalledExtensionRegistry(
+  projectRoot: string,
+  projectConfig?: ProjectConfig,
+): Promise<InstalledExtensionRegistry> {
+  const missing: string[] = [];
+  const present: string[] = [];
+  for (const specifier of projectConfig?.extensions ?? []) {
+    const local = specifier.startsWith("./") || specifier.startsWith("../");
+    if (local || probeExtension(projectRoot, specifier).project) {
+      present.push(specifier);
+    } else {
+      missing.push(specifier);
+    }
+  }
+  const registry = await buildExtensionRegistry(
+    present,
+    createNodeFormatIO(projectRoot),
+    resolve(projectRoot, "project.json"),
+  );
+  return { missing, registry };
+}
+
+/**
+ * Whether any of a previous build's `missing` packages resolves now — the cache check a host runs
+ * so that a registry built before an install does not outlive it.
+ *
+ * @param {string} projectRoot
+ * @param {string[]} missing
+ * @returns {boolean}
+ */
+export function anyNowInstalled(projectRoot: string, missing: string[]): boolean {
+  return missing.some((specifier) => probeExtension(projectRoot, specifier).project);
+}
+
+/**
+ * The one line a host logs for the packages {@link buildInstalledExtensionRegistry} skipped.
+ *
+ * @param {string[]} missing
+ * @returns {string}
+ */
+export function missingExtensionsNotice(missing: string[]): string {
+  const names = missing.map((m) => `"${m}"`).join(", ");
+  return (
+    `project.json enables ${names}, which this project has not installed, so ` +
+    `${missing.length === 1 ? "it is" : "they are"} not loaded. Install the project's dependencies.`
   );
 }
 

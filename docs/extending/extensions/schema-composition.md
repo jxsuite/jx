@@ -119,17 +119,17 @@ Root pointers, in place of a `$id`-keyed compound document, because VS Code's JS
 
 ## Where core comes from
 
-A `@jxsuite/*` schema ref is always read from the **host** (the workspace running the generator) before any file sitting at the same path inside your project. Your own extension fragments keep resolving from the project, which is what the loader is for; what a project may not do is answer for the Jx core itself. If the host has no such package, composition stops and names the ref, rather than falling back.
+A `@jxsuite/schema` ref is always read from the **host** (the workspace running the generator) before any file sitting at the same path inside your project. The core defines the document contract the host itself reads and writes, so a project may not answer for it. If the host cannot resolve the ref, composition stops and names it, rather than falling back.
 
-**This covers extensions too, not only core.** `@jxsuite/parser`, `@jxsuite/auth`, `@jxsuite/connector` and `@jxsuite/search` are first-party by the same rule, so their fragments are read from the host as well. The practical consequence: **the host must ship every extension your project enables.** Installing one into the project does not help, because the loader will not read it from there.
+**Extensions come from the project, first-party ones included.** Every extension fragment is read from your project's own install: `@jxsuite/parser`, `@jxsuite/auth`, `@jxsuite/connector`, `@jxsuite/search` and `@jxsuite/feed` exactly like a third-party package. A fragment and the implementation it describes are then always the same version, and a project validates the same on every machine that has installed its dependencies. No host ships an extension for you.
 
 That refusal is deliberate. A starter pins published `@jxsuite/*` versions, so opening one in Studio installs a real `@jxsuite/schema` right beside a much newer workspace. When the project-local copy was allowed to win, one starter's committed `document.schema.json` was composed from a core nine minor versions behind: not just stale but **narrower than the starter's own content**, dropping the computed-children branch so that the starter's own pages failed to validate against its own schema. It went unnoticed for six weeks, because the file was only ever regenerated on the one machine with the stray install.
 
 :::doc-tip
-If composition fails with _"must resolve from the host workspace and does not"_, read which package the message names.
+Two failures, two fixes.
 
-- **`@jxsuite/schema` or another core package**: you are running the generator somewhere that has no core on its resolution path. Install it in the workspace you are running from, and not in the project being generated.
-- **An extension** (`@jxsuite/parser` and friends): the host does not ship that extension. Installing it into the project will not fix it, because the loader refuses to read a first-party schema from there. Either use a host build that includes the extension, or drop it from the project's `extensions` list.
+- _"must resolve from the host workspace and does not"_ names `@jxsuite/schema`: you are running the generator somewhere that has no core on its resolution path. Install it in the workspace you are running from, and not in the project being generated.
+- _"is not resolvable from the project"_ names an extension: the project enables it but has not installed it. Install the project's dependencies (Studio offers to when a project opens), or drop the extension from the project's `extensions` list.
 
 In Studio the failure is not fatal: it falls back to the bundled core schemas and says so in the log. `project.json` and your documents still validate against core; what you lose is the fields each enabled extension contributes.
 :::

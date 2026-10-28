@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 let root = "";
 const warnings: string[] = [];
@@ -30,6 +31,7 @@ function built(path: string): boolean {
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "jx-localized-collection-"));
+  installWorkspaceExtension(root, "@jxsuite/parser");
   write(
     "project.json",
     JSON.stringify({

@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { isString } from "@jxsuite/schema/guards";
 import { createProjectSession } from "../src/backend/project-session";
 import type { ProjectSession } from "../src/backend/project-session";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 /*
  * In the OS temp dir, not beside this file. These tests open a real SQLite database under the
@@ -25,6 +26,8 @@ let session: ProjectSession;
 beforeAll(() => {
   rmSync(TMP, { force: true, recursive: true });
   mkdirSync(TMP, { recursive: true });
+  // The project's own install: the app ships no extension (specs/extensions.md §3).
+  installWorkspaceExtension(TMP, "@jxsuite/connector");
   writeFileSync(
     resolve(TMP, "project.json"),
     JSON.stringify(

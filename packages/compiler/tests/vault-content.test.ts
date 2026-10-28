@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { buildSite } from "../src/site/site-build.ts";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 const roots: string[] = [];
 
@@ -99,6 +100,7 @@ const articleBody = {
 /** One project over the shared vault; `pages` are written under pages/. */
 async function buildProject(pages: Record<string, JsonObject>): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "jx-vault-e2e-"));
+  installWorkspaceExtension(root, "@jxsuite/parser", "@jxsuite/search", "@jxsuite/feed");
   roots.push(root);
   for (const [rel, text] of Object.entries(VAULT)) {
     writeText(root, `vault/${rel}`, text);
@@ -355,6 +357,7 @@ async function buildCustom(options: {
   project?: JsonObject;
 }): Promise<{ root: string; warnings: string[] }> {
   const root = mkdtempSync(join(tmpdir(), "jx-vault-e2e-custom-"));
+  installWorkspaceExtension(root, "@jxsuite/parser", "@jxsuite/search");
   roots.push(root);
   for (const [rel, text] of Object.entries(options.vault)) {
     writeText(root, `vault/${rel}`, text);

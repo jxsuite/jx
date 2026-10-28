@@ -60,7 +60,7 @@ Rules:
 
 ## 3. Declaration model
 
-> **Status: Partial.** Declaration, project-first resolution (`createNodeFormatIO`, `packages/compiler/src/site/format-host.ts`), manifest-class visibility and the duplicate-name error ship (`buildExtensionRegistry`, `packages/schema/src/extension-registry.ts`). A project-local `imports` entry wins only where the compiler resolves a def to a `$src` (`packages/compiler/src/site/prototype-resolver.ts`): a state def whose `timing` is not `"compiler"` is lowered through `registry.byName($prototype)` before `imports` is consulted, so a project-local class named like a lowering manifest class (`TableQuery`, `Search`) is shadowed by it.
+> **Status: Partial.** Declaration, project-only resolution (`createNodeFormatIO`, `packages/compiler/src/site/format-host.ts`), manifest-class visibility and the duplicate-name error ship (`buildExtensionRegistry`, `packages/schema/src/extension-registry.ts`). A project-local `imports` entry wins only where the compiler resolves a def to a `$src` (`packages/compiler/src/site/prototype-resolver.ts`): a state def whose `timing` is not `"compiler"` is lowered through `registry.byName($prototype)` before `imports` is consulted, so a project-local class named like a lowering manifest class (`TableQuery`, `Search`) is shadowed by it.
 
 A project declares its extensions in `project.json`:
 
@@ -75,7 +75,7 @@ A project declares its extensions in `project.json`:
 }
 ```
 
-- `extensions` entries are bare package names or relative paths (for local / unpublished extensions). Package names resolve **project-first**: the project's own `node_modules`, then the host's (the `createNodeFormatIO` resolution order). Projects own their extension dependencies — a scaffolded project lists `@jxsuite/parser` in its `package.json`.
+- `extensions` entries are bare package names or relative paths (for local / unpublished extensions). Package names resolve from the **project only**: the project's own `node_modules`, through the package's exports map, and never from the host running the tool (`createNodeFormatIO`). First-party extensions get no exemption, which is the point: `@jxsuite/parser` reaches a project exactly the way a third-party extension does, so anything a first-party extension can do, a third-party one can do the same way. Projects own their extension dependencies — a scaffolded project lists `@jxsuite/parser` in its `package.json` — and a host ships none. A project whose install has not run yet resolves none of its package extensions; a host editing it lists what does resolve and says what does not (§9.2), and a build fails naming the package.
 - `imports` retains its original, reduced job ([imports.md](./imports.md)): mapping `$prototype` names to **project-local** class files. It no longer registers formats or extensions; imports-based auto-discovery is gone.
 - Name visibility: the manifest's class keys become `$prototype`-visible names. On a name collision, a project-local `imports` entry wins over a manifest class; two extensions exporting the same class name is an error the registry reports (rename via a local wrapper class to disambiguate).
 - **No implicit defaults.** A project with no `extensions` supports only `.json` documents and core state prototypes.
@@ -201,7 +201,7 @@ Standalone validation registers the shipped defaults (`@jxsuite/schema/schemas/p
 
   A relative pointer resolves against the file's OWN directory, so it needs one `../` per level (`../document.schema.json` from `pages/`, `../../` from `pages/blog/`). A pointer with too few names a file that does not exist, and fails identically in every consumer — it is an authoring error, not something a host compensates for.
 
-- **A first-party schema resolves from the HOST, and a generator that cannot find one stops.** `@jxsuite/*.json` refs are read from the workspace running the generator, before the project-local file at the same path is looked at; everything else keeps resolving project-first, because a project's own extension fragments are what the loader is FOR. There is no fallback in the first-party direction: if the host has no such package the composition fails, naming the ref and the specifier.
+- **The core schema resolves from the HOST, and a generator that cannot find it stops.** `@jxsuite/schema/*.json` refs are read from the workspace running the generator, before the project-local file at the same path is looked at. The core is the host's because it defines the document contract the host itself reads and writes. Everything else, every extension fragment included, resolves from the project only (§3): a first-party extension's fragments come from the project's install of that extension, exactly as a third-party one's do, so a fragment and the implementation it describes are always the same version. There is no fallback in either direction: if the host has no core the composition fails naming the ref, and if the project has not installed an extension it enables, the composition fails naming the package.
 
   **Refusing is the point.** A starter pins PUBLISHED `@jxsuite/*` versions because it is a template a user scaffolds from, so iterating one inside the studio runs `bun install` in its root and materialises a real `@jxsuite/schema` beside a workspace far ahead of it. Both the file shortcut and the project-first require preferred that copy, and one starter's committed document schema was composed from a core nine minor versions behind — not merely stale but NARROWER than its own content: `ChildrenValue.oneOf` lost its computed-children branch, which made that starter's own pages invalid against its own schema. Nothing noticed for six weeks, because the artifact was only ever regenerated on the machine that had the shadow. A fallback would restore exactly that failure, silently, on whichever machine happened to carry a stray install.
 
@@ -216,10 +216,10 @@ Composition itself — core fragment plus each enabled extension's fragments, bu
 
 The loader is the entire host-specific surface:
 
-| Host                             | Loader                                                                                    | Refs                                                                          |
-| -------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `jx schema`, dev server, desktop | Filesystem, restricted to the project root, with host resolution for `./node_modules/...` | Project-relative paths                                                        |
-| Cloud session                    | A build-time table of bundled artifacts, plus the session's working tree                  | Bare specifiers for bundled packages; tree paths for project-local extensions |
+| Host                             | Loader                                                                                                                         | Refs                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `jx schema`, dev server, desktop | Filesystem, restricted to the project root; `@jxsuite/schema` from the host, every other `./node_modules/...` from the project | Project-relative paths                                                        |
+| Cloud session                    | A build-time table of bundled artifacts, plus the session's working tree                                                       | Bare specifiers for bundled packages; tree paths for project-local extensions |
 
 The cloud composes **on demand and writes nothing back**: a cloud project needs no committed `*.schema.json` to get full editor validation. Its constraint is that a Worker ships a fixed set of extension packages, so an extension the platform does not bundle is dropped from the registry before composition rather than passed to it — the composer fails loudly on a fragment it cannot load, because emitting an entry document that silently under-validates would be worse than an error. Dropping the extension instead lands on the §5.3 degradation: under-suggestion of that extension's extras, never false errors.
 
@@ -490,7 +490,7 @@ Built-in controls: `"schema-builder"` (visual JSON-Schema field editor), `"secre
 
 ### 9.2 The extension catalogue
 
-> **Status: Partial.** The dev server and desktop answer the full contract (`packages/server/src/extension-catalog.ts`, `probeExtension` in `packages/compiler/src/site/format-host.ts`). No host populates `specifier`, and the cloud host declares rather than probes: `listExtensionCatalog` in `packages/studio/src/platforms/cloud.ts` sets `bundled: true` on every gateway entry and derives `installed` from `package.json` declarations.
+> **Status: Partial.** The dev server and desktop answer the full contract (`packages/server/src/extension-catalog.ts`, `probeExtension` in `packages/compiler/src/site/format-host.ts`). No host populates `specifier`, and the cloud host declares rather than probes: `listExtensionCatalog` in `packages/studio/src/platforms/cloud.ts` derives `installed` from `package.json` declarations.
 
 §3 says a project opts in with one line, and that line is only half the truth: the package must also be a dependency, or the registry cannot resolve it. Nothing in the model connects the two, so a host that lets a person type a package name into `extensions` produces a project that fails to build.
 
@@ -505,7 +505,6 @@ The **catalogue** is what a host offers instead: the extensions it can run, whet
 | `sections`    | `{ key, title? }[]`          | The sections enabling it makes legal, from its classes' `project` blocks. |
 | `formats`     | `string[]`                   | File extensions its format classes claim.                                 |
 | `requires`    | `string[]`                   | Other catalogue members it depends on.                                    |
-| `bundled`     | `boolean`                    | THIS host resolves it without a project install.                          |
 | `installed`   | `boolean`                    | The project resolves it.                                                  |
 | `source`      | `"first-party" \| "project"` | The shipped catalogue, or a package found in the project's dependencies.  |
 | `problem`     | `string`                     | Why it cannot be enabled as it stands.                                    |
@@ -514,7 +513,7 @@ Three rules make it correct rather than merely convenient.
 
 **It is a host capability, not a constant.** Not every host can run every extension: a Worker ships a fixed set of packages (§5.5), and one it does not bundle is dropped from the registry before composition. A host that served a shipped list would offer an action it would then refuse, so a host answers for itself and one that cannot answer offers nothing.
 
-**`bundled` and `installed` are probed, never declared.** What a packaged application stages and what a Worker bundles are facts about a build, not about this repository, so they are answered by resolving `<name>/jx-extension.json` the way §6.1 says a host resolves it. A declared value would be a claim made somewhere that cannot see the answer.
+**`installed` is probed, never declared.** Whether the project resolves a package is a fact about its install, not about its manifest, so it is answered by resolving `<name>/jx-extension.json` from the project the way §3 says every host resolves it. Enabling an entry that is not installed is therefore always install-then-enable, first-party or not. There is no "ships with this host" state: a host that answered for an extension the project lacks would offer a project that edits on one machine and fails to build on the next (§3).
 
 **Discovery follows the exports map, and `"jx"` is a hint.** A package is an extension to a host exactly when `<name>/jx-extension.json` resolves, because that is the only path §4 gives. A package declaring `"jx"` whose `exports` omit that subpath will fail to enable, so it is reported with a `problem` naming the missing entry rather than silently dropped: the difference between an omission and a message the reader can act on.
 

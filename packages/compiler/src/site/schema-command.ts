@@ -24,7 +24,7 @@ import {
   flattenSchema,
 } from "@jxsuite/schema/project-schemas";
 import { isJsonObject } from "@jxsuite/schema/guards";
-import { buildProjectExtensionRegistry } from "./format-host.ts";
+import { buildProjectExtensionRegistry, resolveFromProject } from "./format-host.ts";
 import { loadProjectConfig } from "./site-loader.ts";
 import type { ExtensionInfo } from "@jxsuite/schema/extension-registry";
 import type { SchemaJsonLoader } from "@jxsuite/schema/project-schemas";
@@ -156,21 +156,24 @@ function readSchemaFile(path: string): JsonObject {
   return parsed;
 }
 
-/** Packages whose schemas define the Jx document contract itself, never a project's own content. */
-const FIRST_PARTY_SCHEMA_SCOPE = "@jxsuite/";
+/**
+ * The package whose schemas define the Jx document contract itself. Only the core: an extension's
+ * fragments, first-party ones included, are the project's (specs/extensions.md §5.4).
+ */
+const CORE_SCHEMA_SCOPE = "@jxsuite/schema/";
 
 /**
- * Is this specifier one of the shipped core schemas, as opposed to a project-local fragment?
+ * Is this specifier one of the shipped core schemas, as opposed to an extension's fragment?
  *
  * @param {string} specifier - Bare specifier, e.g. `@jxsuite/schema/schema.json`
  * @returns {boolean}
  */
-export function isFirstPartySchema(specifier: string): boolean {
-  return specifier.startsWith(FIRST_PARTY_SCHEMA_SCOPE) && specifier.endsWith(".json");
+export function isCoreSchema(specifier: string): boolean {
+  return specifier.startsWith(CORE_SCHEMA_SCOPE) && specifier.endsWith(".json");
 }
 
 /**
- * Resolve a first-party schema from the HOST — the workspace running the generator.
+ * Resolve the core schema from the HOST — the workspace running the generator.
  *
  * Throws rather than falling back to the project, because a fallback is exactly the behaviour that
  * let a stale published core answer for the workspace one. A generator that cannot find its own
@@ -185,7 +188,7 @@ function hostResolve(specifier: string, path: string): string {
     return createRequire(import.meta.url).resolve(specifier);
   } catch (error) {
     throw new Error(
-      `Schema ref "${path}" names the first-party schema "${specifier}", which must resolve from ` +
+      `Schema ref "${path}" names the core schema "${specifier}", which must resolve from ` +
         `the host workspace and does not. The project's own copy is deliberately not consulted, so ` +
         `the host install is missing "${specifier.split("/").slice(0, 2).join("/")}" — check that ` +
         `the package ships with this build`,
@@ -195,9 +198,10 @@ function hostResolve(specifier: string, path: string): string {
 }
 
 /**
- * Bundler loader restricted to the project root, with the validate-project host fallback: a missing
- * `<root>/node_modules/<specifier>` file resolves the specifier project-first, then through the
- * host (workspace symlinks resolve transparently).
+ * Bundler loader restricted to the project root. The core schema comes from the host; every other
+ * `<root>/node_modules/<specifier>` ref that is not on disk at that path resolves through the
+ * project's own module resolution (workspace symlinks and hoisted installs resolve transparently)
+ * and never through the host's, because an extension's fragments are the project's to supply.
  *
  * Exported for test: both refusals below are reachable only through a project whose `node_modules`
  * has been arranged to provoke them, and a fixture that arranges an extension registry as well says
@@ -217,9 +221,9 @@ export function restrictedSchemaLoader(root: string): SchemaJsonLoader {
     const marker = "node_modules/";
     const markerIndex = posixRel.lastIndexOf(marker);
     const specifier = markerIndex === -1 ? null : posixRel.slice(markerIndex + marker.length);
-    // A FIRST-PARTY core comes from the host, always — before the project-local file is even
-    // Looked at. A project may legitimately carry its own fragments, which is what the rest of this
-    // Loader is for; what it may not do is answer for `@jxsuite/schema` itself.
+    // The core comes from the host, always — before the project-local file is even looked at. A
+    // Project supplies every extension's fragments, first-party ones included, which is what the
+    // Rest of this loader is for; what it may not do is answer for `@jxsuite/schema` itself.
     //
     // This is not hypothetical. A stray `bun install` in packages/starters/sites/shop left a
     // Gitignored node_modules holding @jxsuite/schema@0.35.0 beside a 1.5.0 workspace, and BOTH the
@@ -230,7 +234,7 @@ export function restrictedSchemaLoader(root: string): SchemaJsonLoader {
     // Shop's own pages/products/[sku].json invalid against its own committed schema. Nothing
     // Noticed for six weeks, because the artifact was only ever regenerated on the machine that
     // Had the shadow.
-    if (specifier !== null && isFirstPartySchema(specifier)) {
+    if (specifier !== null && isCoreSchema(specifier)) {
       return readSchemaFile(hostResolve(specifier, path));
     }
     if (existsSync(abs)) {
@@ -241,19 +245,13 @@ export function restrictedSchemaLoader(root: string): SchemaJsonLoader {
     }
     let resolved: string;
     try {
-      const projRequire = createRequire(resolve(root, "package.json"));
-      resolved = projRequire.resolve(specifier);
-    } catch {
-      try {
-        const selfRequire = createRequire(import.meta.url);
-        resolved = selfRequire.resolve(specifier);
-      } catch (error) {
-        throw new Error(
-          `Schema ref "${path}" does not exist and "${specifier}" is not resolvable from the ` +
-            `project or the host`,
-          { cause: error },
-        );
-      }
+      resolved = resolveFromProject(root, specifier);
+    } catch (error) {
+      throw new Error(
+        `Schema ref "${path}" does not exist and "${specifier}" is not resolvable from the ` +
+          `project — is the package installed?`,
+        { cause: error },
+      );
     }
     return readSchemaFile(resolved);
   };
