@@ -17,6 +17,12 @@
     "dist"
   ],
   "type": "module",
+  "imports": {
+    "#bundler-backend": {
+      "bun": "./src/site/bundler-backend.bun.ts",
+      "default": "./src/site/bundler-backend.node.ts"
+    }
+  },
   "exports": {
     ".": "./src/compiler.ts",
     "./asset-mounts": "./src/site/asset-mounts.ts",
@@ -30,7 +36,8 @@
     "./site": "./src/site/site-build.ts",
     "./site-loader": "./src/site/site-loader.ts",
     "./types": "./src/types.ts",
-    "./db-push": "./src/site/db-push.ts"
+    "./db-push": "./src/site/db-push.ts",
+    "./bundler": "./src/site/bundler.ts"
   },
   "publishConfig": {
     "provenance": true

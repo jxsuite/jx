@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CapabilityInfo, ExtensionCapability } from "@jxsuite/schema/format-registry";
 import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
-import type { ComponentMeta } from "../src/rpc-schema";
-import type { StudioSchema } from "../src/handlers";
+import type { ComponentMeta } from "../src/shared/rpc-schema";
+import type { StudioSchema } from "./_session";
 import { expectStudioSchema } from "./_studio-schema";
 
 // ─── Format-host mock ────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ const {
   jxServerFunction,
   discoverComponents,
   fetchPluginSchema,
-} = await import("../src/handlers");
+} = await import("./_session");
 
 const FIXTURES = join(import.meta.dir, "_fixtures_handlers_gaps");
 

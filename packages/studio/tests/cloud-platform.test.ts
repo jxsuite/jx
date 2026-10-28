@@ -79,19 +79,6 @@ function requestedPaths(init: RequestInit | undefined): string[] {
   return paths;
 }
 
-/** The package.json a manifest write carried: the PUT /file body's `content`, parsed. */
-function writtenManifest(init: RequestInit | undefined): JsonObject {
-  const body = sentJson(init);
-  if (!isJsonObject(body) || !isString(body["content"])) {
-    throw new Error("expected a file write carrying string content");
-  }
-  const manifest: JsonValue = JSON.parse(body["content"]);
-  if (!isJsonObject(manifest)) {
-    throw new Error("expected the written manifest to be a JSON object");
-  }
-  return manifest;
-}
-
 /** The reason a settled read was rejected with, as text; a read that resolved fails the test. */
 function rejectionOf(outcome: PromiseSettledResult<string> | undefined): string {
   if (outcome?.status !== "rejected") {
@@ -522,25 +509,16 @@ describe("read coalescing", () => {
       return Response.json({ content: JSON.stringify({ dependencies: { a: "1" } }) });
     });
     const p = createCloudPlatform(PROJECT);
-    const first = p.addPackage("x@1");
+    const first = p.listPackages();
     await new Promise((resolve) => {
       realSetTimeout(resolve, 0);
     });
     // Too late to share the batcher's window, in time to share the request.
-    const second = p.addPackage("y@2");
+    const second = p.listPackages();
     release();
-    await Promise.all([first, second]);
+    const answers = await Promise.all([first, second]);
     expect(calls.filter((c) => c.url.includes("path=package.json"))).toHaveLength(1);
-    /* Each caller parsed its own copy. Two MUTATORS on one shared read is where a shared parsed
-       object would do harm: the second write would carry the first one's edit as well, so a
-       removal racing an add could resurrect or drop a dependency nobody asked about. */
-    const written = calls.flatMap((c) =>
-      c.init?.method === "PUT" ? [writtenManifest(c.init)["dependencies"]] : [],
-    );
-    expect(written).toEqual([
-      { a: "1", x: "1" },
-      { a: "1", y: "2" },
-    ]);
+    expect(answers).toEqual([[{ name: "a", version: "1" }], [{ name: "a", version: "1" }]]);
   });
 
   /* `probe.idle()` counts a platform call until its promise settles. A coalesced read is still one
@@ -594,12 +572,15 @@ describe("read coalescing", () => {
   });
 });
 
-describe("manifest-only package operations", () => {
+describe("package operations", () => {
   const manifest = (deps: Record<string, string>, devDeps: Record<string, string> = {}) => ({
     "/file?path=package.json": {
       body: { content: JSON.stringify({ dependencies: deps, devDependencies: devDeps }) },
     },
   });
+
+  /** The JSON body a recorded call sent. */
+  const sentBody = (call: RecordedFetch | undefined): JsonValue => sentJson(call?.init);
 
   test("listPackages parses dependencies and devDependencies", async () => {
     mockFetch(manifest({ hono: "^4" }, { wrangler: "^4" }));
@@ -610,31 +591,55 @@ describe("manifest-only package operations", () => {
     ]);
   });
 
-  test("addPackage writes the dependency and parses scoped@version specs", async () => {
-    const calls = mockFetch(manifest({}));
+  /* The session's package service writes package.json and package-lock.json together; the adapter
+     never edits the manifest itself, which is what used to leave a committed lockfile stale. */
+  test("add and remove go to the session's service, never to the manifest", async () => {
+    const calls = mockFetch({ "/packages/": { body: { ok: true } } });
     const platform = createCloudPlatform(PROJECT);
     await platform.addPackage("@jxsuite/compiler@0.34.0");
-    const write = calls.find((call) => call.init?.method === "PUT");
-    const written = writtenManifest(write?.init);
-    expect(written["dependencies"]).toEqual({ "@jxsuite/compiler": "0.34.0" });
+    await platform.removePackage("hono");
+    const posts = calls.filter((call) => call.init?.method === "POST");
+    expect(posts.map((call) => call.url)).toEqual([
+      `${CLOUD_SESSION_BASE}/packages/add`,
+      `${CLOUD_SESSION_BASE}/packages/remove`,
+    ]);
+    expect(posts.map((call) => sentBody(call))).toEqual([
+      { name: "@jxsuite/compiler@0.34.0" },
+      { name: "hono" },
+    ]);
+    expect(calls.some((call) => call.init?.method === "PUT")).toBe(false);
   });
 
-  test("addPackage defaults bare names to latest", async () => {
-    const calls = mockFetch(manifest({}));
+  test("a refused add or remove throws the service's own message", async () => {
+    mockFetch({ "/packages/": { body: { error: "The registry answered 404" }, status: 500 } });
     const platform = createCloudPlatform(PROJECT);
-    await platform.addPackage("hono");
-    const write = calls.find((call) => call.init?.method === "PUT");
-    expect(writtenManifest(write?.init)["dependencies"]).toEqual({ hono: "latest" });
+    expect(platform.addPackage("nope")).rejects.toThrow("The registry answered 404");
+    expect(platform.removePackage("nope")).rejects.toThrow("The registry answered 404");
   });
 
-  test("removePackage drops the entry from either section", async () => {
-    const calls = mockFetch(manifest({ hono: "^4" }, { wrangler: "^4" }));
+  test("setPackageVersions answers the service's result, and a refusal as a failed one", async () => {
+    const calls = mockFetch({ "/packages/set-versions": { body: { log: "done", ok: true } } });
     const platform = createCloudPlatform(PROJECT);
-    await platform.removePackage("wrangler");
-    const write = calls.find((call) => call.init?.method === "PUT");
-    const written = writtenManifest(write?.init);
-    expect(written["dependencies"]).toEqual({ hono: "^4" });
-    expect(written["devDependencies"]).toEqual({});
+    const updates = [{ dev: true, name: "hono", version: "^4.5.0" }];
+    expect(await platform.setPackageVersions?.(updates)).toEqual({ log: "done", ok: true });
+    expect(sentBody(calls.at(-1))).toEqual({ updates });
+    mockFetch({ "/packages/set-versions": { body: { error: "ERESOLVE" }, status: 500 } });
+    expect(await platform.setPackageVersions?.(updates)).toEqual({ log: "ERESOLVE", ok: false });
+  });
+
+  test("packageVersions answers the registry's rows, and none when the route fails", async () => {
+    const rows = [{ current: "^4", latest: "4.6.0", name: "hono" }];
+    mockFetch({ "/packages/versions": { body: rows } });
+    const platform = createCloudPlatform(PROJECT);
+    expect(await platform.packageVersions?.()).toEqual(rows);
+    mockFetch({ "/packages/versions": { body: { error: "down" }, status: 502 } });
+    expect(await platform.packageVersions?.()).toEqual([]);
+  });
+
+  test("a cloud session installs nothing, so it offers no install", () => {
+    const platform = createCloudPlatform(PROJECT);
+    expect(platform.installDependencies).toBeUndefined();
+    expect(platform.dependenciesNeedInstall).toBeUndefined();
   });
 });
 

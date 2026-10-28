@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { pickProjectFile } from "../src/project-session";
-import { projectPartition, titleFor } from "../src/hub/window-hub";
+import { pickProjectFile } from "../src/backend/project-session";
+import { projectPartition, titleFor } from "../src/backend/window-hub";
 import { hubFixture } from "./_hub-harness";
 import type { Fixture, Sent } from "./_hub-harness";
 
@@ -40,10 +40,10 @@ describe("window hub", () => {
   afterEach(() => fixture.teardown());
 
   describe("opening windows", () => {
-    test("a project window is a tokened Studio URL on its own server, titled for the project", () => {
+    test("a project window is a tokened Studio URL on its own server, titled for the project", async () => {
       fixture = hubFixture();
       const root = fixture.makeProject("alpha");
-      expect(fixture.hub.openProject(root)).toEqual({ focused: false });
+      expect(await fixture.open(root)).toEqual({ focused: false });
       const window = nth(0);
       expect(window.id).toBe(1);
       expect(window.title).toBe("alpha — Jx Studio");
@@ -54,50 +54,78 @@ describe("window hub", () => {
       expect(fixture.hub.windows()).toEqual([{ id: 1, projectRoot: root }]);
     });
 
-    test("each window has its own server and its own token", () => {
+    test("each window has its own server and its own token", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(fixture.makeProject("a"));
-      fixture.hub.openProject(fixture.makeProject("b"));
+      await fixture.open(fixture.makeProject("a"));
+      await fixture.open(fixture.makeProject("b"));
       const [first, second] = [new URL(nth(0).url), new URL(nth(1).url)];
       expect(first.host).not.toBe(second.host);
       expect(first.searchParams.get("token")).not.toBe(second.searchParams.get("token"));
     });
 
-    test("a project that is already open is raised, not opened twice", () => {
+    test("a project that is already open is raised, not opened twice", async () => {
       fixture = hubFixture();
       const root = fixture.makeProject("alpha");
-      fixture.hub.openProject(root);
+      await fixture.open(root);
       // The same directory spelled differently is still the same project.
-      expect(fixture.hub.openProject(`${root}/`)).toEqual({ focused: true });
+      expect(await fixture.open(`${root}/`)).toEqual({ focused: true });
       expect(fixture.opened()).toHaveLength(1);
       expect(fixture.sent.at(-1)).toEqual({ id: 1, type: "focus-window" });
     });
 
-    test("welcome windows take the lowest free storage slot, and a closed one's is reused", () => {
+    test("welcome windows take the lowest free storage slot, and a closed one's is reused", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(null);
-      fixture.hub.openProject(null);
+      await fixture.open(null);
+      await fixture.open(null);
       expect(nth(0).partition).toBe("persist:welcome-0");
       expect(nth(1).partition).toBe("persist:welcome-1");
       expect(nth(0).title).toBe("Jx Studio");
       fixture.hub.handle({ id: 1, type: "window-closed" });
-      fixture.hub.openProject(null);
+      await fixture.open(null);
       expect(nth(2).partition).toBe("persist:welcome-0");
     });
 
-    test("an open-project message from the shell opens a window", () => {
+    test("an open-project message from the shell opens a window", async () => {
       fixture = hubFixture();
       const root = fixture.makeProject("alpha");
       fixture.hub.handle({ root, type: "open-project" });
+      await fixture.hub.idle();
       expect(fixture.hub.windows()).toEqual([{ id: 1, projectRoot: root }]);
+    });
+  });
+
+  describe("opening while a server binds", () => {
+    test("a second open of the same project waits for the first instead of opening twice", async () => {
+      fixture = hubFixture();
+      const root = fixture.makeProject("a");
+      const outcomes = [fixture.hub.openProject(root), fixture.hub.openProject(root)];
+      expect(outcomes).toEqual([{ focused: false }, { focused: true }]);
+      await fixture.hub.idle();
+      expect(fixture.opened()).toHaveLength(1);
+    });
+
+    test("two welcome windows opening together take different slots", async () => {
+      fixture = hubFixture();
+      fixture.hub.openProject(null);
+      fixture.hub.openProject(null);
+      await fixture.hub.idle();
+      expect(new Set(fixture.opened().map((window) => window.partition)).size).toBe(2);
+    });
+
+    test("a window whose server binds after the hub is disposed is never announced", async () => {
+      fixture = hubFixture();
+      fixture.hub.openProject(fixture.makeProject("a"));
+      fixture.hub.dispose();
+      await fixture.hub.idle();
+      expect(fixture.opened()).toHaveLength(0);
     });
   });
 
   describe("closing windows", () => {
     test("closing releases the window's server and forgets it; an unknown id changes nothing", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(fixture.makeProject("a"));
-      fixture.hub.openProject(fixture.makeProject("b"));
+      await fixture.open(fixture.makeProject("a"));
+      await fixture.open(fixture.makeProject("b"));
       const closing = nth(0);
       const before = await fetch(closing.url);
       expect(before.status).toBeLessThan(500);
@@ -110,12 +138,12 @@ describe("window hub", () => {
       expect(survivor.status).toBeLessThan(500);
     });
 
-    test("the last window closing leaves a hub that can open another", () => {
+    test("the last window closing leaves a hub that can open another", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(fixture.makeProject("a"));
+      await fixture.open(fixture.makeProject("a"));
       fixture.hub.handle({ id: 1, type: "window-closed" });
       expect(fixture.hub.windows()).toEqual([]);
-      fixture.hub.openProject(null);
+      await fixture.open(null);
       expect(fixture.hub.windows()).toEqual([{ id: 2, projectRoot: null }]);
     });
   });
@@ -125,8 +153,8 @@ describe("window hub", () => {
       fixture = hubFixture();
       const a = fixture.makeProject("a");
       const b = fixture.makeProject("b");
-      fixture.hub.openProject(a);
-      fixture.hub.openProject(b);
+      await fixture.open(a);
+      await fixture.open(b);
       const socketA = await fixture.connect(nth(0));
       const socketB = await fixture.connect(nth(1));
       expect(await socketA.call("getProjectRoot")).toEqual({ root: a });
@@ -142,18 +170,20 @@ describe("window hub", () => {
       fixture = hubFixture();
       const a = fixture.makeProject("a");
       const b = fixture.makeProject("b");
-      fixture.hub.openProject(a);
+      await fixture.open(a);
       const socket = await fixture.connect(nth(0));
       expect(await socket.call("openProjectInNewWindow", { root: a })).toEqual({ focused: true });
       expect(await socket.call("openProjectInNewWindow", { root: b })).toEqual({ focused: false });
+      await fixture.hub.idle();
       expect(fixture.opened()).toHaveLength(2);
     });
 
     test("newWindow opens a welcome window", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(fixture.makeProject("a"));
+      await fixture.open(fixture.makeProject("a"));
       const socket = await fixture.connect(nth(0));
       await socket.call("newWindow");
+      await fixture.hub.idle();
       expect(fixture.hub.windows().at(-1)).toEqual({ id: 2, projectRoot: null });
     });
 
@@ -161,8 +191,8 @@ describe("window hub", () => {
       fixture = hubFixture();
       const a = fixture.makeProject("a");
       const b = fixture.makeProject("b");
-      fixture.hub.openProject(a);
-      fixture.hub.openProject(null);
+      await fixture.open(a);
+      await fixture.open(null);
       const welcome = await fixture.connect(nth(1));
       // Another window holds `a`: raise it, bind nothing here.
       expect(await welcome.call("setWindowProject", { root: a })).toEqual({
@@ -188,7 +218,7 @@ describe("window hub", () => {
   describe("native dialogs", () => {
     test("a folder pick is a dialog request answered by the shell's reply", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(null);
+      await fixture.open(null);
       const socket = await fixture.connect(nth(0));
       const answer = socket.call("pickDirectory");
       await Bun.sleep(50);
@@ -205,7 +235,7 @@ describe("window hub", () => {
     test("a project pick resolves the chosen project.json to a project, and cancel to nothing", async () => {
       fixture = hubFixture();
       const root = fixture.makeProject("picked");
-      fixture.hub.openProject(null);
+      await fixture.open(null);
       const socket = await fixture.connect(nth(0));
 
       const picking = socket.call("pickProject");
@@ -229,7 +259,7 @@ describe("window hub", () => {
     test("openProject binds the picked project to this window and retitles it", async () => {
       fixture = hubFixture();
       const root = fixture.makeProject("picked");
-      fixture.hub.openProject(null);
+      await fixture.open(null);
       const socket = await fixture.connect(nth(0));
       const opening = socket.call("openProject");
       await Bun.sleep(50);
@@ -257,8 +287,8 @@ describe("window hub", () => {
   describe("pushes", () => {
     test("a settings change reaches every window", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(fixture.makeProject("a"));
-      fixture.hub.openProject(null);
+      await fixture.open(fixture.makeProject("a"));
+      await fixture.open(null);
       const sockets = await Promise.all([fixture.connect(nth(0)), fixture.connect(nth(1))]);
       for (const listener of fixture.settings.listeners) {
         listener({ theme: "dark" });
@@ -274,7 +304,7 @@ describe("window hub", () => {
     test("a file changing under a project reaches that window's sidebar", async () => {
       fixture = hubFixture();
       const root = fixture.makeProject("a");
-      fixture.hub.openProject(root);
+      await fixture.open(root);
       const socket = await fixture.connect(nth(0));
       // The watcher needs a moment to arm before an event can be seen.
       await Bun.sleep(500);
@@ -289,7 +319,7 @@ describe("window hub", () => {
   describe("update status", () => {
     test("reaches the About screen once the updater has said something, and not before", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(null);
+      await fixture.open(null);
       const socket = await fixture.connect(nth(0));
       expect(await socket.call("appInfo")).toEqual({ ...fixture.appInfo });
       fixture.hub.handle({ text: "Update ready (9.9.9)", type: "update-status" });
@@ -303,7 +333,7 @@ describe("window hub", () => {
   describe("site import", () => {
     /** The status an unauthenticated import request gets from the window's server. */
     async function importStatus(): Promise<number> {
-      fixture.hub.openProject(null);
+      await fixture.open(null);
       const { origin } = new URL(nth(0).url);
       const response = await fetch(`${origin}/__studio__/import-site`, { method: "POST" });
       return response.status;
@@ -324,7 +354,7 @@ describe("window hub", () => {
   describe("dispose", () => {
     test("stops every server and the settings watch, and answers waiting dialogs as cancelled", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(fixture.makeProject("a"));
+      await fixture.open(fixture.makeProject("a"));
       const { url } = nth(0);
       const pending = pickProjectFile();
       fixture.hub.dispose();

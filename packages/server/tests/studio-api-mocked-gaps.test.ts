@@ -1,14 +1,17 @@
 /**
  * Studio-api-mocked-gaps.test.ts — error-path coverage for handleStudioApi routes whose failures
  * cannot be provoked through the filesystem: the starter listing, the package-operation helpers,
- * and the post-rename refactor pass. Each dependency is mocked to throw; the routes must translate
- * the failure into their documented error responses.
+ * and the post-rename refactor pass. Package add/remove are mocked rather than run, because a real
+ * operation would reach the registry; the operations themselves are tested in
+ * packages-arborist.test.ts against a fixture registry. Each dependency is mocked to throw; the
+ * routes must translate the failure into their documented error responses.
  */
 
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { JsonValue } from "@jxsuite/schema/types";
+import type { PackageOpResult } from "@jxsuite/protocol";
 
 void mock.module("@jxsuite/starters", () => ({
   listStarters: () => {
@@ -16,9 +19,20 @@ void mock.module("@jxsuite/starters", () => ({
   },
 }));
 
+/** What the mocked add/remove answer, and the calls they received. */
+let opResult: PackageOpResult = { ok: true };
+const opCalls: (string | boolean)[][] = [];
+
 void mock.module("../src/packages.ts", () => ({
-  bunExecutable: () => "bun",
+  addPackage: (dir: string, name: string, dev: boolean) => {
+    opCalls.push(["add", dir, name, dev]);
+    return Promise.resolve(opResult);
+  },
   dependenciesNeedInstall: () => false,
+  removePackage: (dir: string, name: string) => {
+    opCalls.push(["remove", dir, name]);
+    return Promise.resolve(opResult);
+  },
   installDependencies: () => Promise.reject(new Error("install exploded")),
   packageVersions: () => Promise.reject(new Error("versions exploded")),
   setPackageVersions: () => Promise.reject(new Error("set-versions exploded")),
@@ -113,5 +127,52 @@ describe("rename — refactor pass failure", () => {
       ok: true,
       to: "gadget.json",
     });
+  });
+});
+
+describe("packages add/remove run the shared operations", () => {
+  test("add passes the project, the spec and the dev flag, and answers ok", async () => {
+    opResult = { ok: true };
+    const { req, url } = jsonReq("/__studio/packages/add", "POST", {
+      dev: true,
+      dir: "sub",
+      name: "alpha@^1",
+    });
+    const res = await callApi(req, url);
+    expect(res.status).toBe(200);
+    expect(opCalls.at(-1)).toEqual(["add", join(ROOT, "sub"), "alpha@^1", true]);
+  });
+
+  test("add answers 500 with the operation's log when it fails", async () => {
+    opResult = { log: "The registry answered 404", ok: false };
+    const { req, url } = jsonReq("/__studio/packages/add", "POST", { name: "nope" });
+    const res = await callApi(req, url);
+    expect(res.status).toBe(500);
+    const { error } = await res.json();
+    expect(error).toBe("The registry answered 404");
+  });
+
+  test("a failure with no log still says what failed", async () => {
+    opResult = { ok: false };
+    const add = jsonReq("/__studio/packages/add", "POST", { name: "nope" });
+    const addRes = await callApi(add.req, add.url);
+    const addBody = await addRes.json();
+    expect(addBody.error).toBe("Adding the package failed");
+    const remove = jsonReq("/__studio/packages/remove", "POST", { name: "nope" });
+    const removeRes = await callApi(remove.req, remove.url);
+    const removeBody = await removeRes.json();
+    expect(removeBody.error).toBe("Removing the package failed");
+  });
+
+  test("remove passes the project and the name, and reports a failure's log", async () => {
+    opResult = { ok: true };
+    const ok = jsonReq("/__studio/packages/remove", "POST", { dir: ROOT, name: "alpha" });
+    const okRes = await callApi(ok.req, ok.url);
+    expect(okRes.status).toBe(200);
+    expect(opCalls.at(-1)).toEqual(["remove", ROOT, "alpha"]);
+    opResult = { log: "ENOENT", ok: false };
+    const failed = jsonReq("/__studio/packages/remove", "POST", { name: "alpha" });
+    const res = await callApi(failed.req, failed.url);
+    expect(res.status).toBe(500);
   });
 });

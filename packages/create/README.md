@@ -4,7 +4,7 @@
 
 ## Overview
 
-`@jxsuite/create` turns an empty directory into a working Jx project. It is two things at once: an interactive CLI, and the library whose `generateProject()` is the single generation engine shared by every creation surface in the monorepo. The CLI imports it directly, and the dev server's Studio API and the packaged desktop backend dynamic-import it (`packages/server/src/studio-api.ts`, `packages/desktop/src/project-session.ts`).
+`@jxsuite/create` turns an empty directory into a working Jx project. It is two things at once: an interactive CLI, and the library whose `generateProject()` is the single generation engine shared by every creation surface in the monorepo. The CLI imports it directly, and the dev server's Studio API and the packaged desktop backend dynamic-import it (`packages/server/src/studio-api.ts`, `packages/desktop/src/backend/project-session.ts`).
 
 The package publishes **raw TypeScript**: there is no build step, the `create-jxsuite` bin points at `./index.ts`, and every `exports` target is a `.ts` or `.json` source file. Its only runtime dependency is `@jxsuite/starters`.
 

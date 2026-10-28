@@ -27,7 +27,7 @@ void mock.module("node:child_process", () => ({
   },
 }));
 
-const { openExternal } = await import("../src/open-external");
+const { openExternal } = await import("../src/backend/open-external");
 
 beforeEach(() => {
   spawnCalls.length = 0;

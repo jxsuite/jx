@@ -25,7 +25,7 @@ size: L
 - Client target: the `$switch` branch of `buildClientNode` (`packages/compiler/src/targets/compile-client.ts`, line 528) filters external cases out ("cannot be fetched at compile time"). Pinned as intended by `client-switch.test.ts` ("skips an external $ref case it cannot fetch at compile time").
 - Element target: `emitNodeInner` (`compile-element.ts`, line 1203) `continue`s past them. `compile-element-coverage.test.ts` feeds one and asserts nothing about it.
 - Static prerender: `renderStaticNode` (`shared.ts`, line 1715) renders the empty container for a matched external case (`shared-coverage.test.ts`, line 203).
-- Hosts: every host that builds goes through `buildSite` (`packages/server/src/dev.ts`, `packages/server/src/studio-api.ts`, `packages/desktop/src/project-session.ts`, `packages/import/src/verify.ts`), and every interpreting host (Studio's canvas, the live preview) renders through `renderSwitch`, so the two functions this plan changes reach every host.
+- Hosts: every host that builds goes through `buildSite` (`packages/server/src/dev.ts`, `packages/server/src/studio-api.ts`, `packages/desktop/src/backend/project-session.ts`, `packages/import/src/verify.ts`), and every interpreting host (Studio's canvas, the live preview) renders through `renderSwitch`, so the two functions this plan changes reach every host.
 - `compiler.md` §9.2 (line 682) states the skip as shipped: "An external `$ref` case cannot be fetched at compile time and is skipped, exactly as in the static renderer." `spec.md` §7.4's marker (line 671) points at this gap.
 
 **Census corrections.**

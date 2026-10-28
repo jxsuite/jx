@@ -21,8 +21,8 @@ const STORAGE_KEY = "jx_github_token";
 /**
  * The GitHub OAuth app every Jx sign-in authorizes against: the browser's device flow in
  * `github-auth.ts`, and the desktop launcher's RFC 8252 loopback redirect
- * (`packages/desktop/src/github-signin.ts`). Here, in the module with no UI dependency, because the
- * launcher's main process imports it too.
+ * (`packages/desktop/src/backend/github-signin.ts`). Here, in the module with no UI dependency,
+ * because the launcher's main process imports it too.
  */
 export const GITHUB_OAUTH_CLIENT_ID = "Ov23liYVlMFpgjOEPXJH";
 

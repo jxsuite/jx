@@ -80,7 +80,7 @@ Declaration remains what a page needs for anything the project does not define â
 
 ## 2. npm Web Component Discovery
 
-> **Status: Partial.** Only the dev server discovers CEM components: its `GET /__studio/components` handler (`packages/server/src/studio-api.ts`) reads each installed dependency's `customElements` manifest and lists its elements as `source: "npm"` entries. The desktop session's `discoverComponents` (`packages/desktop/src/project-session.ts`) and the cloud adapter's (`packages/studio/src/platforms/cloud.ts`) list only JSON project components, so in the desktop app no npm element reaches the property inspector, the Packages panel's cherry-pick or the Insert panel.
+> **Status: Partial.** Only the dev server discovers CEM components: its `GET /__studio/components` handler (`packages/server/src/studio-api.ts`) reads each installed dependency's `customElements` manifest and lists its elements as `source: "npm"` entries. The desktop session's `discoverComponents` (`packages/desktop/src/backend/project-session.ts`) and the cloud adapter's (`packages/studio/src/platforms/cloud.ts`) list only JSON project components, so in the desktop app no npm element reaches the property inspector, the Packages panel's cherry-pick or the Insert panel.
 
 Packages that ship a [Custom Elements Manifest](https://custom-elements-manifest.open-wc.org/) (CEM) are auto-discovered. The server scans `package.json` dependencies for packages whose own `package.json` declares a `customElements` field pointing to their CEM JSON.
 

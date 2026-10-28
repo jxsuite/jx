@@ -5,7 +5,7 @@
  * What this replaces: `ui/progress-modal.ts` was **the only surface in Studio with a real error
  * view** — a red headline, the captured log in a `<pre>`, an explicit Close — and it had four call
  * sites, all package operations. It blocked the whole app, offered no cancel, and vanished
- * completely on success, so a `bun install` that hung had no exit and one that failed had a log you
+ * completely on success, so an install that hung had no exit and one that failed had a log you
  * could read exactly once. Every OTHER long operation — git clone, publish, media upload, site
  * import, project open — got a three-second grey line or nothing at all.
  *

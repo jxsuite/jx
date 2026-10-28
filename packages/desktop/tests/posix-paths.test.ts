@@ -15,7 +15,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const SRC = readFileSync(join(import.meta.dir, "..", "src", "project-session.ts"), "utf8");
+const SRC = readFileSync(
+  join(import.meta.dir, "..", "src", "backend", "project-session.ts"),
+  "utf8",
+);
 
 describe("studio path-separator convention", () => {
   test("separator normalization is centralized in toPosix()", () => {
@@ -26,10 +29,10 @@ describe("studio path-separator convention", () => {
     expect(SRC).toMatch(/function toPosix\(p: string\): string \{\s*return p\.replaceAll\("\\\\"/);
   });
 
-  test("raw Bun.Glob.scan() results are bound as rawMatch and normalized via toPosix()", () => {
+  test("raw scanFiles() results are bound as rawMatch and normalized via toPosix()", () => {
     // Convention: iterate glob matches as `rawMatch`, then `const match = toPosix(rawMatch)`.
     // This keeps the un-normalized value from ever reaching a response (e.g. `path: rawMatch`).
-    const scanLoops = SRC.match(/for await \(const (\w+) of [^)]*\.scan\(/g) ?? [];
+    const scanLoops = SRC.match(/for await \(const (\w+) of scanFiles\(/g) ?? [];
     expect(scanLoops.length).toBeGreaterThan(0);
     for (const loop of scanLoops) {
       expect(loop).toContain("rawMatch");

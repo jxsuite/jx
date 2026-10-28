@@ -1,7 +1,7 @@
 /**
  * Browser launch for the screenshot runner. Uses puppeteer-core against a system Chromium/Chrome
  * (no bundled browser download — required on NixOS, and ubuntu CI ships Chrome preinstalled).
- * Resolution mirrors packages/desktop/src/chromium/index.ts findChromium().
+ * Resolution mirrors packages/desktop/src/backend/import-browser.ts findChromium().
  */
 
 import { launch } from "puppeteer-core";

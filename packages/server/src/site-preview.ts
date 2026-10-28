@@ -28,6 +28,7 @@
 
 import { serveSiteOutput, siteOutDir } from "./site-output.ts";
 import { problem } from "./problem.ts";
+import { serve } from "#serve";
 
 /** A running preview server for one project. */
 export interface SitePreview {
@@ -37,27 +38,38 @@ export interface SitePreview {
 }
 
 interface Running extends SitePreview {
-  server: { stop: (closeActiveConnections?: boolean) => void };
+  server: { stop: (closeActiveConnections?: boolean) => Promise<void> };
 }
 
-/** One server per project root — a second `Open in Browser` reuses the first one's port. */
-const running = new Map<string, Running>();
+/**
+ * One server per project root — a second `Open in Browser` reuses the first one's port. Held as the
+ * start's promise, so two calls racing the bind share one server rather than starting two.
+ */
+const running = new Map<string, Promise<Running>>();
 
 /**
  * Start (or reuse) the preview server for `projectRoot`, or `null` when there is nothing to serve:
  * not a site project, or a site nobody has built yet. A caller that has just built gets a server;
  * one that has not gets the honest answer rather than a port that 404s everything.
  */
-export function startSitePreview(projectRoot: string): SitePreview | null {
+export async function startSitePreview(projectRoot: string): Promise<SitePreview | null> {
   const outDir = siteOutDir(projectRoot);
   if (!outDir) {
     return null;
   }
-  const existing = running.get(projectRoot);
-  if (existing) {
-    return { origin: existing.origin, port: existing.port };
+  let starting = running.get(projectRoot);
+  if (!starting) {
+    starting = listen(projectRoot);
+    running.set(projectRoot, starting);
+    starting.catch(() => running.delete(projectRoot));
   }
-  const server = Bun.serve({
+  const { origin, port } = await starting;
+  return { origin, port };
+}
+
+/** Bind the preview server for `projectRoot`. */
+async function listen(projectRoot: string): Promise<Running> {
+  const server = await serve({
     fetch: async (req: Request) => {
       const url = new URL(req.url);
       let decoded: string;
@@ -83,24 +95,27 @@ export function startSitePreview(projectRoot: string): SitePreview | null {
   });
   // `server.url` rather than `server.port`: the origin is the thing being handed to a browser, and
   // Reading it from the server that is actually listening cannot disagree with it.
-  const entry: Running = {
-    origin: server.url.origin,
-    port: Number(server.url.port),
-    server,
-  };
-  running.set(projectRoot, entry);
-  return { origin: entry.origin, port: entry.port };
+  return { origin: server.url.origin, port: Number(server.url.port), server };
 }
 
 /** The origin already serving `projectRoot`, without starting one. */
-export function sitePreviewOrigin(projectRoot: string): string | null {
-  return running.get(projectRoot)?.origin ?? null;
+export async function sitePreviewOrigin(projectRoot: string): Promise<string | null> {
+  const starting = running.get(projectRoot);
+  if (!starting) {
+    return null;
+  }
+  const entry = await starting;
+  return entry.origin;
 }
 
 /** Stop every preview server (process teardown, and the hook tests close their ports with). */
-export function stopSitePreviews(): void {
-  for (const entry of running.values()) {
-    entry.server.stop(true);
-  }
+export async function stopSitePreviews(): Promise<void> {
+  const entries = [...running.values()];
   running.clear();
+  await Promise.all(
+    entries.map(async (starting) => {
+      const entry = await starting.catch(() => null);
+      await entry?.server.stop(true);
+    }),
+  );
 }

@@ -4,7 +4,7 @@
  * updates. The on-open @jxsuite update rewrites package.json and bun.lock without committing, so a
  * teammate pushing the same update makes a later `git pull` refuse to merge. Since those local
  * changes are machine-generated and reproducible, we discard them, pull, and re-run the package
- * sync (re-apply the update if the pulled project is still behind, or `bun install` if the pull
+ * sync (re-apply the update if the pulled project is still behind, or an install if the pull
  * brought it). Detection is state-based (git status + content comparison against `@{u}`), never git
  * stderr parsing, so it works identically across backends and locales.
  */
@@ -188,7 +188,7 @@ async function applyDiscard(plan: PackagePullPlan): Promise<void> {
 
 /**
  * Bring packages back in line after a pull that touched (or followed a discard of) package files:
- * re-apply the @jxsuite update if the pulled project is still behind, otherwise `bun install` so
+ * re-apply the @jxsuite update if the pulled project is still behind, otherwise an install so
  * node_modules matches the pulled lockfile. Never throws — a successful pull must not turn into an
  * error banner; failures surface through the progress modal.
  */
@@ -209,7 +209,7 @@ async function syncPackagesAfterPull(): Promise<void> {
     return;
   }
   const progress = showProgressModal({
-    status: "Running bun install…",
+    status: "Installing dependencies…",
     title: "Syncing dependencies",
   });
   try {
@@ -217,7 +217,7 @@ async function syncPackagesAfterPull(): Promise<void> {
     if (result.ok) {
       progress.done();
     } else {
-      progress.fail(result.log ?? "bun install failed");
+      progress.fail(result.log ?? "Install failed");
     }
   } catch (error) {
     progress.fail(errorMessage(error));

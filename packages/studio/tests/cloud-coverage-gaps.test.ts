@@ -104,10 +104,9 @@ describe("manifest edge cases", () => {
     expect(await p.listPackages()).toEqual([]);
   });
 
-  test("a failing manifest write surfaces the backend error", async () => {
+  test("a refused package operation surfaces the backend error", async () => {
     mockFetch({
-      "/file?path=package.json": { body: { content: "{}" } },
-      "/file": { body: { error: "branch is read-only" }, status: 403 },
+      "/packages/add": { body: { error: "branch is read-only" }, status: 403 },
     });
     const p = createCloudPlatform(PROJECT);
     expect(p.addPackage("hono")).rejects.toThrow(/read-only/);

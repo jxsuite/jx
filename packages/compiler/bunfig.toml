@@ -23,6 +23,8 @@ coveragePathIgnorePatterns = [
   # The slot helper source the agreement test writes to a temp module and imports, so it can run
   # the exact text every compiled component module inlines. Generated output, not compiler source.
   "**/jx-slot-helper-*/**",
+  # The bundles the bundler-backend parity test writes to a temp directory and imports.
+  "**/jx-bundler-backend-*/**",
   "../../extensions/**",
   "../create/**",
   "../desktop/**",

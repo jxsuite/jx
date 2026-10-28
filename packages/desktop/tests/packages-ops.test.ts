@@ -30,7 +30,7 @@ void mock.module("@jxsuite/server/packages", () => ({
   setPackageVersions: record("setPackageVersions", () => Promise.resolve(opResult)),
 }));
 
-const { createPackageOps } = await import("../src/packages");
+const { createPackageOps } = await import("../src/backend/packages");
 
 const ROOT = "/tmp/jx-proj";
 const withRoot = createPackageOps({

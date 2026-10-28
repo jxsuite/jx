@@ -335,13 +335,21 @@ export const STUDIO_ROUTES = {
 
   // ─── Packages ─────────────────────────────────────────────────────────────
   packages: route("GET", "/__studio/packages", "List dependencies (PackageInfo[])"),
-  packagesAdd: route("POST", "/__studio/packages/add", "Add a dependency"),
-  packagesRemove: route("POST", "/__studio/packages/remove", "Remove a dependency"),
+  packagesAdd: route(
+    "POST",
+    "/__studio/packages/add",
+    "Add a registry dependency, writing package.json and package-lock.json together",
+  ),
+  packagesRemove: route(
+    "POST",
+    "/__studio/packages/remove",
+    "Remove a dependency, writing package.json and package-lock.json together",
+  ),
   packagesInstall: route(
     "POST",
     "/__studio/packages/install",
-    "Run the package manager install",
-    "Install/reinstall affordances are hidden; manifest-only edits still work.",
+    "Install the declared dependencies (npm's installer, writing package-lock.json)",
+    "Install/reinstall affordances are hidden; add, remove and version updates still work where the backend serves them (a cloud session updates the lockfile without installing).",
   ),
   packagesNeedsInstall: route(
     "GET",
@@ -358,7 +366,7 @@ export const STUDIO_ROUTES = {
   packagesSetVersions: route(
     "POST",
     "/__studio/packages/set-versions",
-    "Rewrite dependency ranges and install",
+    "Rewrite dependency ranges and install (lockfile-only where nothing installs)",
     "Bulk version updates are hidden.",
   ),
 

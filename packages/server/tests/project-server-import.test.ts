@@ -29,7 +29,7 @@ const importSite = mock(
 void mock.module("@jxsuite/import/run", () => ({ importSite }));
 
 const { createProjectServer } = await import("../src/project-server.ts");
-type Handle = ReturnType<typeof createProjectServer>;
+type Handle = Awaited<ReturnType<typeof createProjectServer>>;
 
 const ROOT = join(import.meta.dir, "_project_server_import_fixtures");
 const STUDIO = join(ROOT, "_studio");
@@ -38,14 +38,14 @@ const DEST_PARENT = join(ROOT, "dests");
 let withImport: Handle;
 let withoutImport: Handle;
 
-beforeAll(() => {
+beforeAll(async () => {
   rmSync(ROOT, { force: true, recursive: true });
   mkdirSync(STUDIO, { recursive: true });
   mkdirSync(DEST_PARENT, { recursive: true });
   writeFileSync(join(STUDIO, "index.html"), "<html>studio</html>");
 
   const session = { handlers: {}, projectRoot: null };
-  withImport = createProjectServer({
+  withImport = await createProjectServer({
     importApi: {
       chromePath: "/opt/chromium/bin/chromium",
       resolveDest: (dir: string) => {
@@ -58,7 +58,7 @@ beforeAll(() => {
     resolveSession: () => session,
     studioDir: STUDIO,
   });
-  withoutImport = createProjectServer({
+  withoutImport = await createProjectServer({
     resolveSession: () => session,
     studioDir: STUDIO,
   });

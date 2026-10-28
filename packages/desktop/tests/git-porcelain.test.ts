@@ -10,7 +10,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { parsePorcelainV1 } from "../src/git";
+import { parsePorcelainV1 } from "../src/backend/git";
 
 describe("parsePorcelainV1", () => {
   test("the first line's leading space is a column, not whitespace to trim", () => {

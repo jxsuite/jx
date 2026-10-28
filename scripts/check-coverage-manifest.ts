@@ -64,7 +64,7 @@ import { toPosixPath } from "./lib/posix-path";
 // Files exempt from the every-source-file-is-tested rule: pure type
 // Declarations, erased at runtime, which never produce coverage rows.
 //
-// Desktop's two launcher shims (`src/init.ts`, `src/chromium/init.ts`) used to
+// Desktop's launcher shims (`src/init.ts`, now `src/webview/init.ts`) used to
 // Be listed here as side-effect entries with no testable logic. That exemption
 // Is how desktop 5.0.0-5.1.3 shipped a shim whose bundle threw on import with
 // No test to notice; they are now imported by `init-shim*.test.ts` and gated
@@ -72,7 +72,7 @@ import { toPosixPath } from "./lib/posix-path";
 export const ALLOWLIST = new Set([
   "src/types.ts",
   // Desktop RPC schema: interfaces/type aliases only, no runtime exports.
-  "src/rpc-schema.ts",
+  "src/shared/rpc-schema.ts",
   // Collab provider contract: interfaces/type aliases only, no runtime exports.
   "src/provider.ts",
   // The @jxsuite/ai gateway's host contract (Upstream, GatewayRefusal, ...): interfaces only.
@@ -85,6 +85,8 @@ export const ALLOWLIST = new Set([
   "src/harness/types.ts",
   // The @jxsuite/ai document tools' host contract (DocumentHost, DocEdit, SelectionEffect, ...): types only.
   "src/jx-tools/types.ts",
+  // @jxsuite/server's `serve()` contract (ServeServer, ServeSocket, ServeOptions): interfaces only.
+  "src/serve.ts",
 ]);
 
 /** Per-file totals as lcov records them: `FNF`/`FNH` for functions, `LF`/`LH` for lines. */

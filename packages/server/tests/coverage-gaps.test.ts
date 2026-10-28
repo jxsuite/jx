@@ -124,7 +124,7 @@ beforeAll(async () => {
     watch: false,
   });
 
-  projectServer = createProjectServer({
+  projectServer = await createProjectServer({
     resolveSession: () => ({ handlers: {}, projectRoot: PS_PROJECT }),
     studioDir: STUDIO,
   });

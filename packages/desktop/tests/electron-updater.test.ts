@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { DEFAULT_SCHEDULE, startUpdates, updatesEnabled } from "../src/electron-shell/updater";
+import { DEFAULT_SCHEDULE, startUpdates, updatesEnabled } from "../src/main/updater";
 import { fakeSchedule, fakeUpdater } from "./_fake-updater";
 
 describe("updatesEnabled", () => {

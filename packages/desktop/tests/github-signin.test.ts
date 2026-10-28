@@ -21,17 +21,17 @@ void mock.module("node:os", () => {
 /** URLs the flow tried to hand to the OS, and whether the handoff "worked". */
 const opened: string[] = [];
 let openSucceeds = true;
-void mock.module("../src/open-external", () => ({
+void mock.module("../src/backend/open-external", () => ({
   openExternal: (url: string) => {
     opened.push(url);
     return openSucceeds;
   },
 }));
 
-const { readCredential, writeCredential } = await import("../src/credential-store");
-const { configFile } = await import("../src/user-config");
+const { readCredential, writeCredential } = await import("../src/backend/credential-store");
+const { configFile } = await import("../src/backend/user-config");
 const { GITHUB_CREDENTIAL, githubSignIn, githubSignOut, githubTokenStatus, setAuthorizationHost } =
-  await import("../src/github-signin");
+  await import("../src/backend/github-signin");
 const { createLoopbackAuthorizer } = await import("@jxsuite/server/oauth-loopback");
 
 function storePath(): string {

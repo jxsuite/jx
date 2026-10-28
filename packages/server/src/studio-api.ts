@@ -30,10 +30,11 @@ import {
 import { applyRename } from "./refactor/apply.ts";
 import { findReferences } from "./refactor/find-refs.ts";
 import {
-  bunExecutable,
+  addPackage,
   dependenciesNeedInstall,
   installDependencies,
   packageVersions,
+  removePackage,
   setPackageVersions,
 } from "./packages.ts";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
@@ -43,6 +44,7 @@ import type { DesignOptions, ProjectOptions } from "@jxsuite/create/generate";
 import type { JsonObject, JsonPrimitive, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { problem } from "./problem.ts";
+import { scanFiles } from "./fs-glob.ts";
 
 /** Normalise a path to forward slashes (Windows `path` module returns backslashes). */
 const fwd = (p: string) => p.replaceAll("\\", "/");
@@ -570,9 +572,8 @@ export async function handleStudioApi(
   // Discover site projects — find all project.json files under root
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
-      const glob = new Bun.Glob("**/project.json");
       const sites = [];
-      for await (const match of glob.scan({ cwd: root, dot: false })) {
+      for await (const match of scanFiles("**/project.json", root)) {
         if (
           match.includes("node_modules") ||
           fwd(match).includes("dist/") ||
@@ -726,9 +727,8 @@ export async function handleStudioApi(
 
     try {
       if (pattern) {
-        const glob = new Bun.Glob(pattern);
         const files = [];
-        for await (const match of glob.scan({ cwd: absDir, dot: false })) {
+        for await (const match of scanFiles(pattern, absDir)) {
           const fp = resolve(absDir, match);
           try {
             const s = await stat(fp);
@@ -783,9 +783,9 @@ export async function handleStudioApi(
     try {
       const registry = await getFormatRegistry(scanRoot);
       const componentExts = registry.documentExtensions("component").map((e: string) => e.slice(1));
-      const glob = new Bun.Glob(`**/*.{${["json", ...componentExts].join(",")}}`);
       const components = [];
-      for await (const match of glob.scan({ cwd: scanRoot, dot: false })) {
+      const pattern = `**/*.{${["json", ...componentExts].join(",")}}`;
+      for await (const match of scanFiles(pattern, scanRoot)) {
         if (
           match.includes("node_modules") ||
           fwd(match).includes("dist/") ||
@@ -934,7 +934,7 @@ export async function handleStudioApi(
       // `clean: false` — this runs on the way to opening a page, and wiping the output directory
       // First would mean every asset 404s for as long as the build takes.
       const result = await buildSite(dir, { clean: false, verbose: false });
-      const preview = startSitePreview(dir);
+      const preview = await startSitePreview(dir);
       const built = { errors: result.errors, files: result.files, routes: result.routes };
       // `url` follows the build fields, and only when a preview origin exists.
       return Response.json(preview ? { ...built, url: preview.origin } : built);
@@ -1110,9 +1110,9 @@ export async function handleStudioApi(
   // Add an npm package
   if (path === "/__studio/packages/add" && req.method === "POST") {
     try {
-      /* SAFETY: `name` reaches argv, so it is re-checked with isString below; `dir` is only
-         path-resolved and `dev` only tested for truthiness, and a wrongly typed `dir` throws in
-         isAbsolute inside this try and answers 500. */
+      /* SAFETY: `name` is re-checked with isString below; `dir` is only path-resolved and `dev`
+         only tested for truthiness, and a wrongly typed `dir` throws in isAbsolute inside this try
+         and answers 500. */
       const body = (await req.json()) as { name?: string; dir?: string; dev?: boolean };
       const { name } = body;
       if (!name || !isString(name)) {
@@ -1120,19 +1120,9 @@ export async function handleStudioApi(
       }
       const dir = body.dir || activeProjectRoot;
       const cwd = dir ? (isAbsolute(dir) ? dir : resolve(root, dir)) : root;
-      const args = ["add", name];
-      if (body.dev) {
-        args.splice(1, 0, "-d");
-      }
-      const proc = Bun.spawn([bunExecutable(), ...args], {
-        cwd,
-        stderr: "pipe",
-        stdout: "pipe",
-      });
-      const exitCode = await proc.exited;
-      if (exitCode !== 0) {
-        const stderr = await new Response(proc.stderr).text();
-        return problem("internalError", stderr || `bun add exited with ${exitCode}`);
+      const result = await addPackage(cwd, name, body.dev === true);
+      if (!result.ok) {
+        return problem("internalError", result.log ?? "Adding the package failed");
       }
       return Response.json({ ok: true });
     } catch (error) {
@@ -1143,8 +1133,8 @@ export async function handleStudioApi(
   // Remove an npm package
   if (path === "/__studio/packages/remove" && req.method === "POST") {
     try {
-      /* SAFETY: `name` reaches argv, so it is re-checked with isString below; a wrongly typed
-         `dir` throws in isAbsolute inside this try and answers 500. */
+      /* SAFETY: `name` is re-checked with isString below; a wrongly typed `dir` throws in
+         isAbsolute inside this try and answers 500. */
       const body = (await req.json()) as { name?: string; dir?: string };
       const { name } = body;
       if (!name || !isString(name)) {
@@ -1152,15 +1142,9 @@ export async function handleStudioApi(
       }
       const dir = body.dir || activeProjectRoot;
       const cwd = dir ? (isAbsolute(dir) ? dir : resolve(root, dir)) : root;
-      const proc = Bun.spawn([bunExecutable(), "remove", name], {
-        cwd,
-        stderr: "pipe",
-        stdout: "pipe",
-      });
-      const exitCode = await proc.exited;
-      if (exitCode !== 0) {
-        const stderr = await new Response(proc.stderr).text();
-        return problem("internalError", stderr || `bun remove exited with ${exitCode}`);
+      const result = await removePackage(cwd, name);
+      if (!result.ok) {
+        return problem("internalError", result.log ?? "Removing the package failed");
       }
       return Response.json({ ok: true });
     } catch (error) {
@@ -1168,7 +1152,7 @@ export async function handleStudioApi(
     }
   }
 
-  // Install all dependencies (bun install)
+  // Install all dependencies
   if (path === "/__studio/packages/install" && req.method === "POST") {
     try {
       /* SAFETY: `dir` is the only member read and is only path-resolved; a wrongly typed `dir`
@@ -1457,9 +1441,8 @@ export async function handleStudioApi(
     }
 
     try {
-      const glob = new Bun.Glob(`**/${name}`);
       const matches = [];
-      for await (const match of glob.scan({ cwd: root, dot: false })) {
+      for await (const match of scanFiles(`**/${name}`, root)) {
         // Skip node_modules / dist / hidden dirs
         if (match.includes("node_modules") || fwd(match).includes("dist/")) {
           continue;

@@ -472,8 +472,9 @@ export interface StudioPlatform {
   removePackage: (name: string) => Promise<void>;
   listPackages: () => Promise<PackageInfo[]>;
   /**
-   * Run `bun install` in the project root. Optional: platforms without a Bun-capable backend omit
-   * it and the install-on-open / reinstall affordances are skipped.
+   * Install the project's dependencies (npm's installer, writing `package-lock.json`). Optional:
+   * platforms with no `node_modules` to install into (the cloud) omit it and the install-on-open /
+   * reinstall affordances are skipped.
    */
   installDependencies?: () => Promise<PackageOpResult>;
   /** Whether the project has uninstalled dependencies (node_modules missing). */
@@ -486,7 +487,7 @@ export interface StudioPlatform {
   packageVersions?: () => Promise<PackageVersionInfo[]>;
   /**
    * Rewrite the version range of each named package (preserving its dependencies/devDependencies
-   * placement) and run `bun install`. Used by the @jxsuite bump and per-dependency updates.
+   * placement) and install. Used by the @jxsuite bump and per-dependency updates.
    */
   setPackageVersions?: (
     updates: { name: string; version: string; dev?: boolean }[],

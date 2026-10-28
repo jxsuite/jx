@@ -1,8 +1,8 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AppInfo } from "@jxsuite/protocol";
-import type { HubControl, HubWindow } from "../src/hub/handlers";
-import type { ProjectSession, pickProjectFile } from "../src/project-session";
+import type { HubControl, HubWindow } from "../src/backend/handlers";
+import type { ProjectSession, pickProjectFile } from "../src/backend/project-session";
 import { rpcParity } from "./_rpc-parity";
 
 /*
@@ -41,9 +41,9 @@ function recording(prefix: string) {
   );
 }
 
-void mock.module("../src/git", () => ({ createGitOps: () => recording("git") }));
-void mock.module("../src/packages", () => ({ createPackageOps: () => recording("pkg") }));
-void mock.module("../src/github-signin", () => ({
+void mock.module("../src/backend/git", () => ({ createGitOps: () => recording("git") }));
+void mock.module("../src/backend/packages", () => ({ createPackageOps: () => recording("pkg") }));
+void mock.module("../src/backend/github-signin", () => ({
   githubSignIn: recorder("githubSignIn"),
   githubSignOut: recorder("githubSignOut"),
   githubTokenStatus: recorder("githubTokenStatus"),
@@ -59,22 +59,22 @@ const answers: Answers = {
   pickedProject: null,
 };
 
-void mock.module("../src/project-session", () => ({
+void mock.module("../src/backend/project-session", () => ({
   pickProjectFile: () => {
     calls.push({ args: [], name: "pickProjectFile" });
     return Promise.resolve(answers.pickedProject);
   },
 }));
-void mock.module("../src/recent-store", () => ({
+void mock.module("../src/backend/recent-store", () => ({
   readRecents: recorder("readRecents"),
   writeRecents: recorder("writeRecents"),
 }));
-void mock.module("../src/settings-store", () => ({
+void mock.module("../src/backend/settings-store", () => ({
   patchSettings: recorder("patchSettings"),
   readSettings: recorder("readSettings"),
 }));
 
-const { buildWindowHandlers } = await import("../src/hub/handlers");
+const { buildWindowHandlers } = await import("../src/backend/handlers");
 
 /** A stand-in session, and a way to read the root it has been pointed at. */
 interface FakeSession {

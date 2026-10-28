@@ -1,4 +1,4 @@
-/* The launcher boot module (src/boot.ts): the announcement its import makes, the page-error watch
+/* The launcher boot module (src/webview/boot.ts): the announcement its import makes, the page-error watch
    that records an import-time throw in a LATER module, and `bootLauncher`'s contract that Studio
    always finds either a registered adapter or a recorded failure — never neither, which is the
    silent dev-server fallback desktop 5.0.0-5.1.3 shipped. */
@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { hasPlatform } from "@jxsuite/studio/platform";
 import type { LauncherSignal } from "@jxsuite/studio/platform";
-import type { BootablePlatform } from "../src/boot";
+import type { BootablePlatform } from "../src/webview/boot";
 import { BRIDGE_ERROR } from "./_constants";
 
 try {
@@ -23,7 +23,7 @@ const g = globalThis;
 delete g.__jxLauncher;
 delete g.__jxPlatform;
 
-const boot = await import("../src/boot");
+const boot = await import("../src/webview/boot");
 
 function fakePlatform(status: () => PromiseLike<{ stored: boolean }>): BootablePlatform {
   /* SAFETY: bootLauncher touches two things on the adapter it creates: it registers it (a plain
