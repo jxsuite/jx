@@ -25,11 +25,11 @@ Every adapter ultimately speaks the protocol. The stock adapters differ only in 
 
 ## Who implements what today
 
-| Host                                   | Platform adapter                                                     | Transport                                                                                            |
-| -------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Dev server (`@jxsuite/server`)         | `packages/studio/src/platforms/devserver.ts` (registered by default) | The literal `/__studio/*` HTTP routes, the protocol's reference implementation                       |
-| Desktop (Electron / Chromium app-mode) | `packages/desktop/src/chromium/platform.ts`                          | WebSocket JSON-RPC into the same handlers, behind a loopback-only, token-gated project server        |
-| Cloud platforms                        | `packages/studio/src/platforms/cloud.ts`                             | HTTP behind a session gateway (`/api/v1/p/:owner/:repo/:branch/studio/*`), same sub-paths and shapes |
+| Host                           | Platform adapter                                                     | Transport                                                                                            |
+| ------------------------------ | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Dev server (`@jxsuite/server`) | `packages/studio/src/platforms/devserver.ts` (registered by default) | The literal `/__studio/*` HTTP routes, the protocol's reference implementation                       |
+| Desktop (Electron)             | `packages/desktop/src/webview/platform.ts`                           | WebSocket JSON-RPC into the same handlers, behind a loopback-only, token-gated project server        |
+| Cloud platforms                | `packages/studio/src/platforms/cloud.ts`                             | HTTP behind a session gateway (`/api/v1/p/:owner/:repo/:branch/studio/*`), same sub-paths and shapes |
 
 ## Choosing your integration path
 

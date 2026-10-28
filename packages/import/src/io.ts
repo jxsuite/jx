@@ -8,7 +8,7 @@
  * `node:fs`, and a Worker supplies its own without the pipeline knowing the difference.
  */
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export interface ImportIo {
@@ -43,7 +43,7 @@ export function createLocalIo(outDir: string): ImportIo {
     async write(relPath, data) {
       const path = resolve(relPath);
       await mkdir(dirname(path), { recursive: true });
-      await Bun.write(path, data);
+      await writeFile(path, data);
     },
     async mkdir(relPath) {
       await mkdir(resolve(relPath), { recursive: true });

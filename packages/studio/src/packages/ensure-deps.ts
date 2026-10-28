@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 /**
  * Ensure the active project's dependencies are installed before the editor loads. When the backend
- * reports node_modules is missing, run `bun install` behind a blocking progress modal so component
- * and format resolution see the real dependency tree. No-op on platforms without package support.
+ * reports node_modules is missing, install them behind a blocking progress modal so component and
+ * format resolution see the real dependency tree. No-op on platforms without package support.
  *
  * It REPORTS whether an install actually ran, because "format resolution sees the real dependency
  * tree" was only half true: project activation fetches the format registry before calling this, and
@@ -17,7 +17,7 @@ import { shouldInstallAutomation } from "../services/automation";
 
 export async function ensureDependenciesInstalled(): Promise<boolean> {
   // Automation/screenshot runs open projects read-only to drive the canvas — they must never mutate
-  // The project on disk (a `bun install` would litter node_modules/bun.lock into starter templates).
+  // The project on disk (an install would litter node_modules and a lockfile into starter templates).
   if (shouldInstallAutomation(location.search)) {
     return false;
   }
@@ -35,7 +35,7 @@ export async function ensureDependenciesInstalled(): Promise<boolean> {
     return false;
   }
   const progress = showProgressModal({
-    status: "Running bun install…",
+    status: "Installing dependencies…",
     title: "Installing dependencies",
   });
   try {
@@ -44,7 +44,7 @@ export async function ensureDependenciesInstalled(): Promise<boolean> {
       progress.done();
       return true;
     }
-    progress.fail(result.log ?? "bun install failed");
+    progress.fail(result.log ?? "Install failed");
   } catch (error) {
     progress.fail(error instanceof Error ? error.message : String(error));
   }

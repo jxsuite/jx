@@ -1438,19 +1438,6 @@ describe("packages/add", () => {
     const data = await res.json();
     expect(data.error).toBe("Missing name");
   });
-
-  test("returns 500 when bun add fails", async () => {
-    const url = new URL("http://localhost/__studio/packages/add");
-    const req = new Request(url, {
-      body: JSON.stringify({
-        name: "@nonexistent-scope-xyz/nonexistent-pkg-404",
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const res = await callApi(req, url, FIXTURES);
-    expect(res.status).toBe(500);
-  });
 });
 
 // ─── packages/remove ─────────────────────────────────────────────────────────

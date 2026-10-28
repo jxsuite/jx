@@ -7,8 +7,9 @@
  * before Studio boots — while project-less mode (null) powers the /studio welcome screen.
  *
  * Cloud omissions (Studio degrades per @jxsuite/protocol's route table): pickDirectory, package
- * install/outdated/set-versions (package ops are manifest-only edits), multi-window, gitClone,
- * resolveClass, component discovery, code services.
+ * install and the install-on-open check (a cloud session has no `node_modules`; add, remove and
+ * set-versions update `package.json` and `package-lock.json` through the session's package
+ * service), multi-window, gitClone, resolveClass, component discovery, code services.
  */
 
 import { negotiateCollab } from "@jxsuite/collab/negotiate";
@@ -43,6 +44,8 @@ import type {
   ImportSiteOptions,
   OfferedAction,
   PackageInfo,
+  PackageOpResult,
+  PackageVersionInfo,
   ProjectListEntry,
   SiteBuildResult,
   ProjectSchemasResponse,
@@ -947,17 +950,6 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     }
   }
 
-  async function writePackageJson(pkg: JsonObject): Promise<void> {
-    const res = await api("/file", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: "package.json", content: `${JSON.stringify(pkg, null, 2)}\n` }),
-    });
-    if (!res.ok) {
-      throw new Error(await errorMessage(res, "Failed to update package.json"));
-    }
-  }
-
   // The bound session's /raw tree; see `documentBaseUrl` below for why both members ride together.
   const repoAssets: Pick<StudioPlatform, "assetSpace" | "documentBaseUrl"> = {};
   if (base) {
@@ -1435,28 +1427,49 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       return null;
     },
 
-    // ─── Packages (manifest-only edits; resolution happens in Pages CI) ───
+    // ─── Packages (the session's lockfile service; nothing installs) ───
 
+    /* Each mutation runs npm's installer lockfile-only on the platform, which writes
+       `package.json` and `package-lock.json` back into the shared tree as one change, so a commit
+       carries a lockfile a build can install from frozen (server.md §4.1). A failure changes
+       nothing and its message names the cause. */
     async addPackage(name: string) {
-      const pkg = await readPackageJson();
-      const deps = dependencyBlock(pkg, "dependencies");
-      const at = name.lastIndexOf("@");
-      const [pkgName, version] =
-        at > 0 ? [name.slice(0, at), name.slice(at + 1)] : [name, "latest"];
-      deps[pkgName] = version;
-      pkg["dependencies"] = deps;
-      await writePackageJson(pkg);
+      const res = await api("/packages/add", {
+        body: JSON.stringify({ name }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (!res.ok) {
+        throw new Error(await errorMessage(res, `Failed to add ${name}`));
+      }
     },
 
     async removePackage(name: string) {
-      const pkg = await readPackageJson();
-      for (const key of ["dependencies", "devDependencies"]) {
-        const deps = pkg[key];
-        if (isJsonObject(deps) && name in deps) {
-          pkg[key] = Object.fromEntries(Object.entries(deps).filter(([dep]) => dep !== name));
-        }
+      const res = await api("/packages/remove", {
+        body: JSON.stringify({ name }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (!res.ok) {
+        throw new Error(await errorMessage(res, `Failed to remove ${name}`));
       }
-      await writePackageJson(pkg);
+    },
+
+    async setPackageVersions(updates: { name: string; version: string; dev?: boolean }[]) {
+      const res = await api("/packages/set-versions", {
+        body: JSON.stringify({ updates }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (!res.ok) {
+        return { log: await errorMessage(res, "Failed to update versions"), ok: false };
+      }
+      return readJson<PackageOpResult>(res);
+    },
+
+    async packageVersions() {
+      const res = await api("/packages/versions");
+      return res.ok ? readJson<PackageVersionInfo[]>(res) : [];
     },
 
     async listPackages(): Promise<PackageInfo[]> {

@@ -27,7 +27,7 @@ const startSitePreview = mock((_root: string) =>
 );
 void mock.module("@jxsuite/server/site-preview", () => ({ startSitePreview }));
 
-const { createProjectSession } = await import("../src/project-session");
+const { createProjectSession } = await import("../src/backend/project-session");
 
 function withProject() {
   const root = mkdtempSync(join(tmpdir(), "jx-build-site-"));

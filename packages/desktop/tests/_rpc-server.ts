@@ -1,20 +1,8 @@
 import {
+  addPackage,
   codeService,
   discoverComponents,
   fetchPluginSchema,
-  handleCreateDirectory,
-  handleDeleteFile,
-  handleReadFile,
-  handleRenameFile,
-  handleResolveSiteContext,
-  handleUploadFile,
-  handleWriteFile,
-  listDirectory,
-  locateFile,
-  openProject,
-  setProjectRoot,
-} from "../src/handlers";
-import {
   gitBranches,
   gitCheckout,
   gitCommit,
@@ -28,8 +16,20 @@ import {
   gitStage,
   gitStatus,
   gitUnstage,
-} from "../src/git";
-import { addPackage, listPackages, removePackage } from "../src/packages";
+  handleCreateDirectory,
+  handleDeleteFile,
+  handleReadFile,
+  handleRenameFile,
+  handleResolveSiteContext,
+  handleUploadFile,
+  handleWriteFile,
+  listDirectory,
+  listPackages,
+  locateFile,
+  openProject,
+  removePackage,
+  setProjectRoot,
+} from "./_session";
 import type { RpcHandler, RpcRequestFrame, RpcResult } from "@jxsuite/server/project-server";
 
 /**

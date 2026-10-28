@@ -3,7 +3,7 @@
      reason. Under the root's two strictest flags, `noUncheckedIndexedAccess` and
      `exactOptionalPropertyTypes`, it reports 56 errors: 12 "possibly undefined" on array and
      property reads and 14 on indexed access, almost all in tests, plus the optional-property ones
-     in `src/chromium/platform.ts`. They are this package's own debt, bounded and fixable. Fixing
+     in `src/webview/platform.ts`. They are this package's own debt, bounded and fixable. Fixing
      them and deleting this file is how it joins the root program; until then CI runs this config
      as a second step, because a package left out of every typecheck is how an unbound identifier
      once shipped. */

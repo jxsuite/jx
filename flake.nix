@@ -147,6 +147,10 @@
             packages = with pkgs; [
               self'.packages.start-services
               bun
+              # The Electron the Nix package runs (electronVersion in electron-builder.yml follows
+              # it), so `bun run desktop` and `bun run smoke -- --electron "$ELECTRON_BIN"` run the
+              # desktop app and its backend exactly as the package does.
+              electron
               google-chrome
               husky
               imagemagick
@@ -165,8 +169,13 @@
               # ship generic Linux binaries that dlopen() libstdc++.so.6 at
               # runtime — NixOS has no FHS-standard location for it. Without
               # this, sharp fails with ERR_DLOPEN_FAILED and image
-              # optimization breaks in `jx build`.
+              # optimization breaks in `jx build` and in the desktop backend.
               export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH"
+              # The desktop app's runner and smoke test find Electron here; never node_modules,
+              # whose `electron` package downloads ~100 MB (packages/desktop/AGENTS.md). The backend
+              # runs as Electron's utility process and inherits LD_LIBRARY_PATH, which is what lets
+              # sharp's prebuilt binaries load on Electron's Node in a checkout.
+              export ELECTRON_BIN="${pkgs.electron}/bin/electron"
 
               if [ -f "$PWD/.env" ]; then
                 set -a; source "$PWD/.env"; set +a

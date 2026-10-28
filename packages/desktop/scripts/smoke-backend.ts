@@ -6,22 +6,28 @@
  * data and their dependencies by path (`import.meta.dirname`, `createRequire`), and none of those
  * paths survive bundling by accident: a data file nobody staged, a native module with no
  * `node_modules` to resolve from. Unit tests run the sources and cannot see any of it, and the
- * first person to see it was whoever opened the packaged app. So this starts what was PACKAGED,
- * with the Bun that ships beside it, through the same IPC the Electron main process uses, and asks
- * it to do the things that fail that way.
+ * first person to see it was whoever opened the packaged app. So this starts what was STAGED, on
+ * Node, with the same messages the Electron main process sends, and asks it to do the things that
+ * fail that way.
  *
- *     bun run smoke [--bun <bun>] [--backend <index.js>] [--studio <dir>] [--allow <rpc,rpc>]
+ *     bun run smoke [--node <node>] [--electron <exe>|packaged] [--backend <index.js>]
+ *                   [--studio <dir>] [--allow <rpc,rpc>]
  *
- * The defaults are the staged layout (`bun run stage`). `--backend src/hub/main.ts --bun "$(which
- * bun)"` runs the same checks against the sources, which is how to tell a bundling regression from
- * a bug. `--allow` names RPCs whose failure is already known and tracked, so CI stays green on them
+ * The defaults are the staged layout (`bun run stage`) under the `node` on `PATH`, which the
+ * pull-request lane sets up at Electron's Node major. `--electron` runs it under an Electron binary
+ * with `ELECTRON_RUN_AS_NODE=1` instead, and `--electron packaged` finds the one electron-builder
+ * just wrote under `artifacts/`: that is what a release lane passes, so the Node that runs the
+ * check is the one that ships. The channel is Node's IPC (`process.send`), not the utility
+ * process's port, which is the one difference from the app and is covered by `backend/main.ts`'s
+ * tests. `--allow` names RPCs whose failure is already known and tracked, so CI stays green on them
  * without going blind to the rest.
  */
 // oxlint-disable deslop/no-unknown-parameters, deslop/no-unknown-returns, deslop/no-runtime-typeof -- This script IS the I/O boundary: it sends arbitrary RPC params to the packaged backend and judges whatever comes back, so each verifier takes `unknown` and narrows it on purpose.
 // oxlint-disable unicorn/no-process-exit -- a CLI whose exit code is its interface
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { which } from "@jxsuite/schema/which";
 
 const desktopDir = resolve(import.meta.dir, "..");
 
@@ -32,10 +38,37 @@ function option(name: string): string | undefined {
   return index === -1 ? undefined : argv[index + 1];
 }
 
-const bun = resolve(
-  option("bun") ??
-    join(desktopDir, "build/resources/bun", process.platform === "win32" ? "bun.exe" : "bun"),
-);
+/**
+ * The Electron executable electron-builder wrote under `artifacts/` for this host: the unpacked
+ * Linux or Windows app, or the binary inside the macOS bundle.
+ */
+function packagedElectron(): string {
+  const artifacts = join(desktopDir, "artifacts");
+  const candidates: string[] = [];
+  for (const entry of existsSync(artifacts) ? readdirSync(artifacts) : []) {
+    const dir = join(artifacts, entry);
+    candidates.push(
+      join(dir, "jx-studio"),
+      join(dir, "Jx Studio.exe"),
+      join(dir, "Jx Studio.app", "Contents", "MacOS", "Jx Studio"),
+    );
+  }
+  const found = candidates.find((path) => existsSync(path));
+  if (!found) {
+    throw new Error(`No packaged Electron under ${artifacts}; run \`bun run package\` first.`);
+  }
+  return found;
+}
+
+const electronOption = option("electron");
+const runtime =
+  electronOption === undefined
+    ? (option("node") ?? which("node"))
+    : resolve(electronOption === "packaged" ? packagedElectron() : electronOption);
+if (!runtime) {
+  console.error("smoke: no `node` on PATH; pass --node <path> or --electron <path>.");
+  process.exit(1);
+}
 const backend = resolve(option("backend") ?? join(desktopDir, "build/resources/backend/index.js"));
 const studio = resolve(option("studio") ?? join(desktopDir, "build/resources/studio"));
 const allowed = new Set((option("allow") ?? "").split(",").filter(Boolean));
@@ -49,6 +82,10 @@ for (const [key, value] of Object.entries(process.env)) {
   }
 }
 env.JX_STUDIO_ASSETS = studio;
+if (electronOption !== undefined) {
+  env.ELECTRON_RUN_AS_NODE = "1";
+}
+console.log(`smoke: ${backend} under ${runtime}`);
 
 /** One message the backend sent, as far as this script reads it. */
 interface Message {
@@ -60,7 +97,7 @@ interface Message {
 
 const messages: Message[] = [];
 const waiters: (() => void)[] = [];
-const child = Bun.spawn([bun, backend], {
+const child = Bun.spawn([runtime, backend], {
   env,
   ipc: (message: Message) => {
     messages.push(message);
@@ -212,14 +249,15 @@ const checks: Check[] = [
 
 let failed = 0;
 
-/* The by-name resolution the compiler does from the backend's own directory: a directory the
-   backend is in, with the bundled Bun, resolving what `BACKEND_MODULES` staged. */
+/* The by-name resolution the compiler does from the backend's own directory, on the same runtime,
+   resolving what `BACKEND_MODULES` staged. */
 for (const name of ["lit-html", "@vue/reactivity"]) {
+  const from = JSON.stringify(join(resolve(backend, ".."), "index.js"));
   const probe = Bun.spawnSync(
     [
-      bun,
+      runtime,
       "-e",
-      `console.log(Bun.resolveSync(${JSON.stringify(name)}, ${JSON.stringify(resolve(backend, ".."))}))`,
+      `console.log(require("node:module").createRequire(${from}).resolve(${JSON.stringify(name)}))`,
     ],
     { env, stderr: "pipe", stdout: "pipe" },
   );
@@ -229,6 +267,31 @@ for (const name of ["lit-html", "@vue/reactivity"]) {
     console.log(`  known ${name} does not resolve from the backend directory`);
   } else {
     console.log(`  FAIL  ${name} does not resolve from the backend directory`);
+    failed += 1;
+  }
+}
+
+/* The packages the bundle leaves external because they load files of their own (`BACKEND_NATIVES`),
+   LOADED on the same runtime from the backend's directory: esbuild runs its platform binary, sharp
+   its libvips, and Arborist its own helpers. Resolving is not enough; a binary built for another
+   platform resolves fine and fails here. */
+const nativeProbes = {
+  "@npmcli/arborist": `typeof load("@npmcli/arborist") === "function" || process.exit(1)`,
+  esbuild: `load("esbuild").transform("let a = 1", { minify: true }).then((r) => r.code.length > 0 || process.exit(1))`,
+  sharp: `load("sharp")({ create: { width: 1, height: 1, channels: 3, background: "#000" } }).png().toBuffer().then((b) => b.length > 0 || process.exit(1))`,
+} satisfies Record<string, string>;
+for (const [name, probe] of Object.entries(nativeProbes)) {
+  const from = JSON.stringify(join(resolve(backend, ".."), "index.js"));
+  const loaded = Bun.spawnSync(
+    [runtime, "-e", `const load = require("node:module").createRequire(${from}); ${probe}`],
+    { env, stderr: "pipe", stdout: "pipe" },
+  );
+  if (loaded.exitCode === 0) {
+    console.log(`  ok    ${name} loads from the backend directory`);
+  } else if (allowed.has(`load:${name}`)) {
+    console.log(`  known ${name} does not load from the backend directory`);
+  } else {
+    console.log(`  FAIL  ${name} does not load: ${loaded.stderr.toString().split("\n")[0]}`);
     failed += 1;
   }
 }
@@ -245,6 +308,73 @@ for (const check of checks) {
     } else {
       throw new Error(problem);
     }
+  } catch (error) {
+    const known = allowed.has(check.name);
+    console.log(
+      `  ${known ? "known" : "FAIL "} ${check.name}: ${error instanceof Error ? error.message.split("\n")[0] : error}`,
+    );
+    if (!known) {
+      failed += 1;
+    }
+  }
+}
+
+/* Package operations run npm's installer in-process, which only the bundle can lose (its files are
+   staged beside the bundle). They run in a project of their own, re-rooted onto this window, with a
+   dependency-free package from the public registry: the new site above depends on the whole
+   published @jxsuite graph, which would make this a test of npm's bandwidth. */
+const packageProject = join(scratch, "packages");
+mkdirSync(packageProject, { recursive: true });
+writeFileSync(
+  join(packageProject, "package.json"),
+  `${JSON.stringify({ name: "smoke-packages" })}\n`,
+);
+writeFileSync(
+  join(packageProject, "project.json"),
+  `${JSON.stringify({ name: "smoke-packages" })}\n`,
+);
+const packageChecks: Check[] = [
+  {
+    name: "setWindowProject",
+    params: { root: packageProject },
+    rpc: "setWindowProject",
+    verify: isObject,
+  },
+  { name: "addPackage", params: { name: "ms" }, rpc: "addPackage", verify: () => null },
+  {
+    name: "listPackages (added)",
+    rpc: "listPackages",
+    verify: (result) =>
+      Array.isArray(result) && JSON.stringify(result).includes('"ms"') ? null : "ms is not listed",
+  },
+  {
+    name: "package-lock.json",
+    rpc: "listDirectory",
+    params: { dir: "." },
+    verify: (result) =>
+      JSON.stringify(result).includes("package-lock.json") ? null : "no package-lock.json",
+  },
+  { name: "removePackage", params: { name: "ms" }, rpc: "removePackage", verify: () => null },
+  {
+    name: "listPackages (removed)",
+    rpc: "listPackages",
+    verify: (result) =>
+      Array.isArray(result) && !JSON.stringify(result).includes('"ms"')
+        ? null
+        : "ms is still listed",
+  },
+];
+for (const check of packageChecks) {
+  try {
+    const result = await call(check.rpc, check.params);
+    if (verbose) {
+      console.log(`        ${check.name} ->`, JSON.stringify(result).slice(0, 400));
+    }
+    const problem = check.verify(result);
+    if (problem !== null) {
+      throw new Error(problem);
+    }
+    console.log(`  ok    ${check.name}`);
   } catch (error) {
     const known = allowed.has(check.name);
     console.log(

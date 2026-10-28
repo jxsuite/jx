@@ -21,6 +21,7 @@ import { realpathSync } from "node:fs";
 import { resolveAssetUrl } from "@jxsuite/schema/asset-paths";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import { problem } from "./problem.ts";
+import { fileResponse } from "./file-response.ts";
 
 export const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -300,11 +301,7 @@ export async function serveContained(absPath: string, root: string): Promise<Res
   if (!safe) {
     return null;
   }
-  const file = Bun.file(safe);
-  if (await file.exists()) {
-    return new Response(file);
-  }
-  return null;
+  return fileResponse(safe);
 }
 
 /**

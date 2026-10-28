@@ -254,8 +254,8 @@ describe("verifyProject - success path", () => {
     expect(indexPage.state.fullPage).toEqual([true]);
 
     // Fake pages hit the real local server at the mapped URL paths
-    expect(indexPage.state.urls[0]).toMatch(/^http:\/\/localhost:\d+\/$/);
-    expect(aboutPage.state.urls[0]).toMatch(/^http:\/\/localhost:\d+\/about$/);
+    expect(indexPage.state.urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    expect(aboutPage.state.urls[0]).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/about$/);
     expect(indexPage.state.viewports[0]).toEqual({ width: 640, height: 480 });
     expect(indexPage.state.closed).toBe(true);
     expect(aboutPage.state.closed).toBe(true);

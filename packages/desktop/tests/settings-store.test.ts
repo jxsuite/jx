@@ -1,5 +1,5 @@
 /**
- * Tests for src/settings-store.ts — the user-level settings file store.
+ * Tests for src/backend/settings-store.ts — the user-level settings file store.
  *
  * Node:os is mocked to a temp home BEFORE the store (and env-paths, which captures homedir at
  * module load) is imported; $XDG_CONFIG_HOME is pinned under that home so the resolved config dir
@@ -26,8 +26,9 @@ void mock.module("node:os", () => {
   return { default: { homedir, tmpdir }, homedir, tmpdir };
 });
 
-const { patchSettings, readSettings, watchSettings } = await import("../src/settings-store");
-const { configFile } = await import("../src/user-config");
+const { patchSettings, readSettings, watchSettings } =
+  await import("../src/backend/settings-store");
+const { configFile } = await import("../src/backend/user-config");
 
 /** The platform-conventional store path (XDG under the temp home on Linux). */
 function storePath(): string {

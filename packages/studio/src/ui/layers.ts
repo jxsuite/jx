@@ -523,7 +523,7 @@ function reducedMotion(): boolean {
 /**
  * **One of the three exceptions §13.5 lists** — behaviour that differs under `?automation=1` beyond
  * installing the hook, pinning the clock and selecting a profile. The other two are both refusals
- * to touch the project on disk: `packages/ensure-deps.ts` declines to run `bun install`, and
+ * to touch the project on disk: `packages/ensure-deps.ts` declines to run an install, and
  * `packages/jxsuite-update.ts` declines to prompt for a dependency update. This one is the only
  * exception that changes what a picture SHOWS rather than what it avoids doing.
  *

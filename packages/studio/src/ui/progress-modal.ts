@@ -4,8 +4,8 @@
  *
  * What changed. This modal used to be four things at once: the running state, the error view, the
  * log and the operation's entire memory. It blocked the whole app, offered no way out, and took all
- * four with it when it closed — so a failed `bun install` could be read exactly once, and a hung
- * one could not be escaped at all. §16.4 splits those apart:
+ * four with it when it closed — so a failed install could be read exactly once, and a hung one
+ * could not be escaped at all. §16.4 splits those apart:
  *
  * - The **record** moves to `panels/activity-panel.ts`, which keeps the entry, its steps and its log
  *   after the modal is gone;
@@ -120,7 +120,7 @@ export function showProgressModal(opts: ProgressModalOptions): ProgressModalHand
     fail(message: string) {
       // The error view is not rendered here any more: it is the Problems row, with the log as its
       // `detail`, and it is still on screen tomorrow. Three of the four call sites hand over a
-      // CAPTURED LOG as their message — `result.log ?? "bun install failed"` — so a multi-line one
+      // CAPTURED LOG as their message — `result.log ?? "Install failed"` — so a multi-line one
       // Is split the way the old view split it: "<title> failed" as the headline, the whole text
       // As the detail. A Problems list whose first row is 400 lines of `bun` output is not a list.
       const text = message.trim();

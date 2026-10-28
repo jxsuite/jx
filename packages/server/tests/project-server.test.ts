@@ -107,8 +107,8 @@ let handle: ProjectServerHandle;
 let base: string;
 let token: string;
 
-beforeAll(() => {
-  handle = createProjectServer({ resolveSession, studioDir: STUDIO });
+beforeAll(async () => {
+  handle = await createProjectServer({ resolveSession, studioDir: STUDIO });
   base = handle.url;
   token = handle.rpcToken;
 });

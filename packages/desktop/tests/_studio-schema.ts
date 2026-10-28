@@ -4,7 +4,7 @@
    `properties` and `required`. Checking those two members is what lets a test read them typed. */
 import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
-import type { StudioSchema } from "../src/handlers";
+import type { StudioSchema } from "./_session";
 
 /** Fail the test unless `value` carries the two members extractStudioSchema always writes. */
 export function expectStudioSchema(value: StudioSchema | JsonValue): asserts value is StudioSchema {

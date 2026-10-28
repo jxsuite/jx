@@ -50,7 +50,7 @@ jobs:
       - uses: ./.github/actions/setup-bun
 
       # The unpacked build, not an AppImage: snapcraft wants the files. `--dir` runs the whole stage
-      # (backend bundle, studio assets, pinned Bun) and stops before the installer is made.
+      # (backend bundle and its native modules, studio assets) and stops before the installer is made.
       - name: Build the unpacked Linux app and stage it
         run: |
           set -euo pipefail
@@ -61,8 +61,8 @@ jobs:
           cp -r "$unpacked" packages/desktop/snap-stage
           bun -e 'console.log(require("./packages/desktop/package.json").version)' > packages/desktop/snap-stage/version.txt
 
-      - name: The staged backend starts under the Bun that ships in the snap
-        run: bun run --cwd packages/desktop smoke
+      - name: The staged backend starts under the Electron that ships in the snap
+        run: bun run --cwd packages/desktop smoke --electron snap-stage/jx-studio
 
       # The chown is load-bearing. `sudo` leaves the snap owned by root, and review-tools is a strict
       # snap whose only file access is the `home` interface, whose AppArmor rule is

@@ -2,8 +2,8 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileGrantStore, openFolderGrants } from "../src/electron-shell/folder-grants";
-import type { Grant } from "../src/electron-shell/folder-grants";
+import { fileGrantStore, openFolderGrants } from "../src/main/folder-grants";
+import type { Grant } from "../src/main/folder-grants";
 
 /** An in-memory store, and the bookmarks Electron was asked to start using. */
 function memory(initial: Grant[] = []) {

@@ -328,7 +328,7 @@ export interface ExtensionSectionInfo {
 
 /** One extension a backend can offer a project, whether or not the project enables it. */
 export interface ExtensionCatalogEntry {
-  /** Package name: the identity, and the `bun add` argument. */
+  /** Package name: the identity, and the argument an add passes the installer. */
   name: string;
   /**
    * The string that goes in `project.json` `extensions[]`. Usually `name`, but a linked or
@@ -590,7 +590,7 @@ export interface PackageVersionInfo {
   dev?: boolean;
 }
 
-/** Result of a package mutation that runs `bun install` (install / set-versions). */
+/** Result of a package mutation that runs an install (install / set-versions). */
 export interface PackageOpResult {
   ok: boolean;
   /** Combined stdout/stderr from the bun invocation, surfaced to the user on failure. */

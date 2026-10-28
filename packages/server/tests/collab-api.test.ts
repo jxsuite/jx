@@ -10,6 +10,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { createDevServer } from "../src/server.ts";
 import { createCollabRegistry } from "../src/collab.ts";
 import type { CollabRegistry, CollabSocketData } from "../src/collab.ts";
+import { serve } from "#serve";
+import { serve as serveNode } from "../src/serve.node.ts";
 import type { ServerWebSocket } from "bun";
 import type { HostConnection } from "@jxsuite/collab/room";
 import { createWsCollabConnection } from "@jxsuite/collab/client";
@@ -338,8 +340,9 @@ describe("graceful shutdown", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "doc.md"), "start\n");
     const registry = createCollabRegistry({ absRoot: dir, activeProjectRoot: () => null });
-    const srv = Bun.serve({
-      fetch: (req, bunServer) => registry.handleRequest(req, bunServer) ?? new Response("ok"),
+    // Over the Node implementation, the one the packaged desktop backend runs (serve.node.ts).
+    const srv = await serveNode<CollabSocketData>({
+      fetch: (req, srvHandle) => registry.handleRequest(req, srvHandle) ?? new Response("ok"),
       port: 0,
       websocket: registry.websocket,
     });
@@ -383,8 +386,8 @@ describe("persist failures", () => {
     const file = join(dir, "doc.md");
     writeFileSync(file, "start\n");
     const registry = createCollabRegistry({ absRoot: dir, activeProjectRoot: () => null });
-    const srv = Bun.serve({
-      fetch: (req, bunServer) => registry.handleRequest(req, bunServer) ?? new Response("ok"),
+    const srv = await serve<CollabSocketData>({
+      fetch: (req, srvHandle) => registry.handleRequest(req, srvHandle) ?? new Response("ok"),
       port: 0,
       websocket: registry.websocket,
     });

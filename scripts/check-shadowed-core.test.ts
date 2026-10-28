@@ -117,13 +117,16 @@ describe("removal", () => {
       { name: "@shoelace-style/shoelace", version: "2.20.1" },
     ]);
     writeFileSync(join(root, "bun.lock"), "{}");
+    writeFileSync(join(root, "package-lock.json"), "{}");
     try {
       const [shadow] = shadowsIn(root);
       removeShadow(shadow!);
 
       expect(existsSync(join(root, "node_modules", "@jxsuite", "schema"))).toBe(false);
-      // The lockfile goes too, or the next install faithfully reproduces what was just removed.
+      // The lockfile goes too, or the next install faithfully reproduces what was just removed:
+      // Bun's from a terminal install, npm's from a Studio one.
       expect(existsSync(join(root, "bun.lock"))).toBe(false);
+      expect(existsSync(join(root, "package-lock.json"))).toBe(false);
       // …and the third-party dependency the starter actually previews with survives.
       expect(existsSync(join(root, "node_modules", "@shoelace-style/shoelace"))).toBe(true);
       expect(shadowsIn(root)).toEqual([]);

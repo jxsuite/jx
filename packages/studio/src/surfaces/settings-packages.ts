@@ -73,7 +73,7 @@ export interface PackagesActions {
   /** Move every package that is behind one. */
   updateAll: () => void;
   remove: (name: string) => void;
-  /** Run `bun install` over the project as it stands. */
+  /** Install the project's dependencies as it stands. */
   reinstall: () => void;
 }
 

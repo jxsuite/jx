@@ -8,8 +8,8 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { isString } from "@jxsuite/schema/guards";
-import { createProjectSession } from "../src/project-session";
-import type { ProjectSession } from "../src/project-session";
+import { createProjectSession } from "../src/backend/project-session";
+import type { ProjectSession } from "../src/backend/project-session";
 
 /*
  * In the OS temp dir, not beside this file. These tests open a real SQLite database under the

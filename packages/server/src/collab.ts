@@ -24,7 +24,7 @@ import {
   selectSubprotocol,
 } from "@jxsuite/collab/negotiate";
 import { assertAccessible } from "./studio-api";
-import type { ServerWebSocket, WebSocketHandler } from "bun";
+import type { ServeServer, ServeSocket, ServeWebSocketHandler } from "./serve.ts";
 import type { HostConnection } from "@jxsuite/collab/room";
 import { problem } from "./problem.ts";
 
@@ -66,20 +66,15 @@ export interface CollabSocketData {
 export interface CollabRegistry {
   /**
    * Handle a request to /__studio/collab: WebSocket upgrades become collab connections; a plain GET
-   * answers the capability probe. Returns undefined when the upgrade was accepted (Bun sends the
-   * 101 itself).
+   * answers the capability probe. Returns undefined when the upgrade was accepted (the server sends
+   * the 101 itself).
    */
   handleRequest: (
     req: Request,
-    server: {
-      upgrade: (
-        req: Request,
-        opts: { data: CollabSocketData; headers?: Record<string, string> },
-      ) => boolean;
-    },
+    server: Pick<ServeServer<CollabSocketData>, "upgrade">,
   ) => Response | undefined;
-  /** Bun.serve websocket handlers backing the upgraded connections. */
-  websocket: WebSocketHandler<CollabSocketData>;
+  /** The websocket handlers backing the upgraded connections (`serve.ts`). */
+  websocket: ServeWebSocketHandler<CollabSocketData>;
   /** Watcher hook: a file changed on disk (absolute path). Echoes of our write-back are ignored. */
   handleExternalChange: (absPath: string) => void;
   /** Flush pending write-backs and tear everything down. */
@@ -253,17 +248,17 @@ export function createCollabRegistry(opts: {
     },
 
     websocket: {
-      close(ws: ServerWebSocket<CollabSocketData>) {
+      close(ws: ServeSocket<CollabSocketData>) {
         ws.data.connection?.close();
         ws.data.connection = null;
       },
-      message(ws: ServerWebSocket<CollabSocketData>, message: string | Buffer) {
+      message(ws: ServeSocket<CollabSocketData>, message: string | Buffer) {
         if (isString(message)) {
           return;
         }
         ws.data.connection?.handleMessage(new Uint8Array(message));
       },
-      open(ws: ServerWebSocket<CollabSocketData>) {
+      open(ws: ServeSocket<CollabSocketData>) {
         connectionCounter += 1;
         const login = `local-${connectionCounter}`;
         ws.data.connection = host.connect(

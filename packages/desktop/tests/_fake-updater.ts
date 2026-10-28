@@ -2,7 +2,7 @@
  * A fake electron-updater `autoUpdater` and a schedule the test runs by hand, for the updater's own
  * tests and for the app's, which start it.
  */
-import type { AutoUpdater, UpdateSchedule, UpdaterEvents } from "../src/electron-shell/updater";
+import type { AutoUpdater, UpdateSchedule, UpdaterEvents } from "../src/main/updater";
 
 /** The fake updater, what it recorded, and a way to fire its events. */
 export interface FakeUpdater {

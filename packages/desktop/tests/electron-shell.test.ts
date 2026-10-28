@@ -1,38 +1,26 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { describe, expect, mock, test } from "bun:test";
 import type * as Electron from "electron";
-import {
-  SHELL_CHANNELS,
-  SHELL_GLOBAL,
-  exposeShell,
-  shellBridge,
-} from "../src/electron-shell/bridge";
+import { SHELL_CHANNELS, SHELL_GLOBAL, exposeShell, shellBridge } from "../src/shared/bridge";
 import {
   createStudioWindow,
   installApplicationMenu,
   isExternalLink,
   isShellNavigation,
+  identifyApp,
   macApplicationMenu,
-  parseShellArgs,
   raiseWindow,
   registerWindowActions,
   shellWindowOptions,
-  startShell,
   switchValue,
-} from "../src/electron-shell/shell";
+} from "../src/main/shell";
 import { fakeElectron } from "./_fake-electron";
 import type { FakeElectron, FakeWindow } from "./_fake-electron";
 
 const URL_ARG = "http://127.0.0.1:4321/__studio__/index.html?token=TOK";
 const ORIGIN = "http://127.0.0.1:4321";
-const ARGV = [
-  "/nix/bin/electron",
-  "/tmp/b/main.js",
-  `--jx-url=${URL_ARG}`,
-  "--jx-preload=/tmp/b/preload.js",
-  "--jx-user-data-dir=/profiles/one",
-  "--jx-icon=/share/icon.png",
-];
+const ARGS = { icon: "/share/icon.png", preload: "/tmp/b/preload.js" };
+const ICONLESS = { icon: null, preload: "/tmp/b/preload.js" };
 
 /** A cancellable event that remembers whether it was cancelled. */
 function event(url = ""): Electron.NavigationEvent & { prevented: boolean } {
@@ -56,13 +44,17 @@ function fire(window: FakeWindow, name: string, ...args: unknown[]): void {
   (listener as (...a: unknown[]) => void)(...args);
 }
 
-/** Start a shell over a fresh fake and return both. */
+/** Set the app up as `app.ts` does and open one Studio window over a fresh fake. */
 async function started(
-  argv = ARGV,
   platform: NodeJS.Platform = "linux",
+  icon: string | null = ARGS.icon,
 ): Promise<{ fake: FakeElectron; window: FakeWindow }> {
   const fake = fakeElectron();
-  await startShell(fake.api, argv, platform);
+  identifyApp(fake.api.app, { icon }, platform);
+  installApplicationMenu(fake.api, platform);
+  registerWindowActions(fake.api);
+  const opened = createStudioWindow(fake.api, { icon, preload: ARGS.preload, url: URL_ARG });
+  await opened.loadURL(URL_ARG);
   const window = fake.windows.at(-1);
   if (!window) {
     throw new Error("no window opened");
@@ -70,28 +62,8 @@ async function started(
   return { fake, window };
 }
 
-describe("parseShellArgs", () => {
-  test("reads every --jx- switch", () => {
-    expect(parseShellArgs(ARGV)).toEqual({
-      icon: "/share/icon.png",
-      preload: "/tmp/b/preload.js",
-      url: URL_ARG,
-      userDataDir: "/profiles/one",
-    });
-  });
-
-  test("the icon and profile are optional", () => {
-    expect(parseShellArgs(ARGV.slice(0, 4))).toMatchObject({ icon: null, userDataDir: null });
-  });
-
-  test("the URL and preload are not", () => {
-    expect(() => parseShellArgs(["electron", "main.js"])).toThrow("--jx-url and --jx-preload");
-    expect(() => parseShellArgs(ARGV.slice(0, 3))).toThrow("--jx-url and --jx-preload");
-  });
-});
-
 describe("navigation policy", () => {
-  test("only the launcher's own origin stays in the shell", () => {
+  test("only the window's own origin stays in it", () => {
     expect(isShellNavigation(`${ORIGIN}/__studio__/index.html`, ORIGIN)).toBe(true);
     expect(isShellNavigation("http://127.0.0.1:9999/", ORIGIN)).toBe(false);
     expect(isShellNavigation("https://jxsuite.com/docs", ORIGIN)).toBe(false);
@@ -110,7 +82,7 @@ describe("navigation policy", () => {
 
 describe("shellWindowOptions", () => {
   test("is frameless, hidden until painted, and isolated from Node", () => {
-    const options = shellWindowOptions(parseShellArgs(ARGV));
+    const options = shellWindowOptions(ARGS);
     expect(options).toMatchObject({ frame: false, icon: "/share/icon.png", show: false });
     expect(options.webPreferences).toEqual({
       contextIsolation: true,
@@ -121,8 +93,7 @@ describe("shellWindowOptions", () => {
   });
 
   test("carries no icon key when there is none", () => {
-    const iconless = parseShellArgs(ARGV.slice(0, 4));
-    expect("icon" in shellWindowOptions(iconless)).toBe(false);
+    expect("icon" in shellWindowOptions(ICONLESS)).toBe(false);
   });
 });
 
@@ -131,7 +102,7 @@ describe("window actions", () => {
   function setup() {
     const fake = fakeElectron();
     registerWindowActions(fake.api);
-    const opened = new fake.api.BrowserWindow(shellWindowOptions(parseShellArgs(ARGV)));
+    const opened = new fake.api.BrowserWindow(shellWindowOptions(ARGS));
     const window = fake.windows[0]!;
     expect(opened.webContents).toBeDefined();
     const invoke = (channel: string): void => {
@@ -175,12 +146,10 @@ describe("window actions", () => {
   });
 });
 
-describe("startShell", () => {
-  test("names the app for the desktop, keeps its profile, and loads Studio", async () => {
+describe("a Studio window", () => {
+  test("names the app for the desktop and loads Studio", async () => {
     const { fake, window } = await started();
     expect(fake.desktopName).toEqual(["jx-studio.desktop"]);
-    expect(fake.paths.get("userData")).toBe("/profiles/one");
-    expect(fake.paths.get("sessionData")).toBe("/profiles/one");
     expect(fake.setApplicationMenu).toHaveBeenCalledWith(null);
     expect(window.loaded).toBe(URL_ARG);
     const registered = [...fake.handlers.keys()].toSorted();
@@ -188,18 +157,11 @@ describe("startShell", () => {
     expect(registered).toEqual(channels);
   });
 
-  test("without a profile directory Electron keeps its own", async () => {
-    const { fake } = await started(ARGV.slice(0, 4));
-    expect(fake.paths.size).toBe(0);
-  });
-
-  test("shows the window once it has painted, and quits when it closes", async () => {
-    const { fake, window } = await started();
+  test("shows the window once it has painted", async () => {
+    const { window } = await started();
     expect(window.calls).not.toContain("show");
     window.ready?.();
     expect(window.calls).toContain("show");
-    fake.emitApp("window-all-closed");
-    expect(fake.quit).toHaveBeenCalled();
   });
 
   test("same-origin navigation proceeds; a web link leaves for the browser", async () => {
@@ -266,14 +228,8 @@ describe("startShell", () => {
     expect(leave.prevented).toBe(true);
   });
 
-  test("bad arguments reject before anything is opened", async () => {
-    const fake = fakeElectron();
-    await expect(startShell(fake.api, ["electron"])).rejects.toThrow("--jx-url");
-    expect(fake.windows).toHaveLength(0);
-  });
-
   test("on macOS: names the app, sets the Dock icon, and installs the application menu", async () => {
-    const { fake, window } = await started(ARGV, "darwin");
+    const { fake, window } = await started("darwin");
     // Electron defines setDesktopName on Linux only; calling it on macOS would throw.
     expect(fake.desktopName).toEqual([]);
     expect(fake.names).toEqual(["Jx Studio"]);
@@ -286,12 +242,12 @@ describe("startShell", () => {
   });
 
   test("on macOS without an icon, the Dock keeps its own", async () => {
-    const { fake } = await started(ARGV.slice(0, -1), "darwin");
+    const { fake } = await started("darwin", null);
     expect(fake.dockIcons).toEqual([]);
   });
 
   test("other platforms get neither the desktop name nor a menu", async () => {
-    const { fake } = await started(ARGV, "win32");
+    const { fake } = await started("win32");
     expect(fake.desktopName).toEqual([]);
     expect(fake.names).toEqual([]);
     expect(fake.setApplicationMenu).toHaveBeenCalledWith(null);
@@ -336,25 +292,8 @@ describe("entry points", () => {
   test("preload.ts publishes the bridge through the runtime's own modules", async () => {
     const fake = fakeElectron();
     void mock.module("electron", () => fake.api);
-    await import("../src/electron-shell/preload");
+    await import("../src/preload/preload");
     expect(fake.exposed.has(SHELL_GLOBAL)).toBe(true);
-  });
-
-  test("main.ts quits rather than linger when the shell cannot start", async () => {
-    const fake = fakeElectron();
-    void mock.module("electron", () => fake.api);
-    const errors = mock((..._args: unknown[]) => {});
-    const realError = console.error;
-    console.error = errors;
-    try {
-      // This process's argv carries no --jx-url, which is exactly a failed start.
-      await import("../src/electron-shell/main");
-      await Bun.sleep(0);
-      expect(fake.quit).toHaveBeenCalled();
-      expect(errors.mock.calls[0]?.[0]).toBe("[electron-shell]");
-    } finally {
-      console.error = realError;
-    }
   });
 });
 

@@ -24,7 +24,7 @@ void mock.module("@jxsuite/server/refactor", () => ({
   findReferences: () => Promise.resolve({ files: [] }),
 }));
 
-const { createProjectSession } = await import("../src/project-session");
+const { createProjectSession } = await import("../src/backend/project-session");
 
 const FIXTURES = resolve(import.meta.dir, "_fixtures_session_watch");
 const PROJECT = resolve(FIXTURES, "a-project");

@@ -15,7 +15,7 @@ import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards"
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const { setProjectRoot, fetchPluginSchema, fetchProjectSchemas, jxResolve, listExtensions } =
-  await import("../src/handlers");
+  await import("./_session");
 
 const PROJECT = join(import.meta.dir, "_fixtures_content");
 

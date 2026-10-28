@@ -35,7 +35,7 @@ describe("findingsIn", () => {
   });
 
   test("recognizes a package-local toPosix() name too, not only toPosixPath()", () => {
-    // `packages/desktop/src/project-session.ts` predates the shared helper and keeps its own
+    // `packages/desktop/src/backend/project-session.ts` predates the shared helper and keeps its own
     // `toPosix()` — the check must not force every caller onto one literal function name.
     const source = `
       for (const rawMatch of glob.scan(root)) {

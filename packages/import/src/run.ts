@@ -10,7 +10,7 @@
 
 import { existsSync, readdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { closeBrowser, launchBrowser } from "./browser-local.ts";
 import { createLocalIo } from "./io.ts";
 import { runImportPipeline } from "./pipeline.ts";
@@ -234,7 +234,7 @@ export async function importSite(
   async function seedProject(): Promise<void> {
     await mkdir(outDir, { recursive: true });
     const seed = { name: seedName(url), imports: {}, images: { optimize: false } };
-    await Bun.write(join(outDir, PROJECT_FILE), `${JSON.stringify(seed, null, 2)}\n`);
+    await writeFile(join(outDir, PROJECT_FILE), `${JSON.stringify(seed, null, 2)}\n`);
     onProgress?.({
       message: `Created ${outDir}`,
       phase: "seed",

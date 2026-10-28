@@ -54,6 +54,9 @@ import { handleResolve, handleServerFunction } from "./resolve.ts";
 import { handleJxMounts } from "./jx-mounts.ts";
 import { loopbackGate, originHostGate } from "./net-guard.ts";
 import { problem } from "./problem.ts";
+import { scanFiles } from "./fs-glob.ts";
+import { serve } from "#serve";
+import { bundleToString } from "@jxsuite/compiler/bundler";
 
 /** A running live preview for one project. */
 export interface LivePreview {
@@ -116,7 +119,7 @@ function overlayFor(projectRoot: string): Overlay {
 }
 
 interface Running extends LivePreview {
-  server: { stop: (closeActiveConnections?: boolean) => void };
+  server: { stop: (closeActiveConnections?: boolean) => Promise<void> };
   hub: SseHub;
   /** This origin's own resolver credential, distinct from any editing server's. */
   token: string;
@@ -132,6 +135,8 @@ interface Running extends LivePreview {
 
 /** One origin per project root — a second Open in Browser reuses the first one's port. */
 const running = new Map<string, Running>();
+/** Origins mid-bind, so two starts racing for one project share a server. */
+const starting = new Map<string, Promise<Running>>();
 
 /** The runtime bundle is the same bytes for every project, so it is read once per process. */
 let runtimeBundle: string | null = null;
@@ -162,11 +167,10 @@ async function loadRuntimeBundle(): Promise<string> {
   } catch {
     // No published dist on this install; fall through and build one.
   }
-  const result = await Bun.build({
-    entrypoints: [require_.resolve("@jxsuite/runtime")],
+  runtimeBundle = await bundleToString(require_.resolve("@jxsuite/runtime"), {
+    minify: false,
     target: "browser",
   });
-  runtimeBundle = await result.outputs[0]!.text();
   return runtimeBundle;
 }
 
@@ -178,7 +182,7 @@ async function treePaths(projectRoot: string, overlay: Map<string, string>): Pro
     if (!existsSync(dir)) {
       continue;
     }
-    for await (const match of new Bun.Glob("**/*").scan({ cwd: dir, dot: false })) {
+    for await (const match of scanFiles("**/*", dir)) {
       found.add(`${root}${match.replaceAll("\\", "/")}`);
     }
   }
@@ -419,7 +423,20 @@ export async function startLivePreview(projectRoot: string): Promise<LivePreview
     await ensureCache(existing, projectRoot);
     return report(existing, projectRoot);
   }
+  let pending = starting.get(projectRoot);
+  if (!pending) {
+    pending = listen(projectRoot).finally(() => starting.delete(projectRoot));
+    starting.set(projectRoot, pending);
+  }
+  const entry = await pending;
+  /* Counted before answering, because the caller reports it to the author and "0 pages" from a site
+     with pages is worse than the moment it costs to walk the tree. */
+  await ensureCache(entry, projectRoot);
+  return report(entry, projectRoot);
+}
 
+/** Bind the live preview origin for `projectRoot` and register it. */
+async function listen(projectRoot: string): Promise<Running> {
   const entry: Running = {
     burstStartedAt: null,
     cache: null,
@@ -431,11 +448,11 @@ export async function startLivePreview(projectRoot: string): Promise<LivePreview
     port: 0,
     reloadTimer: null,
     routes: 0,
-    server: { stop: () => {} },
+    server: { stop: async () => {} },
     token: crypto.randomUUID(),
   };
 
-  const server = Bun.serve({
+  const server = await serve({
     fetch: (req) => handle(entry, projectRoot, req),
     hostname: "127.0.0.1",
     /* The composed page is assembled per request and the stream is long-lived; the dev server's
@@ -449,10 +466,7 @@ export async function startLivePreview(projectRoot: string): Promise<LivePreview
   entry.origin = server.url.origin;
   entry.port = Number(server.url.port);
   running.set(projectRoot, entry);
-  /* Counted before answering, because the caller reports it to the author and "0 pages" from a site
-     with pages is worse than the moment it costs to walk the tree. */
-  await ensureCache(entry, projectRoot);
-  return report(entry, projectRoot);
+  return entry;
 }
 
 /** What a caller hands back to Studio. */
@@ -616,7 +630,7 @@ export function stopLivePreviews(): void {
     if (entry.reloadTimer) {
       clearTimeout(entry.reloadTimer);
     }
-    entry.server.stop(true);
+    void entry.server.stop(true);
   }
   running.clear();
 }

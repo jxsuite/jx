@@ -2,20 +2,30 @@
  * Bundler.js — timing-aware module bundling for compiled sites
  *
  * One backend abstraction serving every bundling need of the build (spec.md §12, compiler.md):
- * client-timing `$src` sidecars today, the server worker in a follow-up. Backend selection is
- * runtime-adaptive: `Bun.build` when the build runs under Bun, esbuild (dynamically imported) under
- * plain Node. Options are kept minimal and identical across backends so output stays as stable as
- * possible; set `JX_BUNDLER=esbuild` to force the fallback (e.g. for parity checks).
+ * client-timing `$src` sidecars today, the server worker in a follow-up. The backend is chosen at
+ * resolution time by the `#bundler-backend` import (`bundler-backend.ts`): `Bun.build` under Bun,
+ * esbuild everywhere else, so a Node build of this module carries no Bun code. Options are kept
+ * minimal and identical across backends so output stays as stable as possible; set
+ * `JX_BUNDLER=esbuild` to force esbuild under Bun (e.g. for parity checks).
  *
  * `timing: "compiler"` code is never bundled — it executes in the build host via the extension
  * registry's `importImplementation` path.
  */
 
 import { rmSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { isNpmSpecifier, NPM_SPECIFIER_PREFIX } from "@jxsuite/schema/asset-paths";
+import * as backend from "#bundler-backend";
+import type {
+  BackendBuild,
+  BundlePlugin,
+  BundleTargetName,
+  PluginBuild,
+} from "./bundler-backend.ts";
+import { TRANSIENT_ENTRY_PREFIX } from "./bundler-backend.ts";
+
+export type { BundleTargetName } from "./bundler-backend.ts";
 
 /** Import specifiers left external in client bundles — provided by the page importmap. */
 export const CLIENT_EXTERNALS = ["@vue/reactivity", "lit-html"];
@@ -29,11 +39,11 @@ export function isBundleableSrc(specifier: string): boolean {
 }
 
 /**
- * True when the Node code path (createRequire resolution, esbuild backend) should be used: always
- * under plain Node, or when `JX_BUNDLER=esbuild` forces it for parity checks.
+ * True when the esbuild backend is the one bundling: always outside Bun, or when
+ * `JX_BUNDLER=esbuild` forces it for parity checks.
  */
 export function useNodeFallback(): boolean {
-  return typeof Bun === "undefined" || process.env.JX_BUNDLER === "esbuild";
+  return backend.backendName() === "esbuild";
 }
 
 /**
@@ -47,13 +57,17 @@ export function resolveSidecarEntry(
   projectRoot: string,
 ): string {
   if (isNpmSpecifier(specifier)) {
-    const bare = specifier.slice(NPM_SPECIFIER_PREFIX.length);
-    if (useNodeFallback()) {
-      return createRequire(join(projectRoot, "package.json")).resolve(bare);
-    }
-    return Bun.resolveSync(bare, projectRoot);
+    return backend.resolveBare(specifier.slice(NPM_SPECIFIER_PREFIX.length), projectRoot);
   }
   return resolve(docDir, specifier);
+}
+
+/**
+ * Resolve a bare specifier as an import from a module in `fromDir`, through the active backend's
+ * resolver. Throws when it does not resolve.
+ */
+export function resolveBareSpecifier(specifier: string, fromDir: string): string {
+  return backend.resolveBare(specifier, fromDir);
 }
 
 export interface BundleRequest {
@@ -62,9 +76,6 @@ export interface BundleRequest {
   /** Absolute path of the bundled output file. */
   outfile: string;
 }
-
-/** Resolution/runtime targets: client sidecars use "browser"; the site worker uses the rest. */
-export type BundleTargetName = "browser" | "node" | "bun" | "workerd";
 
 /**
  * A resolution hook, in the one shape both backends accept.
@@ -108,26 +119,6 @@ export interface BundleOptions {
    * used to hand pages the `node` build of a browser package.
    */
   onFileLoaded?: (path: string) => void;
-}
-
-/**
- * The part of a plugin builder the hooks use, typed so that both Bun's `PluginBuilder` and
- * esbuild's `PluginBuild` are assignable to it: a plugin written against it is a plugin for either
- * backend.
- */
-interface PluginBuild {
-  onResolve: (
-    options: { filter: RegExp },
-    callback: (args: { path: string; importer: string }) => ReturnType<BundleResolver["resolve"]>,
-  ) => void;
-  /** An `undefined` result hands the file back to the backend's own loader. */
-  onLoad: (options: { filter: RegExp }, callback: (args: { path: string }) => undefined) => void;
-}
-
-/** A plugin in the one shape both `Bun.build` and `esbuild.build` accept. */
-interface BundlePlugin {
-  name: string;
-  setup: (build: PluginBuild) => void;
 }
 
 /** Wrap the hooks as the one-plugin array both backends take. */
@@ -213,17 +204,15 @@ function sharedResolution(opts: BundleOptions): SharedResolution {
   return shared;
 }
 
-/** Map a bundle target to esbuild's platform (conditions carry the workerd specifics). */
-function esbuildPlatform(target: BundleTargetName): "browser" | "node" {
-  return target === "node" || target === "bun" ? "node" : "browser";
-}
-
-/** Map a bundle target to Bun.build's target. */
-function bunTarget(target: BundleTargetName): "browser" | "node" | "bun" {
-  if (target === "workerd") {
-    return "browser";
-  }
-  return target;
+/** Every option {@link BundleOptions} decides, in the shape a backend takes. */
+function backendOptions(opts: BundleOptions): Omit<BackendBuild, "entry"> {
+  return {
+    ...sharedResolution(opts),
+    external: opts.external ?? [],
+    minify: shouldMinify(opts),
+    plugins: hookPlugins(opts),
+    target: opts.target,
+  };
 }
 
 /**
@@ -231,46 +220,19 @@ function bunTarget(target: BundleTargetName): "browser" | "node" | "bun" {
  * diagnostics on failure.
  */
 export async function bundleEntry(request: BundleRequest, opts: BundleOptions): Promise<void> {
-  const external = opts.external ?? [];
-  const plugins = hookPlugins(opts);
-
-  if (useNodeFallback()) {
-    // Dynamic import keeps esbuild (a native-binary dependency) out of Bun-run builds entirely.
-    const esbuild = await import("esbuild");
-    await esbuild.build({
-      bundle: true,
-      ...sharedResolution(opts),
-      entryPoints: [request.entryPath],
-      external,
-      format: "esm",
-      logLevel: "silent",
-      minify: shouldMinify(opts),
-      outfile: request.outfile,
-      platform: esbuildPlatform(opts.target),
-      plugins,
-    });
-    return;
-  }
-
-  const result = await Bun.build({
-    ...sharedResolution(opts),
-    entrypoints: [request.entryPath],
-    external,
-    format: "esm",
-    minify: shouldMinify(opts),
-    plugins,
-    target: bunTarget(opts.target),
-    throw: false,
-  });
-  if (!result.success || result.outputs.length === 0) {
-    const logs = result.logs.map(String).join("\n");
-    throw new Error(`Bun.build failed for ${request.entryPath}:\n${logs}`);
-  }
-  writeFileSync(request.outfile, await result.outputs[0]!.text(), "utf8");
+  const code = await backend.build({ entry: { path: request.entryPath }, ...backendOptions(opts) });
+  writeFileSync(request.outfile, code, "utf8");
 }
 
-/** Basename prefix of the throwaway entry {@link bundleSource} writes for the Bun backend. */
-const TRANSIENT_ENTRY_PREFIX = ".jx-entry-";
+/**
+ * Bundle one entry module and return the code rather than writing it.
+ *
+ * For a host serving modules on demand (the dev server's and the desktop project server's bare
+ * specifier routes, the live preview's runtime): what it needs is the text for a response body.
+ */
+export async function bundleToString(entryPath: string, opts: BundleOptions): Promise<string> {
+  return backend.build({ entry: { path: entryPath }, ...backendOptions(opts) });
+}
 
 /**
  * True for the throwaway entry a {@link bundleSource} call is bundling, under either backend.
@@ -328,31 +290,8 @@ export async function bundleSource(
   { resolveDir, outfile }: { resolveDir: string; outfile: string },
   opts: BundleOptions,
 ): Promise<void> {
-  if (useNodeFallback()) {
-    const esbuild = await import("esbuild");
-    await esbuild.build({
-      bundle: true,
-      ...sharedResolution(opts),
-      external: opts.external ?? [],
-      format: "esm",
-      logLevel: "silent",
-      minify: shouldMinify(opts),
-      outfile,
-      platform: esbuildPlatform(opts.target),
-      stdin: { contents: source, loader: "js", resolveDir, sourcefile: "jx-entry.js" },
-    });
-    return;
-  }
-
-  // Bun.build has no stdin input — write a transient entry in `resolveDir` so resolution matches
-  // The stdin/resolveDir behavior, and always remove it.
-  const entryPath = join(resolveDir, `${TRANSIENT_ENTRY_PREFIX}${process.pid}.mjs`);
-  writeFileSync(entryPath, source, "utf8");
-  try {
-    await bundleEntry({ entryPath, outfile }, opts);
-  } finally {
-    rmSync(entryPath, { force: true });
-  }
+  const code = await backend.build({ entry: { resolveDir, source }, ...backendOptions(opts) });
+  writeFileSync(outfile, code, "utf8");
 }
 
 /**

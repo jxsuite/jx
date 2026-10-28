@@ -10,6 +10,7 @@
  * the same pipeline against a `@cloudflare/puppeteer` session.
  */
 
+import { which } from "@jxsuite/schema/which";
 import { launch } from "puppeteer-core";
 import type { Browser } from "puppeteer-core";
 
@@ -30,7 +31,7 @@ function findChrome(executablePath?: string): string {
   }
 
   for (const name of DEFAULT_CHROME_PATHS) {
-    const path = Bun.which(name);
+    const path = which(name);
     if (path) {
       return path;
     }

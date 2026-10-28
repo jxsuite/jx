@@ -205,8 +205,9 @@ export function removeScopeBinLinks(nodeModules: string): string[] {
 /**
  * Remove a shadow, and the stray lockfile the same install dropped beside it.
  *
- * The lockfile goes too because leaving it means the next `bun install` in that root faithfully
- * reproduces the shadow that was just removed.
+ * The lockfile goes too because leaving it means the next install in that root faithfully
+ * reproduces the shadow that was just removed. Studio installs with npm's installer and writes
+ * `package-lock.json`; a `bun install` from a terminal writes `bun.lock`. Either is the stray.
  *
  * @param {Shadow} shadow
  * @returns {void}
@@ -220,8 +221,9 @@ export function removeShadow(shadow: Shadow): void {
    * the root workspace link that superseded it.
    */
   if (shadow.kind === "shadow") {
-    rmSync(join(shadow.root, "bun.lock"), { force: true });
-    rmSync(join(shadow.root, "bun.lockb"), { force: true });
+    for (const lockfile of ["bun.lock", "bun.lockb", "package-lock.json"]) {
+      rmSync(join(shadow.root, lockfile), { force: true });
+    }
   }
 
   /*

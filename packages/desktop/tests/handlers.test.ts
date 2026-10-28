@@ -2,13 +2,13 @@
 import { describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ComponentMeta, DirEntry } from "../src/rpc-schema";
-import type { StudioSchema } from "../src/handlers";
+import type { ComponentMeta, DirEntry } from "../src/shared/rpc-schema";
+import type { StudioSchema } from "./_session";
 import { expectStudioSchema } from "./_studio-schema";
 
 const mockOpenExternal = mock((url: string) => url.startsWith("https://"));
 
-void mock.module("../src/open-external", () => ({ openExternal: mockOpenExternal }));
+void mock.module("../src/backend/open-external", () => ({ openExternal: mockOpenExternal }));
 
 const {
   setProjectRoot,
@@ -33,12 +33,12 @@ const {
   openProject,
   createProject,
   openExternal,
-} = await import("../src/handlers");
+} = await import("./_session");
 
 // The folder picker lives on the session object (the legacy handlers shim does not re-export
 // PickDirectory), so the picker tests below drive it through a session of their own.
 // `pickProjectFile` is module-level for the same reason it exists: it belongs to no session.
-const { createProjectSession, pickProjectFile } = await import("../src/project-session");
+const { createProjectSession, pickProjectFile } = await import("../src/backend/project-session");
 
 const FIXTURES = join(import.meta.dir, "_fixtures_handlers");
 

@@ -44,50 +44,50 @@ describe("verify - serveDirectory", () => {
 
   it("serves index.html at /", async () => {
     writeFileSync(join(tmpDir, "index.html"), "<html><body>Hello</body></html>");
-    const { server, baseUrl } = serveDirectory(tmpDir);
+    const { server, baseUrl } = await serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/`);
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(text).toContain("Hello");
     } finally {
-      void server.stop();
+      await server.stop();
     }
   });
 
   it("serves .html files with correct content type", async () => {
     writeFileSync(join(tmpDir, "about.html"), "<html><body>About</body></html>");
-    const { server, baseUrl } = serveDirectory(tmpDir);
+    const { server, baseUrl } = await serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/about.html`);
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toContain("text/html");
     } finally {
-      void server.stop();
+      await server.stop();
     }
   });
 
   it("serves .css files with correct content type", async () => {
     writeFileSync(join(tmpDir, "styles.css"), "body { color: red; }");
-    const { server, baseUrl } = serveDirectory(tmpDir);
+    const { server, baseUrl } = await serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/styles.css`);
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toContain("text/css");
     } finally {
-      void server.stop();
+      await server.stop();
     }
   });
 
   it("serves .js files with correct content type", async () => {
     writeFileSync(join(tmpDir, "app.js"), "console.log('hi');");
-    const { server, baseUrl } = serveDirectory(tmpDir);
+    const { server, baseUrl } = await serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/app.js`);
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toContain("text/javascript");
     } finally {
-      void server.stop();
+      await server.stop();
     }
   });
 
@@ -105,48 +105,48 @@ describe("verify - serveDirectory", () => {
     ["data.json", "application/json"],
   ])("serves %s as %s", async (name, expected) => {
     writeFileSync(join(tmpDir, name), "x");
-    const { server, baseUrl } = serveDirectory(tmpDir);
+    const { server, baseUrl } = await serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/${name}`);
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toContain(expected);
     } finally {
-      void server.stop();
+      await server.stop();
     }
   });
 
   it("still falls back to octet-stream for a type it does not know", async () => {
     writeFileSync(join(tmpDir, "archive.bin"), "x");
-    const { server, baseUrl } = serveDirectory(tmpDir);
+    const { server, baseUrl } = await serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/archive.bin`);
       expect(res.headers.get("Content-Type")).toContain("application/octet-stream");
     } finally {
-      void server.stop();
+      await server.stop();
     }
   });
 
   it("returns 404 for nonexistent files", async () => {
-    const { server, baseUrl } = serveDirectory(tmpDir);
+    const { server, baseUrl } = await serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/nonexistent`);
       expect(res.status).toBe(404);
     } finally {
-      void server.stop();
+      await server.stop();
     }
   });
 
   it("maps /foo to /foo/index.html when no extension", async () => {
     mkdirSync(join(tmpDir, "blog"), { recursive: true });
     writeFileSync(join(tmpDir, "blog/index.html"), "<html><body>Blog</body></html>");
-    const { server, baseUrl } = serveDirectory(tmpDir);
+    const { server, baseUrl } = await serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/blog`);
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(text).toContain("Blog");
     } finally {
-      void server.stop();
+      await server.stop();
     }
   });
 });
