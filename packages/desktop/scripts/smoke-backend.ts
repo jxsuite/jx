@@ -69,8 +69,17 @@ if (!runtime) {
   console.error("smoke: no `node` on PATH; pass --node <path> or --electron <path>.");
   process.exit(1);
 }
-const backend = resolve(option("backend") ?? join(desktopDir, "build/resources/backend/index.js"));
-const studio = resolve(option("studio") ?? join(desktopDir, "build/resources/studio"));
+/* With the packaged Electron, the backend and studio assets are the PACKAGED ones as well, not the
+   staged tree they were copied from: electron-builder's copy is a step that can lose files (it
+   dropped the backend's `node_modules` once), and only the packaged copy shows it. */
+const resources =
+  electronOption === "packaged"
+    ? process.platform === "darwin"
+      ? join(runtime, "..", "..", "Resources")
+      : join(runtime, "..", "resources")
+    : join(desktopDir, "build/resources");
+const backend = resolve(option("backend") ?? join(resources, "backend/index.js"));
+const studio = resolve(option("studio") ?? join(resources, "studio"));
 const allowed = new Set((option("allow") ?? "").split(",").filter(Boolean));
 const verbose = process.argv.includes("--verbose");
 
