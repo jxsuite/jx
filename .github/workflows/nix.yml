@@ -229,12 +229,14 @@ jobs:
             fi
             echo "$var -> $path"
           done
-          # The wrapper starts Electron on the application's bundle and names the Bun that runs the
-          # backend, the backend itself, the preload and the icon: five store paths, each of which
-          # has to exist or the first window a user opens is the failure.
+          # The wrapper starts Electron on the application's bundle and names the backend (run on
+          # Electron's own Node, so there is no Bun to name), the preload and the icon: five store
+          # paths, each of which has to exist or the first window a user opens is the failure.
           paths="$(grep -oE "(--jx-[a-z]+=)?/nix/store/[^'\" ]+" "$wrapper" | sed -E 's/^--jx-[a-z]+=//' | sort -u)"
-          for want in "/bin/electron" "app-main.js" "bin/bun" "backend/main.ts" "preload.js" "icon.png"; do
-            path="$(printf '%s\n' "$paths" | grep -F "$want" | head -n 1)"
+          for want in "/bin/electron" "app-main.js" "backend/index.js" "preload.js" "icon.png"; do
+            # `|| true`: under pipefail a grep that matches nothing would end the step here, before
+            # the error below could say which path is missing.
+            path="$(printf '%s\n' "$paths" | grep -F "$want" | head -n 1 || true)"
             if [ -z "$path" ]; then
               echo "::error::the jx-studio wrapper does not name $want"
               exit 1
