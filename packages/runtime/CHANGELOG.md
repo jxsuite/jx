@@ -1,5 +1,14 @@
 # Changelog
 
+## [6.0.1](https://github.com/jxsuite/jx/compare/runtime-v6.0.0...runtime-v6.0.1) (2026-10-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.0.0
+
 ## [6.0.0](https://github.com/jxsuite/jx/compare/runtime-v5.2.0...runtime-v6.0.0) (2026-10-27)
 
 
