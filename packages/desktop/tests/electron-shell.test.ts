@@ -3,6 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type * as Electron from "electron";
 import { SHELL_CHANNELS, SHELL_GLOBAL, exposeShell, shellBridge } from "../src/shared/bridge";
 import {
+  contextMenuTemplate,
   createStudioWindow,
   installApplicationMenu,
   isExternalLink,
@@ -235,7 +236,9 @@ describe("a Studio window", () => {
     expect(fake.names).toEqual(["Jx Studio"]);
     expect(fake.dockIcons).toEqual(["/share/icon.png"]);
     expect(fake.menuTemplates).toEqual([macApplicationMenu()]);
-    expect(fake.setApplicationMenu).toHaveBeenCalledWith({ items: macApplicationMenu() });
+    expect(fake.setApplicationMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ items: macApplicationMenu() }),
+    );
     // The same frameless window: Studio draws its macOS-style buttons (`csd: "mac"`).
     expect(window.options.frame).toBe(false);
     expect(window.loaded).toBe(URL_ARG);
@@ -251,6 +254,128 @@ describe("a Studio window", () => {
     expect(fake.desktopName).toEqual([]);
     expect(fake.names).toEqual([]);
     expect(fake.setApplicationMenu).toHaveBeenCalledWith(null);
+  });
+});
+
+/** What Electron reports for a right-click, with nothing under the pointer unless overridden. */
+function rightClick(params: Partial<Electron.ContextMenuParams> = {}): Electron.ContextMenuParams {
+  return {
+    dictionarySuggestions: [],
+    editFlags: {
+      canCopy: false,
+      canCut: false,
+      canPaste: true,
+      canRedo: false,
+      canSelectAll: true,
+      canUndo: true,
+    },
+    isEditable: false,
+    linkURL: "",
+    misspelledWord: "",
+    selectionText: "",
+    ...params,
+  };
+}
+
+const NO_ACTIONS = { copyText: () => {}, replaceMisspelling: () => {} };
+
+/** A template's items as roles, labels and dividers, which is what a reader of the menu sees. */
+function menuReading(template: Electron.MenuItemConstructorOptions[]): string[] {
+  return template.map((item) =>
+    item.type === "separator"
+      ? "---"
+      : `${item.role ?? item.label}${item.enabled === false ? " (off)" : ""}`,
+  );
+}
+
+describe("contextMenuTemplate", () => {
+  test("an editable gets the edit commands, each enabled as the page says", () => {
+    const template = contextMenuTemplate(rightClick({ isEditable: true }), NO_ACTIONS);
+    expect(menuReading(template)).toEqual([
+      "undo",
+      "redo (off)",
+      "---",
+      "cut (off)",
+      "copy (off)",
+      "paste",
+      "---",
+      "selectAll",
+    ]);
+  });
+
+  test("a misspelled word leads with at most five suggestions, which replace it", () => {
+    const replaced: string[] = [];
+    const template = contextMenuTemplate(
+      rightClick({
+        dictionarySuggestions: ["their", "there", "the", "then", "they", "theirs"],
+        isEditable: true,
+        misspelledWord: "thier",
+      }),
+      { ...NO_ACTIONS, replaceMisspelling: (word) => replaced.push(word) },
+    );
+    expect(menuReading(template).slice(0, 6)).toEqual([
+      "their",
+      "there",
+      "the",
+      "then",
+      "they",
+      "---",
+    ]);
+    template[1]?.click?.();
+    expect(replaced).toEqual(["there"]);
+  });
+
+  test("a misspelled word with no suggestions says so", () => {
+    const template = contextMenuTemplate(
+      rightClick({ isEditable: true, misspelledWord: "qzx" }),
+      NO_ACTIONS,
+    );
+    expect(menuReading(template)[0]).toBe("No Spelling Suggestions (off)");
+  });
+
+  test("selected text outside an editable gets Copy; a link gets Copy Link Address", () => {
+    const copied: string[] = [];
+    const template = contextMenuTemplate(
+      rightClick({ linkURL: "https://jxsuite.com/", selectionText: "Jx" }),
+      { ...NO_ACTIONS, copyText: (text) => copied.push(text) },
+    );
+    expect(menuReading(template)).toEqual(["copy", "---", "Copy Link Address"]);
+    template[2]?.click?.();
+    expect(copied).toEqual(["https://jxsuite.com/"]);
+  });
+
+  test("nothing to offer is an empty menu, whitespace selected included", () => {
+    expect(contextMenuTemplate(rightClick({ selectionText: "  " }), NO_ACTIONS)).toEqual([]);
+  });
+});
+
+describe("a Studio window's context menu", () => {
+  test("pops up over its window, and its items act on the window's contents", async () => {
+    const { fake, window } = await started();
+    fire(
+      window,
+      "context-menu",
+      event(),
+      rightClick({
+        dictionarySuggestions: ["their"],
+        isEditable: true,
+        linkURL: "https://jxsuite.com/",
+        misspelledWord: "thier",
+      }),
+    );
+    expect(fake.popups).toHaveLength(1);
+    const [popup] = fake.popups;
+    expect(popup.window).toBeInstanceOf(fake.api.BrowserWindow);
+    popup.template[0]?.click?.();
+    expect(window.contents.replaced).toEqual(["their"]);
+    popup.template.at(-1)?.click?.();
+    expect(fake.clipboard).toEqual(["https://jxsuite.com/"]);
+  });
+
+  test("shows nothing where there is nothing to offer", async () => {
+    const { fake, window } = await started();
+    fire(window, "context-menu", event(), rightClick());
+    expect(fake.popups).toEqual([]);
   });
 });
 
@@ -334,9 +459,11 @@ describe("createStudioWindow", () => {
     const window = fake.windows.at(0);
     expect(window?.loaded).toBeUndefined();
     expect(window?.options.webPreferences.partition).toBe("persist:p");
-    // The same guards every window gets: navigation, DevTools, the unsaved-changes prompt.
+    // The same guards every window gets: navigation, DevTools, the native context menu, the
+    // Unsaved-changes prompt.
     expect([...(window?.contents.listeners.keys() ?? [])].toSorted()).toEqual([
       "before-input-event",
+      "context-menu",
       "will-navigate",
       "will-prevent-unload",
     ]);

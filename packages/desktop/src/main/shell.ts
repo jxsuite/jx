@@ -179,6 +179,89 @@ function bindDevTools(contents: WebContents): void {
   });
 }
 
+/** What a context menu's own items do, beyond Electron's edit roles. */
+export interface ContextMenuActions {
+  replaceMisspelling: (word: string) => void;
+  copyText: (text: string) => void;
+}
+
+/** How many spelling suggestions the menu offers, as Chromium's own menu does. */
+const MAX_SUGGESTIONS = 5;
+
+/**
+ * The native context menu for a right-click the page left to the platform.
+ *
+ * Studio cancels `contextmenu` wherever it draws a menu of its own, and leaves it alone where the
+ * browser's menu is the right one: inside the text being edited on the canvas (spelling and paste,
+ * `canvas/iframe-interaction.ts`), in a text field, and on a link in Preview. Chromium draws that
+ * menu; Electron draws none, so in the desktop app those right-clicks did nothing at all. This is
+ * the subset of Chromium's menu that answers them: spelling suggestions over a misspelled word, the
+ * edit commands in an editable (each enabled as the page says it can run), Copy over a selection,
+ * and Copy Link Address over a link. Empty when none applies, and then nothing is shown.
+ */
+export function contextMenuTemplate(
+  params: Electron.ContextMenuParams,
+  actions: ContextMenuActions,
+): Electron.MenuItemConstructorOptions[] {
+  const groups: Electron.MenuItemConstructorOptions[][] = [];
+  if (params.misspelledWord) {
+    const suggestions = params.dictionarySuggestions.slice(0, MAX_SUGGESTIONS);
+    groups.push(
+      suggestions.length > 0
+        ? suggestions.map((word) => ({
+            click: () => actions.replaceMisspelling(word),
+            label: word,
+          }))
+        : [{ enabled: false, label: "No Spelling Suggestions" }],
+    );
+  }
+  const flags = params.editFlags;
+  if (params.isEditable) {
+    groups.push(
+      [
+        { enabled: flags.canUndo, role: "undo" },
+        { enabled: flags.canRedo, role: "redo" },
+      ],
+      [
+        { enabled: flags.canCut, role: "cut" },
+        { enabled: flags.canCopy, role: "copy" },
+        { enabled: flags.canPaste, role: "paste" },
+      ],
+      [{ enabled: flags.canSelectAll, role: "selectAll" }],
+    );
+  } else if (params.selectionText.trim()) {
+    groups.push([{ role: "copy" }]);
+  }
+  if (params.linkURL) {
+    groups.push([{ click: () => actions.copyText(params.linkURL), label: "Copy Link Address" }]);
+  }
+  const template: Electron.MenuItemConstructorOptions[] = [];
+  for (const group of groups) {
+    if (template.length > 0) {
+      template.push({ type: "separator" });
+    }
+    template.push(...group);
+  }
+  return template;
+}
+
+/** Answer a right-click the page left to the platform with {@link contextMenuTemplate}'s menu. */
+function bindContextMenu(
+  electron: typeof Electron,
+  window: BrowserWindow,
+  contents: WebContents,
+): void {
+  contents.on("context-menu", (_event, params) => {
+    const template = contextMenuTemplate(params, {
+      copyText: (text) => electron.clipboard.writeText(text),
+      replaceMisspelling: (word) => contents.replaceMisspelling(word),
+    });
+    if (template.length > 0) {
+      electron.Menu.buildFromTemplate(template).popup({ window });
+    }
+  });
+}
+
 /**
  * The macOS application menu.
  *
@@ -319,6 +402,7 @@ export function createStudioWindow(
   const contents = window.webContents;
   guardNavigation(electron, contents, new URL(spec.url).origin);
   bindDevTools(contents);
+  bindContextMenu(electron, window, contents);
   contents.on("will-prevent-unload", (event) => confirmUnload(electron, window, event));
   window.once("ready-to-show", () => window.show());
   return window;

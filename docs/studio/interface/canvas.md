@@ -122,7 +122,7 @@ Right-clicking an element that is already part of a [multiple selection](/docs/s
 
 **Every** row is a command as well as a menu item, so all of them can be run by name from the [command palette](/docs/studio/interface/quick-access), with the same wording and the same reason when they are unavailable. A row that can't apply to what you have selected is greyed with that reason rather than hidden: **Cut** on the page root says it needs an element that isn't the root. See **[Commands](/docs/studio/interface/commands)**.
 
-Right-clicking **empty space** around the page gives you the browser's own menu, not this one. There is nothing there to act on, and that margin is where you reach for View Source or Inspect.
+Right-clicking **empty space** around the page gives you the browser's own menu, not this one. There is nothing there to act on, and that margin is where you reach for View Source or Inspect. The desktop app shows no menu there. Inside text you are editing, a right-click gives the spelling and edit menu in both.
 
 ## Editing text
 
