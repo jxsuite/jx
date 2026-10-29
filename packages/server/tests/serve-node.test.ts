@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { connect } from "node:net";
 import { WebSocket } from "ws";
 import { isString } from "@jxsuite/schema/guards";
-import { serve } from "../src/serve.node.ts";
+import { requestUrl, serve } from "../src/serve.node.ts";
 import type { ServeServer, ServeSocket } from "../src/serve.ts";
 
 const running: Pick<ServeServer<unknown>, "stop">[] = [];
@@ -39,6 +39,44 @@ function nextMessage(ws: WebSocket): Promise<{ data: Buffer; isBinary: boolean }
     });
   });
 }
+
+/** GET `target` over a raw socket, exactly as written, and resolve with the response body. */
+function rawGet(port: number, target: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(port, "127.0.0.1", () => {
+      socket.write(
+        `GET ${target} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: close\r\n\r\n`,
+      );
+    });
+    let received = "";
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk: string) => {
+      received += chunk;
+    });
+    socket.once("error", reject);
+    socket.once("end", () => {
+      const body = received.slice(received.indexOf("\r\n\r\n") + 4);
+      // A streamed body arrives chunked: one size line, the chunk, then the terminator.
+      const chunked = /^[\da-f]+\r\n([\s\S]*?)\r\n0\r\n\r\n$/i.exec(body);
+      resolve(chunked ? chunked[1]! : body);
+    });
+  });
+}
+
+describe("requestUrl", () => {
+  test("joins an origin-form target to the origin without resolving it", () => {
+    expect(requestUrl("//home/me/a.json", "http://127.0.0.1:1").href).toBe(
+      "http://127.0.0.1:1//home/me/a.json",
+    );
+    expect(requestUrl(undefined, "http://127.0.0.1:1").href).toBe("http://127.0.0.1:1/");
+  });
+
+  test("keeps only the path and query of an absolute-form target", () => {
+    expect(requestUrl("http://elsewhere/x?y=2#z", "http://127.0.0.1:1").href).toBe(
+      "http://127.0.0.1:1/x?y=2",
+    );
+  });
+});
 
 describe("serve (node:http)", () => {
   test("answers on the bound port and reports its URL", async () => {
@@ -80,6 +118,18 @@ describe("serve (node:http)", () => {
       method: "POST",
       url: `http://127.0.0.1:${server.port}/a/b?c=1`,
     });
+  });
+
+  test("keeps a target that opens with // as the path, as Bun.serve does", async () => {
+    /* The Studio asks for a file under an absolute project root as `//home/…`. A client `fetch`
+       would itself read that as scheme-relative, so the request line is written by hand. */
+    const server = await start({ fetch: (req) => new Response(req.url) });
+    const origin = `http://127.0.0.1:${server.port}`;
+    expect(await rawGet(server.port, "//home/me/site/components/a.json")).toBe(
+      `${origin}//home/me/site/components/a.json`,
+    );
+    expect(await rawGet(server.port, "/a//b?c=1")).toBe(`${origin}/a//b?c=1`);
+    expect(await rawGet(server.port, "http://elsewhere/x?y=2")).toBe(`${origin}/x?y=2`);
   });
 
   test("keeps every Set-Cookie header and answers HEAD without a body", async () => {

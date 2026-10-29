@@ -120,6 +120,73 @@ describe("openMenu", () => {
     expect(events).toEqual(["run:b", "up", "closed"]);
   });
 
+  /** Press or release pointer `id` in the document, as a mouse button does. */
+  function pointer(type: "pointerdown" | "pointerup" | "pointercancel", id = 1): void {
+    document.body.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: id }));
+  }
+
+  /** Open the test menu and let the mount run as far as it can. */
+  async function openWhileHeld(): Promise<MenuEl> {
+    open = openMenu({ label: "Things", origin: { x: 0, y: 0 }, region: "test", rows: ROWS });
+    await flush();
+    await flush();
+    return menuIn(open.host)!;
+  }
+
+  test("a menu asked for while a button is down is shown once it is released", async () => {
+    // A right-click on Linux and macOS: `contextmenu` fires on the press. Shown then, the release
+    // Light-dismisses it (Electron 43), so the menu waits for the release.
+    pointer("pointerdown");
+    const menu = await openWhileHeld();
+    expect(menu.open).toBe(false);
+    pointer("pointerup");
+    await open!.ready;
+    await flush();
+    expect(menu.open).toBe(true);
+  });
+
+  test("it waits for every pointer held, and a cancelled one counts as released", async () => {
+    pointer("pointerdown", 1);
+    pointer("pointerdown", 2);
+    const menu = await openWhileHeld();
+    pointer("pointerup", 1);
+    await flush();
+    expect(menu.open).toBe(false);
+    pointer("pointercancel", 2);
+    await open!.ready;
+    await flush();
+    expect(menu.open).toBe(true);
+  });
+
+  test("a window that loses focus mid-press shows it rather than waiting forever", async () => {
+    pointer("pointerdown");
+    const menu = await openWhileHeld();
+    window.dispatchEvent(new Event("blur"));
+    await open!.ready;
+    await flush();
+    expect(menu.open).toBe(true);
+  });
+
+  test("a menu closed while it waits for the release is never shown", async () => {
+    pointer("pointerdown");
+    let closed = 0;
+    open = openMenu({
+      label: "Things",
+      onClosed: () => {
+        closed += 1;
+      },
+      origin: { x: 0, y: 0 },
+      region: "test",
+      rows: ROWS,
+    });
+    await flush();
+    open.close();
+    await open.ready;
+    expect(closed).toBe(1);
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
+    pointer("pointerup");
+  });
+
   test("closing before the mount has finished leaves nothing behind", async () => {
     let closed = 0;
     open = openMenu({

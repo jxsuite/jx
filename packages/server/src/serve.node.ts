@@ -49,6 +49,24 @@ async function* chunksOf(nodeReq: IncomingMessage): AsyncGenerator<Uint8Array> {
   }
 }
 
+/**
+ * The URL of a request, as `Bun.serve` reports it: the Host's origin followed by the target's path.
+ *
+ * The target is never resolved against the origin as a relative reference. `//home/me/site.json` is
+ * how the Studio asks for a file under an absolute project root, and as a reference it is
+ * scheme-relative: `new URL()` reads `home` as the host and drops it from the path, so every
+ * component and image of such a project answered 404 from the desktop backend. An absolute-form
+ * target (`http://other/x`) keeps only its path and query, as Bun keeps them.
+ */
+export function requestUrl(target: string | undefined, origin: string): URL {
+  const path = target ?? "/";
+  if (path.startsWith("/")) {
+    return new URL(`${origin}${path}`);
+  }
+  const absolute = new URL(path, origin);
+  return new URL(`${origin}${absolute.pathname}${absolute.search}`);
+}
+
 /** The `Request` for a Node request, with a signal that aborts when the client disconnects. */
 function toRequest(nodeReq: IncomingMessage, origin: string, signal?: AbortSignal): Request {
   const headers = new Headers();
@@ -56,7 +74,7 @@ function toRequest(nodeReq: IncomingMessage, origin: string, signal?: AbortSigna
     headers.append(nodeReq.rawHeaders[i]!, nodeReq.rawHeaders[i + 1]!);
   }
   const { host } = nodeReq.headers;
-  const url = new URL(nodeReq.url ?? "/", host ? `http://${host}` : origin);
+  const url = requestUrl(nodeReq.url, host ? `http://${host}` : origin);
   const method = nodeReq.method ?? "GET";
   const init: RequestInit & { duplex?: "half" } = { headers, method };
   if (signal) {

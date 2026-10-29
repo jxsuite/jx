@@ -90,6 +90,7 @@ Studio itself is identical in both, and every page in this documentation applies
 - **Nothing to run.** In the browser, Studio is served by a local dev server you start from a terminal (see **[The dev server](/docs/framework/build/dev-server)**). The desktop app carries its own backend, so you launch it like any other application.
 - **Native dialogs.** Opening projects and picking folders use your operating system's file dialogs instead of the browser's folder picker.
 - **Windows, menus, and file associations.** One window per project, `project.json` opening from the file manager, and on macOS a real _File_ menu in the menu bar. On Windows and Linux, Studio draws its own menu in the command bar.
+- **Right-click in text.** Where Studio leaves a right-click to the browser (in a text field, inside the text you are editing on the canvas, on a link in Preview), the app shows its own menu: spelling suggestions for a misspelled word, the edit commands (Undo, Redo, Cut, Copy, Paste, Select All), **Copy** for selected text and **Copy Link Address** for a link. Studio's own menus, such as the canvas element menu, are the same in both.
 - **Built-in updates.** The app updates itself in the background; a dev-server setup, and the NixOS build below, updates with your package manager.
 
 The AI assistant, publishing, and everything on the canvas behave the same in both.

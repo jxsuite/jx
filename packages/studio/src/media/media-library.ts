@@ -67,6 +67,7 @@ import { dirName, previewFileSrc } from "../files/media-paths";
 import { forgetVersions } from "../files/asset-versions";
 import { loadMediaUsages, peekMediaUsages } from "../files/media-usage";
 import { onProjectMediaChange, projectMediaFiles } from "../ui/media-picker";
+import { openMenu } from "../surfaces/menu";
 import { openMediaTab } from "./media-open";
 import { factsLine, mediaStageFor, specimenOf, usageOf } from "./media-pane";
 import {
@@ -93,6 +94,7 @@ import type {
   MediaTileRow,
 } from "../surfaces/media-library";
 import type { MediaPickDialogHandle } from "../surfaces/media-pick-dialog";
+import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { PreviewObserver } from "../browse/library-preview";
 import type { Tab } from "../tabs/tab";
 import type { CanvasSurface } from "../canvas/canvas-surface";
@@ -788,11 +790,11 @@ function actionsFor(mount: LibraryMount) {
         activate(mount, selected);
       }
     },
+    contextMenu: (file: string, x: number, y: number) => showTileMenu(mount, file, x, y),
     copyRef: () => {
       const entry = selectedEntry(mount);
-      // `navigator.clipboard` is [SecureContext]: a plain-http host has none, whatever lib.dom says.
-      if (entry && "clipboard" in navigator) {
-        void navigator.clipboard.writeText(entry.ref);
+      if (entry) {
+        copySiteUrl(entry);
       }
     },
     dragOut: () => {
@@ -913,6 +915,74 @@ function actionsFor(mount: LibraryMount) {
 }
 
 /** Enter or a double-click: open the viewer, or in pick mode, use the file. */
+/** Put a file's site URL on the clipboard. */
+function copySiteUrl(entry: ProjectMediaFile): void {
+  // `navigator.clipboard` is [SecureContext]: a plain-http host has none, whatever lib.dom says.
+  if ("clipboard" in navigator) {
+    void navigator.clipboard.writeText(entry.ref);
+  }
+}
+
+/**
+ * The tile menu that is up, if any. One handle, because only one can be open: a second kit menu
+ * opened over the first is how two of them light-dismiss each other.
+ */
+let _tileMenu: MenuHandle | null = null;
+
+/**
+ * A right-click on a tile: select it, then offer the detail pane's actions at the pointer.
+ *
+ * The same four verbs as the detail pane's (studio.md §22.6), in the order the pane draws them, and
+ * each calls what the pane's control calls, so the menu cannot drift from the pane. Selecting first
+ * is what makes the pane describe the file the menu acts on, as a right-click on a row does in the
+ * Content workspace.
+ */
+function showTileMenu(mount: LibraryMount, file: string, x: number, y: number): void {
+  select(mount, file);
+  const entry = selectedEntry(mount);
+  if (!entry) {
+    return;
+  }
+  _tileMenu?.close();
+  const row = (
+    id: string,
+    title: string,
+    run: () => void,
+    extra: Partial<MenuRowProjection> = {},
+  ): MenuRowProjection => ({
+    destructive: false,
+    disabled: false,
+    dividerAbove: false,
+    id,
+    run,
+    title,
+    ...extra,
+  });
+  _tileMenu = openMenu({
+    label: `${entry.name} actions`,
+    onClosed: (handle) => {
+      if (_tileMenu === handle) {
+        _tileMenu = null;
+      }
+    },
+    origin: { x, y },
+    region: "media-tile",
+    rows: [
+      row("open", "Open in Viewer", () => openMediaTab(file)),
+      row("copy-url", "Copy Site URL", () => copySiteUrl(entry)),
+      row("replace", "Replace…", () => requestMediaReplace(file), { dividerAbove: true }),
+      row(
+        "delete",
+        "Delete",
+        () => {
+          void deleteMediaFile(file);
+        },
+        { destructive: true, dividerAbove: true },
+      ),
+    ],
+  });
+}
+
 function activate(mount: LibraryMount, file: string): void {
   if (mount.mode === "pick") {
     const entry = selectedEntry(mount);

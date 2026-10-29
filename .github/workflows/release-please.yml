@@ -418,7 +418,9 @@ jobs:
             # And NOT `2>&1`, which is how it was written for five releases. `nix eval` prints its
             # fetch progress and its evaluation warnings to STDERR, so merging the streams put
             # `unpacking 'github:jxsuite/jx/…' into the Git cache`, seven `copying path` lines and
-            # a `stdenv.isLinux is deprecated` warning INSIDE `$out`. `nix path-info` was then
+            # a `stdenv.isLinux is deprecated` warning INSIDE `$out` (the flake's own, gone since it
+            # reads `stdenv.hostPlatform.isLinux`; the fetch progress alone still breaks a merged
+            # capture, so the redirect stays as it is). `nix path-info` was then
             # handed that blob in place of a store path and failed with
             # `getting status of "…": No such file or directory` — the SAME message a genuinely
             # absent path produces, which is why nothing looked wrong. This job filed
