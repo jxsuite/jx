@@ -5,7 +5,8 @@
  * `menu.json` is the markup, ARIA and style, and this adapter is the decisions — which records,
  * what they print, where the panel opens, what runs on select. The kit owns the menu contract
  * (roving focus, typeahead, submenus, light dismissal, Escape) through the platform's own popover,
- * so nothing here binds a key or a document listener.
+ * so nothing here binds a key, and the one window listener is the record of which pointers are held
+ * ({@link pointersReleased}): a menu asked for mid-press is shown on the release.
  *
  * Every menu opens in a `getLayerSlot("popover", id)` slot, which is what carries the
  * `overlay.menu:<id>` region the screenshot pipeline addresses, and is torn down when the popover
@@ -309,6 +310,10 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
     if (aborted()) {
       return;
     }
+    await pointersReleased(controller.signal);
+    if (aborted()) {
+      return;
+    }
     const source =
       options.opener instanceof HTMLElement && options.opener !== document.body
         ? options.opener
@@ -366,6 +371,62 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
     },
   };
   return handle;
+}
+
+/**
+ * The pointers pressed in this document and not yet released, by `pointerId`.
+ *
+ * Read by {@link pointersReleased}. Window listeners in the capture phase, so the record is current
+ * before any handler in the document runs, a `contextmenu` handler included. A press in the canvas
+ * iframe is never seen here, and needs not be: that release lands in the iframe's document, which
+ * cannot light-dismiss a popover in this one. Bound at load, so the press that asks for the first
+ * menu is already recorded; not at all without a window, where the docs build imports this module
+ * for the command catalog and nothing is ever pressed.
+ */
+const pressedPointers = new Set<number>();
+if (typeof window !== "undefined") {
+  window.addEventListener("pointerdown", (event) => pressedPointers.add(event.pointerId), true);
+  window.addEventListener("pointerup", (event) => pressedPointers.delete(event.pointerId), true);
+  window.addEventListener(
+    "pointercancel",
+    (event) => pressedPointers.delete(event.pointerId),
+    true,
+  );
+  // A release outside a window that lost focus may never arrive.
+  window.addEventListener("blur", () => pressedPointers.clear());
+}
+
+/**
+ * Settle once no pointer is held down in this document, or when `signal` aborts.
+ *
+ * A menu shown while the button that asked for it is still down is light-dismissed by that button's
+ * release. On Linux and macOS `contextmenu` fires on the PRESS, so every right-click menu opened
+ * with the button held, and the release that followed is a `pointerup` outside the popover. The
+ * HTML light-dismiss algorithm hides every `auto` popover on it, before the event reaches any
+ * listener, so it cannot be cancelled. Chromium 156 exempts a non-primary button and Electron 43's
+ * Chromium does not: in the desktop app the menu flashed and vanished. Waiting for the release is
+ * what Windows does natively, where `contextmenu` fires on it; a menu opened by a click or a key
+ * has nothing held and is shown at once.
+ */
+function pointersReleased(signal: AbortSignal): Promise<void> {
+  if (pressedPointers.size === 0 || signal.aborted) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const waiting = new AbortController();
+    const settle = (): void => {
+      if (pressedPointers.size === 0 || signal.aborted) {
+        waiting.abort();
+        resolve();
+      }
+    };
+    // Registered after the record's own listeners, so each sees the record already updated.
+    const options = { capture: true, signal: waiting.signal };
+    window.addEventListener("pointerup", settle, options);
+    window.addEventListener("pointercancel", settle, options);
+    window.addEventListener("blur", settle, { signal: waiting.signal });
+    signal.addEventListener("abort", settle, { signal: waiting.signal });
+  });
 }
 
 /**
