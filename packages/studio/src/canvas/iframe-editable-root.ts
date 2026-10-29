@@ -445,8 +445,9 @@ export function startEditableRoot(
    * something no caret can enter, so the caret went on blinking in the block clicked BEFORE, with
    * the component now selected in the editor and every keystroke still typed into that block.
    */
-  const onPointerDownCapture = (e: Event) => {
-    if (!editingAllowed()) {
+  const onPointerDownCapture = (e: PointerEvent) => {
+    // A secondary press asks for the element menu, not an edit: see `onMouseDownCapture`.
+    if (!editingAllowed() || e.button === 2) {
       return;
     }
     const target = e.target instanceof Element ? e.target : null;
@@ -479,6 +480,33 @@ export function startEditableRoot(
   };
 
   /**
+   * A secondary press outside the active block selects, it never starts an edit.
+   *
+   * The whole canvas is one `contenteditable`, and a right-button press places the caret where it
+   * lands, as a left one does. That caret activated the block through `selectionchange`, so every
+   * right-click on a block also entered inline editing: the bridge's edit start ran ahead of the
+   * menu's mount in the same task, which held the element menu back by hundreds of milliseconds on
+   * a real page, and the block was left in edit mode after the menu closed. Cancelling the press's
+   * default keeps the caret where it was; `contextmenu` still fires, so the menu is unaffected. The
+   * block being edited keeps its native press, because the caret placed there is what the native
+   * spelling and edit menu reads. A right-click elsewhere leaves that block, as a left click
+   * would.
+   */
+  const onMouseDownCapture = (e: MouseEvent) => {
+    if (e.button !== 2 || !editingAllowed()) {
+      return;
+    }
+    if (activeEl && e.target instanceof Node && activeEl.contains(e.target)) {
+      return;
+    }
+    e.preventDefault();
+    if (activeEl) {
+      deactivate();
+      doc.getSelection()?.removeAllRanges();
+    }
+  };
+
+  /**
    * Reordering is the block action bar's drag handle, full stop. A `contenteditable` region is
    * natively draggable by its text, which would both fight text selection and move content behind
    * the document model's back.
@@ -501,6 +529,7 @@ export function startEditableRoot(
   container.addEventListener("compositionend", onCompositionEnd);
   container.addEventListener("dragstart", onDragStart);
   doc.addEventListener("pointerdown", onPointerDownCapture, true);
+  doc.addEventListener("mousedown", onMouseDownCapture, true);
 
   return {
     capture: () => captureDocSelection(container, deps.isEditableBlock),
@@ -542,6 +571,7 @@ export function startEditableRoot(
       container.removeEventListener("compositionend", onCompositionEnd);
       container.removeEventListener("dragstart", onDragStart);
       doc.removeEventListener("pointerdown", onPointerDownCapture, true);
+      doc.removeEventListener("mousedown", onMouseDownCapture, true);
       // Deactivating commits, so the pending tick is cancelled rather than fired.
       deactivate();
     },

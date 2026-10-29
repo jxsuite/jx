@@ -49,6 +49,8 @@ Two cases where the cursor lands somewhere you might not expect, and both are de
 
 Code blocks are not editable this way; their whitespace is significant, so they are left alone.
 
+Right-clicking text you are not editing selects its element and opens the [context menu](/docs/studio/interface/canvas#the-right-click-context-menu) without starting an edit. If you were editing other text, that edit ends. Inside the text you are editing, a right-click keeps the cursor where it lands, so the spelling suggestions refer to the word under the pointer.
+
 ## Paragraphs
 
 Press :kbd[Enter] to end the paragraph and start a new one. Split a paragraph in the middle and everything after the cursor moves into the new one, with your cursor following, so you just keep typing. :kbd[Shift+Enter] stays in the same paragraph instead of starting a new block.
