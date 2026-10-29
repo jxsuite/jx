@@ -53,29 +53,55 @@ export function _testSetNpmCacheBase(value: string | null) {
 }
 
 /**
+ * How long the npm probe may run before the build stops waiting and caches in the project.
+ *
+ * `npm config get cache` answers in a fraction of a second, but nothing bounded it, and the call is
+ * synchronous: when npm hung, the first build of the process hung with it. On a CI runner it
+ * stalled past both of the dev server's 5 s and 20 s test timeouts with nothing to show for it but
+ * "killed 1 dangling process". Missing the npm cache only costs persistence across builds.
+ */
+const NPM_PROBE_TIMEOUT_MS = 3000;
+
+/**
+ * Where npm keeps its cache, or null when npm cannot say.
+ *
+ * Npm reads its configuration from the environment as well as from `.npmrc`, and the environment
+ * wins, so a value there is npm's own answer and no process is needed to ask for it. A script run
+ * by a package manager usually has it there.
+ */
+function npmCacheBase(): string | null {
+  const fromEnv = process.env.npm_config_cache ?? process.env.NPM_CONFIG_CACHE;
+  if (fromEnv) {
+    return fromEnv;
+  }
+  try {
+    const result = execSync("npm config get cache", {
+      cwd: tmpdir(), // Avoid ENOWORKSPACES when cwd is inside an npm workspace
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: NPM_PROBE_TIMEOUT_MS,
+    }).trim();
+    return result && result !== "undefined" ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Return the image cache directory for a project.
  *
  * Prefers the npm global cache (`npm config get cache`) so CI environments that cache ~/.npm (e.g.
  * Cloudflare Pages) automatically persist optimized images across builds. Falls back to
- * .cache/images inside the project root when npm is unavailable.
+ * .cache/images inside the project root when npm is unavailable or does not answer in time.
  *
- * Result is memoized — `npm config get cache` is only spawned once per process.
+ * Result is memoized — npm is asked at most once per process.
  *
  * @param {string} projectRoot
  * @returns {string}
  */
 export function getImageCacheDir(projectRoot: string): string {
   if (_npmCacheBase === undefined) {
-    try {
-      const result = execSync("npm config get cache", {
-        cwd: tmpdir(), // Avoid ENOWORKSPACES when cwd is inside an npm workspace
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim();
-      _npmCacheBase = result && result !== "undefined" ? result : null;
-    } catch {
-      _npmCacheBase = null;
-    }
+    _npmCacheBase = npmCacheBase();
   }
   if (_npmCacheBase) {
     return resolve(_npmCacheBase, "jxsuite-images", basename(projectRoot));

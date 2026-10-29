@@ -24,10 +24,21 @@
  */
 // oxlint-disable deslop/no-unknown-parameters, deslop/no-unknown-returns, deslop/no-runtime-typeof -- This script IS the I/O boundary: it sends arbitrary RPC params to the packaged backend and judges whatever comes back, so each verifier takes `unknown` and narrows it on purpose.
 // oxlint-disable unicorn/no-process-exit -- a CLI whose exit code is its interface
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { which } from "@jxsuite/schema/which";
+import { dependencyClosure, readWorkspaces } from "../../../scripts/lib/workspaces.ts";
+import { jxDependencies, packWorkspace, pinToTarballs } from "./lib/workspace-tarballs.ts";
+import type { Manifest } from "./lib/workspace-tarballs.ts";
 
 const desktopDir = resolve(import.meta.dir, "..");
 
@@ -180,6 +191,8 @@ interface Check {
   name: string;
   params?: unknown;
   rpc: string;
+  /** Run before the RPC is called. */
+  prepare?: () => Promise<void>;
   /** How long the RPC may take, when longer than `call`'s default. */
   timeoutMs?: number;
   verify: (result: unknown) => string | null;
@@ -194,6 +207,34 @@ const isObject = (result: unknown) =>
   typeof result === "object" && result !== null ? null : "expected an object";
 
 const projectParent = join(scratch, "projects");
+const repoRoot = resolve(desktopDir, "../..");
+
+/**
+ * Point the new project's `@jxsuite/*` dependencies at this checkout's packages, packed
+ * (`lib/workspace-tarballs.ts`), with everything they depend on.
+ *
+ * The starter pins the versions it is released beside, which on the release pull request and in the
+ * release lanes are not on npm yet, and everywhere else are the last release rather than the code
+ * under test.
+ */
+async function installFromCheckout(): Promise<void> {
+  const file = join(projectParent, "smoke", "package.json");
+  // SAFETY: `createProject` just wrote this file from a starter's manifest.
+  const manifest = JSON.parse(readFileSync(file, "utf8")) as Manifest;
+  const workspaces = await readWorkspaces(repoRoot);
+  const direct = new Set(jxDependencies(manifest));
+  const seeds = workspaces.filter((w) => direct.has(w.name)).map((w) => w.dir);
+  const packed = dependencyClosure(workspaces, seeds, "runtime");
+  const destination = join(scratch, "tarballs");
+  mkdirSync(destination, { recursive: true });
+  const tarballs = new Map(
+    workspaces
+      .filter((w) => packed.has(w.dir))
+      .map((w) => [w.name, packWorkspace(join(repoRoot, w.dir), destination)] as const),
+  );
+  writeFileSync(file, `${JSON.stringify(pinToTarballs(manifest, tarballs), null, 2)}\n`);
+  console.log(`        installing ${[...tarballs.keys()].join(", ")} from this checkout`);
+}
 const checks: Check[] = [
   { name: "appInfo", rpc: "appInfo", verify: isObject },
   { name: "listStarters", rpc: "listStarters", verify: isNonEmptyArray("starter list") },
@@ -215,7 +256,10 @@ const checks: Check[] = [
   /* The app ships no extension, first-party ones included: a project gets @jxsuite/parser the way
      it gets any third-party extension, from its own install. So everything below that loads one
      installs first, as the app does when a project opens, and an extension the host happened to
-     resolve (the monorepo's, when the staged backend runs from a checkout) proves nothing. */
+     resolve (the monorepo's, when the staged backend runs from a checkout) proves nothing. The
+     install is the project's own, through the backend's installer, but its `@jxsuite` packages are
+     this checkout's, packed ({@link installFromCheckout}): the versions the starter pins are not
+     on npm until this code is released. */
   {
     name: "dependenciesNeedInstall",
     rpc: "dependenciesNeedInstall",
@@ -223,6 +267,7 @@ const checks: Check[] = [
   },
   {
     name: "installDependencies",
+    prepare: installFromCheckout,
     rpc: "installDependencies",
     timeoutMs: 600_000,
     verify: (result) =>
@@ -333,6 +378,7 @@ for (const [name, probe] of Object.entries(nativeProbes)) {
 
 for (const check of checks) {
   try {
+    await check.prepare?.();
     const result = await call(check.rpc, check.params, check.timeoutMs);
     if (verbose) {
       console.log(`        ${check.name} ->`, JSON.stringify(result).slice(0, 400));

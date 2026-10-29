@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   _testResetNpmCacheBase,
@@ -12,6 +12,37 @@ import {
 } from "../src/site/image-cache";
 
 const TMP = join(import.meta.dir, "__test-image-cache__");
+
+/**
+ * Run `body` with `vars` set in the environment (undefined deletes one), restoring every one of
+ * them and the memoized npm answer afterwards.
+ */
+function withEnv(vars: Record<string, string | undefined>, body: () => void) {
+  const saved = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(vars)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  _testResetNpmCacheBase();
+  try {
+    body();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    _testResetNpmCacheBase();
+  }
+}
+
+/** No npm cache in the environment, so the answer has to come from running npm. */
+const NO_NPM_ENV = { NPM_CONFIG_CACHE: undefined, npm_config_cache: undefined };
 
 // Reset memoised npm cache base before each test so path resolution is fresh
 function setup() {
@@ -46,20 +77,45 @@ describe("image-cache", () => {
   });
 
   test("falls back to the project-local cache dir when the npm probe itself fails", () => {
-    _testResetNpmCacheBase();
-    const realPath = process.env.PATH;
     // An empty PATH makes "npm" itself unresolvable — execSync throws before it ever reads a
     // Config value, which is the failure this fallback exists for (as opposed to
     // `npm config get cache` succeeding with the literal string "undefined").
-    process.env.PATH = "";
-    try {
-      const dir = getImageCacheDir(TMP);
-      expect(dir).toBe(join(TMP, ".cache/images"));
-    } finally {
-      process.env.PATH = realPath;
-      _testResetNpmCacheBase();
-    }
+    withEnv({ ...NO_NPM_ENV, PATH: "" }, () => {
+      expect(getImageCacheDir(TMP)).toBe(join(TMP, ".cache/images"));
+    });
   });
+
+  test("takes npm's cache from the environment without running npm", () => {
+    // PATH is empty, so a probe would fail and fall back: only the environment can name this.
+    withEnv({ ...NO_NPM_ENV, PATH: "", npm_config_cache: "/env/npm-cache" }, () => {
+      expect(getImageCacheDir(TMP)).toBe("/env/npm-cache/jxsuite-images/__test-image-cache__");
+    });
+    withEnv({ ...NO_NPM_ENV, NPM_CONFIG_CACHE: "/ENV/npm-cache", PATH: "" }, () => {
+      expect(getImageCacheDir(TMP)).toBe("/ENV/npm-cache/jxsuite-images/__test-image-cache__");
+    });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "an npm that never answers is abandoned, and the cache stays in the project",
+    () => {
+      // The build's first image call waited on npm with no bound; a CI runner where npm hung
+      // Stalled the dev server's first build past its test timeouts.
+      const bin = join(import.meta.dir, "__test-hung-npm__");
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(bin, "npm"), `#!/bin/sh\nexec ${Bun.which("sleep")} 30\n`);
+      chmodSync(join(bin, "npm"), 0o755);
+      try {
+        withEnv({ ...NO_NPM_ENV, PATH: bin }, () => {
+          const started = performance.now();
+          expect(getImageCacheDir(TMP)).toBe(join(TMP, ".cache/images"));
+          expect(performance.now() - started).toBeLessThan(10_000);
+        });
+      } finally {
+        rmSync(bin, { force: true, recursive: true });
+      }
+    },
+    20_000,
+  );
 
   test("loadCache returns empty manifest on corrupt JSON", () => {
     setup();
