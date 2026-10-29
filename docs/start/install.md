@@ -14,12 +14,12 @@ Jx Studio is a desktop application: you run it on your own machine, against your
 
 Grab an installer for your platform from the [latest release](https://github.com/jxsuite/jx/releases/latest):
 
-| Platform              | Download                                                                                                    |
-| --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| macOS (Apple Silicon) | [`JxStudio.dmg`](https://github.com/jxsuite/jx/releases/latest/download/macos-arm64-JxStudio.dmg)           |
-| Windows (x64)         | [`JxStudio-Setup.exe`](https://github.com/jxsuite/jx/releases/latest/download/win-x64-JxStudio-Setup.exe)   |
-| Linux (x64)           | [`JxStudio.AppImage`](https://github.com/jxsuite/jx/releases/latest/download/linux-x64-JxStudio.AppImage)   |
-| Linux (ARM64)         | [`JxStudio.AppImage`](https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio.AppImage) |
+| Platform              | Download                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| macOS (Apple Silicon) | [`JxStudio.dmg`](https://github.com/jxsuite/jx/releases/latest/download/macos-arm64-JxStudio.dmg)            |
+| Windows (x64)         | [`JxStudio-Setup.exe`](https://github.com/jxsuite/jx/releases/latest/download/win-x64-JxStudio-Setup.exe)    |
+| Linux (x64)           | [`JxStudio.AppImage`](https://github.com/jxsuite/jx/releases/latest/download/linux-x86_64-JxStudio.AppImage) |
+| Linux (ARM64)         | [`JxStudio.AppImage`](https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio.AppImage)  |
 
 The macOS build is notarized, so it opens without a Gatekeeper prompt. The Windows installer is not yet code-signed, so SmartScreen warns on first run. Choose **More info → Run anyway**. The [Download page](/download) has the same links plus checksums and release notes.
 

@@ -81,7 +81,7 @@ Linux
 AppImage: make it executable and run it. Runs on most modern distros.
 :::
 
-::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/linux-x64-JxStudio.AppImage" props.label="x64" props.variant="primary" props.newTab="true"}
+::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/linux-x86_64-JxStudio.AppImage" props.label="x64" props.variant="primary" props.newTab="true"}
 
 ::cta-button{props.href="https://github.com/jxsuite/jx/releases/latest/download/linux-arm64-JxStudio.AppImage" props.label="ARM64" props.variant="secondary" props.newTab="true"}
 ::::
