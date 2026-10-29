@@ -33,8 +33,10 @@ import {
   startLivePreview,
 } from "@jxsuite/server/live-preview";
 import {
+  anyNowInstalled,
   buildExtensionsPayload,
-  buildProjectExtensionRegistry,
+  buildInstalledExtensionRegistry,
+  missingExtensionsNotice,
 } from "@jxsuite/compiler/format-host";
 import { readBundledProjectSchemas } from "@jxsuite/compiler/schema-command";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
@@ -488,7 +490,8 @@ function byPathOrder<T extends { path: string }>(entries: T[]): T[] {
 
 export function createProjectSession(initialRoot: string | null) {
   let projectRoot: string | null = initialRoot;
-  let extensionRegistry: { root: string; registry: ExtensionRegistry } | null = null;
+  let extensionRegistry: { root: string; missing: string[]; registry: ExtensionRegistry } | null =
+    null;
 
   function requireRoot(): string {
     if (!projectRoot) {
@@ -607,7 +610,7 @@ export function createProjectSession(initialRoot: string | null) {
 
   async function getExtensionRegistry(): Promise<ExtensionRegistry> {
     const root = requireRoot();
-    if (extensionRegistry?.root === root) {
+    if (extensionRegistry?.root === root && !anyNowInstalled(root, extensionRegistry.missing)) {
       return extensionRegistry.registry;
     }
     let projectConfig: ProjectConfig | undefined;
@@ -620,8 +623,16 @@ export function createProjectSession(initialRoot: string | null) {
     } catch {
       projectConfig = undefined;
     }
-    const registry = await buildProjectExtensionRegistry(root, projectConfig);
-    extensionRegistry = { registry, root };
+    /* The editor's registry: a package project.json enables but the project has not installed yet
+       is skipped and said once, rather than failing every listFormats with a resolution stack. The
+       app ships no extension (specs/extensions.md §3), so a fresh project resolves none until its
+       install runs, and the cache check above rebuilds as soon as one does. */
+    const { missing, registry } = await buildInstalledExtensionRegistry(root, projectConfig);
+    const wasMissing = extensionRegistry?.root === root ? extensionRegistry.missing : [];
+    if (missing.length > 0 && missing.join("\n") !== wasMissing.join("\n")) {
+      console.warn(`[desktop] ${missingExtensionsNotice(missing)}`);
+    }
+    extensionRegistry = { missing, registry, root };
     return registry;
   }
 
@@ -790,7 +801,9 @@ export function createProjectSession(initialRoot: string | null) {
        * extension package, and its two-deep `cause` chain printed a screenful that named the
        * consequence nowhere. The stack stays available behind the cause.
        */
-      const detail = error instanceof Error ? error.message : String(error);
+      // The first line only: Node appends a "Require stack" to a resolution failure, which before a
+      // Project's install is the expected case (the app ships no extension) and says nothing more.
+      const [detail] = (error instanceof Error ? error.message : String(error)).split("\n");
       console.error(
         `[desktop] per-project schemas unavailable — Studio falls back to the bundled core ` +
           `schemas, so extension-contributed fields will not autocomplete or validate. ${detail}`,
@@ -1253,15 +1266,10 @@ export function createProjectSession(initialRoot: string | null) {
         }
       } else {
         // Npm/bare specifier (e.g. "@jxsuite/parser/ContentCollection.class.json") — resolve
-        // Through the project's node_modules, falling back to the desktop package's own require.
+        // Through the project's node_modules only: the app ships no extension (specs/extensions.md
+        // §3), so before the project's install this answers null.
         const { createRequire } = await import("node:module");
-        const projRequire = createRequire(resolve(root, "package.json"));
-        try {
-          moduleAbsPath = projRequire.resolve(params.src);
-        } catch {
-          const selfRequire = createRequire(import.meta.url);
-          moduleAbsPath = selfRequire.resolve(params.src);
-        }
+        moduleAbsPath = createRequire(resolve(root, "package.json")).resolve(params.src);
       }
     } catch {
       return null;

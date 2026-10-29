@@ -8,10 +8,11 @@
  *    `extensions/` tree, so core keeps no dependency on an extension package (§2).
  * 2. The project's own dependencies, scanned for anything exporting a `jx-extension.json`.
  *
- * Both are then annotated with two facts only a backend holds: whether the PROJECT resolves the
- * package, and whether THIS HOST does. Those are probed rather than declared, because what a
- * desktop build stages and what a Worker bundles are different facts and neither is knowable from a
- * package list — which is also why the catalogue is a platform capability instead of a constant.
+ * Both are then annotated with the one fact only a backend holds: whether the PROJECT resolves the
+ * package. It is probed rather than declared, and it is the only resolution asked about: an
+ * extension resolves from the project's own install and never from this host, first-party ones
+ * included (specs/extensions.md §3), so enabling one the project lacks is always
+ * install-then-enable.
  *
  * **`installed` is answered here rather than by the client**, because `listPackages` does not mean
  * one thing across backends: the dev server's own packages route drops a declared dependency it
@@ -184,11 +185,6 @@ export async function buildExtensionCatalog(projectRoot: string): Promise<Extens
     if (meta.requires) {
       entry.requires = meta.requires;
     }
-    // Bundled means "resolves without a project install": the host answers for it, and the
-    // Project does not have to.
-    if (found.host && !found.project) {
-      entry.bundled = true;
-    }
     entries.push(entry);
   }
 
@@ -237,9 +233,6 @@ export async function buildExtensionCatalog(projectRoot: string): Promise<Extens
     }
     if (loaded.formats.length > 0) {
       entry.formats = loaded.formats;
-    }
-    if (found.host) {
-      entry.bundled = true;
     }
     entries.push(entry);
   }

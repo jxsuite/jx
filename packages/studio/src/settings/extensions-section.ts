@@ -105,11 +105,8 @@ function noteFor(row: ExtensionRow): RowNote {
       noteTone: "warn",
     };
   }
-  if (!row.installed && !row.bundled) {
+  if (!row.installed) {
     return { note: "Not installed. Turning this on installs it first.", noteTone: "note" };
-  }
-  if (row.bundled) {
-    return { note: "Ships with this backend, so it needs no install.", noteTone: "note" };
   }
   return { note: "", noteTone: "none" };
 }
@@ -131,7 +128,7 @@ function blockedReason(row: ExtensionRow): string {
  * Refused while the extension is still enabled, and DISABLED with the reason rather than hidden
  * (`studio-ui-guidelines.md` §10): removing the package while `project.json` still names it
  * manufactures exactly the broken state this section exists to eliminate. It is absent only when
- * there is nothing to remove — a package the project never installed, or one the backend bundles.
+ * there is nothing to remove — a package the project never installed.
  */
 function removeFor(
   row: ExtensionRow,
@@ -140,7 +137,7 @@ function removeFor(
     ? `Turn ${row.title} off first. Removing the package while project.json still names it would fail the next build.`
     : "";
   return {
-    canRemove: row.installed && !row.bundled,
+    canRemove: row.installed,
     removeDisabled: refusal !== "" || extensionOpInFlight() !== null,
     removeHint: refusal === "" ? `Remove ${row.name}` : refusal,
     removeLabel: `Remove ${row.name}`,

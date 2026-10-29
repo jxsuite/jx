@@ -3,13 +3,17 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  anyNowInstalled,
   buildExtensionsPayload,
+  buildInstalledExtensionRegistry,
   buildProjectExtensionRegistry,
   createNodeFormatIO,
   importImplementation,
+  missingExtensionsNotice,
   probeExtension,
   unknownFormatError,
 } from "../src/site/format-host";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonObject } from "@jxsuite/schema/types";
 
@@ -81,15 +85,29 @@ describe("importImplementation", () => {
 });
 
 describe("createNodeFormatIO", () => {
-  test("resolvePath falls back to host resolution for projects without node_modules", () => {
+  test("resolvePath resolves a bare specifier from the project's own node_modules", () => {
     const root = mkdtempSync(join(tmpdir(), "jx-format-host-"));
     try {
+      installWorkspaceExtension(root, "@jxsuite/parser");
       const io = createNodeFormatIO(root);
       const resolved = io.resolvePath(
         join(root, "project.json"),
         "@jxsuite/parser/Markdown.class.json",
       );
       expect(resolved.endsWith("Markdown.class.json")).toBe(true);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  test("resolvePath never falls back to the host, first-party packages included", () => {
+    // The compiler's own graph resolves @jxsuite/parser; a project without it must not.
+    const root = mkdtempSync(join(tmpdir(), "jx-format-host-nohost-"));
+    try {
+      const io = createNodeFormatIO(root);
+      expect(() =>
+        io.resolvePath(join(root, "project.json"), "@jxsuite/parser/Markdown.class.json"),
+      ).toThrow();
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
@@ -109,9 +127,10 @@ describe("createNodeFormatIO", () => {
 });
 
 describe("buildProjectExtensionRegistry", () => {
-  test("builds the registry for a project without node_modules (host fallback)", async () => {
+  test("builds the registry from the project's installed extension", async () => {
     const root = mkdtempSync(join(tmpdir(), "jx-ext-reg-"));
     try {
+      installWorkspaceExtension(root, "@jxsuite/parser");
       const registry = await buildProjectExtensionRegistry(root, {
         extensions: ["@jxsuite/parser"],
       });
@@ -135,6 +154,18 @@ describe("buildProjectExtensionRegistry", () => {
     }
   });
 
+  test("a first-party extension the project has not installed is an error, not a host answer", async () => {
+    const root = mkdtempSync(join(tmpdir(), "jx-ext-uninstalled-"));
+    try {
+      // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+      await expect(
+        buildProjectExtensionRegistry(root, { extensions: ["@jxsuite/parser"] }),
+      ).rejects.toThrow('Extension "@jxsuite/parser" is not resolvable');
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
   test("an unresolvable extension is an explicit error, not a silent skip", async () => {
     const root = mkdtempSync(join(tmpdir(), "jx-ext-broken-"));
     try {
@@ -152,6 +183,7 @@ describe("buildExtensionsPayload", () => {
   test("pairs each project contribution with its fragment entry schema (parser)", async () => {
     const root = mkdtempSync(join(tmpdir(), "jx-ext-payload-"));
     try {
+      installWorkspaceExtension(root, "@jxsuite/parser");
       const registry = await buildProjectExtensionRegistry(root, {
         extensions: ["@jxsuite/parser"],
       });
@@ -235,6 +267,7 @@ describe("buildExtensionsPayload", () => {
   test("flags plain state classes and forwards their stateDefaults hint", async () => {
     const root = mkdtempSync(join(tmpdir(), "jx-ext-payload-state-"));
     try {
+      installWorkspaceExtension(root, "@jxsuite/connector");
       const registry = await buildProjectExtensionRegistry(root, {
         extensions: ["@jxsuite/connector"],
       });
@@ -257,6 +290,7 @@ describe("buildExtensionsPayload", () => {
   test("classes without a project block contribute nothing", async () => {
     const root = mkdtempSync(join(tmpdir(), "jx-ext-payload-formats-"));
     try {
+      installWorkspaceExtension(root, "@jxsuite/parser");
       const registry = await buildProjectExtensionRegistry(root, {
         extensions: ["@jxsuite/parser"],
       });
@@ -300,27 +334,24 @@ describe("probeExtension", () => {
     try {
       const found = probeExtension(root, "@acme/jx-toml");
       expect(found.project).toBe(true);
-      expect(found.host).toBe(false);
       expect(found.manifestPath?.endsWith("jx-extension.json")).toBe(true);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
   });
 
-  test("reports a package this host ships but the project has not installed", () => {
+  test("a package the host resolves but the project has not installed is not installed", () => {
     const root = fixture(null);
     try {
-      // @jxsuite/parser is a workspace package, so the compiler's own graph resolves it.
-      const found = probeExtension(root, "@jxsuite/parser");
-      expect(found.project).toBe(false);
-      expect(found.host).toBe(true);
-      expect(found.manifestPath?.endsWith("jx-extension.json")).toBe(true);
+      // @jxsuite/parser is a workspace package, so the compiler's own graph resolves it. The
+      // Project's answer is the only one asked.
+      expect(probeExtension(root, "@jxsuite/parser")).toEqual({ project: false });
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
   });
 
-  test("prefers the project's manifest when both resolve", () => {
+  test("answers with the project's manifest, not the workspace one", () => {
     const root = fixture({
       exports: { "./jx-extension.json": "./jx-extension.json" },
       name: "@jxsuite/parser",
@@ -328,8 +359,6 @@ describe("probeExtension", () => {
     try {
       const found = probeExtension(root, "@jxsuite/parser");
       expect(found.project).toBe(true);
-      expect(found.host).toBe(true);
-      // The project copy, not the workspace one — the order createNodeFormatIO resolves in.
       expect(found.manifestPath?.startsWith(root)).toBe(true);
     } finally {
       rmSync(root, { force: true, recursive: true });
@@ -343,19 +372,80 @@ describe("probeExtension", () => {
     try {
       const found = probeExtension(root, "@acme/jx-half");
       expect(found.project).toBe(false);
-      expect(found.host).toBe(false);
       expect(found.manifestPath).toBeUndefined();
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
   });
 
-  test("an unknown package resolves from neither", () => {
+  test("an unknown package does not resolve", () => {
     const root = fixture(null);
     try {
-      expect(probeExtension(root, "@acme/nope")).toEqual({ host: false, project: false });
+      expect(probeExtension(root, "@acme/nope")).toEqual({ project: false });
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
+  });
+});
+
+describe("buildInstalledExtensionRegistry", () => {
+  test("skips an enabled package the project has not installed, and names it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "jx-installed-reg-"));
+    try {
+      installWorkspaceExtension(root, "@jxsuite/connector");
+      mkdirSync(join(root, "local-ext"), { recursive: true });
+      writeFileSync(
+        join(root, "local-ext", "jx-extension.json"),
+        JSON.stringify({ classes: {}, name: "local-ext" }),
+      );
+      const { missing, registry } = await buildInstalledExtensionRegistry(root, {
+        extensions: ["@jxsuite/parser", "@jxsuite/connector", "./local-ext"],
+      });
+      expect(missing).toEqual(["@jxsuite/parser"]);
+      // A local extension is never skipped: no install produces it.
+      expect(registry.extensions.map((e) => e.specifier)).toEqual([
+        "@jxsuite/connector",
+        "./local-ext",
+      ]);
+      expect(registry.formats.byExtension(".md")).toBeUndefined();
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  test("no config is an empty registry with nothing missing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "jx-installed-reg-empty-"));
+    try {
+      const { missing, registry } = await buildInstalledExtensionRegistry(root);
+      expect(missing).toEqual([]);
+      expect(registry.extensions).toHaveLength(0);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("anyNowInstalled", () => {
+  test("answers whether a previously missing package resolves now", () => {
+    const root = mkdtempSync(join(tmpdir(), "jx-now-installed-"));
+    try {
+      expect(anyNowInstalled(root, [])).toBe(false);
+      installWorkspaceExtension(root, "@jxsuite/feed");
+      expect(anyNowInstalled(root, ["@acme/nope", "@jxsuite/feed"])).toBe(true);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("missingExtensionsNotice", () => {
+  test("is one sentence naming each package and the fix", () => {
+    expect(missingExtensionsNotice(["@jxsuite/parser"])).toBe(
+      'project.json enables "@jxsuite/parser", which this project has not installed, so it is ' +
+        "not loaded. Install the project's dependencies.",
+    );
+    const two = missingExtensionsNotice(["a", "b"]);
+    expect(two).toContain('"a", "b"');
+    expect(two).toContain("they are not loaded");
   });
 });

@@ -28,5 +28,7 @@ coveragePathIgnorePatterns = [
   "../site/**",
   "../starters/**",
   "../studio/**",
+  # The install-extension test helper, gated at 100% by packages/test-support's own run.
+  "../test-support/**",
 ]
 coverageThreshold = { lines = 0.96, functions = 0.95 }

@@ -32,8 +32,6 @@ export interface ExtensionRow {
   origin: ExtensionOrigin;
   enabled: boolean;
   installed: boolean;
-  /** The host resolves it without a project install, so enabling is a config write alone. */
-  bundled: boolean;
   /** Why this backend cannot run it, as one sentence. Absent means it can. */
   unavailable?: string | undefined;
   /** Enabled but not installed — the state that fails the next build. */
@@ -69,11 +67,9 @@ export function buildRows(packages: PackageInfo[] | null = null): ExtensionRow[]
   for (const entry of getExtensionCatalog()) {
     const specifier = entry.specifier ?? entry.name;
     const here = entry.installed ?? installed.has(entry.name);
-    const bundled = entry.bundled ?? false;
     const info = resolved.get(entry.name);
     const row: ExtensionRow = {
-      broken: enabled.has(specifier) && !here && !bundled,
-      bundled,
+      broken: enabled.has(specifier) && !here,
       enabled: enabled.has(specifier),
       installed: here,
       name: entry.name,
@@ -102,7 +98,6 @@ export function buildRows(packages: PackageInfo[] | null = null): ExtensionRow[]
     const info = resolved.get(specifier);
     const row: ExtensionRow = {
       broken: !installed.has(specifier) && info === undefined,
-      bundled: false,
       enabled: true,
       installed: installed.has(specifier),
       name: specifier,

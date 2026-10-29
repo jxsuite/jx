@@ -247,9 +247,10 @@ describe("what the section shows", () => {
     expect(part(row, "note-warn")?.textContent).toContain("bundles no parser");
   });
 
-  test("a bundled entry says it needs no install", async () => {
-    await mount({ extensions: [] }, [{ ...PARSER, bundled: true }]);
-    expect(part(rowFor("@jxsuite/parser"), "note")?.textContent).toContain("needs no install");
+  test("a first-party entry the project lacks says it installs first", async () => {
+    // No backend answers for an extension the project has not installed, first-party or not.
+    await mount({ extensions: [] }, [PARSER]);
+    expect(part(rowFor("@jxsuite/parser"), "note")?.textContent).toContain("installs it first");
   });
 
   test("an empty catalogue teaches rather than reporting absence", async () => {
@@ -280,12 +281,6 @@ describe("turning one on", () => {
     await flip(rowFor("@jxsuite/parser"));
     expect(writeOrder(state)).toEqual(["writeFile"]);
     expect(written(state)?.extensions).toEqual(["@jxsuite/parser"]);
-  });
-
-  test("a bundled extension is enabled without installing", async () => {
-    const state = await mount({ extensions: [] }, [{ ...PARSER, bundled: true }]);
-    await flip(rowFor("@jxsuite/parser"));
-    expect(writeOrder(state)).toEqual(["writeFile"]);
   });
 
   test("a failed install does NOT write project.json", async () => {

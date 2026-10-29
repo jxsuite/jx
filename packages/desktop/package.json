@@ -24,15 +24,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@jxsuite/auth": "workspace:^",
     "@jxsuite/compiler": "workspace:^",
-    "@jxsuite/connector": "workspace:^",
     "@jxsuite/create": "workspace:^",
-    "@jxsuite/feed": "workspace:^",
-    "@jxsuite/parser": "workspace:^",
     "@jxsuite/protocol": "workspace:^",
     "@jxsuite/schema": "workspace:^",
-    "@jxsuite/search": "workspace:^",
     "@jxsuite/server": "workspace:^",
     "@jxsuite/starters": "workspace:^",
     "@jxsuite/studio": "workspace:^",

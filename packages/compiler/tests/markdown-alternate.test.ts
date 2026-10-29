@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
 import type { JsonValue } from "@jxsuite/schema/types";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 const roots: string[] = [];
 
@@ -24,6 +25,7 @@ interface Options {
 
 async function build({ trailingSlash, url, extraPages = {} }: Options): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "jx-md-alternate-"));
+  installWorkspaceExtension(root, "@jxsuite/parser");
   roots.push(root);
   const write = (path: string, contents: JsonValue) => {
     const full = join(root, path);
@@ -140,6 +142,7 @@ describe("a page that says something itself", () => {
 
   it("advertises no twin when the format cannot serialize the page, and still builds it", async () => {
     const root = mkdtempSync(join(tmpdir(), "jx-md-alternate-fail-"));
+    installWorkspaceExtension(root, "@jxsuite/parser");
     roots.push(root);
     mkdirSync(join(root, "pages"), { recursive: true });
     writeFileSync(

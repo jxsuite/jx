@@ -24,7 +24,7 @@ import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { GENERATED_SCHEMA_COMMENT } from "@jxsuite/schema/project-schemas";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import {
-  isFirstPartySchema,
+  isCoreSchema,
   readBundledProjectSchemas,
   restrictedSchemaLoader,
   writeProjectSchemas,
@@ -330,7 +330,7 @@ describe("readBundledProjectSchemas", () => {
     rmSync(projectSchemaPath, { force: true });
   });
 
-  it("errors on node_modules refs resolvable neither project-first nor from the host", async () => {
+  it("errors on node_modules refs the project does not resolve", async () => {
     await readBundledProjectSchemas(TMP);
     const projectSchemaPath = resolve(TMP, "project.schema.json");
     const hijacked = {
@@ -342,7 +342,7 @@ describe("readBundledProjectSchemas", () => {
     utimesSync(projectSchemaPath, future, future);
     // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
     await expect(readBundledProjectSchemas(TMP)).rejects.toThrow(
-      "not resolvable from the project or the host",
+      "not resolvable from the project — is the package installed?",
     );
     rmSync(projectSchemaPath, { force: true });
   });
@@ -417,14 +417,15 @@ describe("a project-local @jxsuite core never answers for the host's", () => {
     }
   });
 
-  it("classifies first-party specifiers, and leaves project fragments alone", () => {
-    expect(isFirstPartySchema("@jxsuite/schema/schema.json")).toBe(true);
-    expect(isFirstPartySchema("@jxsuite/parser/fragment.schema.json")).toBe(true);
-    // A project's own fragments still resolve project-first — that is what the loader is FOR.
-    expect(isFirstPartySchema("my-extension/thing.schema.json")).toBe(false);
-    expect(isFirstPartySchema("@other/schema.json")).toBe(false);
+  it("classifies the core's specifiers, and leaves every extension's fragments alone", () => {
+    expect(isCoreSchema("@jxsuite/schema/schema.json")).toBe(true);
+    // A first-party EXTENSION is not core: its fragments come from the project's install, exactly
+    // As a third-party one's do (specs/extensions.md §5.4).
+    expect(isCoreSchema("@jxsuite/parser/fragment.schema.json")).toBe(false);
+    expect(isCoreSchema("my-extension/thing.schema.json")).toBe(false);
+    expect(isCoreSchema("@other/schema.json")).toBe(false);
     // Not a schema file at all.
-    expect(isFirstPartySchema("@jxsuite/schema/index.js")).toBe(false);
+    expect(isCoreSchema("@jxsuite/schema/index.js")).toBe(false);
   });
 });
 
@@ -485,21 +486,41 @@ describe("the restricted loader's two refusals", () => {
     }
   });
 
-  it("a first-party schema the HOST cannot resolve stops the generator, and does not improvise", async () => {
-    /* The point of the first-party rule is that a project-local @jxsuite/* never answers. So when
-       the host has no such package, the honest outcome is a refusal — falling back to the copy
+  it("a core schema the HOST cannot resolve stops the generator, and does not improvise", async () => {
+    /* The point of the core rule is that a project-local @jxsuite/schema never answers. So when
+       the host cannot resolve the ref, the honest outcome is a refusal — falling back to the copy
        sitting right there in the project is the exact behaviour that shipped a narrowed shop
        schema for six weeks. This plants that copy and checks it is still refused. */
     const dir = root();
-    const planted = resolve(dir, "node_modules/@jxsuite/ghost");
+    const planted = resolve(dir, "node_modules/@jxsuite/schema");
     mkdirSync(planted, { recursive: true });
-    writeFileSync(resolve(planted, "fragment.schema.json"), JSON.stringify({ $defs: {} }));
+    writeFileSync(resolve(planted, "ghost.schema.json"), JSON.stringify({ $defs: {} }));
 
     const load = restrictedSchemaLoader(dir);
     // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
     await expect(
-      load(resolve(dir, "node_modules/@jxsuite/ghost/fragment.schema.json")),
-    ).rejects.toThrow(/@jxsuite\/ghost\/fragment\.schema\.json.*host workspace and does not/s);
+      load(resolve(dir, "node_modules/@jxsuite/schema/ghost.schema.json")),
+    ).rejects.toThrow(/@jxsuite\/schema\/ghost\.schema\.json.*host workspace and does not/s);
+  });
+
+  it("a first-party EXTENSION's fragment is read from the project, never the host", async () => {
+    /* The host workspace has @jxsuite/parser; a project that has not installed it must not get the
+       host's copy. And one that has installed it gets ITS copy, the version its implementation
+       is. */
+    const dir = root();
+    const load = restrictedSchemaLoader(dir);
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
+    await expect(
+      load(resolve(dir, "node_modules/@jxsuite/parser/schemas/absent.schema.json")),
+    ).rejects.toThrow(/not resolvable from the project/);
+
+    const planted = resolve(dir, "node_modules/@jxsuite/parser");
+    mkdirSync(planted, { recursive: true });
+    writeFileSync(resolve(planted, "frag.schema.json"), JSON.stringify({ $defs: { Mine: {} } }));
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
+    await expect(load(resolve(planted, "frag.schema.json"))).resolves.toEqual({
+      $defs: { Mine: {} },
+    });
   });
 
   it("a THIRD-party specifier with no file at its conventional path resolves through the package", async () => {
@@ -532,12 +553,12 @@ describe("the restricted loader's two refusals", () => {
     });
   });
 
-  it("a specifier that resolves from neither the project nor the host names both", async () => {
+  it("a specifier the project does not resolve says so", async () => {
     const dir = root();
     const load = restrictedSchemaLoader(dir);
     // oxlint-disable-next-line typescript/await-thenable -- Bun types the matcher `void`; it returns a real Promise and the await is load-bearing.
     await expect(load(resolve(dir, "node_modules/absent-ext/doc.schema"))).rejects.toThrow(
-      /not resolvable from the project or the host/,
+      /not resolvable from the project — is the package installed\?/,
     );
   });
 });

@@ -17,6 +17,7 @@ import { findReferences, invalidateReferenceCache } from "../src/refactor/index"
 import { countTagUses, walkDocRefs } from "../src/refactor/refs";
 import { looksLikeFileRef } from "../src/refactor/paths";
 import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 let root = "";
 const tmpRoots: string[] = [];
@@ -508,6 +509,7 @@ describe("references indexed by shape, not by key name", () => {
 
   test("a content entry's frontmatter counts, and the prose below it does not", async () => {
     write("project.json", { extensions: ["@jxsuite/parser"], name: "p" });
+    installWorkspaceExtension(root, "@jxsuite/parser");
     write("public/images/project-1.jpg", "x");
     write(
       "content/projects/one.md",

@@ -93,7 +93,7 @@ Production builds compile server-side work into generated handlers. In developme
 
 ### Module resolution (`POST /__jx_resolve__`)
 
-When a document uses an external class (a `$prototype` entry with a `$src`), the browser can't always resolve it: the module may need Node-only APIs like the filesystem, or live behind CORS. The runtime posts the entry (its `$src`, `$prototype`, `$export`, and config) to the dev server, which imports the module server-side (`.js` directly, `.class.json` via its `$implementation`), instantiates the class with the config, resolves it, and returns the value as JSON. Reactive entries re-resolve when their inputs change.
+When a document uses an external class (a `$prototype` entry with a `$src`), the browser can't always resolve it: the module may need Node-only APIs like the filesystem, or live behind CORS. The runtime posts the entry (its `$src`, `$prototype`, `$export`, and config) to the dev server, which imports the module server-side (`.js` directly, `.class.json` via its `$implementation`), instantiates the class with the config, resolves it, and returns the value as JSON. Reactive entries re-resolve when their inputs change. A bare `$src` such as `@jxsuite/parser/ContentEntry.class.json` resolves from the project's own `node_modules` and nowhere else, so the dev server answers exactly what the build will.
 
 ### Server functions (`POST /__jx_server__`)
 

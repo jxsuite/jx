@@ -906,17 +906,19 @@ describe("plugin-schema — gaps", () => {
     expect(body.schema.properties.src).toBeDefined();
   });
 
-  test("resolves bare specifiers via the server require fallback", async () => {
-    const { req, url } = getReq("/__studio/plugin-schema?src=%40jxsuite%2Fschema");
-    // Root outside the repo: project require fails, server require resolves
+  test("never resolves a bare specifier from the server's own graph", async () => {
+    const { req, url } = getReq(
+      "/__studio/plugin-schema?src=%40jxsuite%2Fparser%2FContentEntry.class.json",
+    );
+    // Root outside the repo: the server resolves @jxsuite/parser, and must not answer for a
+    // Project that has not installed it (specs/extensions.md §3).
     const tmpRoot = mkdtempSync(join(tmpdir(), "jx-plugin-schema-"));
     try {
       const res = await callApi(req, url, tmpRoot, null);
       expect(res.status).toBe(200);
       const body = await res.json();
-      // Resolved JS module has no export named after the specifier
       expect(body.schema).toBeNull();
-      expect(body.error).toContain("not found");
+      expect(body.error).toContain("Cannot find");
     } finally {
       rmSync(tmpRoot, { force: true, recursive: true });
     }

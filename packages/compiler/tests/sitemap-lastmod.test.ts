@@ -18,6 +18,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 let root = "";
 let sitemap = "";
@@ -34,6 +35,7 @@ function lastmodOf(url: string): string | null {
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "jx-sitemap-lastmod-"));
+  installWorkspaceExtension(root, "@jxsuite/parser");
   mkdirSync(join(root, "pages/posts"), { recursive: true });
   mkdirSync(join(root, "content/posts"), { recursive: true });
 

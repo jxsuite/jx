@@ -13,7 +13,7 @@ code:
 
 # First-party extensions
 
-Five extensions ship with Jx, and they are deliberately unprivileged: each is wired through the same manifest, admission blocks, and capability roles available to any third-party package. They are both the batteries most projects start with and the reference implementations to crib from when you build your own. This page maps what each one contributes; follow the links for the mechanics.
+Five extensions ship with Jx, and they are deliberately unprivileged: each is wired through the same manifest, admission blocks, and capability roles available to any third-party package. They are both the batteries most projects start with and the reference implementations to crib from when you build your own. They also reach a project the way yours would: as a dependency the project installs. Neither the desktop app nor the dev server ships one or resolves one for a project that lacks it, so Studio's Extensions section offers each as install-then-enable. This page maps what each one contributes; follow the links for the mechanics.
 
 | Package              | Sections              | Formats       | Server mounts          | Connector providers  |
 | -------------------- | --------------------- | ------------- | ---------------------- | -------------------- |
