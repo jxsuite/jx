@@ -24,6 +24,8 @@ export interface FakeContents {
   listeners: Map<string, (...args: never[]) => void>;
   openHandler: ((details: { url: string }) => Electron.WindowOpenResponse) | undefined;
   devTools: number;
+  /** Each word handed to `replaceMisspelling`. */
+  replaced: string[];
 }
 
 /** The fake API plus what it recorded. */
@@ -64,6 +66,10 @@ export interface FakeElectron {
   setApplicationMenu: ReturnType<typeof mock>;
   /** Templates handed to `Menu.buildFromTemplate`, in order. */
   menuTemplates: Electron.MenuItemConstructorOptions[][];
+  /** Each popped-up menu: its template and the window it was shown over. */
+  popups: { template: Electron.MenuItemConstructorOptions[]; window: Electron.BrowserWindow }[];
+  /** Each text handed to `clipboard.writeText`. */
+  clipboard: string[];
   /** Names handed to `app.setName`. */
   names: string[];
   /** Icons handed to `app.dock.setIcon`. */
@@ -154,6 +160,7 @@ export function fakeElectron(): FakeElectron {
   const record: Omit<FakeElectron, "api"> = {
     accessed: [],
     appListeners: new Map(),
+    clipboard: [],
     desktopName: [],
     dialogAnswer: 1,
     dockIcons: [],
@@ -174,6 +181,7 @@ export function fakeElectron(): FakeElectron {
     openError: null,
     openDialogs: [],
     packaged: false,
+    popups: [],
     exposed: new Map(),
     handlers: new Map(),
     invoked: [],
@@ -191,7 +199,12 @@ export function fakeElectron(): FakeElectron {
     private readonly fake: FakeWindow;
 
     constructor(options: Electron.BrowserWindowConstructorOptions) {
-      const contents: FakeContents = { devTools: 0, listeners: new Map(), openHandler: undefined };
+      const contents: FakeContents = {
+        devTools: 0,
+        listeners: new Map(),
+        openHandler: undefined,
+        replaced: [],
+      };
       this.fake = {
         calls: [],
         closed: undefined,
@@ -208,6 +221,9 @@ export function fakeElectron(): FakeElectron {
         on: (event, listener) => {
           contents.listeners.set(event, listener);
           return webContents;
+        },
+        replaceMisspelling: (text) => {
+          contents.replaced.push(text);
         },
         setWindowOpenHandler: (handler) => {
           contents.openHandler = handler;
@@ -321,6 +337,11 @@ export function fakeElectron(): FakeElectron {
   const api: typeof Electron = {
     app,
     BrowserWindow,
+    clipboard: {
+      writeText: (text) => {
+        record.clipboard.push(text);
+      },
+    },
     contextBridge: {
       exposeInMainWorld: <Api>(key: string, value: Api) => {
         record.exposed.set(key, value);
@@ -358,7 +379,12 @@ export function fakeElectron(): FakeElectron {
     Menu: {
       buildFromTemplate: (template) => {
         record.menuTemplates.push(template);
-        return { items: template };
+        return {
+          items: template,
+          popup: ({ window }) => {
+            record.popups.push({ template, window });
+          },
+        };
       },
       setApplicationMenu: (menu) => record.setApplicationMenu(menu),
     },

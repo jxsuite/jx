@@ -236,7 +236,9 @@ describe("release-please config", () => {
  * paths on both architectures. The cause was one redirection: `out="$(nix eval --raw … 2>&1)"`.
  * `nix eval` writes its fetch progress and its evaluation warnings to stderr, so `$out` held eight
  * lines of `copying path '/nix/store/…' from 'https://nix-community.cachix.org'` and a
- * `stdenv.isLinux is deprecated` warning with the real path on the end.
+ * `stdenv.isLinux is deprecated` warning with the real path on the end. That warning was the
+ * flake's own, and the last test below keeps the deprecated shorthand out of every Nix file; the
+ * fetch progress is still there, so the redirect rules stand on their own.
  *
  * What made it invisible for five releases is that `nix path-info` answers a malformed argument and
  * a genuinely absent path with the SAME message — `getting status of "…": No such file or
@@ -293,5 +295,23 @@ describe("the release workflow's binary-cache verifier", () => {
       guard,
       "the guard must require a /nix/store path, not merely something under /nix",
     ).toContain("/nix/store/?*)");
+  });
+
+  test("no Nix file uses the deprecated `stdenv.is*` shorthand the flake once warned about", () => {
+    // Nixpkgs deprecated `stdenv.isLinux` and its siblings for `stdenv.hostPlatform.isLinux`, and
+    // Every evaluation of the flake printed the warning, which is how it ended up inside `$out`.
+    const tracked = Bun.spawnSync(["git", "ls-files", "*.nix"]).stdout.toString().trim();
+    const files = tracked.split("\n").filter(Boolean);
+    expect(files, "no tracked .nix files: is this running outside the repository?").toContain(
+      "flake.nix",
+    );
+    const deprecated = files.flatMap((file) =>
+      readFileSync(file, "utf8")
+        .split("\n")
+        .flatMap((line, index) =>
+          /\bstdenv\.is[A-Z]/.test(line) ? [`${file}:${index + 1}: ${line.trim()}`] : [],
+        ),
+    );
+    expect(deprecated, "use stdenv.hostPlatform.is* instead").toEqual([]);
   });
 });

@@ -28,9 +28,34 @@ declare module "electron" {
 
   export type WindowOpenResponse = { action: "deny" } | { action: "allow" };
 
+  /** What the page allows an edit command to do where it was right-clicked. */
+  export interface EditFlags {
+    canUndo: boolean;
+    canRedo: boolean;
+    canCut: boolean;
+    canCopy: boolean;
+    canPaste: boolean;
+    canSelectAll: boolean;
+  }
+
+  /** `context-menu`'s second argument: what was right-clicked. */
+  export interface ContextMenuParams {
+    isEditable: boolean;
+    /** The selected text, or the empty string. */
+    selectionText: string;
+    /** The link under the pointer, or the empty string. */
+    linkURL: string;
+    /** The misspelled word under the pointer, or the empty string. */
+    misspelledWord: string;
+    dictionarySuggestions: string[];
+    editFlags: EditFlags;
+  }
+
   /** The `WebContents` events the shell listens for, by name. */
   export interface WebContentsEvents {
     "before-input-event": (event: CancellableEvent, input: Input) => void;
+    /** A right-click the page did not cancel: Electron draws no menu of its own for it. */
+    "context-menu": (event: CancellableEvent, params: ContextMenuParams) => void;
     "will-navigate": (event: NavigationEvent) => void;
     "will-prevent-unload": (event: CancellableEvent) => void;
   }
@@ -40,6 +65,8 @@ declare module "electron" {
       event: Name,
       listener: WebContentsEvents[Name],
     ) => WebContents;
+    /** Replace the misspelled word at the caret with `text`. */
+    replaceMisspelling: (text: string) => void;
     setWindowOpenHandler: (handler: (details: { url: string }) => WindowOpenResponse) => void;
     toggleDevTools: () => void;
   }
@@ -171,20 +198,34 @@ declare module "electron" {
     };
   }
 
-  /** The menu roles the macOS application menu is built from. */
-  export type MenuRole = "appMenu" | "close" | "editMenu" | "toggleDevTools" | "windowMenu";
+  /** The menu roles the macOS application menu and the context menu are built from. */
+  export type MenuRole =
+    | "appMenu"
+    | "close"
+    | "copy"
+    | "cut"
+    | "editMenu"
+    | "paste"
+    | "redo"
+    | "selectAll"
+    | "toggleDevTools"
+    | "undo"
+    | "windowMenu";
 
   export interface MenuItemConstructorOptions {
     click?: () => void;
+    enabled?: boolean;
     label?: string;
     role?: MenuRole;
     submenu?: MenuItemConstructorOptions[];
     type?: "separator";
   }
 
-  /** An application menu, opaque to the shell once built. */
+  /** A built menu: opaque to the shell, except that a context menu is popped up. */
   export interface ElectronMenu {
     readonly items: readonly unknown[];
+    /** Show the menu at the pointer, over `window`. */
+    popup: (options: { window: BrowserWindow }) => void;
   }
 
   export interface ApplicationMenu {
@@ -194,6 +235,10 @@ declare module "electron" {
 
   export interface Shell {
     openExternal: (url: string) => Promise<void>;
+  }
+
+  export interface Clipboard {
+    writeText: (text: string) => void;
   }
 
   export interface ContextBridge {
@@ -232,6 +277,7 @@ declare module "electron" {
   }
 
   export const app: App;
+  export const clipboard: Clipboard;
   export const contextBridge: ContextBridge;
   export const dialog: Dialog;
   export const ipcMain: IpcMain;

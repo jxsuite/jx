@@ -104,9 +104,7 @@
       "display": "contents"
     },
     "& [part=\"link\"]": {
-      "display": "flex",
-      "gap": "var(--jx-space-2)",
-      "alignItems": "center",
+      "$description": "No display here. A closed popover is hidden by the platform's own `[popover]:not(:popover-open)` rule, which the kit lets through with `display: revert-layer`; a `display` declared on the part beats it, and the closed panel stayed laid out at the viewport origin, invisible at opacity 0 and still taking every click and the text cursor meant for the workspace tabs beneath it.",
       "padding": "var(--jx-space-3)"
     },
     "& [part=\"link-field\"]": {
