@@ -200,6 +200,70 @@ describe("pressing on uneditable content", () => {
   });
 });
 
+describe("a secondary press", () => {
+  // A right-button press placed the caret, the caret activated the block, and the menu waited
+  // Behind the edit start it caused, with the block left in edit mode after the menu closed.
+  const WITH_PROP = `<p data-jx-path='["children",0]'>One</p><p data-jx-path='["children",1]'>Two</p><x-card data-jx-path='["children",2]' contenteditable="false"><span data-jx-bound-prop="title">Card</span></x-card>`;
+
+  /** Press `el` with `button`; true when a listener cancelled the press's default. */
+  function press(el: Element, button: number): boolean {
+    return !el.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, button, cancelable: true }),
+    );
+  }
+
+  test("on a block that is not being edited, it keeps the caret out of it", () => {
+    const { container, rec } = mount(WITH_PROP);
+    expect(press(nth(container, "p", 1), 2)).toBe(true);
+    expect(rec.activated).toHaveLength(0);
+  });
+
+  test("inside the block being edited, it keeps its native press", () => {
+    const { container, rec } = mount(WITH_PROP);
+    caretInto(nth(container, "p"), 1);
+    expect(press(nth(container, "p"), 2)).toBe(false);
+    expect(rec.deactivated).toBe(0);
+    expect(window.getSelection()?.rangeCount).toBe(1);
+  });
+
+  test("outside the block being edited, it leaves that block and drops the caret", () => {
+    const { container, rec } = mount(WITH_PROP);
+    caretInto(nth(container, "p"), 1);
+    expect(press(nth(container, "p", 1), 2)).toBe(true);
+    expect(rec.deactivated).toBe(1);
+    expect(window.getSelection()?.rangeCount).toBe(0);
+  });
+
+  test("a primary press is left to the browser", () => {
+    const { container } = mount(WITH_PROP);
+    expect(press(nth(container, "p", 1), 0)).toBe(false);
+  });
+
+  test("outside the editing modes it is left to the browser", () => {
+    const { container } = mount(WITH_PROP, { getMode: () => "preview" });
+    expect(press(nth(container, "p", 1), 2)).toBe(false);
+  });
+
+  test("on a prop marker, it does not open the nested host", () => {
+    const { container, rec } = mount(WITH_PROP, {
+      onPropActivate: (el) => {
+        rec.props.push(el.dataset.jxBoundProp!);
+        return true;
+      },
+    });
+    const marker = nth(container, "[data-jx-bound-prop]");
+    marker.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 2 }));
+    expect(rec.props).toEqual([]);
+  });
+
+  test("stop() removes it", () => {
+    const { container, root } = mount(WITH_PROP);
+    root.stop();
+    live = null;
+    expect(press(nth(container, "p", 1), 2)).toBe(false);
+  });
+});
+
 describe("prop-bound nested hosts", () => {
   const WITH_PROP = `<p data-jx-path='["children",0]'>Page</p><x-card data-jx-path='["children",1]' contenteditable="false"><span data-jx-bound-prop="title">Card</span></x-card>`;
 
