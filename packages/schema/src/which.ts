@@ -4,9 +4,12 @@
  * The desktop backend runs on Electron's Node (specs/desktop.md §7.1), so the code it reaches
  * cannot call `Bun.which`. The answer is held to Bun's by `tests/which.test.ts`: a name containing
  * a path separator is resolved against the working directory and returned when it is an executable
- * regular file; any other name is looked up in each non-empty `PATH` entry in order, and on Windows
- * with each `PATHEXT` extension as well. The path returned is the one that was found, not its
- * realpath.
+ * regular file; any other name is looked up in each non-empty `PATH` entry in order. On Windows,
+ * where every file passes an `X_OK` check, only a launchable name counts: one that already ends in
+ * `.exe`, `.cmd`, `.bat` or `.com` is tried as written, and any other gets each of those appended
+ * in that order. Like Bun, it ignores `PATHEXT`, whose `.js` and `.vbs` entries name files a
+ * process cannot spawn. The path returned is the one that was tried, so an appended extension is
+ * lower case whatever the file's own case, and never its realpath.
  *
  * Node-only: it reads the filesystem, unlike the rest of this package's browser-safe modules.
  */
@@ -26,13 +29,22 @@ function isExecutable(path: string): boolean {
   }
 }
 
-/** The names to try for `name`: itself, then each `PATHEXT` extension on Windows. */
+/** The extensions Bun's `which` tries on Windows, in its order. */
+const WINDOWS_EXTENSIONS = [".exe", ".cmd", ".bat", ".com"];
+
+/**
+ * The names to try for `name`: itself elsewhere; on Windows, only names with a launchable
+ * extension.
+ */
 function candidates(name: string, platform: NodeJS.Platform): string[] {
   if (platform !== "win32") {
     return [name];
   }
-  const extensions = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
-  return [name, ...extensions.map((extension) => `${name}${extension}`)];
+  const lower = name.toLowerCase();
+  if (WINDOWS_EXTENSIONS.some((extension) => lower.endsWith(extension))) {
+    return [name];
+  }
+  return WINDOWS_EXTENSIONS.map((extension) => `${name}${extension}`);
 }
 
 /**
