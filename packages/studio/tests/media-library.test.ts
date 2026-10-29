@@ -723,6 +723,144 @@ describe("the keyboard", () => {
   });
 });
 
+// ─── The tile menu ───────────────────────────────────────────────────────────
+
+describe("the tile menu", () => {
+  /** Right-click a tile at a point; true when the page kept the browser's own menu. */
+  function rightClick(tile: HTMLElement): boolean {
+    return tile.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }),
+    );
+  }
+
+  function menus(): HTMLElement[] {
+    return [...layerHost("popover").querySelectorAll<HTMLElement>("jx-menu")];
+  }
+
+  /** Each row of the open tile menu, with `---` where a divider is drawn above one. */
+  function menuRows(): string[] {
+    const [menu] = menus();
+    if (!menu) {
+      throw new Error("no tile menu is open");
+    }
+    return [...menu.querySelectorAll<HTMLElement>("jx-menu-item")].flatMap((row) => {
+      const title = row.textContent.trim();
+      const divided = row.previousElementSibling?.querySelector("hr") !== null;
+      return divided ? ["---", title] : [title];
+    });
+  }
+
+  async function choose_(id: string): Promise<void> {
+    menus()[0]!.querySelector<HTMLElement>(`jx-menu-item[data-command-id="${id}"]`)!.click();
+    await settle(12);
+  }
+
+  test("selects the tile and offers the detail pane's actions at the pointer", async () => {
+    await mountHome();
+    expect(rightClick(tileOf("public/media/menu.pdf"))).toBe(false);
+    await settle();
+    expect(selectedFile()).toBe("public/media/menu.pdf");
+    expect(menus()[0]!.closest<HTMLElement>("[data-jx-region]")?.dataset.jxRegion).toBe(
+      "overlay.menu:media-tile",
+    );
+    expect(menus()[0]!.getAttribute("aria-label")).toBe("menu.pdf actions");
+    expect(menuRows()).toEqual([
+      "Open in Viewer",
+      "Copy Site URL",
+      "---",
+      "Replace…",
+      "---",
+      "Delete",
+    ]);
+  });
+
+  test("Open in Viewer opens the file's viewer tab", async () => {
+    await mountHome();
+    rightClick(tileOf("public/media/menu.pdf"));
+    await settle();
+    await choose_("open");
+    expect(workspace.tabs.has("public/media/menu.pdf")).toBe(true);
+  });
+
+  test("Copy Site URL writes the file's site URL", async () => {
+    const written: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (copied: string) => {
+          written.push(copied);
+        },
+      },
+    });
+    await mountHome();
+    rightClick(tileOf("content/blog/images/cover.png"));
+    await settle();
+    await choose_("copy-url");
+    // The same URL the detail pane shows and its Copy button writes.
+    expect(written).toEqual([text("url-value")]);
+    expect(written).toEqual(["/content/blog/images/cover.png"]);
+  });
+
+  test("Replace… opens the Replace picker for that file", async () => {
+    const shown: (string | null)[] = [];
+    const picker = spyOn(HTMLInputElement.prototype, "showPicker").mockImplementation(
+      function recordPart(this: HTMLInputElement) {
+        shown.push(this.getAttribute("part"));
+      },
+    );
+    try {
+      await mountHome();
+      rightClick(tileOf("public/hero.jpg"));
+      await settle();
+      await choose_("replace");
+      expect(selectedFile()).toBe("public/hero.jpg");
+      expect(shown).toEqual(["replace-input"]);
+    } finally {
+      picker.mockRestore();
+    }
+  });
+
+  test("Delete goes through the confirmation", async () => {
+    await mountHome();
+    rightClick(tileOf("public/hero.jpg"));
+    await settle();
+    await choose_("delete");
+    topDialog()!.dispatchEvent(new Event("confirm"));
+    await settle();
+    expect(state.calls).toContainEqual(["deleted", "public/hero.jpg"]);
+  });
+
+  test("a second right-click replaces the first menu", async () => {
+    await mountHome();
+    rightClick(tileOf("public/hero.jpg"));
+    await settle();
+    rightClick(tileOf("public/media/menu.pdf"));
+    await settle();
+    expect(menus()).toHaveLength(1);
+    expect(menus()[0]!.getAttribute("aria-label")).toBe("menu.pdf actions");
+  });
+
+  test("a file the listing no longer holds offers nothing", async () => {
+    await mountHome();
+    const tile = tileOf("public/hero.jpg");
+    tree.set("public", [{ name: "media", path: "public/media", type: "directory" }]);
+    invalidateMediaCache();
+    await settle();
+    rightClick(tile);
+    await settle();
+    expect(menus()).toHaveLength(0);
+  });
+
+  test("pick mode keeps the browser's menu: its dialog is modal, and a menu beside it is inert", async () => {
+    openMediaPickDialog({ images: false, onPick: () => {} });
+    await settle(8);
+    const body = layerHost("dialog").querySelector<HTMLElement>('jx-dialog[part="media-pick"]')!;
+    expect(rightClick(tileOf("public/media/menu.pdf", body))).toBe(true);
+    await settle();
+    expect(menus()).toHaveLength(0);
+  });
+});
+
 // ─── Upload, Replace, Delete ─────────────────────────────────────────────────
 
 describe("uploads", () => {

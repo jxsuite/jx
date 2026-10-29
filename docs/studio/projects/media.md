@@ -57,6 +57,8 @@ Select a file and the right-hand pane describes it:
 - **Used on**: every document that refers to the file, with a count each, headed by a line such as _Used on 2 pages and 1 other file_ or, when no page uses it directly, _Used in 1 file_ (a layout or component, say). Click one to open it.
 - **Replace**, **Open in viewer** and **Delete**.
 
+Right-click a tile to select it and reach the same actions without moving to the pane: **Open in Viewer**, **Copy Site URL**, **Replace…** and **Delete**. Each does exactly what its button in the details pane does. The media picker you open from a field has no tile menu; double-click a tile there to use it.
+
 **Replace** swaps a file's contents and keeps its name. Pick the new file and Studio writes it over the old one at the same path, so every page, component and entry that uses it shows the new picture straight away, with nothing to re-link. It is the one way Studio ever writes over an existing file. The new file has to be the same type as the old one (a JPEG for a JPEG, an SVG for an SVG), because the address stays the same and a page asking for `hero.jpg` cannot show a PNG. To swap in a different type, upload it as a new file and point the pages at it.
 
 **Delete** asks first, and says what it would break (see [Deleting media](#deleting-media) below). Deleting the last file in `public/media/`, or in a collection's `images/` folder, removes that folder too: Studio made it for your uploads, so it does not leave it behind empty. A folder you made yourself stays.

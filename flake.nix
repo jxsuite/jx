@@ -64,7 +64,7 @@
           };
         in
         {
-          packages = lib.optionalAttrs pkgs.stdenv.isLinux {
+          packages = lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             default = pkgs.callPackage ./packages/desktop/package.nix { };
           };
 

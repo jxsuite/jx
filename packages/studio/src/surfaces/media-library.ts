@@ -118,6 +118,8 @@ export interface MediaLibraryActions {
   activate: (file: string) => void;
   /** Enter on the grid: the same, for the selected file. */
   activateSelected: () => void;
+  /** A right-click on a tile in manage mode: select it and open its actions at the pointer. */
+  contextMenu: (file: string, x: number, y: number) => void;
   key: (key: string, ctrl: boolean) => void;
   measure: (file: string, width: number, height: number) => void;
   copyRef: () => void;
