@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.0-draft\
+**Version:** 0.7.9-draft\
 **Status:** Partial\
-**Updated:** 2026-10-27\
+**Updated:** 2026-10-29\
 **License:** MIT
 
 ---
@@ -1100,6 +1100,15 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.9-draft** (2026-10-29) — The Electron shell draws the native context menu Electron leaves out: spelling, edit commands, Copy and Copy Link Address where Studio leaves a right-click to the platform.
+- **0.7.8-draft** (2026-10-29) — Corrects the Linux x64 AppImage's distribution name to linux-x86_64-JxStudio.AppImage, the name electron-builder gives an x64 AppImage.
+- **0.7.7-draft** (2026-10-29) — §9.3: the app declares and ships no extension package; projects install their own.
+- **0.7.6-draft** (2026-10-29) — The per-window Bun launcher (bun run chromium) is removed: every build, a development checkout included, runs the Electron application; §9.1, §9.2 and §9.4 are Removed, §9.5 describes the frameless Electron window, and the desktop adapter lives in src/webview/.
+- **0.7.5-draft** (2026-10-29) — Desktop source paths follow the reorganization by process: src/main, src/preload, src/backend, src/webview and src/shared.
+- **0.7.4-draft** (2026-10-29) — §7.1: the pinned Electron is 43.7.11, which nixpkgs ships (Node 24.21.0, ICU 78.2).
+- **0.7.3-draft** (2026-10-29) — Mac App Store: the signed TestFlight build is measured, and App Review's refusal (Bun imports the system ICU) is recorded as the open item.
+- **0.7.2-draft** (2026-10-29) — The packaged backend runs on Electron's Node as a utility process and carries no Bun; Studio installs packages with npm's installer, strictly; the cloud keeps package-lock.json in step through a lockfile-only package service.
+- **0.7.1-draft** (2026-10-29) — §9.3: the Nix package patches sharp's prebuilt binaries to find libstdc++, and its install check loads sharp on the packaged Electron.
 - **0.7.0-draft** (2026-10-27) — The dev server has no Open Project: a window opens its project from ?project= (§8.2), openProject is optional and Studio offers Open Project only on a host that can carry it out (§4.2), and the dev-server adapter omits pickDirectory, so its Location field is typed (§8.2.1).
 - **0.6.5-draft** (2026-10-23) — §7.7: the sandboxed build asks for the project folder, keeps a bookmark per folder, restores them before the backend starts, and restarts the backend for a pick no bookmark covers.
 - **0.6.4-draft** (2026-10-23) — Adds §7.7, the Mac App Store channel: the mas target, the sandbox entitlements, no updater inside it, and the open question of the backend's access to a picked folder.
@@ -1185,4 +1194,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.0-draft_
+_Jx Studio Desktop Architecture Specification v0.7.9-draft_

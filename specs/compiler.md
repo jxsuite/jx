@@ -2,9 +2,9 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.5.1-draft\
+**Version:** 0.5.2-draft\
 **Status:** Partial\
-**Updated:** 2026-10-27\
+**Updated:** 2026-10-29\
 **License:** MIT
 
 ---
@@ -756,6 +756,7 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.5.2-draft** (2026-10-29) — The image cache's npm lookup reads npm_config_cache first and gives npm config get cache 3 seconds.
 - **0.5.1-draft** (2026-10-27) — §9.2: a compiled switch discriminant and a repeater's items read a nested pointer by its path and answer undefined through a null parent, as the interpreter does.
 - **0.5.0-draft** (2026-10-27) — §6.2 removed: the site build writes no per-page server handler and compileServer is no longer exported; §1 and §6.3 require build.adapter for a server-timed entry, as for an active mount.
 - **0.4.8-draft** (2026-10-27) — §6.3: the site worker serves every timing server entry a page, its layouts, project.json state or a compiled component declares, each relative $src resolved against its own document, and two modules exporting one name fail the build.
@@ -805,4 +806,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.5.1-draft_
+_`@jxsuite/compiler` Specification v0.5.2-draft_

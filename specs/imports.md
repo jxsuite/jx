@@ -1,8 +1,8 @@
 # Imports
 
-**Version:** 0.1.12-draft\
+**Version:** 0.1.13-draft\
 **Status:** Partial\
-**Updated:** 2026-10-17\
+**Updated:** 2026-10-29\
 **License:** MIT
 
 ---
@@ -216,6 +216,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.13-draft** (2026-10-29) — Desktop source paths follow the reorganization by process: src/main, src/preload, src/backend, src/webview and src/shared.
 - **0.1.12-draft** (2026-10-17) — GET /__studio/components entries carry uses, the custom-element tags a component renders, which the canvas follows transitively (§1.4, §4.1).
 - **0.1.11-draft** (2026-09-29) — Census against the code: §1.1, §1.2, §1.4, §2, §4.2, §4.3, §5, §5.1 and §6 gain Partial markers for the studio canvas's unrebased project imports and elements and its narrower component discovery, the retired imports-based format discovery, Custom Elements Manifest discovery that only the dev server performs, the package route payloads, the Packages and Insert panels, and unenforced collection elements. §1.3 gains a Partial marker and §1.4 is corrected, because the build compiles only the top level of components/ and never reads a page's $ref elements.
 - **0.1.10-draft** (2026-08-27) — Components a project defines are discovered from the tree rather than only declared.
