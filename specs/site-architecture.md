@@ -1264,7 +1264,7 @@ Individual `<img>` nodes can override global defaults:
 
 #### 9.2.5 Caching
 
-> **Status: Partial.** The key, persistence and error-free pruning match (`packages/compiler/src/site/image-cache.ts`). The location does not: `getImageCacheDir` uses `<npm cache>/jxsuite-images/<project directory name>/manifest.json` whenever `npm config get cache` answers, and `.cache/images` only as a fallback, so the `.gitignore` advice below has no effect on a normal machine; and invalidation checks the variant files in that cache directory, not in `dist/`.
+> **Status: Partial.** The key, persistence and error-free pruning match (`packages/compiler/src/site/image-cache.ts`). The location does not: `getImageCacheDir` uses `<npm cache>/jxsuite-images/<project directory name>/manifest.json` whenever npm names its cache (`npm_config_cache` in the environment, else `npm config get cache` within 3 seconds), and `.cache/images` only as a fallback, so the `.gitignore` advice below has no effect on a normal machine; and invalidation checks the variant files in that cache directory, not in `dist/`.
 
 The optimizer caches processed images to avoid redundant re-encoding on subsequent builds:
 

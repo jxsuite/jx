@@ -565,7 +565,7 @@ Individual `<img>` nodes can override global settings via attributes:
 
 ### 7.5 Caching (`image-cache.js`)
 
-> **Status: Partial.** The cache is not at `.cache/images/` by default: `getImageCacheDir` in `packages/compiler/src/site/image-cache.ts` prefers the npm cache (`npm config get cache`, then `jxsuite-images/<project basename>/`) and falls back to `.cache/images` in the project only when npm is unavailable, and invalidation looks for the variant files in that directory's `_optimized/`, not in `dist/`. The config hash also folds in `PIPELINE_VERSION` (`image-optimizer.ts`); the key format, persistence and pruning ship as described.
+> **Status: Partial.** The cache is not at `.cache/images/` by default: `getImageCacheDir` in `packages/compiler/src/site/image-cache.ts` prefers the npm cache (`npm_config_cache` in the environment, else `npm config get cache` given 3 seconds, then `jxsuite-images/<project basename>/`) and falls back to `.cache/images` in the project only when npm is unavailable or does not answer in time, and invalidation looks for the variant files in that directory's `_optimized/`, not in `dist/`. The config hash also folds in `PIPELINE_VERSION` (`image-optimizer.ts`); the key format, persistence and pruning ship as described.
 
 Processed images are cached to `.cache/images/manifest.json` to avoid redundant re-encoding across builds.
 
