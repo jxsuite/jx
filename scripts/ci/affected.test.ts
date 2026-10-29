@@ -267,18 +267,17 @@ describe("edges package.json cannot see", () => {
   });
 
   test("an extension's source retests schema — the inverted edge", () => {
-    // The only workspace that depends on @jxsuite/search is desktop, which declares every
-    // First-party extension so the app can resolve their schemas (specs/desktop.md §9.3). Without
-    // The edge this would be `desktop` and `search` alone, and schema's class-drift test, which
-    // Walks every extension's src, would not have run.
-    expect(flagsFor("extensions/search/src/index.ts")).toEqual(["desktop", "schema", "search"]);
+    // No workspace depends on @jxsuite/search: a project installs its extensions, and the host
+    // Lends it none (specs/extensions.md). Without the edge this would be `search` alone, and
+    // Schema's class-drift test, which walks every extension's src, would not have run.
+    expect(flagsFor("extensions/search/src/index.ts")).toEqual(["schema", "search"]);
   });
 
   test("the inverted edge adds schema WITHOUT dragging in schema's sixteen dependents", () => {
     const flags = flagsFor("extensions/search/src/index.ts");
     expect(flags).not.toContain("studio");
     expect(flags).not.toContain("server");
-    expect(flags.length).toBe(3);
+    expect(flags.length).toBe(2);
   });
 
   test("an extension change still expands its own real dependents", () => {
@@ -286,7 +285,7 @@ describe("edges package.json cannot see", () => {
     expect(flags).toContain("parser");
     expect(flags).toContain("schema"); // The inverted edge.
     expect(flags).toContain("compiler"); // A genuine devDependency.
-    expect(flags).toContain("desktop"); // A genuine runtime dependency.
+    expect(flags).toContain("desktop"); // Through compiler, server and starters.
   });
 });
 
