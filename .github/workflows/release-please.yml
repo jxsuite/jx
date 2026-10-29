@@ -204,7 +204,7 @@ jobs:
 
           rows="$(
             emit_row 'macOS'   'Apple Silicon' 'DMG'       'macos-arm64-JxStudio.dmg'       'ZIP' 'macos-arm64-JxStudio.zip'
-            emit_row 'Linux'   'x64'           'AppImage'  'linux-x64-JxStudio.AppImage'    ''    ''
+            emit_row 'Linux'   'x64'           'AppImage'  'linux-x86_64-JxStudio.AppImage' ''    ''
             emit_row 'Linux'   'arm64'         'AppImage'  'linux-arm64-JxStudio.AppImage'  ''    ''
             emit_row 'Windows' 'x64'           'Installer' 'win-x64-JxStudio-Setup.exe'     ''    ''
             emit_row 'Windows' 'Store (APPX)'  'APPX'      'win-x64-JxStudio.appx'          ''    ''
