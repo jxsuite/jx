@@ -494,6 +494,7 @@ Files dragged in from the desktop are NOT pragmatic sources — they arrive as n
 The canvas render container is a single `contenteditable`; individual blocks are not toggled in and out of it. A caret inside a block IS the edit — there is no session to enter, and no modal state.
 
 - The caret lands where the author clicked, never at the end of the block
+- A secondary press places no caret. A right-click outside the block being edited selects the element for its menu without starting an edit, and leaves any edit in progress; inside that block it keeps the browser's press, whose caret the native spelling and edit menu reads. A caret placed by the press activated the block, and the edit start ran ahead of the menu: the menu was held back by hundreds of milliseconds and the block stayed in edit mode after it closed
 - Motion, selection and IME are the browser's; the studio intercepts only structural intent
 - Component instances are `contenteditable="false"` islands the caret treats as atomic
 - The active block carries `data-jx-active-block` for affordances (the empty-block slash hint)
