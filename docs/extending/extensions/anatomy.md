@@ -72,7 +72,7 @@ A project enables extensions in `project.json`:
 }
 ```
 
-- Entries are bare package names or relative paths (for local, unpublished extensions). Package names resolve **project-first**: the project's own `node_modules`, then the host's. Projects own their extension dependencies, so a scaffolded project lists `@jxsuite/parser` in its `package.json`.
+- Entries are bare package names or relative paths (for local, unpublished extensions). Package names resolve from the **project only**: its own `node_modules`, never the tool that is running. First-party extensions get no exemption, so `@jxsuite/parser` reaches a project exactly the way your own extension would. Projects own their extension dependencies: a scaffolded project lists `@jxsuite/parser` in its `package.json`, and neither the desktop app nor the dev server ships one. Before a project's install has run, Studio lists only what resolves and says which enabled packages are missing; a build fails naming them.
 - `imports` keeps its original, reduced job: mapping `$prototype` names to **project-local** class files. It does not register formats or extensions.
 - **Name visibility**: the manifest's class keys become `$prototype`-visible names. On a collision, a project-local `imports` entry wins over a manifest class; two extensions exporting the same class name is a registry error. Rename via a local wrapper class to disambiguate.
 - **No implicit defaults.** A project with no `extensions` supports only `.json` documents and core state prototypes.

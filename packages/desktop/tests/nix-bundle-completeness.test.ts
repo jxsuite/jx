@@ -43,19 +43,17 @@ function declaredJxDeps(): string[] {
 }
 
 describe("the Nix bundle ships what the desktop app depends on", () => {
-  test("the installPhase copies both workspace trees", () => {
-    // `extensions` is the one that was missing. Named explicitly so removing it fails HERE, with a
-    // Sentence, rather than in a user's log six weeks later.
-    expect(copiedDirs()).toEqual(
-      expect.arrayContaining(["node_modules", "packages", "extensions"]),
-    );
+  test("the installPhase copies the packages tree, and not the extensions", () => {
+    // The app ships no extension (specs/extensions.md §3), so `extensions/` has nothing to supply.
+    const copied = copiedDirs();
+    expect(copied).toEqual(expect.arrayContaining(["node_modules", "packages"]));
+    expect(copied).not.toContain("extensions");
   });
 
   test("every declared @jxsuite dependency lives under a copied directory", () => {
     const copied = new Set(copiedDirs());
     const declared = declaredJxDeps();
-    // Not vacuous: the app really does declare a set of them, and one really does live in
-    // `extensions/`.
+    // Not vacuous: the app really does declare a set of them.
     expect(declared.length).toBeGreaterThan(5);
 
     const orphans: string[] = [];
@@ -95,11 +93,11 @@ describe("the runtime install is the desktop app's production graph", () => {
     expect(nix).toMatch(/--production \\\s+--filter '@jxsuite\/desktop'/);
   });
 
-  test("every first-party extension is a runtime dependency, so its schemas resolve from the app", () => {
-    /* The schema loader resolves a first-party `@jxsuite/*` schema from the HOST and never from
-       the project (packages/compiler/src/site/schema-command.ts, `hostResolve`), so a project that
-       declares an extension needs the app to carry it — and nothing imports an extension
-       statically, so only the declaration puts it in the production install. */
+  test("the app declares no extension, first-party or not", () => {
+    /* A project resolves every extension it enables from its own install, first-party ones
+       included (specs/extensions.md §3), so the app carries none of them. Declaring one would put
+       it in the production install, where nothing reads it any more, and would invite exactly
+       the host resolution the contract forbids. */
     /* SAFETY: every directory under extensions/ is a bun workspace member, and the workspace
        resolver refuses a member whose package.json lacks a string `name`. */
     const extensions = readdirSync(resolve(REPO, "extensions"), { withFileTypes: true })
@@ -114,7 +112,7 @@ describe("the runtime install is the desktop app's production graph", () => {
       );
     expect(extensions.length).toBeGreaterThan(3);
     const declared = new Set(declaredJxDeps());
-    expect(extensions.filter((name) => !declared.has(name))).toEqual([]);
+    expect(extensions.filter((name) => declared.has(name))).toEqual([]);
   });
 
   test("the backend is bundled at build time and its natives resolved against the installed tree", () => {

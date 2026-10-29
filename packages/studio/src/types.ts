@@ -523,11 +523,12 @@ export interface StudioPlatform {
    * is dropped from the registry before composition rather than passed to it. A studio that
    * advertised a shipped list would offer rows the host would refuse.
    *
-   * Each entry additionally carries two facts only a backend holds: whether THIS host resolves the
-   * package without a project install (`bundled`), and whether the project has it installed
-   * (`installed`) — the latter because `listPackages` does not mean one thing across backends.
-   * `enabled` is deliberately absent: it is `projectConfig.extensions.includes(name)`, which Studio
-   * already owns and rewrites through the `updateSiteConfig` chokepoint.
+   * Each entry additionally carries one fact only a backend holds: whether the project has it
+   * installed (`installed`), because `listPackages` does not mean one thing across backends. No
+   * host answers for an extension the project lacks (specs/extensions.md §3), so a row that is not
+   * installed is always install-then-enable. `enabled` is deliberately absent: it is
+   * `projectConfig.extensions.includes(name)`, which Studio already owns and rewrites through the
+   * `updateSiteConfig` chokepoint.
    *
    * Optional: platforms without it offer no catalogue, and adding an extension stays a typed
    * package name.

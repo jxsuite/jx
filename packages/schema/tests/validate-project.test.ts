@@ -121,10 +121,25 @@ describe("validateProjectFile", () => {
     expect(result.valid).toBe(true);
   });
 
-  test("falls back to host resolution when the project has no node_modules", async () => {
-    const root = makeProject({ nodeModules: false });
+  test("resolves the core from the host when the project has no node_modules", async () => {
+    // No extension, so no `content` section: the core alone answers for this project.
+    const root = makeProject({
+      fragments: [],
+      nodeModules: false,
+      project: { $schema: "./project.schema.json", name: "core-only" },
+    });
     const result = await validateProjectFile(root);
     expect(result.valid).toBe(true);
+  });
+
+  test("never resolves an extension's fragment from the host, first-party ones included", async () => {
+    // This package's own graph reaches @jxsuite/parser; a project that has not installed it must
+    // Not (specs/extensions.md §5.4).
+    const root = makeProject({ nodeModules: false });
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
+    await expect(validateProjectFile(root)).rejects.toThrow(
+      "is not resolvable from the project — is the package installed?",
+    );
   });
 
   test("a version-skewed local @jxsuite/schema falls back to the validator's own files", async () => {

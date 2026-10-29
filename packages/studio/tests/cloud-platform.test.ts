@@ -1771,7 +1771,7 @@ describe("formats (session backend registry)", () => {
    * platform build rather than by this repository's extensions/ tree. So cloud asks its gateway,
    * and never serves the shipped first-party list.
    */
-  test("listExtensionCatalog asks the gateway and marks everything bundled", async () => {
+  test("listExtensionCatalog asks the gateway and answers installed from the manifest", async () => {
     const calls = mockFetch({
       "/catalog": {
         body: [
@@ -1786,9 +1786,9 @@ describe("formats (session backend registry)", () => {
     const p = createCloudPlatform(PROJECT);
     const catalog = await p.listExtensionCatalog?.();
 
-    // Nothing resolves a module in a Worker, so enabling one of these is a project.json write
-    // Alone — which is what `bundled` means.
-    expect(catalog?.every((e) => e.bundled === true)).toBe(true);
+    // What the Worker bundles is not what the project gets: Pages CI builds from the project's
+    // Own install, so no entry claims to need none (specs/extensions.md §3).
+    expect(catalog?.every((e) => !("bundled" in e))).toBe(true);
     // `installed` degrades to DECLARED, the only fact this adapter has.
     expect(catalog?.find((e) => e.name === "@jxsuite/parser")?.installed).toBe(true);
     expect(catalog?.find((e) => e.name === "@jxsuite/feed")?.installed).toBe(false);

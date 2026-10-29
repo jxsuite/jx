@@ -360,15 +360,10 @@ export async function handleResolve(
         return new Response(`$src "${$src}" escapes the project root`, { status: 403 });
       }
     } else {
-      // Npm/bare specifier — use createRequire from project root, fall back to server package
+      // Npm/bare specifier — the project's own install, never the server's (a class package is an
+      // Extension of the project, specs/extensions.md §3, and the build resolves it the same way).
       const projectRoot = activeProjectRoot || root;
-      const projRequire = createRequire(resolve(projectRoot, "package.json"));
-      try {
-        moduleAbsPath = projRequire.resolve($src);
-      } catch {
-        const serverRequire = createRequire(import.meta.url);
-        moduleAbsPath = serverRequire.resolve($src);
-      }
+      moduleAbsPath = createRequire(resolve(projectRoot, "package.json")).resolve($src);
       trustedResolution = true;
     }
   } catch (error) {

@@ -351,12 +351,6 @@ export interface ExtensionCatalogEntry {
   /** Other catalogue members it depends on — auth needs connector. */
   requires?: string[];
   /**
-   * THIS host resolves the package without a project install, so enabling it is a config write
-   * alone. Probed per host, never declared: what a desktop build stages and what a Worker bundles
-   * are different facts, and neither is knowable from the package list.
-   */
-  bundled?: boolean;
-  /**
    * The PROJECT resolves it.
    *
    * Answered here rather than derived from `listPackages`, because that member does not mean one

@@ -110,7 +110,7 @@ Each row names the settings sections the extension owns. Those sections appear u
 **Turning an extension off leaves its package installed.** Turning it back on is then instant, and nothing about your pinned version changes. To remove the package itself, use the delete button on its row, which is offered only once the extension is off: deleting the package while your configuration still names it would break the next build.
 
 :::doc-note
-An extension has to be two things at once: a dependency your project has installed, and a name in your configuration. That is why the switch does both. If a row warns that an extension is named but not installed, turning it off and on again installs it.
+An extension has to be two things at once: a dependency your project has installed, and a name in your configuration. That is why the switch does both. If a row warns that an extension is named but not installed, turning it off and on again installs it. This holds for the extensions Jx itself publishes too: Studio never lends a project its own copy, so a project that builds in Studio builds the same way anywhere its dependencies are installed.
 :::
 
 ## Sections added by extensions

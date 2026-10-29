@@ -8,6 +8,7 @@ import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import type { ComponentMeta } from "../src/shared/rpc-schema";
 import type { StudioSchema } from "./_session";
 import { expectStudioSchema } from "./_studio-schema";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 // ─── Format-host mock ────────────────────────────────────────────────────────
 
@@ -43,7 +44,16 @@ const fakeFormats = {
 // The extension registry wraps the formats view (project-session dispatches through .formats).
 const fakeRegistry = { extensions: [], formats: fakeFormats };
 
-const mockBuildRegistry = mock(async (_root: string, _config?: ProjectConfig) => fakeRegistry);
+/* What the editor's registry builder reports as enabled but not installed. The app ships no
+   extension (specs/extensions.md §3), so before a project's install this is every package it names. */
+let missing: string[] = [];
+const mockBuildRegistry = mock(async (_root: string, _config?: ProjectConfig) => ({
+  missing,
+  registry: fakeRegistry,
+}));
+// Whether a package the last build skipped resolves now — the install landing.
+let nowInstalled = false;
+const mockAnyNowInstalled = mock((_root: string, _missing: string[]) => nowInstalled);
 
 const fakeExtensionsPayload = [
   {
@@ -65,8 +75,12 @@ const fakeExtensionsPayload = [
 const mockBuildPayload = mock((_registry: typeof fakeRegistry) => fakeExtensionsPayload);
 
 void mock.module("@jxsuite/compiler/format-host", () => ({
+  anyNowInstalled: mockAnyNowInstalled,
   buildExtensionsPayload: mockBuildPayload,
-  buildProjectExtensionRegistry: mockBuildRegistry,
+  buildInstalledExtensionRegistry: mockBuildRegistry,
+  // Still linked by the server modules the session imports (data, live preview); unused here.
+  buildProjectExtensionRegistry: async () => fakeRegistry,
+  missingExtensionsNotice: (names: string[]) => `not installed: ${names.join(", ")}`,
 }));
 
 const fakeBundles = {
@@ -133,6 +147,9 @@ function cleanup() {
 beforeEach(() => {
   entryCall.mockClear();
   mockBuildRegistry.mockClear();
+  mockAnyNowInstalled.mockClear();
+  missing = [];
+  nowInstalled = false;
   mockBuildPayload.mockClear();
   mockReadBundles.mockClear();
   mockHandleResolve.mockClear();
@@ -222,6 +239,34 @@ describe("listFormats", () => {
     }
   });
 
+  test("an enabled extension the project has not installed is one warning line, not an error", async () => {
+    setup();
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      missing = ["@jxsuite/parser"];
+      await listFormats();
+      await listFormats();
+      // Said once, as one line naming the package, and never as an error with a stack.
+      expect(warnSpy.mock.calls).toEqual([["[desktop] not installed: @jxsuite/parser"]]);
+      expect(errorSpy).not.toHaveBeenCalled();
+      // The second call reused the registry, having asked whether the install has landed.
+      expect(mockBuildRegistry).toHaveBeenCalledTimes(1);
+      expect(mockAnyNowInstalled.mock.calls[0]).toEqual([FIXTURES, ["@jxsuite/parser"]]);
+
+      // The install lands: the next call rebuilds, and a registry still missing the same package
+      // Does not repeat the warning.
+      nowInstalled = true;
+      await listFormats();
+      expect(mockBuildRegistry).toHaveBeenCalledTimes(2);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+      cleanup();
+    }
+  });
+
   test("returns [] when the registry builder throws", async () => {
     setup();
     try {
@@ -251,7 +296,7 @@ describe("listExtensionCatalog", () => {
   });
 
   test("returns [] quietly on a welcome window with no project", async () => {
-    // `installed` and `bundled` are answered against a project root; with none there is nothing
+    // `installed` is answered against a project root; with none there is nothing
     // To probe, so the offer is withheld rather than guessed at.
     setProjectRoot(null);
     mockBuildCatalog.mockClear();
@@ -340,10 +385,12 @@ describe("fetchProjectSchemas", () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     try {
       mockReadBundles.mockImplementationOnce(async () => {
-        throw new Error("no project.json");
+        throw new Error("no project.json\nRequire stack:\n- /tmp/p/package.json");
       });
       expect(await fetchProjectSchemas()).toEqual({});
-      expect(errorSpy).toHaveBeenCalled();
+      // One line: Node's "Require stack" says nothing a reader can act on.
+      const [[line]] = errorSpy.mock.calls;
+      expect(String(line)).toEndWith("no project.json");
     } finally {
       errorSpy.mockRestore();
       cleanup();
@@ -678,9 +725,22 @@ export default { Widget };`,
     }
   });
 
-  test("falls back to the desktop package's require when project resolution fails", async () => {
-    // A root outside the repo tree has no node_modules ancestor that can resolve @jxsuite/*
+  test("answers null, not the app's own copy, before the project installs the class", async () => {
+    // A root outside the repo tree has no node_modules ancestor that can resolve @jxsuite/*. The
+    // App's own graph can, and must not answer for it (specs/extensions.md §3).
     const tmpRoot = mkdtempSync(join(tmpdir(), "jx-gaps-"));
+    setProjectRoot(tmpRoot);
+    try {
+      expect(await fetchPluginSchema({ src: "@jxsuite/parser/Markdown.class.json" })).toBeNull();
+    } finally {
+      rmSync(tmpRoot, { force: true, recursive: true });
+      setProjectRoot(null);
+    }
+  });
+
+  test("reads the class from the project's own install", async () => {
+    const tmpRoot = mkdtempSync(join(tmpdir(), "jx-gaps-installed-"));
+    installWorkspaceExtension(tmpRoot, "@jxsuite/parser");
     setProjectRoot(tmpRoot);
     try {
       const schema = await fetchPluginSchema({

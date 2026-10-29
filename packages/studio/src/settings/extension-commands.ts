@@ -135,7 +135,7 @@ export async function enableExtension(specifier: string): Promise<void> {
   let installed = false;
   notifySettingsDocument();
   try {
-    if (!row.installed && !row.bundled) {
+    if (!row.installed) {
       /*
        * `beginActivity`, not `showProgressModal`. `studio-ui-guidelines.md` §13.3 reserves blocking
        * for an operation that cannot proceed while the author edits, and this one can — the only

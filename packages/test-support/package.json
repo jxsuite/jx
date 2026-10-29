@@ -8,7 +8,8 @@
     "./preload": "./src/preload.ts",
     "./inspect-dom": "./src/inspect-dom.ts",
     "./dom-equality": "./src/dom-equality.ts",
-    "./bun-pin": "./src/bun-pin.ts"
+    "./bun-pin": "./src/bun-pin.ts",
+    "./install-extension": "./src/install-extension.ts"
   },
   "scripts": {
     "test": "bun test --isolate",

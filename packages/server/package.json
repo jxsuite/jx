@@ -77,6 +77,7 @@
     "@jxsuite/auth": "workspace:^",
     "@jxsuite/connector": "workspace:^",
     "@jxsuite/parser": "workspace:^",
+    "@jxsuite/test-support": "workspace:^",
     "@types/npm-package-arg": "^6.1.4",
     "@types/npmcli__arborist": "^6.3.3",
     "@types/ws": "^8.18.1"

@@ -198,17 +198,17 @@ describe("handleResolve — gaps", () => {
     expect(value.a).toBe(99);
   });
 
-  test("resolves bare specifier via server require fallback", async () => {
-    // Root outside the repo: project-level require fails, server-level resolves
+  test("never resolves a bare specifier from the server's own graph", async () => {
+    // Root outside the repo: the server resolves @jxsuite/parser, and must not answer for a
+    // Project that has not installed it (specs/extensions.md §3).
     const tmpRoot = mkdtempSync(join(tmpdir(), "jx-resolve-gap-"));
     try {
       const res = await handleResolve(
-        resolveReq({ $prototype: "Thing", $src: "@jxsuite/schema" }),
+        resolveReq({ $prototype: "ContentEntry", $src: "@jxsuite/parser/ContentEntry.class.json" }),
         tmpRoot,
       );
-      // Resolved module is not a .class.json, so the handler rejects it
       expect(res.status).toBe(400);
-      expect(await res.text()).toContain("requires a .class.json");
+      expect(await res.text()).toContain("Cannot resolve $src");
     } finally {
       rmSync(tmpRoot, { force: true, recursive: true });
     }

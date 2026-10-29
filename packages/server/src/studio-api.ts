@@ -14,8 +14,10 @@ import { mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import {
+  anyNowInstalled,
   buildExtensionsPayload,
-  buildProjectExtensionRegistry,
+  buildInstalledExtensionRegistry,
+  missingExtensionsNotice,
 } from "@jxsuite/compiler/format-host";
 import { readBundledProjectSchemas } from "@jxsuite/compiler/schema-command";
 import { handleDataApi } from "./data-api.ts";
@@ -95,11 +97,18 @@ interface Cem {
 
 // ─── Extension registry (per project root, invalidated on project.json change) ──
 
-const extensionRegistryCache = new Map<string, { mtime: number; registry: ExtensionRegistry }>();
+const extensionRegistryCache = new Map<
+  string,
+  { mtime: number; missing: string[]; registry: ExtensionRegistry }
+>();
 
 /**
  * Build (or reuse) a project's extension registry (built from its project.json `extensions` array).
  * An empty registry is returned when there is no project.json — only .json files are handled then.
+ *
+ * The editor's registry: an enabled package the project has not installed is skipped and said once,
+ * not thrown per request (specs/extensions.md §3). A registry that skipped one is rebuilt as soon
+ * as it resolves, because an install does not touch `project.json` and so moves no mtime.
  *
  * @param {string} projectRoot
  * @returns {Promise<ExtensionRegistry>}
@@ -117,11 +126,14 @@ async function getExtensionRegistry(projectRoot: string): Promise<ExtensionRegis
     projectConfig = undefined;
   }
   const cached = extensionRegistryCache.get(projectRoot);
-  if (cached && cached.mtime === mtime) {
+  if (cached && cached.mtime === mtime && !anyNowInstalled(projectRoot, cached.missing)) {
     return cached.registry;
   }
-  const registry = await buildProjectExtensionRegistry(projectRoot, projectConfig);
-  extensionRegistryCache.set(projectRoot, { mtime, registry });
+  const { missing, registry } = await buildInstalledExtensionRegistry(projectRoot, projectConfig);
+  if (missing.length > 0 && missing.join("\n") !== cached?.missing.join("\n")) {
+    console.warn(`[studio] ${missingExtensionsNotice(missing)}`);
+  }
+  extensionRegistryCache.set(projectRoot, { missing, mtime, registry });
   return registry;
 }
 
@@ -1638,16 +1650,11 @@ export async function handleStudioApi(
           }
         }
       } else {
-        // Npm/bare specifier — use createRequire from project root, fall back to server package
+        // Npm/bare specifier — the project's own install, never the server's
+        // (specs/extensions.md §3): before the project's install this answers "not resolvable".
         const projectRoot = activeProjectRoot || root;
         const { createRequire } = await import("node:module");
-        const projRequire = createRequire(resolve(projectRoot, "package.json"));
-        try {
-          moduleAbsPath = projRequire.resolve(src);
-        } catch {
-          const serverRequire = createRequire(import.meta.url);
-          moduleAbsPath = serverRequire.resolve(src);
-        }
+        moduleAbsPath = createRequire(resolve(projectRoot, "package.json")).resolve(src);
       }
     } catch (error) {
       return Response.json({

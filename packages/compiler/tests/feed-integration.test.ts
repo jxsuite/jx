@@ -13,11 +13,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
+import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 let root = "";
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "jx-feed-e2e-"));
+  installWorkspaceExtension(root, "@jxsuite/parser", "@jxsuite/feed");
   mkdirSync(join(root, "pages"), { recursive: true });
   mkdirSync(join(root, "content/posts"), { recursive: true });
   writeFileSync(

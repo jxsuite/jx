@@ -111,9 +111,11 @@ export async function validateProjectFile(projectRoot: string): Promise<ProjectV
 }
 
 /**
- * Restricted schema loader: only `file:` URLs inside the project root are served. Missing files
- * under `<root>/node_modules/` fall back to host resolution of the corresponding bare specifier
- * (in-repo starters have no local node_modules; the fragments still ship with the host).
+ * Restricted schema loader: only `file:` URLs inside the project root are served. A missing file
+ * under `<root>/node_modules/` resolves its bare specifier through the project's own resolution
+ * (in-repo starters have no local node_modules and walk up to the workspace's). Only this package's
+ * own core schemas fall back to the host: an extension's fragments, first-party ones included, are
+ * the project's to supply (specs/extensions.md §5.4).
  *
  * @param {string} uri - The `$ref` target ajv could not resolve from already-loaded resources
  * @param {string} root - Absolute project root
@@ -137,8 +139,8 @@ async function loadProjectSchemaRef(uri: string, root: string): Promise<JsonValu
     return readJson(filePath);
   }
 
-  // Host fallback: <root>/node_modules/<specifier> is absent — resolve the specifier through the
-  // Project's own resolution first, then the host's (workspace symlinks resolve transparently).
+  // <root>/node_modules/<specifier> is absent — resolve the specifier through the project's own
+  // Resolution (workspace symlinks resolve transparently), and through the host only for the core.
   const posixRel = rel.split("\\").join("/");
   const marker = "node_modules/";
   const markerIndex = posixRel.lastIndexOf(marker);
@@ -147,32 +149,37 @@ async function loadProjectSchemaRef(uri: string, root: string): Promise<JsonValu
   }
   const specifier = posixRel.slice(markerIndex + marker.length);
 
+  const ownPrefix = "@jxsuite/schema/";
   let resolved: string;
   try {
     const projRequire = createRequire(resolve(root, "package.json"));
     resolved = projRequire.resolve(specifier);
-  } catch {
+  } catch (error) {
+    if (!specifier.startsWith(ownPrefix)) {
+      throw new Error(
+        `Schema ref "${uri}" does not exist and "${specifier}" is not resolvable from the ` +
+          `project — is the package installed?`,
+        { cause: error },
+      );
+    }
     try {
       const selfRequire = createRequire(import.meta.url);
       resolved = selfRequire.resolve(specifier);
-    } catch (error) {
+    } catch (hostError) {
       // Exports-map subpath resolution is brittle against version-skewed shadowing installs (a
       // Stale local copy terminates Node's walk-up with ERR_PACKAGE_PATH_NOT_EXPORTED). Our own
       // Schema files are pure data and the running validator's copy is guaranteed to match, so
       // Read them straight off this package's disk as the last resort.
-      const ownPrefix = "@jxsuite/schema/";
-      if (specifier.startsWith(ownPrefix)) {
-        const ownFile = fileURLToPath(
-          new URL(`../${specifier.slice(ownPrefix.length)}`, import.meta.url),
-        );
-        if (existsSync(ownFile)) {
-          return readJson(ownFile);
-        }
+      const ownFile = fileURLToPath(
+        new URL(`../${specifier.slice(ownPrefix.length)}`, import.meta.url),
+      );
+      if (existsSync(ownFile)) {
+        return readJson(ownFile);
       }
       throw new Error(
         `Schema ref "${uri}" does not exist and "${specifier}" is not resolvable from the ` +
-          `project or the host`,
-        { cause: error },
+          `project or this host's core`,
+        { cause: hostError },
       );
     }
   }

@@ -104,6 +104,16 @@ describe("the first-party half", () => {
     });
   });
 
+  test("no first-party entry claims the host answers for it", async () => {
+    // This server's own graph resolves every first-party extension. The project's install is the
+    // Only answer asked (specs/extensions.md §3), so nothing here says "needs no install".
+    await withProject([], async (root) => {
+      const catalog = await buildExtensionCatalog(root);
+      expect(catalog.filter((e) => e.source === "first-party").length).toBeGreaterThan(3);
+      expect(catalog.every((e) => !("bundled" in e) && e.installed === false)).toBe(true);
+    });
+  });
+
   test("auth declares the connector it requires", async () => {
     await withProject([], async (root) => {
       const catalog = await buildExtensionCatalog(root);
