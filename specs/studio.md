@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.0-draft\
+**Version:** 0.16.2-draft\
 **Status:** Partial\
-**Updated:** 2026-10-27\
+**Updated:** 2026-10-29\
 **License:** MIT
 
 ---
@@ -2218,6 +2218,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.2-draft** (2026-10-29) — A right-click on a Media library tile selects it and offers the detail pane's actions: Open in Viewer, Copy Site URL, Replace and Delete.
+- **0.16.1-draft** (2026-10-29) — Desktop source paths follow the reorganization by process: src/main, src/preload, src/backend, src/webview and src/shared.
 - **0.16.0-draft** (2026-10-27) — openProject is optional on the platform, and capability.openProject gates Open Project: the command, the welcome action and the Files panel's button are absent on a host with no dialog and no repository picker, where the Files panel says to open a project from ?project=.
 - **0.15.3-draft** (2026-10-27) — §3.3 one actor's run of writes is folded into one history entry per tab, tagged with the actor and the turn, and closed early by anyone else's write.
 - **0.15.2-draft** (2026-10-27) — §22's marker is Implemented, its open items left to the second markers of §22.5, §22.6 and §22.8; §22.8 defers Rollback and the Hosting source policy to a Future remainder, leaving Send for review without createPullRequest pending; §9.4 points the live-preview overlay at §10.1.
@@ -2420,4 +2422,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.0-draft_
+_`@jxsuite/studio` Specification v0.16.2-draft_
