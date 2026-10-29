@@ -14,7 +14,7 @@
       "downloadable": true
     },
     {
-      "file": "linux-x64-JxStudio.AppImage",
+      "file": "linux-x86_64-JxStudio.AppImage",
       "platform": "linux",
       "signed": false,
       "downloadable": true

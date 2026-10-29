@@ -25,6 +25,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { isString } from "@jxsuite/schema/guards";
+/* Electron-builder's own dependency, and the function it names artifacts with: `${arch}` is
+   `x86_64` for an x64 AppImage, not `x64`. Desktop-v7.0.0 shipped `linux-x86_64-JxStudio.AppImage`
+   while this test expanded `x64` and agreed with a manifest that promised `linux-x64-…`. */
+import { archFromString, getArtifactArchName } from "builder-util";
 
 const WORKFLOWS = ".github/workflows";
 const DESKTOP = "packages/desktop";
@@ -113,7 +117,9 @@ function artifactName(block: keyof BuilderConfig): string {
 
 /** Expand electron-builder's `${arch}` and `${ext}` the way it does for one target. */
 function expand(pattern: string, arch: string, ext: string): string {
-  return pattern.replace("${arch}", arch).replace("${ext}", ext);
+  return pattern
+    .replace("${arch}", getArtifactArchName(archFromString(arch), ext))
+    .replace("${ext}", ext);
 }
 
 const LANES = [
