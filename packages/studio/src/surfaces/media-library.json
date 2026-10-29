@@ -1027,6 +1027,41 @@
                             }
                           ]
                         },
+                        "oncontextmenu": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "$switch": {
+                                "$ref": "#/state/mode"
+                              },
+                              "cases": {
+                                "manage": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/contextMenu"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/file"
+                                      },
+                                      {
+                                        "$ref": "event#/clientX"
+                                      },
+                                      {
+                                        "$ref": "event#/clientY"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          "description": "Manage mode only: the detail pane's actions at the pointer. Pick mode's dialog is modal, and a menu in the popover layer outside it would be inert, so its right-click is left to the platform."
+                        },
                         "children": [
                           {
                             "tagName": "div",
