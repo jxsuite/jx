@@ -1,5 +1,44 @@
 # Changelog
 
+## [10.0.0](https://github.com/jxsuite/jx/compare/studio-v9.0.0...studio-v10.0.0) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510))
+
+### Features
+
+* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **schema:** a runtime-neutral which ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **server:** serve, file responses and globbing run on Node as well as Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **studio:** the cloud editor adds, removes and updates packages through the package service ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+
+
+### Bug Fixes
+
+* desktop backend paths, right-click menus, and the Media tile menu ([#513](https://github.com/jxsuite/jx/issues/513)) ([74d9a1a](https://github.com/jxsuite/jx/commit/74d9a1acbe175872651048069e0d69db574fb8b1))
+* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510)) ([71c0b68](https://github.com/jxsuite/jx/commit/71c0b681327396f1fbd1d77ea96bfd55f7ccfd83))
+* **studio:** a right-click on the canvas selects without starting an edit ([#514](https://github.com/jxsuite/jx/issues/514)) ([442bb4e](https://github.com/jxsuite/jx/commit/442bb4e4449f4e793e4b04274ce1d5a6c61e4f24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.41.1
+    * @jxsuite/collab bumped to 0.11.4
+    * @jxsuite/create bumped to 1.5.0
+    * @jxsuite/formulas bumped to 0.0.26
+    * @jxsuite/markup bumped to 1.0.2
+    * @jxsuite/protocol bumped to 6.0.0
+    * @jxsuite/runtime bumped to 6.0.1
+    * @jxsuite/schema bumped to 5.0.0
+    * @jxsuite/site bumped to 2.2.2
+    * @jxsuite/ui bumped to 0.8.2
+
 ## [9.0.0](https://github.com/jxsuite/jx/compare/studio-v8.1.0...studio-v9.0.0) (2026-10-27)
 
 

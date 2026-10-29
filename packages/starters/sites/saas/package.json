@@ -9,10 +9,10 @@
     "dev": "jx dev"
   },
   "dependencies": {
-    "@jxsuite/parser": "^4.1.1"
+    "@jxsuite/parser": "^4.1.2"
   },
   "devDependencies": {
-    "@jxsuite/compiler": "^7.0.0",
-    "@jxsuite/runtime": "^6.0.0"
+    "@jxsuite/compiler": "^8.0.0",
+    "@jxsuite/runtime": "^6.0.1"
   }
 }

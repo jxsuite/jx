@@ -1,5 +1,47 @@
 # Changelog
 
+## [8.0.0](https://github.com/jxsuite/jx/compare/desktop-v7.0.0...desktop-v8.0.0) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510))
+
+### Features
+
+* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **schema:** a runtime-neutral which ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **server:** serve, file responses and globbing run on Node as well as Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **studio:** the cloud editor adds, removes and updates packages through the package service ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+
+
+### Bug Fixes
+
+* desktop backend paths, right-click menus, and the Media tile menu ([#513](https://github.com/jxsuite/jx/issues/513)) ([74d9a1a](https://github.com/jxsuite/jx/commit/74d9a1acbe175872651048069e0d69db574fb8b1))
+* **desktop:** keep the Nix build's Electron bundle flat so jx-studio starts ([#508](https://github.com/jxsuite/jx/issues/508)) ([1bc6d1d](https://github.com/jxsuite/jx/commit/1bc6d1da8a4f05e61d5677c2c7cd25004e760523))
+* **desktop:** promise the Linux x64 AppImage under the name electron-builder gives it ([#512](https://github.com/jxsuite/jx/issues/512)) ([333da9b](https://github.com/jxsuite/jx/commit/333da9ba687d40ea26a9e035b9dedf2c109957d3))
+* **desktop:** ship the backend's node_modules, and smoke-test the packaged app honestly ([#506](https://github.com/jxsuite/jx/issues/506)) ([9f4a8a7](https://github.com/jxsuite/jx/commit/9f4a8a79e9f4df7cd64dcf11cd4daf60102b42bf))
+* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510)) ([71c0b68](https://github.com/jxsuite/jx/commit/71c0b681327396f1fbd1d77ea96bfd55f7ccfd83))
+* the release PR's smoke test installs this checkout, and npm can no longer hang a build ([#515](https://github.com/jxsuite/jx/issues/515)) ([3959eb0](https://github.com/jxsuite/jx/commit/3959eb05cac9e09f87a834e517cba72095bee074))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 8.0.0
+    * @jxsuite/create bumped to 1.5.0
+    * @jxsuite/protocol bumped to 6.0.0
+    * @jxsuite/schema bumped to 5.0.0
+    * @jxsuite/server bumped to 8.0.0
+    * @jxsuite/starters bumped to 3.1.2
+    * @jxsuite/studio bumped to 10.0.0
+  * devDependencies
+    * @jxsuite/server bumped to 8.0.0
+    * @jxsuite/ui bumped to 0.8.2
+
 ## [7.0.0](https://github.com/jxsuite/jx/compare/desktop-v6.1.0...desktop-v7.0.0) (2026-10-27)
 
 

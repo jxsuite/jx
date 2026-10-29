@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.7.3-draft\
+**Version:** 0.7.5-draft\
 **Status:** Partial\
-**Updated:** 2026-10-27\
+**Updated:** 2026-10-29\
 **License:** MIT
 
 ---
@@ -2318,6 +2318,8 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.7.5-draft** (2026-10-29) — The image cache's npm lookup reads npm_config_cache first and gives npm config get cache 3 seconds.
+- **0.7.4-draft** (2026-10-29) — Desktop source paths follow the reorganization by process: src/main, src/preload, src/backend, src/webview and src/shared.
 - **0.7.3-draft** (2026-10-27) — §15 and §15.4: jx dev stands in for the worker's server-function routes as it does for its mounts.
 - **0.7.2-draft** (2026-10-27) — §14.1.1: the worker serves server entries from pages, their layouts, project.json state and components, two modules exporting one name fail the build, the Pages _routes.json include list carries the locale root and the deployment base, and build.deploy joins the table.
 - **0.7.1-draft** (2026-10-27) — §14.7: a compiled page or component module carries the deployment base in its server-function URL, set when the module is compiled.
