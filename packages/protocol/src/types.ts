@@ -238,6 +238,18 @@ export interface GitLogEntry {
   date: string;
 }
 
+/**
+ * Response of `git/commit-branch` (see StudioPlatform.gitCommitBranch): the branch the change set
+ * now lives on, its commit, and which files left this session (`moved`) or stayed because they were
+ * edited while it was made (`kept`).
+ */
+export interface GitCommitBranchResult {
+  branch: string;
+  sha: string;
+  moved: string[];
+  kept: string[];
+}
+
 /** Response of the pull-request route (see StudioPlatform.createPullRequest). */
 export interface PullRequestInfo {
   url: string;
