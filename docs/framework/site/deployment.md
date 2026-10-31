@@ -106,7 +106,7 @@ Content-Security-Policy: base-uri 'self'; default-src 'self'; font-src 'self'; f
   script-src 'self' 'sha256-…' 'sha256-…'; style-src 'self' 'unsafe-inline'
 ```
 
-`script-src` is the strict part, and it costs you nothing: compiled Jx output contains no `eval` and no `new Function`, event handlers are attached as listeners rather than written as `onclick=` attributes, and the runtime is served from your own site. The only inline scripts on a page are the import map and the colour-scheme pre-paint script, both identical on every page, so two hashes cover the whole site.
+`script-src` is the strict part, and it costs you nothing: compiled Jx output contains no `eval` and no `new Function`, event handlers are attached as listeners rather than written as `onclick=` attributes, and the runtime is served from your own site. The only inline scripts on a page are the import map and the color-scheme pre-paint script, both identical on every page, so two hashes cover the whole site.
 
 If your pages load anything from another origin, such as an analytics script, Google Fonts or a YouTube embed, the build sees it in the finished HTML and adds that origin to the right directive. What it can't see is the second hop: a third-party script that loads _another_ script at runtime. That's the case to check.
 
@@ -166,7 +166,7 @@ Declare a `manifest` section and the build writes `dist/manifest.webmanifest`, a
 `name` falls back to your project name and `start_url` to `/`, so the shortest useful manifest is a `manifest` key with icons in it. There's no manifest at all unless you declare the section, because it's a claim that your site is meant to be installed and most aren't.
 
 :::doc-tip
-The 192px and 512px icons are what a browser wants before it will offer to install the site. Leave one out and the build warns; it still writes the manifest, which is useful on its own for the name and theme colour.
+The 192px and 512px icons are what a browser wants before it will offer to install the site. Leave one out and the build warns; it still writes the manifest, which is useful on its own for the name and theme color.
 :::
 
 ### .well-known/security.txt
@@ -219,7 +219,7 @@ Every URL in `precache` must be a page or file this build actually produces, and
 { "serviceWorker": false }
 ```
 
-**Not by deleting the key.** This is the one setting where "remove the config" is the wrong move, and it's worth understanding why.
+**Not by deleting the key.** This is the one setting where "remove the config" is the wrong move.
 
 Once a visitor's browser registers a worker, it keeps running it. Removing `sw.js` from your deploy doesn't help: a 404 at that URL isn't an instruction to stop, it's just a failed update check. Every previous visitor stays on the old worker, serving whatever it cached, and you have no way to reach them.
 
@@ -277,7 +277,7 @@ Three route families, and nothing else:
 
 **Pages are never rendered per request.** Every route is prerendered at build time and served as static HTML; the worker answers the `/_jx/*` API surface and falls through to the assets for everything else. Interactivity arrives by hydration, so a page that shows signed-in content ships its signed-out state in the HTML and swaps once the session resolves in the browser. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
 
-Details worth knowing:
+Worker deployment details:
 
 - Server functions are collected from every page, the layouts it uses, `project.json`'s `state` and every component, and bundled once into the worker; no build writes per-route server files. A relative `$src` is resolved from the file that declares it. Each export name is one route: one module declared in several places is served once, and two modules exporting the same name stop the build with an error naming both files.
 - The worker is **self-contained**: hono, extension mounts, database connectors, and your server modules are inlined at build time, so `dist/` deploys and runs with no `node_modules` and no deploy-time bundling step.

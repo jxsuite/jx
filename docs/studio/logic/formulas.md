@@ -17,7 +17,7 @@ A formula is a value Studio calculates instead of one you type: a price times a 
 
 ## The value source chip: any value can be dynamic
 
-Bindable value rows across the Inspector (**[Content](/docs/studio/design/properties)**, **[Style](/docs/studio/design/style-inspector)** and **[Logic](/docs/studio/logic/events)**) carry a **value source** chip beside their label. It names, in plain language, how that value is produced: grey while the value is fixed, accent-colored once it comes from somewhere else. Click it and a picker opens, listing every source the row accepts with a line of explanation each:
+Bindable value rows across the Inspector (**[Content](/docs/studio/design/properties)**, **[Style](/docs/studio/design/style-inspector)** and **[Logic](/docs/studio/logic/events)**) carry a **value source** chip beside their label. It names, in plain language, how that value is produced: gray while the value is fixed, accent-colored once it comes from somewhere else. Click it and a picker opens, listing every source the row accepts with a line of explanation each:
 
 - **Fixed value**: a value you type here, the same every time.
 - **From data…**: the current value of a signal, picked from a list.
@@ -26,7 +26,7 @@ Bindable value rows across the Inspector (**[Content](/docs/studio/design/proper
 
 Those four names are the whole vocabulary. Every surface that asks how a value is produced (a field row, an operand inside a formula, a handler on the Logic tab) spells the answer the same way, so learning it once is learning it everywhere.
 
-The picker lists them all at once, so **any source is one action away**. Which of them a row offers follows what the document format accepts in that position: an attribute, a component setting or an element's text take **Fixed value**, **From data…** or **Mixed text**; a CSS declaration takes **Fixed value** or **Mixed text**; a repeater's **Items**, **Filter** and **Sort** take **Fixed value** or **From data…**; an element's **Tag** takes **Fixed value** or **Formula**, and no _Mixed text_, because a tag is a name, not something you assemble from other text. A row with only one possible source shows its name and nothing to click, and **From data…** drops out of the picker while the document declares no signals to point at.
+The picker lists them all at once, so **any source is one action away**. Which of them a row offers follows what the document format accepts in that position: an attribute, a component setting or an element's text take **Fixed value**, **From data…** or **Mixed text**; a CSS declaration takes **Fixed value** or **Mixed text**; a repeater's **Items**, **Filter** and **Sort** take **Fixed value** or **From data…**; an element's **Tag** takes **Fixed value** or **Formula** (never _Mixed text_, because a tag is a name, not something assembled from other text). A row with only one possible source shows its name with nothing to click, and **From data…** drops out of the picker when the document declares no signals to point at.
 
 Studio remembers what you had at each source for the rest of your session, so switching away and back restores your value rather than resetting it. And because a keystroke can only ever move a value between **Fixed value** and **Mixed text**, typing a `${` doesn't swap the widget out from under your cursor mid-word. Prefer the plainest source that does the job. **From data…** is easier to read, and to revisit, than a formula that only fetches one value.
 

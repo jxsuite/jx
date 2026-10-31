@@ -31,7 +31,7 @@ With no project open at all, it says what publishing is for and offers **Clone G
 
 ## Review your changes
 
-**Changes** lists every changed file, grouped the way the site is organised: **Pages**, then each content collection by name, then **Components**, **Layouts**, **Styles**, **Media** and **Other**. A new folder is listed file by file, so the count is the number of files from the start. Each row shows a checkbox, the file's name and folder, and a status badge: **M** for modified, **A** for added, **D** for deleted, **U** for a brand-new untracked file.
+**Changes** lists every changed file, grouped the way the site is organized: **Pages**, then each content collection by name, then **Components**, **Layouts**, **Styles**, **Media** and **Other**. A new folder is listed file by file, so the count is the number of files from the start. Each row shows a checkbox, the file's name and folder, and a status badge: **M** for modified, **A** for added, **D** for deleted, **U** for a brand-new untracked file.
 
 - The checkbox **includes** the file in your next publish, and clearing it leaves the file out. A change is included the first time Review changes shows it, so an untouched change set reads "5 of 5 included"; a file you clear stays out until you check it again, and a file that changes for the first time after that comes in checked. **Include all** at the top checks or clears every row, and "4 of 5 included" says where you stand. Including a file is staging it, so what you see is what git will commit.
 - **Before and after** on a row shows what changed since your last commit: it opens the file's **Diff** editor at full pane size, in the Publish workspace. Put it in a [second pane](/docs/studio/interface/tabs#two-panes) with :kbd[⌘\] and the review sits beside the page it is about, both live.
@@ -46,7 +46,7 @@ With no project open at all, it says what publishing is for and offers **Clone G
 
 The Diff editor compares your working copy against your last commit. It shows the change two ways, and the switch above the comparison chooses between them.
 
-**Visual** draws the page twice, side by side: the committed version on the left and your version on the right. Added blocks are marked in green, removed blocks in red, and edited ones are marked on both sides so you can read the before and the after together. Each mark also carries a symbol and its own edge style, so the change is legible without relying on colour.
+**Visual** draws the page twice, side by side: the committed version on the left and your version on the right. Added blocks are marked in green, removed blocks in red, and edited ones are marked on both sides so you can read the before and the after together. Each mark also carries a symbol and its own edge style, so the change is legible without relying on color.
 
 **Code** shows the file's text instead, with changed lines highlighted the way any code editor shows them. A page can be read either way. A file with no visual form, such as a stylesheet or a script, opens straight into Code and the switch reads as a label. Code scrolls like any code editor and has no zoom pod, because there is nothing on it to zoom.
 
