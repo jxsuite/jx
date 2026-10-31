@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.0](https://github.com/jxsuite/jx/compare/protocol-v6.0.0...protocol-v6.1.0) (2026-10-31)
+
+
+### Features
+
+* **studio:** publish to a new branch when a hosted branch moved under your edits ([#522](https://github.com/jxsuite/jx/issues/522)) ([1f8d1d6](https://github.com/jxsuite/jx/commit/1f8d1d63a3be6c389fdad160ca8f4d7b3491c436))
+
 ## [6.0.0](https://github.com/jxsuite/jx/compare/protocol-v5.0.0...protocol-v6.0.0) (2026-10-29)
 
 
