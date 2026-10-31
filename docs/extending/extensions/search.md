@@ -115,6 +115,18 @@ A document with no `locale` (an unlocalized collection) answers every search. It
 Without the scoping, a reader searching a French page gets the English copy of the page they're already on, ranked first, because it matched the same words.
 :::
 
+### One index, searched in parts
+
+A site that serves several parts, such as many projects' documentation under one domain, still emits **one** index. A reader in one part searches that part by passing a `scope`, the URL prefix the part lives under:
+
+```js
+query("install", { scope: "/example/docs/" }); // only results under /example/docs/
+```
+
+The test is the Web App Manifest's rule for a URL being within scope: same origin, and the result's path starts with the scope's path, with query and fragment ignored. It runs before `limit`, so a scoped search fills its rows from the part rather than keeping whichever of the site's top results fell inside it. Splitting the index per part at build time would store every document twice and point each part's pages at a different file; a scope needs neither.
+
+The `Search` def takes `scope` as a literal or a `$ref` into page state, and a component on the `$src` conventions sets `state.searchScope`.
+
 ## Lowering `Search` to client code
 
 A page declares reactive results with the `Search` prototype:

@@ -92,6 +92,14 @@ export interface QueryOptions {
    * `null` searches every language.
    */
   locale?: string | null;
+  /**
+   * The part of the site to search: a URL that a result's URL must be within, by the Web App
+   * Manifest's "within scope" test (same origin, and the result's path starts with the scope's).
+   * Relative values resolve against the document's base URL, so `/example/docs/` keeps a project's
+   * pages to that project's documentation while one index serves the whole site. Omitted or `""`
+   * searches everything; a value that is not a URL holds nothing.
+   */
+  scope?: string;
 }
 
 interface ClientState {
@@ -153,6 +161,48 @@ function pageLocale(): string {
  */
 function pageKey(hit: RawHit): string {
   return `${hit.collection}:${hit.locale ?? ""}:${hit.slug}`;
+}
+
+/**
+ * The base relative URLs resolve against off a document — any absolute URL serves, it is never
+ * shown.
+ */
+const NO_DOCUMENT_BASE = "https://jx.invalid/";
+
+/**
+ * `url` resolved against `base`, or null when it is not a URL. `URL.parse` says the same thing, but
+ * a visitor's browser older than 2024 does not have it, and this module runs in that browser.
+ */
+function parseUrl(url: string, base: string): URL | null {
+  try {
+    return new URL(url, base);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A test for "is this result's URL within `scope`", the Web App Manifest's algorithm: same origin,
+ * and the result's path starts with the scope's path. Query and fragment are ignored on both sides,
+ * so a section hit (`/docs/page/#heading`) is within the scope its page is.
+ *
+ * The comparison is a string prefix, as the manifest's is: `/docs` also holds `/docs-old/`, and a
+ * scope meant to stop at a folder ends in `/`.
+ */
+function scopeTest(scope: string): (url: string) => boolean {
+  const base = typeof document === "undefined" ? NO_DOCUMENT_BASE : document.baseURI;
+  const within = parseUrl(scope, base);
+  if (!within) {
+    return () => false;
+  }
+  return (url) => {
+    const target = parseUrl(url, base);
+    return (
+      target !== null &&
+      target.origin === within.origin &&
+      target.pathname.startsWith(within.pathname)
+    );
+  };
 }
 
 function localeAnswers(docLocale: string | undefined, want: string): boolean {
@@ -390,14 +440,20 @@ export function query(q: string, opts: QueryOptions = {}): SearchResultGroup[] |
    */
   const want = opts.locale === undefined ? pageLocale() : (opts.locale ?? "");
   /*
+   * Scoped to a URL only when the caller names one. Filtering here, before `limit` is applied, is
+   * what makes one index serve many parts of a site: a scope cut after the limit would hand back
+   * whatever few rows of the top results happened to fall inside it.
+   */
+  const inScope = isString(opts.scope) && opts.scope ? scopeTest(opts.scope) : () => true;
+  /*
    * SAFETY: MiniSearch copies every name in STORE_FIELDS from the indexed document onto its hit,
    * and every document came from the emitted envelope, whose SearchDocuments carry collection,
    * slug, url, title, description and heading as strings (`locale` and, read defensively, `text`
    * are optional in RawHit). MiniSearch types the hit's `id` as `any`; it is the document's own
    * `id`, which SearchDocument declares a string.
    */
-  const raw = (state.mini.search(text) as RawHit[]).filter((hit) =>
-    localeAnswers(hit.locale, want),
+  const raw = (state.mini.search(text) as RawHit[]).filter(
+    (hit) => localeAnswers(hit.locale, want) && inScope(hit.url),
   );
   if (!group) {
     const pageCap = opts.pageCap ?? PAGE_CAP;
@@ -449,6 +505,8 @@ export function query(q: string, opts: QueryOptions = {}): SearchResultGroup[] |
 export interface SearchComponentState {
   /** Index URL override for `preload`. */
   searchIndexUrl?: JsonValue | undefined;
+  /** The part of the site to search (`QueryOptions.scope`); `""` or absent searches everything. */
+  searchScope?: JsonValue | undefined;
   /** The query text; `runSearch` writes back the query it ran. */
   searchQuery?: JsonValue | undefined;
   /** Set true once the index is loaded. */
@@ -482,8 +540,9 @@ const UI_LIMIT = 20;
 
 /**
  * State-convention query handler for `$src` component use: reads the query from the input event (or
- * `state.searchQuery`), stores flat highlighted rows on `state.searchResults`, publishes the row
- * count as `state.searchCount`, and resets the active-row index.
+ * `state.searchQuery`), searches within `state.searchScope` when it is a non-empty string, stores
+ * flat highlighted rows on `state.searchResults`, publishes the row count as `state.searchCount`,
+ * and resets the active-row index.
  */
 export function runSearch(
   componentState: SearchComponentState,
@@ -492,7 +551,11 @@ export function runSearch(
   const fromEvent = event?.target && isString(event.target.value) ? event.target.value : null;
   const q = fromEvent ?? (isString(componentState.searchQuery) ? componentState.searchQuery : "");
   componentState.searchQuery = q;
-  const results = query(q, { group: false, limit: UI_LIMIT });
+  const opts: QueryOptions & { group: false } = { group: false, limit: UI_LIMIT };
+  if (isString(componentState.searchScope)) {
+    opts.scope = componentState.searchScope;
+  }
+  const results = query(q, opts);
   componentState.searchResults = results;
   componentState.searchCount = results.length;
   componentState.searchActive = 0;

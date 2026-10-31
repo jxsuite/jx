@@ -42,6 +42,12 @@ export interface SearchDef {
    * reader the English copy of the page they are on. `null` searches every language.
    */
   locale?: string | null;
+  /**
+   * The part of the site to search: a URL prefix a result's URL must fall within (the client's
+   * `QueryOptions.scope`). A literal string or a `$ref` into page state, so a layout can scope each
+   * page to its own section of the site. Omitted, the whole index is searched.
+   */
+  scope?: string | { $ref: string };
   default?: JsonValue;
   /** Any other key an author wrote on the def: document JSON this class does not read. */
   [key: string]: JsonValue | undefined;
@@ -74,15 +80,20 @@ function inBrowser(): boolean {
   return typeof document !== "undefined" && isFunction(globalThis.fetch);
 }
 
-/** Compile a def's `query` into a client JS expression (`$ref` → state path, literal → string). */
-function queryExpression(query: SearchDef["query"]): string {
-  if (isNonNullObject(query) && isString(query.$ref)) {
-    const path = query.$ref.replace(/^#\//, "").split("/");
+/** A `$ref` into page state as a client JS expression (`#/state/a/b` → `state.a.b`), else null. */
+function stateExpression(value: SearchDef["query"] | SearchDef["scope"]): string | null {
+  if (isNonNullObject(value) && isString(value.$ref)) {
+    const path = value.$ref.replace(/^#\//, "").split("/");
     if (path[0] === "state" && path.length > 1) {
       return ["state", ...path.slice(1)].join(".");
     }
   }
-  return JSON.stringify(isString(query) ? query : "");
+  return null;
+}
+
+/** Compile a def's `query` into a client JS expression (`$ref` → state path, literal → string). */
+function queryExpression(query: SearchDef["query"]): string {
+  return stateExpression(query) ?? JSON.stringify(isString(query) ? query : "");
 }
 
 export class Search {
@@ -114,6 +125,9 @@ export class Search {
     if (this.config.locale !== undefined) {
       opts.locale = this.config.locale;
     }
+    if (isString(this.config.scope)) {
+      opts.scope = this.config.scope;
+    }
     return client.query(query, opts);
   }
 
@@ -139,7 +153,17 @@ export class Search {
     if (def.locale !== undefined) {
       queryOptions.locale = def.locale;
     }
-    const opts = JSON.stringify(queryOptions);
+    if (isString(def.scope)) {
+      queryOptions.scope = def.scope;
+    }
+    /*
+     * A `$ref` scope is read when the query runs, not baked in: the options literal is extended with
+     * the state path, so the computed re-runs when the scope changes, as it does for the query.
+     */
+    const scopeRef = stateExpression(def.scope);
+    const opts = scopeRef
+      ? `Object.assign(${JSON.stringify(queryOptions)}, { scope: ${scopeRef} })`
+      : JSON.stringify(queryOptions);
     const body = [
       // Reading the ready flag makes the computed re-run when the client finishes loading.
       "void state.__jxSearchReady;",
