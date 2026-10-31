@@ -24,6 +24,7 @@ import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { PackageInfo, PackageOpResult } from "@jxsuite/protocol";
 import { addPackage, removePackage, setPackageVersions } from "./packages.ts";
 import type { PackageOpOptions } from "./packages.ts";
+import { problem } from "./problem.ts";
 import { serve } from "#serve";
 import type { ServeServer } from "./serve.ts";
 
@@ -176,29 +177,29 @@ export async function handlePackagesRequest(
     return Response.json({ ok: true });
   }
   if (req.method !== "POST" || pathname !== "/") {
-    return Response.json({ error: "Not found" }, { status: 404 });
+    return problem("notFound");
   }
   const length = Number(req.headers.get("content-length") ?? "0");
   if (length > MAX_BODY_BYTES) {
-    return Response.json({ error: "Request too large" }, { status: 413 });
+    return problem("payloadTooLarge");
   }
   let body: JsonValue;
   try {
     // SAFETY: JSON.parse yields a JSON value; its shape is checked member by member below.
     body = JSON.parse(await req.text()) as JsonValue;
   } catch {
-    return Response.json({ error: "Body must be JSON" }, { status: 400 });
+    return problem("invalidRequest", "Body must be JSON");
   }
   if (!isJsonObject(body)) {
-    return Response.json({ error: "Body must be an object" }, { status: 400 });
+    return problem("invalidRequest", "Body must be an object");
   }
   const op = parseOp(body);
   if ("error" in op) {
-    return Response.json({ error: op.error }, { status: 400 });
+    return problem("invalidRequest", op.error);
   }
   const files = parseFiles(body.files);
   if ("error" in files) {
-    return Response.json({ error: files.error }, { status: 400 });
+    return problem("invalidRequest", files.error);
   }
   return Response.json(await runServiceOp(op, files, options));
 }
