@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.42.1](https://github.com/jxsuite/jx/compare/import-v0.42.0...import-v0.42.1) (2026-10-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.1.0
+  * optionalDependencies
+    * @jxsuite/compiler bumped to 8.0.1
+
 ## [0.42.0](https://github.com/jxsuite/jx/compare/import-v0.41.1...import-v0.42.0) (2026-10-29)
 
 

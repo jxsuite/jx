@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.0.1](https://github.com/jxsuite/jx/compare/server-v8.0.0...server-v8.0.1) (2026-10-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.41.2
+    * @jxsuite/catalog bumped to 0.1.5
+    * @jxsuite/compiler bumped to 8.0.1
+    * @jxsuite/create bumped to 1.5.1
+    * @jxsuite/import bumped to 0.42.1
+    * @jxsuite/protocol bumped to 6.1.0
+    * @jxsuite/starters bumped to 3.1.3
+
 ## [8.0.0](https://github.com/jxsuite/jx/compare/server-v7.0.0...server-v8.0.0) (2026-10-29)
 
 

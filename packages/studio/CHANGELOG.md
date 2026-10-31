@@ -1,5 +1,21 @@
 # Changelog
 
+## [10.1.0](https://github.com/jxsuite/jx/compare/studio-v10.0.0...studio-v10.1.0) (2026-10-31)
+
+
+### Features
+
+* **studio:** publish to a new branch when a hosted branch moved under your edits ([#522](https://github.com/jxsuite/jx/issues/522)) ([1f8d1d6](https://github.com/jxsuite/jx/commit/1f8d1d63a3be6c389fdad160ca8f4d7b3491c436))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.41.2
+    * @jxsuite/create bumped to 1.5.1
+    * @jxsuite/protocol bumped to 6.1.0
+
 ## [10.0.0](https://github.com/jxsuite/jx/compare/studio-v9.0.0...studio-v10.0.0) (2026-10-29)
 
 

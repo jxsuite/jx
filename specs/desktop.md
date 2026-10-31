@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.9-draft\
+**Version:** 0.7.10-draft\
 **Status:** Partial\
-**Updated:** 2026-10-29\
+**Updated:** 2026-10-31\
 **License:** MIT
 
 ---
@@ -1102,6 +1102,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.10-draft** (2026-10-31) — §5.1: a pull adopts a dirty file whose working copy is already the remote's instead of reporting a conflict, and git/commit-branch creates a branch off the session's base, refusing an existing name, then discards what it committed.
 - **0.7.9-draft** (2026-10-29) — The Electron shell draws the native context menu Electron leaves out: spelling, edit commands, Copy and Copy Link Address where Studio leaves a right-click to the platform.
 - **0.7.8-draft** (2026-10-29) — Corrects the Linux x64 AppImage's distribution name to linux-x86_64-JxStudio.AppImage, the name electron-builder gives an x64 AppImage.
 - **0.7.7-draft** (2026-10-29) — §9.3: the app declares and ships no extension package; projects install their own.
@@ -1196,4 +1197,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.9-draft_
+_Jx Studio Desktop Architecture Specification v0.7.10-draft_

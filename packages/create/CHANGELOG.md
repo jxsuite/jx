@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.1](https://github.com/jxsuite/jx/compare/create-v1.5.0...create-v1.5.1) (2026-10-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/starters bumped to 3.1.3
+
 ## [1.5.0](https://github.com/jxsuite/jx/compare/create-v1.4.1...create-v1.5.0) (2026-10-29)
 
 

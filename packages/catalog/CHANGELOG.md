@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.5](https://github.com/jxsuite/jx/compare/catalog-v0.1.4...catalog-v0.1.5) (2026-10-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.1.0
+
 ## [0.1.4](https://github.com/jxsuite/jx/compare/catalog-v0.1.3...catalog-v0.1.4) (2026-10-29)
 
 
