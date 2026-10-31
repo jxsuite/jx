@@ -113,7 +113,7 @@ The event dispatches from the handler's `event.currentTarget` (or the component 
 }
 ```
 
-Stop the event when an ancestor handles the same one and must not see this occurrence: a row nested inside another row, a button inside a clickable card. Cancel the default when the element's built-in behaviour is not wanted: a link that opens in place, a form the body submits itself, an arrow key that would otherwise scroll. Outside a handler, where there is no event, both steps do nothing.
+Stop the event when an ancestor handles the same one and must not see this occurrence: a row nested inside another row, a button inside a clickable card. Cancel the default when the element's built-in behavior is not wanted: a link that opens in place, a form the body submits itself, an arrow key that would otherwise scroll. Outside a handler, where there is no event, both steps do nothing.
 
 ## Parameters
 

@@ -33,7 +33,7 @@ The canvas is the center of the workspace, where your page renders live. It is t
 
 ## Resizing the page
 
-In **Edit** the canvas is a single centred column with a handle on each side. Dragging either one resizes the page symmetrically, and the [breakpoint](/docs/studio/design/breakpoints) follows the width. Each handle is a control rather than only a grip: Tab reaches it, the arrow keys resize the page a step at a time, and :kbd[Enter] returns it to the breakpoint's own width. Design has no handles, because it already draws every breakpoint side by side.
+In **Edit** the canvas is a single centered column with a handle on each side. Dragging either one resizes the page symmetrically, and the [breakpoint](/docs/studio/design/breakpoints) follows the width. Each handle is a control rather than only a grip: Tab reaches it, the arrow keys resize the page a step at a time, and :kbd[Enter] returns it to the breakpoint's own width. Design has no handles, because it already draws every breakpoint side by side.
 
 ## Pan and zoom
 
@@ -69,7 +69,7 @@ It opens **in place** rather than floating over the page, marked with a dashed o
 
 Two things are therefore **Preview only**: the backdrop behind the panel, and the way it stacks above the rest of the page. Switch to Preview to see the popover exactly as a visitor will, animation and all.
 
-Selecting something outside the popover does not close it. Otherwise reaching for a colour in the Inspector would shut the panel you were styling. Close it from the block action bar, or by clicking its trigger again.
+Selecting something outside the popover does not close it. Otherwise reaching for a color in the Inspector would shut the panel you were styling. Close it from the block action bar, or by clicking its trigger again.
 
 A `<dialog>` works the same way. Select it, or anything inside it, and it opens in place with a **DIALOG · SHOWN IN PLACE** mark; a `command="show-modal"` button opens it too, and a `close` button closes it. On the canvas nothing goes modal and nothing goes inert, so the rest of the page stays editable while the dialog is up. Preview shows the dialog as a visitor sees it: modal, over a backdrop, with the page behind it locked. A region you marked `inert` is editable on the canvas for the same reason, and inert again in Preview and on the built page. A style rule you wrote for `[inert]` still applies while you edit, so the region looks the way it will on the page.
 
@@ -84,7 +84,7 @@ A small floating toolbar appears above the selected element. It stays on the ele
 ![The block action bar floating above a selected paragraph, showing the parent, tag, move, duplicate and formatting controls](../../images/block-action-bar.png)
 
 - A **back arrow** selects the parent element.
-- The **name badge** shows what's selected: the element's type or its name. When the element can become something else (a paragraph into a heading, for example), clicking the badge lists the conversions. On a component instance or a repeater, where there is nothing to convert to, the badge is greyed rather than gone.
+- The **name badge** shows what's selected: the element's type or its name. When the element can become something else (a paragraph into a heading, for example), clicking the badge lists the conversions. On a component instance or a repeater, where there is nothing to convert to, the badge is grayed rather than gone.
 - Drag the **⠿ drag handle** to move the element somewhere else on the page.
 - **Move up** and **Move down** arrows swap the element with its neighbors.
 - For a component instance, **Edit Component** opens the component itself; for anything else, **Convert to Component** turns the selection into a reusable component.
@@ -93,7 +93,7 @@ A small floating toolbar appears above the selected element. It stays on the ele
 The bar steps aside when you leave the canvas. Click into the Inspector, a panel or the pane's context bar and it disappears, so it is never sitting over the control you were reaching for. **Your selection stays exactly as it was**, which is what the Inspector is editing. It comes back the moment the canvas is in play again: click the element on the canvas, or select anything from the Outline, and the bar is there for it. Panning or zooming the canvas leaves it alone, and so do the bar's own pieces: its `⋮` menu, the link popover and the slash menu. In Edit, the bar also hides while its element is scrolled out of view, including up under the writing banner over a collection entry, and returns when the element scrolls back. While only the top of the element has gone out of view, the bar drops below the element rather than standing above the page.
 
 :::doc-tip
-The bar keeps one shape. An action that cannot apply to the current selection, like moving the first child up or deleting the document root, is shown greyed with a tooltip saying what it needs, rather than disappearing. Buttons never move under your cursor.
+The bar keeps one shape. An action that cannot apply to the current selection, like moving the first child up or deleting the document root, is shown grayed with a tooltip saying what it needs, rather than disappearing. Buttons never move under your cursor.
 :::
 
 The bar also carries the structural verbs **Duplicate** and **Delete**. It shows a fixed run of them and keeps any further verb, with its name and its shortcut, behind a **More block actions** button rather than dropping it.
@@ -120,7 +120,7 @@ Right-click any element for the full action list: **Copy**, **Cut**, **Duplicate
 
 Right-clicking an element that is already part of a [multiple selection](/docs/studio/design/layers#select-several-at-once) keeps that selection rather than collapsing it to the element you aimed at; right-clicking anything else selects it alone. **Cut** then removes the whole selection in one undo step, putting the element you aimed at on the clipboard. The other rows address that one element: to duplicate or delete a whole selection, use :kbd[⌘D] and :kbd[Delete], or the block action bar.
 
-**Every** row is a command as well as a menu item, so all of them can be run by name from the [command palette](/docs/studio/interface/quick-access), with the same wording and the same reason when they are unavailable. A row that can't apply to what you have selected is greyed with that reason rather than hidden: **Cut** on the page root says it needs an element that isn't the root. See **[Commands](/docs/studio/interface/commands)**.
+**Every** row is a command as well as a menu item, so all of them can be run by name from the [command palette](/docs/studio/interface/quick-access), with the same wording and the same reason when they are unavailable. A row that can't apply to what you have selected is grayed with that reason rather than hidden: **Cut** on the page root says it needs an element that isn't the root. See **[Commands](/docs/studio/interface/commands)**.
 
 Right-clicking **empty space** around the page gives you the browser's own menu, not this one. There is nothing there to act on, and that margin is where you reach for View Source or Inspect. The desktop app shows no menu there. Inside text you are editing, a right-click gives the spelling and edit menu in both.
 

@@ -91,7 +91,7 @@ Never write `"open": "false"` as a string. HTML counts _any_ value as present, `
 <div aria-expanded="false"></div>
 ```
 
-`popover` sits between the two families and is the one attribute worth naming. It is enumerated (its keywords are `auto`, `manual` and `hint`), but an empty value means `auto` rather than unset, so a boolean `true` writing the bare name happens to be right. A value the browser does not recognise falls back to `manual`, which gives up closing on Escape and on a click outside without saying so, and `popover="true"` is such a value. Write the keyword:
+`popover` sits between the two families and is the one attribute worth naming. It is enumerated (its keywords are `auto`, `manual` and `hint`), but an empty value means `auto` rather than unset, so a boolean `true` writing the bare name happens to be right. A value the browser does not recognize falls back to `manual`, which gives up closing on Escape and on a click outside without saying so, and `popover="true"` is such a value. Write the keyword:
 
 ```json
 { "attributes": { "popover": "auto" } }

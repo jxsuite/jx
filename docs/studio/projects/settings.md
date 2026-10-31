@@ -125,7 +125,7 @@ The conditions your pages are rendered under, and the only place they are define
 
 - **Base width**: how wide the Base canvas renders when no other context applies.
 - **Size breakpoints**: width conditions like `(max-width: 768px)`. Each one gets its own canvas panel in Design view. See **[Breakpoints](/docs/studio/design/breakpoints)**.
-- **Colour schemes**: a Light/Dark picker that writes the `prefers-color-scheme` query for you. Declaring one turns on the **Auto / Light / Dark** control in the pane's context bar.
+- **Color schemes**: a Light/Dark picker that writes the `prefers-color-scheme` query for you. Declaring one turns on the **Auto / Light / Dark** control in the pane's context bar.
 - **Feature queries**: anything else a media query can ask, such as reduced motion, print, hover, orientation. These become toggles in the context bar rather than canvas panels.
 
 Name a context in plain language; Studio derives the stored name ("Wide screen" becomes `--wide-screen`). Each change is schema-checked before it is written, and a refusal (a duplicate name, an empty query) appears under the control that caused it while the stored value stays as it was.
@@ -134,7 +134,7 @@ Name a context in plain language; Studio derives the stored name ("Wide screen" 
 The check looks at the whole `project.json`, but only holds you responsible for what your edit changed. If the file already had a problem, such as a key from an extension you removed or a key something else wrote, that problem is reported once at the top of the section, naming the key, and your edit still saves.
 :::
 
-The context bar's **Context** controls only _choose_ among what is defined here; **Manage contexts…**, at the foot of the popover behind the sliders button, opens this section, as do the breakpoint and colour-scheme labels in the Style tab, so you can add a breakpoint without losing your element selection.
+The context bar's **Context** controls only _choose_ among what is defined here; **Manage contexts…**, at the foot of the popover behind the sliders button, opens this section, as do the breakpoint and color-scheme labels in the Style tab, so you can add a breakpoint without losing your element selection.
 
 ## Site head
 

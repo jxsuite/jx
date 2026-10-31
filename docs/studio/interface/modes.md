@@ -107,7 +107,7 @@ Installed format extensions can add their own file types with their own lists, s
 
 **Preview** is a **toggle** beside the View control, not a third view. It applies to Edit and to Design alike: the base stays selected while you preview, so the bar always says which mode you are previewing and which one switching Preview off returns you to. Turn it on and the canvas shows the page with its real data resolved: dynamic text filled in, repeated lists expanded, exactly what a visitor gets.
 
-What it resolves _with_ comes from the two controls beside it. The **Context** controls hold what the page renders _in_: its breakpoint and colour scheme as segments on the bar, and, behind the sliders button, feature queries and a **Show layout elements** switch for pages that use a layout. The **resolving with** popover holds what it renders _from_, one field per line:
+What it resolves _with_ comes from the two controls beside it. The **Context** controls hold what the page renders _in_: its breakpoint and color scheme as segments on the bar, and, behind the sliders button, feature queries and a **Show layout elements** switch for pages that use a layout. The **resolving with** popover holds what it renders _from_, one field per line:
 
 - For pages with dynamic addresses (a product page, a blog post), a picker per URL parameter so you choose which real record to preview.
 - For components, a field per component option so you can try test values.

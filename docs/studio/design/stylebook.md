@@ -61,7 +61,7 @@ A page or a component has an **Elements** view of its own, in the Design workspa
 3. Edit styles with the full inspector: sections, provenance chips, and all.
 4. Watch every panel update: you're styling the element type, so every specimen of it changes at once, and so does every matching element the chip named.
 
-The Target Line works the same as in Design mode: the **breakpoint** segment says which screen size a default is scoped to (see **[Breakpoints](/docs/studio/design/breakpoints)**), and the **selector** segment adds states, so you can give every link a default `:hover` in one edit. Select the link specimen and the menu offers the states a link has, `a :hover`, `a :visited` and the rest, each one written under `a`. The specimen is a real link, so the colour and underline you set on it are the ones your pages will show (see **[Hover states and selectors](/docs/studio/design/states-and-selectors)**). Nested parts style as compound selections, like the header cells inside tables.
+The Target Line works the same as in Design mode: the **breakpoint** segment says which screen size a default is scoped to (see **[Breakpoints](/docs/studio/design/breakpoints)**), and the **selector** segment adds states, so you can give every link a default `:hover` in one edit. Select the link specimen and the menu offers the states a link has, `a :hover`, `a :visited` and the rest, each one written under `a`. The specimen is a real link, so the color and underline you set on it are the ones your pages will show (see **[Hover states and selectors](/docs/studio/design/states-and-selectors)**). Nested parts style as compound selections, like the header cells inside tables.
 
 ## Know what an edit reaches
 
@@ -77,7 +77,7 @@ An element default you set here is an edit to the open file like any other: the 
 
 A value that arrives from your project's tokens rather than from this file carries an inherited chip reading **from site tokens**, so a default you did not write here is never mistaken for one you did. It has nowhere to jump to, because that value lives in the project's site-wide style, and you edit it in **[Design tokens](/docs/studio/design/tokens)**.
 
-A property your pages inherit, such as the font, size, line height or colour, shows what the element type would inherit when you leave it unset, with a chip naming where it comes from. Your project file's own root style is the page `body`, so an unstyled `h1` reads **from body** and shows the body font, and a cell nested under `table` reads **from table** for a colour the table sets. Set the property on the element type and your value takes over.
+A property your pages inherit, such as the font, size, line height or color, shows what the element type would inherit when you leave it unset, with a chip naming where it comes from. Your project file's own root style is the page `body`, so an unstyled `h1` reads **from body** and shows the body font, and a cell nested under `table` reads **from table** for a color the table sets. Set the property on the element type and your value takes over.
 
 ## Project Styles, element styles, or component styles?
 

@@ -171,7 +171,7 @@ Always give an anchored panel a fallback. If `anchor()` does not resolve, every 
 { "attributes": { "popover": "auto" } }
 ```
 
-An empty string means the same thing to the browser, but Studio's Content tab shows an empty value as _unset_, so `"auto"` is the spelling that reads correctly everywhere. Do not write it as `true`: a boolean is not one of the three keywords, and a value the browser does not recognise falls back to `manual`, which silently gives up Escape and click-outside.
+An empty string means the same thing to the browser, but Studio's Content tab shows an empty value as _unset_, so `"auto"` is the spelling that reads correctly everywhere. Do not write it as `true`: a boolean is not one of the three keywords, and a value the browser does not recognize falls back to `manual`, which silently gives up Escape and click-outside.
 
 ## Dialogs
 
