@@ -212,7 +212,7 @@ A declaration value can be a template or a binding, so a style follows state:
 }
 ```
 
-That is how a row renders in the thing it names: a font row set in its own face, a colour row showing its own colour. Put the binding on a custom property and read it from the rule that lays the rows out:
+That is how a row renders in the thing it names: a font row set in its own face, a color row showing its own color. Put the binding on a custom property and read it from the rule that lays the rows out:
 
 ```json
 { "tagName": "ul", "style": { "& > li": { "fontFamily": "var(--row-face, inherit)" } } }

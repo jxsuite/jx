@@ -15,7 +15,7 @@ A Jx document is a tree, and a good deal of what makes a page accessible can be 
 
 ## Where the findings appear
 
-- **Studio** files them under the **Accessibility** source in [Problems](/docs/studio/interface/problems-and-progress), on request through **Check Accessibility** in the command palette. Studio adds the checks that need the whole page: the heading outline, duplicate ids, the document language, vague link text, autocomplete purposes and autoplaying media. It also says what it could not check, such as colour contrast, rather than passing it.
+- **Studio** files them under the **Accessibility** source in [Problems](/docs/studio/interface/problems-and-progress), on request through **Check Accessibility** in the command palette. Studio adds the checks that need the whole page: the heading outline, duplicate ids, the document language, vague link text, autocomplete purposes and autoplaying media. It also says what it could not check, such as color contrast, rather than passing it.
 - **`jx validate`** prints the same findings beside its verdict. They are advisory by default, because a well-formed project is still valid; pass `--strict` to fail the run on an accessibility or overlay error.
 - **The UI kit, Studio's own chrome and every starter** run the rules in their test suites, so a defect cannot ship in a template you scaffold from.
 
@@ -64,4 +64,4 @@ They also accept a container that claims the element through `aria-owns`. ARIA s
 
 ## What is not checked
 
-Colour contrast, target size, focus order and reading order depend on the rendered page and the cascade, and a tree cannot answer them. Studio's report lists each one it could not check so that an empty list never reads as a clean bill. Run the built site through a browser-based checker for those.
+Color contrast, target size, focus order and reading order depend on the rendered page and the cascade, and a tree cannot answer them. Studio's report lists each one it could not check so that an empty list never reads as a clean bill. Run the built site through a browser-based checker for those.

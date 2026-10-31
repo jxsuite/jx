@@ -55,7 +55,7 @@ What a multiple selection changes:
 - **The Inspector says Mixed** wherever the selected elements disagree about a value, instead of showing the primary's value as though it were everyone's. The chip counts the elements it speaks for, reading **mixed (6)**. Typing a value writes it to all six in one step, and clicking the chip clears it from all six. See the **[Content tab](/docs/studio/design/properties)**.
 - **Delete and Duplicate act on the whole selection, as a single undo step**: one :kbd[⌘Z] brings all six elements back. They are the canvas keys :kbd[Delete] and :kbd[⌘D], and they are also in the [command palette](/docs/studio/interface/quick-access). Duplicating leaves the copies selected, in page order; deleting leaves the primary's parent selected.
 - **Whatever the elements have in common, one decision covers.** A style value typed with six cards selected is one transaction, so it is one undo step rather than six.
-- **A selection that includes something with no sibling position is refused rather than half-applied.** The document element, a repeating list's template row and a condition's case row cannot be spliced, so **Duplicate** and **Delete** turn unavailable for the whole selection (greyed, with the reason they always give) instead of quietly acting on the rest of it.
+- **A selection that includes something with no sibling position is refused rather than half-applied.** The document element, a repeating list's template row and a condition's case row cannot be spliced, so **Duplicate** and **Delete** turn unavailable for the whole selection (grayed, with the reason they always give) instead of quietly acting on the rest of it.
 - **Right-clicking a row that is already selected keeps the selection**; right-clicking anywhere else selects that row alone.
 
 :::doc-note
@@ -79,7 +79,7 @@ Select a row, or just hover it, and its actions appear on the right:
 - The **left arrow** moves the element out of its parent, to sit just after it.
 - **More actions** holds **Duplicate** and **Delete**.
 
-A row's buttons act on **that row**, the one under your pointer, which is not always the one you selected. An action that cannot apply (moving the first child up, say) is shown greyed rather than hidden, with a tooltip saying what it needs. The buttons never move under your cursor.
+A row's buttons act on **that row**, the one under your pointer, which is not always the one you selected. An action that cannot apply (moving the first child up, say) is shown grayed rather than hidden, with a tooltip saying what it needs. The buttons never move under your cursor.
 
 :::doc-tip
 The tree is keyboard-navigable. :kbd[↑] and :kbd[↓] walk the rows and take the selection with them, :kbd[→] expands a row or steps into it, :kbd[←] collapses it or climbs to its parent, and :kbd[Home] / :kbd[End] jump to the ends. Typing a letter jumps to the next row whose name starts with it, which beats arrowing through a long page. It searches the whole document, not only the rows currently on screen. The arrows stop at the ends rather than wrapping around, so a long walk never quietly puts you back where you started.

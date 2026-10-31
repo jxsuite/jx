@@ -65,7 +65,7 @@ A single click from the file tree or the palette opens a document in **preview**
 
 Jx Studio does **not** auto-save. Edits live in the open document until you save:
 
-- A **●** marks unsaved changes, and the **Save** button in the Command Bar lights up. With nothing to save it stays greyed out, and it lights up with your first keystroke, including typing in the Code view that has not reached the document yet.
+- A **●** marks unsaved changes, and the **Save** button in the Command Bar lights up. With nothing to save it stays grayed out, and it lights up with your first keystroke, including typing in the Code view that has not reached the document yet.
 - Save with :kbd[⌘S] or the **Save** button, and the **●** clears.
 
 Closing a document with unsaved changes asks first, and the question has three answers: **Save** writes the file and then closes, **Close Without Saving** throws the edits away, and **Cancel** leaves the tab where it was. A save that fails leaves the tab open and still unsaved, with the reason in [Problems](/docs/studio/interface/problems-and-progress). The close never outruns the write. :kbd[⌘W] and the tab's **×** ask the same question. Studio skips it only when a collaborator is still in the document, because the shared session keeps the edits.
@@ -78,7 +78,7 @@ Undo and redo are per document as well: each keeps its own history, so :kbd[⌘Z
 Saving writes the file in place, in your project folder, as plain Markdown, JSON, or CSV. Nothing is held in a database; what you save is what git sees. See [Publish](/docs/studio/publish).
 :::
 
-**A save keeps the file's layout.** A JSON document goes back to disk the way it was written: an object you kept on one line stays on one line while it fits, a blank line you left between two keys stays, and a character you spelt as an escape stays an escape. Studio reads those facts when it opens the file and honours them when it writes, so changing one value changes one line of the file, and a project kept in Prettier's or oxfmt's layout is still in it after a save. Something the edit created, a new element or a new object, is laid out the way the formatter would lay it out: a short array on one line, a new object opened up. A repeater written as an element's whole `children` is saved that way too, even though Studio edits it as the one member of a list, so a save never rewrites a list you did not touch. The Code view shows exactly the bytes a save writes, and a change you make there is saved in the layout you typed.
+**A save keeps the file's layout.** A JSON document goes back to disk the way it was written: an object you kept on one line stays on one line while it fits, a blank line you left between two keys stays, and a character you spelled as an escape stays an escape. Studio reads those facts when it opens the file and honors them when it writes, so changing one value changes one line of the file, and a project kept in Prettier's or oxfmt's layout is still in it after a save. Something the edit created, a new element or a new object, is laid out the way the formatter would lay it out: a short array on one line, a new object opened up. A repeater written as an element's whole `children` is saved that way too, even though Studio edits it as the one member of a list, so a save never rewrites a list you did not touch. The Code view shows exactly the bytes a save writes, and a change you make there is saved in the layout you typed.
 
 ## Each document remembers its view
 
@@ -120,7 +120,7 @@ The new one carries a small **↳** marker, and hovering it names the document y
 - **Open to the Side**, from a file's right-click menu, is the Files tree's own route to a second pane: it opens the file beside whatever you are already looking at, and puts you in it.
 - **Unsplit** collapses the split. Closing a pane never closes documents. They move back into the pane that remains, and a pane you empty collapses on its own instead of standing there empty.
 
-The two panes are independent in everything a document owns: each keeps its own view, breakpoint, colour scheme, zoom and selection, and editing in one leaves the other exactly as it was.
+The two panes are independent in everything a document owns: each keeps its own view, breakpoint, color scheme, zoom and selection, and editing in one leaves the other exactly as it was.
 
 ## A pane that follows the other one
 
@@ -141,11 +141,11 @@ A preset that this document cannot supply is not offered, and it says why: **Lay
 
 ## The jump bar
 
-In the middle of the status bar, along the foot of the window, a breadcrumb trail names where you are in the focused pane (`file › the elements above your selection › the element you have selected`), and every crumb is a button that selects that step. A crumb whose parent has other children carries a **⌃** listing them, so you can move to a sibling element with a click, without hunting through the Outline. The full behaviour is in **[The workspace](/docs/studio/interface#the-jump-bar)**.
+In the middle of the status bar, along the foot of the window, a breadcrumb trail names where you are in the focused pane (`file › the elements above your selection › the element you have selected`), and every crumb is a button that selects that step. A crumb whose parent has other children carries a **⌃** listing them, so you can move to a sibling element with a click, without hunting through the Outline. The full behavior is in **[The workspace](/docs/studio/interface#the-jump-bar)**.
 
 ## The pane context bar
 
-Under the strip (at the top of the pane, in a workspace without one), a labelled row states three things about the document in that pane, and only those three:
+Under the strip (at the top of the pane, in a workspace without one), a labeled row states three things about the document in that pane, and only those three:
 
 - **Editor**, at the left end of the bar, is which editor is open on it: **Canvas**, **Code**, **Grid**, **Entry**, **Home**, **Elements** or **Variables**. It is a row of segments, one per editor this file actually supports, so every choice is on screen and none of them is one that cannot be picked; a document with one editor prints its name as text instead. **Diff** is never offered here. A comparison is opened from [Source control](/docs/studio/publish/source-control), and while you are in one the bar prints **Diff** as text, with **Back to Publish** as the way out. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
 - **View**, for the Canvas editor, offers **Edit │ Design** with a **Preview** toggle beside them. See [Modes and views](/docs/studio/interface/modes).

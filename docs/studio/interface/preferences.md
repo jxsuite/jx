@@ -30,7 +30,7 @@ Apart from the Assistant key form, which has its own **Save**, every change here
 
 Choose the **Light** or **Dark** chrome theme. The choice applies immediately to the whole window, including any open [code editor](/docs/studio/logic/code) and anything showing over it, and is remembered for the next session.
 
-This is the editor's own theme. It has no effect on the site you're building, whose colors come from your project's styles, and the canvas stays a light document page in either theme so that what you see is what you ship. To preview your own site in a dark colour scheme, use the light/dark control on the canvas instead. See **[Contexts](/docs/studio/projects/settings)**.
+This is the editor's own theme. It has no effect on the site you're building, whose colors come from your project's styles, and the canvas stays a light document page in either theme so that what you see is what you ship. To preview your own site in a dark color scheme, use the light/dark control on the canvas instead. See **[Contexts](/docs/studio/projects/settings)**.
 
 **Show developer panels** puts **Files** and **Packages** on the Design workspace's rail, beside the Site panel, Outline and Data. It is off to begin with, because the Site panel already lists your pages, templates, components and media by what they are. Turn it on when you want the project's file tree or its packages a click away; with it off, both are still in the command palette as **Show Files** and **Show Packages**. Like the theme, the choice follows you into every project and window.
 

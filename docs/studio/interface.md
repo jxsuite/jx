@@ -45,7 +45,7 @@ code:
 
 # The workspace
 
-The Jx Studio window is one workspace with a fixed set of regions: the **Command Bar** across the top, the **Navigator** (a labelled rail and the panel it opens) on the left, the **pane grid** in the middle with the canvas in it, the **Inspector** on the right, the **Bottom dock** under the panes, and the **status bar** along the bottom, with the **jump bar** in the middle of it naming where you are. This page walks through each one. For a quicker orientation, start with **[A tour of Jx Studio](/docs/start/studio-tour)**.
+The Jx Studio window is one workspace with a fixed set of regions: the **Command Bar** across the top, the **Navigator** (a labeled rail and the panel it opens) on the left, the **pane grid** in the middle with the canvas in it, the **Inspector** on the right, the **Bottom dock** under the panes, and the **status bar** along the bottom, with the **jump bar** in the middle of it naming where you are. This page walks through each one. For a quicker orientation, start with **[A tour of Jx Studio](/docs/start/studio-tour)**.
 
 ![The Jx Studio workspace with the canvas in the center, panels on both sides, and the Command Bar across the top](../images/hero.png)
 
@@ -60,7 +60,7 @@ From left to right:
 - The **Studio menu** (the ≡ button at the left edge) holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Preferences…**, **Zen Mode**, and the rest.
 - The **workspace tabs** (**Design · Content · Media · Styles · Publish**, :kbd[⌘1] to :kbd[⌘5]) switch what you are working on. See [Workspaces](#workspaces). The **Publish** tab counts the changes you have not published yet, and the small arrow beside it opens **Quick publish**. See [Publish](/docs/studio/publish).
 - The **Command Center pill** sits in the middle: `◈ project › document › selection`, with :kbd[⌘K] at its right end. It names the project you're in, the document you're editing and the element you have selected, and each segment is a button that opens the palette already scoped to that level. Click the pill's empty space to open the palette with nothing pre-picked. The pill is where you go to _search_ for a place; the [jump bar](#the-jump-bar) in the status bar is where you _step_ to one.
-- The **verb cluster** on the right holds the four actions worth a permanent button: **Save**, **Open in Browser**, **Undo** and **Redo**. A greyed-out one tells you in its tooltip what it is waiting for: **Save** stays greyed out until the document has unsaved changes, and lights up with the first keystroke.
+- The **verb cluster** on the right holds the four actions worth a permanent button: **Save**, **Open in Browser**, **Undo** and **Redo**. A grayed-out one tells you in its tooltip what it is waiting for: **Save** stays grayed out until the document has unsaved changes, and lights up with the first keystroke.
 - The **Settings** gear opens a menu rather than a panel. See [The Settings menu](#the-settings-menu).
 - **Dock toggles** for the Navigator (:kbd[⌘B]), the Inspector (:kbd[⌘⌥B]) and the Bottom dock (:kbd[⌘J]).
 
@@ -96,7 +96,7 @@ Each workspace sets up the window for its kind of work every time you enter it: 
 
 ## Navigator rail
 
-The vertical strip on the far left, drawn in the **Design** workspace. Every button carries a **text label under its icon**, and the buttons are split into two labelled groups, because a panel is either about your whole project or about the one document in front of you:
+The vertical strip on the far left, drawn in the **Design** workspace. Every button carries a **text label under its icon**, and the buttons are split into two labeled groups, because a panel is either about your whole project or about the one document in front of you:
 
 **Project**
 
@@ -138,7 +138,7 @@ The **Settings** gear at the right of the Command Bar opens a menu rather than a
 - **Preferences…** (:kbd[⌘,]) holds the settings that belong to Studio itself and follow you between projects: the theme, the AI provider, your accounts, the keyboard sheet. Its submenu jumps straight to one of those four. See **[Preferences](/docs/studio/interface/preferences)**.
 - **Open Project Settings** (:kbd[⌘⇧,]) holds this project's configuration, from the site name and languages through extensions to contexts, data shapes and packages. Its submenu lists every section in the order the dialog lists them, General first, then Integrations, then Advanced, with a divider where each group starts, so you can land on the one you want instead of arriving at Overview and hunting. See **[Project settings](/docs/studio/projects/settings)**.
 
-Clicking an entry opens that dialog where you last left it; following its submenu opens it on the section you picked. A divider separates what belongs to the app from what belongs to the project. With no project open the project entry is still listed, greyed, saying what it needs, so the menu tells you what Studio can do before you have opened anything. Project Styles is not in the menu: it is the **Styles** workspace, one tab along in the Command Bar.
+Clicking an entry opens that dialog where you last left it; following its submenu opens it on the section you picked. A divider separates what belongs to the app from what belongs to the project. With no project open the project entry is still listed, grayed, saying what it needs, so the menu tells you what Studio can do before you have opened anything. Project Styles is not in the menu: it is the **Styles** workspace, one tab along in the Command Bar.
 
 ## Navigator dock
 
@@ -209,7 +209,7 @@ A project with no `.gitignore` is unaffected: nothing is hidden, and the toggle 
 
 ## Panes and the canvas
 
-The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a real control rather than a drag handle: Tab reaches it, :kbd[←] and :kbd[→] move it a step at a time (hold :kbd[Shift] for a bigger one), :kbd[Home] and :kbd[End] take it as far as each pane's minimum width allows, and :kbd[Enter] or a double click snaps it back to an even split and then returns it to where you had it. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Media**, **Elements** or **Variables**, or a workspace's **Home** (the Content home, the media library, the Publish workspace). It carries its own strip of open documents and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline, the keyboard and the [jump bar](#the-jump-bar) at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
+The middle of the window is the **pane grid**: one editor pane, or two side by side with a divider you can drag (:kbd[⌘\] splits, :kbd[⌘⌥0] focuses the second one). The divider is a keyboard-accessible control rather than a plain drag handle. Press :kbd[Tab] to reach it, and use :kbd[←] and :kbd[→] to step across the width (hold :kbd[Shift] for larger steps). :kbd[Home] and :kbd[End] move it to each pane's minimum width, while :kbd[Enter] or a double click toggles between an even split and your previous position. A pane renders one document in one editor: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Media**, **Elements** or **Variables**, or a workspace's **Home** (the Content home, the media library, the Publish workspace). It carries its own strip of open documents and its own context bar, so everything around a document describes the pane it is in. Both panes can be a live canvas, and clicking into one is what points the Inspector, the Outline, the keyboard and the [jump bar](#the-jump-bar) at it. See **[Documents and panes](/docs/studio/interface/tabs)**.
 
 A Diff pane compares one file against your last commit and carries its own change stepper, so two panes can be reviewing two different files at once. See **[Source control](/docs/studio/publish/source-control#read-a-change)**.
 

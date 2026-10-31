@@ -31,7 +31,7 @@ Pick **Base** to edit the styles that apply everywhere; pick a breakpoint to edi
 
 ## Dragging the page width
 
-Edit's column has a handle on each side. Drag either one and the page resizes from its centre, to any width you like. That includes the widths _between_ two breakpoints, which is where a responsive layout usually breaks and which the Size buttons can't reach on their own.
+Edit's column has a handle on each side. Drag either one and the page resizes from its center, to any width you like. That includes the widths _between_ two breakpoints, which is where a responsive layout usually breaks and which the Size buttons can't reach on their own.
 
 The handles are controls, not just grips. Press :kbd[Tab] to reach one and the arrow keys resize the page a step at a time; :kbd[Shift] with an arrow takes a bigger step, and :kbd[Home] and :kbd[End] go to the narrowest and the widest the pane can show.
 
@@ -41,7 +41,7 @@ The handles are controls, not just grips. Press :kbd[Tab] to reach one and the a
 The drag snaps as it passes a breakpoint's own width, so landing exactly on **Md** takes no precision, and an arrow step that comes close snaps the same way. Hold :kbd[Alt], while dragging or with an arrow, to slide straight past the snaps. Double-click a handle, or press :kbd[Enter] on it, to go back to the width the Size group names; a second one returns you to where you were.
 :::
 
-A few things worth knowing:
+Key drag details:
 
 - **It stops at the pane.** The column can't be dragged wider than the space it has to render in. To work at a width wider than your window, pick that size from the Size group instead. The page is laid out at that width and shown as wide as it fits.
 - **The width isn't remembered; the size is.** Dragging is for looking. Switch modes and the column goes back to the breakpoint's own width. Reopening the project later starts there too, at whichever breakpoint you last dragged into.
@@ -68,7 +68,7 @@ Breakpoints are defined in one place: **Settings › Advanced › Contexts**. Pi
 The section holds three groups, because all three are the same thing on disk and only differ in what their condition asks about:
 
 - **Size breakpoints** are width conditions like `(max-width: 768px)`. These are the ones that get their own canvas panel.
-- **Colour schemes** give you a Light/Dark picker that writes the `prefers-color-scheme` query for you, so a scheme can never be mistyped into something else.
+- **Color schemes** give you a Light/Dark picker that writes the `prefers-color-scheme` query for you, so a scheme can never be mistyped into something else.
 - **Feature queries** cover anything else a media query can ask: reduced motion, print, hover, orientation. These appear as toggles in the popover behind the sliders button at the end of the **Context** controls, rather than as canvas panels.
 
 Above them sits **Base width**, which sets how wide the Base canvas panel renders when no other context applies.
@@ -79,7 +79,7 @@ Whatever you declare here is also what a [design token](/docs/studio/design/toke
 
 The same popover carries a **Language** control on a [multilingual project](/docs/studio/interface/languages), which sets the language the artboard renders in: its `lang` and direction, not which file is open.
 
-A colour scheme is what turns on the **Auto / Light / Dark** segments in the context bar's **Context** controls. Auto follows your OS preference; Light and Dark force that scheme on the canvas, exactly what a visitor's [color-scheme switcher](/docs/framework/concepts/color-schemes) does on the published site. The control appears only once the project declares a scheme.
+A color scheme is what turns on the **Auto / Light / Dark** segments in the context bar's **Context** controls. Auto follows your OS preference; Light and Dark force that scheme on the canvas, exactly what a visitor's [color-scheme switcher](/docs/framework/concepts/color-schemes) does on the published site. The control appears only once the project declares a scheme.
 
 Forcing a scheme while the size is **Base** points your edits at that scheme's overrides, and the Target Line grows a segment to say so: `⌖ h1 · Base · Dark variant`. Base values show through as inherited, their chips reading **from Base**, and clicking one sets the control back to **Auto** so you can edit the value where it lives. A size breakpoint is always breakpoint-scoped: schemes and sizes don't compound into a single block.
 

@@ -91,12 +91,12 @@ There are no ready-made sign-in components to drop in. You build the pages yours
 
 ### What auth sets up for you
 
-Two defaults are worth knowing because you don't configure them and they're the ones that matter:
+Two defaults apply automatically without extra configuration:
 
 - **Session cookies are locked to your site's own hostname.** On a real deployment they're marked `Secure` and named with the `__Host-` prefix, which tells the browser to refuse the cookie if anything tries to set it for a different subdomain or path. A local dev server on plain `http://` skips the prefix, because a browser would reject a `__Host-` cookie there; keeping it would break sign-in on your own machine rather than protect it. Sessions last a week, and are extended when someone uses the site.
 - **Auth routes are rate-limited**, in development as well as production: 100 requests per 10 seconds from one address. You won't reach that by hand; a script trying passwords will.
 
-If your site is reached through a different origin than the worker sees (a proxy, or a custom domain in front of it), set `BETTER_AUTH_URL` to the public origin. That's what tells auth whether it's serving over HTTPS, so it's worth setting even if your sign-in providers already work.
+If your site is reached through a different origin than the worker sees (a proxy, or a custom domain in front of it), set `BETTER_AUTH_URL` to the public origin. That tells auth whether it is serving over HTTPS, ensuring cookies and redirects work correctly even if your sign-in providers already work.
 
 One thing to plan around: **the session is always empty at build time.** Your pages are prerendered, and there is no visitor and no browser during a build, so the HTML that ships always shows the signed-out state; the signed-in version appears a moment later, once the page loads and asks the server who is there. That is a consequence of how Jx publishes, not a bug, so keep the signed-out state presentable, and don't put anything at the top of a page that only makes sense to someone signed in.
 

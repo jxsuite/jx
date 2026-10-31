@@ -26,17 +26,17 @@ With no file open the tab offers **Open a page…**; with a file open and nothin
 
 ## The Target Line
 
-A style edit is addressed by several things at once (which element, which breakpoint, which colour scheme, which state), and the line at the top of the tab states all of them before you type:
+A style edit is addressed by several things at once (which element, which breakpoint, which color scheme, which state), and the line at the top of the tab states all of them before you type:
 
 ```text
 ⌖  h1 · @Tablet · :hover                               [ this element ]
 ```
 
-Every segment is a control, and the sentence always reads in the same order: element, breakpoint, colour scheme, state. A glance tells you what changed since you last looked:
+Every segment is a control, and the sentence always reads in the same order: element, breakpoint, color scheme, state. A glance tells you what changed since you last looked:
 
 - **The element**: the tag these edits are pointed at. Click it to open the **[Outline](/docs/studio/design/layers)** and find the element there.
 - **The breakpoint**: **Base**, or `@Tablet` when a breakpoint is active. You choose it on the pane's **Context** control (or by clicking a canvas panel's header); clicking the segment opens **Settings › Contexts**, where breakpoints are defined. See **[Breakpoints](/docs/studio/design/breakpoints)**.
-- **The colour scheme**: a `Dark variant` segment joins the line while the Context control forces a scheme your project declares, because edits then land in that scheme's overrides: `⌖ h1 · Base · Dark variant · :hover`. It appears at **Base** only (a breakpoint is always breakpoint-scoped), and setting the control back to **Auto** returns you to base styles.
+- **The color scheme**: a `Dark variant` segment joins the line while the Context control forces a scheme your project declares, because edits then land in that scheme's overrides: `⌖ h1 · Base · Dark variant · :hover`. It appears at **Base** only (a breakpoint is always breakpoint-scoped), and setting the control back to **Auto** returns you to base styles.
 - **The selector**: the last segment, reading **base rule** for the element's normal look. It is the one segment with a menu of its own: `:hover`, `:focus`, or a selector you write. In [Project Styles](/docs/studio/design/stylebook) the menu lists the selected element type's own states, such as `a :hover` and `a :visited` for links, and choosing one styles that state for every element of the type. See **[Hover states and selectors](/docs/studio/design/states-and-selectors)**.
 
 ## The scope chip
@@ -80,7 +80,7 @@ Some rows appear only when they're relevant: alignment and gap controls show onc
 Each property gets a control built for it:
 
 - **Number + unit**: type the number, pick the unit (`px`, `rem`, `%`, `vw`, and friends) or a keyword like `auto` from the attached menu.
-- **Color**: a swatch beside the value, and behind the swatch a picker holding a saturation square, a hue track, an opacity track and your project's color tokens. Picking a token writes the reference, so the value reads `var(--color-primary-blue)` and follows the token wherever you take it, and the swatch shows the colour the token stands for; moving any of the tracks replaces it with a literal, because that is what moving a picker means. The value box takes anything CSS can read, a named color or a `color-mix()` included, and keeps it as you wrote it. See **[Design tokens](/docs/studio/design/tokens)**.
+- **Color**: a swatch beside the value, and behind the swatch a picker holding a saturation square, a hue track, an opacity track and your project's color tokens. Picking a token writes the reference, so the value reads `var(--color-primary-blue)` and follows the token wherever you take it, and the swatch shows the color the token stands for; moving any of the tracks replaces it with a literal, because that is what moving a picker means. The value box takes anything CSS can read, a named color or a `color-mix()` included, and keeps it as you wrote it. See **[Design tokens](/docs/studio/design/tokens)**.
 - **Font family**: type a font stack, or pick one from the list under the field, which shows your project's font tokens first, each named beside its token, and then a set of ready-made stacks. Every row is drawn in its own typeface, so you choose by looking. Picking a ready-made stack saves it as a font token the moment you commit, so the next element that wants it points at the token rather than repeating the stack. The field shows a token by its name, `--font-body` rather than `var(--font-body)`, and a stack you type is written as you typed it.
 - **Keyword lists**: a property with a known set of values lists them under the field, opened by its chevron or by :kbd[↓]. The field stays typable, because a CSS keyword list is a set of suggestions rather than a closed one: a value the list does not offer is still a value you can write, and pressing :kbd[Enter] commits what you typed unless you arrowed onto a row first. The typography rows draw each value as itself: weights at their weight, styles leaning, transforms applied, decorations drawn, all in the element's own typeface.
 - **Button rows**: Display, direction, wrapping, alignment and text alignment are rows of buttons, one per common value, each drawn as an icon. A handful of values have no icon that would read as them, such as `nowrap`, and those buttons carry the CSS keyword itself instead, spelled out in full rather than shortened. Hover a button to see the value it writes, click it again to clear it, and open **···** for the values the row has no room for, `wrap-reverse` among them. From the keyboard, a row is one stop: :kbd[Tab] reaches it and the arrow keys move the choice along it.

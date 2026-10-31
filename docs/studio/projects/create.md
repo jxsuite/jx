@@ -90,7 +90,7 @@ Beyond the site's URL, the Import tab has five options, and a sixth that appears
 1. **Crawl Depth**: how far from the starting page to follow links. `0` imports that one page and nothing else, on a much faster path that skips the crawl entirely.
 2. **Max Pages**: the ceiling on how many pages to capture.
 3. **Breakpoints**: how many of the site's own breakpoints your project ends up with. See below.
-4. **AI component naming**: let the model name the repeated pieces it finds (a `Card`, a `PricingRow`) instead of numbering them. It costs one model call per component found, so it's worth turning off on a wide crawl.
+4. **AI component naming**: let the model name the repeated pieces it finds (a `Card`, a `PricingRow`) instead of numbering them. It costs one model call per component found, so turn it off on wide crawls to speed up imports.
 5. **Check fidelity against the original**: after the import, build the new project, screenshot every page, and compare it against the site it came from. It roughly doubles the run, and it's the only thing that tells you how well the clone actually came out instead of what got skipped. Off by default, and absent entirely where projects are repositories rather than folders, because checking fidelity means building and running the project, which a hosted backend deliberately never does.
 
    The assistant reports the percentage per page, and alongside it the two things a percentage can't tell you: requests the rendered page made and didn't get, and any errors from building the project. A page that scores badly because fifteen images 404 is a different problem from one whose layout came out wrong, and only the first of those is quick to fix.

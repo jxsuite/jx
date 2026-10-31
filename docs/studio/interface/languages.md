@@ -12,7 +12,7 @@ code:
 
 # Languages
 
-A [multilingual Jx site](/docs/framework/site/i18n) keeps each language in its own directory (`pages/fr-ca/about.json` beside `pages/about.json`), and that is the whole mapping. There is no message catalogue and no `t()`: a translation is a **different file**, so Studio's job is to show you which files exist, which do not, and which have fallen behind.
+A [multilingual Jx site](/docs/framework/site/i18n) keeps each language in its own directory (`pages/fr-ca/about.json` beside `pages/about.json`), and that is the whole mapping. There is no message catalog and no `t()`: a translation is a **different file**, so Studio's job is to show you which files exist, which do not, and which have fallen behind.
 
 Every surface here appears only once `project.json` declares more than one locale.
 
@@ -66,7 +66,7 @@ The pane context bar's **Language** segment (:kbd[⌘K] → **Set Rendering Lang
 | **Same page in** (pane) | which **file** the pane is showing         |
 | **Language** (context)  | the `lang` and `dir` the artboard draws in |
 
-The second is how you check that a right-to-left language actually mirrors. It sets the language the canvas renders **as**. The text is whatever file is open, and the control says so. It's the same axis as breakpoint and colour scheme: a preview state, stored with the tab. It stays set when you reopen the project, and the canvas draws in it from the start, including in a second pane or at a breakpoint you add later.
+The second is how you check that a right-to-left language actually mirrors. It sets the language the canvas renders **as**. The text is whatever file is open, and the control says so. It's the same axis as breakpoint and color scheme: a preview state, stored with the tab. It stays set when you reopen the project, and the canvas draws in it from the start, including in a second pane or at a breakpoint you add later.
 
 With no language chosen, the canvas draws in the file's own language: the language of the folder it sits in, for a page or a collection entry alike, or the project's default. An Arabic translation mirrors as soon as you open it. The bar only names a language when it differs from the file's own, so a French page open in a French pane reads as it always did. If the project stops listing a language a pane was set to, the pane goes back to the file's own.
 

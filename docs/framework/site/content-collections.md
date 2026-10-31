@@ -166,7 +166,7 @@ Each entry also carries what the loader worked out: `_meta.path` is its file rel
 
 ## Links between entries
 
-A document written for an editor links to its neighbours by file: `[Swap](../Linux/Swap%20Configuration.md)`. On the built site that has to be the neighbour's URL, so a content type with a `route` rewrites those links once the whole collection has loaded.
+A document written for an editor links to its neighbors by file: `[Swap](../Linux/Swap%20Configuration.md)`. On the built site that has to be the neighbor's URL, so a content type with a `route` rewrites those links once the whole collection has loaded.
 
 - The path is resolved from the entry's own folder, with `%20` and other escapes decoded and `..` followed, and it never leaves the source folder: a link that climbs out of it is not rewritten and is reported.
 - A link to a folder (`../Frappe/`) goes to that folder's `README.md` or `index.md`.
@@ -265,7 +265,7 @@ Frontmatter and data fields live under `data` (`${state.post.data.title}`); for 
 
 Markdown headings in `$children` carry automatic anchor `id`s: the heading text lowercased, punctuation stripped, spaces hyphenated, with `-2`, `-3` suffixes deduplicating repeats in document order. The entry's table of contents (`_meta.toc`: `depth`, `text`, `id` per heading) uses the same ids, so TOC links, search results, and hand-written `#fragment` URLs all land on the rendered section.
 
-Two details of that are worth knowing if you write in anything but English. **Letters outside ASCII are kept**, so a Japanese or Russian heading gets an anchor made of its own words rather than an empty one falling back to `section`. And an accented heading gets **one** anchor whichever way it was typed: `é` can be a single character or an `e` with a combining accent, they look identical and used to produce two different links, so the text is normalized before the id is built. Anchors for plain-ASCII headings are unchanged, so existing links still work.
+For languages outside English, **letters outside ASCII are kept**: a Japanese or Russian heading gets an anchor made of its own words rather than falling back to an empty `section`. An accented heading gets **one** anchor whichever way it was typed. Because `é` as a single character and `e` with a combining accent look identical, text is normalized before the id is built. Anchors for plain-ASCII headings are unchanged, so existing links still work.
 
 `_meta.wordCount` and `_meta.readingTime` count **words as the language defines them**, not runs of text between spaces. A Japanese or Thai article has no spaces between its words and used to count as one word, and therefore as one minute to read however long it was. Reading time is word count at 200 words per minute; that rate is a single honest constant rather than a per-language table, so treat it as an estimate for prose in any script.
 
