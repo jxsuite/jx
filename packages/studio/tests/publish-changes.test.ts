@@ -12,7 +12,20 @@ import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { NotifyCall } from "./notify-mock";
+import type { PromptDialogOptions } from "../src/ui/layers";
 import type { GitStatusResult, SiteBuildResult, StudioPlatform } from "../src/types";
+
+let promptAnswer: string | null = null;
+const prompts: { headline: string; opts: PromptDialogOptions }[] = [];
+// Every other export stays real: modules this one loads draw through the layers too.
+const realLayers = await import("../src/ui/layers.js");
+void mock.module("../src/ui/layers.js", () => ({
+  ...realLayers,
+  showPromptDialog: async (headline: string, opts: PromptDialogOptions) => {
+    prompts.push({ headline, opts });
+    return promptAnswer;
+  },
+}));
 
 let deploys = 0;
 let deployResult = true;
@@ -77,6 +90,8 @@ beforeEach(() => {
   deploys = 0;
   deployResult = true;
   notes.length = 0;
+  promptAnswer = null;
+  prompts.length = 0;
 });
 
 describe("the review branch", () => {
@@ -185,6 +200,27 @@ describe("destinations", () => {
     expect(pc.destinationChoices("review")[1]?.note).toBe(
       "Commits to pricing and opens a pull request from it into the default branch.",
     );
+  });
+
+  test("…unless the host commits a branch of its own: then review from the default branch saves to one", () => {
+    install({
+      createPullRequest: async () => ({ number: 1, url: "u" }),
+      gitCommitBranch: async (opts) => ({ branch: opts.branch, kept: [], moved: [], sha: "c" }),
+      gitHosted: true,
+    });
+    status([]);
+    shell.git.branches = { branches: ["main"], current: "main", defaultBranch: "main" };
+    expect(pc.reviewRefusal()).toBe("");
+    expect(pc.destinationChoices("review")[1]?.note).toBe(
+      "Saves to a new studio/ branch on GitHub and opens a pull request into main.",
+    );
+    shell.git.commitMessage = "Pricing page";
+    expect(pc.destinationChoices("review")[1]?.note).toBe(
+      "Saves to studio/pricing-page on GitHub and opens a pull request into main.",
+    );
+    // A host that never said which branch is the default is still refused.
+    shell.git.branches = { branches: ["main"], current: "main" };
+    expect(pc.reviewRefusal()).toMatch(/^Every commit to the default branch/);
   });
 
   test("the primary button names what it will do", () => {
@@ -469,7 +505,161 @@ describe("publishChanges", () => {
     expect(shell.git.commitMessage).toBe("Cloud review");
   });
 
+  test("…and from the default branch, a host that commits branches saves the review to one", async () => {
+    const requests: unknown[] = [];
+    const branched: unknown[] = [];
+    install({
+      createPullRequest: async (request) => {
+        requests.push(request);
+        return { number: 8, url: "u" };
+      },
+      gitCommitBranch: async (opts) => {
+        branched.push(opts);
+        return { branch: opts.branch, kept: [], moved: ["a.json"], sha: "c" };
+      },
+      gitHosted: true,
+    });
+    status([{ path: "a.json", staged: true, status: "M" }]);
+    shell.git.branches = { branches: ["main"], current: "main", defaultBranch: "main" };
+    shell.git.commitMessage = "Cloud review";
+    expect(await pc.publishChanges("review")).toBe(true);
+    expect(branched).toEqual([{ branch: "studio/cloud-review", message: "Cloud review" }]);
+    expect(asked()).not.toContain("gitCommit");
+    expect(requests).toEqual([
+      { base: "main", head: "studio/cloud-review", title: "Cloud review" },
+    ]);
+    expect(pc.lastPullRequest()?.number).toBe(8);
+  });
+
   test("no pull request is on record before one is opened", () => {
     expect(pc.lastPullRequest()).toBeNull();
+  });
+});
+
+describe("a publish the remote conflicts with", () => {
+  /** What a hosted backend refuses a commit with when the branch moved under overlapping edits. */
+  function conflict(paths: string[]): Error {
+    return Object.assign(new Error("Local changes conflict with remote updates"), {
+      code: "pull_conflict",
+      conflicts: paths,
+    });
+  }
+
+  const branched: unknown[] = [];
+  const requests: unknown[] = [];
+  let pulls = 0;
+
+  /** A cloud host whose commit to `main` is refused for `paths`. */
+  function hosted(paths: string[], overrides: Partial<StudioPlatform> = {}) {
+    branched.length = 0;
+    requests.length = 0;
+    pulls = 0;
+    const installed = install({
+      createPullRequest: async (request) => {
+        requests.push(request);
+        return { number: 21, url: "https://github.test/pr/21" };
+      },
+      gitCommit: async () => {
+        throw conflict(paths);
+      },
+      gitCommitBranch: async (opts) => {
+        branched.push(opts);
+        return { branch: opts.branch, kept: [], moved: paths, sha: "c9" };
+      },
+      gitHosted: true,
+      gitPull: async () => {
+        pulls += 1;
+      },
+      ...overrides,
+    });
+    status([{ path: "a.json", staged: true, status: "M" }]);
+    shell.git.branches = { branches: ["main"], current: "main", defaultBranch: "main" };
+    return installed.platform;
+  }
+
+  test("offers a branch of its own, naming the files, and publishes there on confirm", async () => {
+    hosted(["pages/a.json", "pages/b.json", "pages/c.json", "pages/d.json"]);
+    shell.git.commitMessage = "Update photos";
+    promptAnswer = "studio/photos";
+    expect(await pc.publishChanges("live")).toBe(true);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]?.headline).toBe("Publish to a New Branch");
+    expect(prompts[0]?.opts).toMatchObject({
+      confirmLabel: "Publish to branch",
+      value: "studio/update-photos",
+    });
+    expect(prompts[0]?.opts.message).toBe(
+      "main changed on GitHub after these edits began, and 4 files changed on both sides " +
+        "(pages/a.json, pages/b.json, pages/c.json and 1 more). Publish your changes to a branch " +
+        "of their own instead, and a pull request will bring them into main.",
+    );
+    expect(prompts[0]?.opts.validate?.("  ", "")).toBe("Enter a branch name.");
+    expect(prompts[0]?.opts.validate?.("x", "")).toBe("");
+    expect(branched).toEqual([{ branch: "studio/photos", message: "Update photos" }]);
+    expect(requests).toEqual([{ base: "main", head: "studio/photos", title: "Update photos" }]);
+    expect(pc.lastPullRequest()).toEqual({ number: 21, url: "https://github.test/pr/21" });
+    // The colliding edits have left the session, so it is brought up to date.
+    expect(pulls).toBe(1);
+    expect(notes.at(-1)).toMatchObject({
+      message: "Published to studio/photos. Pull request #21 brings it into main.",
+    });
+    expect(shell.git.error).toBeNull();
+    expect(shell.git.commitMessage).toBe("");
+  });
+
+  test("declining keeps the change set, the summary and the reason", async () => {
+    hosted(["pages/a.json"]);
+    shell.git.commitMessage = "Update";
+    expect(await pc.publishChanges("live")).toBe(false);
+    expect(prompts[0]?.opts.message).toMatch(/and 1 file changed on both sides \(pages\/a\.json\)/);
+    expect(branched).toEqual([]);
+    expect(shell.git.commitMessage).toBe("Update");
+    expect(shell.git.error).toBe("Local changes conflict with remote updates");
+    expect(shell.git.loading).toBe(false);
+  });
+
+  test("a branch that cannot be made says why and gives the summary back", async () => {
+    hosted(["pages/a.json"], {
+      gitCommitBranch: async () => {
+        throw Object.assign(new Error("A branch named studio/x already exists"), {
+          code: "branch_exists",
+        });
+      },
+    });
+    shell.git.commitMessage = "Update";
+    promptAnswer = "studio/x";
+    expect(await pc.publishChanges("live")).toBe(false);
+    expect(shell.git.error).toBe("A branch named studio/x already exists");
+    expect(shell.git.commitMessage).toBe("Update");
+    expect(shell.git.loading).toBe(false);
+    expect(requests).toEqual([]);
+  });
+
+  test("without a pull request member, it says where the change set went; a failed pull is not its failure", async () => {
+    const platform = hosted(["pages/a.json"], {
+      gitPull: async () => {
+        throw new Error("still conflicting");
+      },
+    });
+    delete platform.createPullRequest;
+    shell.git.commitMessage = "Update";
+    promptAnswer = "studio/update";
+    expect(await pc.publishChanges("live")).toBe(true);
+    expect(notes.at(-1)).toMatchObject({ message: "Published to studio/update." });
+    expect(shell.git.error).toBeNull();
+  });
+
+  test("a host that cannot commit a branch reports the conflict as before", async () => {
+    delete hosted(["pages/a.json"]).gitCommitBranch;
+    shell.git.commitMessage = "Update";
+    expect(await pc.publishChanges("live")).toBe(false);
+    expect(prompts).toEqual([]);
+    expect(shell.git.error).toBe("Local changes conflict with remote updates");
+  });
+
+  test("publishAsBranch does nothing on a host without the member", async () => {
+    install();
+    expect(await pc.publishAsBranch("x", ["a"])).toBe(false);
+    expect(prompts).toEqual([]);
   });
 });

@@ -1944,6 +1944,61 @@ describe("git surface (full sweep)", () => {
     expect(calls.filter((c) => c.init?.method === "POST").length).toBeGreaterThanOrEqual(7);
   });
 
+  test("commit-branch posts the branch and summary and answers what moved", async () => {
+    const answer = { branch: "studio/fix", kept: [], moved: ["a.md"], sha: "c1" };
+    const calls = mockFetch({ "/git/commit-branch": { body: { ...answer, ok: true } } });
+    const p = createCloudPlatform(PROJECT);
+    expect(await p.gitCommitBranch?.({ branch: "studio/fix", message: "Fix" })).toMatchObject(
+      answer,
+    );
+    const posted = calls.find((call) => call.url.endsWith("/git/commit-branch"));
+    expect(posted?.init?.method).toBe("POST");
+    expect(JSON.parse(String(posted?.init?.body))).toEqual({
+      branch: "studio/fix",
+      message: "Fix",
+    });
+  });
+
+  test("a refused commit carries its code and the files the remote shares with it", async () => {
+    mockFetch({
+      "/git/commit": {
+        body: {
+          code: "pull_conflict",
+          conflicts: ["a.md", 7, "b.md"],
+          error: "Local changes conflict with remote updates",
+        },
+        status: 409,
+      },
+    });
+    const refused = await createCloudPlatform(PROJECT)
+      .gitCommit("Ship")
+      .then(
+        () => null,
+        (error: Error) => error,
+      );
+    expect(refused).toMatchObject({
+      code: "pull_conflict",
+      conflicts: ["a.md", "b.md"],
+      message: "Local changes conflict with remote updates",
+    });
+  });
+
+  test("a branch name already taken is refused with its code", async () => {
+    mockFetch({
+      "/git/commit-branch": {
+        body: { code: "branch_exists", error: "A branch named main already exists" },
+        status: 409,
+      },
+    });
+    const commitBranch = createCloudPlatform(PROJECT).gitCommitBranch;
+    expect(commitBranch).toBeDefined();
+    const taken = await commitBranch?.({ branch: "main", message: "Ship" }).then(
+      () => null,
+      (error: Error) => error,
+    );
+    expect(taken).toMatchObject({ code: "branch_exists" });
+  });
+
   test("checkout navigates bound sessions and no-ops without a project", async () => {
     mockFetch({});
     await createCloudPlatform(null).gitCheckout("dev"); // Guard path.

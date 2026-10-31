@@ -37,6 +37,7 @@ import type {
   FsEvent,
   FsResyncReason,
   GitBranchesResult,
+  GitCommitBranchResult,
   GitLogEntry,
   GitStatusResult,
   ImportProgressEvent,
@@ -220,6 +221,7 @@ interface StructuredBody extends ErrorBody {
   actions?: JsonValue;
   heading?: JsonValue;
   retry?: JsonValue;
+  conflicts?: JsonValue;
 }
 
 /** What {@link platformError} carries on the Error it returns: the HTTP status, plus what it found. */
@@ -270,6 +272,10 @@ async function platformError(res: Response, fallback: string): Promise<Error> {
   }
   if (retry !== undefined) {
     details.retry = retry;
+  }
+  const conflicts = body?.conflicts;
+  if (Array.isArray(conflicts)) {
+    details.conflicts = conflicts.filter((path) => isString(path));
   }
   return Object.assign(new Error(problemDetail(body) ?? fallback), details);
 }
@@ -1588,6 +1594,14 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
 
     async gitCreateBranch(name: string) {
       await okJson(await postJson("/git/create-branch", { name }), "Failed to create branch");
+    },
+
+    /** One commit, parented on the session's base, onto a branch the backend creates for it. */
+    async gitCommitBranch(opts: { branch: string; message: string }) {
+      return okJson<GitCommitBranchResult>(
+        await postJson("/git/commit-branch", { branch: opts.branch, message: opts.message }),
+        `Could not publish to ${opts.branch}`,
+      );
     },
 
     async gitDiff(path?: string) {

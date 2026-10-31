@@ -34,6 +34,7 @@ import type {
   ExtensionsInfo,
   FsEvent,
   GitBranchesResult,
+  GitCommitBranchResult,
   GitLogEntry,
   GitStatusResult,
   ImportProgressEvent,
@@ -88,6 +89,7 @@ export type {
   ExtensionsInfo,
   FsEvent,
   GitBranchesResult,
+  GitCommitBranchResult,
   GitFileStatus,
   GitLogEntry,
   GitStatusResult,
@@ -580,6 +582,18 @@ export interface StudioPlatform {
   gitFetch: () => Promise<void>;
   gitCheckout: (branch: string) => Promise<void>;
   gitCreateBranch: (name: string) => Promise<void>;
+  /**
+   * Commit the change set as a NEW branch, parented on the commit this session's edits were made
+   * against, and take the committed files out of this session. Rejects with code `branch_exists`
+   * when the name is taken (the ref is created, never moved).
+   *
+   * The way out on a host where a branch is a session (`gitHosted`): a commit to the session's own
+   * branch that the remote conflicts with can still be published, as a branch of its own the pull
+   * request then reconciles, and a change set on a branch whose every commit is live can be sent
+   * for review without landing there first. An ordinary working tree has no need of it: there a
+   * branch is created and checked out with the changes still in it (studio.md §22.8).
+   */
+  gitCommitBranch?: (opts: { branch: string; message: string }) => Promise<GitCommitBranchResult>;
   gitDiff: (path?: string) => Promise<string>;
   gitShow: (opts: { path: string; ref?: string }) => Promise<string>;
   gitDiscard: (files: string[]) => Promise<void>;

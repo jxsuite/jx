@@ -10,8 +10,16 @@
  * a host that opens pull requests (`createPullRequest`); on one that does not (the dev server and
  * the desktop app today) it is drawn disabled with that sentence rather than falling back to a
  * branch push that opens nothing. On a host whose branches are sessions (`gitHosted`, the cloud) a
- * branch cannot be made and committed to mid-flow, so review there commits to the session's own
- * branch and opens the pull request from it, and the destination's note says so.
+ * branch cannot be checked out mid-flow, so review there commits to the session's own branch and
+ * opens the pull request from it; on the default branch, where every commit is live, the change set
+ * is committed as a branch of its own instead (`gitCommitBranch`), and the destination's note says
+ * which.
+ *
+ * **A remote that moved is not a dead end.** On such a host a commit the remote's newer changes
+ * overlap is refused with the files they share ({@link remoteConflictsOf}). The author is then
+ * offered the same branch of its own: {@link publishAsBranch} commits the change set onto the base
+ * it was edited against, which cannot conflict, and opens a pull request into the branch that
+ * moved, where GitHub reconciles the two.
  *
  * **Every word a control shows is decided here**, so the workspace and the dialog cannot disagree
  * about what a button does: {@link destinationChoices}, {@link publishLabel} and
@@ -24,6 +32,8 @@
 import { errorMessage } from "@jxsuite/schema/parse";
 import { flushAllCollab } from "../collab/collab-session";
 import { getPlatform, hasPlatform } from "../platform";
+import { remoteConflictsOf } from "../platform-errors";
+import { showPromptDialog } from "../ui/layers";
 import { notify } from "../services/notify";
 import { shell } from "../shell";
 import { projectState } from "../store";
@@ -71,6 +81,21 @@ export function reviewBranchName(summary: string): string {
   return `studio/${slug.replace(/-$/, "") || "changes"}`;
 }
 
+/**
+ * Whether this host can commit a change set as a branch of its own without checking it out
+ * (`StudioPlatform.gitCommitBranch`): what lets the cloud send a review from the default branch and
+ * publish a change set the remote has conflicted with.
+ */
+export function platformCommitsBranches(): boolean {
+  return hasPlatform() && getPlatform().gitCommitBranch !== undefined;
+}
+
+/** Whether review on this host commits a branch of its own rather than the session's branch. */
+function reviewBranchesOff(): boolean {
+  const base = defaultBranch();
+  return platformHostsGit() && platformCommitsBranches() && base !== "" && currentBranch() === base;
+}
+
 /** One destination, as a radio card draws it. */
 export interface DestinationChoice {
   value: PublishDestination;
@@ -108,6 +133,9 @@ export function reviewRefusal(): string {
        publish by accident. */
     const base = defaultBranch();
     const branch = currentBranch();
+    if (reviewBranchesOff()) {
+      return "";
+    }
     if (!base || !branch || branch === base) {
       return (
         `Every commit to ${base || "the default branch"} on this host is live. Create a branch ` +
@@ -140,14 +168,17 @@ function liveNote(): string {
 /** What Send for review does, said before it runs. */
 function reviewNote(): string {
   const branch = currentBranch() || "the current branch";
+  const summary = shell.git.commitMessage.trim();
+  const head = summary ? reviewBranchName(summary) : "a new studio/ branch";
+  if (reviewBranchesOff()) {
+    return `Saves to ${head} on GitHub and opens a pull request into ${branch}.`;
+  }
   if (platformHostsGit()) {
     return (
       `Commits to ${branch} and opens a pull request from it into ` +
       `${defaultBranch() || "the default branch"}.`
     );
   }
-  const summary = shell.git.commitMessage.trim();
-  const head = summary ? reviewBranchName(summary) : "a new studio/ branch";
   return `Saves to ${head}, pushes it and opens a pull request into ${branch}.`;
 }
 
@@ -424,9 +455,102 @@ export async function publishChanges(
     await refreshGitStatus();
     return shipped;
   } catch (error) {
+    const conflicts = committed ? null : remoteConflictsOf(error);
+    if (conflicts && platformCommitsBranches()) {
+      shell.git.loading = false;
+      if (await publishAsBranch(message, conflicts)) {
+        return true;
+      }
+      // Declined: the refusal still stands, and it is what the author must read.
+      shell.git.error ??= errorMessage(error);
+      return false;
+    }
     shell.git.error = errorMessage(error);
     shell.git.loading = false;
     // A push that failed after the commit landed must not offer the same summary again.
+    if (!committed) {
+      restoreSummary(message);
+    }
+    return false;
+  }
+}
+
+/** Up to three paths, then how many more: what a sentence can name of a list of files. */
+function namePaths(paths: readonly string[]): string {
+  const shown = paths.slice(0, 3).join(", ");
+  return paths.length > 3 ? `${shown} and ${paths.length - 3} more` : shown;
+}
+
+/**
+ * Offer to publish a change set the remote has conflicted with as a branch of its own, and do it.
+ *
+ * Asked, never assumed: the author named a destination, and this is a different one. The dialog
+ * says which files collided and what will happen, and the branch name it proposes is the one Send
+ * for review would use, editable. Confirming commits the change set onto the base it was edited
+ * against (`gitCommitBranch`, which cannot conflict), opens a pull request from it into the branch
+ * that moved, and pulls that branch up to date now that the colliding changes have left it.
+ * Cancelling puts the summary back, as any publish that never committed does.
+ *
+ * @param message The summary the refused commit was made with.
+ * @param conflicts The files the remote changed that this change set changes too.
+ * @returns Whether the change set reached the new branch.
+ */
+export async function publishAsBranch(
+  message: string,
+  conflicts: readonly string[],
+): Promise<boolean> {
+  const plat = getPlatform();
+  const commitBranch = plat.gitCommitBranch;
+  if (!commitBranch) {
+    return false;
+  }
+  const current = currentBranch() || "this branch";
+  const count = conflicts.length === 1 ? "1 file" : `${conflicts.length} files`;
+  const name = await showPromptDialog("Publish to a New Branch", {
+    confirmLabel: "Publish to branch",
+    message:
+      `${current} changed on GitHub after these edits began, and ${count} changed on both sides ` +
+      `(${namePaths(conflicts)}). Publish your changes to a branch of their own instead, and a ` +
+      `pull request will bring them into ${current}.`,
+    value: reviewBranchName(message),
+    validate: (value) => (value.trim() ? "" : "Enter a branch name."),
+  });
+  if (!name) {
+    restoreSummary(message);
+    return false;
+  }
+  shell.git.loading = true;
+  shell.git.error = null;
+  let committed = false;
+  try {
+    const result = await commitBranch({ branch: name, message });
+    committed = true;
+    const open = plat.createPullRequest;
+    const base = currentBranch();
+    const pr = open && base ? await open({ base, head: result.branch, title: message }) : null;
+    if (pr) {
+      shell.publish.review.number = pr.number;
+      shell.publish.review.url = pr.url;
+    }
+    notify.success(
+      pr
+        ? `Published to ${result.branch}. Pull request #${pr.number} brings it into ${base}.`
+        : `Published to ${result.branch}.`,
+      { detail: pr?.url ?? "", key: "publish.branch", source: "Publish" },
+    );
+    /* The colliding edits have left this session, so it can fast-forward to the remote now. A
+       pull that still cannot (another collaborator's edit overlaps too) is not this publish's
+       failure: the status says the branch is behind, and Pull says why. */
+    try {
+      await plat.gitPull();
+    } catch {
+      // Reported by the next Pull, where it can be acted on.
+    }
+    await refreshGitStatus();
+    return true;
+  } catch (error) {
+    shell.git.error = errorMessage(error);
+    shell.git.loading = false;
     if (!committed) {
       restoreSummary(message);
     }
@@ -454,6 +578,14 @@ async function commitForReview(
   message: string,
   onCommitted: () => void,
 ): Promise<PullRequestRequest> {
+  if (reviewBranchesOff() && plat.gitCommitBranch) {
+    /* Every commit to the default branch here is live, so the change set goes to a branch of its
+       own, parented on the session's base, and leaves the session: it is the pull request's now. */
+    const base = currentBranch();
+    const { branch } = await plat.gitCommitBranch({ branch: reviewBranchName(message), message });
+    onCommitted();
+    return { base, head: branch, title: message };
+  }
   if (platformHostsGit()) {
     // `reviewRefusal` has already refused the default branch, so this commit is not a live one.
     await plat.gitCommit(message);

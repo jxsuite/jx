@@ -44,8 +44,16 @@ Review changes and the quick publish dialog both offer two destinations, and eac
 - **Send for review** saves the change to a new branch named after your summary (`studio/add-a-pricing-page`), pushes it, and opens a pull request into the branch you were on. Once you have typed a summary, the choice names the branch it will create. It needs a host that can open pull requests. Where yours can't, the choice is drawn disabled with that reason, rather than pushing a branch that opens nothing.
 
 :::doc-note
-In Jx Cloud, every commit lands on GitHub as you make it, and each branch opens in a session of its own. So Send for review there opens the pull request from the branch you are on into the repository's default branch. On the default branch itself the choice is disabled, because a commit there would already be live: create a branch under **Publish › Branches** first, then send it for review from there.
+In Jx Cloud, every commit lands on GitHub as you make it, and each branch opens in a session of its own. So Send for review from a branch of your own opens the pull request from that branch into the repository's default branch. From the default branch itself, a commit there would already be live, so Send for review saves your changes to a new `studio/` branch on GitHub instead, takes them out of the default branch's session, and opens the pull request from the new branch.
 :::
+
+### When the branch moved while you were editing
+
+In Jx Cloud, someone else can publish to the same branch while you are still editing it. If their changes touch the same files as yours, your publish can't land on that branch as it stands, so Studio asks whether to **Publish to a New Branch** instead. The dialog names the branch that moved and the files both of you changed, and suggests a branch name based on your summary, which you can change.
+
+Confirm, and Studio saves your changes to that new branch, opens a pull request from it into the branch that moved, and brings your session up to date with everyone else's changes. Resolve the overlap in the pull request on GitHub, then merge it. Choose **Cancel** to keep your changes where they are, with your summary.
+
+Files you changed in exactly the same way as the published version don't count as a conflict. Studio treats them as already published.
 
 ## The four views
 

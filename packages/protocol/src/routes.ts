@@ -382,6 +382,14 @@ export const STUDIO_ROUTES = {
   gitFetch: route("POST", "/__studio/git/fetch", "Refresh remote tracking state"),
   gitCheckout: route("POST", "/__studio/git/checkout", "Switch branches"),
   gitCreateBranch: route("POST", "/__studio/git/create-branch", "Create a branch"),
+  gitCommitBranch: route(
+    "POST",
+    "/__studio/git/commit-branch",
+    "Commit the change set as a NEW branch off the session's base, then take it out of this one " +
+      "→ GitCommitBranchResult; 409 branch_exists",
+    "A publish the remote conflicts with reports the conflict alone, and Send for review stays " +
+      "refused on a branch whose every commit is live.",
+  ),
   gitDiff: route("GET", "/__studio/git/diff", "Unified diff of dirty files (or one path)"),
   gitShow: route("GET", "/__studio/git/show", "File content at a ref"),
   gitDiscard: route("POST", "/__studio/git/discard", "Discard working changes"),

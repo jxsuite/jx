@@ -26,6 +26,8 @@ export interface PlatformErrorInfo {
   heading?: string;
   /** What to do once one of its actions is done. */
   retry?: RetryHint;
+  /** The paths a `conflict` names: the files the remote changed that this side changed too. */
+  conflicts?: string[];
 }
 
 const RETRY_HINTS = new Set<string>(["reload", "repeat", "none"]);
@@ -90,7 +92,7 @@ export function platformErrorInfo(cause: unknown): PlatformErrorInfo {
   if (!isJsonObject(cause)) {
     return {};
   }
-  const { actions, code, heading, installUrl, retry, type } = cause;
+  const { actions, code, conflicts, heading, installUrl, retry, type } = cause;
   const info: PlatformErrorInfo = {};
   // A problem type wins over a legacy code: it is the shape the backend is migrating toward.
   const derived = problemSlug(type) ?? (isString(code) ? normalizeCode(code) : null);
@@ -109,7 +111,21 @@ export function platformErrorInfo(cause: unknown): PlatformErrorInfo {
   if (isRetryHint(retry)) {
     info.retry = retry;
   }
+  if (Array.isArray(conflicts)) {
+    info.conflicts = conflicts.filter((path) => isString(path));
+  }
   return info;
+}
+
+/**
+ * The files a refused publish overlaps on the remote, when the error is that refusal: a pull or a
+ * commit the remote has moved under, whose changes touch the same paths (`pull_conflict`, or the
+ * `conflict` problem type carrying `conflicts`). Null for every other failure.
+ */
+export function remoteConflictsOf(cause: unknown): string[] | null {
+  const info = platformErrorInfo(cause);
+  const conflicting = info.code === "pull-conflict" || info.code === "conflict";
+  return conflicting && info.conflicts ? info.conflicts : null;
 }
 
 /** The GitHub-App install link when the error is the structured needs-installation 403. */
