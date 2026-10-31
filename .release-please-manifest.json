@@ -17,7 +17,7 @@
   "packages/protocol": "6.0.0",
   "packages/collab": "0.11.4",
   "packages/formulas": "0.0.26",
-  "extensions/search": "0.4.3",
+  "extensions/search": "0.5.0",
   "extensions/feed": "0.4.4",
   "packages/catalog": "0.1.4",
   "packages/ui": "0.8.2"
