@@ -81,3 +81,7 @@ packages/desktop/tests/_fixtures_content/*.schema.json
 packages/desktop/snap-stage/
 packages/desktop/*.snap
 packages/desktop/build-resources/embedded.provisionprofile
+
+# A local checkout of a third-party tree (vendor/electrobun once landed on main as an orphan gitlink
+# with no .gitmodules entry, and every actions/checkout cleanup then failed on it).
+/vendor/
