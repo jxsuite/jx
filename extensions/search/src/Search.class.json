@@ -37,6 +37,11 @@
         "identifier": "locale",
         "type": { "type": ["string", "null"] },
         "description": "Language to search in \u2014 omitted, the page's own (<html lang>); null searches every language"
+      },
+      "scope": {
+        "identifier": "scope",
+        "type": { "type": "string" },
+        "description": "URL prefix a result must fall within (e.g. /example/docs/): a literal or a $ref into page state; omitted, the whole index"
       }
     },
     "constructor": {
@@ -46,7 +51,8 @@
         { "$ref": "#/$defs/parameters/limit" },
         { "$ref": "#/$defs/parameters/group" },
         { "$ref": "#/$defs/parameters/index" },
-        { "$ref": "#/$defs/parameters/locale" }
+        { "$ref": "#/$defs/parameters/locale" },
+        { "$ref": "#/$defs/parameters/scope" }
       ],
       "body": ["this.config = config;"]
     },
