@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.2-draft\
+**Version:** 0.16.3-draft\
 **Status:** Partial\
-**Updated:** 2026-10-29\
+**Updated:** 2026-10-31\
 **License:** MIT
 
 ---
@@ -2221,6 +2221,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.3-draft** (2026-10-31) — §22.8: a hosted publish the remote conflicts with offers Publish to a New Branch (gitCommitBranch, a pull request into the moved branch, then a pull), and Send for review from the default branch commits a studio/ branch of its own where the host can; §5.5 lists git/commit-branch.
 - **0.16.2-draft** (2026-10-29) — A right-click on a Media library tile selects it and offers the detail pane's actions: Open in Viewer, Copy Site URL, Replace and Delete.
 - **0.16.1-draft** (2026-10-29) — Desktop source paths follow the reorganization by process: src/main, src/preload, src/backend, src/webview and src/shared.
 - **0.16.0-draft** (2026-10-27) — openProject is optional on the platform, and capability.openProject gates Open Project: the command, the welcome action and the Files panel's button are absent on a host with no dialog and no repository picker, where the Files panel says to open a project from ?project=.
@@ -2425,4 +2426,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.2-draft_
+_`@jxsuite/studio` Specification v0.16.3-draft_
