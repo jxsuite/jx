@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/jxsuite/jx/compare/search-v0.4.3...search-v0.5.0) (2026-10-31)
+
+
+### Features
+
+* **search:** a scope filter searches one part of a site from one index ([#518](https://github.com/jxsuite/jx/issues/518)) ([d32b9b9](https://github.com/jxsuite/jx/commit/d32b9b92c61e569790ed782f9c3a1e10f599ed0a))
+
 ## [0.4.3](https://github.com/jxsuite/jx/compare/search-v0.4.2...search-v0.4.3) (2026-10-29)
 
 
