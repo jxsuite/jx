@@ -17,6 +17,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
+import { problem } from "./problem.ts";
 import type { ServeOptions, ServeServer, ServeSocket } from "./serve.ts";
 
 export type * from "./serve.ts";
@@ -260,13 +261,9 @@ export async function serve<Data = undefined>(
         response = await options.fetch(toRequest(nodeReq, origin, controller.signal), server);
       } catch (error) {
         console.error("[serve]", error);
-        response = new Response("Internal Server Error", { status: 500 });
+        response = problem("internalError");
       }
-      await writeResponse(
-        response ?? new Response("Internal Server Error", { status: 500 }),
-        res,
-        method,
-      );
+      await writeResponse(response ?? problem("internalError"), res, method);
     })();
   });
 
@@ -280,10 +277,10 @@ export async function serve<Data = undefined>(
         response = await options.fetch(req, server);
       } catch (error) {
         console.error("[serve]", error);
-        response = new Response("Internal Server Error", { status: 500 });
+        response = problem("internalError");
       }
       if (!upgrade.taken) {
-        await rejectUpgrade(socket, response ?? new Response("Upgrade failed", { status: 400 }));
+        await rejectUpgrade(socket, response ?? problem("invalidRequest", "Upgrade failed"));
       }
     })();
   });
