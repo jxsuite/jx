@@ -165,8 +165,9 @@ describe("refusals", () => {
     const before = registry.requests.length;
     const res = await call(body);
     expect(res.status).toBe(400);
-    const { error } = await res.json();
-    expect(error).toContain(message);
+    expect(res.headers.get("content-type")).toBe("application/problem+json");
+    const { detail } = await res.json();
+    expect(detail).toContain(message);
     expect(registry.requests.length).toBe(before);
   });
 
@@ -183,8 +184,10 @@ describe("refusals", () => {
       }),
     );
     expect(large.status).toBe(413);
+    expect(large.headers.get("content-type")).toBe("application/problem+json");
     const unknown = await handlePackagesRequest(new Request("http://service/other"));
     expect(unknown.status).toBe(404);
+    expect(unknown.headers.get("content-type")).toBe("application/problem+json");
     const health = await handlePackagesRequest(new Request("http://service/health"));
     expect(await health.json()).toEqual({ ok: true });
   });

@@ -269,9 +269,11 @@ describe("serve (node:http)", () => {
       });
       const thrown = await fetch(throwing.url);
       expect(thrown.status).toBe(500);
+      expect(thrown.headers.get("content-type")).toBe("application/problem+json");
       const empty = await start({ fetch: () => {} });
       const unanswered = await fetch(empty.url);
       expect(unanswered.status).toBe(500);
+      expect(unanswered.headers.get("content-type")).toBe("application/problem+json");
     } finally {
       console.error = original;
     }
