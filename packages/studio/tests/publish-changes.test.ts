@@ -554,7 +554,7 @@ describe("a publish the remote conflicts with", () => {
     branched.length = 0;
     requests.length = 0;
     pulls = 0;
-    install({
+    const installed = install({
       createPullRequest: async (request) => {
         requests.push(request);
         return { number: 21, url: "https://github.test/pr/21" };
@@ -574,6 +574,7 @@ describe("a publish the remote conflicts with", () => {
     });
     status([{ path: "a.json", staged: true, status: "M" }]);
     shell.git.branches = { branches: ["main"], current: "main", defaultBranch: "main" };
+    return installed.platform;
   }
 
   test("offers a branch of its own, naming the files, and publishes there on confirm", async () => {
@@ -592,8 +593,8 @@ describe("a publish the remote conflicts with", () => {
         "(pages/a.json, pages/b.json, pages/c.json and 1 more). Publish your changes to a branch " +
         "of their own instead, and a pull request will bring them into main.",
     );
-    expect(prompts[0]?.opts.validate?.("  ")).toBe("Enter a branch name.");
-    expect(prompts[0]?.opts.validate?.("x")).toBe("");
+    expect(prompts[0]?.opts.validate?.("  ", "")).toBe("Enter a branch name.");
+    expect(prompts[0]?.opts.validate?.("x", "")).toBe("");
     expect(branched).toEqual([{ branch: "studio/photos", message: "Update photos" }]);
     expect(requests).toEqual([{ base: "main", head: "studio/photos", title: "Update photos" }]);
     expect(pc.lastPullRequest()).toEqual({ number: 21, url: "https://github.test/pr/21" });
@@ -635,12 +636,12 @@ describe("a publish the remote conflicts with", () => {
   });
 
   test("without a pull request member, it says where the change set went; a failed pull is not its failure", async () => {
-    hosted(["pages/a.json"], {
-      createPullRequest: undefined,
+    const platform = hosted(["pages/a.json"], {
       gitPull: async () => {
         throw new Error("still conflicting");
       },
     });
+    delete platform.createPullRequest;
     shell.git.commitMessage = "Update";
     promptAnswer = "studio/update";
     expect(await pc.publishChanges("live")).toBe(true);
@@ -649,7 +650,7 @@ describe("a publish the remote conflicts with", () => {
   });
 
   test("a host that cannot commit a branch reports the conflict as before", async () => {
-    hosted(["pages/a.json"], { gitCommitBranch: undefined });
+    delete hosted(["pages/a.json"]).gitCommitBranch;
     shell.git.commitMessage = "Update";
     expect(await pc.publishChanges("live")).toBe(false);
     expect(prompts).toEqual([]);
