@@ -76,7 +76,7 @@ Bind an input to `state.q` and map over `state.results`. Each result group is a 
 }
 ```
 
-In compiled sites the def lowers to plain client code that lazily loads the bundled client and fetches the index on first use, so nothing is downloaded until the visitor actually searches. Options: `limit` (max rows, default 8), `group` (set `false` for the flat row list described below), `index` (override the index URL), `locale` (see below).
+In compiled sites the def lowers to plain client code that lazily loads the bundled client and fetches the index on first use, so nothing is downloaded until the visitor actually searches. Options: `limit` (max rows, default 8), `group` (set `false` for the flat row list described below), `index` (override the index URL), `locale` and `scope` (see below).
 
 ### On a multilingual site
 
@@ -87,6 +87,18 @@ Set `locale` to override it: a tag to search one named language, or `null` to se
 :::doc-note
 Without that default, a reader searching a French page would be handed the English copy of the page they're already on, ranked first because it matched the same words.
 :::
+
+### Searching one part of the site
+
+A site often holds parts a reader wants to search on their own: several projects' documentation behind one domain, say, each under its own prefix. Set `scope` to the URL prefix that part lives under, and only results inside it come back:
+
+```json
+"results": { "$prototype": "Search", "query": { "$ref": "#/state/q" }, "scope": "/example/docs/" }
+```
+
+The site still builds one index. `scope` is applied before `limit`, so a scoped search fills its rows from that part rather than keeping whichever of the site's top results happened to fall inside it. It takes a `$ref` into page state too, so a layout can give each page its own part.
+
+`scope` follows the Web App Manifest's rule for a URL being within scope: same origin, and the result's path starts with the scope's path. It is a plain prefix, so `/docs` also holds `/docs-old/`; end a folder scope with `/`. A relative scope resolves against the page's base URL, and an empty one searches everything.
 
 ## Building a search UI component
 
@@ -106,6 +118,7 @@ Interactive components aren't lowered, so inside a compiled component you use th
 
 - `searchInit(state)` preloads the index and flips `state.searchReady` (re-running any pending query).
 - `runSearch(state, e)` reads the input event, stores flat rows on `state.searchResults`, publishes the row count as `state.searchCount`, and resets `state.searchActive`. Wire it to your input's `oninput`.
+- Set `state.searchScope` to a URL prefix to search one part of the site, as `scope` does above. Leave it empty to search everything.
 
 The build bundles `npm:@jxsuite/search/client` (MiniSearch included) into `/assets/` automatically. Declare the dependency in your project's `package.json` and import it like any module.
 
@@ -115,7 +128,7 @@ The build bundles `npm:@jxsuite/search/client` (MiniSearch included) into `/asse
 Call `searchInit` when search is **opened**, not on mount. Warming the index ahead of time sounds free and is not: fetching and indexing a whole corpus is the single most expensive thing the page does, and doing it during load competes with the paint. The client handles being queried before it is ready (`query()` returns no rows and starts the load, and `searchInit` re-runs the pending query when it finishes), so booting on open costs the visitor nothing they notice.
 :::
 
-For full control, import the core API from the same module: `preload(indexUrl?)`, `isReady()`, and the synchronous `query(text, { limit, group, pageCap })`.
+For full control, import the core API from the same module: `preload(indexUrl?)`, `isReady()`, and the synchronous `query(text, { limit, group, pageCap, locale, scope })`.
 
 ## Rendering a result row
 

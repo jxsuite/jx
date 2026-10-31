@@ -13,6 +13,8 @@ const CLIENT_URL = sidecarAssetPath(CLIENT_SPECIFIER);
 /** The global the browser check probes. Bun has no `document`, so the resolve tests install one. */
 interface DocumentSlot {
   document?: object;
+  /** The client handle a lowered body keeps between runs. */
+  __jxSearch?: object;
 }
 
 const globals: DocumentSlot = globalThis;
@@ -70,6 +72,44 @@ describe("Search.lower", () => {
     expect(Search.lower({ locale: "fr-CA", query: "x" }).body).toContain('"locale":"fr-CA"');
     expect(Search.lower({ locale: null, query: "x" }).body).toContain('"locale":null');
   });
+
+  test("a literal scope is baked into the query options", () => {
+    expect(Search.lower({ query: "x" }).body).not.toContain("scope");
+    expect(Search.lower({ query: "x", scope: "/example/docs/" }).body).toContain(
+      '"scope":"/example/docs/"',
+    );
+  });
+
+  /*
+   * A `$ref` scope has to reach the client as the state value at query time, so the emitted body is
+   * run here rather than read: the options it builds are what the client is handed.
+   */
+  test("a $ref scope is read from state each time the query runs", () => {
+    const { body } = Search.lower({
+      limit: 4,
+      query: { $ref: "#/state/q" },
+      scope: { $ref: "#/state/nav/scope" },
+    });
+    const query = mock(() => []);
+    globals.__jxSearch = { m: { isReady: () => true, query } };
+    try {
+      const run = new Function("state", body);
+      run({ nav: { scope: "/example/docs/" }, q: "install" });
+      expect(query).toHaveBeenLastCalledWith("install", {
+        group: true,
+        limit: 4,
+        scope: "/example/docs/",
+      });
+      run({ nav: { scope: "/other/docs/" }, q: "install" });
+      expect(query).toHaveBeenLastCalledWith("install", {
+        group: true,
+        limit: 4,
+        scope: "/other/docs/",
+      });
+    } finally {
+      delete globals.__jxSearch;
+    }
+  });
 });
 
 describe("Search resolve", () => {
@@ -115,6 +155,16 @@ describe("Search resolve", () => {
 
     await new Search({ query: "docs" }).resolve();
     expect(query).toHaveBeenLastCalledWith("docs", { group: true, limit: 8 });
+  });
+
+  test("resolve forwards a literal scope", async () => {
+    globals.document = {};
+    const preload = mock(async () => {});
+    const query = mock(() => []);
+    await mock.module(CLIENT_URL, () => ({ preload, query }));
+
+    await new Search({ query: "docs", scope: "/example/docs/" }).resolve();
+    expect(query).toHaveBeenCalledWith("docs", { group: true, limit: 8, scope: "/example/docs/" });
   });
 
   test("indexUrl precedence: def, then _project.search.output, then default", () => {

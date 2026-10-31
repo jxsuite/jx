@@ -370,3 +370,89 @@ describe("locale scoping", () => {
     expect(query("salutations")).toHaveLength(2);
   });
 });
+
+// ─── URL scoping ────────────────────────────────────────────────────────────
+
+/*
+ * One index serves a site that holds many parts — several projects' documentation, say. A reader in
+ * one part searches that part, without the site splitting its index per part at build time.
+ */
+describe("URL scoping", () => {
+  test("only results within the scope come back", () => {
+    expect(query("install", { scope: "/docs/start/" }).map((g) => g.url)).toEqual([
+      "/docs/start/install/",
+    ]);
+    expect(query("install", { scope: "/docs/framework/" })).toEqual([]);
+  });
+
+  // A section hit carries its page's URL plus a fragment, and is within the scope its page is.
+  test("section hits are within their page's scope", () => {
+    const rows = query("search index", { group: false, scope: "/docs/framework/site/" });
+    expect(rows.map((row) => row.url)).toContain("/docs/framework/site/#search-index");
+    expect(rows.every((row) => row.url.startsWith("/docs/framework/site/"))).toBe(true);
+  });
+
+  /*
+   * The scope is applied before `limit`. Cut after, a scoped search would hand back whichever of the
+   * top rows happened to fall inside it, which on a large site is usually none.
+   */
+  test("limit counts only results within the scope", () => {
+    const unscoped = query("site install search", { limit: 1 });
+    expect(unscoped.map((g) => g.url)).toEqual(["/docs/framework/site/"]);
+    const scoped = query("site install search", { limit: 1, scope: "/docs/start/" });
+    expect(scoped.map((g) => g.url)).toEqual(["/docs/start/install/"]);
+  });
+
+  // The Web App Manifest's test is a string prefix of the path, and so is this one.
+  test("a scope without a trailing slash is a path prefix", () => {
+    expect(query("install", { scope: "/docs/sta" })).toHaveLength(1);
+  });
+
+  test("an absolute scope on another origin holds nothing", () => {
+    expect(query("install", { scope: "https://elsewhere.example/docs/" })).toEqual([]);
+  });
+
+  test("a scope that is not a URL holds nothing", () => {
+    expect(query("install", { scope: "http://[" })).toEqual([]);
+  });
+
+  test("an empty scope searches everything", () => {
+    expect(query("search index install", { scope: "" })).toEqual(query("search index install"));
+  });
+
+  // Scope and locale are two filters on the same rows, and both have to answer.
+  test("scope and locale combine", () => {
+    expect(query("salutations", { locale: null, scope: "/fr-ca/" }).map((g) => g.url)).toEqual([
+      "/fr-ca/docs/greet/",
+    ]);
+    expect(query("salutations", { locale: "en", scope: "/fr-ca/" })).toEqual([]);
+  });
+
+  // A relative scope resolves against the page's base URL, as a link on that page would.
+  test("a relative scope resolves against the document's base URL", () => {
+    const real = globals.document;
+    globals.document = {
+      baseURI: "https://site.example/docs/start/",
+      documentElement: { lang: "" },
+    };
+    try {
+      expect(query("install", { scope: "./" }).map((g) => g.url)).toEqual(["/docs/start/install/"]);
+      expect(query("install", { scope: "../framework/" })).toEqual([]);
+    } finally {
+      globals.document = real;
+    }
+  });
+
+  test("runSearch searches within state.searchScope", () => {
+    const state: SearchComponentState = { searchQuery: "install", searchScope: "/docs/framework/" };
+    expect(runSearch(state)).toEqual([]);
+    state.searchScope = "/docs/start/";
+    expect(runSearch(state).map((row) => row.url)).toEqual(["/docs/start/install/"]);
+  });
+
+  // The two state keys an author declares are document JSON; a scope that is not a string is ignored.
+  test("runSearch ignores a searchScope that is not a string", () => {
+    const state: SearchComponentState = { searchQuery: "install", searchScope: 7 };
+    expect(runSearch(state)).toHaveLength(1);
+  });
+});
