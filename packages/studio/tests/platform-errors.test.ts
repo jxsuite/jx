@@ -14,6 +14,7 @@ import {
   isActionRequired,
   offeredActions,
   platformErrorInfo,
+  remoteConflictsOf,
   retryHint,
 } from "../src/platform-errors";
 import { JOIN_OFFER } from "./shared-fixtures";
@@ -163,5 +164,28 @@ describe("retryHint", () => {
     expect(retryHint("none")).toBe("none");
     expect(retryHint("later")).toBeUndefined();
     expect(retryHint(1)).toBeUndefined();
+  });
+});
+
+describe("remoteConflictsOf", () => {
+  test("names the shared files of a refused pull or commit, in either shape", () => {
+    const legacy = Object.assign(new Error("conflict"), {
+      code: "pull_conflict",
+      conflicts: ["a.md", 3, "b.md"],
+    });
+    expect(remoteConflictsOf(legacy)).toEqual(["a.md", "b.md"]);
+    const problem = Object.assign(new Error("conflict"), {
+      conflicts: ["c.md"],
+      type: "https://jxsuite.com/problems/conflict",
+    });
+    expect(remoteConflictsOf(problem)).toEqual(["c.md"]);
+  });
+
+  test("is null for every other failure, and for a conflict that names no files", () => {
+    expect(remoteConflictsOf(new Error("down"))).toBeNull();
+    const unnamed = Object.assign(new Error("x"), { code: "pull_conflict" });
+    expect(remoteConflictsOf(unnamed)).toBeNull();
+    const other = Object.assign(new Error("x"), { code: "branch_exists", conflicts: ["a.md"] });
+    expect(remoteConflictsOf(other)).toBeNull();
   });
 });
