@@ -67,7 +67,7 @@
     "@jxsuite/starters": "workspace:^",
     "@npmcli/arborist": "^10.0.4",
     "chokidar": "^6.0.0",
-    "kysely": "^0.29.7",
+    "kysely": "^0.29.8",
     "npm-package-arg": "^14.0.0",
     "oxfmt": "^0.75.0",
     "ws": "^8.22.1",
