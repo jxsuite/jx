@@ -94,6 +94,13 @@ describe("listAccounts", () => {
     expect(byId("ai")!.detail).not.toContain("via");
   });
 
+  test("an Anthropic key is named as one, so the row says which provider it belongs to", () => {
+    seedSettings({ "jx.ai.openaiKey": AI_KEY, "jx.ai.provider": "anthropic" });
+    expect(byId("ai")!.detail).toStartWith("Anthropic key stored. Model claude-opus-5-5");
+    seedSettings({ "jx.ai.provider": "" });
+    expect(byId("ai")!.detail).toStartWith("Key stored.");
+  });
+
   test("a Cloudflare token with no account id still reads as connected", () => {
     seedSettings({ "jx.cf.token": CF_TOKEN });
     expect(byId("cloudflare")!.detail).toBe("Connected.");
@@ -117,6 +124,7 @@ describe("revokeAccount", () => {
     expect(localStorage.getItem("jx.ai.openaiKey")).toBeNull();
     expect(localStorage.getItem("jx.ai.baseUrl")).toBeNull();
     expect(localStorage.getItem("jx.ai.model")).toBeNull();
+    expect(localStorage.getItem("jx.ai.provider")).toBeNull();
   });
 
   test("Cloudflare — token and account id together", () => {

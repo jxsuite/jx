@@ -663,15 +663,22 @@ describe("@jxsuite/ai/gateway", () => {
   it("exports the gateway's runtime surface and nothing else", () => {
     expect(Object.keys(gateway).toSorted()).toEqual([
       "AI_SESSION_HEADER",
+      "ANTHROPIC_API_VERSION",
+      "ANTHROPIC_BASE_URL",
+      "ANTHROPIC_MAX_TOKENS",
       "DEFAULT_UPSTREAM_BASE_URL",
       "affinityKey",
       "createChatHandler",
       "encodeSse",
       "extractUpstreamErrorMessage",
       "isAiSessionId",
+      "isFirstPartyAnthropic",
+      "listAnthropicModels",
       "modelsResponse",
+      "normalizeAnthropicStream",
       "normalizeOpenAIStream",
       "problemResponse",
+      "toAnthropicRequest",
       "upstreamCacheHints",
     ]);
   });

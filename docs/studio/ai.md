@@ -1,6 +1,6 @@
 ---
 title: "AI assistant"
-description: "What the Studio AI assistant can do with a project or page open, how to connect an AI provider, and exactly what leaves your machine when you chat."
+description: "What the Studio AI assistant can do with a project or page open, how to connect an AI provider or Claude, and what leaves your machine when you chat."
 code:
   - packages/studio/src/panels/chat-panel.ts
   - packages/studio/src/services/ai-ask.ts
@@ -14,6 +14,7 @@ code:
   - packages/studio/src/surfaces/ai-managed-connect.ts
   - packages/studio/src/services/ai-models.ts
   - packages/studio/src/surfaces/ai-credentials-form.ts
+  - packages/studio/src/surfaces/ai-credentials-form.json
   - packages/studio/src/surfaces/ai-model-picker.ts
 ---
 
@@ -69,15 +70,24 @@ If Cloudflare itself is briefly unreachable, Studio does **not** ask you to reco
 
 Below the Cloudflare option (or on its own, everywhere else) is the **AI provider key** form:
 
-1. Paste an API key. Any OpenAI-compatible key works: OpenAI itself, a compatible hosted provider, or a local model server.
-2. Optionally set an **Endpoint**. Leave it empty for OpenAI, or point it at a compatible server such as a local LLM (for example `http://localhost:11434/v1`).
-3. Pick a **Model**. Click **Fetch models** to list what your key can use under the field, then open the list and choose one, or type a model ID directly: anything you type is accepted, whether or not the list has it, and if it does the list opens on your row. Leave it empty to use your provider's own default.
-4. **Save** and **Cancel** appear as soon as the form differs from what is saved. Click **Save**; the buttons go away, and the form keeps showing what it saved, so you can see the endpoint it kept and the model it recorded. **Cancel** puts the saved values back.
+1. Where Studio can reach more than one kind of provider (the desktop app and the dev server can), choose a **Provider** first: **OpenAI-compatible** or **Anthropic (Claude)**. The fields below follow your choice.
+2. Paste an API key. For OpenAI-compatible, any compatible key works: OpenAI itself, a compatible hosted provider, or a local model server. For Anthropic, paste a Claude API key from the Claude Console (it starts `sk-ant-`).
+3. Optionally set an **Endpoint**. Leave it empty for the provider's own API (OpenAI, or `https://api.anthropic.com`), or point it at a compatible server such as a local LLM (for example `http://localhost:11434/v1`). An Anthropic endpoint is written without `/v1`, the way Anthropic's own tools write it.
+4. Pick a **Model**. Click **Fetch models** to list what your key can use under the field, then open the list and choose one, or type a model ID directly: anything you type is accepted, whether or not the list has it, and if it does the list opens on your row. Leave it empty to use your provider's own default.
+5. **Save** and **Cancel** appear as soon as the form differs from what is saved. Click **Save**; the buttons go away, and the form keeps showing what it saved, so you can see the endpoint it kept and the model it recorded. **Cancel** puts the saved values back.
 
 To change any of this later, click the gear button (**API key & endpoint**) at the bottom of the tab. It reopens **Preferences › Assistant**. You can also switch models per conversation with the model picker next to the message box.
 
 :::doc-tip
-Fetch models tests the key and endpoint **currently in the form**, not the ones already saved, so you can paste a new key and check it lists what you expect before saving it.
+Fetch models tests the provider, key and endpoint **currently in the form**, not the ones already saved, so you can paste a new key and check it lists what you expect before saving it. Switching **Provider** clears the list, because it was the other provider's.
+:::
+
+:::doc-note
+**Claude through Anthropic's own API.** Studio talks to Claude in Anthropic's Messages API rather than through an OpenAI-compatible shim. With no model chosen it uses Claude Opus 5.5 (`claude-opus-5-5`); **Fetch models** lists every Claude model your key can use. Claude's thinking happens on each round but is not carried from one round to the next, so a long tool-calling turn reasons afresh each round. Requests to `api.anthropic.com` use prompt caching, so the rounds of one turn reuse the prompt instead of paying for it again.
+:::
+
+:::doc-note
+**Importing a site with a Claude key.** The importer names components with an OpenAI-compatible model only. With an Anthropic key connected, an import still runs and names its components from the page structure instead, as it does with no key at all; your Claude key is never sent to an OpenAI endpoint.
 :::
 
 :::doc-note
@@ -89,7 +99,7 @@ Fetch models tests the key and endpoint **currently in the form**, not the ones 
 :::
 
 :::doc-note
-The key, endpoint, and model choice are stored locally on your machine, per browser or app install. If the Studio backend you're running already holds credentials (a dev server started with an `OPENAI_API_KEY` environment variable, or a Cloudflare account you connected earlier), the assistant unlocks without asking for anything.
+The key, endpoint, and model choice are stored locally on your machine, per browser or app install. If the Studio backend you're running already holds credentials (a dev server started with an `OPENAI_API_KEY` environment variable, or a Cloudflare account you connected earlier), the assistant unlocks without asking for anything. A dev server started with `ANTHROPIC_API_KEY` serves Claude the same way once **Anthropic** is the chosen provider.
 :::
 
 Whichever route you take unlocks the AI features everywhere in Studio, including the [New Project](/docs/studio/projects/create) dialog's **Import** and **Agent** tabs.

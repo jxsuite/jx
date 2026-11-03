@@ -239,6 +239,21 @@ describe("document-assistant", () => {
     expect<string | null | undefined>(lastClientOpts?.sessionId).toBe(a.activeSessionId());
   });
 
+  /* The family rides along only when it is not the default, so an OpenAI-compatible send is the
+     one it always was (the agent-trace goldens record these options). */
+  test("names the Anthropic family on the send, and nothing for the default", async () => {
+    nextRounds = [[{ stopReason: "stop", type: "done" }]];
+    seedSettings({ "jx.ai.openaiKey": "sk-oai" });
+    await createDocumentAssistant().sendMessage("hi");
+    expect(lastClientOpts?.provider).toBeUndefined();
+
+    nextRounds = [[{ stopReason: "stop", type: "done" }]];
+    seedSettings({ "jx.ai.openaiKey": "sk-ant", "jx.ai.provider": "anthropic" });
+    await createDocumentAssistant().sendMessage("hi");
+    expect(lastClientOpts?.provider).toBe("anthropic");
+    expect(lastClientOpts?.apiKey).toBe("sk-ant");
+  });
+
   test("executes a tool call that mutates the document as a single undo step", async () => {
     nextRounds = [
       toolCallRound("c1", "add_child", {

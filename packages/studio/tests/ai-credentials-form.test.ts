@@ -19,7 +19,7 @@ import { clearSeededSettings, flush, installMockPlatform, seedSettings } from ".
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { render } from "lit-html";
 import { clearAiProvider, storedModel } from "../src/services/ai-settings";
-import { preferredModel } from "../src/services/ai-models";
+import { preferredModel, resetModelCache } from "../src/services/ai-models";
 import { createAiCredentialsForm } from "../src/ui/ai-credentials-form";
 import type { AiCredentialsFormOptions } from "../src/ui/ai-credentials-form";
 
@@ -703,5 +703,117 @@ describe("ai-credentials-form", () => {
     const before = input(c.container, "key");
     await c.repaint();
     expect(input(c.container, "key")).toBe(before);
+  });
+});
+
+/**
+ * The provider family (specs/ai.md §2.6). The picker is drawn only where it is a choice: a backend
+ * that lists no other family forwards every key to an OpenAI-compatible endpoint, so offering it
+ * Claude would send a Claude key to OpenAI.
+ */
+describe("ai-credentials-form — the provider family", () => {
+  /** The picker, with the value the kit's select holds. */
+  function providerField(container: HTMLElement) {
+    /* SAFETY: `[part="provider"]` is the document's one `jx-select`, whose public state declares
+       `value`; the kit compiles components at runtime, so there is no class to narrow to. */
+    return part(container, "provider") as (HTMLElement & { value: string }) | null;
+  }
+
+  /** Pick a family the way the select reports a pick: its value, then `change` from it. */
+  function pickProvider(container: HTMLElement, value: string) {
+    const field = providerField(container);
+    if (!field) {
+      throw new Error("the form draws no provider picker");
+    }
+    field.value = value;
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  beforeEach(() => {
+    resetModelCache();
+  });
+
+  test("a backend that lists no other family draws no picker", async () => {
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    await c.repaint();
+    expect(providerField(c.container)).toBeNull();
+    expect(part(c.container, "note")!.textContent).toContain("Any OpenAI-compatible key works");
+  });
+
+  test("a backend that reaches Anthropic draws the picker, and a pick re-labels the fields", async () => {
+    fetchImpl = async () =>
+      Response.json({ models: [{ id: "gpt-4o" }], providers: ["openai-compat", "anthropic"] });
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    await c.repaint();
+    expect(providerField(c.container)?.value).toBe("openai-compat");
+    expect(part(c.container, "note")!.textContent).toContain("An Anthropic key for Claude");
+    expect(listedValues(c.container)).toEqual(["gpt-4o"]);
+
+    pickProvider(c.container, "anthropic");
+    await flush(4);
+    // The catalogue was the other family's, so it goes; the fields say what this family wants.
+    expect(listedValues(c.container)).toEqual([]);
+    expect(input(c.container, "key").placeholder).toBe("sk-ant-…");
+    expect(input(c.container, "endpoint").placeholder).toContain("https://api.anthropic.com");
+    expect(part(c.container, "save")).not.toBeNull();
+
+    fetchImpl = async () =>
+      Response.json({
+        defaultModel: "claude-opus-5-5",
+        models: [{ id: "claude-opus-5-5", name: "Claude Opus 5.5" }],
+        providers: ["openai-compat", "anthropic"],
+      });
+    type(c.container, "key", "sk-ant-draft");
+    press(c.container, "fetch");
+    await flush(4);
+    expect(sentHeaders(fetchCalls.at(-1)).get("X-Api-Provider")).toBe("anthropic");
+    expect(listedValues(c.container)).toEqual(["claude-opus-5-5"]);
+
+    chooseListed(c.container, "claude-opus-5-5");
+    press(c.container, "save");
+    expect(globalThis.localStorage.getItem("jx.ai.provider")).toBe("anthropic");
+    expect(globalThis.localStorage.getItem("jx.ai.openaiKey")).toBe("sk-ant-draft");
+    expect(globalThis.localStorage.getItem("jx.ai.model")).toBe("claude-opus-5-5");
+  });
+
+  test("a stored Anthropic key keeps the picker, so a reader can always switch back", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-ant", "jx.ai.provider": "anthropic" });
+    const c = await makeForm();
+    c.form.startEdit();
+    await flush(6);
+    expect(providerField(c.container)?.value).toBe("anthropic");
+    expect(part(c.container, "save")).toBeNull();
+
+    pickProvider(c.container, "openai-compat");
+    await flush(4);
+    expect(input(c.container, "key").placeholder).toBe("sk-… or any compatible key");
+    press(c.container, "save");
+    expect(globalThis.localStorage.getItem("jx.ai.provider")).toBe("");
+  });
+
+  test("a host's intro may follow whether the picker is drawn", async () => {
+    const intro = (offers: boolean) => (offers ? "Claude or OpenAI." : "OpenAI only.");
+    const c = await makeForm({ intro });
+    expect(part(c.container, "note")!.textContent).toBe("OpenAI only.");
+    fetchImpl = async () => Response.json({ models: [], providers: ["anthropic"] });
+    press(c.container, "fetch");
+    await flush(4);
+    expect(part(c.container, "note")!.textContent).toBe("Claude or OpenAI.");
+  });
+
+  test("picking the family already drafted changes nothing", async () => {
+    seedSettings({ "jx.ai.provider": "anthropic" });
+    fetchImpl = async () => Response.json({ models: [{ id: "claude-x" }] });
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    pickProvider(c.container, "anthropic");
+    await flush(4);
+    expect(listedValues(c.container)).toEqual(["claude-x"]);
+    expect(part(c.container, "save")).toBeNull();
   });
 });
