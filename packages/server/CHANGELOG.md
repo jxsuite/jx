@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.1.0](https://github.com/jxsuite/jx/compare/server-v8.0.1...server-v8.1.0) (2026-11-03)
+
+
+### Features
+
+* **ai:** support anthropic messages api ([#526](https://github.com/jxsuite/jx/issues/526)) ([0c38ef7](https://github.com/jxsuite/jx/commit/0c38ef79d6bc52c36f1fc5d85722ea16cc6986c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.42.0
+    * @jxsuite/catalog bumped to 0.1.6
+    * @jxsuite/compiler bumped to 8.0.2
+    * @jxsuite/create bumped to 1.5.2
+    * @jxsuite/import bumped to 0.42.2
+    * @jxsuite/protocol bumped to 6.2.0
+    * @jxsuite/starters bumped to 3.1.4
+
 ## [8.0.1](https://github.com/jxsuite/jx/compare/server-v8.0.0...server-v8.0.1) (2026-10-31)
 
 
