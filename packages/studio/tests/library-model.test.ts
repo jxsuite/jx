@@ -220,6 +220,40 @@ describe("scanLibrary", () => {
     expect(scan.files).toEqual([]);
     expect(scan.failures.map((f) => f.dir)).toEqual(["shown/gone"]);
   });
+
+  /* The avunu.net site lives at `Sites/avunu.net` inside the vault its knowledge base publishes, so
+     `kb` declares `source: "../.."`. The platform names every path relative to the project, so that
+     walk came back through the project root as `pages/…` and the Pages table listed each page twice. */
+  test("a collection in an ANCESTOR of the project does not walk the project again", async () => {
+    const tree = {
+      "../..": [file("guide.md", "../../guide.md"), dir("Sites", "../../Sites")],
+      "../../Sites": [dir("avunu.net", "")],
+      "": [file("project.json", "project.json"), dir("pages", "pages"), dir("dist", "dist")],
+      pages: [file("index.md", "pages/index.md")],
+      dist: [file("index.html", "dist/index.html")],
+    } satisfies Record<string, DirEntry[]>;
+    const asked: string[] = [];
+    const scan = await scanLibrary(["pages", "../.."], {
+      listDirectory: (path: string) => {
+        asked.push(path);
+        return listDirectory(tree)(path);
+      },
+    });
+    expect(scan.files.map((f) => f.path)).toEqual(["../../guide.md", "pages/index.md"]);
+    expect(asked.toSorted()).toEqual(["../..", "../../Sites", "pages"]);
+  });
+
+  test("a directory two roots reach is listed once", async () => {
+    const tree = {
+      "../shared": [dir("posts", "../shared/posts")],
+      "../shared/posts": [file("a.md", "../shared/posts/a.md")],
+    } satisfies Record<string, DirEntry[]>;
+    const scan = await scanLibrary(["../shared/posts", "../shared", "../shared/"], {
+      listDirectory: listDirectory(tree),
+    });
+    expect(scan.failures).toEqual([]);
+    expect(scan.files.map((f) => f.path)).toEqual(["../shared/posts/a.md"]);
+  });
 });
 
 describe("libraryScanDirs", () => {

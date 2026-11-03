@@ -200,44 +200,64 @@ export function entryCollectionOf(path: string, pageExtensions?: readonly string
  */
 const SKIP_DIRS = new Set(["node_modules", ".git", ".jx", ".cache"]);
 
+/** What every branch of one scan shares. */
+interface ScanRun {
+  platform: Pick<StudioPlatform, "listDirectory">;
+  out: LibraryFile[];
+  failures: ScanFailure[];
+  i18n: ResolvedI18n | null;
+  pageExtensions: readonly string[] | undefined;
+  /**
+   * Every directory some branch has claimed, the roots included. A collection may live in an
+   * ANCESTOR of the project (a site inside the vault it publishes declares `source: "../.."`), and
+   * that walk reaches the project's own directories under the same project-relative paths the roots
+   * walk: every page was listed twice. A directory is walked by whichever branch claims it first.
+   */
+  claimed: Set<string>;
+}
+
+/**
+ * The project root as a listing names it from outside: `""` (relative to itself) or `"."`. A walk
+ * from an ancestor stops there; the project's own directories are roots of the scan already, and
+ * the rest of the root (`dist/`, `scripts/`) holds no collection's entries.
+ */
+function isProjectRoot(path: string): boolean {
+  const normalized = normalizeDir(path);
+  return normalized === "" || normalized === ".";
+}
+
 /**
  * Walk one directory tree, collecting files and recording — never swallowing — what it could not
  * read. A failure at depth is reported against the directory that failed, not the root, so the
  * Problem names the path the author can act on.
  */
-async function walk(
-  dir: string,
-  platform: Pick<StudioPlatform, "listDirectory">,
-  out: LibraryFile[],
-  failures: ScanFailure[],
-  i18n: ResolvedI18n | null,
-  optional = false,
-  pageExtensions?: readonly string[],
-): Promise<void> {
+async function walk(dir: string, run: ScanRun, optional = false): Promise<void> {
   let entries: DirEntry[];
   try {
     // Noted: the Library walks every media directory, so it is where most versions are learned.
-    entries = await notedListing(() => platform.listDirectory(dir));
+    entries = await notedListing(() => run.platform.listDirectory(dir));
   } catch (error) {
     // A declared collection's folder that does not exist yet is an empty collection, not a fault.
     if (!optional) {
-      failures.push({ dir, error: errorMessage(error) });
+      run.failures.push({ dir, error: errorMessage(error) });
     }
     return;
   }
   const subdirectories: string[] = [];
   for (const entry of entries) {
     if (entry.type === "directory") {
-      if (!SKIP_DIRS.has(entry.name)) {
+      const key = normalizeDir(entry.path);
+      if (!SKIP_DIRS.has(entry.name) && !isProjectRoot(key) && !run.claimed.has(key)) {
+        run.claimed.add(key);
         subdirectories.push(entry.path);
       }
       continue;
     }
     const ext = extensionOf(entry.name);
-    out.push({
-      collection: entryCollectionOf(entry.path, pageExtensions),
+    run.out.push({
+      collection: entryCollectionOf(entry.path, run.pageExtensions),
       ext,
-      locale: servedLocaleOfPath(entry.path, i18n) ?? undefined,
+      locale: servedLocaleOfPath(entry.path, run.i18n) ?? undefined,
       media: MEDIA_EXTENSIONS.has(ext),
       modified: entry.modified,
       name: entry.name,
@@ -248,9 +268,7 @@ async function walk(
   }
   // Siblings in parallel, depth serialized per branch: the platform counts every call as in-flight,
   // So `probe.idle()` already knows the scan is running without the Library declaring a source.
-  await Promise.all(
-    subdirectories.map((sub) => walk(sub, platform, out, failures, i18n, false, pageExtensions)),
-  );
+  await Promise.all(subdirectories.map((sub) => walk(sub, run)));
 }
 
 /**
@@ -265,16 +283,31 @@ export async function scanLibrary(
   optional: ReadonlySet<string> = new Set(),
   pageExtensions?: readonly string[],
 ): Promise<LibraryScan> {
-  const files: LibraryFile[] = [];
-  const failures: ScanFailure[] = [];
   // Resolved ONCE for the whole walk. `resolveI18n` canonicalizes every declared tag through
   // `Intl.Locale`, and a project with 300 pages would otherwise pay for that per file.
   const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
+  const run: ScanRun = {
+    claimed: new Set(),
+    failures: [],
+    i18n,
+    out: [],
+    pageExtensions,
+    platform,
+  };
+  /* Every root is claimed before any walk descends: `map` runs to the end synchronously, and a walk
+     claims its subdirectories only after its own listing has been awaited. A root named twice is
+     walked once. */
   await Promise.all(
-    dirs.map((dir) =>
-      walk(dir, platform, files, failures, i18n, optional.has(dir), pageExtensions),
-    ),
+    dirs.map((dir) => {
+      const key = normalizeDir(dir);
+      if (run.claimed.has(key)) {
+        return Promise.resolve();
+      }
+      run.claimed.add(key);
+      return walk(dir, run, optional.has(dir));
+    }),
   );
+  const { failures, out: files } = run;
   files.sort((a, b) => a.path.localeCompare(b.path));
   return { failures, files };
 }
