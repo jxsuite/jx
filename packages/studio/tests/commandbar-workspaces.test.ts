@@ -147,6 +147,21 @@ describe("the workspace tabs", () => {
     expect(tabFor("styles")?.getAttribute("aria-selected")).toBe("true");
   });
 
+  test("Settings has no tab: while it is on screen none is selected, and the first keeps the caret", async () => {
+    await mounted();
+    expect(tabFor("settings")).toBeNull();
+    shell.workspace = "settings";
+    await flush();
+    await flush();
+    expect(tabs().filter((el) => el.getAttribute("aria-selected") === "true")).toHaveLength(0);
+    // The tablist stays one Tab stop: the caret falls back to its first tab.
+    expect(
+      tabs()
+        .filter((el) => el.tabIndex === 0)
+        .map((el) => el.getAttribute("label")),
+    ).toEqual(["Design"]);
+  });
+
   test("choosing one runs view.setWorkspace with its id", async () => {
     await mounted();
     tabFor("media")!.click();

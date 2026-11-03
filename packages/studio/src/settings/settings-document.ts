@@ -3,18 +3,18 @@
  * Project Settings: the built-in sections, the `project.json` tab's editors, and the two commands
  * that reach them.
  *
- * **Settings is a dialog; the configuration DOCUMENT is still a tab.** `project.json` is a real Tab
- * under the transaction log with one write chokepoint (`tabs/project-config.ts`, §17.1), and it has
- * three editors, the Styles workspace's three views: Elements (`stylebook`), Variables (`tokens`,
- * `style/variables-view.ts`) and Code (`source`). Project Settings is neither of them: it is a
- * dialog in the dialog layer (`./settings-dialog.ts`) hosting the section list, reachable from
- * every workspace, and every section in it writes through the same chokepoint the tab's editors do,
- * so the file has one history whichever door changed it.
+ * **Settings is a workspace; the configuration DOCUMENT is still a tab.** `project.json` is a real
+ * Tab under the transaction log with one write chokepoint (`tabs/project-config.ts`, §17.1), and it
+ * has three editors, the Styles workspace's three views: Elements (`stylebook`), Variables
+ * (`tokens`, `style/variables-view.ts`) and Code (`source`). Project Settings is neither of them:
+ * it is the Settings workspace, whose home hosts the section list (`./settings-workspace.ts`),
+ * reached from every workspace, and every section in it writes through the same chokepoint the
+ * tab's editors do, so the file has one history whichever door changed it.
  *
  * **`settings.open` did not change what it means.** It still means "reach project settings,
  * optionally at a named section and entry", its args schema still declares `section` and `entry`,
- * and a key nobody registered still fails the call. What changed is the `run`: a dialog instead of
- * a tab mode.
+ * and a key nobody registered still fails the call. What changed is the `run`: a workspace switch
+ * instead of a dialog.
  *
  * @docs studio/projects/settings
  */
@@ -31,7 +31,8 @@ import { notify } from "../services/notify";
 import { projectState } from "../state";
 import { PROJECT_CONFIG_PATH } from "../tabs/tab";
 import { lendProjectConfigLayout } from "../tabs/project-config";
-import { focusPane, openTab, workspace } from "../workspace/workspace";
+import { focusPane, openTab, paneOfTab, workspace } from "../workspace/workspace";
+import { workspaceHomeTabId } from "../workspace/workspace-ids";
 import {
   notifySettingsDocument,
   registerSettingsSection,
@@ -47,7 +48,7 @@ import { renderGeneralSettings } from "./general-settings";
 import { renderHeadEditor } from "./head-editor";
 import { renderLocalesSection } from "./locales-section";
 import { selectContributedEntry } from "./contributed-section";
-import { closeSettingsDialog, openSettingsDialog } from "./settings-dialog";
+import { focusSettingsHome } from "./settings-workspace";
 // The NAME and the wire value, kept apart by that module on purpose — see its docstring.
 import {
   PROJECT_STYLES_TITLE,
@@ -79,7 +80,7 @@ const PROJECT_TAB_MODES = STYLES_TAB_MODES;
 
    Two sections that used to be here are not, and their renderers are not deleted: CSS Variables
    (`./css-vars-editor.ts`) belongs to the Styles workspace, and Deploy (`renderDeploySection`) to
-   the Publish workspace. The dialog's Moved footnote says where each went.
+   the Publish workspace. Settings' Moved footnote says where each went.
 
    `icon` is a KEY into the kit's glyph manifest (`@jxsuite/ui/icons`), not a tag: `studio.md`
    §13.5 is about exactly this distinction, and a key with no row draws nothing and says nothing.
@@ -156,9 +157,9 @@ registerSettingsSection({
   render: renderDependenciesEditor,
 });
 /*
- * Raw JSON's "Edit as code" leaves the dialog: the Code editor is the `project.json` tab's, which is
- * the Styles workspace's, so the dialog closes and the tab opens in its source editor. Activating
- * it is what switches the workspace (`workspace/tab-workspace.ts`).
+ * Raw JSON's "Edit as code" leaves Settings: the Code editor is the `project.json` tab's, which is
+ * the Styles workspace's, so the tab opens in its source editor, and activating it is what switches
+ * the workspace (`workspace/tab-workspace.ts`).
  */
 registerSettingsSection({
   group: "advanced",
@@ -169,7 +170,6 @@ registerSettingsSection({
   render: (container) => {
     renderRawJsonSection(container, {
       editAsCode: () => {
-        closeSettingsDialog();
         showSettingsDocument(SOURCE_MODE);
       },
     });
@@ -271,12 +271,13 @@ function revealTab(tab: Tab): Tab {
 /**
  * Reach Project Settings, optionally at a named section.
  *
- * Opens the dialog on the requested section (or on the one it last showed, which the registry
- * remembers for the session), then awaits the contributed-section sync before returning, so a
- * caller that then asks whether a section exists is asking the complete registry. The sync is
- * COALESCED (`extension-sections.ts`): `refreshExtensionUi` fires the same function on project
- * activation and after every `project.json` write, and a second, interleaved run could otherwise
- * take the caller's section down between the promise resolving and the frame being drawn.
+ * Switches to the Settings workspace on the requested section (or on the one it last showed, which
+ * the registry remembers for the session), puts the keyboard on that section's row, then awaits the
+ * contributed-section sync before returning, so a caller that then asks whether a section exists is
+ * asking the complete registry. The sync is COALESCED (`extension-sections.ts`):
+ * `refreshExtensionUi` fires the same function on project activation and after every `project.json`
+ * write, and a second, interleaved run could otherwise take the caller's section down between the
+ * promise resolving and the frame being drawn.
  *
  * @param {string} [section]
  */
@@ -284,7 +285,15 @@ export async function openProjectSettings(section?: string): Promise<void> {
   if (section !== undefined) {
     setSettingsSection(section);
   }
-  void openSettingsDialog();
+  const registry = activeRegistry();
+  if (!registry) {
+    throw new Error('command "settings.open" needs the window\'s command registry');
+  }
+  await registry.run("view.setWorkspace", { workspace: "settings" });
+  const paneId = paneOfTab(workspaceHomeTabId("settings"))?.id;
+  if (paneId !== undefined) {
+    void focusSettingsHome(paneId);
+  }
   try {
     const { syncExtensionSettingsSections } = await import("./extension-sections");
     await syncExtensionSettingsSections();
@@ -318,7 +327,7 @@ export async function settingsSectionsReady(): Promise<void> {
  * step are the same call.
  *
  * The validation is deliberately asynchronous. Extension-contributed sections (`connections`,
- * `data`, `content`) register a tick after the dialog opens, so refusing synchronously would reject
+ * `data`, `content`) register a tick after Settings opens, so refusing synchronously would reject
  * three legitimate section ids; the command opens, awaits the sync, and only then decides whether
  * the caller named something real. A wrong key therefore fails the call instead of rendering an
  * empty body.

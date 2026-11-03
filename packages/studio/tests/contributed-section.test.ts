@@ -343,12 +343,23 @@ describe("map layout", () => {
   });
 
   test("an entry row and the editor carry the region a shot names them by", async () => {
-    // Under the settings dialog's own region, which is where a contributed section is drawn (§17.1).
+    /* Under the Settings home's own region, which is where a contributed section is drawn (§17.1),
+       read off the home it stands in: the side pane's home names the side pane. */
+    const home = document.createElement("div");
+    home.dataset["jxRegion"] = "pane.secondary/settings";
+    container.replaceWith(home);
+    home.append(container);
     renderContributedSection(container, mapContribution);
     await settle();
-    expect(entryRow(container, "main").dataset.jxRegion).toBe("overlay.dialog:settings/entry:main");
+    expect(entryRow(container, "main").dataset.jxRegion).toBe("pane.secondary/settings/entry:main");
     await selectEntry(container, "main");
-    expect(part(container, "editor").dataset.jxRegion).toBe("overlay.dialog:settings/editor");
+    expect(part(container, "editor").dataset.jxRegion).toBe("pane.secondary/settings/editor");
+  });
+
+  test("a section drawn outside any home names the primary pane's", async () => {
+    renderContributedSection(container, mapContribution);
+    await settle();
+    expect(entryRow(container, "main").dataset.jxRegion).toBe("pane.primary/settings/entry:main");
   });
 
   test("selecting an entry renders its form; edits persist to the entry", async () => {

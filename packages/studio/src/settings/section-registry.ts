@@ -3,10 +3,11 @@
  *
  * `registerSettingsSection` is a **preserved public contract** (specs/extensions.md §9.1): an
  * extension's `project` class declares a `$studio.settings` block and `settings/extension-sections`
- * turns it into one of these records. Project Settings has moved host twice — a modal, then a
- * document in the pane, and now a dialog again (§17.1) — and the registry moved with neither,
- * because a section is a contribution to CONFIGURATION, not to whatever draws it. Splitting it out
- * is what lets the host be replaced without the contribution point being touched.
+ * turns it into one of these records. Project Settings has moved host three times — a modal, then a
+ * document in the pane, then a dialog again, and now a workspace of its own (§17.1, §22.9) — and
+ * the registry moved with none of them, because a section is a contribution to CONFIGURATION, not
+ * to whatever draws it. Splitting it out is what lets the host be replaced without the contribution
+ * point being touched.
  *
  * **This module holds no renderer and imports nothing.** That is load-bearing rather than tidy: the
  * gear menu (`panels/settings-menu.ts`) enumerates these sections from the top bar, so anything

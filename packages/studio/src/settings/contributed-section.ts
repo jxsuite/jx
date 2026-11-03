@@ -49,7 +49,8 @@ import { resolveContextPointer } from "../services/context-resolver";
 import { deriveSecretEnvName } from "../services/data-service";
 import { validateProjectConfig } from "../services/jx-validate";
 import { notify } from "../services/notify";
-import { SETTINGS_DIALOG_REGION } from "../surfaces/settings-dialog";
+import { REGION_ATTR } from "../ui/regions";
+import { settingsRegion } from "./settings-workspace";
 import { mountContributedSurface } from "../surfaces/settings-contributed";
 
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
@@ -371,15 +372,23 @@ function sectionValue(key: string): JsonObject | null {
 // ─── Per-container mount ──────────────────────────────────────────────────────
 
 /**
- * A region under the settings dialog, which is where a contributed section is drawn (§17.1): its
- * entry rows and its entry editor are named under `overlay.dialog:settings`, so a shot can crop one
+ * A region under the Settings home, which is where a contributed section is drawn (§17.1): its
+ * entry rows and its entry editor are named under `pane.<id>/settings`, so a shot can crop one
  * without a selector.
  *
+ * The home is per pane, and a renderer is handed a container and nothing else, so the base is READ
+ * off the nearest region around the container, which is the home's own: the id is derived from what
+ * is on screen, as every region is (`ui/regions.ts`). A container not yet in a home names the
+ * primary pane's.
+ *
+ * @param {HTMLElement} container The element the section was rendered into
  * @param {string} part
  * @returns {string}
  */
-function sectionRegion(part: string): string {
-  return `${SETTINGS_DIALOG_REGION}/${part}`;
+function sectionRegion(container: HTMLElement, part: string): string {
+  const base =
+    container.closest(`[${REGION_ATTR}]`)?.getAttribute(REGION_ATTR) ?? settingsRegion("primary");
+  return `${base}/${part}`;
 }
 
 /** One mounted section: its document, its two island hosts, and what it was last asked to draw. */
@@ -455,7 +464,7 @@ function project(record: SectionMount): ContributedView {
   const sectionKey = contribution.key;
   const title = contribution.title ?? sectionKey;
   const actionsState = opts.actions ? "slot" : "none";
-  const editorRegion = sectionRegion("editor");
+  const editorRegion = sectionRegion(record.container, "editor");
   const words = entryWords(contribution.settings.entry?.noun);
 
   if ((contribution.settings.layout ?? "form") !== "map") {
@@ -483,7 +492,7 @@ function project(record: SectionMount): ContributedView {
     editorState: editing ? "editing" : "empty",
     entries: Object.keys(entries).map((name) => ({
       key: name,
-      region: sectionRegion(`entry:${name}`),
+      region: sectionRegion(record.container, `entry:${name}`),
       selected: name === selected,
     })),
     entryName: record.echo ?? (editing ? selected : ""),

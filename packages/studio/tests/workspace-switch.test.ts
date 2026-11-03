@@ -34,13 +34,14 @@ import {
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
 import { effect, effectScope } from "../src/reactivity";
 import type { InspectorTabId } from "../src/shell";
+import type { HomeWorkspaceId } from "../src/workspace/workspace-ids";
 import { openStubTab } from "./workspace-fixture";
 
 const tab = openStubTab;
 
 const inspectorWrites: { tab: string | null; value: InspectorTabId }[] = [];
 const deps = {
-  openHome: mock((id: "content" | "media" | "publish") => {
+  openHome: mock((id: HomeWorkspaceId) => {
     tab(workspaceHomeTabId(id), { mode: `${id}-home`, path: null });
   }),
   openStyles: mock(() => {

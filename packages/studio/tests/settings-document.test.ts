@@ -6,8 +6,8 @@
  * What is asserted is the IA (§17.1): the nav in three groups with the sections each one lists,
  * contributed sections landing in Integrations at their declared order, section switching, a
  * failing contribution import, a renderer's failure said where the section would have been, and the
- * deep link surviving a section being refreshed. The dialog itself (open, Escape, focus, Moved) is
- * `settings-dialog.test.ts`'s; `settings.open` reaching it is asserted here.
+ * deep link surviving a section being refreshed. The workspace's own flow (its mount, Back, focus,
+ * Moved) is `settings-workspace.test.ts`'s; `settings.open` reaching it is asserted here.
  */
 import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -38,10 +38,14 @@ import {
 } from "../src/settings/section-registry";
 import { ICON_NAMES } from "@jxsuite/ui/icons";
 import { mountSettingsPane } from "../src/panels/settings-pane";
-import { closeSettingsDialog, disposeSettingsDialog } from "../src/settings/settings-dialog";
+import {
+  detachSettingsWorkspace,
+  renderSettingsWorkspace,
+} from "../src/settings/settings-workspace";
+import { openWorkspaceHome } from "../src/workspace/workspace-home";
 import { resetExtensionSettingsSections } from "../src/settings/extension-sections";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
-import { closeAllTabs, activeTab, workspace } from "../src/workspace/workspace";
+import { closeAllTabs, activeTab, paneOfTab, workspace } from "../src/workspace/workspace";
 import { initLayers } from "../src/ui/layers";
 import "../src/ui/form-controls";
 import { emptyContext } from "../src/commands/context";
@@ -59,6 +63,8 @@ import type { SettingsPaneMount } from "../src/panels/settings-pane";
 // ─── Environment ─────────────────────────────────────────────────────────────
 
 let host: HTMLElement;
+/** The stage the fake `view.setWorkspace` draws the Settings home into. */
+let stage: HTMLElement;
 let pane: SettingsPaneMount | null = null;
 let movedTo: string[] = [];
 
@@ -71,7 +77,7 @@ function commandById(id: string): AnyCommand {
   return command;
 }
 
-/** The dialog-opening command. */
+/** The command that opens Settings. */
 function openCommand(): AnyCommand {
   return commandById("settings.open");
 }
@@ -137,14 +143,38 @@ function body(root: ParentNode = host): HTMLElement {
   return island;
 }
 
-/** The open settings dialog, or null. */
-/** The settings dialog that is SHOWING, or null: a closed one stays mounted for the next open. */
-function dialog(): HTMLElement | null {
-  return (
-    [...document.querySelectorAll<HTMLElement>('#layer-dialog jx-dialog[part="settings"]')].find(
-      (el) => el.querySelector<HTMLDialogElement>('dialog[part="dialog"]')?.open === true,
-    ) ?? null
-  );
+/** The Settings home standing in the stage, or null. */
+function settingsHome(): HTMLElement | null {
+  return stage.querySelector<HTMLElement>('[part="settings"]');
+}
+
+/**
+ * Install a registry whose `view.setWorkspace` records its arguments and does what the shell's
+ * would, as far as this file needs: Settings opens its home tab and draws the home into the stage
+ * (the canvas render's half), and Styles opens `project.json` in its home view.
+ */
+function installWorkspaceRegistry(): CommandArgValues[] {
+  const ran: CommandArgValues[] = [];
+  const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
+  registry.register({
+    category: "View",
+    id: "view.setWorkspace",
+    level: "application",
+    menus: ["never"],
+    run: (_ctx: CommandContext, args: CommandArgValues) => {
+      ran.push(args);
+      if (args["workspace"] === "settings") {
+        const tab = openWorkspaceHome("settings");
+        renderSettingsWorkspace({ paneId: paneOfTab(tab.id)?.id ?? "primary", wrap: stage }, tab);
+        return;
+      }
+      detachSettingsWorkspace("primary");
+      showSettingsDocument();
+    },
+    title: "Switch Workspace",
+  });
+  setActiveRegistry(registry);
+  return ran;
 }
 
 /**
@@ -157,7 +187,10 @@ function dialog(): HTMLElement | null {
 async function mount(): Promise<void> {
   pane?.dispose();
   pane = mountSettingsPane(host, {
+    back: () => {},
+    backLabel: () => "Back to Design",
     openMoved: (target, inspector) => movedTo.push(inspector ? `${target}:${inspector}` : target),
+    region: "pane.primary/settings",
   });
   await flush();
   await flush();
@@ -237,15 +270,19 @@ beforeEach(() => {
   `;
   initLayers();
   host = document.createElement("div");
-  document.body.append(host);
+  stage = document.createElement("div");
+  document.body.append(host, stage);
   movedTo = [];
+  installWorkspaceRegistry();
 });
 
 afterEach(async () => {
   pane?.dispose();
   pane = null;
-  disposeSettingsDialog();
+  detachSettingsWorkspace("primary");
+  setActiveRegistry(null);
   host.remove();
+  stage.remove();
   closeAllTabs();
   await flush();
 });
@@ -266,7 +303,7 @@ describe("the groups", () => {
     expect(isSettingsGroupId(7)).toBe(false);
   });
 
-  test("each built-in is listed in the group the dialog's IA names for it", () => {
+  test("each built-in is listed in the group Settings' IA names for it", () => {
     const groups = Object.fromEntries(
       groupedSettingsSections().map((group) => [
         group.id,
@@ -280,45 +317,10 @@ describe("the groups", () => {
     });
   });
 
-  /* The dialog keeps its editor across closes, so a closed editor must not keep redrawing on every
-     registry change, and a reopened one must catch up on what it missed. */
-  test("a suspended editor ignores the registry, and resuming redraws the section once", async () => {
-    let renders = 0;
-    registerSettingsSection({
-      key: "counted",
-      label: "Counted",
-      order: 1,
-      render: () => {
-        renders += 1;
-      },
-    });
-    try {
-      setSettingsSection("counted");
-      await mount();
-      const drawn = renders;
-      expect(drawn).toBeGreaterThan(0);
-      pane!.suspend();
-      registerSettingsSection({ key: "late", label: "Late", order: 2, render: () => {} });
-      await flush();
-      expect(renders).toBe(drawn);
-      pane!.resume();
-      expect(renders).toBe(drawn + 1);
-      // Already following: a second resume draws nothing more.
-      pane!.resume();
-      expect(renders).toBe(drawn + 1);
-      pane!.dispose();
-      pane!.resume();
-      expect(renders).toBe(drawn + 1);
-    } finally {
-      unregisterSettingsSection("late");
-      unregisterSettingsSection("counted");
-    }
-  });
-
   /* A section keeps its form state (a failed save's banner, a half-typed entry) in a WeakMap keyed
-     on the host it is given, so a reopen must hand it a new host or the last visit's error comes
-     back, including into another project's Settings. */
-  test("resuming draws into a fresh host, so the last visit's form state does not come back", async () => {
+     on the host it is given, so a new visit must hand it a new host or the last visit's error comes
+     back, including into another project's Settings. Each visit to the workspace is a new mount. */
+  test("a new visit draws into a fresh host, so the last visit's form state does not come back", async () => {
     const hosts: HTMLElement[] = [];
     const errors = new WeakMap<HTMLElement, string>();
     registerSettingsSection({
@@ -339,12 +341,11 @@ describe("the groups", () => {
       registerSettingsSection({ key: "late", label: "Late", order: 2, render: () => {} });
       expect(hosts.at(-1)).toBe(first);
       expect(first.textContent).toBe("Could not save project.json");
-      pane!.suspend();
-      pane!.resume();
-      const reopened = hosts.at(-1)!;
-      expect(reopened).not.toBe(first);
-      expect(reopened.isConnected).toBe(true);
-      expect(reopened.textContent).toBe("clean");
+      await mount();
+      const revisited = hosts.at(-1)!;
+      expect(revisited).not.toBe(first);
+      expect(revisited.isConnected).toBe(true);
+      expect(revisited.textContent).toBe("clean");
     } finally {
       unregisterSettingsSection("late");
       unregisterSettingsSection("stateful");
@@ -380,7 +381,7 @@ describe("the groups", () => {
   });
 
   test("CSS Variables and Deploy are not Project Settings sections any more", () => {
-    // They moved to the Styles and Publish workspaces; the dialog's Moved footnote says so.
+    // They moved to the Styles and Publish workspaces; Settings' Moved footnote says so.
     const keys = settingsSectionKeys();
     expect(keys).not.toContain("cssVars");
     expect(keys).not.toContain("deploy");
@@ -840,25 +841,39 @@ describe("settings.open", () => {
     expect(Object.keys(command.args?.properties ?? {}).toSorted()).toEqual(["entry", "section"]);
   });
 
-  test("with no arguments it opens the DIALOG on its default section, and opens no tab", async () => {
+  test("with no arguments it switches to the Settings WORKSPACE on its default section, and opens no project.json tab", async () => {
+    const ran = installWorkspaceRegistry();
     await runOpen();
     await flush(3);
-    expect(dialog()).not.toBeNull();
+    expect(ran).toEqual([{ workspace: "settings" }]);
+    expect(settingsHome()).not.toBeNull();
+    expect(activeTab.value?.id).toBe("workspace://settings");
     expect(workspace.tabs.get("project.json")).toBeUndefined();
     expect(settingsDocumentSection()).toBe(DEFAULT_SETTINGS_SECTION);
-    expect(navLabels(dialog()!)).toEqual(BUILTIN_LABELS);
+    expect(navLabels(settingsHome()!)).toEqual(BUILTIN_LABELS);
+  });
+
+  test("the keyboard lands on the section it opened on, not on the first row", async () => {
+    await runOpen({ section: "rawJson" });
+    await flush(4);
+    expect(document.activeElement).toBe(navButton("Raw JSON", settingsHome()!));
   });
 
   test("it remembers the section it was left on for the rest of the session", async () => {
     await runOpen({ section: "locales" });
     await flush(3);
-    closeSettingsDialog();
+    detachSettingsWorkspace("primary");
     await flush();
-    expect(dialog()).toBeNull();
+    expect(settingsHome()).toBeNull();
     await runOpen();
     await flush(3);
     expect(settingsDocumentSection()).toBe("locales");
-    expect(navButton("Locales", dialog()!).getAttribute("aria-selected")).toBe("true");
+    expect(navButton("Locales", settingsHome()!).getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("without a registry it says what it is missing", async () => {
+    setActiveRegistry(null);
+    expect(await refusal({})).toContain("command registry");
   });
 
   test("a section it does not have is refused, naming what it does have", async () => {
@@ -871,7 +886,7 @@ describe("settings.open", () => {
     expect(await refusal({ entry: "posts" })).toContain('argument "entry" needs a "section"');
   });
 
-  test("a section and an entry select that entry, named under the dialog's region", async () => {
+  test("a section and an entry select that entry, named under the home's region", async () => {
     setExtensions(parserExtensions);
     resetStudioState({
       projectConfig: { content: { pages: {}, posts: { format: "md" } } },
@@ -879,10 +894,11 @@ describe("settings.open", () => {
     await runOpen({ entry: "posts", section: "content" });
     await flush(8);
     expect(settingsDocumentSection()).toBe("content");
-    const root = dialog()!;
-    expect(root.querySelector('[data-jx-region="overlay.dialog:settings/editor"]')).not.toBeNull();
+    const root = settingsHome()!;
+    expect(root.dataset["jxRegion"]).toBe("pane.primary/settings");
+    expect(root.querySelector('[data-jx-region="pane.primary/settings/editor"]')).not.toBeNull();
     expect(
-      root.querySelector('[data-jx-region="overlay.dialog:settings/entry:posts"]'),
+      root.querySelector('[data-jx-region="pane.primary/settings/entry:posts"]'),
     ).not.toBeNull();
   });
 
@@ -894,12 +910,11 @@ describe("settings.open", () => {
     );
   });
 
-  test("Raw JSON's Edit as code closes the dialog and opens project.json in its source", async () => {
+  test("Raw JSON's Edit as code opens project.json in its source, which leaves Settings", async () => {
     await runOpen({ section: "rawJson" });
     await flush(4);
-    pointer(dialog()!.querySelector('[part="edit"]')!, "click");
+    pointer(settingsHome()!.querySelector('[part="edit"]')!, "click");
     await flush(2);
-    expect(dialog()).toBeNull();
     expect(activeTab.value?.id).toBe("project.json");
     expect(activeTab.value?.session.ui.canvasMode).toBe("source");
   });
@@ -963,25 +978,6 @@ describe("styles.open", () => {
       expect(styles.enablement?.(ctx)).toBe(open.enablement?.(ctx));
     }
   });
-
-  /** A registry whose `view.setWorkspace` records its arguments and opens the Styles home. */
-  function installWorkspaceRegistry(): CommandArgValues[] {
-    const ran: CommandArgValues[] = [];
-    const registry = createCommandRegistry({ getContext: () => emptyContext(), mac: true });
-    registry.register({
-      category: "View",
-      id: "view.setWorkspace",
-      level: "application",
-      menus: ["never"],
-      run: (_ctx: CommandContext, args: CommandArgValues) => {
-        ran.push(args);
-        showSettingsDocument();
-      },
-      title: "Switch Workspace",
-    });
-    setActiveRegistry(registry);
-    return ran;
-  }
 
   afterEach(() => {
     setActiveRegistry(null);
