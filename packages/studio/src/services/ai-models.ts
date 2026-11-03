@@ -10,12 +10,13 @@
  * @license MIT
  */
 
-import type { AiCredentials } from "@jxsuite/ai/streaming-client";
+import { AI_PROVIDER_HEADER } from "@jxsuite/ai/streaming-client";
+import type { AiCredentials, AiProviderFamily } from "@jxsuite/ai/streaming-client";
 import type { AiModelsResponse, OfferedAction } from "@jxsuite/protocol";
 import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import { offeredActions } from "../platform-errors";
-import { getBaseUrl, getOpenAiKey, hasOpenAiKey, storedModel } from "./ai-settings";
+import { getAiProvider, getBaseUrl, getOpenAiKey, hasOpenAiKey, storedModel } from "./ai-settings";
 import { SETTINGS } from "./settings/definitions";
 import { onSettingsChanged } from "./settings/kernel";
 
@@ -42,19 +43,32 @@ export interface AiModel {
  */
 export type { AiCredentials } from "@jxsuite/ai/streaming-client";
 
+/**
+ * The credentials a model list belongs to, and the family they belong to. `provider` absent is the
+ * OpenAI-compatible default: the same key and endpoint list different catalogues under different
+ * families, so the family is part of what a list was listed under.
+ */
+export interface AiConnection extends AiCredentials {
+  provider?: AiProviderFamily;
+}
+
+/** The model a Claude sender falls back to when neither the user nor the backend chose one. */
+export const ANTHROPIC_DEFAULT_MODEL = "claude-opus-5-5";
+
 /** The credentials the app is configured with right now. */
-export function aiConnection(): AiCredentials {
-  return { apiKey: getOpenAiKey(), baseUrl: getBaseUrl() };
+export function aiConnection(): AiConnection {
+  return { apiKey: getOpenAiKey(), baseUrl: getBaseUrl(), provider: getAiProvider() };
 }
 
 /**
- * An opaque identity for a credential pair.
+ * An opaque identity for a connection.
  *
  * NUL-joined rather than concatenated: a key ending in the base URL's first characters would
  * otherwise be indistinguishable from a shorter key and a longer URL.
  */
-function fingerprint(credentials: AiCredentials): string {
-  return `${credentials.apiKey}\u0000${credentials.baseUrl}`;
+function fingerprint(credentials: AiConnection): string {
+  const family = credentials.provider ?? "openai-compat";
+  return `${credentials.apiKey}\u0000${credentials.baseUrl}\u0000${family}`;
 }
 
 let cache: AiModel[] | null = null;
@@ -77,6 +91,8 @@ let proxyCode: AiModelsResponse["code"];
 let proxyModelsError = "";
 /** What an `action_required` probe offered; null for every other answer. */
 let proxyAction: ProxyActionOffer | null = null;
+/** The families the last probe said the chat route reaches; the default alone until one says more. */
+let proxyProviders: AiProviderFamily[] = ["openai-compat"];
 
 /** What a managed backend says the assistant needs first, in the backend's own words. */
 export interface ProxyActionOffer {
@@ -126,6 +142,7 @@ export function resetModelCache() {
   proxyCode = undefined;
   proxyModelsError = "";
   proxyAction = null;
+  proxyProviders = ["openai-compat"];
   /* The probe's result IS the flags above. Clearing them while keeping the settled promise
      would strand every gate on a permanent "unconfigured, unmanaged" reading — ensureProxyProbe
      would no-op forever and the managed option would vanish until a full reload. */
@@ -137,6 +154,7 @@ export function resetModelCache() {
 const CONNECTION_KEYS = new Set<string>([
   SETTINGS.aiOpenAiKey.key,
   SETTINGS.aiBaseUrl.key,
+  SETTINGS.aiProvider.key,
   SETTINGS.cfToken.key,
   SETTINGS.cfAccountId.key,
 ]);
@@ -151,7 +169,7 @@ onSettingsChanged((keys) => {
  * The cached list, if it was listed under `credentials`. Null when it was not, or when there is
  * none — a caller must not show one provider's catalogue for another's key.
  */
-export function cachedModels(credentials: AiCredentials): AiModel[] | null {
+export function cachedModels(credentials: AiConnection): AiModel[] | null {
   return cache && cacheKey === fingerprint(credentials) ? cache : null;
 }
 
@@ -294,6 +312,18 @@ export function proxyActionOffer(): ProxyActionOffer | null {
   return proxyAction;
 }
 
+/**
+ * The provider families the backend's chat route reaches with a caller's key, as the last probe
+ * reported them. A backend that says nothing reaches the OpenAI-compatible family alone, and a
+ * surface **MUST NOT** offer it another: such a backend forwards every key to an OpenAI-compatible
+ * endpoint (specs/ai.md §2.6).
+ *
+ * @returns {readonly AiProviderFamily[]}
+ */
+export function backendProviders(): readonly AiProviderFamily[] {
+  return proxyProviders;
+}
+
 /** The proxy's preferred model id ("" when it does not declare one). */
 export function getProxyDefaultModel(): string {
   return proxyDefaultModel;
@@ -307,13 +337,15 @@ export function getProxyDefaultModel(): string {
  * that value was fetched, stored and never read — so a user who had chosen nothing got the
  * hardcoded `"gpt-4o"`, which Workers AI does not serve. Asking the backend what it prefers before
  * falling back to a name invented here is the difference between working and a 404 on the first
- * message.
+ * message. The last term follows the family for the same reason: Anthropic serves no `gpt-4o`.
  *
  * It lives here rather than in `ai-settings.ts` because only this module knows what the proxy said,
  * and `ai-settings` must not import it — this module already imports `ai-settings`.
  */
 export function preferredModel(): string {
-  return storedModel() || getProxyDefaultModel() || SETTINGS.aiModel.default;
+  const fallback =
+    getAiProvider() === "anthropic" ? ANTHROPIC_DEFAULT_MODEL : SETTINGS.aiModel.default;
+  return storedModel() || getProxyDefaultModel() || fallback;
 }
 
 /**
@@ -346,6 +378,23 @@ export function siblingRoute(chatUrl: string, segment: string): string {
 }
 
 /**
+ * The families a probe listed, keeping only the ones this client can speak. The answer is the
+ * backend's JSON, so an entry its type calls a family may be any string; a probe that lists none is
+ * a backend that predates the member, which reaches the default family alone.
+ *
+ * @param {readonly string[] | undefined} listed - The probe's `providers`, as sent
+ * @returns {AiProviderFamily[]}
+ */
+function providersOf(listed: readonly string[] | undefined): AiProviderFamily[] {
+  if (listed === undefined) {
+    return ["openai-compat"];
+  }
+  return listed.filter((family): family is AiProviderFamily =>
+    ["anthropic", "openai-compat"].includes(family),
+  );
+}
+
+/**
  * Fetch the models available through the AI proxy. Returns the cached list when present unless
  * `force` is set; throws on HTTP/network failure (callers surface the error).
  *
@@ -354,7 +403,7 @@ export function siblingRoute(chatUrl: string, segment: string): string {
  * @returns {Promise<AiModel[]>}
  */
 export async function fetchAvailableModels(
-  opts: { credentials?: AiCredentials; force?: boolean } = {},
+  opts: { credentials?: AiConnection; force?: boolean } = {},
 ): Promise<AiModel[]> {
   /* Resolve the credentials BEFORE consulting the cache. Checking the cache first is what let a
      list fetched under one provider be handed to a caller asking about another. */
@@ -374,6 +423,10 @@ export async function fetchAvailableModels(
   if (credentials.baseUrl) {
     headers["X-Api-Base-URL"] = credentials.baseUrl;
   }
+  // The default family says nothing, as the chat request does (`createProxyStreamingClient`).
+  if (credentials.provider === "anthropic") {
+    headers[AI_PROVIDER_HEADER] = credentials.provider;
+  }
 
   const resp = await fetch(modelsUrl, { headers });
   if (!resp.ok) {
@@ -390,6 +443,7 @@ export async function fetchAvailableModels(
   proxyCode = data.code;
   proxyModelsError = data.upstreamError !== undefined ? (data.upstreamMessage ?? "") : "";
   proxyAction = null;
+  proxyProviders = providersOf(data.providers);
   if (data.code === "action_required") {
     const offer: ProxyActionOffer = { actions: offeredActions(data.actions) };
     if (isString(data.detail) && data.detail) {

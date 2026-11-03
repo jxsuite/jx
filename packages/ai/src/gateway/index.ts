@@ -2,9 +2,10 @@
  * `@jxsuite/ai/gateway`: the server half of the `ai/chat` and `ai/models` routes, written once.
  *
  * Every Jx backend that proxies the assistant to a provider does the same wire work: read the
- * client's body, forward it as an OpenAI-compatible request, normalize the provider's stream into
- * the route's frames, and frame those as SSE. Before this module each backend carried its own copy,
- * and the copies drifted. Now `@jxsuite/server` runs this one, and any other backend can.
+ * client's body, forward it as an OpenAI-compatible request (or project it onto the Anthropic
+ * Messages API, for that family), normalize the provider's stream into the route's frames, and
+ * frame those as SSE. Before this module each backend carried its own copy, and the copies drifted.
+ * Now `@jxsuite/server` runs this one, and any other backend can.
  *
  * What stays with the host is policy: whose key a request may use, which base URLs are safe to
  * reach, how requests are admitted, and what the model catalogue says. The host supplies those as
@@ -23,6 +24,15 @@ export {
   isAiSessionId,
   upstreamCacheHints,
 } from "../cache-hints.ts";
+export {
+  ANTHROPIC_API_VERSION,
+  ANTHROPIC_BASE_URL,
+  ANTHROPIC_MAX_TOKENS,
+  isFirstPartyAnthropic,
+  listAnthropicModels,
+  normalizeAnthropicStream,
+  toAnthropicRequest,
+} from "./anthropic.ts";
 export { createChatHandler, DEFAULT_UPSTREAM_BASE_URL } from "./chat.ts";
 export { modelsResponse } from "./models.ts";
 export { normalizeOpenAIStream } from "./normalize.ts";
@@ -30,4 +40,10 @@ export { problemResponse } from "./problem.ts";
 export { encodeSse } from "./sse.ts";
 export { extractUpstreamErrorMessage } from "./upstream-error.ts";
 export type { UpstreamCacheHints } from "../cache-hints.ts";
+export type {
+  AnthropicModelListing,
+  AnthropicProjectionInput,
+  AnthropicProjectionOptions,
+  AnthropicRequestBody,
+} from "./anthropic.ts";
 export type { ChatAdmission, ChatGatewayOptions, GatewayRefusal, Upstream } from "./types.ts";

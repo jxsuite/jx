@@ -6,6 +6,12 @@
 
 import { upstreamCacheHints } from "../cache-hints.ts";
 import type { StreamEvent } from "../streaming-client.ts";
+import {
+  anthropicHeaders,
+  isFirstPartyAnthropic,
+  normalizeAnthropicStream,
+  toAnthropicRequest,
+} from "./anthropic.ts";
 import { fetchFailureFrame, normalizeOpenAIStream } from "./normalize.ts";
 import { problemResponse, refusal } from "./problem.ts";
 import { encodeSse, SSE_HEADERS } from "./sse.ts";
@@ -86,18 +92,20 @@ async function readBody(request: Request, limit: number | undefined): Promise<Ui
 }
 
 /**
- * The frames of one upstream exchange: the request, then its normalized response, or the one frame
- * that says why there is no response.
+ * The frames of one upstream exchange: the request, then its response normalized by the family's
+ * normalizer, or the one frame that says why there is no response.
  *
  * @param {typeof fetch} upstreamFetch - The fetch to call the upstream with
- * @param {string} url - The upstream's chat-completions URL
+ * @param {string} url - The upstream's chat URL
  * @param {RequestInit} init - The upstream request
+ * @param {(response: Response) => AsyncGenerator<StreamEvent>} normalize - The family's normalizer
  * @yields {StreamEvent} The route's frames, in wire order
  */
 async function* exchange(
   upstreamFetch: typeof fetch,
   url: string,
   init: RequestInit,
+  normalize: (response: Response) => AsyncGenerator<StreamEvent>,
 ): AsyncGenerator<StreamEvent> {
   let response: Response;
   try {
@@ -106,7 +114,7 @@ async function* exchange(
     yield fetchFailureFrame(error);
     return;
   }
-  yield* normalizeOpenAIStream(response);
+  yield* normalize(response);
 }
 
 /**
@@ -122,7 +130,8 @@ async function* exchange(
  * 5. `maxMessages` (413).
  * 6. `onAccepted`.
  * 7. The stream: a `200 text/event-stream` whose frames are the upstream's response normalized by
- *    `normalizeOpenAIStream`, or the one frame saying why the upstream could not be reached.
+ *    `normalizeOpenAIStream` (or `normalizeAnthropicStream` for the `anthropic` family), or the one
+ *    frame saying why the upstream could not be reached.
  *
  * The version 1 body is forwarded as the OpenAI-compatible request it describes: the system prompt
  * as a leading `system` message, `stream_options.include_usage` so the provider's own token count
@@ -130,6 +139,10 @@ async function* exchange(
  * resolved a `sessionAffinity`, it rides along as the prompt-cache hint the upstream's host
  * understands, and not at all to any other host (`upstreamCacheHints`). The upstream request
  * carries `context.signal`, so aborting it ends the stream with `done: cancelled`.
+ *
+ * An upstream of the `anthropic` family receives the same body projected onto the Messages API
+ * instead (`toAnthropicRequest`, specs/ai.md §2.6), at `<baseUrl>/v1/messages`, with the key as
+ * `x-api-key`. It gets no session-affinity hint: Anthropic's prompt cache needs none.
  *
  * @param {ChatGatewayOptions<C>} options - The host's policy
  * @returns {(request: Request, context: C) => Promise<Response>}
@@ -205,6 +218,28 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
       context,
     );
 
+    // Looked up per request, not captured at construction: a host or a test may swap it.
+    const upstreamFetch = options.fetch ?? fetch;
+
+    if (upstream.family === "anthropic") {
+      const messagesRequest = toAnthropicRequest(
+        { messages, model: String(model), systemPrompt, tools },
+        { firstParty: isFirstPartyAnthropic(upstream.baseUrl) },
+      );
+      const frames = exchange(
+        upstreamFetch,
+        `${upstream.baseUrl}/v1/messages`,
+        {
+          body: JSON.stringify(messagesRequest),
+          headers: { ...anthropicHeaders(upstream.apiKey) },
+          method: "POST",
+          signal: context.signal,
+        },
+        normalizeAnthropicStream,
+      );
+      return new Response(encodeSse(frames), { headers: SSE_HEADERS });
+    }
+
     // SAFETY: Array.isArray above proved `messages` is an array; its entries are forwarded unread.
     const upstreamBody: UpstreamBody = {
       model,
@@ -223,18 +258,21 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
     const hints = upstreamCacheHints(upstream.baseUrl, upstream.sessionAffinity);
     Object.assign(upstreamBody, hints.body);
 
-    // Looked up per request, not captured at construction: a host or a test may swap it.
-    const upstreamFetch = options.fetch ?? fetch;
-    const frames = exchange(upstreamFetch, `${upstream.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${upstream.apiKey}`,
-        ...hints.headers,
+    const frames = exchange(
+      upstreamFetch,
+      `${upstream.baseUrl}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${upstream.apiKey}`,
+          ...hints.headers,
+        },
+        body: JSON.stringify(upstreamBody),
+        signal: context.signal,
       },
-      body: JSON.stringify(upstreamBody),
-      signal: context.signal,
-    });
+      normalizeOpenAIStream,
+    );
     return new Response(encodeSse(frames), { headers: SSE_HEADERS });
   };
 }
