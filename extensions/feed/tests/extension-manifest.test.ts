@@ -123,6 +123,35 @@ describe("jx-extension.json manifest", () => {
 describe("project fragment", () => {
   const fragment = loadJson(resolve(import.meta.dir, "../schemas/project.fragment.schema.json"));
 
+  /* The `feed` section is a MAP of named feeds, so its settings section has to say so: with the
+     default `form` layout Studio draws one form over the section value, and a schema whose only
+     shape is `additionalProperties` has no named field to draw, which is how Feeds rendered as an
+     empty section under its heading. */
+  test("the settings section is a map over named feeds, and every key it names is the entry's", () => {
+    const settings = objectOf(at(loadFeedClass(), "$studio", "settings"), "$studio.settings");
+    const entry = objectOf(
+      at(fragment, "properties", "feed", "additionalProperties"),
+      "feed.additionalProperties",
+    );
+    const fields = Object.keys(objectOf(entry.properties, "feed entry properties"));
+    expect(settings.layout).toBe("map");
+    expect(at(settings, "entry", "noun")).toBe("feed");
+    // `intro` is the vocabulary's opening sentence (extensions.md §9.1); `description` is not read.
+    expect(isString(settings.intro)).toBe(true);
+    expect(settings.description).toBeUndefined();
+    const newEntry = objectOf(at(settings, "entry", "newEntry"), "entry.newEntry");
+    const ui = objectOf(at(settings, "entry", "ui"), "entry.ui");
+    for (const key of [...Object.keys(newEntry), ...Object.keys(ui)]) {
+      expect(fields).toContain(key);
+    }
+    // A new entry starts with every field the fragment requires.
+    const required = Array.isArray(entry.required) ? entry.required.filter(isString) : [];
+    expect(required.length).toBeGreaterThan(0);
+    for (const key of required) {
+      expect(Object.keys(newEntry)).toContain(key);
+    }
+  });
+
   test("is a standalone-valid 2020-12 schema contributing the feed section", () => {
     const ajv = new Ajv2020({ allErrors: true, strict: false });
     const validate = ajv.compile(fragment);

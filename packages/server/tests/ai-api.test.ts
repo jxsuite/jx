@@ -1128,3 +1128,210 @@ describe("POST /__studio/ai/chat — the session header becomes a hashed affinit
     }
   });
 });
+
+// ─── The Anthropic family (specs/ai.md §2.6) ─────────────────────────────────
+
+describe("X-Api-Provider: anthropic", () => {
+  /** One recorded upstream call: where it went, with which headers, carrying which body. */
+  interface AnthropicCall {
+    url: string;
+    headers: Headers;
+    body: string;
+  }
+
+  /** Run `fn` with the global fetch answering `answer`, recording every call. */
+  async function withClaude(
+    answer: () => Response,
+    fn: (calls: AnthropicCall[]) => Promise<void>,
+  ): Promise<void> {
+    const calls: AnthropicCall[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = stubFetch((input, init) => {
+      calls.push({
+        body: String(init?.body ?? ""),
+        headers: new Headers(init?.headers),
+        url: String(input),
+      });
+      return Promise.resolve(answer());
+    });
+    try {
+      await fn(calls);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  }
+
+  const MESSAGES_STREAM = [
+    'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":3}}}',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}',
+    'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}',
+    'event: message_stop\ndata: {"type":"message_stop"}',
+  ].join("\n\n");
+
+  beforeEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_BASE_URL;
+  });
+
+  it("streams a chat through the Messages API with the caller's key as x-api-key", async () => {
+    await withClaude(
+      () => new Response(`${MESSAGES_STREAM}\n\n`),
+      async (calls) => {
+        const req = mockReq("/__studio/ai/chat", {
+          body: { messages: [{ content: "hi", role: "user" }], systemPrompt: "sys" },
+          headers: { "X-Api-Key": "sk-ant-user", "X-Api-Provider": "anthropic" },
+          method: "POST",
+        });
+        const res = await handleAiApi(req, new URL("http://localhost/__studio/ai/chat"));
+        expect(await readSSEEvents(res!)).toEqual([
+          { content: "Hi", type: "delta" },
+          { inputTokens: 3, outputTokens: 1, type: "usage" },
+          { stopReason: "stop", type: "done" },
+        ]);
+        expect(calls).toHaveLength(1);
+        expect(calls[0]?.url).toBe("https://api.anthropic.com/v1/messages");
+        expect(calls[0]?.headers.get("x-api-key")).toBe("sk-ant-user");
+        expect(calls[0]?.headers.get("Authorization")).toBeNull();
+        // SAFETY: the gateway's upstream body is JSON.stringify of its Messages API request.
+        const sent = JSON.parse(calls[0]?.body ?? "{}") as JsonObject;
+        expect(sent.model).toBe("claude-opus-5-5");
+        expect(sent.system).toEqual([{ text: "sys", type: "text" }]);
+      },
+    );
+  });
+
+  it("attaches ANTHROPIC_API_KEY to the default endpoint, and never OPENAI_API_KEY", async () => {
+    process.env.OPENAI_API_KEY = "sk-openai-secret";
+    await withClaude(
+      () => new Response(`${MESSAGES_STREAM}\n\n`),
+      async (calls) => {
+        const chat = () =>
+          handleAiApi(
+            mockReq("/__studio/ai/chat", {
+              body: { messages: [{ content: "hi", role: "user" }] },
+              headers: { "X-Api-Provider": "anthropic" },
+              method: "POST",
+            }),
+            new URL("http://localhost/__studio/ai/chat"),
+          );
+        const refused = await chat();
+        expect(refused!.status).toBe(401);
+        expect(await refused!.json()).toMatchObject({
+          detail: "No API key configured. Set ANTHROPIC_API_KEY env var or send X-Api-Key header.",
+        });
+        expect(calls).toHaveLength(0);
+
+        process.env.ANTHROPIC_API_KEY = "sk-ant-server";
+        process.env.ANTHROPIC_BASE_URL = "https://claude-proxy.example";
+        await readSSEEvents((await chat())!);
+        expect(calls[0]?.url).toBe("https://claude-proxy.example/v1/messages");
+        expect(calls[0]?.headers.get("x-api-key")).toBe("sk-ant-server");
+      },
+    );
+  });
+
+  it("keeps the env key off a caller-supplied endpoint, and blocks metadata hosts", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-server";
+    const chat = (headers: Record<string, string>) =>
+      handleAiApi(
+        mockReq("/__studio/ai/chat", {
+          body: { messages: [] },
+          headers: { "X-Api-Provider": "anthropic", ...headers },
+          method: "POST",
+        }),
+        new URL("http://localhost/__studio/ai/chat"),
+      );
+    expect((await chat({ "X-Api-Base-URL": "https://attacker.example" }))!.status).toBe(401);
+    const metadata = { "X-Api-Base-URL": "http://169.254.169.254", "X-Api-Key": "sk-ant-user" };
+    expect((await chat(metadata))!.status).toBe(403);
+  });
+
+  it("refuses a provider family this server does not reach, before any upstream", async () => {
+    await withClaude(
+      () => new Response(""),
+      async (calls) => {
+        const headers = { "X-Api-Key": "sk", "X-Api-Provider": "gemini" };
+        const requests = [
+          mockReq("/__studio/ai/chat", { body: { messages: [] }, headers, method: "POST" }),
+          mockReq("/__studio/ai/models", { headers }),
+        ];
+        for (const req of requests) {
+          const res = await handleAiApi(req, new URL(req.url));
+          expect(res!.status).toBe(400);
+        }
+        expect(calls).toHaveLength(0);
+      },
+    );
+  });
+
+  it("reads an explicit openai-compat header as the default family", async () => {
+    const res = await handleAiApi(
+      mockReq("/__studio/ai/models", { headers: { "X-Api-Provider": " OpenAI-Compat " } }),
+      new URL("http://localhost/__studio/ai/models"),
+    );
+    expect(await res!.json()).toMatchObject({
+      configured: false,
+      providers: ["openai-compat", "anthropic"],
+    });
+  });
+
+  it("lists the caller's Claude models, preferring claude-opus-5-5", async () => {
+    await withClaude(
+      () =>
+        Response.json({
+          data: [
+            {
+              display_name: "Claude Sonnet 5.5",
+              id: "claude-sonnet-5-5",
+              max_input_tokens: 1_000_000,
+            },
+          ],
+          has_more: false,
+        }),
+      async (calls) => {
+        const res = await handleAiApi(
+          mockReq("/__studio/ai/models", {
+            headers: { "X-Api-Key": "sk-ant-user", "X-Api-Provider": "anthropic" },
+          }),
+          new URL("http://localhost/__studio/ai/models"),
+        );
+        expect(await res!.json()).toEqual({
+          configured: true,
+          defaultModel: "claude-opus-5-5",
+          managed: false,
+          models: [
+            { contextWindow: 1_000_000, id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
+          ],
+          providers: ["openai-compat", "anthropic"],
+        });
+        expect(calls[0]?.url).toBe("https://api.anthropic.com/v1/models?limit=1000");
+        expect(calls[0]?.headers.get("anthropic-version")).toBeTruthy();
+      },
+    );
+  });
+
+  it("answers the Claude defaults with no key, and with the reason when listing fails", async () => {
+    const models = (headers: Record<string, string>) =>
+      handleAiApi(
+        mockReq("/__studio/ai/models", { headers: { "X-Api-Provider": "anthropic", ...headers } }),
+        new URL("http://localhost/__studio/ai/models"),
+      );
+    const unkeyed = await (await models({}))!.json();
+    expect(unkeyed).toMatchObject({ configured: false, defaultModel: "claude-opus-5-5" });
+    expect(unkeyed.models).toHaveLength(3);
+
+    await withClaude(
+      () =>
+        Response.json({ error: { message: "invalid x-api-key" }, type: "error" }, { status: 401 }),
+      async () => {
+        const failed = await (await models({ "X-Api-Key": "sk-bad" }))!.json();
+        expect(failed).toMatchObject({
+          configured: true,
+          upstreamError: 401,
+          upstreamMessage: "invalid x-api-key",
+        });
+        expect(failed.models).toHaveLength(3);
+      },
+    );
+  });
+});

@@ -17,11 +17,19 @@ import type { ProblemDetails } from "@jxsuite/protocol/problem";
 
 /** Where one chat request is forwarded. A host decides it per request, in `resolveUpstream`. */
 export interface Upstream {
-  /** The wire the upstream speaks. The OpenAI-compatible chat-completions API is the only one. */
-  readonly family: "openai-compat";
-  /** The provider's base URL, without the `/chat/completions` the gateway appends. */
+  /**
+   * The wire the upstream speaks: the OpenAI-compatible chat-completions API, or the Anthropic
+   * Messages API (specs/ai.md §2.6). A client's body is the same version 1 body either way; the
+   * gateway projects it onto the family's wire and normalizes the family's stream.
+   */
+  readonly family: "openai-compat" | "anthropic";
+  /**
+   * The provider's base URL, without the path the gateway appends: `/chat/completions` for the
+   * OpenAI-compatible family (so it usually ends in `/v1`), `/v1/messages` for Anthropic (so it is
+   * the origin, `ANTHROPIC_BASE_URL`).
+   */
   readonly baseUrl: string;
-  /** Sent as a bearer token in the `Authorization` header. */
+  /** Sent as a bearer token in the `Authorization` header, or as `x-api-key` to Anthropic. */
   readonly apiKey: string;
   /** The model a request that names none is forwarded with. */
   readonly defaultModel: string;

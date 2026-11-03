@@ -10,11 +10,12 @@
  * (the key is `cssVars`) render an empty pane and call it a screenshot.
  */
 import { flush, installMockPlatform, resetStudioState } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
 import { checkPlacements } from "../src/commands/levels";
 import { initLayers } from "../src/ui/layers";
+import { setActiveRegistry } from "../src/commands/active-registry";
 import { closeAllTabs, workspace } from "../src/workspace/workspace";
 import type { CommandContext } from "../src/commands/context";
 import type { CommandArgValues } from "../src/commands/command-args";
@@ -204,8 +205,31 @@ describe("data.openGrid", () => {
 });
 
 describe("settings.open", () => {
-  test("opens on Overview with no argument, as a dialog rather than a tab", async () => {
+  /** The workspaces `view.setWorkspace` was asked for: Settings is a workspace switch. */
+  let switched: unknown[];
+
+  beforeEach(() => {
+    switched = [];
+    registry.register({
+      category: "View",
+      id: "view.setWorkspace",
+      level: "application",
+      menus: ["never"],
+      run: (_ctx, args?: CommandArgValues) => {
+        switched.push(args?.["workspace"]);
+      },
+      title: "Switch Workspace",
+    });
+    setActiveRegistry(registry);
+  });
+
+  afterEach(() => {
+    setActiveRegistry(null);
+  });
+
+  test("opens on Overview with no argument, as the Settings workspace rather than a tab", async () => {
     await registry.run("settings.open");
+    expect(switched).toEqual(["settings"]);
     expect(settingsDocumentSection()).toBe("overview");
     expect(workspace.tabs.get("project.json")).toBeUndefined();
   });
@@ -215,7 +239,7 @@ describe("settings.open", () => {
     expect(settingsDocumentSection()).toBe("contexts");
   });
 
-  test("RETARGETS an already-open dialog — the predecessor was open-once-then-inert", async () => {
+  test("RETARGETS Settings when it is already up — the predecessor was open-once-then-inert", async () => {
     await registry.run("settings.open", { section: "contexts" });
     await registry.run("settings.open", { section: "head" });
     expect(settingsDocumentSection()).toBe("head");

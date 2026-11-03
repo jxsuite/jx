@@ -218,7 +218,12 @@ describe("the settings editor's draw guards", () => {
    * mount's own `ready` schedules.
    */
   async function mount(): Promise<void> {
-    pane = mountSettingsPane(host, { openMoved: () => {} });
+    pane = mountSettingsPane(host, {
+      back: () => {},
+      backLabel: () => "Back to Design",
+      openMoved: () => {},
+      region: "pane.primary/settings",
+    });
     await flush(3);
   }
 

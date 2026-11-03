@@ -11,9 +11,10 @@
  *   written in Content even when it is opened from somewhere else.
  * - **Media**: the media home and every media file's viewer.
  * - **Styles**: `project.json`, in any of its three views: Elements (`stylebook`), Variables
- *   (`tokens`) and Code (`source`). Project Settings is a dialog over every workspace (§17.1), not
- *   a tab, so it belongs to none.
+ *   (`tokens`) and Code (`source`).
  * - **Publish**: the publish home and every comparison (`git-diff`).
+ * - **Settings**: its home alone, which hosts the settings editor (§17.1, §22.9). It edits
+ *   `project.json` through the chokepoint without being a tab over it.
  * - **Design**: everything else: pages, templates, components and every other file.
  *
  * The rules read the tab's CURRENT editor, so switching an entry from its form to the canvas keeps

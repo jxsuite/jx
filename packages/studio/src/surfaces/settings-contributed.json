@@ -24,7 +24,7 @@
       "marginBottom": "12px"
     },
     "& [part=\"columns\"]": {
-      "$description": "The 1px gap over the border colour is the divider between the two columns: two panels on `--bg-panel` with `--border` showing through the gap, so nothing draws a rule of its own.",
+      "$description": "The 1px gap over the border colour is the divider between the two columns: two panels on the page's own `--bg` with `--border` showing through the gap, so nothing draws a rule of its own. The panels are `--bg`, not `--bg-panel`, because the section is drawn on the Settings home, whose background is `--bg`: a second shade under one section of the form reads as a box nobody asked for.",
       "display": "flex",
       "height": "100%",
       "gap": "1px",
@@ -37,7 +37,7 @@
       "padding": "12px",
       "width": "200px",
       "minWidth": "200px",
-      "background": "var(--bg-panel)",
+      "background": "var(--bg)",
       "overflowY": "auto"
     },
     "& [part=\"entry\"], & [part=\"new-open\"]": {
@@ -62,7 +62,7 @@
       "display": "flex",
       "alignItems": "center",
       "justifyContent": "center",
-      "background": "var(--bg-panel)",
+      "background": "var(--bg)",
       "color": "var(--fg-dim)",
       "fontSize": "13px"
     },
@@ -70,7 +70,7 @@
       "$description": "`min-width: 0` is the one line `.settings-editor-panel` did not have and needed: a flex child's floor is its content, and the schema form inside this one is a whole form rather than the short cards Data Shapes puts here — so a long pointer or a wide row pushed the column past the right edge of the pane instead of scrolling inside it.",
       "flex": "1",
       "padding": "16px",
-      "background": "var(--bg-panel)",
+      "background": "var(--bg)",
       "overflowY": "auto",
       "minWidth": "0"
     },

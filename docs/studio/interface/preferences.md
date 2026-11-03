@@ -19,7 +19,7 @@ code:
 Preferences holds the settings that belong to **Studio**, not to a project: how the editor looks, which AI provider it talks to, which accounts it has signed you into, and what every keyboard shortcut does. Open it with :kbd[Cmd+,] on macOS or :kbd[Ctrl+,] elsewhere, find **Preferences…** in the command palette, or pick it from the **Settings** menu in the Command Bar, whose submenu takes you straight to Appearance, Assistant, Accounts or Keyboard. However you arrive, the keyboard starts on that section's own item in the list rather than on the first one, so exactly one item reads as the current section.
 
 :::doc-note
-**Preferences is not Project Settings.** Preferences follows you between projects, and it works with no project open at all. Project Settings (languages, extensions, contexts, packages) belongs to one project and edits that project's own `project.json`. Both are dialogs you can open from any workspace. See **[Project settings](/docs/studio/projects/settings)**. They share the Command Bar's **Settings** menu, which holds exactly these two, side by side, with a divider between what belongs to the app and what belongs to the project. Each one's submenu lists its sections; Project Settings' is grouped into General, Integrations and Advanced, the way its dialog is.
+**Preferences is not Project Settings.** Preferences follows you between projects, and it works with no project open at all. Project Settings (languages, extensions, contexts, packages) belongs to one project and edits that project's own `project.json`. You can open both from any workspace: Preferences is a dialog, and Project Settings is a workspace of its own. See **[Project settings](/docs/studio/projects/settings)**. They share the Command Bar's **Settings** menu, which holds exactly these two, side by side, with a divider between what belongs to the app and what belongs to the project. Each one's submenu lists its sections; Project Settings' is grouped into General, Integrations and Advanced, the way its dialog is.
 :::
 
 Preferences opens over the workspace rather than replacing it, and :kbd[Escape] closes it. Nothing you do behind it is suspended.
@@ -36,13 +36,13 @@ This is the editor's own theme. It has no effect on the site you're building, wh
 
 ## Assistant
 
-Connect the AI provider the [assistant](/docs/studio/ai) talks to: a key from any OpenAI-compatible service, the model to use, and an optional endpoint if you're running a local or self-hosted model. On platforms that broker it, a keyless **Connect Cloudflare** option sits above the key form.
+Connect the AI provider the [assistant](/docs/studio/ai) talks to: a key from any OpenAI-compatible service or an Anthropic key for Claude, the model to use, and an optional endpoint if you're running a local or self-hosted model. The **Provider** choice appears where the Studio backend can reach Anthropic, which the desktop app and the dev server both can. On platforms that broker it, a keyless **Connect Cloudflare** option sits above the key form.
 
 Everything you enter is stored locally, on this machine, and sent only to the endpoint you chose. The key form's **Save** and **Cancel** appear only once you change the key, model or endpoint, and **Cancel** puts the stored values back. If you disconnect the provider in **Accounts**, the form empties rather than holding on to the old key. Saving leaves Preferences open, so you can check the result in **Accounts** without reopening anything.
 
 ## Accounts
 
-Every credential Studio is holding, in one list: **GitHub**, the **AI provider**, and **Cloudflare**. All three are always listed: a connected one says what is stored (the model and endpoint your key is used with, the Cloudflare account it is tied to), a disconnected one says what connecting would buy you and when Studio will ask for it.
+Every credential Studio is holding, in one list: **GitHub**, the **AI provider**, and **Cloudflare**. All three are always listed: a connected one says what is stored (whether the AI key is an Anthropic one, the model and endpoint it is used with, the Cloudflare account it is tied to), a disconnected one says what connecting would buy you and when Studio will ask for it.
 
 A connected GitHub account also says **where** the credential is kept, because that differs by build: the desktop app holds it in a file in its own configuration folder that only your user account can read; a browser keeps it in that browser's storage. A connected account offers **Disconnect**, which forgets it on this machine immediately and takes its row back to the disconnected wording. Nothing else is touched (disconnecting the AI provider leaves GitHub signed in), and anything that was waiting on that credential notices at once, so the assistant's setup notice appears or disappears without you reopening anything.
 

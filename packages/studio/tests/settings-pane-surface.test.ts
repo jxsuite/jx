@@ -16,6 +16,7 @@ import type { SettingsPaneGroup, SettingsPaneValues } from "../src/surfaces/sett
 let host: HTMLElement;
 let chosen: string[];
 let moved: string[];
+let backs: number[];
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -24,6 +25,7 @@ beforeEach(() => {
   resetSurfaceRegistry();
   chosen = [];
   moved = [];
+  backs = [];
 });
 
 function group(id: string, label: string, keys: string[], note = ""): SettingsPaneGroup {
@@ -41,6 +43,7 @@ function values(overrides: Partial<SettingsPaneValues> = {}): SettingsPaneValues
   return {
     active: "overview",
     activeTabId: "settings-nav-overview",
+    backLabel: "Back to Design",
     empty: "No settings sections.",
     failure: "",
     groups: [
@@ -48,6 +51,7 @@ function values(overrides: Partial<SettingsPaneValues> = {}): SettingsPaneValues
       group("advanced", "Advanced", ["contexts"], "For developers"),
     ],
     hasSection: true,
+    heading: "Project settings",
     intro: "",
     moved: [
       {
@@ -57,12 +61,14 @@ function values(overrides: Partial<SettingsPaneValues> = {}): SettingsPaneValues
         workspace: "styles",
       },
     ],
+    region: "pane.primary/settings",
     ...overrides,
   };
 }
 
 function mount(initial: SettingsPaneValues = values()) {
   return mountSettingsPaneSurface(host, initial, {
+    back: () => backs.push(1),
     openMoved: (workspace) => moved.push(workspace),
     selectSection: (key) => chosen.push(key),
   });
@@ -206,7 +212,7 @@ describe("the settings pane surface", () => {
     // Before the mount has landed there is no row to focus, and asking is not an error.
     expect(() => surface.focusActive()).not.toThrow();
     await flush(3);
-    surface.focusActive();
+    await surface.focusActive();
     const active = document.activeElement;
     expect(active instanceof HTMLElement ? active.dataset["section"] : "").toBe("contexts");
     surface.dispose();
@@ -236,5 +242,40 @@ describe("the settings pane surface", () => {
     expect(mountsOf("settings-pane")).toHaveLength(0);
     expect(surface.body()).toBeNull();
     expect(() => surface.dispose()).not.toThrow();
+  });
+
+  test("the home names its pane's region and its workspace, and Back says where it goes", async () => {
+    const surface = mount();
+    await flush(3);
+
+    const root = host.querySelector<HTMLElement>('[part="settings"]')!;
+    expect(root.dataset["jxRegion"]).toBe("pane.primary/settings");
+    expect(root.getAttribute("role")).toBe("region");
+    const heading = host.querySelector('[part="heading"]')!;
+    expect(heading.textContent).toBe("Project settings");
+    expect(root.getAttribute("aria-labelledby")).toBe(heading.id);
+    const back = host.querySelector<HTMLElement>('[part="back"]')!;
+    expect(back.textContent.trim()).toBe("Back to Design");
+
+    back.click();
+    expect(backs).toEqual([1]);
+
+    surface.update(values({ backLabel: "Back to Styles", region: "pane.secondary/settings" }));
+    await flush(2);
+    expect(back.textContent.trim()).toBe("Back to Styles");
+    expect(root.dataset["jxRegion"]).toBe("pane.secondary/settings");
+    surface.dispose();
+  });
+
+  test("attached answers whether the home still stands in its container", async () => {
+    const surface = mount();
+    expect(surface.attached()).toBe(true);
+    await flush(3);
+    expect(surface.attached()).toBe(true);
+
+    host.replaceChildren();
+    expect(surface.attached()).toBe(false);
+    surface.dispose();
+    expect(surface.attached()).toBe(false);
   });
 });
