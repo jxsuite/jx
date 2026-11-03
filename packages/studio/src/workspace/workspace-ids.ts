@@ -1,9 +1,13 @@
 /**
- * The five workspaces, declared where a bare Bun process can read them.
+ * The six workspaces, declared where a bare Bun process can read them.
  *
  * A workspace is the answer to "what am I doing right now": designing pages, writing content,
- * managing media, editing the project's styles, or publishing. Studio's top bar switches between
- * them, and every open tab belongs to exactly one (`workspace/tab-workspace.ts` derives which).
+ * managing media, editing the project's styles, publishing, or configuring the project. Studio's
+ * top bar switches between the first five, and every open tab belongs to exactly one
+ * (`workspace/tab-workspace.ts` derives which). Project Settings is the sixth: a workspace like the
+ * others (a frame, a home tab, a place `view.setWorkspace` can name) that the top bar does not draw
+ * a tab for, because it is visited for a minute from a "Project Settings" link (the gear menu, ⌘⇧,
+ * and every deep link `settings.open` serves) rather than worked in (studio.md §17.1, §22.9).
  *
  * The ids live in a module with no DOM and no state for the reason `NAVIGATOR_PANEL_IDS` does:
  * `view.setWorkspace`'s `args` enum is built from {@link WORKSPACE_IDS}, and
@@ -19,8 +23,15 @@
  * @docs studio/interface
  */
 
-/** The workspaces, in top-bar order. ⌘1 to ⌘5 follow this order. */
-export const WORKSPACE_IDS = ["design", "content", "media", "styles", "publish"] as const;
+/** The workspaces, in top-bar order, Settings last. ⌘1 to ⌘5 follow the switcher's five. */
+export const WORKSPACE_IDS = [
+  "design",
+  "content",
+  "media",
+  "styles",
+  "publish",
+  "settings",
+] as const;
 
 export type WorkspaceId = (typeof WORKSPACE_IDS)[number];
 
@@ -34,6 +45,11 @@ export interface WorkspaceInfo {
   title: string;
   /** A key into the kit's glyph manifest (`@jxsuite/ui/icons`), checked by this module's test. */
   icon: string;
+  /**
+   * Whether the top bar draws a tab for it, and so whether it has a ⌘-digit chord and a "Go to"
+   * palette row. False for Settings alone, which its own links and `settings.open` reach.
+   */
+  switcher: boolean;
 }
 
 /** Every workspace, in {@link WORKSPACE_IDS} order. */
@@ -41,29 +57,45 @@ export const WORKSPACES: readonly WorkspaceInfo[] = [
   {
     icon: "frame-corners",
     id: "design",
+    switcher: true,
     title: "Design",
   },
   {
     icon: "file-text",
     id: "content",
+    switcher: true,
     title: "Content",
   },
   {
     icon: "image",
     id: "media",
+    switcher: true,
     title: "Media",
   },
   {
     icon: "paint-brush",
     id: "styles",
+    switcher: true,
     title: "Styles",
   },
   {
     icon: "paper-plane-tilt",
     id: "publish",
+    switcher: true,
     title: "Publish",
   },
+  {
+    icon: "gear-six",
+    id: "settings",
+    switcher: false,
+    title: "Project settings",
+  },
 ];
+
+/** The workspaces the top bar draws a tab for, in order: every one but Settings. */
+export const SWITCHER_WORKSPACES: readonly WorkspaceInfo[] = WORKSPACES.filter(
+  (entry) => entry.switcher,
+);
 
 /** Whether a value is a declared workspace id. A stored value is untrusted input. */
 export function isWorkspaceId(value: unknown): value is WorkspaceId {
@@ -90,14 +122,15 @@ const HOME_SCHEME = "workspace://";
  * that tab draws under.
  *
  * Design has no home (an empty stage is its home), and Styles' is `project.json` in its stylebook
- * editor, opened by the module that owns that document. These three are the generic mechanism's:
+ * editor, opened by the module that owns that document. These four are the generic mechanism's:
  * Content's home is the collection it shows (`browse/library-pane.ts`), Media's the media library,
- * and Publish's its own surface.
+ * Publish's its own surface, and Settings' the settings editor (`settings/settings-workspace.ts`).
  */
 export const WORKSPACE_HOME_MODES = {
   content: "content-home",
   media: "media-home",
   publish: "publish-home",
+  settings: "settings-home",
 } as const satisfies Partial<Record<WorkspaceId, string>>;
 
 /** A workspace whose home is a generic home tab. */

@@ -1,11 +1,11 @@
 /// <reference lib="dom" />
 /**
- * The Project Settings dialog's two columns as a mounted document: the mount seam, and nothing
- * else.
+ * The Project Settings workspace's home as a mounted document: its heading and Back control over
+ * the two columns. The mount seam, and nothing else.
  *
  * `panels/settings-pane.ts` is the flow: which sections are registered, which group lists each,
  * which one is current, what a nav click does, and which renderer draws the body. This is the
- * surface it draws into, and `surfaces/settings-dialog.ts` is the dialog it sits in.
+ * surface it draws into, and `settings/settings-workspace.ts` mounts it into a pane's stage.
  *
  * **One island, and the sections are why.** A settings section is handed a container and renders
  * into it (some of them still with lit, some by mounting a document of their own) so the body
@@ -51,8 +51,14 @@ export interface SettingsPaneMovedRow {
   linkLabel: string;
 }
 
-/** What the dialog's columns say right now. */
+/** What the home says right now. */
 export interface SettingsPaneValues {
+  /** `pane.<id>/settings`: the pane this home stands in names it, as Publish's does. */
+  region: string;
+  /** The heading, which is also the region's name: the workspace's title. */
+  heading: string;
+  /** The Back control's text, naming where it goes ("Back to Design"). */
+  backLabel: string;
   /** The current section's key. */
   active: string;
   /** The current section's row id, so the body is named by the row that chose it. */
@@ -80,6 +86,8 @@ export interface SettingsPaneActions {
   selectSection: (key: string) => void;
   /** A Moved footnote's button was activated, naming the workspace it goes to. */
   openMoved: (workspace: string) => void;
+  /** The Back control was activated: leave Settings for the workspace it was opened from. */
+  back: () => void;
 }
 
 export interface SettingsPaneHandle {
@@ -96,14 +104,23 @@ export interface SettingsPaneHandle {
   /** Settles once the document is mounted, or the surface was disposed first. */
   ready: Promise<void>;
   /**
+   * Whether the document still stands in the container it was mounted into: true while the mount is
+   * in flight, false once disposed or once something else replaced the container's children.
+   */
+  attached: () => boolean;
+  /**
    * Put the keyboard on the current section's row.
    *
-   * `showModal()` focuses the dialog's first focusable descendant, which is always the first
-   * group's tab stop, so a dialog opened on Advanced › Raw JSON would put the ring on Overview
-   * while the selection was three rows down a different list. Read off `aria-selected`, which the
-   * strip writes, because that attribute is the one record of which row is current.
+   * Opening Settings on Advanced › Raw JSON has to put the ring on Raw JSON, not on the first
+   * group's tab stop, or the selection is three rows down a different list from the keyboard. The
+   * row is found by the section key the document was handed (`active`), not by `aria-selected`: the
+   * strip writes that a turn after the row is created, and a home opened by a command asks for the
+   * keyboard as soon as it has drawn. A row is focusable once its strip has given it a tab stop, so
+   * a row whose strip has not synced yet is focused when the strip says it is ready.
+   *
+   * @returns {Promise<void>} Settles once the keyboard has moved, or at once when there is no row
    */
-  focusActive: () => void;
+  focusActive: () => Promise<void>;
   /** Take the document down. Idempotent. */
   dispose: () => void;
 }
@@ -125,12 +142,12 @@ function failureStateOf(failure: string): string {
 }
 
 /**
- * Mount the columns into `container`, which is the settings dialog's island.
+ * Mount the home into `container`, a pane's stage.
  *
  * The container is cleared first, lit's render marker included, so a host handed back after some
  * other renderer used it cannot make the next lit render throw on a part whose nodes have gone.
  *
- * @param {HTMLElement} container The dialog's pane slot
+ * @param {HTMLElement} container The pane's stage
  * @param {SettingsPaneValues} values What to say on the first paint
  * @param {SettingsPaneActions} actions What a row and a Moved button do. Read once.
  * @returns {SettingsPaneHandle}
@@ -171,6 +188,13 @@ export function mountSettingsPaneSurface(
   });
 
   return {
+    attached: () => {
+      if (disposed) {
+        return false;
+      }
+      const root = mounted?.root;
+      return root === undefined ? true : root instanceof HTMLElement && container.contains(root);
+    },
     body: () => body,
     dispose() {
       disposed = true;
@@ -178,10 +202,32 @@ export function mountSettingsPaneSurface(
       mounted = null;
       body = null;
     },
-    focusActive() {
+    async focusActive() {
       const root = mounted?.root;
-      if (root instanceof HTMLElement) {
-        root.querySelector<HTMLElement>('[part="nav-item"][aria-selected="true"]')?.focus();
+      const row =
+        root instanceof HTMLElement
+          ? [...root.querySelectorAll<HTMLElement>('[part="nav-item"]')].find(
+              (candidate) => candidate.dataset["section"] === scope.active,
+            )
+          : undefined;
+      if (!row) {
+        return;
+      }
+      const strip = row.closest("jx-tabs");
+      // `aria-selected` is what the strip writes when it syncs, and the sync is what gives a tab stop.
+      if (strip && row.getAttribute("aria-selected") !== "true") {
+        await new Promise<void>((resolve) => {
+          strip.addEventListener(
+            "jx-ready",
+            () => {
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      }
+      if (!disposed) {
+        row.focus();
       }
     },
     ready,
@@ -189,6 +235,9 @@ export function mountSettingsPaneSurface(
       /* Field by field, so an unchanged one is inert, and `active` LAST, because it is what each
          strip's selection is compared against: writing it before the rows it names have arrived
          would make `jx-tabs` sync a selection onto a column that does not hold that tab yet. */
+      scope.region = next.region;
+      scope.heading = next.heading;
+      scope.backLabel = next.backLabel;
       scope.groups = next.groups;
       scope.moved = next.moved;
       scope.activeTabId = next.activeTabId;

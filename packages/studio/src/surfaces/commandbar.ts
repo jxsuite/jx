@@ -57,7 +57,7 @@ import {
   openSettingsMenu,
   SETTINGS_MENU_PLACEMENT,
 } from "../panels/settings-menu";
-import { WORKSPACES } from "../workspace/workspace-ids";
+import { SWITCHER_WORKSPACES } from "../workspace/workspace-ids";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import commandbarDoc from "./commandbar.json";
 import type { PresenceProjection } from "../collab/presence-chips";
@@ -584,7 +584,11 @@ function projectSegments(tab: Tab | null): SegmentProjection[] {
 }
 
 /**
- * `Design · Content · Media · Styles · Publish`: the five workspaces, as a tablist.
+ * `Design · Content · Media · Styles · Publish`: the five switcher workspaces, as a tablist.
+ *
+ * Project Settings is a workspace too, and is not here: it is reached from its links (the gear
+ * menu's row, ⌘⇧, and every `settings.open` deep link), so while it is on screen no tab is selected
+ * and any of these five leaves it (studio.md §22.2).
  *
  * Each tab RUNS `view.setWorkspace`, so the click, ⌘1–5, the palette row and a script all take the
  * same path, and the selected tab is `shell.workspace` rather than a second record of it. Publish
@@ -598,7 +602,7 @@ function projectWorkspaces(registry: CommandRegistry | null): WorkspaceTabProjec
     return [];
   }
   const dirty = shell.git.status?.files.length ?? 0;
-  return WORKSPACES.map((entry) => {
+  return SWITCHER_WORKSPACES.map((entry) => {
     const badge = entry.id === "publish" && dirty > 0 ? String(dirty) : "";
     const chord = registry.keymap.formatBinding(`workspace.focus.${entry.id}`);
     const named = chord ? `${entry.title} (${chord})` : entry.title;

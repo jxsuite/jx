@@ -13,7 +13,7 @@
  *
  * **Raw JSON does not open a second editor.** It shows what is on disk and hands the author to the
  * Code editor over the `project.json` tab (§17.1): the host says how, through `editAsCode`, because
- * the section sits in the settings dialog and the tab it opens is the Styles workspace's.
+ * the section sits in the Settings workspace and the tab it opens is the Styles workspace's.
  *
  * **Deploy is no longer a Project Settings section.** Hosting moved to the Publish workspace
  * (§17.1's Moved footnote), which hosts `renderDeploySection`; the renderer is unchanged.

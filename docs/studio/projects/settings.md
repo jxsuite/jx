@@ -1,14 +1,14 @@
 ---
 title: "Project settings"
-description: "Project settings in Jx Studio: one dialog over project.json, grouped into General, Integrations and Advanced, reachable from every workspace."
+description: "Project settings in Jx Studio: a workspace over project.json, grouped into General, Integrations and Advanced, reachable from every workspace."
 spec:
   - studio.md#9.4
   - studio.md#17
+  - studio.md#22.9
 code:
   - packages/studio/src/tabs/project-config.ts
   - packages/studio/src/settings/settings-document.ts
-  - packages/studio/src/settings/settings-dialog.ts
-  - packages/studio/src/surfaces/settings-dialog.ts
+  - packages/studio/src/settings/settings-workspace.ts
   - packages/studio/src/panels/settings-menu.ts
   - packages/studio/src/settings/section-registry.ts
   - packages/studio/src/settings/project-sections.ts
@@ -44,9 +44,11 @@ code:
 
 # Project settings
 
-Everything that applies to your whole site rather than one page (its name and address, its languages, its extensions, its packages) lives in your project's configuration, the `project.json` file at the root of the project. **Project settings** is the dialog that edits it. It opens over whatever you are doing, in any workspace, and closing it puts you back exactly where you were.
+Everything that applies to your whole site rather than one page (its name and address, its languages, its extensions, its packages) lives in your project's configuration, the `project.json` file at the root of the project. **Project settings** is the workspace that edits it. It takes the whole window, so a section with a list and an editor side by side, such as Content Types, has room for both, and **Back** at its top returns you to the workspace you opened it from.
 
-Open it from the **Settings** menu at the right of the Command Bar: **Open Project Settings**, whose submenu lists every section in the dialog's order, with a divider where each group starts, so you can land on the one you want. It is also on :kbd[⌘⇧,], on :kbd[⌘K] as **Open Project Settings**, and in the **⬢ menu** in the Command Bar. (:kbd[⌘,] is the other half of the pair: **Preferences**, which configures the app rather than this project.)
+Open it from the **Settings** menu at the right of the Command Bar: **Open Project Settings**, whose submenu lists every section in the order Project settings lists them, with a divider where each group starts, so you can land on the one you want. It is also on :kbd[⌘⇧,], on :kbd[⌘K] as **Open Project Settings**, and in the **⬢ menu** in the Command Bar. Every link elsewhere in Studio that names a section, such as **Manage contexts…** or a content type's **Fields**, opens it on that section. (:kbd[⌘,] is the other half of the pair: **Preferences**, which configures the app rather than this project.)
+
+Project settings has no tab in the Command Bar's row of workspaces, because you visit it rather than work in it: while it is open none of the five tabs is selected, and clicking any of them leaves.
 
 ![Project settings open on the Overview section, with the grouped section list on the left](../../images/settings-document.png)
 
@@ -58,12 +60,12 @@ The sections are listed down the left in three groups:
 - **Integrations**: Extensions, and every section an extension adds, such as Content Types, Data Tables, Authentication, Connections, Site Search and Feeds.
 - **Advanced**, marked _For developers_: Contexts, Site head, Data Shapes, Packages and Raw JSON. Most sites never need them.
 
-Click a section to show it, or reach a group's list with :kbd[⇥] and walk it with :kbd[↑] and :kbd[↓]. Each group is one stop for :kbd[⇥], so moving from General to Advanced is two presses. The dialog opens with the keyboard on the section you are looking at, and it remembers that section: open Project settings again later in the session and you land where you left off.
+Click a section to show it, or reach a group's list with :kbd[⇥] and walk it with :kbd[↑] and :kbd[↓]. Each group is one stop for :kbd[⇥], so moving from General to Advanced is two presses. Project settings opens with the keyboard on the section you are looking at, and it remembers that section: open it again later in the session and you land where you left off.
 
-Press :kbd[Esc] or **Close** to dismiss it. The keyboard goes back to whatever you opened it from.
+**Back to Design** (or whichever workspace you came from) at the top left takes you back there. If Studio reopened straight into Project settings, it goes to Design.
 
 :::doc-note
-Under the list, **Moved** names what used to be here and where it went: **Colors and fonts** to the **Variables** view of the **Styles** workspace, **Hosting and domain** to **Publish › Hosting**, and **head and SEO defaults** are also on the **Page tab** in Design (they are still editable under **Advanced › Site head**). Each one's button closes the dialog and takes you there; the Page tab button also opens the Inspector on its Page tab. The build adapter's picker is there, under **How it is built**.
+Under the list, **Moved** names what used to be here and where it went: **Colors and fonts** to the **Variables** view of the **Styles** workspace, **Hosting and domain** to **Publish › Hosting**, and **head and SEO defaults** are also on the **Page tab** in Design (they are still editable under **Advanced › Site head**). Each one's button takes you there; the Page tab button also opens the Inspector on its Page tab. The build adapter's picker is there, under **How it is built**.
 :::
 
 ## Changes save as you make them
@@ -73,10 +75,10 @@ There is no Save or Apply button, because there is nothing to confirm: every sec
 - **A failed write is visible.** If the file cannot be written (a read-only project, a full disk, a backend that has gone away), the change is not quietly dropped. Studio raises a problem naming `project.json` in the [Problems list](/docs/studio/interface/problems-and-progress).
 - **An edit that changes nothing writes nothing.** Re-committing a field's existing value leaves the file untouched, so your project's diff only ever shows what you actually changed.
 - **An edit that changes one field changes one line.** The file is written back in the layout it was read in, the same way [every document is saved](/docs/studio/interface/tabs#studio-saves-only-when-you-do), so a `project.json` your formatter keeps tidy stays tidy through a settings change. When the [assistant](/docs/studio/ai/chat) rewrites `project.json`, the layout it wrote is the one the next settings change keeps.
-- **A section that cannot be shown says so.** If a section fails to load, the dialog says which one and why in the space the section would have used, rather than showing an empty column.
+- **A section that cannot be shown says so.** If a section fails to load, Project settings says which one and why in the space the section would have used, rather than showing an empty column.
 
 :::doc-tip
-`project.json` is also a document you can open: **[Project Styles](/docs/studio/design/stylebook)** in the Styles workspace edits its element defaults (the **Elements** view) and its [design tokens](/docs/studio/design/tokens) (the **Variables** view), and its **Code** view shows the raw file. While that tab is open, a change made here is a step in its history, so :kbd[⌘Z] in that tab takes it back. Inside the dialog :kbd[⌘Z] reaches only the text field you are typing in, because the dialog is modal: to take back a change it has already saved, close it and undo from that tab.
+`project.json` is also a document you can open: **[Project Styles](/docs/studio/design/stylebook)** in the Styles workspace edits its element defaults (the **Elements** view) and its [design tokens](/docs/studio/design/tokens) (the **Variables** view), and its **Code** view shows the raw file. While that tab is open, a change made here is a step in its history, so :kbd[⌘Z] in that tab takes it back. In Project settings itself :kbd[⌘Z] reaches only the text field you are typing in: to take back a change it has already saved, undo from that tab.
 :::
 
 ## Overview
@@ -87,7 +89,7 @@ What the site _is_:
 - **Description**: one or two sentences about the site, used by search engines and link previews. Studio stores it as the site-wide `<meta name="description">` tag, so it also shows up in the **Site head** section; clearing it here removes the tag.
 - **Production URL**: where the published site lives, as a full address starting with `http://` or `https://`. Sitemap generation is switched on by having one, and absolute links are built from it. Clearing the field turns the sitemap back off.
 - **Favicon**: the site-wide `<link rel="icon">` tag, so it also shows up in the **Site head** section. Click **Upload Favicon** and pick an image; Studio saves it in `public/` (as `favicon.svg`, `favicon.png` or whatever its type is) and points the tag at it. The current icon shows beside the button.
-- **Global Styles**: **Go to Styles** closes the dialog and switches to the Styles workspace (:kbd[⌘4]), where the CSS variables and default element styles live with the canvas beside them. See **[Project Styles](/docs/studio/design/stylebook)**.
+- **Global Styles**: **Go to Styles** switches to the Styles workspace (:kbd[⌘4]), where the CSS variables and default element styles live with the canvas beside them. See **[Project Styles](/docs/studio/design/stylebook)**.
 
 A value the section refuses (a blank name, an address that isn't a full URL) is reported under the control that caused it, and the stored value stays as it was.
 
@@ -117,7 +119,7 @@ An extension has to be two things at once: a dependency your project has install
 
 Extensions contribute their own sections, listed under **Integrations** after Extensions. **Content Types**, where you model your site's content, arrives this way from the parser extension and has its own page: **[Content types](/docs/studio/projects/content-types)**. **Connections** arrives from the connector extension: **[Connections](/docs/studio/data/connections)**. Turning an extension off in **Extensions** takes its section away again. An extension can ask for its section to be listed under General or Advanced instead (`group` in its `$studio.settings` block; see [Project sections and settings](/docs/extending/extensions/project-sections#studio-settings-studiosettings)).
 
-A control in one of these sections that opens a tab, such as **Open Data Grid** in Data Tables, closes the dialog first, so the tab it opens is the one you see.
+A control in one of these sections that opens a tab, such as **Open Data Grid** in Data Tables, leaves Project settings for the workspace that tab belongs to, so the tab it opens is the one you see.
 
 ## Contexts
 
@@ -160,7 +162,7 @@ Adding packages and choosing which of their components your site uses is covered
 
 ## Raw JSON
 
-The whole of `project.json` exactly as it is saved. **Edit as code** closes the dialog and opens that same file in the Code editor, in the Styles workspace, where it has one undo history and one unsaved-changes flag like any document. **Back to Variables** (or **Back to Elements**) at the top of the pane returns you to the view you were last in.
+The whole of `project.json` exactly as it is saved. **Edit as code** opens that same file in the Code editor, in the Styles workspace, where it has one undo history and one unsaved-changes flag like any document. **Back to Variables** (or **Back to Elements**) at the top of the pane returns you to the view you were last in.
 
 :::doc-note
 Every section edits `project.json` at the root of your project, the same file the New Project modal first wrote. The full shape is documented in [Site architecture](/docs/framework/site).

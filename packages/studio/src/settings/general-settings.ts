@@ -22,7 +22,6 @@ import { projectState } from "../store";
 import { updateSiteConfig } from "../site-context";
 import { activeRegistry } from "../commands/active-registry";
 import { runActiveReported } from "../commands/run-reported";
-import { closeSettingsDialog } from "./settings-dialog";
 import { getPlatform } from "../platform";
 import { mountOverviewSurface } from "../surfaces/settings-overview";
 import { previewAssetSrcFor } from "../canvas/asset-refs";
@@ -265,11 +264,9 @@ function actions(container: HTMLElement): OverviewActions {
      * says how to get there. This used to write `session.ui.canvasMode` here directly — a second
      * implementation of a capability, `studio-ui-guidelines.md` §12.5's defect in miniature: the
      * button and the command could disagree about what "open Project Styles" means, and only one of
-     * them was reachable by name. Overview is drawn in the settings dialog, so the dialog closes
-     * first: left up, it would cover the workspace the reader just asked for.
+     * them was reachable by name.
      */
     openStyles: () => {
-      closeSettingsDialog();
       void runActiveReported("view.setWorkspace", { workspace: "styles" }, "Settings");
     },
     setDescription: (value: string) => {

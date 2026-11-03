@@ -63,6 +63,8 @@ describe("opening a home", () => {
     expect(isWorkspaceHomeMode("media")).toBe(false);
     expect(editorKindForMode("media-home")).toBe("home");
     expect(editorKindForMode("publish-home")).toBe("home");
+    expect(isWorkspaceHomeMode("settings-home")).toBe(true);
+    expect(editorKindForMode("settings-home")).toBe("home");
   });
 });
 
@@ -96,6 +98,19 @@ describe("drawing a home", () => {
     const home = host.querySelector<HTMLElement>('[part="publish"]');
     expect(home?.dataset.jxRegion).toBe("pane.primary/publish");
     expect(workspaceHomeMounted("primary", tab)).toBe(true);
+  });
+
+  test("the Settings home is the settings editor, and detaching takes it down", async () => {
+    const tab = openWorkspaceHome("settings");
+    const host = stage();
+    renderWorkspaceHome(surfaceOf(host), tab);
+    await flush(4);
+    const home = host.querySelector<HTMLElement>('[part="settings"]');
+    expect(home?.dataset.jxRegion).toBe("pane.primary/settings");
+    expect(workspaceHomeMounted("primary", tab)).toBe(true);
+    detachWorkspaceHome("primary");
+    expect(workspaceHomeMounted("primary", tab)).toBe(false);
+    expect(host.querySelector('[part="settings"]')).toBeNull();
   });
 
   test("the Media home is the media library", async () => {

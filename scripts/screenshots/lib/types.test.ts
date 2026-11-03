@@ -50,7 +50,7 @@ describe("the region grammar", () => {
     "pane.primary/tabs",
     "dock.bottom",
     "dock.bottom/activity",
-    "overlay.dialog:settings",
+    "overlay.dialog:about",
     "statusbar/selection",
     "commandbar",
   ])("%s is a region id", (id) => {

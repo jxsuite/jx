@@ -20,7 +20,7 @@
  * inspector/tab:style           the Style tab's body
  * inspector/field:href          a field row (the Inspector's documents already emit `data-prop`)
  * pane.primary/tabs             the primary pane's own tab strip
- * overlay.dialog:settings       a named overlay slot
+ * overlay.dialog:about          a named overlay slot
  * ```
  *
  * **Ids are DERIVED, not authored**, which is the property that makes them survive a rename. The
@@ -60,7 +60,7 @@ export type RegionSurface = (typeof REGION_SURFACES)[number];
 /** A parsed region id. `instance` and `part` are absent for a bare surface. */
 export interface ParsedRegionId {
   surface: RegionSurface;
-  /** `primary` in `pane.primary`, `dialog` in `overlay.dialog:settings`. */
+  /** `primary` in `pane.primary`, `dialog` in `overlay.dialog:about`. */
   instance?: string;
   /** Everything after the first `/` — `publish/commit` in `pane.primary/publish/commit`. */
   part?: string;
@@ -412,9 +412,9 @@ export const OVERLAY_INSTANCE: Readonly<Record<"popover" | "modal" | "dialog" | 
 /**
  * Region id for an overlay slot.
  *
- * With an `id` this is `overlay.dialog:settings` — derived from the key `getLayerSlot` already
- * builds, so naming a slot names its region. Without one it is the bare instance, which resolves to
- * the topmost open overlay of that kind.
+ * With an `id` this is `overlay.dialog:about` — derived from the key `getLayerSlot` already builds,
+ * so naming a slot names its region. Without one it is the bare instance, which resolves to the
+ * topmost open overlay of that kind.
  */
 export function overlayRegion(
   layer: "popover" | "modal" | "dialog" | "toast",

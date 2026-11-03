@@ -40,7 +40,12 @@ let pane: SettingsPaneMount | null = null;
  * asynchronous, which is why three turns rather than one.
  */
 async function navLabels(): Promise<(string | undefined)[]> {
-  pane ??= mountSettingsPane(host, { openMoved: () => {} });
+  pane ??= mountSettingsPane(host, {
+    back: () => {},
+    backLabel: () => "Back to Design",
+    openMoved: () => {},
+    region: "pane.primary/settings",
+  });
   await flush(3);
   return [...host.querySelectorAll('[part="nav-item"]')].map(
     (b) => b.getAttribute("label") ?? undefined,

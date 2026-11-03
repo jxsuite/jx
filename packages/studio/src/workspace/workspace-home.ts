@@ -3,16 +3,17 @@
  * Workspace homes — the virtual tab a workspace opens on when none of its own tabs is open.
  *
  * A home is a tab like a grid is a tab: it sits in a pane's strip, it can be closed, and it has a
- * canvas mode of its own (`content-home`, `media-home`, `publish-home`) that
+ * canvas mode of its own (`content-home`, `media-home`, `publish-home`, `settings-home`) that
  * `canvas/canvas-render.ts` routes here. It has no document — the tab carries a stub, exactly as
  * the grid tabs do — and its id is in the `workspace://` space `workspace/workspace-ids.ts`
  * declares, so it can never collide with a file.
  *
  * What a home DRAWS is its workspace's own surface: the Content home is the collection it shows
  * (`browse/library-pane.ts`, studio.md §22.5), the Media home is the media library
- * (`media/media-library.ts`, §22.6) and the Publish home is the Publish workspace
- * (`publish/publish-workspace.ts`, §22.8). The mechanism (the tab, the mode, the routing and the
- * per-pane mount) is the same for all three, and this module only routes.
+ * (`media/media-library.ts`, §22.6), the Publish home is the Publish workspace
+ * (`publish/publish-workspace.ts`, §22.8) and the Settings home is the settings editor
+ * (`settings/settings-workspace.ts`, §22.9). The mechanism (the tab, the mode, the routing and the
+ * per-pane mount) is the same for all four, and this module only routes.
  *
  * @docs studio/interface
  */
@@ -30,6 +31,11 @@ import {
   publishWorkspaceMounted,
   renderPublishWorkspace,
 } from "../publish/publish-workspace";
+import {
+  detachSettingsWorkspace,
+  renderSettingsWorkspace,
+  settingsWorkspaceMounted,
+} from "../settings/settings-workspace";
 import type { HomeWorkspaceId } from "./workspace-ids";
 import type { Tab } from "../tabs/tab";
 import type { CanvasSurface } from "../canvas/canvas-surface";
@@ -98,6 +104,9 @@ export function workspaceHomeMounted(paneId: string, tab: Tab): boolean {
   if (id === "content") {
     return libraryPaneMounted(paneId, tab);
   }
+  if (id === "settings") {
+    return settingsWorkspaceMounted(paneId, tab);
+  }
   return publishWorkspaceMounted(paneId, tab);
 }
 
@@ -106,6 +115,7 @@ export function detachWorkspaceHome(paneId: string): void {
   detachMediaLibrary(paneId);
   detachLibraryPane(paneId);
   detachPublishWorkspace(paneId);
+  detachSettingsWorkspace(paneId);
 }
 
 /**
@@ -127,6 +137,10 @@ export function renderWorkspaceHome(surface: CanvasSurface, tab: Tab): void {
   }
   if (id === "content") {
     renderLibraryMode(surface, tab);
+    return;
+  }
+  if (id === "settings") {
+    renderSettingsWorkspace(surface, tab);
     return;
   }
   renderPublishWorkspace(surface, tab);

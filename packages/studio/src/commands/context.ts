@@ -107,6 +107,7 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
   ["content-home", "home"],
   ["media-home", "home"],
   ["publish-home", "home"],
+  ["settings-home", "home"],
   /* The Media viewer — `media/media-pane.ts`. An image, a video, a font specimen: files the studio
      can SHOW but has no document model for, which is why clicking one used to end in "No format
      class imported for …", advice that means nothing about a PNG. */

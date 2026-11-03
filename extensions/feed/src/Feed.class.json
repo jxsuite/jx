@@ -11,8 +11,16 @@
   },
   "$studio": {
     "settings": {
+      "icon": "rss",
       "label": "Feeds",
-      "description": "One entry per feed. Each names a content collection and the URL prefix its entries are served under."
+      "order": 80,
+      "layout": "map",
+      "intro": "One entry per feed. Each names a content collection and the URL prefix its entries are served under.",
+      "entry": {
+        "noun": "feed",
+        "ui": { "collection": { "enum": { "$ref": "#/$context/content" } } },
+        "newEntry": { "collection": "", "basePath": "/${key}/" }
+      }
     }
   },
   "$defs": {

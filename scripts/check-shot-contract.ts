@@ -190,6 +190,14 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *   `pane.primary/frontmatter` is the one that left: the card it named is gone, the document's
  *   settings are the Inspector's Page tab, and `document-panel-shot` photographs that tab through the
  *   derived `inspector/tab:page`.
+ *
+ *   **10 → 11 when Project Settings became a workspace** (studio.md §17.1, §22.9), and
+ *   `pane.primary/settings` is the one that arrived. Six shots expect or crop Settings, and while it
+ *   was a dialog its id was `overlay.dialog:settings`, which the layer slot derives. Its home now
+ *   stands in a pane's stage and stamps its root through `paneRegion()`, as `pane.primary/publish`
+ *   and `pane.primary/media-library` do, so it is counted for the reason they are: a home authors it,
+ *   no registry does. Its entry rows and editor (`…/settings/entry:<key>`, `…/settings/editor`) were
+ *   hand-stamped leaves under either name and moved without changing the count.
  * - `unstable` `{reason, until}` escape hatches. **2** after Project Settings became a document and
  *   retired the five `settings.selectEntry` steps. **2 → 1 when `media.browse` landed as a
  *   record**: `media-picker-shot`'s hatch existed only because the id had none, and its step stays
@@ -205,7 +213,7 @@ export const CONTRACT_BUDGET = {
   clipSelectors: 0,
   argSelectors: 0,
   inputSteps: 14,
-  nonDerivedRegions: 10,
+  nonDerivedRegions: 11,
   unstable: 1,
 } as const;
 

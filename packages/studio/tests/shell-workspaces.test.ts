@@ -31,7 +31,7 @@ import {
   workspaceDrawsTabStrip,
 } from "../src/shell";
 import { setWorkspaceProject } from "../src/workspace/workspace";
-import { WORKSPACE_IDS } from "../src/workspace/workspace-ids";
+import { SWITCHER_WORKSPACES, WORKSPACE_IDS } from "../src/workspace/workspace-ids";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonObject } from "@jxsuite/schema/types";
 import type { InspectorTabId } from "../src/shell";
@@ -77,8 +77,8 @@ describe("the presets", () => {
     }
   });
 
-  test("Media and Publish collapse both side docks; Content opens Collections; Design opens both", () => {
-    for (const id of ["media", "publish"] as const) {
+  test("Media, Publish and Settings collapse both side docks; Content opens Collections; Design opens both", () => {
+    for (const id of ["media", "publish", "settings"] as const) {
       expect(WORKSPACE_PRESETS[id].navigator.open).toBe(false);
       expect(WORKSPACE_PRESETS[id].inspector.open).toBe(false);
     }
@@ -425,9 +425,9 @@ describe("view.setWorkspace and ⌘1–5", () => {
     expect(shown).toEqual(["styles", "publish"]);
   });
 
-  test("⌘1–5 are the five workspaces, in top-bar order, each in the palette", async () => {
+  test("⌘1–5 are the five switcher workspaces, in top-bar order, each in the palette", async () => {
     const registry = build();
-    for (const [index, id] of WORKSPACE_IDS.entries()) {
+    for (const [index, { id }] of SWITCHER_WORKSPACES.entries()) {
       const command = registry.keymap.resolveChord(`mod+${index + 1}`, ["global"]);
       expect(command?.commandId).toBe(`workspace.focus.${id}`);
       expect(registry.get(`workspace.focus.${id}`)?.menus).toEqual(["palette"]);
@@ -437,6 +437,11 @@ describe("view.setWorkspace and ⌘1–5", () => {
     expect(registry.get("workspace.focus.publish")?.title).toBe("Go to Publish");
     // The setter is the scripted door; the five rows are the palette's.
     expect(registry.get("view.setWorkspace")?.menus).toEqual(["never"]);
+    // Settings has no digit and no "Go to" row: `settings.open` (⌘⇧,) is its record.
+    expect(registry.get("workspace.focus.settings")).toBeUndefined();
+    expect(registry.keymap.resolveChord("mod+6", ["global"])).toBeUndefined();
+    await registry.run("view.setWorkspace", { workspace: "settings" });
+    expect(shell.workspace).toBe("settings");
   });
 
   test("needs an open project, and says so", () => {

@@ -409,7 +409,7 @@
       ],
       "expect": [
         {
-          "region": "overlay.dialog:settings"
+          "region": "pane.primary/settings"
         }
       ],
       "capture": [
@@ -1527,13 +1527,13 @@
       ],
       "expect": [
         {
-          "region": "overlay.dialog:settings/entry:posts"
+          "region": "pane.primary/settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "blog-content-type",
-          "of": "overlay.dialog:settings"
+          "of": "pane.primary/settings"
         }
       ]
     },
@@ -1566,13 +1566,13 @@
       ],
       "expect": [
         {
-          "region": "overlay.dialog:settings/entry:posts"
+          "region": "pane.primary/settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "blog-schema-fields",
-          "of": "overlay.dialog:settings"
+          "of": "pane.primary/settings"
         }
       ]
     },
@@ -1854,13 +1854,13 @@
       ],
       "expect": [
         {
-          "region": "overlay.dialog:settings/entry:posts"
+          "region": "pane.primary/settings/entry:posts"
         }
       ],
       "capture": [
         {
           "image": "content-type-builder",
-          "of": "overlay.dialog:settings"
+          "of": "pane.primary/settings"
         }
       ]
     },
@@ -2082,17 +2082,17 @@
       ],
       "expect": [
         {
-          "region": "overlay.dialog:settings/entry:comments"
+          "region": "pane.primary/settings/entry:comments"
         }
       ],
       "capture": [
         {
           "image": "data-tables-section",
-          "of": "overlay.dialog:settings"
+          "of": "pane.primary/settings"
         },
         {
           "image": "data-table-editor",
-          "of": "overlay.dialog:settings/editor"
+          "of": "pane.primary/settings/editor"
         }
       ]
     },
@@ -2125,13 +2125,13 @@
       ],
       "expect": [
         {
-          "region": "overlay.dialog:settings/entry:main"
+          "region": "pane.primary/settings/entry:main"
         }
       ],
       "capture": [
         {
           "image": "connections-section",
-          "of": "overlay.dialog:settings"
+          "of": "pane.primary/settings"
         }
       ]
     },

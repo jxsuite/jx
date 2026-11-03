@@ -1,28 +1,52 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioSettingsPane",
-  "$description": "The Project Settings dialog's two columns: the grouped section list and the section body (§17.1). It draws no section: `panels/settings-pane.ts` keeps the registry, decides which section is current, and renders whichever one that is into the one empty `[part=\"section-host\"]` island this document leaves for it (studio-ui-guidelines.md §9.4), because a section renderer may be a lit template or a mounted document and neither can share a container with this one. The list is three vertical `tablist`s, one per group (General, Integrations, Advanced), each named by its group heading: a tablist may own only tabs, so a heading between two runs of rows has to END one list rather than sit inside it. Each group is one tab stop and the arrow keys move within it. Under the groups, a Moved footnote names what left Project Settings for a workspace, each with a button that goes there.",
+  "$description": "Project Settings' home (§17.1, §22.9): the Settings workspace's surface, filling a pane's stage. A head names the workspace and carries the Back control, which says where it goes; under it, the settings editor's two columns, the grouped section list and the section body. It draws no section: `panels/settings-pane.ts` keeps the registry, decides which section is current, and renders whichever one that is into the one empty `[part=\"section-host\"]` island this document leaves for it (studio-ui-guidelines.md §9.4), because a section renderer may be a lit template or a mounted document and neither can share a container with this one. The list is three vertical `tablist`s, one per group (General, Integrations, Advanced), each named by its group heading: a tablist may own only tabs, so a heading between two runs of rows has to END one list rather than sit inside it. Each group is one tab stop and the arrow keys move within it. Under the groups, a Moved footnote names what left Project Settings for a workspace, each with a button that goes there.",
   "tagName": "div",
   "attributes": {
-    "part": "doc"
+    "part": "settings",
+    "data-jx-region": "${state.region}",
+    "role": "region",
+    "aria-labelledby": "settings-pane-heading"
   },
   "style": {
-    "$description": "No part below is named `body`, `field`, `label`, `error`, `text` or `actions`: this document is mounted inside a `jx-dialog`, the kit is light DOM, and the dialog draws its own `[part=\"body\"]` around this one, so a rule keyed on that name here would also be a rule the dialog's own styles reach.",
+    "$description": "Fills the pane's stage by its own geometry, as the Publish and Media homes do: the stage is `position: relative`, so the home takes the whole of it, and each column scrolls itself. No part below is named `body`, `field`, `label`, `error`, `text` or `actions`: sections mount kit controls and documents of their own inside this one, the kit is light DOM, and a rule keyed on one of their part names here would reach into them.",
+    "position": "absolute",
+    "inset": "0",
     "display": "flex",
-    "height": "min(68vh, 640px)",
+    "flexDirection": "column",
+    "boxSizing": "border-box",
     "minHeight": "0",
     "background": "var(--bg)",
     "color": "var(--fg)",
     "fontFamily": "var(--jx-font-sans)",
     "textAlign": "initial",
+    "& [part=\"head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3) var(--jx-space-5)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"heading\"]": {
+      "flex": "1",
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600"
+    },
+    "& [part=\"columns\"]": {
+      "display": "flex",
+      "flex": "1",
+      "minHeight": "0"
+    },
     "& [part=\"nav\"]": {
       "display": "flex",
       "flexDirection": "column",
       "gap": "var(--jx-space-4)",
-      "width": "200px",
-      "minWidth": "200px",
+      "width": "220px",
+      "minWidth": "220px",
       "flexShrink": "0",
-      "padding": "var(--jx-space-2) var(--jx-space-3) var(--jx-space-2) 0",
+      "padding": "var(--jx-space-3) var(--jx-space-3) var(--jx-space-3) var(--jx-space-2)",
       "borderRight": "1px solid var(--border)",
       "overflowY": "auto",
       "fontSize": "13px"
@@ -88,22 +112,25 @@
       "flex": "1",
       "minWidth": "0",
       "overflowY": "auto",
-      "padding": "var(--jx-space-2) var(--jx-space-5)"
+      "padding": "var(--jx-space-4) var(--jx-space-5) var(--jx-space-6)"
     },
     "& [part=\"group-intro\"]": {
       "margin": "0 0 var(--jx-space-3)",
       "color": "var(--fg-dim)",
-      "fontSize": "13px"
+      "fontSize": "13px",
+      "maxWidth": "1200px"
     },
     "& [part=\"group-intro\"]:empty": {
       "display": "none"
     },
     "& [part=\"section-host\"]": {
+      "$description": "Wide enough for a map-layout section's list and editor side by side, and no wider: on a large monitor a form stretched to the stage's full width is a line too long to read.",
       "display": "block",
-      "minWidth": "0"
+      "minWidth": "0",
+      "maxWidth": "1200px"
     },
     "& [part=\"empty\"]": {
-      "$description": "What the body says when the active section is registered by nobody: every section unregistering at once, which is a project closing while the dialog is open. A blank column beside a list reads as a broken dialog, so it says which it is.",
+      "$description": "What the body says when the active section is registered by nobody: every section unregistering at once, which is a project closing while Settings is on screen. A blank column beside a list reads as a broken surface, so it says which it is.",
       "display": "flex",
       "alignItems": "center",
       "justifyContent": "center",
@@ -126,158 +153,122 @@
     {
       "tagName": "div",
       "attributes": {
-        "part": "nav",
+        "part": "head"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "attributes": {
+            "part": "back"
+          },
+          "$props": {
+            "size": "sm",
+            "quiet": true,
+            "icon": "arrow-left"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/back"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "${state.backLabel}"
+            }
+          ],
+          "$description": "Back to the workspace Settings was opened from, named, as the pane context bar's Back is in a workspace with no tab strip (§22.1): the top bar draws no tab for Settings, so nothing else on screen says where the author came from."
+        },
+        {
+          "tagName": "h2",
+          "attributes": {
+            "part": "heading",
+            "id": "settings-pane-heading"
+          },
+          "textContent": "${state.heading}"
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "columns",
         "role": "none"
       },
       "children": [
         {
-          "$prototype": "Array",
-          "items": {
-            "$ref": "#/state/groups"
-          },
-          "key": {
-            "$ref": "$map/item/id"
-          },
-          "map": {
-            "tagName": "div",
-            "attributes": {
-              "part": "group",
-              "role": "none",
-              "data-group": "${$map.item.id}"
-            },
-            "children": [
-              {
-                "tagName": "h3",
-                "attributes": {
-                  "part": "group-title",
-                  "id": "${$map.item.titleId}"
-                },
-                "children": [
-                  {
-                    "tagName": "span",
-                    "textContent": "${$map.item.label}"
-                  },
-                  {
-                    "tagName": "span",
-                    "attributes": {
-                      "part": "group-note"
-                    },
-                    "textContent": "${$map.item.note}"
-                  }
-                ]
-              },
-              {
-                "tagName": "jx-tabs",
-                "attributes": {
-                  "part": "group-tabs",
-                  "selected": "${state.active}",
-                  "orientation": "vertical"
-                },
-                "$props": {
-                  "label": {
-                    "$ref": "$map/item/tabsLabel"
-                  }
-                },
-                "onchange": {
-                  "$prototype": "Function",
-                  "body": [
-                    {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/selectSection"
-                      },
-                      "value": [
-                        {
-                          "$ref": "event#/detail"
-                        }
-                      ]
-                    }
-                  ]
-                },
-                "children": [
-                  {
-                    "$prototype": "Array",
-                    "items": {
-                      "$ref": "$map/item/sections"
-                    },
-                    "key": {
-                      "$ref": "$map/item/key"
-                    },
-                    "map": {
-                      "tagName": "jx-tab",
-                      "attributes": {
-                        "part": "nav-item",
-                        "id": "${$map.item.tabId}",
-                        "data-section": "${$map.item.key}",
-                        "value": "${$map.item.key}",
-                        "label": "${$map.item.label}",
-                        "panel": "settings-pane-panel"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
           "tagName": "div",
           "attributes": {
-            "part": "moved",
-            "role": "group",
-            "aria-labelledby": "settings-pane-moved"
+            "part": "nav",
+            "role": "none"
           },
           "children": [
             {
-              "tagName": "p",
-              "attributes": {
-                "part": "moved-title",
-                "id": "settings-pane-moved"
-              },
-              "textContent": "Moved"
-            },
-            {
               "$prototype": "Array",
               "items": {
-                "$ref": "#/state/moved"
+                "$ref": "#/state/groups"
               },
               "key": {
-                "$ref": "$map/item/workspace"
+                "$ref": "$map/item/id"
               },
               "map": {
                 "tagName": "div",
                 "attributes": {
-                  "part": "moved-row",
-                  "data-moved": "${$map.item.workspace}"
+                  "part": "group",
+                  "role": "none",
+                  "data-group": "${$map.item.id}"
                 },
                 "children": [
                   {
-                    "tagName": "span",
-                    "textContent": "${$map.item.what} →"
+                    "tagName": "h3",
+                    "attributes": {
+                      "part": "group-title",
+                      "id": "${$map.item.titleId}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "textContent": "${$map.item.label}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "group-note"
+                        },
+                        "textContent": "${$map.item.note}"
+                      }
+                    ]
                   },
                   {
-                    "tagName": "jx-button",
+                    "tagName": "jx-tabs",
                     "attributes": {
-                      "part": "moved-link"
+                      "part": "group-tabs",
+                      "selected": "${state.active}",
+                      "orientation": "vertical"
                     },
                     "$props": {
-                      "size": "sm",
-                      "quiet": true,
                       "label": {
-                        "$ref": "$map/item/linkLabel"
+                        "$ref": "$map/item/tabsLabel"
                       }
                     },
-                    "onclick": {
+                    "onchange": {
                       "$prototype": "Function",
                       "body": [
                         {
                           "operator": "call",
                           "target": {
-                            "$ref": "#/state/openMoved"
+                            "$ref": "#/state/selectSection"
                           },
                           "value": [
                             {
-                              "$ref": "$map/item/workspace"
+                              "$ref": "event#/detail"
                             }
                           ]
                         }
@@ -285,84 +276,175 @@
                     },
                     "children": [
                       {
-                        "tagName": "span",
-                        "textContent": "${$map.item.place}"
+                        "$prototype": "Array",
+                        "items": {
+                          "$ref": "$map/item/sections"
+                        },
+                        "key": {
+                          "$ref": "$map/item/key"
+                        },
+                        "map": {
+                          "tagName": "jx-tab",
+                          "attributes": {
+                            "part": "nav-item",
+                            "id": "${$map.item.tabId}",
+                            "data-section": "${$map.item.key}",
+                            "value": "${$map.item.key}",
+                            "label": "${$map.item.label}",
+                            "panel": "settings-pane-panel"
+                          }
+                        }
                       }
                     ]
                   }
                 ]
               }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "moved",
+                "role": "group",
+                "aria-labelledby": "settings-pane-moved"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "moved-title",
+                    "id": "settings-pane-moved"
+                  },
+                  "textContent": "Moved"
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/moved"
+                  },
+                  "key": {
+                    "$ref": "$map/item/workspace"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "moved-row",
+                      "data-moved": "${$map.item.workspace}"
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "textContent": "${$map.item.what} →"
+                      },
+                      {
+                        "tagName": "jx-button",
+                        "attributes": {
+                          "part": "moved-link"
+                        },
+                        "$props": {
+                          "size": "sm",
+                          "quiet": true,
+                          "label": {
+                            "$ref": "$map/item/linkLabel"
+                          }
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/openMoved"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/workspace"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "textContent": "${$map.item.place}"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
             }
           ]
-        }
-      ]
-    },
-    {
-      "tagName": "jx-tab-panel",
-      "attributes": {
-        "part": "content",
-        "id": "settings-pane-panel"
-      },
-      "$props": {
-        "active": true,
-        "labelledby": {
-          "$ref": "#/state/activeTabId"
-        }
-      },
-      "children": [
-        {
-          "$description": "The current group's intro (\"Changes here affect every page. Most sites never need them.\"), above whichever of its sections is showing. General has none, and an empty sentence draws nothing.",
-          "tagName": "p",
-          "attributes": {
-            "part": "group-intro"
-          },
-          "textContent": "${state.intro}"
         },
         {
-          "$description": "The island, and it stays empty: a settings section renders itself, into a host this document never writes into and never reads back (studio-ui-guidelines.md §9.4).",
-          "tagName": "div",
+          "tagName": "jx-tab-panel",
           "attributes": {
-            "part": "section-host"
-          }
-        },
-        {
-          "tagName": "div",
-          "attributes": {
-            "part": "empty-slot",
-            "role": "none"
+            "part": "content",
+            "id": "settings-pane-panel"
           },
-          "$switch": {
-            "$ref": "#/state/hasSection"
+          "$props": {
+            "active": true,
+            "labelledby": {
+              "$ref": "#/state/activeTabId"
+            }
           },
-          "cases": {
-            "false": {
+          "children": [
+            {
+              "$description": "The current group's intro (\"Changes here affect every page. Most sites never need them.\"), above whichever of its sections is showing. General has none, and an empty sentence draws nothing.",
               "tagName": "p",
               "attributes": {
-                "part": "empty"
+                "part": "group-intro"
               },
-              "textContent": "${state.empty}"
-            }
-          }
-        },
-        {
-          "tagName": "div",
-          "attributes": {
-            "part": "failure-slot",
-            "role": "none"
-          },
-          "$switch": {
-            "$ref": "#/state/failureState"
-          },
-          "cases": {
-            "failed": {
-              "tagName": "p",
+              "textContent": "${state.intro}"
+            },
+            {
+              "$description": "The island, and it stays empty: a settings section renders itself, into a host this document never writes into and never reads back (studio-ui-guidelines.md §9.4).",
+              "tagName": "div",
               "attributes": {
-                "part": "failure",
-                "role": "alert"
+                "part": "section-host"
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty-slot",
+                "role": "none"
               },
-              "textContent": "${state.failure}"
+              "$switch": {
+                "$ref": "#/state/hasSection"
+              },
+              "cases": {
+                "false": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "textContent": "${state.empty}"
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "failure-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/failureState"
+              },
+              "cases": {
+                "failed": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "failure",
+                    "role": "alert"
+                  },
+                  "textContent": "${state.failure}"
+                }
+              }
             }
-          }
+          ]
         }
       ]
     }

@@ -1,5 +1,5 @@
 /**
- * The five workspaces as declared — `src/workspace/workspace-ids.ts`.
+ * The six workspaces as declared — `src/workspace/workspace-ids.ts`.
  *
  * A module with no DOM: `view.setWorkspace`'s `args` enum is built from it in the bare Bun process
  * the CI checks run in, so these cases import it directly, with no harness.
@@ -10,6 +10,7 @@ import {
   DEFAULT_WORKSPACE,
   WORKSPACE_HOME_MODES,
   WORKSPACE_IDS,
+  SWITCHER_WORKSPACES,
   WORKSPACES,
   homeWorkspaceOfTabId,
   isHomeWorkspace,
@@ -20,9 +21,27 @@ import {
 } from "../src/workspace/workspace-ids";
 
 describe("the ids", () => {
-  test("are the five workspaces, in top-bar order", () => {
-    expect([...WORKSPACE_IDS]).toEqual(["design", "content", "media", "styles", "publish"]);
+  test("are the six workspaces, in top-bar order with Settings last", () => {
+    expect([...WORKSPACE_IDS]).toEqual([
+      "design",
+      "content",
+      "media",
+      "styles",
+      "publish",
+      "settings",
+    ]);
     expect(DEFAULT_WORKSPACE).toBe("design");
+  });
+
+  test("the top bar draws five of them: Settings is reached from its links", () => {
+    expect(SWITCHER_WORKSPACES.map((entry) => entry.id)).toEqual([
+      "design",
+      "content",
+      "media",
+      "styles",
+      "publish",
+    ]);
+    expect(workspaceInfo("settings").switcher).toBe(false);
   });
 
   test("the records and the ids agree, in both directions and in order", () => {
@@ -33,6 +52,7 @@ describe("the ids", () => {
       "Media",
       "Styles",
       "Publish",
+      "Project settings",
     ]);
     for (const id of WORKSPACE_IDS) {
       expect(workspaceInfo(id).id).toBe(id);
@@ -55,17 +75,23 @@ describe("the ids", () => {
 });
 
 describe("the homes", () => {
-  test("Content, Media and Publish open on a generic home; Design and Styles do not", () => {
-    expect(Object.keys(WORKSPACE_HOME_MODES).toSorted()).toEqual(["content", "media", "publish"]);
+  test("Content, Media, Publish and Settings open on a generic home; Design and Styles do not", () => {
+    expect(Object.keys(WORKSPACE_HOME_MODES).toSorted()).toEqual([
+      "content",
+      "media",
+      "publish",
+      "settings",
+    ]);
     expect(WORKSPACE_IDS.filter((id) => isHomeWorkspace(id))).toEqual([
       "content",
       "media",
       "publish",
+      "settings",
     ]);
   });
 
   test("a home's tab id round-trips, and is never a path", () => {
-    for (const id of ["content", "media", "publish"] as const) {
+    for (const id of ["content", "media", "publish", "settings"] as const) {
       const tabId = workspaceHomeTabId(id);
       expect(tabId).toBe(`workspace://${id}`);
       expect(homeWorkspaceOfTabId(tabId)).toBe(id);

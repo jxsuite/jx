@@ -98,7 +98,7 @@ The parser returns one mount per content type with a directory source. The site 
 
 ## Studio settings: `$studio.settings`
 
-The section class's `$studio` block may declare a settings section, rendered generically by Studio in its Project settings dialog. The auth extension's, verbatim:
+The section class's `$studio` block may declare a settings section, rendered generically by Studio in its Project settings workspace. The auth extension's, verbatim:
 
 ```json
 "$studio": {

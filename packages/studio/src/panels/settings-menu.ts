@@ -15,15 +15,15 @@
  * a record joins the menu by declaring the placement and leaves by not declaring it. The submenus
  * are the enumeration of each parent command's own `section` ARGUMENT, read from that argument's
  * own definition site — which is state the command already validates, not a second vocabulary
- * (`studio-ui-guidelines.md` §12.5). Project Settings' submenu is GROUPED as its dialog's nav is
+ * (`studio-ui-guidelines.md` §12.5). Project Settings' submenu is GROUPED as its own nav is
  * (General, Integrations, Advanced), with a divider where the group changes.
  *
  * **A parent row runs its own command AND owns a submenu.** The APG menu pattern does not describe
  * that and Spectrum's stock submenu forbade it outright; the kit's `jx-menu-item` makes it the rule
  * (`ui.md` §5.1), so the deviation `specs/studio-ui-guidelines.md` §8.4 records is now what the
  * element does rather than what this file hand-rolls around it. Nothing is unreachable by keyboard:
- * Enter runs the row, ArrowRight reaches every child, and every child is also in the settings
- * dialog's own nav.
+ * Enter runs the row, ArrowRight reaches every child, and every child is also in Project Settings'
+ * own nav.
  *
  * The menu is the `menu` surface (`surfaces/menu.json`, through `surfaces/menu.ts`). What is left
  * here is the projection — which records, which sections, what each row runs — and where the panel
