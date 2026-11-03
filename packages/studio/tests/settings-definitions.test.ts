@@ -16,6 +16,7 @@ describe("the key table", () => {
       "jx.ai.baseUrl": "",
       "jx.ai.model": "gpt-4o",
       "jx.ai.openaiKey": "",
+      "jx.ai.provider": "",
       "jx.cf.accountId": "",
       "jx.cf.token": "",
       "jx.files.showIgnored": "",
@@ -74,5 +75,18 @@ describe("invariants", () => {
     const { normalize } = SETTINGS.aiBaseUrl;
     expect(normalize("  https://example.test/v1///  ")).toBe("https://example.test/v1");
     expect(normalize("http://localhost:11434/v1")).toBe("http://localhost:11434/v1");
+  });
+});
+
+describe("aiProvider", () => {
+  /** Anything but the one other family reads as the default, so no value sends a key astray. */
+  test.each([
+    ["anthropic", "anthropic"],
+    [" Anthropic\n", "anthropic"],
+    ["openai-compat", ""],
+    ["", ""],
+    ["gemini", ""],
+  ])("normalizes %p to %p", (raw, stored) => {
+    expect(SETTINGS.aiProvider.normalize(raw)).toBe(stored);
   });
 });

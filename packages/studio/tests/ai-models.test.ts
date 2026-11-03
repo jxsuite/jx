@@ -6,6 +6,7 @@
 import { clearSeededSettings, installMockPlatform, seedSettings } from "./harness";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
+  backendProviders,
   ensureProxyProbe,
   fetchAvailableModels,
   getProxyDefaultModel,
@@ -144,6 +145,40 @@ describe("fetchAvailableModels", () => {
     await fetchAvailableModels({ credentials: other });
     expect(fetchCalls).toHaveLength(2);
     expect(cachedModels(draft)).toBeNull();
+  });
+
+  /* The same key and endpoint list different catalogues under different families, so the family is
+     part of what a list was listed under, and only a non-default family says so on the wire. */
+  test("names the Anthropic family in X-Api-Provider, and keys the cache on it", async () => {
+    const claude = { apiKey: "sk-ant", baseUrl: "", provider: "anthropic" as const };
+    await fetchAvailableModels({ credentials: claude });
+    expect(lastSentHeaders().get("X-Api-Provider")).toBe("anthropic");
+    expect(cachedModels(claude)).not.toBeNull();
+    expect(cachedModels({ apiKey: "sk-ant", baseUrl: "" })).toBeNull();
+
+    await fetchAvailableModels({ credentials: { ...claude, provider: "openai-compat" } });
+    expect(lastSentHeaders().get("X-Api-Provider")).toBeNull();
+  });
+
+  test("a stored change of family drops the cache", async () => {
+    await fetchAvailableModels();
+    seedSettings({ "jx.ai.provider": "anthropic" });
+    expect(aiConnection().provider).toBe("anthropic");
+    expect(cachedModels(aiConnection())).toBeNull();
+  });
+
+  /* A backend that lists no families predates them, and forwards every key to an OpenAI-compatible
+     endpoint: offering it Claude would send a Claude key to OpenAI. */
+  test("reads the families the backend reaches, and the default alone when it lists none", async () => {
+    expect(backendProviders()).toEqual(["openai-compat"]);
+    fetchImpl = async () =>
+      Response.json({ models: [], providers: ["openai-compat", "anthropic", "gemini"] });
+    await fetchAvailableModels({ force: true });
+    expect(backendProviders()).toEqual(["openai-compat", "anthropic"]);
+
+    fetchImpl = async () => Response.json({ models: [] });
+    await fetchAvailableModels({ force: true });
+    expect(backendProviders()).toEqual(["openai-compat"]);
   });
 
   test("changing the stored credentials drops the cache", async () => {

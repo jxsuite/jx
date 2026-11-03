@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   aiProviderDiffers,
   clearAiProvider,
+  getAiProvider,
   getBaseUrl,
+  getOpenAiCompatKey,
   getOpenAiKey,
   hasOpenAiKey,
   saveAiProvider,
@@ -101,6 +103,45 @@ describe("ai-settings — happy path", () => {
     setModel("");
     // Blank is stored, but it is not a choice — a sender still gets the default.
     expect(preferredModel()).toBe("gpt-4o");
+  });
+});
+
+/** The family a key belongs to (specs/ai.md §2.6), saved, compared and revoked with the rest. */
+describe("ai-settings — the provider family", () => {
+  test("defaults to OpenAI-compatible, and a Claude key is withheld from OpenAI-only paths", () => {
+    expect(getAiProvider()).toBe("openai-compat");
+    saveAiProvider({ apiKey: "sk-ant", baseUrl: "", model: "", provider: "anthropic" });
+    expect(getAiProvider()).toBe("anthropic");
+    expect(getOpenAiKey()).toBe("sk-ant");
+    expect(getOpenAiCompatKey()).toBe("");
+    saveAiProvider({ apiKey: "sk-oai", baseUrl: "", model: "" });
+    expect(getAiProvider()).toBe("openai-compat");
+    expect(getOpenAiCompatKey()).toBe("sk-oai");
+  });
+
+  test("a change of family alone is an edit, and naming the default is not", () => {
+    saveAiProvider({ apiKey: "sk-a", baseUrl: "", model: "" });
+    expect(
+      aiProviderDiffers({ apiKey: "sk-a", baseUrl: "", model: "", provider: "openai-compat" }),
+    ).toBe(false);
+    expect(
+      aiProviderDiffers({ apiKey: "sk-a", baseUrl: "", model: "", provider: "anthropic" }),
+    ).toBe(true);
+    saveAiProvider({ apiKey: "sk-a", baseUrl: "", model: "", provider: "anthropic" });
+    expect(aiProviderDiffers({ apiKey: "sk-a", baseUrl: "", model: "" })).toBe(true);
+  });
+
+  test("Disconnect forgets the family with the key", () => {
+    saveAiProvider({ apiKey: "sk-ant", baseUrl: "", model: "", provider: "anthropic" });
+    clearAiProvider();
+    expect(getAiProvider()).toBe("openai-compat");
+  });
+
+  test("a sender with no model chosen falls back to Claude Opus 5.5 under Anthropic", () => {
+    saveAiProvider({ apiKey: "sk-ant", baseUrl: "", model: "", provider: "anthropic" });
+    expect(preferredModel()).toBe("claude-opus-5-5");
+    setModel("claude-sonnet-5-5");
+    expect(preferredModel()).toBe("claude-sonnet-5-5");
   });
 });
 

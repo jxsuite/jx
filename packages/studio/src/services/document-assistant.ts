@@ -34,7 +34,7 @@ import { abortImportRun, resetImportRuns } from "./import-run";
 import { runAgentLoop } from "./tool-executor";
 import { buildSystemPrompt } from "./ai-system-prompt";
 import type { ExtensionCatalogSummary } from "./ai-system-prompt";
-import { getBaseUrl, getOpenAiKey } from "./ai-settings";
+import { getAiProvider, getBaseUrl, getOpenAiKey } from "./ai-settings";
 import { preferredModel } from "./ai-models";
 import { pruneOrphanToolMessages, trimContext } from "./context-manager";
 import { renderCheck } from "./render-critic";
@@ -329,8 +329,11 @@ export function createDocumentAssistant() {
         model: chatState.model,
         // Sent as X-Api-Key; the proxy falls back to the server's OPENAI_API_KEY when empty.
         apiKey: getOpenAiKey() || undefined,
-        // Optional OpenAI-compatible endpoint override; empty uses the proxy default.
+        // Optional endpoint override; empty uses the proxy default for the family.
         baseUrl: getBaseUrl() || undefined,
+        /* The family the key belongs to (specs/ai.md §2.6), named only when it is not the default,
+           so an OpenAI-compatible send is the one it always was. */
+        provider: getAiProvider() === "anthropic" ? "anthropic" : undefined,
         /* The persisted conversation, so the backend can keep its rounds on one warm prompt cache.
            Sent to the backend only, which hashes it before any provider sees it (specs/ai.md §2.5). */
         sessionId,

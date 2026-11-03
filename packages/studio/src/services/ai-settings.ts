@@ -19,6 +19,7 @@
  * @license MIT
  */
 
+import type { AiProviderFamily } from "@jxsuite/ai/streaming-client";
 import { SETTINGS } from "./settings/definitions";
 import type { SettingDefinition } from "./settings/definitions";
 import {
@@ -58,6 +59,29 @@ export function getBaseUrl() {
   return readStoredSetting(SETTINGS.aiBaseUrl);
 }
 
+/**
+ * The wire the stored key belongs to (specs/ai.md §2.6): `"anthropic"` for a Claude key, and the
+ * OpenAI-compatible default for anything else, including nothing stored.
+ *
+ * @returns {AiProviderFamily}
+ */
+export function getAiProvider(): AiProviderFamily {
+  return readStoredSetting(SETTINGS.aiProvider) === "anthropic" ? "anthropic" : "openai-compat";
+}
+
+/**
+ * The stored key when it is an OpenAI-compatible one, and `""` when it belongs to another family.
+ *
+ * For the paths that only speak the OpenAI-compatible wire, such as the site importer's component
+ * naming: handing them a Claude key would send it to an OpenAI endpoint, which is the one thing a
+ * key must never do.
+ *
+ * @returns {string}
+ */
+export function getOpenAiCompatKey(): string {
+  return getAiProvider() === "openai-compat" ? getOpenAiKey() : "";
+}
+
 // ─── Model selection ────────────────────────────────────────────────────────
 
 /**
@@ -84,11 +108,25 @@ export function setModel(modelId: string) {
   setSetting(SETTINGS.aiModel, modelId || "");
 }
 
-/** The provider's three values together — what a credentials form drafts and what Save stores. */
+/**
+ * The provider's values together: what a credentials form drafts and what Save stores. `provider`
+ * absent is the OpenAI-compatible default, which is what every caller before it meant.
+ */
 export interface AiProvider {
   apiKey: string;
   baseUrl: string;
   model: string;
+  provider?: AiProviderFamily;
+}
+
+/**
+ * A family as the store holds it: `"anthropic"`, or blank for the default.
+ *
+ * @param {AiProviderFamily | undefined} family
+ * @returns {string}
+ */
+function storedFamily(family: AiProviderFamily | undefined): string {
+  return family === "anthropic" ? "anthropic" : "";
 }
 
 /**
@@ -105,6 +143,7 @@ export function saveAiProvider(provider: AiProvider) {
     [SETTINGS.aiOpenAiKey, provider.apiKey],
     [SETTINGS.aiBaseUrl, provider.baseUrl],
     [SETTINGS.aiModel, provider.model],
+    [SETTINGS.aiProvider, storedFamily(provider.provider)],
   ]);
 }
 
@@ -127,13 +166,14 @@ export function saveAiProvider(provider: AiProvider) {
  * sentence above always claimed to be making.
  *
  * @param {AiProvider} provider The drafts.
- * @returns {boolean} `true` when at least one of the three would move.
+ * @returns {boolean} `true` when at least one of the values would move.
  */
 export function aiProviderDiffers(provider: AiProvider): boolean {
   return (
     !storedEquals(SETTINGS.aiOpenAiKey, provider.apiKey, getOpenAiKey()) ||
     !storedEquals(SETTINGS.aiBaseUrl, provider.baseUrl, getBaseUrl()) ||
-    !storedEquals(SETTINGS.aiModel, provider.model, storedModel())
+    !storedEquals(SETTINGS.aiModel, provider.model, storedModel()) ||
+    storedFamily(provider.provider) !== storedFamily(getAiProvider())
   );
 }
 
@@ -153,11 +193,11 @@ export function storedEquals(
 }
 
 /**
- * Forget the provider entirely — key, endpoint and model.
+ * Forget the provider entirely — key, endpoint, model and family.
  *
  * The one deletion path, and the one the Accounts list's Disconnect uses. Deliberately all three
  * together: a key with an orphaned endpoint is a state no surface knows how to describe.
  */
 export function clearAiProvider() {
-  clearSettings([SETTINGS.aiOpenAiKey, SETTINGS.aiBaseUrl, SETTINGS.aiModel]);
+  clearSettings([SETTINGS.aiOpenAiKey, SETTINGS.aiBaseUrl, SETTINGS.aiModel, SETTINGS.aiProvider]);
 }

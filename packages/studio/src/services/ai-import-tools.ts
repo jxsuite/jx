@@ -27,7 +27,7 @@ import { IMPORT_MAX_PAGES } from "@jxsuite/protocol";
 import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import { workspace } from "../workspace/workspace";
-import { getBaseUrl, getOpenAiKey } from "./ai-settings";
+import { getAiProvider, getBaseUrl, getOpenAiCompatKey } from "./ai-settings";
 import { preferredModel } from "./ai-models";
 import { MAX_IMPORT_DEPTH, clearPendingImportBrief, pendingImportBrief } from "./import-seed";
 import type { ImportBrief } from "./import-seed";
@@ -431,8 +431,11 @@ export function registerImportTools(
         };
         callSignal.addEventListener("abort", stopRun, { once: true });
 
-        const apiKey = getOpenAiKey();
-        const baseUrl = getBaseUrl();
+        /* The importer's component naming speaks only the OpenAI-compatible wire, so a Claude key
+           and its endpoint are withheld rather than sent to an OpenAI client; the import then names
+           components heuristically, as it does with no key at all. */
+        const apiKey = getOpenAiCompatKey();
+        const baseUrl = getAiProvider() === "openai-compat" ? getBaseUrl() : "";
         const model = brief?.model || preferredModel();
 
         const breakpoints = breakpointPolicyFor(

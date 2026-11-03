@@ -16,6 +16,7 @@ export { createChatState } from "./chat-state.js";
 export type { ChatUsage } from "./chat-state.js";
 
 export {
+  AI_PROVIDER_HEADER,
   STREAM_EVENT_TYPES,
   createOpenAIStreamingClient,
   createAnthropicStreamingClient,
@@ -33,6 +34,7 @@ export type { UpstreamCacheHints } from "./cache-hints.js";
 
 export type {
   AiCredentials,
+  AiProviderFamily,
   AnthropicStreamingClientOptions,
   OpenAIStreamingClientOptions,
   ProxyStreamingClientOptions,

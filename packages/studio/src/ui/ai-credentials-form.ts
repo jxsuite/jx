@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 /**
- * Ai-credentials-form.ts — reusable AI provider credentials form (key / model / endpoint).
+ * Ai-credentials-form.ts — reusable AI provider credentials form (provider / key / model /
+ * endpoint).
  *
  * Embedded by every host that needs a provider configured — **Preferences › Assistant** (⌘,) and
  * the New Project modal's Import/Agent gates. All draft/model-list state lives inside the closure,
@@ -23,9 +24,16 @@
  * @docs studio/ai
  */
 
-import { fetchAvailableModels, proxyModelsErrorMessage } from "../services/ai-models";
+import type { AiProviderFamily } from "@jxsuite/ai/streaming-client";
+import { isString } from "@jxsuite/schema/guards";
+import {
+  backendProviders,
+  fetchAvailableModels,
+  proxyModelsErrorMessage,
+} from "../services/ai-models";
 import {
   aiProviderDiffers,
+  getAiProvider,
   getBaseUrl,
   getOpenAiKey,
   saveAiProvider,
@@ -38,9 +46,48 @@ import { createAiCredentialsSurface } from "../surfaces/ai-credentials-form";
 import type { AiCredentialsSurface, AiCredentialsView } from "../surfaces/ai-credentials-form";
 import type { SurfaceOption } from "./surface";
 
-/** The blurb a host that says nothing gets. */
+/**
+ * The blurb a host that says nothing gets, where the backend reaches the OpenAI-compatible family
+ * alone.
+ */
 const DEFAULT_INTRO =
   "Any OpenAI-compatible key works. Stored locally in this browser; sent only to the Studio proxy (never to a third party except your chosen endpoint).";
+
+/** The same blurb where the backend also reaches Anthropic, so the picker is drawn. */
+const PROVIDER_INTRO =
+  "An Anthropic key for Claude, or any OpenAI-compatible key. Stored locally in this browser; sent only to the Studio proxy (never to a third party except your chosen provider).";
+
+/** The families the picker offers, in the order it lists them. */
+const PROVIDER_OPTIONS: SurfaceOption[] = [
+  { label: "OpenAI-compatible", value: "openai-compat" },
+  { label: "Anthropic (Claude)", value: "anthropic" },
+];
+
+/** What each field says while it is empty, per family. */
+const PLACEHOLDERS: Readonly<
+  Record<AiProviderFamily, { key: string; model: string; endpoint: string }>
+> = {
+  anthropic: {
+    endpoint: "Endpoint (optional, defaults to https://api.anthropic.com)",
+    key: "sk-ant-…",
+    model: "Model ID (e.g. claude-opus-5-5)",
+  },
+  "openai-compat": {
+    endpoint: "Endpoint (optional, e.g. http://localhost:11434/v1)",
+    key: "sk-… or any compatible key",
+    model: "Model ID (e.g. gpt-4o, claude-sonnet-4-20250514, etc.)",
+  },
+};
+
+/**
+ * A picker value as a family: the one other family, else the default.
+ *
+ * @param {string} value - What the picker reported
+ * @returns {AiProviderFamily}
+ */
+function familyOf(value: string): AiProviderFamily {
+  return value === "anthropic" ? "anthropic" : "openai-compat";
+}
 
 export interface AiCredentialsFormOptions {
   /** Host re-render scheduler — called whenever the form's internal state changes. */
@@ -56,9 +103,11 @@ export interface AiCredentialsFormOptions {
    * Optional context line replacing the default blurb.
    *
    * A string, not a template: the line is drawn by a document, and a document renders text rather
-   * than somebody else's markup. Nothing that passed one ever passed more than a sentence.
+   * than somebody else's markup. Nothing that passed one ever passed more than a sentence. A
+   * function is asked whether the provider picker is drawn, so a host's own sentence can name
+   * Claude exactly when Claude is a choice.
    */
-  intro?: string;
+  intro?: string | ((offersProviders: boolean) => string);
 }
 
 export interface AiCredentialsForm {
@@ -79,6 +128,7 @@ export interface AiCredentialsForm {
  * @returns {AiCredentialsForm}
  */
 export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCredentialsForm {
+  let providerDraft: AiProviderFamily = "openai-compat";
   let keyDraft = "";
   let baseUrlDraft = "";
   let modelDraft = "";
@@ -95,7 +145,12 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
    * Cancel replaces it. Starts blank because the drafts do, which is what lets a host that never
    * calls `startEdit` still open on what is stored.
    */
-  let basis: AiProvider = { apiKey: "", baseUrl: "", model: "" };
+  let basis: Required<AiProvider> = {
+    apiKey: "",
+    baseUrl: "",
+    model: "",
+    provider: "openai-compat",
+  };
 
   /** Made on the first render, and kept for the life of the controller. */
   let surface: AiCredentialsSurface | null = null;
@@ -108,13 +163,19 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
    * writes a choice nobody made, and `jx.ai.model: "gpt-4o"` is exactly what a broken install was
    * left holding.
    */
-  function stored(): AiProvider {
-    return { apiKey: getOpenAiKey(), baseUrl: getBaseUrl(), model: storedModel() };
+  function stored(): Required<AiProvider> {
+    return {
+      apiKey: getOpenAiKey(),
+      baseUrl: getBaseUrl(),
+      model: storedModel(),
+      provider: getAiProvider(),
+    };
   }
 
   /** Load the drafts from what is stored, discarding any edit, and take that as the new basis. */
   function loadDrafts() {
     basis = stored();
+    providerDraft = basis.provider;
     keyDraft = basis.apiKey;
     baseUrlDraft = basis.baseUrl;
     modelDraft = basis.model;
@@ -141,6 +202,7 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
    */
   function followStore() {
     const now = stored();
+    providerDraft = providerDraft === basis.provider ? now.provider : providerDraft;
     keyDraft = storedEquals(SETTINGS.aiOpenAiKey, keyDraft, basis.apiKey) ? now.apiKey : keyDraft;
     baseUrlDraft = storedEquals(SETTINGS.aiBaseUrl, baseUrlDraft, basis.baseUrl)
       ? now.baseUrl
@@ -173,7 +235,12 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
    * no longer `dirty`: Save and Cancel go away, so a second press has nothing to land on.
    */
   function save() {
-    saveAiProvider({ apiKey: keyDraft, baseUrl: baseUrlDraft, model: modelDraft });
+    saveAiProvider({
+      apiKey: keyDraft,
+      baseUrl: baseUrlDraft,
+      model: modelDraft,
+      provider: providerDraft,
+    });
     loadDrafts();
     modelsError = "";
     /* The fetched list stays: it was listed under exactly these credentials, and dropping it
@@ -213,6 +280,7 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
         credentials: {
           apiKey: keyDraft || getOpenAiKey(),
           baseUrl: baseUrlDraft || getBaseUrl(),
+          provider: providerDraft,
         },
         force: true,
       });
@@ -243,24 +311,58 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
     return availableModels.map((model) => ({ label: model.name, value: model.id }));
   }
 
+  /**
+   * The line under the title: the host's, asked about the picker when it is a function, else the
+   * default for whether the picker is drawn.
+   *
+   * @param {boolean} showProvider - Whether the provider picker is drawn
+   * @returns {string}
+   */
+  function introFor(showProvider: boolean): string {
+    const { intro } = opts;
+    if (intro === undefined) {
+      return showProvider ? PROVIDER_INTRO : DEFAULT_INTRO;
+    }
+    return isString(intro) ? intro : intro(showProvider);
+  }
+
   /** What the form says right now — the whole of what the surface is told. */
   function view(): AiCredentialsView {
+    /* Drawn where it is a choice, and never offered to a backend that cannot honour it: one that
+       lists no other family forwards every key to an OpenAI-compatible endpoint. A family already
+       drafted or stored keeps the picker, so a reader can always switch back. */
+    const showProvider =
+      backendProviders().includes("anthropic") ||
+      providerDraft !== "openai-compat" ||
+      basis.provider !== "openai-compat";
+    const placeholders = PLACEHOLDERS[providerDraft];
     return {
       baseUrlDraft,
       /* Compared as the store would hold each value, so what Save would erase — whitespace, an
          endpoint's trailing slash — is not an edit. See `aiProviderDiffers`. */
-      dirty: aiProviderDiffers({ apiKey: keyDraft, baseUrl: baseUrlDraft, model: modelDraft }),
+      dirty: aiProviderDiffers({
+        apiKey: keyDraft,
+        baseUrl: baseUrlDraft,
+        model: modelDraft,
+        provider: providerDraft,
+      }),
+      endpointPlaceholder: placeholders.endpoint,
       fetchLabel: modelsLoading
         ? "Fetching…"
         : availableModels.length > 0
           ? "Refresh models"
           : "Fetch models",
-      intro: opts.intro ?? DEFAULT_INTRO,
+      intro: introFor(showProvider),
       keyDraft,
+      keyPlaceholder: placeholders.key,
       modelDraft,
+      modelPlaceholder: placeholders.model,
       models: rows(),
       modelsError,
       modelsLoading,
+      providerDraft,
+      providerOptions: PROVIDER_OPTIONS,
+      showProvider,
     };
   }
 
@@ -272,6 +374,20 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
    * would leave the field holding something the flow does not have. Nothing rewrites a draft today;
    * the echo is what makes a rewrite possible.
    */
+  /**
+   * The family the key belongs to. A change drops the listed catalogue, because it was another
+   * family's, and the reason the last listing failed with it: Fetch lists the new family's.
+   */
+  function setProvider(value: string) {
+    const next = familyOf(value);
+    if (next !== providerDraft) {
+      providerDraft = next;
+      availableModels = [];
+      modelsError = "";
+    }
+    surface?.update(view());
+  }
+
   function setKey(value: string) {
     keyDraft = value;
     surface?.update(view());
@@ -305,6 +421,7 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
         setBaseUrl,
         setKey,
         setModel,
+        setProvider,
       });
     }
     return surface.host;

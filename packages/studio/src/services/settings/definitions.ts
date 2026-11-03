@@ -60,6 +60,15 @@ function normalizeBaseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
 }
 
+/**
+ * The provider family, stored only when it is not the default: `"anthropic"`, or `""` for the
+ * OpenAI-compatible wire every install had before the setting existed. Anything else reads as the
+ * default, so a hand-edited value can never send a key to a family nobody chose.
+ */
+function normalizeProvider(raw: string): string {
+  return raw.trim().toLowerCase() === "anthropic" ? "anthropic" : "";
+}
+
 /** Trim. Credentials are pasted, and a paste carries whitespace. */
 function trimmed(raw: string): string {
   return raw.trim();
@@ -90,6 +99,16 @@ export const SETTINGS = {
     normalize: trimmed,
     scope: "user",
     secret: true,
+  },
+  /**
+   * Which wire the key belongs to (specs/ai.md §2.6). Blank is the OpenAI-compatible default, so an
+   * install that predates the setting keeps the provider it already had.
+   */
+  aiProvider: {
+    default: "",
+    key: "jx.ai.provider",
+    normalize: normalizeProvider,
+    scope: "user",
   },
   /**
    * `"gpt-4o"` is what a sender falls back to, NOT a stored choice. A surface that writes back must

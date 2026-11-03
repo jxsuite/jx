@@ -2,7 +2,7 @@
 /**
  * The AI provider credentials form as a mounted document.
  *
- * `ui/ai-credentials-form.ts` is the flow — it holds the three drafts, decides which credentials a
+ * `ui/ai-credentials-form.ts` is the flow — it holds the drafts, decides which credentials a
  * listing is made with, what Save persists and re-reads, and whether there is anything to commit —
  * and this is the surface it draws into.
  *
@@ -37,10 +37,22 @@ registerSurface("ai-credentials-form", credentialsDoc);
 export interface AiCredentialsView {
   /** The line under the title: where the key goes, and where it does not. */
   intro: string;
-  /** The three drafts, exactly as the flow holds them. */
+  /** The drafts, exactly as the flow holds them. */
+  providerDraft: string;
   keyDraft: string;
   modelDraft: string;
   baseUrlDraft: string;
+  /**
+   * Whether the provider picker is drawn: the backend reaches another family, or the drafted or
+   * stored family already is one (specs/ai.md §2.6).
+   */
+  showProvider: boolean;
+  /** The families the picker offers. */
+  providerOptions: SurfaceOption[];
+  /** What each field says while it is empty; they follow the drafted family. */
+  keyPlaceholder: string;
+  modelPlaceholder: string;
+  endpointPlaceholder: string;
   /** The catalogue the last successful listing returned; empty draws no chevron on the field. */
   models: SurfaceOption[];
   /** A listing is in flight: the button says so and refuses a second one. */
@@ -59,6 +71,7 @@ export interface AiCredentialsView {
 
 /** Everything the reader can do here. */
 export interface AiCredentialsActions {
+  setProvider: (value: string) => void;
   setKey: (value: string) => void;
   setModel: (value: string) => void;
   setBaseUrl: (value: string) => void;

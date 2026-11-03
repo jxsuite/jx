@@ -38,7 +38,7 @@ The first screen (**Choose a starting point**) opens on the starter gallery, bec
 Both AI tabs unlock the moment AI is available, by whichever route your Studio offers. They are the same options the [AI assistant](/docs/studio/ai) sidebar gives you:
 
 - **Connect Cloudflare**: on Jx Cloud, run Workers AI on your own Cloudflare account with no API key at all. Click the button, approve the Cloudflare authorization, and the tab unlocks when you land back in Studio. With no model of your own chosen, Studio uses the one that backend says it prefers rather than guessing a name it may not serve.
-- **An AI provider key**: paste any OpenAI-compatible key into the form. This is the only route on desktop and the dev server.
+- **An AI provider key**: paste any OpenAI-compatible key, or an Anthropic key for Claude, into the form. This is the only route on desktop and the dev server. Import names components with an OpenAI-compatible model only, so with a Claude key an import names them from the page structure instead.
 - **Nothing to do**: if the Studio backend already holds a provider key (a dev server started with `OPENAI_API_KEY`, or a Cloudflare account you connected earlier), both tabs are unlocked from the start.
 
 Pick a source and click **Next**. **Cancel** is available on this step and the next one, and :kbd[Escape] closes the wizard from either.

@@ -27,7 +27,7 @@
 
 import { clearGithubToken, githubTokenLocation, githubTokenStored } from "../github/github-auth";
 import { clearCfConnection, getCfAccountId, getCfToken } from "../services/cf-settings";
-import { clearAiProvider, getBaseUrl, hasOpenAiKey } from "../services/ai-settings";
+import { clearAiProvider, getAiProvider, getBaseUrl, hasOpenAiKey } from "../services/ai-settings";
 import { preferredModel, resetModelCache } from "../services/ai-models";
 import { getPlatform, hasPlatform } from "../platform";
 import { getAccountEntries } from "../account-status";
@@ -292,7 +292,7 @@ export function listAccounts(): AccountRecord[] {
       id: "ai",
       label: "AI provider",
       detail: hasOpenAiKey()
-        ? `Key stored. Model ${model}${endpoint ? ` via ${endpoint}` : ""}.`
+        ? `${getAiProvider() === "anthropic" ? "Anthropic key" : "Key"} stored. Model ${model}${endpoint ? ` via ${endpoint}` : ""}.`
         : "No key stored. The Assistant section is where one is entered.",
       connected: hasOpenAiKey(),
       revoke: clearAiProvider,

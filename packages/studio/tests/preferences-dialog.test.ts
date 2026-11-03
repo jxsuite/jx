@@ -34,6 +34,7 @@ import type { CfConnection } from "../src/types";
 // Keep the credentials gate deterministic: no managed proxy, no probe fetch.
 void mock.module("../src/services/ai-models", () => ({
   aiConnection: () => ({ apiKey: "", baseUrl: "" }),
+  backendProviders: () => ["openai-compat"],
   cachedModels: () => null,
   preferredModel: () => "gpt-4o",
   ensureProxyProbe: () => {},

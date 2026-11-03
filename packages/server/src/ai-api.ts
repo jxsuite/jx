@@ -22,6 +22,13 @@
  * 2. Fallback: OPENAI_BASE_URL env var
  * 3. Default: https://api.openai.com/v1
  *
+ * Provider family (specs/ai.md §2.6): a request carrying `X-Api-Provider: anthropic` is served by
+ * the Anthropic Messages API instead, with the same two flows read from ANTHROPIC_API_KEY,
+ * ANTHROPIC_BASE_URL and `https://api.anthropic.com`. An env key is still attached only to its own
+ * family's env/default base URL, so neither server key reaches the other family or a caller's
+ * endpoint. Any other value is refused: a key must never be sent to a provider it was not meant
+ * for. The models route lists both families in `providers`.
+ *
  * A base URL resolving to a cloud metadata / link-local host is refused (SSRF defense).
  *
  * Prompt-cache affinity: a request carrying a valid X-Jx-Ai-Session header (the client's
@@ -38,15 +45,19 @@
 import {
   AI_SESSION_HEADER,
   affinityKey,
+  ANTHROPIC_BASE_URL,
   createChatHandler,
   DEFAULT_UPSTREAM_BASE_URL,
   extractUpstreamErrorMessage,
   isAiSessionId,
+  listAnthropicModels,
   modelsResponse,
   problemResponse,
 } from "@jxsuite/ai/gateway";
 import type { GatewayRefusal, Upstream } from "@jxsuite/ai/gateway";
+import { AI_PROVIDER_HEADER } from "@jxsuite/ai/streaming-client";
 import { problemDetails } from "@jxsuite/protocol";
+import type { AiModelInfo, AiProviderFamily } from "@jxsuite/protocol";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { problemTypeForStatus } from "./problem.ts";
 
@@ -54,6 +65,19 @@ import { problemTypeForStatus } from "./problem.ts";
 
 /** The model a chat request that names none is forwarded with. */
 const DEFAULT_MODEL = "gpt-4o";
+
+/** The model an Anthropic chat request that names none is forwarded with, and the probe prefers. */
+const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5-5";
+
+/** Every family this server's chat route can reach, as the models route declares them. */
+const PROVIDERS: AiProviderFamily[] = ["openai-compat", "anthropic"];
+
+/** The Claude catalogue the models route answers when it cannot list the caller's own. */
+const ANTHROPIC_DEFAULTS: AiModelInfo[] = [
+  { contextWindow: 1_000_000, id: "claude-opus-5-5", name: "Claude Opus 5.5" },
+  { contextWindow: 1_000_000, id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
+  { contextWindow: 1_000_000, id: "claude-haiku-5-5", name: "Claude Haiku 5.5" },
+];
 
 /**
  * This server's namespace for affinity keys. Every dev/desktop server shares it: their keys never
@@ -95,16 +119,64 @@ function isBlockedHost(rawUrl: string): boolean {
 }
 
 interface AiConfig {
+  family: AiProviderFamily;
   apiKey: string | null;
   baseUrl: string;
   missingKey: boolean;
   reject?: { status: number; message: string };
 }
 
+/** Where each family's server-side key and base URL come from, and its default endpoint. */
+interface FamilyEnvironment {
+  keyVariable: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
+  baseUrlVariable: "OPENAI_BASE_URL" | "ANTHROPIC_BASE_URL";
+  defaultBaseUrl: string;
+}
+
+const ENVIRONMENTS: Readonly<Record<AiProviderFamily, FamilyEnvironment>> = {
+  anthropic: {
+    baseUrlVariable: "ANTHROPIC_BASE_URL",
+    defaultBaseUrl: ANTHROPIC_BASE_URL,
+    keyVariable: "ANTHROPIC_API_KEY",
+  },
+  "openai-compat": {
+    baseUrlVariable: "OPENAI_BASE_URL",
+    defaultBaseUrl: DEFAULT_UPSTREAM_BASE_URL,
+    keyVariable: "OPENAI_API_KEY",
+  },
+};
+
+/**
+ * The family a request names in `X-Api-Provider`: absent or empty is the OpenAI-compatible default,
+ * and a value naming no family this server reaches is null, which the caller refuses.
+ */
+function familyOf(req: Request): AiProviderFamily | null {
+  const named = (req.headers.get(AI_PROVIDER_HEADER) || "").trim().toLowerCase();
+  if (named === "" || named === "openai-compat") {
+    return "openai-compat";
+  }
+  return named === "anthropic" ? "anthropic" : null;
+}
+
 function getConfig(req: Request): AiConfig {
   const authHeader = req.headers.get("Authorization") || "";
   const apiKeyHeader = req.headers.get("X-Api-Key") || "";
   const baseUrlHeader = req.headers.get("X-Api-Base-URL") || "";
+  const named = familyOf(req);
+  if (named === null) {
+    return {
+      apiKey: null,
+      baseUrl: "",
+      family: "openai-compat",
+      missingKey: true,
+      reject: {
+        status: 400,
+        message: `Unknown ${AI_PROVIDER_HEADER}: this server reaches openai-compat and anthropic.`,
+      },
+    };
+  }
+  const family = named;
+  const environment = ENVIRONMENTS[family];
 
   // Track the PROVENANCE of the key: a header-supplied key may ride a caller's custom base URL; the
   // Server's env key never leaves for a caller-chosen endpoint (key-exfiltration defense).
@@ -120,12 +192,14 @@ function getConfig(req: Request): AiConfig {
   }
 
   const baseFromHeader = Boolean(baseUrlHeader);
-  const baseUrl = baseUrlHeader || process.env.OPENAI_BASE_URL || DEFAULT_UPSTREAM_BASE_URL;
+  const baseUrl =
+    baseUrlHeader || process.env[environment.baseUrlVariable] || environment.defaultBaseUrl;
 
   if (isBlockedHost(baseUrl)) {
     return {
       apiKey: null,
       baseUrl,
+      family,
       missingKey: true,
       reject: { status: 403, message: "Base URL host is not permitted." },
     };
@@ -137,6 +211,7 @@ function getConfig(req: Request): AiConfig {
     return {
       apiKey: null,
       baseUrl,
+      family,
       missingKey: true,
       reject: {
         status: 401,
@@ -145,12 +220,13 @@ function getConfig(req: Request): AiConfig {
     };
   }
 
-  // Env key is only ever attached to the env/default base URL.
-  if (!apiKey && process.env.OPENAI_API_KEY) {
-    apiKey = process.env.OPENAI_API_KEY;
+  // Env key is only ever attached to its own family's env/default base URL.
+  const envKey = process.env[environment.keyVariable];
+  if (!apiKey && envKey) {
+    apiKey = envKey;
   }
 
-  return { apiKey, baseUrl, missingKey: !apiKey };
+  return { apiKey, baseUrl, family, missingKey: !apiKey };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -173,21 +249,21 @@ function refuse(status: number, message: string): GatewayRefusal {
  * session header adds the hashed affinity key; an invalid one is ignored rather than refused.
  */
 async function resolveUpstream(req: Request): Promise<Upstream | GatewayRefusal> {
-  const { apiKey, baseUrl, reject } = getConfig(req);
+  const { apiKey, baseUrl, family, reject } = getConfig(req);
   if (reject) {
     return refuse(reject.status, reject.message);
   }
   if (!apiKey) {
     return refuse(
       401,
-      "No API key configured. Set OPENAI_API_KEY env var or send X-Api-Key header.",
+      `No API key configured. Set ${ENVIRONMENTS[family].keyVariable} env var or send X-Api-Key header.`,
     );
   }
   const upstream: Upstream = {
     apiKey,
     baseUrl,
-    defaultModel: DEFAULT_MODEL,
-    family: "openai-compat",
+    defaultModel: family === "anthropic" ? DEFAULT_ANTHROPIC_MODEL : DEFAULT_MODEL,
+    family,
     managed: false,
   };
   const sessionId = req.headers.get(AI_SESSION_HEADER);
@@ -203,7 +279,7 @@ const chatHandler = createChatHandler<{ readonly signal: AbortSignal }>({
   resolveUpstream: (request) => resolveUpstream(request),
 });
 
-/** Handle POST /__studio/ai/chat — proxy chat completions to OpenAI via SSE. */
+/** Handle POST /__studio/ai/chat — proxy the chat to the request's provider family via SSE. */
 export async function handleChat(req: Request): Promise<Response> {
   return chatHandler(req, { signal: req.signal });
 }
@@ -219,9 +295,12 @@ export async function handleChat(req: Request): Promise<Response> {
  * key is available.
  */
 export async function handleModels(req: Request): Promise<Response> {
-  const { apiKey, baseUrl, missingKey, reject } = getConfig(req);
+  const { apiKey, baseUrl, family, missingKey, reject } = getConfig(req);
   if (reject) {
     return problemResponse(refuse(reject.status, reject.message));
+  }
+  if (family === "anthropic") {
+    return anthropicModels(apiKey, baseUrl);
   }
 
   // No key available → return hardcoded defaults so the UI can at least render.
@@ -232,7 +311,12 @@ export async function handleModels(req: Request): Promise<Response> {
       { id: "gpt-4.1-mini", name: "GPT-4.1 Mini", contextWindow: 1_000_000 },
       { id: "gpt-4o-mini", name: "GPT-4o Mini", contextWindow: 128_000 },
     ];
-    return modelsResponse({ models: defaults, configured: false, managed: false });
+    return modelsResponse({
+      models: defaults,
+      configured: false,
+      managed: false,
+      providers: PROVIDERS,
+    });
   }
 
   // Key is available — proxy to the upstream /models endpoint.
@@ -256,6 +340,7 @@ export async function handleModels(req: Request): Promise<Response> {
         models: defaults,
         configured: true,
         managed: false,
+        providers: PROVIDERS,
         upstreamError: upstreamResp.status,
         upstreamMessage,
       });
@@ -280,7 +365,7 @@ export async function handleModels(req: Request): Promise<Response> {
       ownedBy: owned_by,
     }));
 
-    return modelsResponse({ models, configured: true, managed: false });
+    return modelsResponse({ models, configured: true, managed: false, providers: PROVIDERS });
   } catch (error) {
     // Network error → return defaults.
     const defaults = [{ id: "gpt-4o", name: "GPT-4o", contextWindow: 128_000 }];
@@ -288,10 +373,35 @@ export async function handleModels(req: Request): Promise<Response> {
       models: defaults,
       configured: true,
       managed: false,
+      providers: PROVIDERS,
       upstreamError: "network",
       upstreamMessage: errorMessage(error),
     });
   }
+}
+
+/**
+ * The models route for the Anthropic family: the caller's own listing from `/v1/models`, or the
+ * Claude defaults when there is no key or the listing failed, with the reason beside them exactly
+ * as the OpenAI-compatible branch reports one. `defaultModel` is always set, because a client that
+ * has chosen nothing must not fall back to an OpenAI model id here.
+ */
+async function anthropicModels(apiKey: string | null, baseUrl: string): Promise<Response> {
+  const declared = { defaultModel: DEFAULT_ANTHROPIC_MODEL, managed: false, providers: PROVIDERS };
+  if (!apiKey) {
+    return modelsResponse({ ...declared, configured: false, models: ANTHROPIC_DEFAULTS });
+  }
+  const listing = await listAnthropicModels({ apiKey, baseUrl });
+  if (listing.ok) {
+    return modelsResponse({ ...declared, configured: true, models: listing.models });
+  }
+  return modelsResponse({
+    ...declared,
+    configured: true,
+    models: ANTHROPIC_DEFAULTS,
+    upstreamError: listing.upstreamError,
+    upstreamMessage: listing.message,
+  });
 }
 
 // ─── Route handler ───────────────────────────────────────────────────────────

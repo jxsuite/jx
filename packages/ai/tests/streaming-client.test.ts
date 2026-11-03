@@ -10,13 +10,14 @@
 
 import { describe, it, expect, afterEach } from "bun:test";
 import {
+  AI_PROVIDER_HEADER,
   AI_SESSION_HEADER,
   createOpenAIStreamingClient,
   createAnthropicStreamingClient,
   createProxyStreamingClient,
   usageEventFromOpenAI,
 } from "../src/streaming-client.js";
-import type { StreamEvent } from "../src/streaming-client.js";
+import type { ProxyStreamingClientOptions, StreamEvent } from "../src/streaming-client.js";
 import type { JsonObject } from "../src/core-types.ts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -797,6 +798,28 @@ describe("createProxyStreamingClient", () => {
     expect(headers["X-Api-Key"]).toBe("secret");
     expect(headers["X-Api-Base-URL"]).toBe("https://local/v1");
     expect(body.model).toBe("gpt-5");
+    expect(headers["X-Api-Provider"]).toBeUndefined();
+  });
+
+  /* A backend that predates the header forwards every key to an OpenAI-compatible endpoint, so the
+     default family says nothing and the request stays the one such a backend has always read. */
+  it.each<[ProxyStreamingClientOptions["provider"], string | undefined]>([
+    ["anthropic", "anthropic"],
+    ["openai-compat", undefined],
+    [undefined, undefined],
+  ])("sends X-Api-Provider for provider %p as %p", async (provider, expected) => {
+    const { calls } = mockFetch(() =>
+      streamingResponse(sseBody([JSON.stringify({ type: "done", stopReason: "stop" })]), {
+        status: 200,
+      }),
+    );
+    const client = createProxyStreamingClient({
+      apiKey: "sk-ant",
+      chatUrl: "https://proxy/chat",
+      provider,
+    });
+    await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(calls[0]!.headers[AI_PROVIDER_HEADER]).toBe(expected);
   });
 
   /* The raw id goes to the client's own backend, which hashes it before any provider sees it, so the

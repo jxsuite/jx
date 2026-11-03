@@ -4,6 +4,7 @@ disposition: implement
 claims:
   - ai.md
   - ai.md#2.2
+  - ai.md#2.6
   - ai.md#3.10
 size: L
 workspaces:
@@ -48,42 +49,42 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
 ## Outcome
 
 - `ai.md` §3.10 → Implemented. J1.20 landed the catalog with arguments still checked by the registry's lightweight validator, so the section is Partial and its §5 JSON Schema 2020-12 row Pending; J1.25 lands `Validator` and `cachedValidator`, removes `ai.md#3.10` from `claims`, and graduates the row.
-- `ai.md` §2.2 → Implemented. J1.24 lands the native Anthropic provider, which is the Partial marker this plan claims there, and removes `ai.md#2.2` from `claims` in the same pull request.
+- `ai.md` §2.2 and §2.6 → Implemented. J1.24 lands the native Anthropic provider, which is the Partial marker this plan claims in each, and removes `ai.md#2.2` and `ai.md#2.6` from `claims` in the same pull request.
 - `ai.md` (the whole-spec marker) → removed. The preamble says the spec is "a stub … sections will be expanded as the subsystem stabilizes"; Phase 1 is that expansion (§2.3 to §2.6 and §3.7 to §3.14, per risk 12). The pull request that merges the last open slice deletes the marker, which closes the last claim, and deletes this file.
 - Every behavioural contract a slice lands is written into `specs/ai.md`, or the spec its **Spec** line names, as that slice merges. Nothing in this file becomes normative by being here.
 
 ## Slices
 
-| Slice | Scope                                               | Claims      | State                 |
-| ----- | --------------------------------------------------- | ----------- | --------------------- |
-| J1.1  | Doc-op foundation                                   | —           | merged jxsuite/jx#371 |
-| J1.2  | Freeze v1 and the Worker gate                       | —           | merged jxsuite/jx#372 |
-| J1.3  | Persisted tool outcomes                             | —           | merged jxsuite/jx#374 |
-| J1.4  | Loop honesty in the old loop                        | —           | merged jxsuite/jx#376 |
-| J1.5  | Stop is armed before the first await                | —           | merged jxsuite/jx#377 |
-| J1.6  | One turn per window                                 | —           | merged jxsuite/jx#378 |
-| J1.7  | Honest turn outcomes                                | —           | merged jxsuite/jx#380 |
-| J1.8  | ToolContext                                         | —           | merged jxsuite/jx#381 |
-| J1.9  | Ledger reset and path containment                   | —           | merged jxsuite/jx#392 |
-| J1.10 | `./messages`                                        | —           | merged jxsuite/jx#417 |
-| J1.11 | `./harness` behind `runAgentLoop`                   | —           | merged jxsuite/jx#418 |
-| J1.12 | Pair repair                                         | —           | merged jxsuite/jx#419 |
-| J1.13 | Per-actor lanes                                     | —           | merged jxsuite/jx#489 |
-| J1.14 | Restore undoes the turn                             | —           | merged jxsuite/jx#490 |
-| J1.15 | Doc-op strictness in the old tools                  | —           | merged jxsuite/jx#492 |
-| J1.16 | `./jx-tools` producers                              | —           | merged jxsuite/jx#493 |
-| J1.17 | `./gateway` extraction                              | —           | merged jxsuite/jx#375 |
-| J1.18 | One normaliser                                      | —           | open                  |
-| J1.19 | Wire v2 with the OpenAI-compatible provider         | —           | open                  |
-| J1.20 | `./catalog` membership and facts                    | —           | merged jxsuite/jx#499 |
-| J1.21 | Interactions and approvals run before the tool body | —           | merged jxsuite/jx#502 |
-| J1.22 | Checkpoints and resume                              | —           | open                  |
-| J1.23 | Sessions                                            | —           | open                  |
-| J1.24 | Native Anthropic                                    | `ai.md#2.2` | open                  |
-| J1.25 | Project tools over a ProjectHost, and the six twins | —           | open                  |
-| J1.26 | Studio approvals on                                 | —           | open                  |
-| J1.27 | Parallel read-only calls                            | —           | open                  |
-| J1.28 | Summarising compaction                              | —           | open                  |
+| Slice | Scope                                               | Claims                   | State                      |
+| ----- | --------------------------------------------------- | ------------------------ | -------------------------- |
+| J1.1  | Doc-op foundation                                   | —                        | merged jxsuite/jx#371      |
+| J1.2  | Freeze v1 and the Worker gate                       | —                        | merged jxsuite/jx#372      |
+| J1.3  | Persisted tool outcomes                             | —                        | merged jxsuite/jx#374      |
+| J1.4  | Loop honesty in the old loop                        | —                        | merged jxsuite/jx#376      |
+| J1.5  | Stop is armed before the first await                | —                        | merged jxsuite/jx#377      |
+| J1.6  | One turn per window                                 | —                        | merged jxsuite/jx#378      |
+| J1.7  | Honest turn outcomes                                | —                        | merged jxsuite/jx#380      |
+| J1.8  | ToolContext                                         | —                        | merged jxsuite/jx#381      |
+| J1.9  | Ledger reset and path containment                   | —                        | merged jxsuite/jx#392      |
+| J1.10 | `./messages`                                        | —                        | merged jxsuite/jx#417      |
+| J1.11 | `./harness` behind `runAgentLoop`                   | —                        | merged jxsuite/jx#418      |
+| J1.12 | Pair repair                                         | —                        | merged jxsuite/jx#419      |
+| J1.13 | Per-actor lanes                                     | —                        | merged jxsuite/jx#489      |
+| J1.14 | Restore undoes the turn                             | —                        | merged jxsuite/jx#490      |
+| J1.15 | Doc-op strictness in the old tools                  | —                        | merged jxsuite/jx#492      |
+| J1.16 | `./jx-tools` producers                              | —                        | merged jxsuite/jx#493      |
+| J1.17 | `./gateway` extraction                              | —                        | merged jxsuite/jx#375      |
+| J1.18 | One normaliser                                      | —                        | open                       |
+| J1.19 | Wire v2 with the OpenAI-compatible provider         | —                        | open                       |
+| J1.20 | `./catalog` membership and facts                    | —                        | merged jxsuite/jx#499      |
+| J1.21 | Interactions and approvals run before the tool body | —                        | merged jxsuite/jx#502      |
+| J1.22 | Checkpoints and resume                              | —                        | open                       |
+| J1.23 | Sessions                                            | —                        | open                       |
+| J1.24 | Native Anthropic                                    | `ai.md#2.2`, `ai.md#2.6` | open (v1-wire path landed) |
+| J1.25 | Project tools over a ProjectHost, and the six twins | —                        | open                       |
+| J1.26 | Studio approvals on                                 | —                        | open                       |
+| J1.27 | Parallel read-only calls                            | —                        | open                       |
+| J1.28 | Summarising compaction                              | —                        | open                       |
 
 - Each slice pull request updates its row and appends itself to `prs`. The rows carried over from the old Status table keep their notes here:
   - J1.1: `applyDocOpsAsUser` was deferred to J1.16, its first caller, under Studio's reachability rule.
@@ -99,6 +100,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
   - J1.15: `coerceIndex` lives in `@jxsuite/schema/doc-ops` beside `insertionSlot` and the moved path helpers, rather than in `ai/jx-tools`, so J1.16 imports it from there. A tab stores a repeater as a member of an ordinary children array (`normalizeArrayChildren`), so a move next to one is a valid edit, the template's path is `[…, "children", n, "map"]`, and the move tool carries no mapped-children refusal (unreachable from a tab); `add_child` keeps its existing one. A word for an index (`"first"`) is refused by the registry's validator before the tool runs; `coerceIndex` refuses what the validator admits (`"01"`, `1.5`, negatives). `planMove` (Studio, `transact.ts`) computes a move's forward and inverse without applying it, shared by `mutateMoveNode` and the tool so the summary can name the landing path. The doc-ops map's probe table was never committed, so `ai-tools-strictness.test.ts` is built from §5.7's rows. The live eval was not run.
   - J1.16: `DocToolName` names the seven producers that exist; `duplicate_node` and `delete_node` stay Studio's command projections and join it with J1.25's twins. `docToolEntries` takes only `reporter`: `names` and `addressing` wait for their first callers (J1.25, P2.1), and so do `JX_TOOL_FACTS` annotations (J1.20) and `EditMeta.coalesceKey`. `DocumentHost.resolve(ctx)` takes no path, because Studio addresses the current document; `snapshot` returns non-null, because a ref is only snapshotted in the call that resolved it. `WriteReporter<Before>` is generic over the snapshot it brackets. The ledger keeps the summary as `tool` and adds no `target`, because the agent-trace goldens pin it. `planMove` moved to `@jxsuite/schema/doc-ops`, built on `spliceCoordinate`. `applyDocOpsAsUser` classifies canvas patches the way undo and redo do (`attributes`, `cases` and `$props` replace, document-level keys are `doc-meta`), where the mutators recorded `set-prop`; history ops are unchanged, proven by the op golden recorded from the mutators in the slice's first commit. The `children: []` residue of an insert or move into a childless node shows up in that golden, as `inverseOf` documents. The Studio size ceiling rose from 25,600 to 35,840, because the tools' bytes moved package (the page grew by 514 bytes). The hand-writers table matches `studioDocumentHost(`. The live eval was not run.
   - J1.20: a `Gate` answers what a member requires (the end of the refusal sentence), and the catalog writes `Tool "<name>" is not available right now — it requires <what>.`, so there is no `requires` map in the view. `catalogRegistry` takes the catalog or a function returning one, because Studio's command members follow the active command registry; it caches the runner per catalog identity. `CatalogEntry` is the definition narrowed to carry `title` and `annotations`, which `toMcpTool` takes, so a projection cannot meet a member without them. `digest`, `stableSpecs` and `capabilities` (J1.22, P2.1), the approval policy and `toElicitation`/`fromElicitation` (J1.21), `Validator`/`cachedValidator` (J1.25), and `tier` on definitions or in `_meta` wait for their first callers. `JX_TOOL_FACTS` holds annotations and effect, not tier: a tier is Studio's vocabulary (`AI_TOOL_TIERS` for hand tools, the record's level for commands). It names 30 tools, `add_new` among them, a command projection the plan's table predates. Titles live on the definitions (a command's is its record's). The availability golden kept a quirk the old gate had: `import_site` refused in an open project names the import backend as what it requires. `packages/studio/evals` joined the root tsconfig, because the runner had no program and type-aware lint refused any edit to it. The live eval was not run.
+  - J1.24 (partly landed ahead of J1.19 and J1.23, on request): BYOK Claude ships over the **version 1 wire**. The gateway projects the v1 body onto `/v1/messages` and normalizes the Messages stream (`gateway/anthropic.ts`: `toAnthropicRequest`, `normalizeAnthropicStream`, `listAnthropicModels`); `Upstream.family` gained `"anthropic"`; the server picks the family from `X-Api-Provider` with `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL` under the same provenance rule; `AiModelsResponse.providers` advertises the families, and Studio's `jx.ai.provider` setting and credentials-form picker appear only where the backend lists `anthropic`. The site importer withholds a Claude key and endpoint. Thinking is **not replayed** (no signatures on v1, and Studio's per-turn rebuild would fail the binding), which the API accepts as the strip-everything recovery, so `reasoning_block`, binding stamping, strip-and-retry, `stripOlderSignatures`, the append layout, stable listing, `bindingControls` and `./providers` all remain for the rest of the slice, which still needs J1.19 and J1.23. No `thinking` parameter is sent, so each model runs its default (adaptive on the 5.x family). `createAnthropicStreamingClient` is still the stub. The live eval was not run.
   - J1.21: `interaction` answers `{ refusal }` rather than a bare string, because `./tools` imports nothing outside itself and the lint refuses `typeof`. `ApprovalPolicy` and `proceedAlways` live in `./tools` beside `ApprovalDecision`, since the harness's default policy needs them and `./catalog` is not in its graph; `policy.approval` carries the policy. An interaction tool is settled without the registry's `execute`, so a catalog gate is not asked for it (no `refusal?` on `ToolRegistry` yet); `ask_user`'s tier is `always`, so nothing changes. `interaction_settled` always carries a response: a stopped turn's answer is the unanswered one the host resolves with, not `null`. `confirmIrreversible`, `remember: "session"`, the store's `approve()` and `toElicitation`/`fromElicitation` wait for J1.26 and P2.1. The "a question is already waiting" guard is gone, as the plan's own note on it said it was defensive only. The loop tests reach the store through `tests/harness/ask.ts`, which projects the pending question to the shape the agent-trace goldens recorded, and all 57 traces and the session corpus matched unchanged. The live eval was not run.
 
 ---

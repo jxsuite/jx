@@ -237,6 +237,26 @@ describe("import_site — the run", () => {
     expect(state.calls.some(([name]) => name === "gitInit")).toBe(true);
   });
 
+  /* The importer's component naming speaks only the OpenAI-compatible wire, so a Claude key and
+     its endpoint never reach it: they would be sent to an OpenAI client (specs/ai.md §2.6). */
+  test("withholds a Claude key and its endpoint from the importer", async () => {
+    seedSettings({
+      "jx.ai.baseUrl": "https://claude-proxy.example",
+      "jx.ai.openaiKey": "sk-ant",
+      "jx.ai.provider": "anthropic",
+    });
+    const { registry } = harness({ adoptProject: landing() });
+    const running = registry.execute("import_site", {
+      directory: "/home/dev/Sites/example",
+      url: "https://example.com",
+    });
+    expect(captured!.opts.apiKey).toBeUndefined();
+    expect(captured!.opts.baseUrl).toBeUndefined();
+    captured!.resolve({ config: {}, root: "/home/dev/Sites/example" });
+    const res = await running;
+    expect(res.success).toBe(true);
+  });
+
   test("the summary reports what the run found, naming the weakest pages", async () => {
     /* Per page, because the average cannot name one: "84% average" is a fact nobody can act on,
        and "the pricing page renders at 61%" is a decision. */

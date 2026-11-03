@@ -62,6 +62,7 @@ void mock.module("../src/services/document-assistant", () => ({
    hasAiCredentials still tracks the stored key, since these tests drive the gate through it. */
 void mock.module("../src/services/ai-models", () => ({
   aiConnection: () => ({ apiKey: "", baseUrl: "" }),
+  backendProviders: () => ["openai-compat"],
   cachedModels: () => null,
   preferredModel: () => "gpt-4o",
   ensureProxyProbe: () => {},

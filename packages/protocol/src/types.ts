@@ -829,6 +829,12 @@ export interface AiModelInfo {
 }
 
 /** Response of the AI proxy's models route (the chat route's sibling). */
+/**
+ * The wire a provider speaks: the OpenAI-compatible chat-completions API, or the Anthropic Messages
+ * API (ai.md §2.6). The chat route's own body and frames are the same for both.
+ */
+export type AiProviderFamily = "openai-compat" | "anthropic";
+
 export interface AiModelsResponse {
   models: AiModelInfo[];
   /** True when the backend holds working credentials (env key, managed platform). */
@@ -837,6 +843,13 @@ export interface AiModelsResponse {
   managed?: boolean;
   /** The backend's preferred model id, when it declares one. */
   defaultModel?: string;
+  /**
+   * The provider families the chat route can reach with a caller's own key, chosen per request with
+   * the `X-Api-Provider` header (ai.md §2.6). Absent means `["openai-compat"]`: a backend that
+   * predates the header forwards every key to an OpenAI-compatible endpoint, so a client **MUST
+   * NOT** send it a key for any other family.
+   */
+  providers?: AiProviderFamily[];
   /** Set when the upstream provider was unreachable and defaults were returned. */
   upstreamError?: number | string;
   /**

@@ -13,7 +13,7 @@
  * @docs extending/embedding/backend-protocol
  */
 
-import type { ProblemDetails } from "@jxsuite/protocol";
+import type { AiProviderFamily, ProblemDetails } from "@jxsuite/protocol";
 import { AI_SESSION_HEADER, upstreamCacheHints } from "./cache-hints.ts";
 
 /* Re-exported so `./streaming-client`, the subpath a backend already imports, carries the cache
@@ -25,6 +25,15 @@ export {
   upstreamCacheHints,
 } from "./cache-hints.ts";
 export type { UpstreamCacheHints } from "./cache-hints.ts";
+export type { AiProviderFamily } from "@jxsuite/protocol";
+
+/**
+ * The request header naming the provider family a caller's key belongs to (specs/ai.md §2.6). Sent
+ * only for a family other than the OpenAI-compatible default, and only to a backend whose models
+ * route lists that family in `providers`: one that predates the header forwards every key to an
+ * OpenAI-compatible endpoint.
+ */
+export const AI_PROVIDER_HEADER = "X-Api-Provider";
 
 export type StreamEvent =
   | StreamDeltaEvent
@@ -689,7 +698,9 @@ export function createAnthropicStreamingClient(_opts: AiCredentials): StreamingC
  *   the stream, unless the signal was aborted by then, which ends it cancelled.
  * @param {string} [opts.model] - Default model if not specified per-request
  * @param {string} [opts.apiKey] - Optional client-supplied key, sent as the `X-Api-Key` header
- * @param {string} [opts.baseUrl] - Optional OpenAI-compatible base URL, sent as `X-Api-Base-URL`
+ * @param {string} [opts.baseUrl] - Optional provider base URL, sent as `X-Api-Base-URL`
+ * @param {AiProviderFamily} [opts.provider] - The family the key belongs to, sent as
+ *   `X-Api-Provider` when it is not the OpenAI-compatible default (see {@link AI_PROVIDER_HEADER})
  * @param {string} [opts.sessionId] - The conversation's id, sent as the `X-Jx-Ai-Session` header so
  *   the backend can derive a prompt-cache affinity key from it. The raw id goes to the backend
  *   only; a provider sees a hash of it, scoped to that backend (`affinityKey`).
@@ -700,13 +711,15 @@ export interface ProxyStreamingClientOptions {
   model?: string;
   apiKey?: string | undefined;
   baseUrl?: string | undefined;
+  provider?: AiProviderFamily | undefined;
   sessionId?: string | undefined;
 }
 
 /**
- * The headers a proxy request carries: always the content type, plus `X-Api-Key`, `X-Api-Base-URL`
- * and the session header `AI_SESSION_HEADER` names, each only when the client was given its value.
- * The optional names go through the index signature, as a `fetch` init's record takes them.
+ * The headers a proxy request carries: always the content type, plus `X-Api-Key`, `X-Api-Base-URL`,
+ * `X-Api-Provider` and the session header `AI_SESSION_HEADER` names, each only when the client was
+ * given its value. The optional names go through the index signature, as a `fetch` init's record
+ * takes them.
  */
 interface ProxyRequestHeaders extends Record<string, string> {
   "Content-Type": string;
@@ -729,6 +742,7 @@ export function createProxyStreamingClient({
   model = "gpt-4o",
   apiKey,
   baseUrl,
+  provider,
   sessionId,
 }: ProxyStreamingClientOptions): StreamingClient {
   /** The URL, once the first stream has asked for it. */
@@ -753,9 +767,14 @@ export function createProxyStreamingClient({
     if (apiKey) {
       headers["X-Api-Key"] = apiKey;
     }
-    // Optional OpenAI-compatible endpoint override (local LLM, OpenRouter, Azure, …).
+    // Optional endpoint override (local LLM, OpenRouter, Azure, an Anthropic-compatible proxy, …).
     if (baseUrl) {
       headers["X-Api-Base-URL"] = baseUrl;
+    }
+    /* The default family says nothing, so a request to an OpenAI-compatible provider is the one a
+       backend that predates the header has always read. */
+    if (provider && provider !== "openai-compat") {
+      headers[AI_PROVIDER_HEADER] = provider;
     }
     /* The conversation, so consecutive rounds can be routed to a warm prompt cache. Same-origin on
        every platform, so the extra header costs no preflight; a backend that ignores it loses only
