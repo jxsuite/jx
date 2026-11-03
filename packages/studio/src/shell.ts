@@ -45,8 +45,8 @@ import type { AnyCommand, CommandRegistry } from "./commands/registry";
 import {
   DEFAULT_WORKSPACE,
   isWorkspaceId,
+  SWITCHER_WORKSPACES,
   WORKSPACE_IDS,
-  WORKSPACES,
 } from "./workspace/workspace-ids";
 import type { WorkspaceId } from "./workspace/workspace-ids";
 import { DEFAULT_PUBLISH_DESTINATION, DEFAULT_PUBLISH_TAB } from "./publish/publish-ids";
@@ -416,7 +416,7 @@ export interface WorkspacePreset {
 }
 
 /**
- * The five presets.
+ * The six presets.
  *
  * - **Design** draws the rail and both side docks: the canvas, its outline and its inspector.
  * - **Content** opens the Navigator on the Collections panel and collapses the Inspector, drawing it
@@ -427,8 +427,10 @@ export interface WorkspacePreset {
  *   schemes), and the Inspector on its Style tab only while the Elements view is on screen: that
  *   view selects an element default on a canvas, and the Inspector is where it is styled. Variables
  *   is edited in the view itself, and Code has no canvas, so both leave the pane its width.
+ * - **Settings** collapses both side docks, as Media and Publish do: its home is the settings editor,
+ *   whose section list is its own navigator.
  *
- * Only Design and Content draw a tab strip; the other three draw their home surface alone.
+ * Only Design and Content draw a tab strip; the other four draw their home surface alone.
  */
 export const WORKSPACE_PRESETS: Readonly<Record<WorkspaceId, WorkspacePreset>> = {
   content: {
@@ -454,6 +456,13 @@ export const WORKSPACE_PRESETS: Readonly<Record<WorkspaceId, WorkspacePreset>> =
   },
   publish: {
     id: "publish",
+    inspector: { open: false },
+    navigator: { open: false },
+    rail: false,
+    tabStrip: false,
+  },
+  settings: {
+    id: "settings",
     inspector: { open: false },
     navigator: { open: false },
     rail: false,
@@ -833,6 +842,19 @@ let _workspaceRoot: string | null | undefined;
  */
 let _panels: Partial<Record<WorkspaceId, string>> = {};
 
+/**
+ * The workspace on screen before the one that is, in this window, or `null` before the first
+ * switch. Not persisted, for the reason {@link _panels} is not. Project Settings' **Close** returns
+ * here (`settings/settings-workspace.ts`), because Settings is visited from somewhere rather than
+ * worked in, and the top bar has no tab to say where that was.
+ */
+let _previous: WorkspaceId | null = null;
+
+/** The workspace entered before the one on screen, or `null` when there was none this session. */
+export function previousWorkspace(): WorkspaceId | null {
+  return _previous;
+}
+
 /** The raw record for `root`, or `{}` for absent, corrupt or hand-edited storage. */
 function rawPersistedProject(root: string | null): JsonObject {
   if (!root) {
@@ -949,6 +971,7 @@ export function syncProjectWorkspace(root: string | null): void {
   }
   _workspaceRoot = root;
   _panels = {};
+  _previous = null;
   shell.workspace = persistedWorkspace(root);
   if (root === null) {
     /* No frame to apply, but the Navigator is still on screen beside the rail: a panel only the
@@ -1020,6 +1043,7 @@ export function enterWorkspace(id: WorkspaceId, deps?: WorkspaceDeps): boolean {
   if (!WORKSPACE_PRESETS[shell.workspace].navigator.panel) {
     _panels[shell.workspace] = shell.leftTab;
   }
+  _previous = shell.workspace;
   shell.workspace = id;
   applyFrame(id, deps);
   persistDocks();
@@ -1580,8 +1604,9 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       title: "Show Assistant",
     },
     // ── Workspaces ───────────────────────────────────────────────────────────
-    // One SETTER, and one chord record per workspace. A chord cannot carry an argument, so ⌘1–5
-    // Are five records that each run the setter's own path rather than five implementations of it.
+    /* One SETTER, and one chord record per switcher workspace. A chord cannot carry an argument, so
+       ⌘1–5 are five records that each run the setter's own path rather than five implementations
+       of it. Settings has none: `settings.open` is its record, with its own chord (⌘⇧,). */
     {
       args: argsSchema({
         workspace: enumProperty(WORKSPACE_IDS, "Which workspace to show."),
@@ -1603,7 +1628,7 @@ export function shellViewCommands(deps: ShellCommandDeps): AnyCommand[] {
       },
       title: "Switch Workspace",
     },
-    ...WORKSPACES.map((entry, index): AnyCommand => ({
+    ...SWITCHER_WORKSPACES.map((entry, index): AnyCommand => ({
       category: "View",
       id: `workspace.focus.${entry.id}`,
       keybinding: `mod+${index + 1}`,

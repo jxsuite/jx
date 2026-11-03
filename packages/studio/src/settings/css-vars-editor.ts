@@ -386,9 +386,9 @@ function addOverride(container: HTMLElement, token: string, ctx: string): void {
  * per token are defined.
  *
  * Through the command rather than by writing the registry's section: the editor is hosted outside
- * Settings (the Styles workspace's Variables view), so selecting a section of a dialog that is not
- * open would change nothing the reader can see. A refusal is filed under "Styles", the workspace
- * the editor lives in, as the Variables view's own button files it.
+ * Settings (the Styles workspace's Variables view), so selecting a section of a workspace that is
+ * not on screen would change nothing the reader can see. A refusal is filed under "Styles", the
+ * workspace the editor lives in, as the Variables view's own button files it.
  */
 function openContextsSection(): void {
   void runActiveReported("settings.open", { section: "contexts" }, "Styles");
@@ -418,7 +418,7 @@ function actions(container: HTMLElement): CssVarsActions {
        * appended `'--dark': '(prefers-color-scheme: dark)'` to `$media` without ever using the word
        * breakpoint, which made this form the fourth and least discoverable definition site for a
        * map whose other three lived in the wizard, Overview and Properties › Media. It goes there
-       * through `settings.open`, so the dialog opens on Contexts however this editor is hosted.
+       * through `settings.open`, so Settings opens on Contexts however this editor is hosted.
        */
       manageContexts: () => {
         openContextsSection();

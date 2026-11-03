@@ -41,7 +41,7 @@ export interface ContributedEntryView {
   /** The key in the section's map on disk — the row's identity and its `data-entry`. */
   key: string;
   selected: boolean;
-  /** `overlay.dialog:settings/entry:<key>`, so a shot can name the row without a selector. */
+  /** `pane.<id>/settings/entry:<key>`, so a shot can name the row without a selector. */
   region: string;
 }
 
@@ -61,7 +61,7 @@ export interface ContributedView {
   editorState: "empty" | "editing";
   /** What the rename field holds — the key on disk, or what the reader has just typed. */
   entryName: string;
-  /** `overlay.dialog:settings/editor`. */
+  /** `pane.<id>/settings/editor`. */
   editorRegion: string;
   /** The new-entry button: "New content type", or "New entry" when the section names none. */
   newLabel: string;

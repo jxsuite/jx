@@ -147,7 +147,7 @@ pane.primary/publish/commit   a hand-stamped leaf: Publish's destination card
 inspector/tab:style           the Style tab's body
 inspector/field:href          a field row
 pane.primary/tabs             the primary pane's tab strip
-overlay.dialog:settings       a named overlay slot
+overlay.dialog:about          a named overlay slot
 ```
 
 **Ids are derived, not authored.** The panel host stamps `navigator/panel:${panel.id}` once and every panel gets a region for free, so a panel rename propagates automatically and a stale manifest id goes red in the renaming PR. Only leaves are hand-stamped, and those are counted.

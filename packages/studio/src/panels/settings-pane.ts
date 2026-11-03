@@ -1,26 +1,25 @@
 /// <reference lib="dom" />
 /**
  * The Project Settings editor's flow: the grouped section list, the section body, and the Moved
- * footnote, drawn inside the settings dialog (§17.1).
+ * footnote, drawn as the Settings workspace's home (§17.1, §22.9).
  *
  * Two columns. The list is the section registry in its three groups (General, Integrations,
- * Advanced), so an extension's section joins the dialog by registering and leaves by going away;
- * the body is whichever section is current, drawn by that section's own renderer.
+ * Advanced), so an extension's section joins Settings by registering and leaves by going away; the
+ * body is whichever section is current, drawn by that section's own renderer.
  *
  * **This file is the FLOW; the markup is a document.** `surfaces/settings-pane.json` owns the two
  * columns, the lists' ARIA and keyboard, and every value in their style;
  * `surfaces/settings-pane.ts` mounts it (studio-ui-guidelines.md §6, §9.3), and
- * `settings/settings-dialog.ts` owns the dialog it is mounted into. What stays here is the part
+ * `settings/settings-workspace.ts` owns the pane it is mounted into. What stays here is the part
  * that is a decision: which sections there are, which one is current, which renderer gets the body,
  * and what a renderer's failure says.
  *
  * **It imports the registry, never the sections.** The section RENDERERS are registered by
  * `settings/settings-document.ts`, which the app loads when it registers its commands.
  *
- * Nothing here is stamped with a region of its own. The dialog carries `overlay.dialog:settings`,
- * and the entry rows and entry editor of a map-layout section are stamped by
- * `settings/contributed-section.ts` under it, as `overlay.dialog:settings/entry:<key>` and
- * `overlay.dialog:settings/editor`.
+ * The home carries the region its host hands in, `pane.<id>/settings`, and the entry rows and entry
+ * editor of a map-layout section are stamped by `settings/contributed-section.ts` under it, as
+ * `pane.<id>/settings/entry:<key>` and `pane.<id>/settings/editor`.
  *
  * @docs studio/projects/settings
  */
@@ -40,6 +39,9 @@ import type { InspectorTabId } from "../shell";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import type { StylesView } from "../style/project-styles";
 import type { PublishTab } from "../publish/publish-ids";
+
+/** The home's heading: the workspace's own title, so the two cannot drift apart. */
+const HEADING = workspaceInfo("settings").title;
 
 /** What the body says when the section that is current is registered by nobody. */
 const NO_SECTIONS = "No settings sections.";
@@ -80,9 +82,15 @@ const MOVED: readonly {
 
 /** What the mounted editor is told to do by things only its host can do. */
 export interface SettingsPaneOptions {
+  /** The region the home is stamped with: `pane.<id>/settings`. */
+  region: string;
+  /** Where the Back control goes, as its text says it ("Back to Design"). Read on every draw. */
+  backLabel: () => string;
+  /** The Back control: leave Settings for the workspace it was opened from. */
+  back: () => void;
   /**
-   * A Moved footnote's button: close the dialog and go to the named workspace, and to the named
-   * Inspector tab or Styles view there when the row names one.
+   * A Moved footnote's button: go to the named workspace, and to the named Inspector tab or Styles
+   * view there when the row names one.
    */
   openMoved: (
     workspace: WorkspaceId,
@@ -96,15 +104,10 @@ export interface SettingsPaneOptions {
 export interface SettingsPaneMount {
   /** Settles once the columns are mounted and the current section has been drawn once. */
   ready: Promise<void>;
-  /** Put the keyboard on the current section's row. */
-  focusActive: () => void;
-  /**
-   * Stop following the section registry while the dialog is closed. The editor stays built; a
-   * section registering or a project closing in the meantime is caught up on by {@link resume}.
-   */
-  suspend: () => void;
-  /** Follow the registry again and redraw the current section: the dialog is being shown again. */
-  resume: () => void;
+  /** Put the keyboard on the current section's row. Settles once it has moved. */
+  focusActive: () => Promise<void>;
+  /** Whether the home still stands in the stage it was mounted into. */
+  attached: () => boolean;
   /** Take the editor down and unsubscribe. Idempotent. */
   dispose: () => void;
 }
@@ -122,14 +125,16 @@ function movedRow(value: string): (typeof MOVED)[number] | null {
 /**
  * Everything the document draws, decided here so the document decides nothing.
  *
+ * @param {SettingsPaneOptions} options The host's region and Back control
  * @param {string} failure The current section's failure sentence, or the empty string
  * @returns {SettingsPaneValues}
  */
-function values(failure: string): SettingsPaneValues {
+function values(options: SettingsPaneOptions, failure: string): SettingsPaneValues {
   const active = settingsDocumentSection();
   const grouped = groupedSettingsSections();
   return {
     active,
+    backLabel: options.backLabel(),
     activeTabId: tabIdFor(active),
     empty: NO_SECTIONS,
     failure,
@@ -146,6 +151,7 @@ function values(failure: string): SettingsPaneValues {
       titleId: `settings-group-${group.id}`,
     })),
     hasSection: settingsSection(active) !== undefined,
+    heading: HEADING,
     // The section's own sentence when it has one, its group's otherwise.
     intro:
       settingsSection(active)?.intro ||
@@ -161,11 +167,12 @@ function values(failure: string): SettingsPaneValues {
         workspace: row.workspace,
       };
     }),
+    region: options.region,
   };
 }
 
 /**
- * Mount the editor into `host`, the settings dialog's pane slot, and keep it current.
+ * Mount the editor into `host`, a pane's stage, and keep it current until it is disposed.
  *
  * It subscribes to the section registry and to the chosen section, so an extension's section
  * appearing a tick later redraws the nav, and a deep link to an entry inside the section already on
@@ -198,7 +205,10 @@ export function mountSettingsPane(
   /** Counts renders, so a late rejection from a superseded one cannot overwrite a newer answer. */
   let generation = 0;
 
-  const surface: SettingsPaneHandle = mountSettingsPaneSurface(host, values(failure), {
+  const surface: SettingsPaneHandle = mountSettingsPaneSurface(host, values(options, failure), {
+    back: () => {
+      options.back();
+    },
     openMoved: (workspace: string) => {
       const target = movedRow(workspace);
       if (target !== null) {
@@ -217,7 +227,7 @@ export function mountSettingsPane(
     }
     const label = settingsSection(key)?.label ?? key;
     failure = `Could not show ${label}: ${reason}`;
-    surface.update(values(failure));
+    surface.update(values(options, failure));
   }
 
   /**
@@ -237,7 +247,7 @@ export function mountSettingsPane(
       rendered = null;
     }
     if (!island || (!force && rendered === active)) {
-      surface.update(values(failure));
+      surface.update(values(options, failure));
       return;
     }
     /* Read BEFORE the write: whether the section is changing is what decides the host, and
@@ -245,10 +255,10 @@ export function mountSettingsPane(
     const changed = rendered !== active;
     rendered = active;
     failure = "";
-    surface.update(values(failure));
+    surface.update(values(options, failure));
     const section = settingsSection(active);
     if (!section) {
-      /* Every section unregistered at once: a project closing while the dialog is open. The
+      /* Every section unregistered at once: a project closing while Settings is on screen. The
          document says so itself (`hasSection`), and the island is emptied so a renderer's leftovers
          do not sit under the sentence explaining that there is nothing to draw. */
       sectionHost = null;
@@ -276,12 +286,9 @@ export function mountSettingsPane(
     }
   }
 
-  const follow = (): (() => void) =>
-    onSettingsDocumentChanged(() => {
-      draw(true);
-    });
-  /** The registry subscription, or null while the dialog is closed. */
-  let off: (() => void) | null = follow();
+  const off = onSettingsDocumentChanged(() => {
+    draw(true);
+  });
   /* The island does not exist until the mount lands, so the first pass that reaches a section
      renderer is this one. */
   const ready = surface.ready.then(() => {
@@ -289,37 +296,16 @@ export function mountSettingsPane(
   });
 
   return {
+    attached: () => surface.attached(),
     dispose() {
       if (disposed) {
         return;
       }
       disposed = true;
-      off?.();
-      off = null;
+      off();
       surface.dispose();
     },
-    focusActive: () => {
-      surface.focusActive();
-    },
+    focusActive: () => surface.focusActive(),
     ready,
-    resume() {
-      if (disposed || off !== null) {
-        return;
-      }
-      off = follow();
-      /* Redrawn rather than trusted: anything may have moved while it was closed (a section
-         registered, the project closed or changed, the configuration edited in Styles). Into a
-         FRESH host, as every open drew into when each one built its own frame: several sections
-         keep their form state (a half-typed entry, a failed save's error) in a WeakMap keyed on
-         the host they were given, and an open is a new visit, so none of that may come back from
-         the last one, or from another project's. Only a redraw WHILE open keeps the host, which is
-         what keeps the caret in the field being typed in. */
-      sectionHost = null;
-      draw(true);
-    },
-    suspend() {
-      off?.();
-      off = null;
-    },
   };
 }
