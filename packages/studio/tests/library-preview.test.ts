@@ -179,6 +179,29 @@ describe("renderDocPreview", () => {
     expect(rendered!.tagName.toLowerCase()).toBe("section");
   });
 
+  /* A card draws in the shell document, which already holds the URL, so bytes written in place need
+     the key here as well as on the canvas, or the card keeps the old picture until a reload. */
+  test("a preview requests a file Studio just wrote through its repaint key", async () => {
+    const { noteLocalWrite, resetAssetVersions } = await import("../src/files/asset-versions");
+    installMockPlatform(
+      {},
+      {
+        "pages/index.json": JSON.stringify({
+          children: [{ attributes: { src: "/hero.png" }, tagName: "img" }],
+          tagName: "section",
+        }),
+      },
+    );
+    resetAssetVersions();
+    const key = noteLocalWrite("public/hero.png")!;
+    try {
+      const rendered = await renderDocPreview("pages/index.json");
+      expect(rendered!.querySelector("img")?.getAttribute("src")).toBe(`/hero.png?r=${key}`);
+    } finally {
+      resetAssetVersions();
+    }
+  });
+
   /* The Library is where most versions are learned and the screen with the most images, so its
      previews must use them exactly as the canvas does. */
   test("a repo-space preview requests the media a listing vouched for by version", async () => {

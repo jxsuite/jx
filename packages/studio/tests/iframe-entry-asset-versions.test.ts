@@ -80,6 +80,26 @@ async function boot() {
 }
 
 describe("assetVersions in the frame", () => {
+  test("Studio's repaint keys ride the same message, in site space as well as repo space", async () => {
+    const { deliver, src } = await boot();
+    await deliver({
+      kind: "assetVersions",
+      revisions: { "public/hero.png": "k1" },
+      versions: {},
+    });
+    await deliver(renderMsg(1, imgDoc(), REPO));
+    expect(src()).toBe(`${BASE}public/hero.png?r=k1`);
+    // A site-space render with no mount: the reference as written, with the key.
+    const site: AssetContext = {
+      documentDir: "pages",
+      lanes: BUILD_LANES,
+      mounts: [],
+      space: "site",
+    };
+    await deliver(renderMsg(2, imgDoc(), site));
+    expect(src()).toBe("/hero.png?r=k1");
+  });
+
   test("a map that arrives before the render versions the render's media", async () => {
     const { deliver, src } = await boot();
     await deliver({ kind: "assetVersions", versions: { "public/hero.png": "abc" } });

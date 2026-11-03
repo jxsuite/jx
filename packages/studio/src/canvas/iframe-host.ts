@@ -50,7 +50,11 @@ import { isNodeObject } from "@jxsuite/schema/guards";
 import { isPopover } from "@jxsuite/schema/overlays";
 import { localeDirection } from "@jxsuite/schema/locale";
 import { getPlatform, hasPlatform } from "../platform";
-import { assetVersionsEpoch, assetVersionsSnapshot } from "../files/asset-versions";
+import {
+  assetVersionsEpoch,
+  assetVersionsSnapshot,
+  localRevisionsSnapshot,
+} from "../files/asset-versions";
 import type {
   ApplyFormatIntent,
   CanvasMode,
@@ -150,6 +154,8 @@ export interface HostState {
    * changes identity only when a media version moves.
    */
   postedVersions: Readonly<Record<string, string>> | null;
+  /** The repaint-key snapshot posted beside {@link HostState.postedVersions}, compared the same way. */
+  postedRevisions: Readonly<Record<string, string>> | null;
   overlay: OverlayLayer;
   /** Primary selected path (mirrors `session.selection`'s last entry), for hover de-dupe. */
   selectionPath: (string | number)[] | null;
@@ -1606,15 +1612,17 @@ function syncAssetVersions(host: HostState): void {
     return;
   }
   const versions = assetVersionsSnapshot();
-  if (versions === host.postedVersions) {
+  const revisions = localRevisionsSnapshot();
+  if (versions === host.postedVersions && revisions === host.postedRevisions) {
     return;
   }
-  if (host.postedVersions === null && Object.keys(versions).length === 0) {
-    host.postedVersions = versions;
-    return;
-  }
+  const first = host.postedVersions === null;
   host.postedVersions = versions;
-  host.channel.post({ kind: "assetVersions", versions });
+  host.postedRevisions = revisions;
+  if (first && Object.keys(versions).length === 0 && Object.keys(revisions).length === 0) {
+    return;
+  }
+  host.channel.post({ kind: "assetVersions", revisions, versions });
 }
 
 let assetVersionsWatchStarted = false;
@@ -1990,6 +1998,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     panReqId: -1,
     pending: null,
     postedVersions: null,
+    postedRevisions: null,
     idle: null,
     pendingEnterEdit: null,
     pendingMeasures: new Map(),
@@ -2143,6 +2152,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
          renders, and a FIFO channel makes "posted first" mean "known first". A frame that said
          `ready` again has rebooted and lost what it was sent before. */
       state.postedVersions = null;
+      state.postedRevisions = null;
       syncAssetVersions(state);
       if (state.pending) {
         state.channel.post(state.pending);

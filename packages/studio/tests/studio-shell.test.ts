@@ -1989,4 +1989,18 @@ describe("remaining wiring arrows", () => {
     // Pre-flight name check alone would make.
     expect(state.calls.filter((c) => c[0] === "listDirectory").length).toBeGreaterThan(before + 1);
   });
+
+  test("bytes replaced in place have every pane draw again, which an upload does not need", async () => {
+    // A re-list cannot show this change, because the listing is the same (studio.md §3.4).
+    const { announceMediaChanged } = await import("../src/files/media-upload");
+    await welcomeCtx.openRecentProject("/recent/site");
+    await waitFor(recentProjectOpened);
+    renderCanvasMock.mockClear();
+    await announceMediaChanged("public/media");
+    expect(renderCanvasMock).not.toHaveBeenCalled();
+    await announceMediaChanged("public/media", "public/media/hero.png");
+    // One draw per pane, each named: the shell has no one pane that owns the picture.
+    expect(renderCanvasMock.mock.calls.length).toBeGreaterThan(0);
+    expect(String(renderCanvasMock.mock.calls[0])).toBe(workspace.panes[0]!.id);
+  });
 });

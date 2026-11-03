@@ -403,6 +403,24 @@ describe("the bar", () => {
     expect(part("banner")).toBeNull();
   });
 
+  test("a collaborator who cannot write is not offered the Image editor", async () => {
+    const tab = openTestTab();
+    tab.capabilities.modes = ["media", "image"];
+    tab.session.ui.canvasMode = "media";
+    await mountBar();
+    expect(segments("editor-kind").map((s) => nameOf(s))).toEqual(["Media", "Image"]);
+    const state = collabState(tab);
+    state.active = true;
+    state.readOnly = true;
+    await flush(4);
+    // One kind is not a choice, so the control becomes the viewer's name.
+    expect(part("static")?.textContent.trim()).toBe("Media");
+    // A tab already in the editor when access changed still has the way back to the viewer.
+    tab.session.ui.canvasMode = "image";
+    await flush(4);
+    expect(segments("editor-kind").map((s) => nameOf(s))).toEqual(["Media", "Image"]);
+  });
+
   test("a read-only collaborator gets the banner, above the stage, before the first keystroke", async () => {
     const tab = openTestTab();
     await mountBar();

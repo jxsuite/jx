@@ -1006,6 +1006,9 @@ const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
   /* `media` — the Media viewer's own scrolling column (`media/media-pane.ts`). There is no artboard
      here either: a wheel over an image is a scroll down the page it sits on, not a zoom. */
   "media",
+  /* `image` — the Image editor (`media/image-editor.ts`). Its picture fits the stage and its
+     controls scroll in their own column, so a wheel has no artboard to pan or zoom. */
+  "image",
   /* A workspace's home — `workspace/workspace-home.ts`. A centred column with nothing to zoom. */
   "media-home",
   "preview",

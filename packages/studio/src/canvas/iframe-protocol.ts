@@ -164,7 +164,15 @@ export type ParentToIframe =
    * latest map and re-installs its asset resolver around it, so the next node a patch draws already
    * uses it. A frame built before this message existed ignores it and keeps resolving unversioned.
    */
-  | { kind: "assetVersions"; versions: Readonly<Record<string, string>> }
+  | {
+      kind: "assetVersions";
+      versions: Readonly<Record<string, string>>;
+      /**
+       * Studio's own repaint keys (studio.md §3.4), for paths Studio itself just wrote in place.
+       * Optional so a host that predates them still speaks the message; absent reads as none.
+       */
+      revisions?: Readonly<Record<string, string>>;
+    }
   // Flip the forced color-scheme preview on the iframe root without re-rendering — a document-level
   // Idempotent attribute write, deliberately gen-less (like endEdit).
   | { kind: "setColorScheme"; scheme: "light" | "dark" | null }

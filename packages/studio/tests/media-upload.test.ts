@@ -31,10 +31,12 @@ import { closeAllTabs } from "../src/workspace/workspace";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
 import {
   beginListing,
+  localRevisionOf,
   noteListing,
   resetAssetVersions,
   versionOf,
 } from "../src/files/asset-versions";
+import { isRecentLocal } from "../src/files/fs-events";
 
 beforeEach(() => {
   resetStudioState();
@@ -430,6 +432,41 @@ describe("replaceAsset", () => {
     // The chosen file's own name is irrelevant: the bytes land under the replaced file's path.
     expect(state.calls).toContainEqual(["uploadFile", "public/media/hero.jpg", file]);
     expect(versionOf("public/media/hero.jpg")).toBeUndefined();
+    // The path is named as overwritten IN PLACE, which is what lets the shell redraw it.
+    expect(changed).toHaveBeenCalledWith("public/media", "public/media/hero.jpg");
+  });
+
+  test("marks its own write as a local mutation BEFORE the upload, and mints a repaint key after", async () => {
+    // §3.4: Replace used to skip both, so its own watcher echo read as a foreign change and an
+    // Unversioned URL stayed byte-identical over new bytes.
+    const order: string[] = [];
+    installMockPlatform({
+      uploadFile: (path: string) => {
+        order.push(isRecentLocal(path) ? "marked" : "unmarked");
+        expect(localRevisionOf(path)).toBeUndefined();
+        return Promise.resolve({ path });
+      },
+    });
+    expect(await replaceAsset("public/media/hero.jpg", testFile("hero.jpg"))).toBe(true);
+    expect(order).toEqual(["marked"]);
+    expect(localRevisionOf("public/media/hero.jpg")).toBeString();
+  });
+
+  test("a caller's note rides on the one success toast rather than a second toast", async () => {
+    installMockPlatform();
+    expect(
+      await replaceAsset("public/media/hero.jpg", testFile("hero.jpg"), { note: "12 KB" }),
+    ).toBe(true);
+    // In the message, because a toast draws its message alone: `detail` is for Problems.
+    expect(toasts.map((toast) => toast.message)).toEqual(["Replaced hero.jpg: 12 KB"]);
+  });
+
+  test("a write that landed elsewhere mints no repaint key for the path it did not write", async () => {
+    installMockPlatform({ uploadFile: () => Promise.resolve({ path: "public/media/hero-1.jpg" }) });
+    const changed = mock(() => {});
+    setMediaChangedHandler(changed);
+    expect(await replaceAsset("public/media/hero.jpg", testFile("hero.jpg"))).toBe(false);
+    expect(localRevisionOf("public/media/hero.jpg")).toBeUndefined();
     expect(changed).toHaveBeenCalledWith("public/media");
   });
 

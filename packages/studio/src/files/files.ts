@@ -75,6 +75,7 @@ import {
 } from "../workspace/workspace";
 import { openCsvGridTab, openPagesGrid } from "../grid/grid-open";
 import { isViewableMedia, openMediaTab } from "../media/media-open";
+import { imageFileChanged } from "../media/image-editor";
 import { activeRegistry } from "../commands/active-registry";
 import { runActiveReported, runReported } from "../commands/run-reported";
 import { collectionOfPath } from "../content/entry-model";
@@ -2446,6 +2447,8 @@ export function reloadCleanTab(path: string): void {
   if (isCollabPath(path)) {
     return;
   }
+  // An image's editor holds the file's bytes rather than a document, and reads them again itself.
+  imageFileChanged(path);
   for (const [, tab] of workspace.tabs.entries()) {
     if (tab.documentPath === path && !tab.doc.dirty) {
       void reloadFileInTab(path);

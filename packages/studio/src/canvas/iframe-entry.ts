@@ -145,6 +145,8 @@ const FILE_DRAG_SRC: DragSrcKind = { type: "block" };
  * every reference unversioned — the behaviour from before versions existed.
  */
 let assetVersions: Readonly<Record<string, string>> = {};
+/** Studio's repaint keys, posted beside the versions in the same message (studio.md §3.4). */
+let assetRevisions: Readonly<Record<string, string>> = {};
 /**
  * The asset context of the newest render accepted, WITHOUT versions — kept so a later
  * `assetVersions` can rebuild the resolver around the new map. Null when that render resolves
@@ -154,7 +156,7 @@ let liveAssets: AssetContext | null = null;
 
 /** A render's asset context with the current versions folded in, or null for no resolution. */
 function versionedAssets(assets: AssetContext | null): AssetContext | null {
-  return assets ? { ...assets, versions: assetVersions } : null;
+  return assets ? { ...assets, revisions: assetRevisions, versions: assetVersions } : null;
 }
 
 /**
@@ -307,6 +309,7 @@ export function startCanvasIframe(opts: {
   const { channel, container } = opts;
   // A frame starts knowing no versions; the host posts the map before the first render.
   assetVersions = {};
+  assetRevisions = {};
   liveAssets = null;
   let handle: RenderHandle | null = null;
   // Disposer for the live render's dataScope re-post effect (see the render handler); stopped
@@ -923,6 +926,7 @@ export function startCanvasIframe(opts: {
          old map, and a patch draws through that resolver — so it is rebuilt around the new one
          here, not left for the next render. */
       assetVersions = msg.versions;
+      assetRevisions = msg.revisions ?? {};
       const assets = versionedAssets(liveAssets);
       if (assets) {
         setCanvasAssetResolver((value) => resolveAssetRef(value, assets));
