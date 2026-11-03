@@ -92,6 +92,56 @@ export function fetchFailureFrame(cause: unknown): StreamEvent {
 }
 
 /**
+ * The frame for a stream whose read failed part-way: `done: cancelled` when it was aborted,
+ * otherwise an `error` frame carrying an `upstreamFailure` problem. Every normalizer ends a failed
+ * read with it.
+ *
+ * @param {unknown} cause - What the read rejected with
+ * @returns {StreamEvent}
+ */
+export function streamFailureFrame(cause: unknown): StreamEvent {
+  return failureFrame("Stream error", cause);
+}
+
+/**
+ * The one frame for an upstream that answered non-2xx: the sentence inside its body as `message`,
+ * its own status as `code`, and a problem naming the kind of failure. Every normalizer answers a
+ * refused request with it, so a client reads one shape whichever provider refused.
+ *
+ * @param {Response} response - The upstream's non-2xx response
+ * @returns {Promise<StreamEvent>}
+ */
+export async function upstreamErrorFrame(response: Response): Promise<StreamEvent> {
+  let errorBody = "";
+  try {
+    errorBody = await response.text();
+  } catch {
+    /* Ignore */
+  }
+  const cleanMessage = extractUpstreamErrorMessage(errorBody, response.statusText);
+  return {
+    code: String(response.status),
+    message: cleanMessage,
+    // The upstream's own status is preserved in `code`; the problem names the KIND.
+    problem: problemDetails(problemTypeForStatus(response.status), cleanMessage),
+    type: "error",
+  };
+}
+
+/**
+ * The frame for a 2xx upstream response with no body to read.
+ *
+ * @returns {StreamEvent}
+ */
+export function noBodyFrame(): StreamEvent {
+  return {
+    message: "No response body from upstream",
+    problem: problemDetails("upstreamFailure", "No response body from upstream"),
+    type: "error",
+  };
+}
+
+/**
  * The frame for an exchange that failed: `done: cancelled` for an abort, otherwise an `error` frame
  * whose `message` is `prefix` and the failure's own message.
  *
@@ -132,30 +182,13 @@ function failureFrame(prefix: "Network error" | "Stream error", cause: unknown):
  */
 export async function* normalizeOpenAIStream(response: Response): AsyncGenerator<StreamEvent> {
   if (!response.ok) {
-    let errorBody = "";
-    try {
-      errorBody = await response.text();
-    } catch {
-      /* Ignore */
-    }
-    const cleanMessage = extractUpstreamErrorMessage(errorBody, response.statusText);
-    yield {
-      code: String(response.status),
-      message: cleanMessage,
-      // The upstream's own status is preserved in `code`; the problem names the KIND.
-      problem: problemDetails(problemTypeForStatus(response.status), cleanMessage),
-      type: "error",
-    };
+    yield await upstreamErrorFrame(response);
     return;
   }
 
   const reader = response.body?.getReader();
   if (!reader) {
-    yield {
-      message: "No response body from upstream",
-      problem: problemDetails("upstreamFailure", "No response body from upstream"),
-      type: "error",
-    };
+    yield noBodyFrame();
     return;
   }
 
@@ -294,7 +327,7 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
   } catch (error) {
     settled = true;
     void reader.cancel();
-    yield failureFrame("Stream error", error);
+    yield streamFailureFrame(error);
   } finally {
     if (!settled) {
       void reader.cancel();

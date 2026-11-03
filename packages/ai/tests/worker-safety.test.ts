@@ -108,6 +108,7 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
     "./gateway",
     [
       "packages/ai/src/cache-hints.ts",
+      "packages/ai/src/gateway/anthropic.ts",
       "packages/ai/src/gateway/chat.ts",
       "packages/ai/src/gateway/index.ts",
       "packages/ai/src/gateway/models.ts",

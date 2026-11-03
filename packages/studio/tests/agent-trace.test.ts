@@ -1228,6 +1228,21 @@ const DAT = inSuite("dat", [
     },
   },
   {
+    name: "names the Anthropic family on the send, and nothing for the default",
+    async run() {
+      nextRounds = [[{ stopReason: "stop", type: "done" }]];
+      seedSettings({ "jx.ai.openaiKey": "sk-oai" });
+      await createDocumentAssistant().sendMessage("hi");
+      expect(lastClientOpts?.provider).toBeUndefined();
+      nextRounds = [[{ stopReason: "stop", type: "done" }]];
+      seedSettings({ "jx.ai.openaiKey": "sk-ant", "jx.ai.provider": "anthropic" });
+      const a = createDocumentAssistant();
+      await a.sendMessage("hi");
+      expect(lastClientOpts?.provider).toBe("anthropic");
+      return datObserve(a);
+    },
+  },
+  {
     name: "executes a tool call that mutates the document as a single undo step",
     async run() {
       nextRounds = [
