@@ -1,5 +1,27 @@
 # Changelog
 
+## [10.2.0](https://github.com/jxsuite/jx/compare/studio-v10.1.0...studio-v10.2.0) (2026-11-03)
+
+
+### Features
+
+* **ai:** support anthropic messages api ([#526](https://github.com/jxsuite/jx/issues/526)) ([0c38ef7](https://github.com/jxsuite/jx/commit/0c38ef79d6bc52c36f1fc5d85722ea16cc6986c0))
+* **studio:** Project Settings is a workspace, not a dialog ([#528](https://github.com/jxsuite/jx/issues/528)) ([9d40b21](https://github.com/jxsuite/jx/commit/9d40b21b6e7624eb7df2fdbf547caea256d667b9))
+
+
+### Bug Fixes
+
+* **studio:** list a page once when a collection lives in an ancestor of the project ([#527](https://github.com/jxsuite/jx/issues/527)) ([c40984d](https://github.com/jxsuite/jx/commit/c40984df7deff1955cc37504e32ef38e919534b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.42.0
+    * @jxsuite/create bumped to 1.5.2
+    * @jxsuite/protocol bumped to 6.2.0
+
 ## [10.1.0](https://github.com/jxsuite/jx/compare/studio-v10.0.0...studio-v10.1.0) (2026-10-31)
 
 

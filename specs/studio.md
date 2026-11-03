@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.3-draft\
+**Version:** 0.16.4-draft\
 **Status:** Partial\
-**Updated:** 2026-10-31\
+**Updated:** 2026-11-03\
 **License:** MIT
 
 ---
@@ -2236,6 +2236,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.4-draft** (2026-11-03) — §17.1, §22: Project Settings is a workspace (§22.9, new) rather than a dialog: settings.open switches to it, its home draws the settings editor in the pane's stage as pane.<id>/settings with a Back control naming the workspace it was opened from, and the switcher draws no tab for it.
 - **0.16.3-draft** (2026-10-31) — §22.8: a hosted publish the remote conflicts with offers Publish to a New Branch (gitCommitBranch, a pull request into the moved branch, then a pull), and Send for review from the default branch commits a studio/ branch of its own where the host can; §5.5 lists git/commit-branch.
 - **0.16.2-draft** (2026-10-29) — A right-click on a Media library tile selects it and offers the detail pane's actions: Open in Viewer, Copy Site URL, Replace and Delete.
 - **0.16.1-draft** (2026-10-29) — Desktop source paths follow the reorganization by process: src/main, src/preload, src/backend, src/webview and src/shared.
@@ -2441,4 +2442,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.3-draft_
+_`@jxsuite/studio` Specification v0.16.4-draft_

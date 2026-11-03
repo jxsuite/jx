@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/jxsuite/jx/compare/feed-v0.4.4...feed-v0.5.0) (2026-11-03)
+
+
+### Features
+
+* **studio:** Project Settings is a workspace, not a dialog ([#528](https://github.com/jxsuite/jx/issues/528)) ([9d40b21](https://github.com/jxsuite/jx/commit/9d40b21b6e7624eb7df2fdbf547caea256d667b9))
+
 ## [0.4.4](https://github.com/jxsuite/jx/compare/feed-v0.4.3...feed-v0.4.4) (2026-10-29)
 
 

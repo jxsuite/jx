@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.42.0](https://github.com/jxsuite/jx/compare/ai-v0.41.2...ai-v0.42.0) (2026-11-03)
+
+
+### Features
+
+* **ai:** support anthropic messages api ([#526](https://github.com/jxsuite/jx/issues/526)) ([0c38ef7](https://github.com/jxsuite/jx/commit/0c38ef79d6bc52c36f1fc5d85722ea16cc6986c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.2.0
+
 ## [0.41.2](https://github.com/jxsuite/jx/compare/ai-v0.41.1...ai-v0.41.2) (2026-10-31)
 
 

@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.39-draft\
+**Version:** 0.1.40-draft\
 **Status:** Partial\
-**Updated:** 2026-10-27\
+**Updated:** 2026-11-03\
 **License:** MIT
 
 ---
@@ -358,6 +358,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.40-draft** (2026-11-03) — §2.6 a Claude key reaches Claude through the Anthropic Messages API: the client names its family in X-Api-Provider only where the models route lists it in providers, the gateway projects the version 1 body onto /v1/messages and normalizes its stream into the same frames, and signed thinking is not replayed (§2.2).
 - **0.1.39-draft** (2026-10-27) — §3.11 interactions and approvals run before the tool body: an interaction tool is asked and settled, never executed, an approval precedes the body, and the turn reaches a person through the host's strategy; §3.4 the mechanism is the invoker; §4 a host may require approval before a call runs.
 - **0.1.38-draft** (2026-10-27) — §3.10 a host's tools are one catalog: membership refuses a duplicate or malformed tool, every member states its title and four behaviour hints, the view decides what the model is offered, and members project to MCP; §3.6 the assistant's registry is that catalog.
 - **0.1.37-draft** (2026-10-27) — §3.9 the tree tools are portable producers of doc ops over a DocumentHost, and §3.1 binds every host: one that cannot undo validates before it commits.
@@ -401,4 +402,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.39-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.40-draft — a stub, subject to expansion._

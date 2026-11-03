@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.3.2-draft\
+**Version:** 0.3.3-draft\
 **Status:** Partial\
-**Updated:** 2026-10-29\
+**Updated:** 2026-11-03\
 **License:** MIT
 
 ---
@@ -360,6 +360,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.3.3-draft** (2026-11-03) — §4 the AI proxy's policy is per provider family: X-Api-Provider: anthropic is served by the Anthropic Messages API with ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL under the same key-provenance rule, and an unknown family is refused.
 - **0.3.2-draft** (2026-10-29) — §3.2: a bare $src resolves from the project's node_modules only, never the server's own graph.
 - **0.3.1-draft** (2026-10-29) — Backend modules run on Node and Bun through resolution-time conditions (#serve, fs-glob, file-response); package operations use npm's installer, strictly and all-or-nothing, with a lockfile-only service for the cloud.
 - **0.3.0-draft** (2026-10-27) — §4.1 GET /__studio/find-project and GET /__studio/locate-directory are removed with the dev-server Open Project and Browse… they served; neither scans the home directory any more.
@@ -417,4 +418,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.3.2-draft_
+_`@jxsuite/server` Specification v0.3.3-draft_

@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.2.0](https://github.com/jxsuite/jx/compare/protocol-v6.1.0...protocol-v6.2.0) (2026-11-03)
+
+
+### Features
+
+* **ai:** support anthropic messages api ([#526](https://github.com/jxsuite/jx/issues/526)) ([0c38ef7](https://github.com/jxsuite/jx/commit/0c38ef79d6bc52c36f1fc5d85722ea16cc6986c0))
+
 ## [6.1.0](https://github.com/jxsuite/jx/compare/protocol-v6.0.0...protocol-v6.1.0) (2026-10-31)
 
 
