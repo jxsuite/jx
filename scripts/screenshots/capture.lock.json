@@ -91,19 +91,19 @@
       "width": 480
     },
     "docs/images/blog-content-type.png": {
-      "bytes": 174644,
-      "capturedAt": "2026-10-19T01:55:36Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "4640d36a09723a561b31f039b3844c37ce1da80e7ac5e1cd0b474087dc724ea2",
-      "height": 1184,
+      "bytes": 277864,
+      "capturedAt": "2026-11-03T04:08:57Z",
+      "capturedBy": "screenshots@ci/41576068974",
+      "definition": "107ce2339e1a483e95e7a6bfc69eb319af107cf26892e3947579813fcb4e526f",
+      "height": 1264,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "08597af7e537d2b2608f1100598477721ccbf0ae3a8f7388008753c6f2f2a694",
+      "sha256": "0e81e7e51275db179066384a2b56a895fab5f1aab372a08a016faf21103fccf8",
       "shot": "blog-content-type",
-      "width": 1440
+      "width": 3840
     },
     "docs/images/blog-finished.png": {
       "bytes": 287007,
@@ -181,19 +181,19 @@
       "width": 3840
     },
     "docs/images/blog-schema-fields.png": {
-      "bytes": 169451,
-      "capturedAt": "2026-10-19T01:55:38Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "38e4afcac983672733f65e264ee6de306f02d68aa1662469e67f9661f57bda28",
-      "height": 1184,
+      "bytes": 240511,
+      "capturedAt": "2026-11-03T04:09:00Z",
+      "capturedBy": "screenshots@ci/41576068974",
+      "definition": "18ce6d920bf3206727283a30bef4e390268e7580595fe53bccde1197dffeb8f9",
+      "height": 1264,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "0102a0a1ef0cfceeea7fd4c3df2a31380441eb91c65c75df7e706b28eea9a9fd",
+      "sha256": "f615b09c0521cd18c414791945598779cd7d6bb67c6bd1858628a2349fca5215",
       "shot": "blog-schema-fields",
-      "width": 1440
+      "width": 3840
     },
     "docs/images/collab-presence.png": {
       "bytes": 1727493,
@@ -211,34 +211,34 @@
       "width": 3840
     },
     "docs/images/connections-section.png": {
-      "bytes": 153177,
-      "capturedAt": "2026-10-19T01:56:05Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "884f8d52f932dcbe66630fa7624fdc420ee456f82ff59e90533911fb9dc054a1",
-      "height": 1184,
+      "bytes": 237210,
+      "capturedAt": "2026-11-03T04:09:36Z",
+      "capturedBy": "screenshots@ci/41576068974",
+      "definition": "c9986ae9126329b708c42a97d020147915b1791a029ff6ce4b81e41bd323a6c7",
+      "height": 1264,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "6a1a77ee3ba2804f0f30d7c5dfc52b1644bda6cc1c00b8b084be8320290099f0",
+      "sha256": "21d03a766c8893436510bb80dc9e5fe0f3dc5f8115965fe87ea67b050c516dd3",
       "shot": "connections-section",
-      "width": 1440
+      "width": 3840
     },
     "docs/images/content-type-builder.png": {
-      "bytes": 193111,
-      "capturedAt": "2026-10-19T01:55:54Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "e8bb35fc1183e5ba547bd59db61fbec7de1185b0dc92f6604193b157fa6f9d0c",
-      "height": 1484,
+      "bytes": 344431,
+      "capturedAt": "2026-11-03T04:09:21Z",
+      "capturedBy": "screenshots@ci/41576068974",
+      "definition": "d1a5a6087770d4db3296a75f748774ae2a1d2651d45fdb9812723553ccd0ffe9",
+      "height": 1824,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "c1a1bf406368dffa4157b519041f7626441191b2a30f2187f7f54172cebe385c",
+      "sha256": "c1d87cd9819f7004e277da861781c336406959aa89c908b9ee4459efbccaf0fb",
       "shot": "content-type-builder-shot",
-      "width": 1440
+      "width": 3840
     },
     "docs/images/convert-to-component.png": {
       "bytes": 326699,
@@ -421,34 +421,34 @@
       "width": 480
     },
     "docs/images/data-table-editor.png": {
-      "bytes": 95280,
-      "capturedAt": "2026-10-19T01:56:03Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "a98115927d43fda869a109932dd024ed858cb5a52098617bc6a235eda030c8fb",
-      "height": 1516,
+      "bytes": 157925,
+      "capturedAt": "2026-11-03T04:09:34Z",
+      "capturedBy": "screenshots@ci/41576068974",
+      "definition": "66f4254da79cc9e42aab8d4b0cd2ecce7adc2bd448f210c1629af92a9189663c",
+      "height": 1412,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "1977a0a495a35b4c47878f770f0d9df5b4ff5cca07bebb93c36ba8a4cc7ce194",
+      "sha256": "530da0c1854c52bfeff3f1896556b3fe32f2fe43de0155257d1cf1e1b6681f4e",
       "shot": "data-tables-shot",
-      "width": 506
+      "width": 1998
     },
     "docs/images/data-tables-section.png": {
-      "bytes": 187814,
-      "capturedAt": "2026-10-19T01:56:03Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "a98115927d43fda869a109932dd024ed858cb5a52098617bc6a235eda030c8fb",
-      "height": 1428,
+      "bytes": 270164,
+      "capturedAt": "2026-11-03T04:09:34Z",
+      "capturedBy": "screenshots@ci/41576068974",
+      "definition": "66f4254da79cc9e42aab8d4b0cd2ecce7adc2bd448f210c1629af92a9189663c",
+      "height": 1624,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "f92a18b1e45abddca69001c3569c55f385d241878ad06ecf291aa4851a9eabd9",
+      "sha256": "e229e73cabc566a7d1d41ef47ce30fe876139e1b9442b789a0a56200e8ff2edf",
       "shot": "data-tables-shot",
-      "width": 1440
+      "width": 3840
     },
     "docs/images/design-inspector.png": {
       "bytes": 135501,
@@ -661,9 +661,9 @@
       "width": 816
     },
     "docs/images/media-upload.png": {
-      "bytes": 1003062,
-      "capturedAt": "2026-11-03T02:31:11Z",
-      "capturedBy": "screenshots@ci/41566234554",
+      "bytes": 1002435,
+      "capturedAt": "2026-11-03T04:09:51Z",
+      "capturedBy": "screenshots@ci/41576068974",
       "definition": "c597407bf7739960d16f3c89a85f588ba1022b4fa5d135c3484fabb9cb30ef1a",
       "height": 1824,
       "runtime": {
@@ -671,7 +671,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "4f5cf2c2f38d28bf91672a6daf81b15b7fe19f5c6e70ca02a66b7ea119079493",
+      "sha256": "02b9782440e13054ccdbdabba49fcdb46924d1a69ad85b551ceddb5fbc201ca5",
       "shot": "media-upload",
       "width": 3840
     },
@@ -841,17 +841,17 @@
       "width": 1152
     },
     "docs/images/settings-document.png": {
-      "bytes": 1030256,
-      "capturedAt": "2026-10-27T22:55:09Z",
-      "capturedBy": "screenshots@ci/40598191375",
-      "definition": "75e7e9588af2765d5ce4876bd3bb47c4d746d311353947c1bfa94fb71e73eeb6",
+      "bytes": 259318,
+      "capturedAt": "2026-11-03T04:07:35Z",
+      "capturedBy": "screenshots@ci/41576068974",
+      "definition": "5691f8e2ffbbef225901cad5298708b638e6869453615722880896f5467bbea1",
       "height": 2000,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "deb13607d96920309ebb9cfc34641dc4dc3348f95b59eb80551b6b73f5d1c998",
+      "sha256": "c9fc45a98b05ea01ac16b2c88614571b447256b0a0598557b276c7b095466b39",
       "shot": "settings-document",
       "width": 3840
     },
