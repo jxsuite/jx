@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.0](https://github.com/jxsuite/jx/compare/schema-v5.0.0...schema-v5.1.0) (2026-11-04)
+
+
+### Features
+
+* **site:** page a list into numbered routes, and query collections by path and by reference ([#535](https://github.com/jxsuite/jx/issues/535)) ([bd3eb1e](https://github.com/jxsuite/jx/commit/bd3eb1ef8f49ce8c8a4d9bfc4e89cb4f54ea1ef1))
+
 ## [5.0.0](https://github.com/jxsuite/jx/compare/schema-v4.1.0...schema-v5.0.0) (2026-10-29)
 
 
