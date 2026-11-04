@@ -1,5 +1,5 @@
 ---
-status: drafted
+status: active
 disposition: implement
 claims:
   - site-architecture.md#4.3
@@ -16,6 +16,8 @@ workspaces:
   - sites/test-blank
   - scripts
 size: L
+prs:
+  - jxsuite/jx#535
 ---
 
 # A page can split a list in its own state into numbered routes, each built with its slice and a `$page.pagination` a pager can render
