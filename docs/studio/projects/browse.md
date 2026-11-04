@@ -112,7 +112,7 @@ Studio wraps an entry in its template's **layout**. A template page that draws i
 
 ## Open, rename, duplicate, delete
 
-Right-click any item for **Open**, **Rename…**, **Duplicate** and **Delete**. A page opens in the Design workspace; an entry opens where it is written. A duplicate lands beside the original with `-copy` on its name.
+Right-click any item for **Open**, **Rename…**, **Duplicate** and **Delete**. A page opens in the Design workspace; an entry opens where it is written. A duplicate is an exact copy that lands beside the original with `-copy` on its name, plus a number if that name is taken, so it never replaces a file. **Rename** refuses a name the folder already has, and an open tab follows the file.
 
 Rename and delete go through the same confirmations as the Files panel, and they carry the same counts: a rename tells you how many references Studio will rewrite for you, and a delete tells you how many stop resolving. See **[Before you delete, rename or convert](/docs/studio/projects/pages-layouts-components#before-you-delete-rename-or-convert)**.
 

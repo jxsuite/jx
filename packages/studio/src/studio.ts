@@ -1127,6 +1127,9 @@ if (_projectParam) {
           /* Through `loadDirectory` (inside `loadProjectDirectories`), not `platform.listDirectory`:
              the loader is what reads the `.gitignore` chain governing each directory. */
           await loadProjectDirectories();
+          /* The other two ways into a project subscribe, and this one did not, so a project opened
+             by its URL never heard about a file changing on disk. */
+          ensureFsSync();
           void maybePromptJxsuiteUpdate(siteCtx.sitePath);
         }
 

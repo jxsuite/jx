@@ -24,6 +24,11 @@ import type { DirEntry } from "../src/types";
 import { LIBRARY_VIEWPORT, PAGE_COUNT } from "./shared-fixtures";
 
 void mock.module("../src/files/files.js", () => ({
+  commitRename: () => Promise.resolve({ from: "", ok: true, to: "" }),
+  listRenameSiblings: () => Promise.resolve(new Set<string>()),
+  notifyMoveOutcome: () => {},
+  parentDirOf: () => ".",
+  renameStatus: () => "",
   createFileIn: () => Promise.resolve(null),
   loadDirectory: () => Promise.resolve(),
   openFileInTab: () => Promise.resolve(),

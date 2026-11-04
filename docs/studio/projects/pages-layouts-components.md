@@ -65,7 +65,7 @@ A new page, template or component opens in a tab, ready to edit, and a new compo
 ![The Content workspace showing the Pages collection as cards with live previews, with the Collections panel on the left](../../images/mode-manage.png)
 
 :::doc-note
-Studio writes each new file into `pages/`, `layouts/`, or `components/` in your project folder. They are plain files you can rename, duplicate, or delete from the right-click menu of the Files panel, or, for a page, of the Content workspace.
+Studio writes each new file into `pages/`, `layouts/`, or `components/` in your project folder. They are plain files you can rename or delete from the right-click menu of the Files panel. For a page, the right-click menu of the Content workspace can also duplicate it.
 :::
 
 ## Where is it used?

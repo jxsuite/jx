@@ -1,5 +1,6 @@
 /**
- * The rules a new file's name is held to, with no dialog and no write attached.
+ * The rules a new file's name is held to, with no dialog and no write attached, and the rules a
+ * rename's new name is held to ({@link renameRefusal}).
  *
  * `createFileIn` (`files/files.ts`) used to keep these inside one closure over its prompt, which
  * was right while the prompt was the only creation flow there was. Add new (`create/add-new.ts`,
@@ -153,4 +154,41 @@ export function validateNewFileName(
      second. */
   const candidate = composeNewFileName(value, picked, choice);
   return taken.has(candidate.toLowerCase()) ? `${candidate} already exists in ${dir}/.` : "";
+}
+
+/**
+ * The refusal a new name for the file or folder at `path` earns, or `""` when it is usable
+ * (studio.md §9.1.1). The first that applies is the sentence.
+ *
+ * `taken` is every name already in the entry's folder, and it is the check that matters most: a
+ * backend's `renameFile` is a filesystem rename, which replaces its destination in silence.
+ * Compared without regard to case, since a case-insensitive disk would take `Hero.jpg` for
+ * `hero.jpg`, and the entry's own name is never in the way, so its case can change.
+ *
+ * The other two refusals are what keep that check honest. A listing answers for one folder, and a
+ * path would land in another. A dev server or desktop listing leaves out every dotfile, so `.env`
+ * looks free whether or not there is one. An entry that is itself a dotfile is exempt: a host that
+ * listed it is a host whose listing can answer.
+ *
+ * @param path The entry being renamed.
+ * @param value What the reader typed.
+ * @param taken The names in the entry's folder, in any case.
+ */
+export function renameRefusal(path: string, value: string, taken: ReadonlySet<string>): string {
+  const name = value.trim();
+  if (name === "") {
+    return "Enter a file name.";
+  }
+  if (/[/\\]/.test(name)) {
+    return "Enter a name, not a path. A rename keeps the file in its folder.";
+  }
+  const current = (path.split("/").pop() ?? path).toLowerCase();
+  if (name.startsWith(".") && !current.startsWith(".")) {
+    return "A name cannot start with a dot: hidden files are not listed, so the file could disappear.";
+  }
+  const lower = name.toLowerCase();
+  if (lower !== current && [...taken].some((entry) => entry.toLowerCase() === lower)) {
+    return `${name} already exists in this folder.`;
+  }
+  return "";
 }

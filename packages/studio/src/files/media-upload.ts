@@ -28,6 +28,7 @@ import { invalidateUsages } from "../services/references";
 import { activeTab } from "../workspace/workspace";
 import { forgetVersions, noteLocalWrite, notedListing } from "./asset-versions";
 import { markLocalMutation } from "./fs-events";
+import { renameRefusal } from "./new-file-name";
 import {
   AUDIO_EXTENSIONS,
   IMAGE_EXTENSIONS,
@@ -205,17 +206,20 @@ export function assetRef(destPath: string): string {
 
 /**
  * A filename that doesn't collide with `taken`, suffixing `-1`, `-2`, … before the extension. Never
- * overwrites existing media (the previous behaviour clobbered silently).
+ * overwrites existing media (the previous behaviour clobbered silently). Compared without regard to
+ * case: APFS and NTFS take `Hero.jpg` for `hero.jpg`, so a name that differs only in case is a name
+ * that overwrites there.
  */
 export function uniqueName(name: string, taken: ReadonlySet<string>): string {
-  if (!taken.has(name)) {
+  const lower = new Set([...taken].map((entry) => entry.toLowerCase()));
+  if (!lower.has(name.toLowerCase())) {
     return name;
   }
   const ext = extensionOf(name);
   const base = ext ? name.slice(0, -ext.length) : name;
   for (let i = 1; ; i++) {
     const candidate = `${base}-${i}${ext}`;
-    if (!taken.has(candidate)) {
+    if (!lower.has(candidate.toLowerCase())) {
       return candidate;
     }
   }
@@ -315,7 +319,16 @@ function keepListable(files: File[], only: UploadOnly): File[] {
  */
 export async function uploadAssets(
   files: Iterable<File>,
-  opts: { dir?: string; only?: UploadOnly; quiet?: boolean } = {},
+  opts: {
+    dir?: string;
+    /** The destination holds a file already, so a listing that fails says nothing about it. */
+    dirExists?: boolean;
+    only?: UploadOnly;
+    quiet?: boolean;
+    source?: string;
+    /** Writes each file instead of `uploadFile`, for a caller with a better door than an upload. */
+    write?: (path: string) => Promise<{ path: string }>;
+  } = {},
 ): Promise<UploadedAsset[]> {
   const list = opts.only === undefined ? [...files] : keepListable([...files], opts.only);
   if (list.length === 0) {
@@ -323,13 +336,22 @@ export async function uploadAssets(
   }
   const platform = getPlatform();
   const dir = opts.dir ?? uploadDirFor(activeTab.value?.documentPath ?? null);
+  const source = opts.source ?? "Media";
 
   let taken: Set<string>;
   try {
     // The upload directory is a media directory, so its listing vouches for versions as well.
     const existing = await notedListing(() => platform.listDirectory(dir));
     taken = new Set(existing.map((entry) => entry.name));
-  } catch {
+  } catch (error) {
+    if (opts.dirExists === true) {
+      notify.error(`Could not write to ${dir}/.`, {
+        detail: `The folder could not be read to choose a name that overwrites nothing: ${errorMessage(error)}`,
+        path: dir,
+        source,
+      });
+      return [];
+    }
     taken = new Set(); // Directory doesn't exist yet — the backend mkdir -p's on write.
   }
 
@@ -354,7 +376,9 @@ export async function uploadAssets(
       /* The path the backend REPORTS, not the one asked for. A store that de-duplicates by content
          hash, appends a collision suffix, or normalizes a name writes somewhere else, and the
          reference that goes into the document has to name what is really there. */
-      const { path } = await platform.uploadFile(requested, file);
+      const { path } = await (opts.write
+        ? opts.write(requested)
+        : platform.uploadFile(requested, file));
       // New bytes at `path`: whatever version a listing held for it no longer names them.
       forgetVersions([path]);
       uploaded.push({ kind: mediaKind(file), name, path, ref: assetRef(path) });
@@ -362,7 +386,7 @@ export async function uploadAssets(
       notify.error(`Could not upload ${file.name}.`, {
         detail: errorMessage(error),
         path: requested,
-        source: "Media",
+        source,
       });
     }
   }
@@ -381,6 +405,16 @@ export async function uploadAssets(
   return uploaded;
 }
 
+/** `bytes` as text when `writeFile` can put the same bytes back: valid UTF-8, with no BOM to lose. */
+function strictUtf8(bytes: ArrayBuffer): string | null {
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+    return text.startsWith("\uFEFF") ? null : text;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * What a copy of `name` is called before any collision: `hero.jpg` is `hero-copy.jpg`.
  *
@@ -393,20 +427,35 @@ export function duplicateName(name: string): string {
 }
 
 /**
- * Copy the media file at `path` to a new name beside it — the Media workspace's **Duplicate**.
+ * Copy the file at `path` to a new name beside it — **Duplicate**, in the Media workspace and the
+ * Content home alike.
  *
- * Through `readFileBytes`, because `readFile` answers UTF-8 and a picture read that way comes back
- * as replacement characters; and through {@link uploadAssets}, so a copy is named, limited and
- * announced the way any new file is and can never overwrite anything. What it copies is the file on
- * disk: a pending image edit belongs to its tab and stays there.
+ * Through `readFileBytes`, because `readFile` answers UTF-8: a picture read that way comes back as
+ * replacement characters, and so does every non-UTF-8 byte of a text file, such as a Latin-1
+ * Markdown entry from an imported site. And through {@link uploadAssets}, so a copy is named,
+ * limited and announced the way any new file is and can never overwrite anything. What it copies is
+ * the file on disk: a pending image edit or an unsaved change belongs to its tab and stays there.
  *
  * A backend that reports the original's own path (a store that keeps identical bytes once) made no
  * second file, which is said rather than called success.
  *
+ * `document` is for a file that is usually a document, and it decides the write rather than the
+ * read. Studio Cloud files every upload as a binary and answers a text read of one with a 415, so
+ * an uploaded copy of a Markdown entry could never be opened. Bytes that are valid UTF-8 go through
+ * `writeFile` instead, which loses nothing, since they encode back the same. Bytes that are not
+ * stay an upload, and so does a file with a BOM: the dev server decodes a written body as a Fetch
+ * `text()` does, which drops one.
+ *
+ * @param path The file to copy.
+ * @param opts `source` names the flow in a Problem; `document` is described above.
  * @returns The copy, or `null` when none was made; the reason has been reported.
  */
-export async function duplicateAsset(path: string): Promise<UploadedAsset | null> {
+export async function duplicateAsset(
+  path: string,
+  opts: { document?: boolean; source?: string } = {},
+): Promise<UploadedAsset | null> {
   const name = path.split("/").pop() ?? path;
+  const source = opts.source ?? "Media";
   let bytes: ArrayBuffer;
   try {
     const platform = getPlatform();
@@ -418,13 +467,22 @@ export async function duplicateAsset(path: string): Promise<UploadedAsset | null
     notify.error(`Could not duplicate ${name}.`, {
       detail: errorMessage(error),
       path,
-      source: "Media",
+      source,
     });
     return null;
   }
+  const text = opts.document === true ? strictUtf8(bytes) : null;
   const [copy] = await uploadAssets([new File([bytes], duplicateName(name))], {
     dir: parentDir(path),
+    dirExists: true,
     quiet: true,
+    source,
+    ...(text !== null && {
+      write: async (target: string) => {
+        await getPlatform().writeFile(target, text);
+        return { path: target };
+      },
+    }),
   });
   if (!copy) {
     return null;
@@ -433,7 +491,7 @@ export async function duplicateAsset(path: string): Promise<UploadedAsset | null
     notify.warn(`${name} was not duplicated.`, {
       detail: "The backend keeps identical files once, so it made no second file.",
       path,
-      source: "Media",
+      source,
     });
     return null;
   }
@@ -469,12 +527,7 @@ export function canReplaceWith(path: string, file: { name: string }): boolean {
 
 /**
  * The refusal a new name for the media file at `path` earns, or `""` when it is usable (studio.md
- * §9.3). The first that applies is the sentence.
- *
- * `taken` is every name already in the file's folder, and it is the check that matters most: a
- * backend's `renameFile` is a filesystem rename, which replaces its destination in silence.
- * Compared without regard to case, since a case-insensitive disk would take `Hero.jpg` for
- * `hero.jpg`, and the file's own name is never in the way, so `Hero.jpg` can become `hero.jpg`.
+ * §9.3): every entry's rename rules, and then the one only a media file has.
  *
  * @param path The file being renamed.
  * @param value What the reader typed.
@@ -485,24 +538,12 @@ export function mediaRenameRefusal(
   value: string,
   taken: ReadonlySet<string>,
 ): string {
-  const name = value.trim();
-  if (name === "") {
-    return "Enter a file name.";
+  const general = renameRefusal(path, value, taken);
+  if (general !== "") {
+    return general;
   }
-  if (/[/\\]/.test(name)) {
-    return "Enter a name, not a path. A rename keeps the file in its folder.";
-  }
-  if (name.startsWith(".")) {
-    return "A name cannot start with a dot: the file would disappear from Media.";
-  }
-  const current = path.split("/").pop() ?? path;
-  if (!canReplaceWith(path, { name })) {
-    const ext = extensionOf(current);
-    return `Keep the ${ext} extension. A rename does not convert the file, so another extension would break it on every page.`;
-  }
-  const lower = name.toLowerCase();
-  if (lower !== current.toLowerCase() && [...taken].some((t) => t.toLowerCase() === lower)) {
-    return `${name} already exists in this folder.`;
+  if (!canReplaceWith(path, { name: value.trim() })) {
+    return `Keep the ${extensionOf(path)} extension. A rename does not convert the file, so another extension would break it on every page.`;
   }
   return "";
 }

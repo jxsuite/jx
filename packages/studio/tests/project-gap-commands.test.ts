@@ -24,6 +24,11 @@ import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
 // ─── Seams ────────────────────────────────────────────────────────────────────
 
 void mock.module("../src/files/files.js", () => ({
+  commitRename: () => Promise.resolve({ from: "", ok: true, to: "" }),
+  listRenameSiblings: () => Promise.resolve(new Set<string>()),
+  notifyMoveOutcome: () => {},
+  parentDirOf: () => ".",
+  renameStatus: () => "",
   createFileIn: () => Promise.resolve(null),
   initProjectRepo: () => Promise.resolve(),
   openFileInTab: () => Promise.resolve(),

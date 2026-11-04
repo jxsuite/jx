@@ -62,6 +62,8 @@ The server watches `root` (ignoring `node_modules/`, `dist/`, `.git/`, and frien
 
 Save a file and every connected page reloads. When the changed file matches a `builds` entry's `match` pattern, that bundle is rebuilt first, so the reload picks up fresh output. The one exception is the Studio editor itself: Studio pages never get the reload script, because Studio refreshes edited files in place and a full reload would discard open tabs and undo history.
 
+When Studio activates a project the watcher can't see, because it's outside `root` or in an ignored folder such as `dist` or `.cache`, the server watches that project as well while it stays active. Studio's usage counts and Files panel follow the disk there too. Those changes don't trigger a rebuild or reload pages.
+
 ### What the watcher skips
 
 Beyond the ignored directory names, two kinds of entry are skipped whatever they are called:
