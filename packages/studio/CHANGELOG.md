@@ -1,5 +1,26 @@
 # Changelog
 
+## [10.3.0](https://github.com/jxsuite/jx/compare/studio-v10.2.0...studio-v10.3.0) (2026-11-04)
+
+
+### Features
+
+* **studio:** edit an image where it is opened ([#531](https://github.com/jxsuite/jx/issues/531)) ([c45b229](https://github.com/jxsuite/jx/commit/c45b229357ef3163dcb49c7861c08ec82ce35d79))
+* **studio:** rename and duplicate a media file from the Media workspace ([#533](https://github.com/jxsuite/jx/issues/533)) ([945d913](https://github.com/jxsuite/jx/commit/945d9136b0a56fe3db00584310494065e1779bd7))
+
+
+### Bug Fixes
+
+* **server:** a rename drops the usage cache before it answers, so the new name's ([945d913](https://github.com/jxsuite/jx/commit/945d9136b0a56fe3db00584310494065e1779bd7))
+* **studio:** stop renames and moves overwriting files, and keep the Files panel live ([#534](https://github.com/jxsuite/jx/issues/534)) ([a16cd58](https://github.com/jxsuite/jx/commit/a16cd589c716184ea41523ed32599feaa3fa19ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ui bumped to 0.9.0
+
 ## [10.2.0](https://github.com/jxsuite/jx/compare/studio-v10.1.0...studio-v10.2.0) (2026-11-03)
 
 

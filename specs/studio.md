@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.4-draft\
+**Version:** 0.16.9-draft\
 **Status:** Partial\
-**Updated:** 2026-11-03\
+**Updated:** 2026-11-04\
 **License:** MIT
 
 ---
@@ -2350,6 +2350,11 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.9-draft** (2026-11-04) — The Content home's Duplicate is the Media workspace's byte-exact copy, so it keeps non-UTF-8 bytes and never overwrites, and writes valid UTF-8 as a document so a backend that files uploads as binaries can still open the copy; a folder that cannot be listed makes no copy, a backend without readFileBytes is not offered it, and an upload's collision-free name no longer depends on case (§9.3).
+- **0.16.8-draft** (2026-11-04) — The Rename field in the Files panel and on the Content home refuses a name already in the folder, a path and a leading dot, in place, and refuses to open when the folder cannot be read, because a rename replaces its destination in silence; a Files panel drag refuses the same collision, and renaming a folder takes the open tabs inside it along (§9.1.1).
+- **0.16.7-draft** (2026-11-04) — §9.3, §22.6: a media file can be renamed and duplicated from the Media workspace's detail pane and tile menu (media.rename, media.duplicate); a rename keeps the file's folder and format and refuses to land on another file, because the backend's rename replaces its destination in silence, and a duplicate copies the bytes through readFileBytes and the upload core.
+- **0.16.6-draft** (2026-11-04) — §9.5 ships, and §19's WHATWG HTML row is a Subset with evidence: an image asset in an encodable still format is edited where it is opened, per tab, with a crop that moves when dragged inside, holds to a chosen ratio and is one tab stop with its handles, a save that changes nothing writing nothing and a re-encode that grows reported rather than refused. §3.4: a path Studio has just written carries a repaint key written as r, distinct from a host-issued version. §9.3: Replace marks its own write as a local mutation before performing it, and redraws every pane after it. A key is minted again when anything forgets the path's version. §4.2's table gains the Image row.
+- **0.16.5-draft** (2026-11-04) — §9.5, new: an image asset in an encodable still format is edited where it is opened, as a recipe previewed in CSS and baked once over the master through §9.3's Replace path, with the editable set decided from the container rather than the extension and the save verifying its own output; §4.2 and §9.3 point at it.
 - **0.16.4-draft** (2026-11-03) — §17.1, §22: Project Settings is a workspace (§22.9, new) rather than a dialog: settings.open switches to it, its home draws the settings editor in the pane's stage as pane.<id>/settings with a Back control naming the workspace it was opened from, and the switcher draws no tab for it.
 - **0.16.3-draft** (2026-10-31) — §22.8: a hosted publish the remote conflicts with offers Publish to a New Branch (gitCommitBranch, a pull request into the moved branch, then a pull), and Send for review from the default branch commits a studio/ branch of its own where the host can; §5.5 lists git/commit-branch.
 - **0.16.2-draft** (2026-10-29) — A right-click on a Media library tile selects it and offers the detail pane's actions: Open in Viewer, Copy Site URL, Replace and Delete.
@@ -2556,4 +2561,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.4-draft_
+_`@jxsuite/studio` Specification v0.16.9-draft_
