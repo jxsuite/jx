@@ -1,10 +1,10 @@
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildProjectExtensionRegistry, createNodeFormatIO } from "@jxsuite/compiler/format-host";
 import { buildFormatRegistry, FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
-import { applyRename, deriveTag } from "../src/refactor/index";
+import { applyRename, deriveTag, findReferences } from "../src/refactor/index";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatHostIO } from "@jxsuite/schema/format-registry";
 import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
@@ -252,6 +252,56 @@ async function move(from: string, to: string, mounts?: readonly AssetMount[]) {
   }
   return applyRename(options);
 }
+
+/*
+ * The usage cache is otherwise dropped by a file watcher, which has not reported the move by the time
+ * the route answers, and which never reports a path it ignores. No watcher runs here, which is the
+ * point: the question a caller asks next has to be answered from the tree as the rename left it.
+ */
+describe("applyRename and the usage cache", () => {
+  const usesOf = async (path: string) => {
+    const { formats: registry } = await buildProjectExtensionRegistry(root);
+    const { refsTotal } = await findReferences({ path, registry, root });
+    return refsTotal;
+  };
+
+  test("the new name's usages are right straight after, with no watcher to drop the sweep", async () => {
+    write("pages/index.json", JSON.stringify({ attributes: { src: "/media/hero.png" } }));
+    write("public/media/hero.png", "bytes");
+    expect(await usesOf("public/media/hero.png")).toBe(1);
+    expect(await usesOf("public/media/banner.png")).toBe(0);
+
+    await move("public/media/hero.png", "public/media/banner.png");
+
+    expect(await usesOf("public/media/banner.png")).toBe(1);
+    expect(await usesOf("public/media/hero.png")).toBe(0);
+  });
+
+  test("a pass that throws still drops the sweep: it may have written before it did", async () => {
+    write("pages/index.json", JSON.stringify({ attributes: { src: "/media/hero.png" } }));
+    write("public/media/hero.png", "bytes");
+    expect(await usesOf("public/media/hero.png")).toBe(1);
+    write("pages/index.json", JSON.stringify({ attributes: { alt: "no reference now" } }));
+
+    const { formats: registry } = await buildProjectExtensionRegistry(root);
+    const broken = spyOn(registry, "documentExtensions").mockImplementation(() => {
+      throw new Error("registry unavailable");
+    });
+    // oxlint-disable-next-line typescript/await-thenable -- rejects.toThrow resolves a Promise at runtime.
+    await expect(
+      applyRename({
+        absFrom: join(root, "public/media/hero.png"),
+        absTo: join(root, "public/media/banner.png"),
+        mounts: [],
+        registry,
+        root,
+      }),
+    ).rejects.toThrow("registry unavailable");
+    broken.mockRestore();
+
+    expect(await usesOf("public/media/hero.png")).toBe(0);
+  });
+});
 
 /** The bytes `loadDoc`'s JSON serializer writes for `doc` (two-space, no trailing newline). */
 const serialized = (doc: JsonValue) => JSON.stringify(doc, null, 2);
