@@ -14,7 +14,9 @@
  * {@link DEFAULT_MEDIA_DIR}, `public/media/`, which is served from the site root as `/media/`.
  *
  * {@link replaceAsset} is the one door that writes over an existing file, and it is asked for by
- * name: the Media workspace's **Replace** (studio.md §9.3).
+ * name: the Media workspace's **Replace** (studio.md §9.3). {@link duplicateAsset} is the upload
+ * core fed from the project rather than the desktop, and {@link mediaRenameRefusal} is what a new
+ * name for a media file may not be.
  *
  * @docs studio/projects/media
  */
@@ -313,7 +315,7 @@ function keepListable(files: File[], only: UploadOnly): File[] {
  */
 export async function uploadAssets(
   files: Iterable<File>,
-  opts: { dir?: string; only?: UploadOnly } = {},
+  opts: { dir?: string; only?: UploadOnly; quiet?: boolean } = {},
 ): Promise<UploadedAsset[]> {
   const list = opts.only === undefined ? [...files] : keepListable([...files], opts.only);
   if (list.length === 0) {
@@ -366,14 +368,77 @@ export async function uploadAssets(
   }
 
   if (uploaded.length > 0) {
-    notify.success(
-      uploaded.length === 1
-        ? `Uploaded ${uploaded[0]!.name} to ${dir}/`
-        : `Uploaded ${uploaded.length} files to ${dir}/`,
-    );
+    // `quiet` is a caller with its own sentence: one toast per write, and "uploaded" is not always it.
+    if (opts.quiet !== true) {
+      notify.success(
+        uploaded.length === 1
+          ? `Uploaded ${uploaded[0]!.name} to ${dir}/`
+          : `Uploaded ${uploaded.length} files to ${dir}/`,
+      );
+    }
     await mediaChangedHandler?.(dir);
   }
   return uploaded;
+}
+
+/**
+ * What a copy of `name` is called before any collision: `hero.jpg` is `hero-copy.jpg`.
+ *
+ * A copy of a copy keeps counting ({@link uniqueName} adds the number) rather than growing a second
+ * `-copy`, so duplicating `hero-copy.jpg` or `hero-copy-1.jpg` asks for `hero-copy.jpg` again.
+ */
+export function duplicateName(name: string): string {
+  const stem = name.slice(0, name.length - extensionOf(name).length);
+  return `${stem.replace(/-copy(?:-\d+)?$/, "")}-copy${name.slice(stem.length)}`;
+}
+
+/**
+ * Copy the media file at `path` to a new name beside it — the Media workspace's **Duplicate**.
+ *
+ * Through `readFileBytes`, because `readFile` answers UTF-8 and a picture read that way comes back
+ * as replacement characters; and through {@link uploadAssets}, so a copy is named, limited and
+ * announced the way any new file is and can never overwrite anything. What it copies is the file on
+ * disk: a pending image edit belongs to its tab and stays there.
+ *
+ * A backend that reports the original's own path (a store that keeps identical bytes once) made no
+ * second file, which is said rather than called success.
+ *
+ * @returns The copy, or `null` when none was made; the reason has been reported.
+ */
+export async function duplicateAsset(path: string): Promise<UploadedAsset | null> {
+  const name = path.split("/").pop() ?? path;
+  let bytes: ArrayBuffer;
+  try {
+    const platform = getPlatform();
+    if (platform.readFileBytes === undefined) {
+      throw new Error("This backend cannot read a file's raw bytes.");
+    }
+    bytes = await platform.readFileBytes(path);
+  } catch (error) {
+    notify.error(`Could not duplicate ${name}.`, {
+      detail: errorMessage(error),
+      path,
+      source: "Media",
+    });
+    return null;
+  }
+  const [copy] = await uploadAssets([new File([bytes], duplicateName(name))], {
+    dir: parentDir(path),
+    quiet: true,
+  });
+  if (!copy) {
+    return null;
+  }
+  if (copy.path === path) {
+    notify.warn(`${name} was not duplicated.`, {
+      detail: "The backend keeps identical files once, so it made no second file.",
+      path,
+      source: "Media",
+    });
+    return null;
+  }
+  notify.success(`Duplicated ${name} as ${copy.name}`);
+  return copy;
 }
 
 /** Extensions that name one format, so either may stand in for the other. */
@@ -400,6 +465,46 @@ export function replaceAccept(path: string): string {
 /** Whether `file` may replace the file at `path`: the same format, by extension. */
 export function canReplaceWith(path: string, file: { name: string }): boolean {
   return formatSiblings(extensionOf(path)).has(extensionOf(file.name));
+}
+
+/**
+ * The refusal a new name for the media file at `path` earns, or `""` when it is usable (studio.md
+ * §9.3). The first that applies is the sentence.
+ *
+ * `taken` is every name already in the file's folder, and it is the check that matters most: a
+ * backend's `renameFile` is a filesystem rename, which replaces its destination in silence.
+ * Compared without regard to case, since a case-insensitive disk would take `Hero.jpg` for
+ * `hero.jpg`, and the file's own name is never in the way, so `Hero.jpg` can become `hero.jpg`.
+ *
+ * @param path The file being renamed.
+ * @param value What the reader typed.
+ * @param taken The names in the file's folder.
+ */
+export function mediaRenameRefusal(
+  path: string,
+  value: string,
+  taken: ReadonlySet<string>,
+): string {
+  const name = value.trim();
+  if (name === "") {
+    return "Enter a file name.";
+  }
+  if (/[/\\]/.test(name)) {
+    return "Enter a name, not a path. A rename keeps the file in its folder.";
+  }
+  if (name.startsWith(".")) {
+    return "A name cannot start with a dot: the file would disappear from Media.";
+  }
+  const current = path.split("/").pop() ?? path;
+  if (!canReplaceWith(path, { name })) {
+    const ext = extensionOf(current);
+    return `Keep the ${ext} extension. A rename does not convert the file, so another extension would break it on every page.`;
+  }
+  const lower = name.toLowerCase();
+  if (lower !== current.toLowerCase() && [...taken].some((t) => t.toLowerCase() === lower)) {
+    return `${name} already exists in this folder.`;
+  }
+  return "";
 }
 
 /**

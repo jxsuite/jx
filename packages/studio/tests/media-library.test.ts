@@ -9,6 +9,7 @@
  * asserted is what reached the backend: the upload path, the replaced path, the deleted path.
  */
 import {
+  answerPromptDialog,
   dragEvent,
   flush,
   installMockPlatform,
@@ -31,17 +32,22 @@ import { closeAllTabs, workspace } from "../src/workspace/workspace";
 import { toasts } from "../src/services/notify";
 import { isRegionId, regionIdOf } from "../src/ui/regions";
 import { invalidateMediaCache } from "../src/ui/media-picker";
+import { peekMediaMeta, recordImageSize } from "../src/files/media-meta";
 import { setMediaChangedHandler } from "../src/files/media-upload";
 import { invalidateUsages } from "../src/services/references";
+import { collabState } from "../src/collab/collab-state";
+import { getPlatform } from "../src/platform";
 import { openWorkspaceHome } from "../src/workspace/workspace-home";
 import {
   applyMediaBrowse,
   closeMediaPickDialog,
   deleteMediaFile,
   detachMediaLibrary,
+  duplicateMediaFile,
   focusMediaHome,
   mediaLibraryMounted,
   openMediaPickDialog,
+  renameMediaFile,
   renderMediaLibrary,
   requestMediaReplace,
   requestMediaUpload,
@@ -132,6 +138,23 @@ function install(withReferences = true): void {
     },
     deleteFile: async (path: string) => {
       state.calls.push(["deleted", path]);
+    },
+    // The move a real backend makes, so the re-read listing holds the new name and not the old.
+    renameFile: async (from: string, to: string) => {
+      state.calls.push(["renameFile", from, to]);
+      const dir = from.slice(0, from.lastIndexOf("/"));
+      // A new list and a new entry: `tree` shares its entries with the fixture every test starts from.
+      const listed = [...(tree.get(dir) ?? [])];
+      const at = listed.findIndex((entry) => entry.path === from);
+      if (at !== -1) {
+        listed[at] = { ...listed[at]!, name: to.slice(dir.length + 1), path: to };
+        tree.set(dir, listed);
+      }
+      return { from, ok: true, to };
+    },
+    readFileBytes: async (path: string) => {
+      state.calls.push(["readFileBytes", path]);
+      return new Uint8Array([0xff, 0xd8, 0xff]).buffer;
     },
     ...(withReferences && {
       findReferences: async (query: { path?: string }) => {
@@ -780,10 +803,45 @@ describe("the tile menu", () => {
       "Open in Viewer",
       "Copy Site URL",
       "---",
+      "Rename…",
+      "Duplicate",
       "Replace…",
       "---",
       "Delete",
     ]);
+  });
+
+  test("Rename opens the dialog the detail pane's control opens", async () => {
+    await mountHome();
+    rightClick(tileOf("public/hero.jpg"));
+    await settle();
+    await choose_("rename");
+    await answerPromptDialog("banner.jpg");
+    await settle(12);
+    expect(state.calls).toContainEqual(["renameFile", "public/hero.jpg", "public/banner.jpg"]);
+    expect(selectedFile()).toBe("public/banner.jpg");
+  });
+
+  test("Duplicate copies the right-clicked file and selects the copy", async () => {
+    await mountHome();
+    rightClick(tileOf("public/media/menu.pdf"));
+    await settle();
+    await choose_("duplicate");
+    await settle(12);
+    expect(state.calls).toContainEqual([
+      "uploadFile",
+      "public/media/menu-copy.pdf",
+      expect.anything(),
+    ]);
+    expect(selectedFile()).toBe("public/media/menu-copy.pdf");
+  });
+
+  test("a backend with no raw read offers no Duplicate", async () => {
+    await mountHome();
+    delete getPlatform().readFileBytes;
+    rightClick(tileOf("public/media/menu.pdf"));
+    await settle();
+    expect(menuRows()).not.toContain("Duplicate");
   });
 
   test("an editable image's menu also offers Edit Image, which opens its Image editor", async () => {
@@ -1061,6 +1119,268 @@ describe("Replace", () => {
   });
 });
 
+describe("Rename", () => {
+  async function pressRename(file: string): Promise<void> {
+    await mountHome();
+    pointer(tileOf(file), "click");
+    await settle();
+    pointer(part("rename"), "click");
+    await settle(12);
+  }
+
+  function renames(): unknown[][] {
+    return state.calls.filter(([name]) => name === "renameFile");
+  }
+
+  function fieldOf(dialog: HTMLElement): HTMLElement & { value: string; error?: string } {
+    return dialog.querySelector("jx-textfield")!;
+  }
+
+  test("opens prefilled with the name, counting what the refactor pass will rewrite", async () => {
+    await pressRename("public/hero.jpg");
+    const dialog = topDialog()!;
+    expect(dialog.getAttribute("headline") ?? headline(dialog)).toBe("Rename");
+    expect(fieldOf(dialog).value).toBe("hero.jpg");
+    expect(dialog.textContent).toContain("2 references in 1 file will be updated automatically");
+  });
+
+  test("renames beside itself, and the selection follows the file", async () => {
+    await pressRename("public/hero.jpg");
+    await answerPromptDialog("banner.jpg");
+    await settle(12);
+    expect(renames()).toEqual([["renameFile", "public/hero.jpg", "public/banner.jpg"]]);
+    expect(topDialog()).toBeNull();
+    expect(selectedFile()).toBe("public/banner.jpg");
+    const drawn = tileFiles();
+    expect(drawn).toContain("public/banner.jpg");
+    expect(drawn).not.toContain("public/hero.jpg");
+    expect(text("detail-name")).toBe("banner.jpg");
+    expect(toasts.map((toast) => toast.message)).toContain("Renamed to banner.jpg");
+  });
+
+  test("a picture's measured size survives: a rename changes no bytes", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    recordImageSize("public/hero.jpg", 1600, 900);
+    const pending = renameMediaFile("public/hero.jpg");
+    await settle(12);
+    await answerPromptDialog("banner.jpg");
+    await pending;
+    const carried = peekMediaMeta("public/banner.jpg");
+    expect(carried?.width).toBe(1600);
+    expect(carried?.height).toBe(900);
+  });
+
+  test("the new tile takes the keyboard, which the old one took with it", async () => {
+    await pressRename("public/hero.jpg");
+    await answerPromptDialog("banner.jpg");
+    await settle(12);
+    expect(document.activeElement).toBe(tileOf("public/banner.jpg"));
+  });
+
+  test("Cancel, and the same name again, rename nothing", async () => {
+    await pressRename("public/hero.jpg");
+    await answerPromptDialog(null);
+    await settle();
+    expect(await renameUnchanged()).toBeNull();
+    expect(renames()).toEqual([]);
+    expect(selectedFile()).toBe("public/hero.jpg");
+
+    async function renameUnchanged(): Promise<string | null> {
+      const pending = renameMediaFile("public/hero.jpg");
+      await settle(12);
+      await answerPromptDialog("hero.jpg");
+      return pending;
+    }
+  });
+
+  test("a name already in the folder is refused in the field: the backend would overwrite it", async () => {
+    tree.set("public", [
+      ...(tree.get("public") ?? []),
+      { name: "logo.jpg", path: "public/logo.jpg", type: "file" },
+    ]);
+    await pressRename("public/hero.jpg");
+    const dialog = await answerPromptDialog("LOGO.jpg");
+    await settle();
+    expect(renames()).toEqual([]);
+    expect(topDialog()).toBe(dialog);
+    expect(fieldOf(dialog!).error).toBe("LOGO.jpg already exists in this folder.");
+  });
+
+  test("another format's extension is refused in the field", async () => {
+    await pressRename("public/hero.jpg");
+    const dialog = await answerPromptDialog("hero.png");
+    await settle();
+    expect(renames()).toEqual([]);
+    expect(fieldOf(dialog!).error).toContain("Keep the .jpg extension");
+  });
+
+  test("a folder it cannot read refuses the rename, rather than risk a collision", async () => {
+    await mountHome();
+    tree.delete("public/media");
+    expect(await renameMediaFile("public/media/menu.pdf")).toBeNull();
+    expect(topDialog()).toBeNull();
+    expect(renames()).toEqual([]);
+  });
+
+  test("a rename the backend refuses leaves the selection on the file", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    getPlatform().renameFile = () => Promise.reject(new Error("locked"));
+    const pending = renameMediaFile("public/hero.jpg");
+    await settle(12);
+    await answerPromptDialog("banner.jpg");
+    expect(await pending).toBeNull();
+    expect(selectedFile()).toBe("public/hero.jpg");
+  });
+
+  test("an open tab keeps its state under the new path", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    pointer(part("open-viewer"), "click");
+    const tab = workspace.tabs.get("public/hero.jpg");
+    const pending = renameMediaFile("public/hero.jpg");
+    await settle(12);
+    await answerPromptDialog("banner.jpg");
+    expect(await pending).toBe("public/banner.jpg");
+    expect(workspace.tabs.has("public/hero.jpg")).toBe(false);
+    expect(workspace.tabs.get("public/banner.jpg")).toBe(tab);
+    expect(tab?.documentPath).toBe("public/banner.jpg");
+  });
+
+  test("renaming another file from the palette leaves the selection alone", async () => {
+    await mountHome();
+    pointer(tileOf("public/media/menu.pdf"), "click");
+    await settle();
+    const pending = renameMediaFile("public/hero.jpg");
+    await settle(12);
+    await answerPromptDialog("banner.jpg");
+    await pending;
+    await settle(12);
+    expect(selectedFile()).toBe("public/media/menu.pdf");
+  });
+
+  test("a search the new name does not match is cleared, so the file stays on screen", async () => {
+    await mountHome();
+    applyMediaBrowse({ query: "hero" });
+    await settle();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    const pending = renameMediaFile("public/hero.jpg");
+    await settle(12);
+    await answerPromptDialog("banner.jpg");
+    await pending;
+    await settle(12);
+    expect(selectedFile()).toBe("public/banner.jpg");
+    expect(tileFiles()).toContain("public/media/menu.pdf");
+  });
+
+  test("a search it still matches stays", async () => {
+    await mountHome();
+    applyMediaBrowse({ query: "hero" });
+    await settle();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    const pending = renameMediaFile("public/hero.jpg");
+    await settle(12);
+    await answerPromptDialog("hero-wide.jpg");
+    await pending;
+    await settle(12);
+    expect(tileFiles()).toEqual(["public/hero-wide.jpg"]);
+  });
+
+  test("the selection follows even when no home is on screen", async () => {
+    applyMediaBrowse({ select: "public/hero.jpg" });
+    const pending = renameMediaFile("public/hero.jpg");
+    await settle(12);
+    await answerPromptDialog("banner.jpg");
+    await pending;
+    await mountHome();
+    expect(selectedFile()).toBe("public/banner.jpg");
+  });
+
+  test("a read-only collaborator is refused by name, against the file's own tab", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    pointer(part("open-viewer"), "click");
+    const collab = collabState(workspace.tabs.get("public/hero.jpg")!);
+    collab.active = true;
+    collab.readOnly = true;
+    expect(await renameMediaFile("public/hero.jpg")).toBeNull();
+    expect(topDialog()).toBeNull();
+    expect(renames()).toEqual([]);
+  });
+});
+
+describe("Duplicate", () => {
+  test("copies the file beside itself, selects the copy, and gives it the keyboard", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    pointer(part("duplicate"), "click");
+    await settle(12);
+    expect(state.calls).toContainEqual(["readFileBytes", "public/hero.jpg"]);
+    expect(state.calls).toContainEqual(["uploadFile", "public/hero-copy.jpg", expect.anything()]);
+    expect(selectedFile()).toBe("public/hero-copy.jpg");
+    expect(tileFiles()).toContain("public/hero.jpg");
+    expect(document.activeElement).toBe(tileOf("public/hero-copy.jpg"));
+  });
+
+  test("twice is two files", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    pointer(part("duplicate"), "click");
+    await settle(12);
+    expect(await duplicateMediaFile("public/hero.jpg")).toBe("public/hero-copy-1.jpg");
+  });
+
+  test("is withheld on a backend with no raw read", async () => {
+    delete getPlatform().readFileBytes;
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    expect(stage.querySelector('[part="duplicate"]')).toBeNull();
+    expect(stage.querySelector('[part="rename"]')).not.toBeNull();
+  });
+
+  test("a failed copy leaves the selection on the original", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    getPlatform().readFileBytes = () => Promise.reject(new Error("gone"));
+    expect(await duplicateMediaFile("public/hero.jpg")).toBeNull();
+    expect(selectedFile()).toBe("public/hero.jpg");
+  });
+
+  test("a read-only collaborator is refused, and nothing is read", async () => {
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    pointer(part("open-viewer"), "click");
+    const collab = collabState(workspace.tabs.get("public/hero.jpg")!);
+    collab.active = true;
+    collab.readOnly = true;
+    // Opening the viewer read the bytes (the tab asks whether the editor may stay): only count after.
+    state.calls.length = 0;
+    expect(await duplicateMediaFile("public/hero.jpg")).toBeNull();
+    expect(state.calls.filter(([name]) => name === "readFileBytes")).toEqual([]);
+  });
+
+  test("clears a search the copy's name does not match", async () => {
+    await mountHome();
+    applyMediaBrowse({ query: "hero.jpg" });
+    await settle();
+    expect(await duplicateMediaFile("public/hero.jpg")).toBe("public/hero-copy.jpg");
+    await settle(12);
+    expect(selectedFile()).toBe("public/hero-copy.jpg");
+  });
+});
+
 describe("Delete", () => {
   test("asks first, stating the usage, and deletes only on Delete", async () => {
     await mountHome();
@@ -1257,7 +1577,6 @@ describe("Unused", () => {
    */
   async function holdFirstQuestion(): Promise<{ asked: string[]; release: () => void }> {
     install();
-    const { getPlatform } = await import("../src/platform");
     const original = getPlatform().findReferences!;
     const asked: string[] = [];
     let release: () => void = () => {};

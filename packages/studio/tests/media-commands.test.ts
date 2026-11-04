@@ -20,6 +20,14 @@ void mock.module("../src/media/media-library.ts", () => ({
     calls.push(["delete", path]);
     return deleted;
   },
+  duplicateMediaFile: async (path: string) => {
+    calls.push(["duplicate", path]);
+    return null;
+  },
+  renameMediaFile: async (path: string) => {
+    calls.push(["rename", path]);
+    return null;
+  },
   requestMediaReplace: (path: string) => calls.push(["replace", path]),
   requestMediaUpload: () => calls.push(["upload"]),
 }));
@@ -33,7 +41,9 @@ void mock.module("../src/media/media-open.ts", () => ({
 const {
   MEDIA_BROWSE,
   MEDIA_DELETE,
+  MEDIA_DUPLICATE,
   MEDIA_EDIT,
+  MEDIA_RENAME,
   MEDIA_REPLACE,
   MEDIA_UPLOAD,
   mediaCommands,
@@ -69,13 +79,15 @@ beforeEach(() => {
 });
 
 describe("the records", () => {
-  test("are five project-level palette records with schemas where they take arguments", () => {
+  test("are seven project-level palette records with schemas where they take arguments", () => {
     const records = mediaCommands();
     expect(records.map((record) => record.id)).toEqual([
       MEDIA_BROWSE,
       MEDIA_UPLOAD,
       MEDIA_REPLACE,
       MEDIA_EDIT,
+      MEDIA_RENAME,
+      MEDIA_DUPLICATE,
       MEDIA_DELETE,
     ]);
     for (const record of records) {
@@ -92,10 +104,12 @@ describe("the records", () => {
     expect(records[2]?.args?.required).toEqual(["path"]);
     expect(records[3]?.args?.required).toEqual(["path"]);
     expect(records[4]?.args?.required).toEqual(["path"]);
+    expect(records[5]?.args?.required).toEqual(["path"]);
+    expect(records[6]?.args?.required).toEqual(["path"]);
     // Delete is the one danger row: styled as one and ordered last, like every other delete verb.
-    expect(records[4]?.destructive).toBe(true);
-    expect(records[4]?.group).toBe("9_danger");
-    expect(records.slice(0, 4).every((record) => record.destructive !== true)).toBe(true);
+    expect(records[6]?.destructive).toBe(true);
+    expect(records[6]?.group).toBe("9_danger");
+    expect(records.slice(0, 6).every((record) => record.destructive !== true)).toBe(true);
     // Gated on an open project, and only on that.
     expect(browse.when?.(emptyContext())).toBe(false);
   });
@@ -156,6 +170,36 @@ describe("media.upload, media.replace, media.delete", () => {
       'command "media.replace": "project.json" is not a media file',
     );
     expect(await refusal(MEDIA_DELETE, { path: "notes.md" })).toContain("is not a media file");
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("media.rename, media.duplicate", () => {
+  test("rename goes through the flow's dialog, and opens nothing", async () => {
+    await run(MEDIA_RENAME, { path: "./public/hero.jpg" });
+    expect(calls).toEqual([["rename", "public/hero.jpg"]]);
+  });
+
+  test("duplicate goes through the flow, and opens nothing", async () => {
+    await run(MEDIA_DUPLICATE, { path: "./public/hero.jpg" });
+    expect(calls).toEqual([["duplicate", "public/hero.jpg"]]);
+  });
+
+  test("duplicate is offered only on a host that can read a file's raw bytes", () => {
+    const duplicate = mediaCommands().find((record) => record.id === MEDIA_DUPLICATE)!;
+    expect(duplicate.when?.(makeContext({ project: { open: true } }))).toBe(false);
+    expect(
+      duplicate.when?.(
+        makeContext({ capability: { readFileBytes: true }, project: { open: true } }),
+      ),
+    ).toBe(true);
+  });
+
+  test("a path that is not media is refused by name", async () => {
+    expect(await refusal(MEDIA_RENAME, { path: "project.json" })).toContain(
+      'command "media.rename": "project.json" is not a media file',
+    );
+    expect(await refusal(MEDIA_DUPLICATE, { path: "notes.md" })).toContain("is not a media file");
     expect(calls).toEqual([]);
   });
 });

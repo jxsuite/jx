@@ -6,6 +6,8 @@
  *   arrived, and what a script or the palette runs to ask "what is unused".
  * - `media.upload` shows the Media home and opens its Upload picker.
  * - `media.replace { path }` selects a file and opens its Replace picker: the one overwrite.
+ * - `media.rename { path }` renames a file, through the dialog that counts what will be rewritten.
+ * - `media.duplicate { path }` copies a file to a new name beside it, and selects the copy.
  * - `media.delete { path }` deletes a file, through the confirmation that states its usage.
  * - `media.edit { path }` opens an image in its Image editor (§9.5), the only way that mode is
  *   entered by a verb.
@@ -40,6 +42,8 @@ import type * as WorkspaceHomeModule from "../workspace/workspace-home";
 export const MEDIA_BROWSE = "media.browse";
 export const MEDIA_UPLOAD = "media.upload";
 export const MEDIA_REPLACE = "media.replace";
+export const MEDIA_RENAME = "media.rename";
+export const MEDIA_DUPLICATE = "media.duplicate";
 export const MEDIA_DELETE = "media.delete";
 export const MEDIA_EDIT = "media.edit";
 
@@ -101,7 +105,7 @@ async function showHome(): Promise<void> {
 
 const PATH_DESCRIPTION = "The media file's project path, such as public/media/hero.jpg.";
 
-/** The five records. */
+/** The seven records. */
 export function mediaCommands(): AnyCommand[] {
   const base = {
     category: "Project",
@@ -182,6 +186,36 @@ export function mediaCommands(): AnyCommand[] {
       undo: "none",
       /* Not gated on `collab.readOnly`: that is the FOCUSED tab's session, and this record takes a
          path that may be another file. The refusal asks the path's own tab, in the flow. */
+      when: (ctx) => ctx.project.open && ctx.capability.readFileBytes,
+    },
+    {
+      ...base,
+      args: argsSchema({ path: stringProperty(`The file to rename. ${PATH_DESCRIPTION}`) }, [
+        "path",
+      ]),
+      icon: "pencil-simple",
+      id: MEDIA_RENAME,
+      run: async (_ctx, args) => {
+        const path = mediaPathArg(MEDIA_RENAME, args, "path");
+        const flow = await library();
+        await flow.renameMediaFile(path);
+      },
+      title: "Rename Media File…",
+      undo: "none",
+    },
+    {
+      ...base,
+      args: argsSchema({ path: stringProperty(`The file to copy. ${PATH_DESCRIPTION}`) }, ["path"]),
+      icon: "copy",
+      id: MEDIA_DUPLICATE,
+      requires: "an open project, on a backend that can read a file's raw bytes",
+      run: async (_ctx, args) => {
+        const path = mediaPathArg(MEDIA_DUPLICATE, args, "path");
+        const flow = await library();
+        await flow.duplicateMediaFile(path);
+      },
+      title: "Duplicate Media File",
+      undo: "none",
       when: (ctx) => ctx.project.open && ctx.capability.readFileBytes,
     },
     {

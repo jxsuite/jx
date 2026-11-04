@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioMediaLibrary",
-  "$description": "The Media workspace's library (`specs/studio.md` §22.6): the project's media as filters, a grid and the selected file's detail. ONE document in two modes. In `manage` it is the Media home tab, with Replace, Open in viewer and Delete under the detail; in `pick` it is the full-size picker inside a `jx-dialog` (`media-pick-dialog.json`), and the dialog's own footer answers Cancel or Use <file>. `media/media-library.ts` keeps every decision (which files a filter keeps, the sort, what a count may claim, where an arrow lands, what Replace writes) and hands this document strings and discriminants. **Unused is drawn with no number until the usage sweep has settled**, and Missing alt text and tags are not drawn at all: each needs a store that does not exist, and a filter that cannot be answered is not shipped as one that always answers nothing.",
+  "$description": "The Media workspace's library (`specs/studio.md` §22.6): the project's media as filters, a grid and the selected file's detail. ONE document in two modes. In `manage` it is the Media home tab, with Replace, Open in viewer, Rename, Duplicate and Delete under the detail; in `pick` it is the full-size picker inside a `jx-dialog` (`media-pick-dialog.json`), and the dialog's own footer answers Cancel or Use <file>. `media/media-library.ts` keeps every decision (which files a filter keeps, the sort, what a count may claim, where an arrow lands, what Replace writes) and hands this document strings and discriminants. **Unused is drawn with no number until the usage sweep has settled**, and Missing alt text and tags are not drawn at all: each needs a store that does not exist, and a filter that cannot be answered is not shipped as one that always answers nothing.",
   "tagName": "div",
   "attributes": {
     "part": "media-library",
@@ -1617,6 +1617,84 @@
                                 {
                                   "tagName": "span",
                                   "textContent": "Edit image"
+                                }
+                              ]
+                            },
+                            "no": {
+                              "tagName": "span",
+                              "attributes": {
+                                "hidden": true
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "rename"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "secondary"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/rename"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Rename"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "duplicate-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/duplicable"
+                          },
+                          "cases": {
+                            "yes": {
+                              "tagName": "jx-button",
+                              "attributes": {
+                                "part": "duplicate"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "variant": "secondary"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/duplicate"
+                                    },
+                                    "value": []
+                                  }
+                                ],
+                                "description": "Withheld, not disabled, on a backend that cannot read a file's raw bytes: a copy read as text would be a broken file (studio.md §9.3)."
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "Duplicate"
                                 }
                               ]
                             },
