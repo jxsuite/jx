@@ -12,6 +12,11 @@ import type { CommandRegistry } from "../src/commands/registry";
 import type { DirEntry } from "../src/types";
 
 void mock.module("../src/files/files.js", () => ({
+  commitRename: () => Promise.resolve({ from: "", ok: true, to: "" }),
+  listRenameSiblings: () => Promise.resolve(new Set<string>()),
+  notifyMoveOutcome: () => {},
+  parentDirOf: () => ".",
+  renameStatus: () => "",
   loadDirectory: () => Promise.resolve(),
   openFileInTab: () => Promise.resolve(),
 }));

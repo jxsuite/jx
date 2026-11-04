@@ -2,11 +2,13 @@
  * Watcher.ts — a small chokidar wrapper that emits coalesced, batched FS-event payloads to a sink.
  *
  * Used by the desktop project session (which has no SSE stream) to push filesystem changes to its
- * webview over RPC. The dev server keeps its own watcher in watch.ts (intertwined with
- * build/reload); both share the pure `toFsEvent`/`coalesceFsEvents` helpers.
+ * webview over RPC, and by the dev server for an active project its own watcher in watch.ts
+ * (intertwined with build/reload) cannot see. Both share the pure `toFsEvent`/`coalesceFsEvents`
+ * helpers.
  */
 
 import { watch } from "chokidar";
+import { relative } from "node:path";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { coalesceFsEvents, toFsEvent } from "./fs-events.ts";
 import { invalidateReferenceCache } from "./find-refs.ts";
@@ -15,8 +17,14 @@ import type { FsEventPayload } from "./fs-events.ts";
 
 const IGNORE_SEGMENTS = ["node_modules", ".git", "dist", ".jx", ".direnv", ".devenv"];
 
-function isIgnored(path: string): boolean {
-  const f = path.replaceAll("\\", "/");
+/**
+ * Whether a path below `root` is one of the folders no project wants events for.
+ *
+ * Judged from the root down, because what lies above it says nothing about the project: read whole,
+ * a project at `~/dist/site` or `~/sites/.jx/site` would have every entry in it ignored.
+ */
+function isIgnored(root: string, path: string): boolean {
+  const f = `/${relative(root, path).replaceAll("\\", "/")}`;
   return IGNORE_SEGMENTS.some((s) => f.includes(`/${s}/`) || f.endsWith(`/${s}`));
 }
 
@@ -45,7 +53,7 @@ export function createFsWatcher(
     followSymlinks: true,
     ignoreInitial: true,
     ignorePermissionErrors: true,
-    ignored: createWatchIgnore(root, isIgnored),
+    ignored: createWatchIgnore(root, (path) => isIgnored(root, path)),
   });
 
   watcher.on("all", (eventType, changedPath) => {

@@ -33,6 +33,31 @@ describe("createFsWatcher", () => {
     }
   });
 
+  test("judges a folder from the project down, so a project inside `dist` still has events", async () => {
+    const project = join(FIXTURES, "dist", "site");
+    mkdirSync(join(project, "dist"), { recursive: true });
+    const seen: string[] = [];
+    const handle = createFsWatcher(project, (events) => seen.push(...events.map((e) => e.path)), {
+      debounce: 20,
+    });
+    try {
+      await sleep(150);
+      writeFileSync(join(project, "dist", "built.js"), "x");
+      writeFileSync(join(project, "note.json"), "{}");
+
+      const start = Date.now();
+      while (!seen.includes("note.json") && Date.now() - start < 3000) {
+        await sleep(25);
+      }
+      expect(seen).toContain("note.json");
+      // The project's own `dist` is still the build output nobody wants events for.
+      expect(seen).not.toContain("dist/built.js");
+    } finally {
+      await handle.close();
+      rmSync(FIXTURES, { force: true, recursive: true });
+    }
+  });
+
   test("close() is safe to call before any event fires", async () => {
     mkdirSync(FIXTURES, { recursive: true });
     const handle = createFsWatcher(FIXTURES, () => {});

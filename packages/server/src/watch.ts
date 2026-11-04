@@ -81,10 +81,12 @@ export function injectSSE(html: string) {
  *   debounce?: number;
  *   reloadOnAnyChange?: boolean;
  *   preReload?: (filename: string) => Promise<void> | void;
+ *   eventPath?: (path: string) => string;
  * }} [opts]
  * @returns {{
  *   broadcast: () => void;
  *   handleSSE: (request?: Request) => Response;
+ *   sees: (path: string) => boolean;
  *   watcher: import("chokidar").FSWatcher;
  * }}
  */
@@ -97,6 +99,8 @@ export function createWatcher(
     reloadOnAnyChange?: boolean;
     /** Runs before the reload broadcast — e.g. `jx dev` rebuilds the site here. */
     preReload?: (filename: string) => Promise<void> | void;
+    /** How an `fs` event names a root-relative path on the wire. Unchanged by default. */
+    eventPath?: (path: string) => string;
   } = {},
 ) {
   const ignore = opts.ignore ?? DEFAULT_IGNORE;
@@ -129,9 +133,11 @@ export function createWatcher(
       return;
     }
 
-    // The usage query's cache is invalidated by the filesystem, never by a timer — a delete
-    // Confirmation that says "used on 7 pages" must be answering about the tree as it is now.
-    invalidateReferenceCache(root);
+    /* The usage query's cache is invalidated by the filesystem, never by a timer: a delete
+       confirmation that says "used on 7 pages" must be answering about the tree as it is now. All
+       of it, not this root's: the answers are filed under the ACTIVE PROJECT, which is usually a
+       folder below the server root this watcher is on, and a sweep costs less than a wrong count. */
+    invalidateReferenceCache();
 
     // Structured FS events for the studio sidebar (coalesced + batched), emitted as a named "fs"
     // SSE event so the preview iframe ignores them while the studio shell subscribes to them.
@@ -141,7 +147,12 @@ export function createWatcher(
       clearTimeout(fsTimer ?? undefined);
       fsTimer = setTimeout(() => {
         if (fsBuffer.length > 0) {
-          broadcastEvent("fs", { events: fsBuffer });
+          const { eventPath } = opts;
+          broadcastEvent("fs", {
+            events: eventPath
+              ? fsBuffer.map((event) => ({ ...event, path: eventPath(event.path) }))
+              : fsBuffer,
+          });
           fsBuffer = [];
         }
       }, fsDebounceMs);
@@ -183,5 +194,9 @@ export function createWatcher(
     console.error("[watch] chokidar error:", message ?? err);
   });
 
-  return { broadcast, broadcastEvent, handleSSE, watcher };
+  /* Whether an absolute path below `root` is one this watcher reports, by the rule it hands chokidar
+     above. Lets the server tell which active project it has to watch separately. */
+  const sees = (path: string) => !shouldIgnore(path, ignore);
+
+  return { broadcast, broadcastEvent, handleSSE, sees, watcher };
 }

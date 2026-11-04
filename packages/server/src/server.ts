@@ -17,6 +17,8 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { buildAll } from "./build.ts";
 import { createCollabRegistry } from "./collab.ts";
 import { createWatcher, injectSSE } from "./watch.ts";
+import { invalidateReferenceCache } from "./refactor/find-refs.ts";
+import { createFsWatcher } from "./refactor/watcher.ts";
 import { handleJxMounts } from "./jx-mounts.ts";
 import {
   handleResolve,
@@ -122,15 +124,39 @@ export async function createDevServer(options: {
     await buildAll(builds);
   }
 
+  // Active studio project root (set via /__studio/activate, used for static file fallback)
+  let activeProjectRoot: string | null = null;
+  let activeProjectWatcher: ReturnType<typeof createFsWatcher> | null = null;
+
+  /** The active project as the Studio that activated it spells it, which its `fs` filter compares. */
+  let activeProjectSpelling = "";
+
+  /**
+   * A root-relative path inside the active project, as that project's Studio looks for it.
+   *
+   * Studio keeps and activates a project by whatever it was opened with, usually an absolute path,
+   * and drops an `fs` event that does not start with it. The root watcher's own paths are relative
+   * to the server root, so read as they stand they reach no Studio holding an absolute root.
+   */
+  const spelledForStudio = (path: string): string => {
+    if (activeProjectRoot === null) {
+      return path;
+    }
+    const inside = relative(activeProjectRoot, resolve(absRoot, path)).replaceAll("\\", "/");
+    const outside = inside === "" || inside === ".." || inside.startsWith("../");
+    return outside || isAbsolute(inside) ? path : `${activeProjectSpelling}/${inside}`;
+  };
+
   // ─── File watcher + SSE ─────────────────────────────────────────────────────
 
   let handleSSE = null;
+  let rootWatcher: ReturnType<typeof createWatcher> | null = null;
   let fsWatcher: ReturnType<typeof createWatcher>["watcher"] | null = null;
   if (watch !== false) {
     const watchOpts = watch === true ? {} : watch;
-    const watcher = createWatcher(absRoot, builds, watchOpts);
-    ({ handleSSE } = watcher);
-    fsWatcher = watcher.watcher;
+    rootWatcher = createWatcher(absRoot, builds, { eventPath: spelledForStudio, ...watchOpts });
+    ({ handleSSE } = rootWatcher);
+    fsWatcher = rootWatcher.watcher;
   }
 
   // Bundle cache for npm packages (bare specifier → bundled JS)
@@ -155,8 +181,38 @@ export async function createDevServer(options: {
     });
   };
 
-  // Active studio project root (set via /__studio/activate, used for static file fallback)
-  let activeProjectRoot: string | null = null;
+  /**
+   * Watch the project being activated, when the server's own watcher cannot see it.
+   *
+   * `allowedRoots` and a project of the account's own can both lie outside the server root, and a
+   * project in a folder the root watcher ignores (`.cache`, `dist`) is below it and just as unseen.
+   * The usage cache is invalidated by the filesystem and the Files panel is kept current by it, so
+   * a project nothing watches would answer from its first sweep and show its first listing for the
+   * rest of the session. `createFsWatcher` drops the project's usage answers itself, and its events
+   * reach Studio over the same stream as the root watcher's, under the prefix that Studio filters
+   * on.
+   *
+   * Dropped here as well, since the project may have changed while it was not the active one.
+   */
+  async function watchActiveProject(next: string | null): Promise<void> {
+    await activeProjectWatcher?.close();
+    activeProjectWatcher = null;
+    if (next === null || rootWatcher === null) {
+      return;
+    }
+    invalidateReferenceCache(next);
+    const { broadcastEvent, sees } = rootWatcher;
+    if (containedPath(next, absRoot) === null || !sees(next)) {
+      activeProjectWatcher = createFsWatcher(next, (events) => {
+        broadcastEvent("fs", {
+          events: events.map((event) => ({
+            ...event,
+            path: `${activeProjectSpelling}/${event.path}`,
+          })),
+        });
+      });
+    }
+  }
 
   // ─── Realtime co-editing (/__studio/collab) ─────────────────────────────────
 
@@ -280,6 +336,7 @@ export async function createDevServer(options: {
           const raw = body.root || null;
           if (!raw) {
             activeProjectRoot = null;
+            await watchActiveProject(null);
             return Response.json({ ok: true, root: null });
           }
           const requested = resolve(absRoot, raw);
@@ -292,6 +349,10 @@ export async function createDevServer(options: {
             // `ok: false` rides along as an extension member: the Studio client branches on it,
             // And RFC 9457 §3.2 exists precisely so a problem can carry what a type documents.
             return problem("forbidden", "root not permitted", { ok: false });
+          }
+          activeProjectSpelling = raw.replaceAll("\\", "/").replace(/\/+$/, "");
+          if (requested !== activeProjectRoot) {
+            await watchActiveProject(requested);
           }
           activeProjectRoot = requested;
           return Response.json({ ok: true, root: activeProjectRoot });
