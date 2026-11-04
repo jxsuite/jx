@@ -16,10 +16,12 @@
  * genuinely needs a filesystem: the walk, the `$layout` peek, and `$paths` expansion.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage, parseJxDocument } from "@jxsuite/schema/parse";
 import { compareRoutes, fileToRoute as routeFromFileName } from "@jxsuite/site/routes";
+import { pageCount, pageSlice, pageUrl, pagedSource, pagination } from "@jxsuite/site/pagination";
+import type { PagePagination, PagedSource } from "@jxsuite/site/pagination";
 import { extname, join, relative, resolve } from "node:path";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type {
@@ -31,6 +33,8 @@ import type { JsonValue, JxDocument, JxPathsDef, ProjectConfig } from "@jxsuite/
 import { localeOfRoute } from "./i18n.ts";
 import type { ResolvedI18n } from "./i18n.ts";
 import type { ProjectSections } from "./project-sections.ts";
+import { nodeImportRebaser } from "./context-injection.ts";
+import { resolvePrototypes } from "./prototype-resolver.ts";
 
 interface Route {
   urlPattern: string; // URL pattern (e.g. "/blog/:slug")
@@ -48,6 +52,19 @@ interface Route {
    * mtime and the whole collection looks edited whenever the template is.
    */
   sourceMtime?: string;
+  /** Set on a page of a paged list (site-architecture.md §4.3); becomes `$page.pagination`. */
+  pagination?: PagePagination;
+  /**
+   * The page's slice of a paged list, seeded into `state` before prototypes resolve, so the list is
+   * resolved once while the route is expanded and not again for every page.
+   */
+  pagedState?: { key: string; items: JsonValue[] };
+}
+
+/** Where `expandDynamicRoutes` reports a page it cannot expand. */
+export interface ExpandOptions {
+  /** Collects one message per misconfigured route; without it the first one throws. */
+  errors?: string[];
 }
 
 /**
@@ -346,8 +363,16 @@ export async function expandDynamicRoutes(
   registry?: ExtensionRegistry,
   projectConfig?: ProjectConfig,
   i18n?: ResolvedI18n | null,
+  options: ExpandOptions = {},
 ) {
   const expanded: Route[] = [];
+  const report = (route: Route, message: string): void => {
+    const text = `Dynamic route ${route.urlPattern}: ${message}`;
+    if (options.errors === undefined) {
+      throw new Error(text);
+    }
+    options.errors.push(text);
+  };
   /**
    * Every dynamic page's pattern, so an extension can tell a route no page produces from one a
    * different page does.
@@ -371,6 +396,43 @@ export async function expandDynamicRoutes(
 
     if (!raw.$paths) {
       console.warn(`Warning: dynamic route ${route.urlPattern} has no $paths — skipping`);
+      continue;
+    }
+
+    let paged: PagedSource | null;
+    try {
+      paged = pagedSource(raw.$paths);
+    } catch (error) {
+      report(route, errorMessage(error));
+      continue;
+    }
+    if (paged !== null) {
+      const locale = localeOfRoute(route.urlPattern, i18n ?? null);
+      const each =
+        paged.each === undefined
+          ? [{}]
+          : await resolvePathEntries(
+              // SAFETY: `pagedSource` proved `each` an object or an array, the two `$paths` forms.
+              paged.each as JxPathsDef,
+              projectRoot,
+              sections,
+              registry,
+              projectConfig,
+              locale,
+              route,
+              dynamicPatterns,
+            );
+      for (const outer of each) {
+        const pages = await expandPagedRoute(route, raw, paged, outer, {
+          locale,
+          projectConfig,
+          projectRoot,
+          registry,
+          report,
+          sections,
+        });
+        expanded.push(...pages);
+      }
       continue;
     }
 
@@ -431,6 +493,166 @@ export async function expandDynamicRoutes(
   }
 
   return expanded;
+}
+
+/** What {@link expandPagedRoute} needs from the expansion around it. */
+interface PagedContext {
+  locale: string | null;
+  projectConfig: ProjectConfig | undefined;
+  projectRoot: string;
+  registry: ExtensionRegistry | undefined;
+  report: (route: Route, message: string) => void;
+  sections: ProjectSections;
+}
+
+/**
+ * A route pattern with the given parameters substituted: a named one replaces its `:name`, and the
+ * one the pattern does not name is the catch-all's `*`.
+ */
+function substitute(urlPattern: string, params: Record<string, string>): string {
+  let url = urlPattern;
+  for (const [name, value] of Object.entries(params)) {
+    const named = new RegExp(`:${name.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)}(?=/|$)`);
+    url = named.test(url) ? url.replace(named, () => value) : url.replace("*", () => value);
+  }
+  return url;
+}
+
+/**
+ * The pages of one paged list: the route's other parameters fixed by `outer` (one value of its
+ * `each` source, or none), the page number filling the one parameter left.
+ *
+ * @param {Route} route - The dynamic page
+ * @param {JxDocument} raw - Its document
+ * @param {PagedSource} paged - Its `$paths`
+ * @param {PathParams} outer - The parameters `each` gave this list
+ * @param {PagedContext} ctx
+ * @returns {Promise<Route[]>} One concrete route per page; none when the source is misconfigured,
+ *   which is reported
+ */
+async function expandPagedRoute(
+  route: Route,
+  raw: JxDocument,
+  paged: PagedSource,
+  outer: PathParams,
+  ctx: PagedContext,
+): Promise<Route[]> {
+  const fixed: Record<string, string> = {};
+  for (const [name, value] of Object.entries(outer)) {
+    if (name !== PATH_ENTRY_META) {
+      fixed[name] = String(value);
+    }
+  }
+  const left = route.params.filter((name) => !(name in fixed));
+  if (left.length !== 1) {
+    ctx.report(
+      route,
+      `a paged route takes exactly one parameter besides those its each source fills; ` +
+        `this one has ${left.length}`,
+    );
+    return [];
+  }
+  /* SAFETY: `left` was just proved to hold exactly one name. */
+  const pageParam = left[0] as string;
+  if (raw.state?.[paged.key] === undefined) {
+    ctx.report(
+      route,
+      `$paths.paginate names state entry "${paged.key}", which this page does not declare`,
+    );
+    return [];
+  }
+  const listPattern = substitute(route.urlPattern, fixed);
+  const escapes = traversalIn(listPattern);
+  if (escapes !== null) {
+    console.warn(
+      `Warning: $paths for ${route.urlPattern} produced "${listPattern}", which ${escapes}; skipping it`,
+    );
+    return [];
+  }
+  const items = await resolvePagedEntry(raw, paged.key, route, fixed, ctx);
+  if (!Array.isArray(items)) {
+    ctx.report(route, `state entry "${paged.key}" did not resolve to an array at build time`);
+    return [];
+  }
+  const newest = newestItemMtime(items, route.sourcePath);
+  const count = pageCount(items.length, paged.pageSize);
+  const pages: Route[] = [];
+  for (let number = 1; number <= count; number++) {
+    const concrete: Route = {
+      ...route,
+      _pathParams: { ...fixed, [pageParam]: String(number) },
+      isCatchAll: false,
+      isDynamic: false,
+      pagedState: { items: pageSlice(items, number, paged.pageSize), key: paged.key },
+      pagination: pagination(listPattern, number, paged.pageSize, items.length),
+      params: [],
+      urlPattern: pageUrl(listPattern, number),
+    };
+    if (newest !== null) {
+      concrete.sourceMtime = newest;
+    }
+    pages.push(concrete);
+  }
+  return pages;
+}
+
+/**
+ * The newest `_meta.mtime` of the list's items when it is later than the template's own, kept as
+ * the item wrote it; null otherwise. One new or edited entry can move every page, so every page is
+ * dated by the newest of them (§8.4.1).
+ */
+function newestItemMtime(items: readonly JsonValue[], sourcePath: string): string | null {
+  let newest: string | null = null;
+  let newestTime = statSync(sourcePath).mtime.getTime();
+  for (const item of items) {
+    const meta = isJsonObject(item) ? item[PATH_ENTRY_META] : undefined;
+    const mtime = isJsonObject(meta) ? meta.mtime : undefined;
+    if (isString(mtime) && Date.parse(mtime) > newestTime) {
+      newestTime = Date.parse(mtime);
+      newest = mtime;
+    }
+  }
+  return newest;
+}
+
+/**
+ * The paged entry as the build resolves it for the route `fixed` names: a literal array as it is, a
+ * class entry through {@link resolvePrototypes} over a document holding that entry alone and the
+ * page's imports merged with the project's (rebased as the page's own would be). Only the entry is
+ * resolved, so a filter in it may read the route's parameters but not the page's other state.
+ */
+async function resolvePagedEntry(
+  raw: JxDocument,
+  key: string,
+  route: Route,
+  fixed: Record<string, string>,
+  ctx: PagedContext,
+): Promise<JsonValue | undefined> {
+  const def = raw.state?.[key];
+  if (def === undefined || Array.isArray(def)) {
+    return def;
+  }
+  const imports: Record<string, string> = {};
+  const rebase = nodeImportRebaser(ctx.projectRoot);
+  for (const [name, src] of Object.entries(ctx.projectConfig?.imports ?? {})) {
+    imports[name] = src.startsWith("./") || src.startsWith("../") ? rebase(src, route) : src;
+  }
+  Object.assign(imports, raw.imports);
+  const mini: JxDocument = { imports, state: { [key]: structuredClone(def) } };
+  const pageRoute = {
+    _pathParams: fixed,
+    locale: ctx.locale,
+    sourcePath: route.sourcePath,
+    urlPattern: substitute(route.urlPattern, fixed),
+  };
+  await resolvePrototypes(mini, pageRoute, ctx.projectRoot, {
+    ...(ctx.projectConfig && { config: ctx.projectConfig }),
+    ...(ctx.registry && { registry: ctx.registry }),
+    sections: ctx.sections,
+  });
+  /* SAFETY: a resolved class entry is the JSON its `resolve()` answered with, and an unresolved
+     one is the definition object, which the caller rejects as not an array. */
+  return mini.state?.[key] as JsonValue | undefined;
 }
 
 /**

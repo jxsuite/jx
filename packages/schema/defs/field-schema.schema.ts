@@ -62,10 +62,12 @@ export const relationshipRefSchema = {
  * ones every per-project entry document unions extension shapes on top of.
  *
  * These mirror `resolvePathEntries` in the compiler's pages-discovery exactly (specs/
- * site-architecture.md §4.3): an explicit value list, a JSON data-file reference, and the legacy
- * bare array of parameter objects. Anything else is dispatched by discriminator key to an
- * extension's `resolvePaths` capability, so extension shapes reach the union through the entry
- * document rather than from here.
+ * site-architecture.md §4.3): an explicit value list, a JSON data-file reference, a paged list, and
+ * the legacy bare array of parameter objects. Anything else is dispatched by discriminator key to
+ * an extension's `resolvePaths` capability, so extension shapes reach the union through the entry
+ * document rather than from here. The paged list is expanded by `expandDynamicRoutes` itself rather
+ * than `resolvePathEntries`, because it reads the page's own state; its `each` holds another source
+ * of this union (or an extension's), checked when the route expands.
  *
  * Each shape is CLOSED (`additionalProperties: false`). `$paths` is a build-time instruction with a
  * fully specified grammar and no forward-compatible extension points of its own — a stray or
@@ -101,6 +103,37 @@ export const documentPathsCoreMembers = [
       param: { description: 'Route parameter to fill (default "id").', type: "string" },
     },
     required: ["$ref"],
+    type: "object",
+  },
+  {
+    additionalProperties: false,
+    description:
+      "Paged list: one route per `pageSize` items of an entry of this page's own state, which must " +
+      "resolve to an array at build time. The page number fills the route's one parameter that " +
+      "`each` does not.",
+    properties: {
+      each: {
+        description:
+          "Another `$paths` source for the route's other parameter: the list is paged once per " +
+          "value of it, as a paged archive per tag is.",
+        type: ["object", "array"],
+      },
+      pageSize: { description: "Items on each page.", minimum: 1, type: "integer" },
+      paginate: {
+        additionalProperties: false,
+        description: "The state entry to page.",
+        properties: {
+          $ref: {
+            description: "A pointer to an entry of this page's state: `#/state/<key>`.",
+            pattern: "^#/state/[^/]+$",
+            type: "string",
+          },
+        },
+        required: ["$ref"],
+        type: "object",
+      },
+    },
+    required: ["paginate", "pageSize"],
     type: "object",
   },
   {

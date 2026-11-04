@@ -17,6 +17,7 @@
     "./context": "./src/context.ts",
     "./head-merger": "./src/head-merger.ts",
     "./layout": "./src/layout.ts",
+    "./pagination": "./src/pagination.ts",
     "./paths": "./src/paths.ts",
     "./routes": "./src/routes.ts",
     "./serve": "./src/serve.ts",

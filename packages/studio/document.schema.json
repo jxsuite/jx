@@ -44,6 +44,44 @@
           "type": "object"
         },
         {
+          "additionalProperties": false,
+          "description": "Paged list: one route per `pageSize` items of an entry of this page's own state, which must resolve to an array at build time. The page number fills the route's one parameter that `each` does not.",
+          "properties": {
+            "each": {
+              "description": "Another `$paths` source for the route's other parameter: the list is paged once per value of it, as a paged archive per tag is.",
+              "type": [
+                "object",
+                "array"
+              ]
+            },
+            "pageSize": {
+              "description": "Items on each page.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "paginate": {
+              "additionalProperties": false,
+              "description": "The state entry to page.",
+              "properties": {
+                "$ref": {
+                  "description": "A pointer to an entry of this page's state: `#/state/<key>`.",
+                  "pattern": "^#/state/[^/]+$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "$ref"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "paginate",
+            "pageSize"
+          ],
+          "type": "object"
+        },
+        {
           "description": "Legacy explicit form: an array of ready-made parameter objects, used as-is with no expansion. Prefer one of the source shapes above.",
           "items": {
             "additionalProperties": {
@@ -28404,6 +28442,44 @@
               },
               "required": [
                 "$ref"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Paged list: one route per `pageSize` items of an entry of this page's own state, which must resolve to an array at build time. The page number fills the route's one parameter that `each` does not.",
+              "properties": {
+                "each": {
+                  "description": "Another `$paths` source for the route's other parameter: the list is paged once per value of it, as a paged archive per tag is.",
+                  "type": [
+                    "object",
+                    "array"
+                  ]
+                },
+                "pageSize": {
+                  "description": "Items on each page.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "paginate": {
+                  "additionalProperties": false,
+                  "description": "The state entry to page.",
+                  "properties": {
+                    "$ref": {
+                      "description": "A pointer to an entry of this page's state: `#/state/<key>`.",
+                      "pattern": "^#/state/[^/]+$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "$ref"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "paginate",
+                "pageSize"
               ],
               "type": "object"
             },

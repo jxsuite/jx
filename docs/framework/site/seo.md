@@ -171,7 +171,7 @@ When `url` is set in `project.json`, the build emits `dist/sitemap.xml` from the
 - `<loc>`: absolute, built from `url` + the route as `build.trailingSlash` serves it, identical to the page's canonical URL, folder included
 - `<lastmod>`: a full timestamp (`2025-03-04T16:00:00Z`), taken from the page source file, or from the content entry when the page was generated from one
 
-Dynamic routes appear as their expanded concrete URLs, each dated by **its own content entry** rather than by the `[slug]` template. That matters more than it sounds: you edit a template far more often than the posts under it, and dating by the template made every post in an archive announce itself as changed each time, the opposite of what `<lastmod>` is for. A route with no entry behind it (an authored page, or a `$paths` listing plain values) is still dated by its own file.
+Dynamic routes appear as their expanded concrete URLs, each dated by **its own content entry** rather than by the `[slug]` template. That matters more than it sounds: you edit a template far more often than the posts under it, and dating by the template made every post in an archive announce itself as changed each time, the opposite of what `<lastmod>` is for. A route with no entry behind it (an authored page, or a `$paths` listing plain values) is still dated by its own file. A [paged listing](/docs/framework/site/routing#paging-a-list) is dated by the newest of its template and every entry in the list, since one new post can move every page.
 
 Redirect sources are not pages and never appear.
 

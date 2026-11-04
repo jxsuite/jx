@@ -217,7 +217,15 @@ Pages read a collection through a `state` entry with `$prototype: "ContentCollec
 
 - **`filter`**: either a shorthand object (each key must equal its value, as above) or an array of rules: `{ "field": "tags", "op": "contains", "value": "intro" }`. Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `not contains`, `empty`, `not empty`. Use `"field": "id"` to match the entry id.
 - **`sort`**: a rule or array of rules, `{ "field": "pubDate", "order": "desc" }`; `asc` is the default.
-- **`limit`**: maximum number of entries.
+- **`limit`**: maximum number of entries. To split a long list across numbered pages, see [Paging a list](/docs/framework/site/routing#paging-a-list).
+
+A query can reach further than one flat type:
+
+- **Several types.** `contentType` can be a list, `["post", "episode"]`. Their entries become one list, filtered, sorted and cut together, so a sort by date interleaves them.
+- **Fields inside fields.** A rule's `field`, in `filter` and in `sort`, can be a dotted path through the entry's data: `author.name`, or `terms.category.slug`. Where the path crosses a list it collects the value from every item, so `{ "field": "terms.category.slug", "op": "contains", "value": "bible" }` keeps the entries that have `bible` among their categories. A path that finds nothing has no value, and a field with no value contains nothing, so `not contains` keeps that entry.
+- **Values from the page.** A rule's `value` can be a reference: `{ "$ref": "#/$params/tag" }` is the route's `tag` parameter, and `{ "$ref": "#/state/post/data/url" }` reads an entry declared earlier in the page's `state`, such as the `ContentEntry` a single page renders. So a tag page lists its own tag's posts, and a post's "related" list can share its series while leaving the post itself out with `!=`. A reference that finds nothing has no value.
+
+Studio's form for a collection offers one type and the type's top-level fields; write a list of types or a dotted path in the JSON.
 
 The result is an array of entries, rendered with a [repeater](/docs/framework/concepts/lists):
 
