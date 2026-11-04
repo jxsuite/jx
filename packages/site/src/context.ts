@@ -8,7 +8,7 @@
  * url $site.state.* — site-wide reactive state $page.url — current page URL path $page.title — page
  * title $page.params — dynamic route parameters (if any) $page.locale/$page.dir — the route's
  * language and writing direction (§13.4) $page.alternates — this page in every language it exists
- * in (§13.5)
+ * in (§13.5) $page.pagination — where a paged route's page sits in its list (§4.3)
  *
  * The site build is not the only thing that has to produce this state. A page rendered live — on
  * the studio's canvas, or by the cloud's preview origin — binds `${$site.name}` and `${$page.url}`
@@ -25,6 +25,7 @@ import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxDocument, JxElement, JxStateObject, ProjectConfig } from "@jxsuite/schema/types";
 import { localeDirection, localeLabel, localeOfRoute } from "@jxsuite/schema/locale";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
+import type { PagePagination } from "./pagination.ts";
 
 /**
  * One route in a translation set: the locale it serves, and where it lives. The shape `<head>` and
@@ -42,6 +43,8 @@ export interface SiteRoute {
   urlPattern: string;
   sourcePath?: string;
   _pathParams?: Record<string, string>;
+  /** Set on a page of a paged list (§4.3); becomes `$page.pagination`. */
+  pagination?: PagePagination;
 }
 
 /**
@@ -128,6 +131,21 @@ export function injectContext(
   };
   if (alternates.length > 0) {
     page.alternates = alternates;
+  }
+  if (route.pagination) {
+    const { first, itemCount, last, next, number, pageCount, pageSize, pages, prev } =
+      route.pagination;
+    page.pagination = {
+      first,
+      itemCount,
+      last,
+      next,
+      number,
+      pageCount,
+      pageSize,
+      pages: pages.map(({ current, number: n, url }) => ({ current, number: n, url })),
+      prev,
+    };
   }
   if (pageLang !== undefined) {
     page.dir = localeDirection(pageLang);

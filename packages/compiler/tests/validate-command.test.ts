@@ -301,6 +301,23 @@ describe("validateProjectTree", () => {
     ["core explicit values", { param: "lang", values: ["en", "fr"] }, true],
     ["core data-file $ref", { $ref: "./data/products.json", field: "sku", param: "id" }, true],
     ["legacy parameter array", [{ slug: "hello" }], true],
+    ["core paged list", { pageSize: 10, paginate: { $ref: "#/state/posts" } }, true],
+    [
+      "core paged list per value of another source",
+      {
+        each: { contentType: "tags", param: "tag" },
+        pageSize: 10,
+        paginate: { $ref: "#/state/posts" },
+      },
+      true,
+    ],
+    ["paged list with pageSize 0", { pageSize: 0, paginate: { $ref: "#/state/posts" } }, false],
+    ["paged list over a data file", { pageSize: 10, paginate: { $ref: "./data/p.json" } }, false],
+    [
+      "stray key beside paginate",
+      { bogus: 1, pageSize: 10, paginate: { $ref: "#/state/posts" } },
+      false,
+    ],
     ["misspelled discriminator", { contentTyp: "posts", param: "slug" }, false],
     ["empty object", {}, false],
     ["stray key beside values", { bogus: 1, values: ["a"] }, false],

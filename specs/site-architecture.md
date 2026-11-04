@@ -287,7 +287,7 @@ Dynamic route parameters are resolved at build time by querying content collecti
 
 ### 4.3 Dynamic Route Resolution
 
-> **Status: Partial.** The three `$paths` shapes and the extension discriminator ship (`expandDynamicRoutes` in `packages/compiler/src/site/pages-discovery.ts`, `Content.resolvePaths` in `extensions/parser/src/content-loader.ts`). Pagination helpers are neither specified nor built: no `$paths` shape pages a collection into numbered routes, and `ContentCollection` takes a `limit` but no offset.
+> **Status: Partial.** The four `$paths` shapes and the extension discriminator ship in the build (`expandDynamicRoutes` in `packages/compiler/src/site/pages-discovery.ts`, the page arithmetic in `packages/site/src/pagination.ts`, `Content.resolvePaths` in `extensions/parser/src/content-loader.ts`). Studio's route-parameter picker offers no values for a `paginate` source, and its canvas renders the paged entry whole (`packages/studio/src/page-params.ts`).
 
 A dynamic page must declare which paths it generates. This is done via a top-level `$paths` property:
 
@@ -330,9 +330,27 @@ A dynamic page must declare which paths it generates. This is done via a top-lev
 
 // From a data file
 { "$ref": "./data/products.json", "param": "id", "field": "sku" }
+
+// A paged list: one page per pageSize items of a state entry
+{ "paginate": { "$ref": "#/state/posts" }, "pageSize": 10 }
 ```
 
 The compiler iterates `$paths` at build time, injecting each set of parameters into `$params` and compiling one HTML page per entry.
+
+**Paging a list.** A `paginate` source splits a list the page already declares into numbered pages. It names an entry of the page's own `state`, which must resolve to an array at build time: a `ContentCollection`, any class entry with `timing: "compiler"`, or a literal array. The build resolves the entry once, and the list fills ⌈items ÷ `pageSize`⌉ pages, at least one, so a listing URL exists before its first item does. Each page is compiled with the entry replaced by its slice, so the entry's own `filter`, `sort` and `limit` decide what is paged and in what order, and the query is written once.
+
+The page number fills the route's one parameter that nothing else fills. A catch-all may be empty, so its first page is the list's own URL; a named parameter is always one segment, so every page is numbered:
+
+| File                        | Pages                           |
+| --------------------------- | ------------------------------- |
+| `pages/blog/[...page].json` | `/blog`, `/blog/2`, `/blog/3`   |
+| `pages/blog/[page].json`    | `/blog/1`, `/blog/2`, `/blog/3` |
+
+`$page.params.<name>` is the page number as a string on every page, `"1"` included, even where the URL omits it. `$page.pagination` carries `{ number, pageCount, pageSize, itemCount, first, prev, next, last, pages }`: the URLs are site-absolute route URLs in the form `$page.url` uses, `prev` is `null` on the first page and `next` on the last, and `pages` is `{ number, url, current }[]`, which maps straight into a numbered pager. No `<link rel="prev">` or `<link rel="next">` is injected; a template can emit them from `$page.pagination`.
+
+**A list per value of another parameter.** `each` holds another `$paths` source (any shape above but a paged one, or an extension's), and the list is paged once per value it gives, as a paged archive per tag is: `{ "each": { "contentType": "tags", "param": "tag" }, "paginate": { "$ref": "#/state/posts" }, "pageSize": 10 }` on `pages/tags/[tag]/[...page].json` gives `/tags/news`, `/tags/news/2`, … for every tag. The entry is resolved once per value, with that value among the route's parameters, so a filter reads it as `{ "$ref": "#/$params/tag" }` (§6.4). Only the paged entry is resolved there, so its filter may read route parameters but not the page's other state.
+
+A misconfigured source is a build error naming the route, and that route generates no pages while every other page builds: a `paginate` that is not `{ "$ref": "#/state/<key>" }`, a `pageSize` that is not a positive integer, an `each` that is not a `$paths` source or is itself paged, a route left with other than exactly one parameter for the page number, a key the page's `state` lacks, and an entry that does not resolve to an array. Paged routes are dated in the sitemap by their newest item (§8.4.1) and pair across locales page N with page N, by the directory rule (§13.5). Paging happens where `$paths` is expanded. A host that composes a route by matching its pattern (the live preview, `composeRoute` in `packages/site/src/compose.ts`) renders the entry whole, with no `$page.pagination`.
 
 **A content type that declares a `route`** (§6.1) needs no `param` or `field`: `{ "contentType": "kb" }` is the whole `$paths`. The compiler passes the page's own URL pattern and parameter names to the extension, and each entry's route is matched against that pattern, so one `$paths` serves `pages/kb/[...path].json`, `pages/kb/[category]/[slug].json` and `pages/kb/[category].json` alike, and every page is generated at the URL its entry's links point to. A `ContentEntry` with no `id` binds to the entry whose route is the page's URL. Naming `param` or `field` keeps the shape above. The contract is in [parser.md §9.5](./parser.md).
 
@@ -364,7 +382,7 @@ Inside a dynamic page, route parameters surface in two places:
 ```
 
 1. **State references** — `{ "$ref": "#/$params/<name>" }` inside a state entry resolves to the parameter value at build time (e.g. a `ContentEntry` id, as above).
-2. **`$page.params`** — the compiler injects the resolved parameters into page state as `$page.params`, alongside `$page.url` and `$page.title` (§5.5).
+2. **`$page.params`** — the compiler injects the resolved parameters into page state as `$page.params`, alongside `$page.url` and `$page.title` (§5.5), and `$page.pagination` on a paged route (§4.3).
 
 There is no bare `${$params.…}` template binding. Parameters are resolved at compile time — each expanded route is compiled with its own literal values, so nothing param-related ships to the browser.
 
@@ -526,16 +544,17 @@ This allows `blog-post.json` layout to wrap within `base.json`, providing blog-s
 
 Layouts receive page metadata via the `$page` context object:
 
-| Property            | Source                                                          | Description                   |
-| ------------------- | --------------------------------------------------------------- | ----------------------------- |
-| `$page.title`       | Page's `$head` title or explicit `title` field                  | Page title                    |
-| `$page.description` | Page's `$head` meta description                                 | Meta description              |
-| `$page.url`         | Computed from file path                                         | Page URL path                 |
-| `$page.locale`      | `$lang`, else the route's locale, else the site default (§13.4) | BCP 47 language tag           |
-| `$page.dir`         | Derived from `$page.locale`'s script (§13.4)                    | `ltr` or `rtl`                |
-| `$page.alternates`  | The page's translation set (§13.5)                              | `{code, url, dir, current}[]` |
-| `$page.$head`       | Page's `$head` array                                            | Page-specific head entries    |
-| `$page.frontmatter` | Content entry frontmatter (for content pages)                   | All frontmatter fields        |
+| Property            | Source                                                          | Description                                                                                                                                                                           |
+| ------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$page.title`       | Page's `$head` title or explicit `title` field                  | Page title                                                                                                                                                                            |
+| `$page.description` | Page's `$head` meta description                                 | Meta description                                                                                                                                                                      |
+| `$page.url`         | Computed from file path                                         | Page URL path                                                                                                                                                                         |
+| `$page.locale`      | `$lang`, else the route's locale, else the site default (§13.4) | BCP 47 language tag                                                                                                                                                                   |
+| `$page.dir`         | Derived from `$page.locale`'s script (§13.4)                    | `ltr` or `rtl`                                                                                                                                                                        |
+| `$page.alternates`  | The page's translation set (§13.5)                              | `{code, url, dir, current}[]`                                                                                                                                                         |
+| `$page.pagination`  | The paged route (§4.3)                                          | `{number, pageCount, pageSize, itemCount, first, prev, next, last, pages}`; only on a paged route, and absent where a host matches the route's pattern instead of expanding it (§4.3) |
+| `$page.$head`       | Page's `$head` array                                            | Page-specific head entries                                                                                                                                                            |
+| `$page.frontmatter` | Content entry frontmatter (for content pages)                   | All frontmatter fields                                                                                                                                                                |
 
 The `$site` context provides site-level data:
 
@@ -708,6 +727,14 @@ Pages access collection data via state entries with `$prototype: "ContentCollect
   ]
 }
 ```
+
+A query reaches past the shape of one flat type in three ways:
+
+- **Several types.** `contentType` may be a list (`["post", "episode"]`). Their entries are one list, filtered, sorted and cut together, so a sort by date interleaves them.
+- **Dotted fields.** A rule's `field`, in `filter` and in `sort`, is `id`, a top-level key (one with a dot in its name included), or a dotted path through the entry's data: `terms.category.slug`. A path that crosses an array collects the value in every item, flattened one level, so `{ "field": "terms.category.slug", "op": "contains", "value": "bible" }` asks whether any of the entry's categories is `bible`. A path that finds nothing is `undefined`, and a field with no value contains nothing, so `not contains` keeps that entry.
+- **References in a value.** A rule's `value` may be `{ "$ref": "#/$params/<name>" }`, the route's parameter, or `{ "$ref": "#/state/<pointer>" }`, a JSON Pointer into the page's state as it has resolved so far: an entry declared earlier in `state`, such as the `ContentEntry` a single page renders. A reference that finds nothing compares as `undefined`. So a tag archive filters by its own tag, and a post's "related" list by the post's first series while leaving the post itself out.
+
+Studio's form for a collection offers one type and the type's top-level fields; a list of types and a dotted path are written in the JSON.
 
 #### Entry Access
 
@@ -1049,6 +1076,7 @@ When `url` is set in `project.json`, the build emits `dist/sitemap.xml` from the
 - **Per-page opt-out.** A page sets `$sitemap: false` at its root to be excluded (e.g. thank-you pages, or drafts while build-time draft filtering is still pending). Two kinds of page are left out without it: a page whose built `<head>` carries `<meta name="robots">` with `noindex` (or `none`), because a sitemap that lists a page the page itself disowns gives a crawler two answers to one question, and the not-found page (§8.4.2). Both are still built and served. Every other page is included.
 - **Disable entirely.** Set `build.sitemap: false` (§14.1.1).
 - **Dynamic routes** are listed by their expanded concrete URLs, each dated by **the entry it was generated from** rather than by the template. A route's `sourcePath` is the `[slug]` file that rendered it, and a template is edited far more often than the posts beneath it — so dating by the template made an entire archive announce itself as changed whenever the template moved, which is the opposite of what `<lastmod>` is for. A `resolvePaths` result therefore carries the entry's `_meta` (`parser.md` §9.3) beside its route parameters; `_meta` is reserved, is never a route parameter, and is stripped before URL substitution. A route with no entry behind it — an authored page, or a `$paths` shape describing only parameter values — still uses its own file's modification time, which for those is the right answer.
+- **Paged routes** (§4.3) are dated by the newest of their template and every item of the paged list that carries `_meta`, because one new or edited entry can move every page.
 - **`<loc>` form** is the canonical URL exactly, and both are the route as `build.trailingSlash` serves it (§14.1.1): `/about/` under `"always"`, where the page is written to `about/index.html`, and `/about` under `"never"`, where it is written to `about.html`. The root is `/` either way. An earlier revision left both un-normalized, so a site built with the default `"always"` named URLs other than the ones its host serves. The `hreflang` alternates (§13.5) follow the same rule.
 - **`robots.txt`.** After the `public/` copy, a `Sitemap: <url>/sitemap.xml` line is appended to `dist/robots.txt` (creating a minimal `robots.txt` if none was provided). An existing `Sitemap:` line is left untouched.
 

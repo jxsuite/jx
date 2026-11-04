@@ -72,6 +72,7 @@ import { layoutChain, resolveLayout } from "./layout-resolver.ts";
 import { dedupeServerEntries, documentServerEntries } from "./server-entries.ts";
 import type { DedupedServerEntries, ServerEntryRecord } from "./server-entries.ts";
 import { mergeHead, renderHead, withPageDescription } from "@jxsuite/site/head-merger";
+import type { PagePagination } from "@jxsuite/site/pagination";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
 import { compile, compileSiteServer } from "../compiler.ts";
@@ -430,6 +431,7 @@ export async function buildSite(
     registry,
     projectConfig,
     i18n,
+    { errors },
   );
   /*
    * Every route carries the locale it serves, resolved once here rather than re-derived by each
@@ -1351,6 +1353,9 @@ interface PageRoute {
   urlPattern: string;
   sourcePath: string;
   _pathParams?: Record<string, string>;
+  /** A page of a paged list (site-architecture.md §4.3): its pager values and its slice. */
+  pagination?: PagePagination;
+  pagedState?: { key: string; items: JsonValue[] };
 }
 
 /**
@@ -1447,6 +1452,14 @@ async function compilePage(
     pageLang: isString(pageDoc.$lang) ? pageDoc.$lang : undefined,
     routeLocale: localeOfRoute(route.urlPattern, locale.i18n),
   });
+
+  /*
+   * A page of a paged list gets its slice in place of the entry it pages. The entry was resolved
+   * once while the route was expanded, so it is not queried again for every page.
+   */
+  if (route.pagedState && layoutDoc.state && route.pagedState.key in layoutDoc.state) {
+    layoutDoc.state[route.pagedState.key] = route.pagedState.items;
+  }
 
   // Resolve generic $prototype entries via .class.json imports (and lower registry classes)
   await resolvePrototypes(layoutDoc, route, projectRoot, {

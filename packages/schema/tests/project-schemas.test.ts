@@ -245,6 +245,25 @@ describe("emitDocumentSchema", () => {
     });
   });
 
+  test("the core paths union carries the closed paginate source", () => {
+    const paged = documentPathsCoreMembers.find(
+      (member) => "properties" in member && "paginate" in member.properties,
+    );
+    expect(paged).toMatchObject({
+      additionalProperties: false,
+      properties: {
+        each: { type: ["object", "array"] },
+        pageSize: { minimum: 1, type: "integer" },
+        paginate: {
+          additionalProperties: false,
+          properties: { $ref: { pattern: "^#/state/[^/]+$", type: "string" } },
+          required: ["$ref"],
+        },
+      },
+      required: ["paginate", "pageSize"],
+    });
+  });
+
   test("entry unions never carry the default's unknown-source escape hatch", () => {
     /* That member exists so the shipped default under-suggests instead of reporting false errors
        on extension shapes it cannot see. An entry document knows the enabled extensions, so

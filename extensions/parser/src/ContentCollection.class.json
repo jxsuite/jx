@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ContentCollection",
-  "description": "Query a project content type with filter, sort, and limit",
+  "description": "Query one or more project content types with filter, sort, and limit",
   "$prototype": "Class",
   "extends": "Object",
   "$implementation": "../dist/content.js",
@@ -11,7 +11,7 @@
       "contentType": {
         "identifier": "contentType",
         "type": { "type": "string", "enum": { "$ref": "#/$context/content" } },
-        "description": "Content type to query"
+        "description": "Content type to query. A list of types (written in JSON) is queried as one list, filtered, sorted and cut together"
       },
       "filter": {
         "identifier": "filter",
@@ -40,12 +40,14 @@
                   "not empty"
                 ]
               },
-              "value": {}
+              "value": {
+                "description": "The value to compare with, or a reference resolved for the page: { \"$ref\": \"#/$params/<name>\" } is a route parameter and { \"$ref\": \"#/state/<pointer>\" } a value in an entry declared earlier in state"
+              }
             },
             "required": ["field", "op"]
           }
         },
-        "description": "Filter rules"
+        "description": "Filter rules. A field may be a dotted path through the entry's data (terms.category.slug); a path that crosses an array collects every item's value"
       },
       "sort": {
         "identifier": "sort",
@@ -64,7 +66,7 @@
             "required": ["field"]
           }
         },
-        "description": "Sort rules"
+        "description": "Sort rules. A field may be a dotted path, as in a filter rule"
       },
       "limit": {
         "identifier": "limit",
