@@ -12,6 +12,8 @@ import {
   DEFAULT_MEDIA_DIR,
   announceMediaChanged,
   assetRef,
+  duplicateAsset,
+  duplicateName,
   extensionOf,
   mediaFileKind,
   canReplaceWith,
@@ -21,12 +23,14 @@ import {
   isMediaFile,
   joinDir,
   mediaKind,
+  mediaRenameRefusal,
   setMediaChangedHandler,
   uniqueName,
   uploadAccept,
   uploadAssets,
   uploadDirFor,
 } from "../src/files/media-upload";
+import { getPlatform } from "../src/platform";
 import { closeAllTabs } from "../src/workspace/workspace";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
 import {
@@ -37,6 +41,7 @@ import {
   versionOf,
 } from "../src/files/asset-versions";
 import { isRecentLocal } from "../src/files/fs-events";
+import type { StudioPlatform } from "../src/types";
 
 beforeEach(() => {
   resetStudioState();
@@ -512,5 +517,155 @@ describe("replaceAsset", () => {
     Object.defineProperty(big, "size", { value: 4096 });
     expect(await replaceAsset("public/media/hero.png", big)).toBe(false);
     expect(state.calls.filter(([call]) => call === "uploadFile")).toEqual([]);
+  });
+});
+
+// ─── Rename's name rules ─────────────────────────────────────────────────────
+
+describe("mediaRenameRefusal", () => {
+  const FOLDER = new Set(["hero.jpg", "banner.jpg", "notes.txt"]);
+  const refusal = (value: string, path = "public/hero.jpg") =>
+    mediaRenameRefusal(path, value, FOLDER);
+
+  test("accepts a new stem, surrounding space, and either spelling of one format", () => {
+    expect(refusal("cover.jpg")).toBe("");
+    expect(refusal("  cover.jpg  ")).toBe("");
+    expect(refusal("cover.jpeg")).toBe("");
+    expect(refusal("cover.JPG")).toBe("");
+    expect(refusal("my cover.v2.jpg")).toBe("");
+  });
+
+  test("refuses a blank, a path and a dotfile", () => {
+    expect(refusal("   ")).toBe("Enter a file name.");
+    expect(refusal("sub/cover.jpg")).toContain("not a path");
+    expect(refusal(String.raw`..\cover.jpg`)).toContain("not a path");
+    expect(refusal(".cover.jpg")).toContain("start with a dot");
+  });
+
+  test("refuses another format's extension, or none, naming the one to keep", () => {
+    expect(refusal("cover.png")).toContain("Keep the .jpg extension");
+    expect(refusal("cover")).toContain("Keep the .jpg extension");
+  });
+
+  test("refuses a name already in the folder, whatever its case, and whatever its kind", () => {
+    expect(refusal("banner.jpg")).toBe("banner.jpg already exists in this folder.");
+    expect(refusal("BANNER.JPG")).toBe("BANNER.JPG already exists in this folder.");
+    expect(mediaRenameRefusal("public/a.txt", "notes.txt", FOLDER)).toContain("already exists");
+  });
+
+  test("the file's own name is not a collision, so its case can change", () => {
+    expect(refusal("hero.jpg")).toBe("");
+    expect(refusal("Hero.jpg")).toBe("");
+  });
+});
+
+// ─── Duplicate ───────────────────────────────────────────────────────────────
+
+describe("duplicateName", () => {
+  test("adds -copy before the extension, keeping the extension's own spelling", () => {
+    expect(duplicateName("hero.jpg")).toBe("hero-copy.jpg");
+    expect(duplicateName("HERO.JPG")).toBe("HERO-copy.JPG");
+    expect(duplicateName("a.b.png")).toBe("a.b-copy.png");
+    expect(duplicateName("README")).toBe("README-copy");
+  });
+
+  test("a copy of a copy asks for the same name again, for the collision suffix to number", () => {
+    expect(duplicateName("hero-copy.jpg")).toBe("hero-copy.jpg");
+    expect(duplicateName("hero-copy-3.jpg")).toBe("hero-copy.jpg");
+    // Only a suffix counts: these are names somebody chose.
+    expect(duplicateName("copy.jpg")).toBe("copy-copy.jpg");
+    expect(duplicateName("hero-copy-a.jpg")).toBe("hero-copy-a-copy.jpg");
+  });
+});
+
+describe("duplicateAsset", () => {
+  /** Bytes that are not valid UTF-8, so a copy made through `readFile` could not match them. */
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x80]).buffer;
+
+  function installWithFolder(names: string[], overrides: Partial<StudioPlatform> = {}) {
+    const written: { path: string; bytes: string | File | Blob | ArrayBuffer }[] = [];
+    const announced: string[] = [];
+    setMediaChangedHandler((dir) => {
+      announced.push(dir);
+    });
+    installMockPlatform({
+      listDirectory: () =>
+        Promise.resolve(
+          names.map((name) => ({ name, path: `public/media/${name}`, type: "file" as const })),
+        ),
+      readFileBytes: () => Promise.resolve(JPEG),
+      uploadFile: (path: string, data: string | File | Blob | ArrayBuffer) => {
+        written.push({ bytes: data, path });
+        return Promise.resolve({ path });
+      },
+      ...overrides,
+    });
+    return { announced, written };
+  }
+
+  beforeEach(() => {
+    resetNotifications();
+  });
+
+  test("writes the file's raw bytes to a new name beside it, and announces it once", async () => {
+    const { announced, written } = installWithFolder(["hero.jpg"]);
+    const copy = await duplicateAsset("public/media/hero.jpg");
+    expect(copy?.path).toBe("public/media/hero-copy.jpg");
+    expect(copy?.ref).toBe("/media/hero-copy.jpg");
+    expect(written.map((write) => write.path)).toEqual(["public/media/hero-copy.jpg"]);
+    const body = written[0]!.bytes;
+    expect(body).toBeInstanceOf(File);
+    expect(new Uint8Array(await new Blob([body]).arrayBuffer())).toEqual(new Uint8Array(JPEG));
+    expect(announced).toEqual(["public/media"]);
+    expect(toasts.map((toast) => toast.message)).toEqual(["Duplicated hero.jpg as hero-copy.jpg"]);
+  });
+
+  test("never lands on a file already there, and a copy of a copy keeps counting", async () => {
+    const { written } = installWithFolder(["hero.jpg", "hero-copy.jpg", "hero-copy-1.jpg"]);
+    const fromOriginal = await duplicateAsset("public/media/hero.jpg");
+    expect(fromOriginal?.path).toBe("public/media/hero-copy-2.jpg");
+    const fromCopy = await duplicateAsset("public/media/hero-copy-1.jpg");
+    expect(fromCopy?.path).toBe("public/media/hero-copy-2.jpg");
+    expect(written).toHaveLength(2);
+  });
+
+  test("a file at the project root stays at the root", async () => {
+    installWithFolder(["hero.jpg"]);
+    const copy = await duplicateAsset("hero.jpg");
+    expect(copy?.path).toBe("hero-copy.jpg");
+  });
+
+  test("a read that fails is reported and writes nothing", async () => {
+    const { announced, written } = installWithFolder(["hero.jpg"], {
+      readFileBytes: () => Promise.reject(new Error("gone")),
+    });
+    expect(await duplicateAsset("public/media/hero.jpg")).toBeNull();
+    expect(written).toEqual([]);
+    expect(announced).toEqual([]);
+    expect(problems[0]?.message).toBe("Could not duplicate hero.jpg.");
+    expect(problems[0]?.detail).toBe("gone");
+  });
+
+  test("a backend with no raw read says so, rather than copying it as text", async () => {
+    const { written } = installWithFolder(["hero.jpg"]);
+    delete getPlatform().readFileBytes;
+    expect(await duplicateAsset("public/media/hero.jpg")).toBeNull();
+    expect(written).toEqual([]);
+    expect(problems[0]?.detail).toContain("raw bytes");
+  });
+
+  test("an upload the backend refuses makes no claim of a copy", async () => {
+    installWithFolder(["hero.jpg"], { uploadFile: () => Promise.reject(new Error("full")) });
+    expect(await duplicateAsset("public/media/hero.jpg")).toBeNull();
+    expect(toasts.some((toast) => toast.message.startsWith("Duplicated"))).toBe(false);
+  });
+
+  test("a store that keeps identical bytes once made no second file, and that is said", async () => {
+    installWithFolder(["hero.jpg"], {
+      uploadFile: () => Promise.resolve({ path: "public/media/hero.jpg" }),
+    });
+    expect(await duplicateAsset("public/media/hero.jpg")).toBeNull();
+    expect(toasts.some((toast) => toast.message.startsWith("Duplicated"))).toBe(false);
+    expect(problems.at(-1)?.message ?? toasts.at(-1)?.message).toBe("hero.jpg was not duplicated.");
   });
 });

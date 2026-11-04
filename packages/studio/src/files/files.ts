@@ -2070,7 +2070,7 @@ async function showRenameFileDialog(currentName: string, path: string): Promise<
 }
 
 /** Build the status-bar message for a rename, summarising any reference/tag rewrites. */
-function renameStatus(newName: string, report: RenameResult): string {
+export function renameStatus(newName: string, report: RenameResult): string {
   const refs = report.references;
   const tagNote = report.tag ? `; tag → <${report.tag.to}> (${report.tag.refsUpdated})` : "";
   if (refs && refs.refsUpdated > 0) {
@@ -2161,6 +2161,27 @@ export async function settleRename(from: string, to: string, report: RenameResul
   reloadRewrittenTabs(report, to);
 }
 
+/**
+ * Rename a file on the backend and catch the app up: the one door a rename goes through, whichever
+ * surface asked for the name (the Files panel, the Media workspace).
+ *
+ * The tab is re-keyed rather than reopened, so whatever it holds (unsaved edits, a pending image
+ * crop) stays with the file. Throws what the backend threw; what to say about it is the caller's.
+ *
+ * @param from - The path before the rename.
+ * @param to - The path after it.
+ * @returns What the refactor pass rewrote.
+ */
+export async function commitRename(from: string, to: string): Promise<RenameResult> {
+  markLocalMutation(from, to);
+  const report = await getPlatform().renameFile(from, to);
+  if (workspace.tabs.has(from)) {
+    renameTab(from, to, to);
+  }
+  await settleRename(from, to, report);
+  return report;
+}
+
 async function renameFile(
   entry: { name: string; path: string; type: string },
   renderLeftPanel: () => void,
@@ -2171,14 +2192,8 @@ async function renameFile(
   }
   const parentDirPath = parentDirOf(entry.path);
   const newPath = parentDirPath === "." ? newName : `${parentDirPath}/${newName}`;
-  markLocalMutation(entry.path, newPath);
   try {
-    const platform = getPlatform();
-    const report = await platform.renameFile(entry.path, newPath);
-    if (workspace.tabs.has(entry.path)) {
-      renameTab(entry.path, newPath, newPath);
-    }
-    await settleRename(entry.path, newPath, report);
+    const report = await commitRename(entry.path, newPath);
     renderLeftPanel();
     notifyMoveOutcome(renameStatus(newName, report), report, newPath);
   } catch (error) {
