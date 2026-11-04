@@ -793,14 +793,16 @@ export interface ProjectConfig {
 export type JxAttributeValue = Bindable<string | number | boolean>;
 
 /**
- * A dynamic-route path source (spec §4.3): explicit values, data-file ref, a legacy array of param
- * objects, or an extension-discriminated source (an object carrying a `resolvePaths` discriminator
- * key registered by an enabled extension, e.g. the parser's `contentType` — the extension owns the
- * narrow shape).
+ * A dynamic-route path source (spec §4.3): explicit values, data-file ref, a paged list of an entry
+ * of the page's own state (with `each` naming the source of a second parameter), a legacy array of
+ * param objects, or an extension-discriminated source (an object carrying a `resolvePaths`
+ * discriminator key registered by an enabled extension, e.g. the parser's `contentType` — the
+ * extension owns the narrow shape).
  */
 export type JxPathsDef =
   | { values: JsonValue[]; param?: string }
   | { $ref: string; param?: string; field?: string }
+  | { paginate: { $ref: string }; pageSize: number; each?: JsonValue }
   | { param?: string; field?: string; [discriminator: string]: JsonValue | undefined }
   | Record<string, JsonValue>[];
 

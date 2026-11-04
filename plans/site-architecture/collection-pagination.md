@@ -1,5 +1,5 @@
 ---
-status: drafted
+status: active
 disposition: implement
 claims:
   - site-architecture.md#4.3
@@ -16,6 +16,8 @@ workspaces:
   - sites/test-blank
   - scripts
 size: L
+prs:
+  - jxsuite/jx#535
 ---
 
 # A page can split a list in its own state into numbered routes, each built with its slice and a `$page.pagination` a pager can render
@@ -48,9 +50,9 @@ The census moved the open part here from the retired roadmap, whose Phase 5 list
 
 ## Decisions
 
-- **Open:** what does a paged route page? Recommendation: a core `paginate` source that points at an entry of the page's own `state` and carries `pageSize`, so `{ "paginate": { "$ref": "#/state/posts" }, "pageSize": 10 }`. The listing's query is written once, in the state entry the template already maps. Its filter, sort and `limit` decide both the page count and each slice, so the two cannot disagree. It pages anything that resolves to an array at build time: a `ContentCollection`, a class entry with `timing: "compiler"` (a `TableQuery`), or a literal array. The alternative, a `pageSize` on the parser's `contentType` source, repeats the filter and sort in `$paths` beside the state entry, and one missed edit gives a page count that disagrees with the listing. It also works only for content collections, and it still needs the host's knowledge of the route's shape for page 1's URL.
-- **Open:** how is the first page's URL spelled? Recommendation: the file name decides, as in Astro, which §4.4 already cites. `pages/blog/[...page].json` gives `/blog`, `/blog/2`, …, because a catch-all may be empty. `pages/blog/[page].json` gives `/blog/1`, `/blog/2`, …, because a named parameter is always one segment. Putting page 1 at `/blog` for `[page]` would give that page a URL its own pattern does not match, so `matchRoute` and §4's URLPattern validation would contradict the build.
-- **Open:** may a paged route have a second parameter, as a paged tag archive would (`pages/tags/[tag]/[...page].json`)? Recommendation: no. A paged route declares exactly one parameter, and a second one is a build error naming the route. That archive is the cross product of two sources, which needs a grammar of its own, and nothing in the repository asks for one. The spec states it as a rule and records no Future remainder.
+- **Decided:** what does a paged route page? a core `paginate` source that points at an entry of the page's own `state` and carries `pageSize`, so `{ "paginate": { "$ref": "#/state/posts" }, "pageSize": 10 }`. The listing's query is written once, in the state entry the template already maps. Its filter, sort and `limit` decide both the page count and each slice, so the two cannot disagree. It pages anything that resolves to an array at build time: a `ContentCollection`, a class entry with `timing: "compiler"` (a `TableQuery`), or a literal array. The alternative, a `pageSize` on the parser's `contentType` source, repeats the filter and sort in `$paths` beside the state entry, and one missed edit gives a page count that disagrees with the listing. It also works only for content collections, and it still needs the host's knowledge of the route's shape for page 1's URL.
+- **Decided:** how is the first page's URL spelled? the file name decides, as in Astro, which §4.4 already cites. `pages/blog/[...page].json` gives `/blog`, `/blog/2`, …, because a catch-all may be empty. `pages/blog/[page].json` gives `/blog/1`, `/blog/2`, …, because a named parameter is always one segment. Putting page 1 at `/blog` for `[page]` would give that page a URL its own pattern does not match, so `matchRoute` and §4's URLPattern validation would contradict the build.
+- **Decided:** a paged route may have a second parameter, given by `each`: another `$paths` source (any shape but a paged one) whose values the list is paged once per, with the value among the route's parameters while the entry resolves, so a filter reads it as `#/$params/<name>`. A paged archive per tag (`pages/tags/[tag]/[...page].json`) is the case a real site needed, and `each` is the smallest grammar for it: the page number fills the one parameter `each` leaves, and anything else (none left, or two) is the build error the single-parameter rule was. The entry is resolved once per value, not once per page, so the seeding rule holds.
 - **Decided:** `pageSize` lives on `$paths`, not on the state entry. The entry stays a plain query that every host resolves the same way, and `$paths` is where a page declares its route set. The name matches the feed section's `pageSize`.
 - **Decided:** `$page.params.<name>` is the page number as a string on every page, `"1"` included, even where the URL omits it. A template then compares one form, and the Studio picker can offer page 1 (`pushValue` drops empty values).
 - **Decided:** the build resolves the paged entry once per template, while it expands the route. Each generated route carries its slice, and `compilePage` seeds the slice into `state` before `resolvePrototypes`, so the class is not queried again for each page. The expansion and the compile see one list, not two resolutions. The resolution runs through `resolvePrototypes` itself, over a document holding only that entry and the page's imports merged with the project's (rebased as `injectContext` rebases them). Running `injectContext` there would also resolve every project-level state class.
@@ -223,7 +225,7 @@ This closes §4.3 but does not graduate site-architecture.md, since other items 
 
 ## Slices
 
-| Slice | Scope                                                                                                                                                                                                                                                | Claims                   | State |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- |
-| CP1.1 | `@jxsuite/site/pagination`; `$page.pagination`; the core `paginate` schema member and `schema:sync`; paged expansion, errors and seeding in the compiler; §4.3 text with the marker kept Partial, §4.5, the §5.5 row, §8.4.1, extensions.md §5.3 row | —                        | open  |
-| CP1.2 | Studio's picker and canvas page a paged route through `resolveStateEntry` and `applyPreviewPage`; §4.3 → Implemented                                                                                                                                 | site-architecture.md#4.3 | open  |
+| Slice | Scope                                                                                                                                                                                                                                                              | Claims                   | State |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ | ----- |
+| CP1.1 | `@jxsuite/site/pagination`; `$page.pagination`; the core `paginate` schema member (with `each`) and `schema:sync`; paged expansion, errors and seeding in the compiler; §4.3 text with the marker kept Partial, §4.5, the §5.5 row, §8.4.1, extensions.md §5.3 row | —                        | done  |
+| CP1.2 | Studio's picker and canvas page a paged route through `resolveStateEntry` and `applyPreviewPage`; §4.3 → Implemented                                                                                                                                               | site-architecture.md#4.3 | open  |
