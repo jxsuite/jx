@@ -710,6 +710,8 @@ describe("the dock's tab panel rules stop at its own tab panels", () => {
     }
     const panelRule = '[part="inspector-dock"] > [part="panel"]';
     expect(rules).toContain('& > [part="panel"]');
-    for (const panel of panels()) {expect(panel.matches(panelRule)).toBe(true);}
+    for (const panel of panels()) {
+      expect(panel.matches(panelRule)).toBe(true);
+    }
   });
 });
