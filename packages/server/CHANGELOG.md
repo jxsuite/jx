@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.2.0](https://github.com/jxsuite/jx/compare/server-v8.1.0...server-v8.2.0) (2026-11-04)
+
+
+### Features
+
+* **studio:** rename and duplicate a media file from the Media workspace ([#533](https://github.com/jxsuite/jx/issues/533)) ([945d913](https://github.com/jxsuite/jx/commit/945d9136b0a56fe3db00584310494065e1779bd7))
+
+
+### Bug Fixes
+
+* **server:** a rename drops the usage cache before it answers, so the new name's ([945d913](https://github.com/jxsuite/jx/commit/945d9136b0a56fe3db00584310494065e1779bd7))
+* **studio:** stop renames and moves overwriting files, and keep the Files panel live ([#534](https://github.com/jxsuite/jx/issues/534)) ([a16cd58](https://github.com/jxsuite/jx/commit/a16cd589c716184ea41523ed32599feaa3fa19ed))
+
 ## [8.1.0](https://github.com/jxsuite/jx/compare/server-v8.0.1...server-v8.1.0) (2026-11-03)
 
 
