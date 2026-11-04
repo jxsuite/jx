@@ -11,14 +11,14 @@
   "packages/import": "0.42.2",
   "packages/starters": "3.1.4",
   "packages/create": "1.5.2",
-  "packages/server": "8.1.0",
-  "packages/studio": "10.2.0",
-  "packages/desktop": "8.0.2",
+  "packages/server": "8.2.0",
+  "packages/studio": "10.3.0",
+  "packages/desktop": "8.0.3",
   "packages/protocol": "6.2.0",
   "packages/collab": "0.11.4",
   "packages/formulas": "0.0.26",
   "extensions/search": "0.5.0",
   "extensions/feed": "0.5.0",
   "packages/catalog": "0.1.6",
-  "packages/ui": "0.8.2"
+  "packages/ui": "0.9.0"
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/jxsuite/jx/compare/ui-v0.8.2...ui-v0.9.0) (2026-11-04)
+
+
+### Features
+
+* **studio:** edit an image where it is opened ([#531](https://github.com/jxsuite/jx/issues/531)) ([c45b229](https://github.com/jxsuite/jx/commit/c45b229357ef3163dcb49c7861c08ec82ce35d79))
+
 ## [0.8.2](https://github.com/jxsuite/jx/compare/ui-v0.8.1...ui-v0.8.2) (2026-10-29)
 
 
