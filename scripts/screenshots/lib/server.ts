@@ -25,7 +25,7 @@
  * built at capture time.
  */
 
-import { cp, mkdir, readdir, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, stat, symlink, unlink, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
@@ -215,6 +215,31 @@ async function stampTree(dir: string, base = dir): Promise<Map<string, FileStamp
   return stamps;
 }
 
+/**
+ * Give every file and directory under `dir` the same modified time.
+ *
+ * A copy's mtimes are the order its writes happened to land in, and a fresh clone's are no better,
+ * so they differ on every run. The app renders them: the Media library opens sorted Newest, and
+ * `media-upload` was rewritten by 17 of the lane's 21 commits in a fortnight, at 3 to 8 % of
+ * pixels, with nothing moved but which tile sat where. That is far past `DIFF_THRESHOLD`, because a
+ * swapped thumbnail is a large change and no threshold can tell it from a real one. Equal times
+ * hand the order to the app's own tie-break, by path, and a date the app prints stops moving too.
+ *
+ * Skips {@link NEVER_COPIED}, so a fixture's `.git` keeps its own times.
+ */
+async function pinMtimes(dir: string): Promise<void> {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (NEVER_COPIED.has(entry.name) || entry.isSymbolicLink()) {
+      continue;
+    }
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await pinMtimes(full);
+    }
+    await utimes(full, OVERLAY_MTIME, OVERLAY_MTIME);
+  }
+}
+
 /** A stable, readable directory name for a repo-relative project path. */
 export function overlaySlug(project: string): string {
   return project.replaceAll(/[^\w.-]+/g, "-").replaceAll(/^-+|-+$/g, "");
@@ -252,6 +277,7 @@ async function materialiseCopy(source: string, dest: string): Promise<void> {
     },
     recursive: true,
   });
+  await pinMtimes(dest);
   await sealOverlayRepo(dest);
   const modules = join(source, "node_modules");
   if (existsSync(modules)) {
@@ -276,16 +302,17 @@ async function restoreTree(
   stamps: Map<string, FileStamp>,
 ): Promise<void> {
   const now = await stampTree(dest);
+  let moved = false;
   for (const [rel, stamp] of now) {
     const original = stamps.get(rel);
     if (!original) {
       await unlink(join(dest, rel));
+      moved = true;
       continue;
     }
     if (original.size !== stamp.size || original.mtimeMs !== stamp.mtimeMs) {
       await cp(join(source, rel), join(dest, rel));
-      const info = await stat(join(dest, rel));
-      stamps.set(rel, { mtimeMs: info.mtimeMs, size: info.size });
+      moved = true;
     }
   }
   for (const [rel] of stamps) {
@@ -294,8 +321,12 @@ async function restoreTree(
     }
     await mkdir(dirname(join(dest, rel)), { recursive: true });
     await cp(join(source, rel), join(dest, rel));
-    const info = await stat(join(dest, rel));
-    stamps.set(rel, { mtimeMs: info.mtimeMs, size: info.size });
+    moved = true;
+  }
+  /* A restored file left at the time of the restore would be the newest in the project, so one shot
+     that wrote it would reorder every later shot's library. Pinned, it matches its stamp again. */
+  if (moved) {
+    await pinMtimes(dest);
   }
 }
 
@@ -340,6 +371,9 @@ const OVERLAY_EXCLUDES = [".cache", "dist", "node_modules", "*.log"];
 
 /** The one date every overlay commit carries, so nothing derived from it can move between runs. */
 const OVERLAY_EPOCH = "2026-01-01T00:00:00Z";
+
+/** {@link OVERLAY_EPOCH} as a file time, for {@link pinMtimes}. */
+const OVERLAY_MTIME = new Date(OVERLAY_EPOCH);
 
 /**
  * Turn a freshly copied overlay into a self-contained repository with a CLEAN status.
@@ -398,6 +432,7 @@ export async function materialiseGitFixture(source: string, dest: string): Promi
   for (const path of recipe.dirty?.deleted ?? []) {
     await rm(join(dest, path), { force: true });
   }
+  await pinMtimes(dest);
 }
 
 // ─── The one entry point ──────────────────────────────────────────────────────
