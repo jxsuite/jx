@@ -406,7 +406,7 @@ export interface StudioPlatform {
    * tainting stops being a thing that can happen rather than a thing that is worked around.
    *
    * Optional, and feature-detected like every optional member: a backend without it simply does not
-   * offer the image editor or a media file's Duplicate, which is the honest degradation
+   * offer the image editor or a file's Duplicate, which is the honest degradation
    * `specs/desktop.md` §3.1 asks for.
    */
   readFileBytes?: (path: string) => Promise<ArrayBuffer>;

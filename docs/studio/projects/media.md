@@ -134,7 +134,7 @@ Some hosts cap the size of a single upload. When yours does, Studio refuses an o
 :::
 
 :::doc-note
-Uploads never overwrite. If a file of the same name is already there, the new one becomes `hero-1.jpg`, then `hero-2.jpg`, and so on. The original is left alone. A batch doesn't collide with itself either. The only way to write over a file is **Replace** in the Media workspace, which you ask for by name.
+Uploads never overwrite. If a file of the same name is already there, even in different capitals, the new one becomes `hero-1.jpg`, then `hero-2.jpg`, and so on. The original is left alone. A batch doesn't collide with itself either. The only way to write over a file is **Replace** in the Media workspace, which you ask for by name.
 :::
 
 ## Open a media file

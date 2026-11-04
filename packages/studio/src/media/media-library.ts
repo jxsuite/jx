@@ -822,17 +822,9 @@ export async function renameMediaFile(path: string): Promise<string | null> {
   }
   const name = baseName(path);
   const dir = dirName(path);
-  let taken: Set<string>;
-  try {
-    const listed = await getPlatform().listDirectory(dir);
-    taken = new Set(listed.map((entry) => entry.name));
-  } catch (error) {
-    // Without the listing, a collision would overwrite a file. Nothing is the safe thing to do.
-    notify.error(`Could not rename ${name}.`, {
-      detail: `The folder could not be read to check the new name: ${errorMessage(error)}`,
-      path,
-      source: "Media",
-    });
+  const { commitRename, listRenameSiblings, notifyMoveOutcome, renameStatus } = await filesModule();
+  const taken = await listRenameSiblings(path, "Media");
+  if (taken === null) {
     return null;
   }
   const { renamePromptMessage } = await fileOpsModule();
@@ -848,7 +840,6 @@ export async function renameMediaFile(path: string): Promise<string | null> {
     return null;
   }
   const to = joinDir(dir, entered);
-  const { commitRename, notifyMoveOutcome, renameStatus } = await filesModule();
   const measured = peekMediaMeta(path);
   try {
     const report = await commitRename(path, to);

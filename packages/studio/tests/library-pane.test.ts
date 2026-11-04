@@ -28,7 +28,8 @@ import {
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
-import { problems, resetNotifications } from "../src/services/notify";
+import { getPlatform } from "../src/platform";
+import { notify, problems, resetNotifications } from "../src/services/notify";
 import libraryDoc from "../src/surfaces/library-pane.json";
 import { LIBRARY_LAYOUTS } from "../src/browse/library-model";
 import { activities, resetActivities } from "../src/panels/activity-panel";
@@ -43,12 +44,34 @@ const opened: string[] = [];
 const pagesAdded: string[] = [];
 let deleteAnswer = true;
 
+const committed: [string, string][] = [];
+/* The real one is `files-tree.test.ts`'s to cover. This file asserts the home goes through it, which
+   is what brings an open tab along, and that it does so only for a name that passed. */
 void mock.module("../src/files/files.js", () => ({
+  commitRename: async (from: string, to: string) => {
+    committed.push([from, to]);
+    return getPlatform().renameFile(from, to);
+  },
+  listRenameSiblings: async (path: string, source: string) => {
+    const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ".";
+    try {
+      const listed = await getPlatform().listDirectory(dir);
+      return new Set(listed.map((entry) => entry.name));
+    } catch (error) {
+      notify.error(`Could not rename ${path}.`, { detail: String(error), path, source });
+      return null;
+    }
+  },
   loadDirectory: () => Promise.resolve(),
+  notifyMoveOutcome: (headline: string) => {
+    notify.success(headline);
+  },
   openFileInTab: (path: string) => {
     opened.push(path);
     return Promise.resolve();
   },
+  parentDirOf: (path: string) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "."),
+  renameStatus: (name: string) => `Renamed to ${name}`,
 }));
 void mock.module("../src/files/media-upload.js", () => ({
   DEFAULT_MEDIA_DIR: "public/media",
@@ -1515,6 +1538,41 @@ describe("the per-file context menu", () => {
     expect(librarySource().files().length).toBeGreaterThan(0);
   });
 
+  test("a rename goes through the one commit, which takes an open tab along", async () => {
+    committed.length = 0;
+    await openContextMenu();
+    menuRow("rename").click();
+    await flush();
+    await answerPromptDialog("renamed.json");
+    await flush();
+    expect(committed).toEqual([["pages/index.json", "pages/renamed.json"]]);
+  });
+
+  test("a name already in the folder is refused in place, and nothing is renamed", async () => {
+    committed.length = 0;
+    await openContextMenu();
+    menuRow("rename").click();
+    await flush();
+    const dialog = document.querySelector("#layer-dialog")!;
+    await answerPromptDialog("ABOUT.json");
+    await flush();
+    expect(dialog.textContent).toContain("ABOUT.json already exists in this folder.");
+    expect(committed).toEqual([]);
+    await answerPromptDialog(null);
+    await flush();
+  });
+
+  test("a folder that cannot be read opens no dialog, since a collision would go unseen", async () => {
+    committed.length = 0;
+    await openContextMenu();
+    getPlatform().listDirectory = () => Promise.reject(new Error("offline"));
+    menuRow("rename").click();
+    await flush();
+    expect(document.querySelector("#layer-dialog jx-dialog, #layer-dialog dialog")).toBeNull();
+    expect(committed).toEqual([]);
+    expect(problems.at(-1)!.detail).toContain("offline");
+  });
+
   test("a cancelled rename changes nothing", async () => {
     await openContextMenu();
     menuRow("rename").click();
@@ -1524,23 +1582,94 @@ describe("the per-file context menu", () => {
     expect(problems.length).toBe(0);
   });
 
-  test("duplicates beside the original, with a -copy suffix", async () => {
+  /** A platform whose files are bytes, recording what reached the disk and how. */
+  function bytesPlatform(seed: Record<string, Uint8Array>) {
+    const files = new Map(Object.entries(seed));
     const written: string[] = [];
     installMockPlatform({
       listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
-      readFile: () => Promise.resolve("{}"),
-      writeFile: (path: string) => {
+      readFile: () => Promise.reject(new Error("a copy must not read its source as text")),
+      readFileBytes: (path: string) => Promise.resolve(new Uint8Array(files.get(path)!).buffer),
+      uploadFile: async (path: string, data: string | File | Blob | ArrayBuffer) => {
         written.push(path);
+        files.set(path, new Uint8Array(await new Response(data).arrayBuffer()));
+        return { path };
+      },
+      writeFile: (path: string, content: string) => {
+        written.push(path);
+        files.set(path, new TextEncoder().encode(content));
         return Promise.resolve();
       },
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    return { files, written };
+  }
+
+  test("duplicates beside the original, with a -copy suffix", async () => {
+    const { written } = bytesPlatform({ "pages/index.json": new TextEncoder().encode("{}") });
     await openContextMenu();
     menuRow("duplicate").click();
     await flush();
     await flush();
     expect(written).toEqual(["pages/index-copy.json"]);
     expect(problems.length).toBe(0);
+  });
+
+  test("a copy keeps bytes that are not UTF-8, which a read as text would replace", async () => {
+    const latin1 = new Uint8Array([0x63, 0x61, 0x66, 0xe9, 0xff, 0x00, 0x80]);
+    const { files } = bytesPlatform({ "pages/index.json": latin1 });
+    await openContextMenu();
+    menuRow("duplicate").click();
+    await flush();
+    await flush();
+    expect([...files.get("pages/index-copy.json")!]).toEqual([...latin1]);
+  });
+
+  test("a copy never lands on a name the folder already has", async () => {
+    const taken = {
+      modified: "",
+      name: "index-copy.json",
+      path: "pages/index-copy.json",
+      size: 5,
+      type: "file" as const,
+    };
+    const { files, written } = bytesPlatform({
+      "pages/index-copy.json": new TextEncoder().encode("KEEP!"),
+      "pages/index.json": new TextEncoder().encode("{}"),
+    });
+    const listed = getPlatform().listDirectory;
+    getPlatform().listDirectory = async (path: string) => [
+      ...(await listed(path)),
+      ...(path === "pages" ? [taken] : []),
+    ];
+    await openContextMenu();
+    menuRow("duplicate").click();
+    await flush();
+    await flush();
+    expect(written).toEqual(["pages/index-copy-1.json"]);
+    expect(new TextDecoder().decode(files.get("pages/index-copy.json"))).toBe("KEEP!");
+  });
+
+  test("a folder that cannot be read makes no copy, since the name could not be checked", async () => {
+    const { written } = bytesPlatform({ "pages/index.json": new TextEncoder().encode("{}") });
+    await openContextMenu();
+    getPlatform().listDirectory = () => Promise.reject(new Error("offline"));
+    menuRow("duplicate").click();
+    await flush();
+    await flush();
+    expect(written).toEqual([]);
+    expect(problems.at(-1)!.detail).toContain("offline");
+    expect(problems.at(-1)!.source).toBe("Content");
+  });
+
+  test("a backend without raw bytes is not offered Duplicate", async () => {
+    const { platform } = installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
+    });
+    delete platform.readFileBytes;
+    resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });
+    await openContextMenu();
+    expect(menuIds()).toEqual(["open", "rename", "delete"]);
   });
 
   test("a refused delete deletes nothing", async () => {
@@ -1617,7 +1746,7 @@ describe("the per-file context menu", () => {
   test("a failing rename and a failing duplicate report the same way", async () => {
     installMockPlatform({
       listDirectory: (path: string) => Promise.resolve(listingIn(TREE, path) ?? []),
-      readFile: () => Promise.reject(new Error("EIO")),
+      readFileBytes: () => Promise.reject(new Error("EIO")),
       renameFile: () => Promise.reject(new Error("EPERM")),
     });
     resetStudioState({ projectConfig: null, projectDirs: Object.keys(TREE) });

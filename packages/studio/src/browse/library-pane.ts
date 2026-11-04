@@ -44,7 +44,16 @@ import { getPlatform } from "../platform";
 import { projectState, renderOnly } from "../store";
 import { invalidateUsages } from "../services/references";
 import { confirmFileDelete, renamePromptMessage } from "../files/file-ops";
-import { openFileInTab } from "../files/files";
+import { duplicateAsset } from "../files/media-upload";
+import { renameRefusal } from "../files/new-file-name";
+import {
+  commitRename,
+  listRenameSiblings,
+  notifyMoveOutcome,
+  openFileInTab,
+  parentDirOf,
+  renameStatus,
+} from "../files/files";
 import { runActiveReported } from "../commands/run-reported";
 import {
   PAGES_COLLECTION,
@@ -680,9 +689,15 @@ function showLibraryContextMenu(path: string, x: number, y: number): void {
         },
         { dividerAbove: true },
       ),
-      row("duplicate", "Duplicate", () => {
-        void duplicateLibraryFile(file);
-      }),
+      /* Not offered without raw bytes, as in the Media workspace (studio.md §9.3): a copy made as
+         text would be a damaged copy of anything that is not UTF-8. */
+      ...(getPlatform().readFileBytes !== undefined
+        ? [
+            row("duplicate", "Duplicate", () => {
+              void duplicateLibraryFile(file);
+            }),
+          ]
+        : []),
       row(
         "delete",
         "Delete",
@@ -696,17 +711,23 @@ function showLibraryContextMenu(path: string, x: number, y: number): void {
 }
 
 /**
- * The rename dialog — the same copy, from the same helper, as the Files panel's.
+ * The rename dialog: the same copy, the same refusals and the same commit as the Files panel's.
  *
- * A rename here rewrites references exactly as one in the sidebar does, and two dialogs that
- * disagreed about that is the divergence the shared helper exists to prevent.
+ * A rename here rewrites references exactly as one in the sidebar does and replaces a destination
+ * just as silently, and an open tab has to follow the file. Two flows that disagreed about any of
+ * that is the divergence the shared helpers exist to prevent.
  */
 async function renameLibraryFile(file: LibraryFile) {
+  const path = file.path.replaceAll("\\", "/");
+  const taken = await listRenameSiblings(path, SOURCE);
+  if (taken === null) {
+    return;
+  }
   const message = await renamePromptMessage(file.path);
   const prompt: PromptDialogOptions = {
     confirmLabel: "Rename",
     select: "stem",
-    validate: (value) => (value.trim() ? "" : "Enter a file name."),
+    validate: (value) => renameRefusal(path, value, taken),
     value: file.name,
   };
   if (message !== undefined) {
@@ -716,15 +737,13 @@ async function renameLibraryFile(file: LibraryFile) {
   if (!newName || newName === file.name) {
     return;
   }
-  const normalized = file.path.replaceAll("\\", "/");
-  const parent = normalized.includes("/") ? normalized.slice(0, normalized.lastIndexOf("/")) : ".";
+  const parent = parentDirOf(path);
   const newPath = parent === "." ? newName : `${parent}/${newName}`;
   try {
-    await getPlatform().renameFile(file.path, newPath);
-    invalidateUsages();
+    const report = await commitRename(path, newPath);
     invalidateLibrary();
     await loadLibrary();
-    notify.success(`Renamed to ${newName}`);
+    notifyMoveOutcome(renameStatus(newName, report), report, newPath);
   } catch (error) {
     notify.error(`Could not rename ${file.name}.`, {
       detail: errorMessage(error),
@@ -734,25 +753,21 @@ async function renameLibraryFile(file: LibraryFile) {
   }
 }
 
+/**
+ * Copy the file beside itself, through the one copy Studio has (`duplicateAsset`): byte for byte,
+ * under a name nothing else has. A file listed here is usually text, but not provably so. A
+ * collection that declares no format lists whatever its folder holds, and a declared Markdown
+ * collection can hold a Latin-1 entry, which a read as UTF-8 would have damaged. `document` is what
+ * keeps a copy that IS text openable on a backend that files an upload as a binary.
+ */
 async function duplicateLibraryFile(file: LibraryFile) {
-  const normalized = file.path.replaceAll("\\", "/");
-  const parent = normalized.includes("/") ? normalized.slice(0, normalized.lastIndexOf("/")) : ".";
-  const stem = file.name.replace(/(\.[^.]+)$/, "");
-  const copyName = `${stem}-copy${file.ext || ""}`;
-  const copyPath = parent === "." ? copyName : `${parent}/${copyName}`;
-  try {
-    const platform = getPlatform();
-    const content = await platform.readFile(file.path);
-    await platform.writeFile(copyPath, content);
+  const copy = await duplicateAsset(file.path.replaceAll("\\", "/"), {
+    document: true,
+    source: SOURCE,
+  });
+  if (copy !== null) {
     invalidateLibrary();
     await loadLibrary();
-    notify.success(`Duplicated as ${copyName}`);
-  } catch (error) {
-    notify.error(`Could not duplicate ${file.name}.`, {
-      detail: errorMessage(error),
-      path: file.path,
-      source: SOURCE,
-    });
   }
 }
 

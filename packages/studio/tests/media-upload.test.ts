@@ -143,6 +143,11 @@ describe("assetRef", () => {
 });
 
 describe("uniqueName", () => {
+  test("a name that differs only in case is taken, since a case-insensitive disk would overwrite", () => {
+    expect(uniqueName("Hero.jpg", new Set(["hero.jpg"]))).toBe("Hero-1.jpg");
+    expect(uniqueName("hero.jpg", new Set(["HERO.JPG", "HERO-1.JPG"]))).toBe("hero-2.jpg");
+  });
+
   test("passes an unused name through", () => {
     expect(uniqueName("hero.jpg", new Set())).toBe("hero.jpg");
   });
@@ -605,6 +610,51 @@ describe("duplicateAsset", () => {
 
   beforeEach(() => {
     resetNotifications();
+  });
+
+  describe("a copy of what is usually a document", () => {
+    function documentCopy(bytes: Uint8Array) {
+      const documents: [string, string][] = [];
+      const { written } = installWithFolder(["entry.md"], {
+        readFileBytes: () => Promise.resolve(new Uint8Array(bytes).buffer),
+        writeFile: (path: string, content: string) => {
+          documents.push([path, content]);
+          return Promise.resolve();
+        },
+      });
+      return { documents, written };
+    }
+
+    test("is written as a document when it is text, so a backend can open it as one", async () => {
+      const { documents, written } = documentCopy(new TextEncoder().encode("# café\n"));
+      const copy = await duplicateAsset("public/media/entry.md", { document: true });
+      expect(documents).toEqual([["public/media/entry-copy.md", "# café\n"]]);
+      expect(written).toEqual([]);
+      expect(copy?.path).toBe("public/media/entry-copy.md");
+    });
+
+    test("stays an upload with a byte order mark, which the dev server's write would drop", async () => {
+      const { documents, written } = documentCopy(new Uint8Array([0xef, 0xbb, 0xbf, 0x61]));
+      await duplicateAsset("public/media/entry.md", { document: true });
+      expect(documents).toEqual([]);
+      expect(written.map((entry) => entry.path)).toEqual(["public/media/entry-copy.md"]);
+    });
+
+    test("stays an upload when the bytes are not UTF-8, so none is replaced", async () => {
+      const { documents, written } = documentCopy(new Uint8Array([0x63, 0xe9, 0xff]));
+      await duplicateAsset("public/media/entry.md", { document: true });
+      expect(documents).toEqual([]);
+      expect(written.map((entry) => entry.path)).toEqual(["public/media/entry-copy.md"]);
+    });
+
+    test("is reported like any failed write", async () => {
+      installWithFolder(["entry.md"], {
+        readFileBytes: () => Promise.resolve(new TextEncoder().encode("# a").buffer),
+        writeFile: () => Promise.reject(new Error("quota")),
+      });
+      expect(await duplicateAsset("public/media/entry.md", { document: true })).toBeNull();
+      expect(problems.at(-1)!.detail).toContain("quota");
+    });
   });
 
   test("writes the file's raw bytes to a new name beside it, and announces it once", async () => {

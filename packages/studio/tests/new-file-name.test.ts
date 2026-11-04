@@ -9,6 +9,7 @@ import {
   composeNewFileName,
   extensionOfName,
   OTHER_FORMAT,
+  renameRefusal,
   slugify,
   validateNewFileName,
 } from "../src/files/new-file-name";
@@ -86,5 +87,52 @@ describe("validateNewFileName", () => {
     };
     expect(validateNewFileName("post.json", OTHER_FORMAT, check)).toBe("Entries are .md files.");
     expect(validateNewFileName("credits.txt", OTHER_FORMAT, check)).toBe("");
+  });
+});
+
+describe("renameRefusal", () => {
+  const FOLDER = new Set(["hero.jpg", "Notes.md", "assets"]);
+  const refusal = (value: string, path = "public/hero.jpg") => renameRefusal(path, value, FOLDER);
+
+  test("accepts a new name, surrounding space, and another extension", () => {
+    expect(refusal("cover.jpg")).toBe("");
+    expect(refusal("  cover.jpg  ")).toBe("");
+    expect(refusal("hero.txt")).toBe("");
+    expect(refusal("hero")).toBe("");
+  });
+
+  test("refuses a blank", () => {
+    expect(refusal("   ")).toBe("Enter a file name.");
+  });
+
+  test("refuses a path, which would land in a folder the listing cannot answer for", () => {
+    expect(refusal("sub/cover.jpg")).toContain("not a path");
+    expect(refusal("../cover.jpg")).toContain("not a path");
+    expect(refusal(String.raw`sub\cover.jpg`)).toContain("not a path");
+  });
+
+  test("refuses a dotfile, and the two names that are not names", () => {
+    expect(refusal(".env")).toContain("start with a dot");
+    expect(refusal(".")).toContain("start with a dot");
+    expect(refusal("..")).toContain("start with a dot");
+  });
+
+  test("a dotfile may keep being one, on a host that listed it", () => {
+    expect(refusal(".env.local", "public/.env")).toBe("");
+    expect(renameRefusal(".env", ".gitignore", new Set([".env", ".gitignore"]))).toContain(
+      "already exists",
+    );
+  });
+
+  test("refuses a name in the folder, whatever its case and whichever case was listed", () => {
+    expect(refusal("notes.md")).toBe("notes.md already exists in this folder.");
+    expect(refusal("NOTES.MD")).toBe("NOTES.MD already exists in this folder.");
+    expect(refusal("assets")).toBe("assets already exists in this folder.");
+  });
+
+  test("the entry's own name is not a collision, so its case can change", () => {
+    expect(refusal("hero.jpg")).toBe("");
+    expect(refusal("Hero.JPG")).toBe("");
+    expect(renameRefusal("hero.jpg", "HERO.jpg", FOLDER)).toBe("");
   });
 });

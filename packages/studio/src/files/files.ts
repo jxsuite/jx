@@ -100,6 +100,7 @@ import {
   composeNewFileName,
   extensionOfName,
   OTHER_FORMAT,
+  renameRefusal,
   validateNewFileName,
 } from "./new-file-name";
 import type { FormatChoice, NewFileNameCheck } from "./new-file-name";
@@ -1511,47 +1512,44 @@ function releaseFileTreeDnD(): void {
  * @param {() => void} renderLeftPanel
  */
 async function moveFileEntry(oldPath: string, newPath: string, renderLeftPanel: () => void) {
-  const platform = getPlatform();
-  markLocalMutation(oldPath, newPath);
+  const name = newPath.split("/").pop() ?? newPath;
+  const newParent = parentDir(newPath);
+  const failure = { path: oldPath, source: "Files" };
+  let listed: DirEntry[];
   try {
-    const report = await platform.renameFile(oldPath, newPath);
-    // The refactor pass just rewrote references project-wide, and `markLocalMutation` suppresses
-    // The watcher echo that would otherwise say so — hence the explicit drop, as in `renameFile`.
-    // Without it a drag-move leaves every usage count in the session answering about the old path.
-    invalidateUsages();
-
-    // Update open tabs referencing the moved path
-    for (const [id] of workspace.tabs.entries()) {
-      if (id === oldPath) {
-        renameTab(oldPath, newPath, newPath);
-      } else if (id.startsWith(`${oldPath}/`)) {
-        const newTabPath = newPath + id.slice(oldPath.length);
-        renameTab(id, newTabPath, newTabPath);
-      }
-    }
-
-    // Refresh affected directories
-    const oldParent = parentDir(oldPath);
-    const newParent = parentDir(newPath);
-    await loadDirectory(oldParent);
-    if (newParent !== oldParent) {
-      await loadDirectory(newParent);
-    }
-
+    listed = await getPlatform().listDirectory(newParent);
+  } catch (error) {
+    // A row was dropped on, so the folder exists: a failed listing says nothing about what is in it.
+    notify.error(`Could not move ${oldPath}.`, {
+      ...failure,
+      detail: `The folder could not be read to check for ${name}: ${errorMessage(error)}`,
+    });
+    return;
+  }
+  /* A move is the same filesystem rename a Rename is, so it replaces its destination in silence.
+     Without regard to case, as `renameRefusal` compares: a case-insensitive disk takes one for the
+     other. A dragged dotfile needs no refusal of its own, since only a host that lists dotfiles can
+     show a row to drag. */
+  const lower = name.toLowerCase();
+  const occupant = listed.find((entry) => entry.name.toLowerCase() === lower);
+  if (occupant !== undefined) {
+    const where = newParent === "." ? "The project root" : `${newParent}/`;
+    notify.error(`Could not move ${oldPath}.`, {
+      ...failure,
+      detail: `${where} already has ${occupant.name}, and a move would replace it.`,
+    });
+    return;
+  }
+  try {
+    const report = await commitRename(oldPath, newPath);
     // Auto-expand target directory
     if (newParent !== ".") {
       requireProjectState().expanded.add(newParent);
     }
-
-    reloadRewrittenTabs(report, newPath);
     renderLeftPanel();
     notifyMoveOutcome(`Moved to ${newPath}`, report, newPath);
   } catch (error) {
-    notify.error(`Could not move ${oldPath}.`, {
-      detail: errorMessage(error),
-      path: oldPath,
-      source: "Files",
-    });
+    notify.error(`Could not move ${oldPath}.`, { ...failure, detail: errorMessage(error) });
   }
 }
 
@@ -2053,14 +2051,21 @@ async function createNewFile(dirPath: string, renderLeftPanel: () => void) {
  * is typed rather than after it is confirmed — the refactor pass is about to rewrite every one of
  * those references, and silently doing that much work was the previous behaviour.
  *
- * @param {string} currentName @param {string} path @returns {Promise<string | null>}
+ * @param currentName The entry's name, which the field opens on.
+ * @param path The entry being renamed.
+ * @param taken The names in its folder, which the field refuses.
+ * @returns The new name, or `null` when the dialog was dismissed.
  */
-async function showRenameFileDialog(currentName: string, path: string): Promise<string | null> {
+async function showRenameFileDialog(
+  currentName: string,
+  path: string,
+  taken: ReadonlySet<string>,
+): Promise<string | null> {
   const message = await renamePromptMessage(path);
   const promptOptions: PromptDialogOptions = {
     confirmLabel: "Rename",
     select: "stem",
-    validate: (v) => (v.trim() ? "" : "Enter a file name."),
+    validate: (v) => renameRefusal(path, v, taken),
     value: currentName,
   };
   if (message !== undefined) {
@@ -2155,8 +2160,11 @@ export async function settleRename(from: string, to: string, report: RenameResul
   if (toDir !== fromDir) {
     await loadDirectory(toDir);
   }
-  if (requireProjectState().selectedPath === from) {
-    requireProjectState().selectedPath = to;
+  const state = requireProjectState();
+  if (state.selectedPath === from) {
+    state.selectedPath = to;
+  } else if (state.selectedPath?.startsWith(`${from}/`)) {
+    state.selectedPath = to + state.selectedPath.slice(from.length);
   }
   reloadRewrittenTabs(report, to);
 }
@@ -2175,22 +2183,59 @@ export async function settleRename(from: string, to: string, report: RenameResul
 export async function commitRename(from: string, to: string): Promise<RenameResult> {
   markLocalMutation(from, to);
   const report = await getPlatform().renameFile(from, to);
-  if (workspace.tabs.has(from)) {
-    renameTab(from, to, to);
+  // A copy of the keys, since a re-key edits the map being walked. `from` may be a folder.
+  const openIds = [...workspace.tabs.keys()];
+  for (const id of openIds) {
+    if (id === from || id.startsWith(`${from}/`)) {
+      const moved = to + id.slice(from.length);
+      renameTab(id, moved, moved);
+    }
   }
   await settleRename(from, to, report);
   return report;
+}
+
+/**
+ * The names beside the entry at `path`, for {@link renameRefusal} to judge a new name against.
+ *
+ * Not `listTakenNames`, which answers empty for a folder that may not exist yet. This one holds the
+ * entry, so a failed listing says nothing about what a rename would overwrite, and it makes the
+ * rename refuse rather than guess.
+ *
+ * @param path The entry about to be renamed.
+ * @param source Names the flow in the Problem.
+ * @returns The names, or `null` when the folder could not be read; the reason has been reported.
+ */
+export async function listRenameSiblings(
+  path: string,
+  source: string,
+): Promise<Set<string> | null> {
+  try {
+    const listed = await getPlatform().listDirectory(parentDirOf(path));
+    return new Set(listed.map((entry) => entry.name));
+  } catch (error) {
+    notify.error(`Could not rename ${path.split("/").pop() ?? path}.`, {
+      detail: `The folder could not be read to check the new name: ${errorMessage(error)}`,
+      path,
+      source,
+    });
+    return null;
+  }
 }
 
 async function renameFile(
   entry: { name: string; path: string; type: string },
   renderLeftPanel: () => void,
 ) {
-  const newName = await showRenameFileDialog(entry.name, entry.path);
+  const parentDirPath = parentDirOf(entry.path);
+  const taken = await listRenameSiblings(entry.path, "Files");
+  if (taken === null) {
+    return;
+  }
+  const newName = await showRenameFileDialog(entry.name, entry.path, taken);
   if (!newName || newName === entry.name) {
     return;
   }
-  const parentDirPath = parentDirOf(entry.path);
   const newPath = parentDirPath === "." ? newName : `${parentDirPath}/${newName}`;
   try {
     const report = await commitRename(entry.path, newPath);

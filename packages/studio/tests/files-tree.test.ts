@@ -32,6 +32,7 @@ import {
 import type { MockPlatformState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { identities } from "@jxsuite/test-support/inspect-dom";
+import { getPlatform } from "../src/platform";
 import { requireProjectState, setProjectState } from "../src/store";
 import {
   PRIMARY_PANE,
@@ -1228,6 +1229,40 @@ describe("rename flow", () => {
     expect(renders).toBe(1);
   });
 
+  test("renaming a folder takes the tabs and the selection inside it along", async () => {
+    const { handle } = await seededTree({
+      "assets/deep.json": "{}",
+      "assets/sub/deeper.json": "{}",
+      "assets-more/kept.json": "{}",
+    });
+    for (const id of ["assets/deep.json", "assets/sub/deeper.json", "assets-more/kept.json"]) {
+      openTab({ document: { tagName: "div" }, documentPath: id, id });
+    }
+    const dirty = workspace.tabs.get("assets/deep.json")!;
+    dirty.doc.dirty = true;
+    requireProjectState().selectedPath = "assets/sub/deeper.json";
+
+    const { field, wrapper } = await openRenameDialog("assets");
+    field.value = "library";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    wrapper.dispatchEvent(new Event("confirm"));
+    await flush();
+
+    expect(handle.state.calls).toContainEqual(["renameFile", "assets", "library"]);
+    expect(workspace.tabs.has("assets/deep.json")).toBe(false);
+    expect(workspace.tabs.has("assets/sub/deeper.json")).toBe(false);
+    // The same tab, so what it holds stays with the file.
+    expect(workspace.tabs.get("library/deep.json")).toBe(dirty);
+    expect(dirty.documentPath).toBe("library/deep.json");
+    expect(dirty.doc.dirty).toBe(true);
+    expect(workspace.tabs.get("library/sub/deeper.json")?.documentPath).toBe(
+      "library/sub/deeper.json",
+    );
+    // A folder whose name merely starts the same is another folder.
+    expect(workspace.tabs.has("assets-more/kept.json")).toBe(true);
+    expect(requireProjectState().selectedPath).toBe("library/sub/deeper.json");
+  });
+
   test("renames a root-level file via the Enter key", async () => {
     const { handle } = await seededTree({ "beta.md": "# b" });
 
@@ -1277,6 +1312,90 @@ describe("rename flow", () => {
 
     expect(dialogWrapper()).toBeNull();
     expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+  });
+
+  /** Type a name into the open dialog and confirm it. */
+  async function confirmName(field: HTMLInputElement, wrapper: Element, name: string) {
+    field.value = name;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    wrapper.dispatchEvent(new Event("confirm"));
+    await flush();
+  }
+
+  test("a name already in the folder is refused in place, and the other file survives", async () => {
+    const { handle } = await seededTree({
+      "pages/about.json": "ABOUT",
+      "pages/index.json": "INDEX",
+    });
+
+    const { field, wrapper } = await openRenameDialog("pages/index.json");
+    await confirmName(field, wrapper, "about.json");
+
+    expect(dialogWrapper()).not.toBeNull();
+    expect(wrapper.textContent).toContain("about.json already exists in this folder.");
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+    expect(handle.state.files.get("pages/about.json")).toBe("ABOUT");
+    expect(handle.state.files.get("pages/index.json")).toBe("INDEX");
+  });
+
+  test("the collision does not depend on case, and a folder's name counts", async () => {
+    const { handle } = await seededTree({
+      "assets/logo.png": "L",
+      "beta.md": "# b",
+      "gamma.md": "# g",
+    });
+
+    const { field, wrapper } = await openRenameDialog("beta.md");
+    await confirmName(field, wrapper, "GAMMA.md");
+    expect(wrapper.textContent).toContain("GAMMA.md already exists in this folder.");
+    await confirmName(field, wrapper, "assets");
+    expect(wrapper.textContent).toContain("assets already exists in this folder.");
+
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+  });
+
+  test("a file's own name in another case is a rename, not a collision", async () => {
+    const { handle } = await seededTree({ "beta.md": "# b" });
+
+    const { field, wrapper } = await openRenameDialog("beta.md");
+    await confirmName(field, wrapper, "Beta.md");
+
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(1);
+    expect(handle.state.files.has("Beta.md")).toBe(true);
+  });
+
+  test("a path and a dotfile are refused, since the listing cannot answer for either", async () => {
+    const { handle } = await seededTree({ "beta.md": "# b", "sub/gamma.md": "# g" });
+
+    const { field, wrapper } = await openRenameDialog("beta.md");
+    await confirmName(field, wrapper, "sub/gamma.md");
+    expect(wrapper.textContent).toContain("not a path");
+    await confirmName(field, wrapper, ".env");
+    expect(wrapper.textContent).toContain("start with a dot");
+
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+    expect(handle.state.files.get("sub/gamma.md")).toBe("# g");
+  });
+
+  test("a folder that cannot be read refuses the rename, since a collision would go unseen", async () => {
+    const handle = installFsPlatform({ "beta.md": "# b" });
+    siteState();
+    seedTreeState();
+    await mountTree();
+    handle.platform.listDirectory = async () => {
+      throw new Error("offline");
+    };
+
+    await openMenuOn("beta.md");
+    await clickMenuRow("files.rename");
+    await flush();
+
+    expect(dialogWrapper()).toBeNull();
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+    const problem = problems.at(-1)!;
+    expect(problem.message).toBe("Could not rename beta.md.");
+    expect(problem.detail).toContain("offline");
+    expect(problem.path).toBe("beta.md");
   });
 
   test("platform rename failure surfaces gracefully", async () => {
@@ -1984,6 +2103,49 @@ describe("the drag island", () => {
     expect(workspace.tabs.get("index.json")?.documentPath).toBe("index.json");
     expect(requireProjectState().expanded.has(".")).toBe(false);
     expect(renders).toBe(1);
+  });
+
+  /** Drop `srcPath` on the folder row `targetDir`. */
+  async function dropInto(srcPath: string, targetDir: string): Promise<void> {
+    const [monitor] = dnd.monitors;
+    monitor.onDrop({
+      location: { current: { dropTargets: [{ data: { targetDir, type: "file-tree-target" } }] } },
+      source: { data: { path: srcPath, type: "file-tree" } },
+    });
+    await flush();
+  }
+
+  test("a drop on a folder that already has the name moves nothing, and says why", async () => {
+    const { handle } = await seededTree({ "assets/beta.md": "KEEP", "beta.md": "MINE" });
+
+    await dropInto("beta.md", "assets");
+
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+    expect(handle.state.files.get("assets/beta.md")).toBe("KEEP");
+    expect(handle.state.files.get("beta.md")).toBe("MINE");
+    expect(problems.at(-1)!.message).toBe("Could not move beta.md.");
+    expect(problems.at(-1)!.detail).toContain("assets/ already has beta.md");
+  });
+
+  test("the collision does not depend on case, and the project root is named", async () => {
+    const { handle } = await seededTree({ "BETA.md": "KEEP", "pages/beta.md": "MINE" });
+
+    await dropInto("pages/beta.md", ".");
+
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+    expect(problems.at(-1)!.detail).toContain("The project root already has BETA.md");
+  });
+
+  test("a folder that cannot be read refuses the drop, since a collision would go unseen", async () => {
+    const { handle } = await seededTree({ "assets/logo.png": "x", "beta.md": "MINE" });
+    const listed = getPlatform().listDirectory;
+    getPlatform().listDirectory = (path: string) =>
+      path === "assets" ? Promise.reject(new Error("offline")) : listed(path);
+
+    await dropInto("beta.md", "assets");
+
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+    expect(problems.at(-1)!.detail).toContain("offline");
   });
 
   test("dropping a directory into another moves nested tabs and expands the target", async () => {
