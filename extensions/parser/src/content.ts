@@ -6,7 +6,7 @@
  * queryContentType, findEntry) used by both the classes and the server endpoint.
  */
 
-import { isNonNullObject, isRef, isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isNonNullObject, isRef, isString } from "@jxsuite/schema/guards";
 import { localeUrlPrefix, resolveI18n } from "@jxsuite/schema/locale";
 import type {
   ContentFieldValue,
@@ -23,7 +23,7 @@ import type { ContentLoaderEntry } from "./types.ts";
 export interface FilterRule {
   field: string;
   op: string;
-  value?: ContentFieldValue;
+  value?: ContentFieldValue | undefined;
 }
 
 /** One sort key, as `ContentCollection.class.json` declares an item of its `sort` parameter. */
@@ -50,12 +50,27 @@ interface ContentProjectContext {
   config?: ProjectConfig | null;
 }
 
+/** The route and resolved state of the page a class is resolving for. */
+interface DocumentContext {
+  route?: {
+    _pathParams?: Record<string, string>;
+    /** The concrete URL of the page being built (`/kb/frappe/bench-operations`). */
+    urlPattern?: string;
+    /** The language this route serves, when the project declares any (§13.4). */
+    locale?: string | null;
+  };
+  /** The page's state, its earlier class entries already replaced by what they resolved to. */
+  state?: JsonObject;
+}
+
 interface CollectionConfig {
-  contentType?: string;
+  /** One content type, or several whose entries are queried as one list. */
+  contentType?: string | string[];
   filter?: FilterRule[] | JsonObject | null;
   sort?: SortRule | SortRule[] | null;
   limit?: number | null;
   _project?: ContentProjectContext;
+  _document?: DocumentContext;
 }
 
 interface EntryConfig {
@@ -64,15 +79,7 @@ interface EntryConfig {
   id?: JsonValue;
   field?: string;
   _project?: ContentProjectContext;
-  _document?: {
-    route?: {
-      _pathParams?: Record<string, string>;
-      /** The concrete URL of the page being built (`/kb/frappe/bench-operations`). */
-      urlPattern?: string;
-      /** The language this route serves, when the project declares any (§13.4). */
-      locale?: string | null;
-    };
-  };
+  _document?: DocumentContext;
 }
 
 // ─── Query Functions ────────────────────────────────────────────────────────
@@ -86,6 +93,103 @@ function includesValue(
 }
 
 /**
+ * The value a rule's `field` names on an entry (site-architecture.md §6.4).
+ *
+ * `id` is the entry's id, and a key of the entry's data is that field, a dotted one included. Any
+ * other name with a dot is a path through the data: `terms.category.slug` reads `slug` in each item
+ * of `terms.category`. A path that crosses an array collects what it finds in every item, so its
+ * value is the list of those values (flattened one level, so a list of lists reads as one list),
+ * and `contains` then asks whether any item holds the value. A path that finds nothing is
+ * `undefined`.
+ *
+ * @param {ContentLoaderEntry} entry
+ * @param {string} field
+ * @returns {ContentFieldValue | undefined}
+ */
+export function fieldValue(
+  entry: ContentLoaderEntry,
+  field: string,
+): ContentFieldValue | undefined {
+  if (field === "id") {
+    return entry.id;
+  }
+  if (!field.includes(".") || Object.hasOwn(entry.data, field)) {
+    return entry.data[field];
+  }
+  /* SAFETY: an entry's data is a record of content values, absent keys aside, and only present
+     keys are read from it below. */
+  let found: ContentFieldValue[] = [entry.data as Record<string, ContentFieldValue>];
+  let crossed = false;
+  for (const key of field.split(".")) {
+    const next: ContentFieldValue[] = [];
+    for (const value of found) {
+      const items = Array.isArray(value) ? value : [value];
+      crossed ||= Array.isArray(value);
+      for (const item of items) {
+        if (isNonNullObject(item) && !Array.isArray(item) && Object.hasOwn(item, key)) {
+          /* SAFETY: an own key of a content value object is itself a content value. */
+          next.push((item as Record<string, ContentFieldValue>)[key] as ContentFieldValue);
+        }
+      }
+    }
+    found = next;
+  }
+  if (!crossed) {
+    return found[0];
+  }
+  return found.flatMap((value) => (Array.isArray(value) ? value : [value]));
+}
+
+/**
+ * A rule's value with a reference to the page resolved (site-architecture.md §6.4):
+ * `#/$params/<name>` is the route's parameter, and `#/state/<pointer>` a JSON Pointer into the
+ * page's state as it has resolved so far (an entry declared earlier in `state`). Anything else is
+ * the value as written; a reference that finds nothing is `undefined`.
+ *
+ * @param {ContentFieldValue | undefined} value
+ * @param {DocumentContext | undefined} document
+ * @returns {ContentFieldValue | undefined}
+ */
+export function resolveRuleValue(
+  value: ContentFieldValue | undefined,
+  document: DocumentContext | undefined,
+): ContentFieldValue | undefined {
+  if (!isRef(value)) {
+    return value;
+  }
+  const ref = value.$ref;
+  if (ref.startsWith("#/$params/")) {
+    return document?.route?._pathParams?.[ref.slice("#/$params/".length)];
+  }
+  if (!ref.startsWith("#/state/")) {
+    return value;
+  }
+  let current: JsonValue | undefined = document?.state;
+  for (const token of ref.slice("#/state/".length).split("/")) {
+    const key = token.replaceAll("~1", "/").replaceAll("~0", "~");
+    if (Array.isArray(current) && /^(0|[1-9]\d*)$/.test(key)) {
+      current = current[Number(key)];
+    } else if (isJsonObject(current) && Object.hasOwn(current, key)) {
+      current = current[key];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+/**
+ * The rules a `filter` declares: explicit rules as written, or the `{ field: value }` shorthand as
+ * one `==` rule per key.
+ */
+function filterRules(filter: FilterRule[] | JsonObject): FilterRule[] {
+  if (Array.isArray(filter)) {
+    return filter;
+  }
+  return Object.entries(filter).map(([field, value]) => ({ field, op: "==", value }));
+}
+
+/**
  * Evaluate a single filter rule against an entry.
  *
  * @param {FilterRule} rule
@@ -93,7 +197,7 @@ function includesValue(
  * @returns {boolean}
  */
 export function evaluateFilterRule(rule: FilterRule, entry: ContentLoaderEntry) {
-  const actual = rule.field === "id" ? entry.id : entry.data[rule.field];
+  const actual = fieldValue(entry, rule.field);
   switch (rule.op) {
     case "==": {
       return actual === rule.value;
@@ -116,6 +220,10 @@ export function evaluateFilterRule(rule: FilterRule, entry: ContentLoaderEntry) 
     case "not contains": {
       if (Array.isArray(actual)) {
         return !includesValue(actual, rule.value);
+      }
+      // A field with no value contains nothing, so an entry without tags is kept by "not contains".
+      if (actual == null) {
+        return true;
       }
       return isString(actual) && !actual.includes(String(rule.value ?? ""));
     }
@@ -158,18 +266,7 @@ export function queryContentType(entries: ContentLoaderEntry[], query: ContentQu
 
   // Filter
   if (query.filter) {
-    let rules: FilterRule[];
-    if (Array.isArray(query.filter)) {
-      rules = query.filter;
-    } else if (isNonNullObject(query.filter)) {
-      rules = Object.entries(query.filter).map(([field, value]) => ({
-        field,
-        op: "==",
-        value,
-      }));
-    } else {
-      rules = [];
-    }
+    const rules = isNonNullObject(query.filter) ? filterRules(query.filter) : [];
     result = result.filter((entry) => rules.every((rule) => evaluateFilterRule(rule, entry)));
   }
 
@@ -178,8 +275,8 @@ export function queryContentType(entries: ContentLoaderEntry[], query: ContentQu
     const sortRules = Array.isArray(query.sort) ? query.sort : [query.sort];
     result.sort((a, b) => {
       for (const { field, order = "asc" } of sortRules) {
-        const aVal = field === "id" ? a.id : (a.data[field] ?? "");
-        const bVal = field === "id" ? b.id : (b.data[field] ?? "");
+        const aVal = fieldValue(a, field) ?? "";
+        const bVal = fieldValue(b, field) ?? "";
         if (aVal < bVal) {
           return order === "asc" ? -1 : 1;
         }
@@ -227,14 +324,23 @@ export class ContentCollection {
   }
 
   async resolve() {
-    const { contentType, filter, sort, limit, _project } = this.config;
-    const entries = await entriesOf(_project?.content, contentType ?? "");
-    if (!entries) {
+    const { contentType, filter, sort, limit, _project, _document } = this.config;
+    /* Several types are one list: each type's entries in turn, then filtered, sorted and cut
+       together, so a sort interleaves them. A type that does not exist adds nothing. */
+    const entries: ContentLoaderEntry[] = [];
+    for (const type of Array.isArray(contentType) ? contentType : [contentType ?? ""]) {
+      entries.push(...((await entriesOf(_project?.content, type)) ?? []));
+    }
+    if (entries.length === 0) {
       return [];
     }
     const query: ContentQuery = {};
-    if (filter != null) {
-      query.filter = filter;
+    if (isNonNullObject(filter)) {
+      query.filter = filterRules(filter).map((rule) => ({
+        field: rule.field,
+        op: rule.op,
+        value: resolveRuleValue(rule.value, _document),
+      }));
     }
     if (sort != null) {
       query.sort = sort;

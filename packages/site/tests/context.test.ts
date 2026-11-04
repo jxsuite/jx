@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { localeLabel } from "@jxsuite/schema/locale";
 import { injectContext } from "../src/context.ts";
+import { pagination } from "../src/pagination.ts";
 import type { SiteRoute } from "../src/context.ts";
 import type { JxDocument } from "@jxsuite/schema/types";
 
@@ -30,6 +31,19 @@ describe("injectContext", () => {
     const doc: JxDocument = { title: "About Us" };
     injectContext(doc, baseProject, baseRoute);
     expect(doc.state?.$page).toEqual({ params: {}, title: "About Us", url: "/about" });
+  });
+
+  test("a paged route's pagination becomes $page.pagination", () => {
+    const doc: JxDocument = {};
+    const paging = pagination("/blog/*", 2, 10, 25);
+    injectContext(doc, baseProject, { pagination: paging, urlPattern: "/blog/2" });
+    expect(doc.state?.$page).toMatchObject({ pagination: paging, url: "/blog/2" });
+  });
+
+  test("an unpaged route has no pagination key", () => {
+    const doc: JxDocument = {};
+    injectContext(doc, baseProject, baseRoute);
+    expect(doc.state?.$page).not.toHaveProperty("pagination");
   });
 
   test("uses project name as fallback page title", () => {

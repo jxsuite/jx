@@ -4,8 +4,10 @@ import {
   ContentCollection,
   ContentEntry,
   evaluateFilterRule,
+  fieldValue,
   findEntry,
   queryContentType,
+  resolveRuleValue,
 } from "../src/content";
 import type { JsonObject } from "@jxsuite/schema/types";
 import type { ContentLoaderEntry } from "../src/types";
@@ -117,6 +119,12 @@ describe("evaluateFilterRule", () => {
     );
     expect(evaluateFilterRule({ field: "title", op: "not contains", value: "Hello" }, entry)).toBe(
       false,
+    );
+  });
+
+  test("not contains keeps an entry whose field has no value", () => {
+    expect(evaluateFilterRule({ field: "missing", op: "not contains", value: "a" }, entry)).toBe(
+      true,
     );
   });
 
@@ -310,6 +318,64 @@ describe("ContentCollection", () => {
     expect(resolved.map((e) => e.id)).toEqual(["gamma"]);
   });
 
+  test("queries several content types as one list", async () => {
+    const project = {
+      content: new Map([
+        ["posts", posts],
+        ["episodes", [makeEntry("ep", { date: "2026-02-15", title: "Ep" })]],
+      ]),
+    };
+    const collection = new ContentCollection({
+      _project: project,
+      contentType: ["posts", "episodes", "none"],
+      limit: 3,
+      sort: [{ field: "date", order: "desc" }],
+    });
+    const resolved = await collection.resolve();
+    expect(resolved.map((e) => e.id)).toEqual(["beta", "ep", "gamma"]);
+  });
+
+  test("filters and sorts by a dotted path", async () => {
+    const entries = [
+      makeEntry("a", { author: { rank: 2 }, terms: { tag: [{ slug: "x" }, { slug: "y" }] } }),
+      makeEntry("b", { author: { rank: 1 }, terms: { tag: [{ slug: "x" }] } }),
+      makeEntry("c", { author: { rank: 3 }, terms: { tag: [{ slug: "z" }] } }),
+    ];
+    const collection = new ContentCollection({
+      _project: makeProject(entries),
+      contentType: "posts",
+      filter: [{ field: "terms.tag.slug", op: "contains", value: "x" }],
+      sort: [{ field: "author.rank" }],
+    });
+    const resolved = await collection.resolve();
+    expect(resolved.map((e) => e.id)).toEqual(["b", "a"]);
+  });
+
+  test("resolves a filter value that refers to the route or to earlier state", async () => {
+    const _document = {
+      route: { _pathParams: { tag: "news" } },
+      state: { current: { data: { title: "Alpha" }, id: "alpha" } },
+    };
+    const collection = new ContentCollection({
+      _document,
+      _project: makeProject(),
+      contentType: "posts",
+      filter: [
+        { field: "tags", op: "contains", value: { $ref: "#/$params/tag" } },
+        { field: "title", op: "!=", value: { $ref: "#/state/current/data/title" } },
+      ],
+    });
+    const resolved = await collection.resolve();
+    expect(resolved.map((e) => e.id)).toEqual(["gamma"]);
+    const unmatched = await new ContentCollection({
+      _document,
+      _project: makeProject(),
+      contentType: "posts",
+      filter: { tags: { $ref: "#/$params/missing" } },
+    }).resolve();
+    expect(unmatched).toHaveLength(0);
+  });
+
   test("applies a shorthand object filter", async () => {
     const collection = new ContentCollection({
       _project: makeProject(),
@@ -318,6 +384,99 @@ describe("ContentCollection", () => {
     });
     const resolved = await collection.resolve();
     expect(resolved.map((e) => e.id)).toEqual(["alpha"]);
+  });
+});
+
+// ─── fieldValue ───────────────────────────────────────────────────────────────
+
+describe("fieldValue", () => {
+  const entry = makeEntry("p", {
+    "a.b": "literal",
+    author: { name: "Ada", roles: [["editor"], ["admin"]] },
+    terms: {
+      category: [
+        { name: "Bible", slug: "bible" },
+        { name: "War", slug: "war" },
+      ],
+      season: [],
+    },
+    title: "T",
+  });
+
+  test("reads the id, a top-level key and a key with a dot in it", () => {
+    expect(fieldValue(entry, "id")).toBe("p");
+    expect(fieldValue(entry, "title")).toBe("T");
+    expect(fieldValue(entry, "a.b")).toBe("literal");
+  });
+
+  test("walks a dotted path through objects", () => {
+    expect(fieldValue(entry, "author.name")).toBe("Ada");
+  });
+
+  test("collects every item's value where the path crosses an array", () => {
+    expect(fieldValue(entry, "terms.category.slug")).toEqual(["bible", "war"]);
+    expect(fieldValue(entry, "terms.season.slug")).toEqual([]);
+  });
+
+  test("flattens a list of lists one level", () => {
+    expect(fieldValue(entry, "author.roles")).toEqual([["editor"], ["admin"]]);
+    expect(
+      fieldValue(
+        makeEntry("q", { people: [{ roles: ["a", "b"] }, { roles: ["c"] }] }),
+        "people.roles",
+      ),
+    ).toEqual(["a", "b", "c"]);
+  });
+
+  test("is undefined where the path finds nothing", () => {
+    expect(fieldValue(entry, "author.age")).toBeUndefined();
+    expect(fieldValue(entry, "title.length")).toBeUndefined();
+    expect(fieldValue(entry, "missing")).toBeUndefined();
+  });
+});
+
+// ─── resolveRuleValue ─────────────────────────────────────────────────────────
+
+describe("resolveRuleValue", () => {
+  const document = {
+    route: { _pathParams: { slug: "bible" } },
+    state: {
+      entry: { data: { terms: { series: [{ slug: "origins" }] }, "x/y": 1, "z~": 2 }, id: "e" },
+    },
+  };
+
+  test("returns a plain value as written", () => {
+    expect(resolveRuleValue("news", document)).toBe("news");
+    expect(resolveRuleValue(undefined, document)).toBeUndefined();
+  });
+
+  test("reads a route parameter", () => {
+    expect(resolveRuleValue({ $ref: "#/$params/slug" }, document)).toBe("bible");
+    expect(resolveRuleValue({ $ref: "#/$params/page" }, document)).toBeUndefined();
+    expect(resolveRuleValue({ $ref: "#/$params/slug" }, {})).toBeUndefined();
+  });
+
+  test("reads a pointer into the page's resolved state", () => {
+    expect(resolveRuleValue({ $ref: "#/state/entry/data/terms/series/0/slug" }, document)).toBe(
+      "origins",
+    );
+    expect(resolveRuleValue({ $ref: "#/state/entry/data/x~1y" }, document)).toBe(1);
+    expect(resolveRuleValue({ $ref: "#/state/entry/data/z~0" }, document)).toBe(2);
+  });
+
+  test("is undefined where the pointer finds nothing", () => {
+    expect(
+      resolveRuleValue({ $ref: "#/state/entry/data/terms/series/1/slug" }, document),
+    ).toBeUndefined();
+    expect(
+      resolveRuleValue({ $ref: "#/state/entry/data/terms/series/x" }, document),
+    ).toBeUndefined();
+    expect(resolveRuleValue({ $ref: "#/state/nothing" }, document)).toBeUndefined();
+  });
+
+  test("leaves any other reference as written", () => {
+    const ref = { $ref: "./other.json" };
+    expect(resolveRuleValue(ref, document)).toBe(ref);
   });
 });
 

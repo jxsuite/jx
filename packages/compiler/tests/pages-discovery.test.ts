@@ -3,6 +3,8 @@ import { discoverPages, expandDynamicRoutes, readPageDocument } from "../src/sit
 import { buildProjectExtensionRegistry } from "../src/site/format-host";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JxDocument } from "@jxsuite/schema/types";
 
 const FIXTURES = join(import.meta.dir, "_fixtures_pages");
 
@@ -465,4 +467,293 @@ process.on("exit", () => {
   try {
     cleanup();
   } catch {}
+});
+
+// ─── paginate $paths (site-architecture.md §4.3) ──────────────────────────
+
+describe("paginate $paths", () => {
+  /** A dynamic route over a page written with `doc`, at `urlPattern` with `params`. */
+  function pagedRoute(doc: JxDocument, urlPattern: string, params: string[]) {
+    const sourcePath = join(FIXTURES, `paged-${params.join("-")}.json`);
+    writeFileSync(sourcePath, JSON.stringify(doc));
+    return {
+      $layout: null,
+      isCatchAll: urlPattern.endsWith("*"),
+      isDynamic: true,
+      params,
+      relativePath: "",
+      sourcePath,
+      urlPattern,
+    };
+  }
+
+  const five = ["a", "b", "c", "d", "e"];
+
+  test("pages a literal array into numbered routes, page 1 at a catch-all's root", async () => {
+    setup();
+    const route = pagedRoute(
+      { $paths: { pageSize: 2, paginate: { $ref: "#/state/posts" } }, state: { posts: five } },
+      "/blog/*",
+      ["page"],
+    );
+    const result = await expandDynamicRoutes([route], FIXTURES);
+    expect(result.map((r) => r.urlPattern)).toEqual(["/blog", "/blog/2", "/blog/3"]);
+    expect(result.map((r) => r._pathParams)).toEqual([{ page: "1" }, { page: "2" }, { page: "3" }]);
+    expect(result.map((r) => r.pagedState?.items)).toEqual([["a", "b"], ["c", "d"], ["e"]]);
+    expect(result[0]!.pagedState?.key).toBe("posts");
+    expect(result[2]!.pagination?.next).toBeNull();
+    expect(result[0]!.isDynamic).toBe(false);
+    expect(result[0]!.sourceMtime).toBeUndefined();
+    cleanup();
+  });
+
+  test("a named parameter numbers the first page", async () => {
+    setup();
+    const route = pagedRoute(
+      { $paths: { pageSize: 5, paginate: { $ref: "#/state/posts" } }, state: { posts: five } },
+      "/blog/page/:n",
+      ["n"],
+    );
+    const result = await expandDynamicRoutes([route], FIXTURES);
+    expect(result.map((r) => r.urlPattern)).toEqual(["/blog/page/1"]);
+    cleanup();
+  });
+
+  test("an empty list still yields its first page", async () => {
+    setup();
+    const route = pagedRoute(
+      { $paths: { pageSize: 5, paginate: { $ref: "#/state/posts" } }, state: { posts: [] } },
+      "/blog/*",
+      ["page"],
+    );
+    const result = await expandDynamicRoutes([route], FIXTURES);
+    expect(result.map((r) => r.urlPattern)).toEqual(["/blog"]);
+    expect(result[0]!.pagination?.pageCount).toBe(1);
+    cleanup();
+  });
+
+  test("pages a list once per value of its each source", async () => {
+    setup();
+    const route = pagedRoute(
+      {
+        $paths: {
+          each: { param: "tag", values: ["a$b", "news"] },
+          pageSize: 3,
+          paginate: { $ref: "#/state/posts" },
+        },
+        state: { posts: five },
+      },
+      "/tags/:tag/*",
+      ["tag", "page"],
+    );
+    const result = await expandDynamicRoutes([route], FIXTURES);
+    expect(result.map((r) => r.urlPattern)).toEqual([
+      "/tags/a$b",
+      "/tags/a$b/2",
+      "/tags/news",
+      "/tags/news/2",
+    ]);
+    expect(result[3]!._pathParams).toEqual({ page: "2", tag: "news" });
+    expect(result[2]!.pagination?.next).toBe("/tags/news/2");
+    cleanup();
+  });
+
+  test("a ContentCollection entry is paged with its own filter and sort, per each value", async () => {
+    setup();
+    const route = pagedRoute(
+      {
+        $paths: {
+          each: { contentType: "tags", field: "id", param: "tag" },
+          pageSize: 1,
+          paginate: { $ref: "#/state/posts" },
+        },
+        state: {
+          posts: {
+            $prototype: "ContentCollection",
+            contentType: "blog",
+            filter: [
+              { field: "draft", op: "!=", value: true },
+              { field: "terms.tag.slug", op: "contains", value: { $ref: "#/$params/tag" } },
+            ],
+            sort: [{ field: "order", order: "desc" }],
+            timing: "compiler",
+          },
+        },
+      },
+      "/tags/:tag/*",
+      ["tag", "page"],
+    );
+    const tagged = (id: string, order: number, tags: string[], draft = false) => ({
+      _meta: { mtime: "2000-01-01T00:00:00Z" },
+      body: null,
+      data: { draft, order, terms: { tag: tags.map((slug) => ({ slug })) } },
+      id,
+    });
+    const sections = {
+      content: new Map([
+        [
+          "blog",
+          [
+            tagged("one", 1, ["x"]),
+            tagged("two", 2, ["x", "y"]),
+            tagged("three", 3, ["x"], true),
+            tagged("four", 4, ["y"]),
+          ],
+        ],
+        [
+          "tags",
+          [
+            { body: null, data: {}, id: "x" },
+            { body: null, data: {}, id: "y" },
+          ],
+        ],
+      ]),
+    };
+    const result = await expandDynamicRoutes([route], FIXTURES, sections, extRegistry, {
+      imports: { Local: "./classes/local.class.json", Remote: "@scope/remote.class.json" },
+    });
+    expect(result.map((r) => r.urlPattern)).toEqual([
+      "/tags/x",
+      "/tags/x/2",
+      "/tags/y",
+      "/tags/y/2",
+    ]);
+    const ids = result.map((r) =>
+      r.pagedState?.items.map((item) => (isJsonObject(item) ? item.id : undefined)),
+    );
+    expect(ids).toEqual([["two"], ["one"], ["four"], ["two"]]);
+    cleanup();
+  });
+
+  test("a newer item dates the route, and items without timestamps leave it to its template", async () => {
+    setup();
+    const route = pagedRoute(
+      {
+        $paths: { pageSize: 2, paginate: { $ref: "#/state/posts" } },
+        state: {
+          posts: [
+            { _meta: { mtime: "2999-01-01T00:00:00.000Z" }, id: "future" },
+            { _meta: { mtime: "1999-01-01T00:00:00.000Z" }, id: "past" },
+            { _meta: { mtime: "not a date" }, id: "odd" },
+            { id: "bare" },
+          ],
+        },
+      },
+      "/blog/*",
+      ["page"],
+    );
+    const result = await expandDynamicRoutes([route], FIXTURES);
+    expect(result.map((r) => r.sourceMtime)).toEqual([
+      "2999-01-01T00:00:00.000Z",
+      "2999-01-01T00:00:00.000Z",
+    ]);
+    const plain = pagedRoute(
+      {
+        $paths: { pageSize: 2, paginate: { $ref: "#/state/posts" } },
+        state: { posts: [{ _meta: { mtime: "1999-01-01T00:00:00.000Z" } }, { id: "bare" }] },
+      },
+      "/old/*",
+      ["p"],
+    );
+    const [plainPage] = await expandDynamicRoutes([plain], FIXTURES);
+    expect(plainPage!.sourceMtime).toBeUndefined();
+    cleanup();
+  });
+
+  test("each misconfiguration is a collected error and generates no pages", async () => {
+    setup();
+    const staticRoute = {
+      $layout: null,
+      isCatchAll: false,
+      isDynamic: false,
+      params: [],
+      relativePath: "",
+      sourcePath: "/x",
+      urlPattern: "/",
+    };
+    const paging = { pageSize: 2, paginate: { $ref: "#/state/posts" } };
+    const routes = [
+      staticRoute,
+      pagedRoute({ $paths: paging, state: { posts: five } }, "/two/:a/:b", ["a", "b"]),
+      pagedRoute({ $paths: paging, state: {} }, "/missing/*", ["missing"]),
+      pagedRoute({ $paths: paging, state: { posts: { count: 3 } } }, "/object/*", ["object"]),
+      pagedRoute(
+        {
+          $paths: paging,
+          state: { posts: { $prototype: "Nowhere", timing: "compiler" } },
+        },
+        "/unresolved/*",
+        ["unresolved"],
+      ),
+      pagedRoute({ $paths: { ...paging, pageSize: 0 } }, "/size/*", ["size"]),
+    ];
+    const errors: string[] = [];
+    const result = await expandDynamicRoutes(routes, FIXTURES, {}, undefined, undefined, null, {
+      errors,
+    });
+    expect(result).toEqual([staticRoute]);
+    expect(errors).toEqual([
+      "Dynamic route /two/:a/:b: a paged route takes exactly one parameter besides those its each source fills; this one has 2",
+      'Dynamic route /missing/*: $paths.paginate names state entry "posts", which this page does not declare',
+      'Dynamic route /object/*: state entry "posts" did not resolve to an array at build time',
+      'Dynamic route /unresolved/*: state entry "posts" did not resolve to an array at build time',
+      "Dynamic route /size/*: $paths.pageSize must be a positive integer",
+    ]);
+    cleanup();
+  });
+
+  test("without an errors sink a misconfigured source throws", async () => {
+    setup();
+    const route = pagedRoute(
+      { $paths: { pageSize: 0, paginate: { $ref: "#/state/posts" } } },
+      "/blog/*",
+      ["page"],
+    );
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
+    await expect(expandDynamicRoutes([route], FIXTURES)).rejects.toThrow(
+      "Dynamic route /blog/*: $paths.pageSize must be a positive integer",
+    );
+    cleanup();
+  });
+
+  test("each may fill a catch-all while the page number fills a named parameter", async () => {
+    setup();
+    const route = pagedRoute(
+      {
+        $paths: {
+          each: [{ section: "guides/setup" }],
+          pageSize: 4,
+          paginate: { $ref: "#/state/posts" },
+        },
+        state: { posts: five },
+      },
+      "/docs/*/page/:n",
+      ["section", "n"],
+    );
+    const result = await expandDynamicRoutes([route], FIXTURES);
+    expect(result.map((r) => r.urlPattern)).toEqual([
+      "/docs/guides/setup/page/1",
+      "/docs/guides/setup/page/2",
+    ]);
+    cleanup();
+  });
+
+  test("a list whose each value climbs out of the output is skipped", async () => {
+    setup();
+    const route = pagedRoute(
+      {
+        $paths: {
+          each: { param: "tag", values: ["..", "ok"] },
+          pageSize: 5,
+          paginate: { $ref: "#/state/posts" },
+        },
+        state: { posts: five },
+      },
+      "/tags/:tag/*",
+      ["tag", "page"],
+    );
+    const result = await expandDynamicRoutes([route], FIXTURES);
+    expect(result.map((r) => r.urlPattern)).toEqual(["/tags/ok"]);
+    cleanup();
+  });
 });
