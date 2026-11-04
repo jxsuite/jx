@@ -668,12 +668,50 @@ describe("how the dock hides what is not showing", () => {
     const dock = (await Bun.file(
       new URL("../src/surfaces/inspector-dock.json", import.meta.url),
     ).json()) as { style: Record<string, Record<string, string>> };
-    for (const rule of ['& [part="panel"][hidden]', '& [part="panel-body"][data-active="false"]']) {
+    for (const rule of [
+      '& > [part="panel"][hidden]',
+      '& [part="panel-body"][data-active="false"]',
+    ]) {
       const declared = dock.style[rule]!;
       expect(declared["contentVisibility"]).toBe("hidden");
       expect(declared["visibility"]).toBe("hidden");
       expect(declared["flex"]).toBe("0 0 0");
       expect(declared["display"]).not.toBe("none");
+    }
+  });
+});
+
+/* The leaves mount in the dock's own light DOM, so a bare `[part="panel"]` in its stylesheet also
+   reaches the Style leaf's root and a colour field's picker. That rule says `overflow: hidden`: on
+   the Style root it clipped the rows, the scroller above it had nothing to scroll, and every
+   property past the fold was unreachable. happy-dom does no layout, so what is held is which
+   elements the rule selects, against the real mounted dock. */
+describe("the dock's tab panel rules stop at its own tab panels", () => {
+  test("a leaf's own part=panel is not one of them", async () => {
+    // SAFETY: a surface document's `style` is an object of rule objects whose values are strings.
+    const dock = (await Bun.file(
+      new URL("../src/surfaces/inspector-dock.json", import.meta.url),
+    ).json()) as { style: Record<string, Record<string, string>> };
+    const rules = Object.keys(dock.style).filter((key) => key.includes('[part="panel"]'));
+    expect(rules.length).toBeGreaterThan(0);
+
+    resetWorkspaceWithTab();
+    mount(makeCtx());
+    setInspectorTab("style");
+    await flush(4);
+    const leafRoot = document.createElement("div");
+    leafRoot.setAttribute("part", "panel");
+    expect(visibleBodies().map((body) => body.dataset.tab)).toEqual(["style"]);
+    visibleBodies()[0]?.append(leafRoot);
+
+    expect(panels().length).toBe(INSPECTOR_STRIP.length);
+    for (const rule of rules) {
+      expect(leafRoot.matches(rule.replace("&", '[part="inspector-dock"]'))).toBe(false);
+    }
+    const panelRule = '[part="inspector-dock"] > [part="panel"]';
+    expect(rules).toContain('& > [part="panel"]');
+    for (const panel of panels()) {
+      expect(panel.matches(panelRule)).toBe(true);
     }
   });
 });

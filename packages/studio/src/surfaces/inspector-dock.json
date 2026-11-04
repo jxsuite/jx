@@ -54,8 +54,8 @@
       "maxWidth": "none",
       "padding": "var(--jx-space-1) var(--jx-space-2)"
     },
-    "& [part=\"panel\"]": {
-      "$description": "`#right-panel > .panel-body { flex: 1; min-height: 0; overflow-y: auto }`, now a flex column: Element's sub-switch sits above its leaves and must not scroll away with them. The kit's tab panel pads itself for a dialog; a dock's tab is the whole column and each body pads its own content.",
+    "& > [part=\"panel\"]": {
+      "$description": "`#right-panel > .panel-body { flex: 1; min-height: 0; overflow-y: auto }`, now a flex column: Element's sub-switch sits above its leaves and must not scroll away with them. The kit's tab panel pads itself for a dialog; a dock's tab is the whole column and each body pads its own content. The child combinator is load-bearing: the leaves mount in this same light DOM, the Style leaf's root and every `jx-color-field`'s picker are also `part=\"panel\"`, and a descendant selector put this `overflow: hidden` on them. The Style root then clipped its own rows, so `panel-body` below saw nothing to scroll and every property past the fold was unreachable.",
       "display": "flex",
       "flexDirection": "column",
       "flex": "1",
@@ -63,7 +63,7 @@
       "padding": "0",
       "overflow": "hidden"
     },
-    "& [part=\"panel\"][hidden]": {
+    "& > [part=\"panel\"][hidden]": {
       "$description": "Out of sight, out of the layout and out of the accessibility tree, but not `display: none`: a panel that left the box tree is restyled whole when it comes back, and the Inspector shows its Page panel on every deselect and on every close of the Assistant (§6), which made each of those a 300-element style recalculation. `content-visibility: hidden` skips the subtree while keeping its computed style, so a return restyles only what changed while it was away; `visibility: hidden` keeps it unfocusable and unexposed, as `hidden` means.",
       "display": "flex",
       "flex": "0 0 0",

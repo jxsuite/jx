@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { lstat, mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -24,6 +24,15 @@ async function run(cwd: string, args: string[]): Promise<string> {
   }
   return out;
 }
+
+/** The modified time of each of `paths` under `root`, in the order given. */
+async function mtimesOf(root: string, paths: string[]): Promise<number[]> {
+  const stats = await Promise.all(paths.map((path) => stat(join(root, path))));
+  return stats.map((info) => info.mtimeMs);
+}
+
+/** The time every overlay file carries, spelled out so the test is not reading the code's own. */
+const PINNED = Date.parse("2026-01-01T00:00:00Z");
 
 const roots: string[] = [];
 
@@ -171,6 +180,58 @@ describe("overlayProject", () => {
     );
   });
 
+  test("every copied file carries one modified time, whatever the source's were", async () => {
+    const root = await repoWithProject({
+      "project.json": "{}\n",
+      "public/a.jpg": "a",
+      "public/b.jpg": "b",
+    });
+    await utimes(join(root, "starter/public/a.jpg"), new Date(1000), new Date(1000));
+    await utimes(join(root, "starter/public/b.jpg"), new Date(9_000_000), new Date(9_000_000));
+    forgetOverlays();
+    const overlay = await overlayProject(root, "starter");
+
+    // The exact date, not merely equal times: a fast copy on a coarse-clocked filesystem lands
+    // Several writes in one tick, so "all equal" can pass with nothing pinned at all. The folder
+    // Counts too, because the Files listing reports a directory's modified time as well.
+    expect(
+      await mtimesOf(overlay.root, ["public/a.jpg", "public/b.jpg", "project.json", "public"]),
+    ).toEqual([PINNED, PINNED, PINNED, PINNED]);
+  });
+
+  test("a shot's write, once reset, does not make that file the newest", async () => {
+    const root = await repoWithProject({
+      "project.json": "{}\n",
+      "public/a.jpg": "a",
+      "public/b.jpg": "b",
+    });
+    forgetOverlays();
+    const overlay = await overlayProject(root, "starter");
+
+    await writeFile(join(overlay.root, "public/a.jpg"), "edited");
+    await rm(join(overlay.root, "public/b.jpg"));
+    await writeFile(join(overlay.root, "public/c.jpg"), "new");
+    await overlay.reset();
+
+    expect(await mtimesOf(overlay.root, ["public/a.jpg", "public/b.jpg"])).toEqual([
+      PINNED,
+      PINNED,
+    ]);
+    expect(await Bun.file(join(overlay.root, "public/a.jpg")).text()).toBe("a");
+    expect(existsSync(join(overlay.root, "public/c.jpg"))).toBe(false);
+  });
+
+  test("a write the same size as the original is still seen and undone", async () => {
+    const root = await repoWithProject({ "project.json": "{}\n", "public/a.jpg": "a" });
+    forgetOverlays();
+    const overlay = await overlayProject(root, "starter");
+
+    await writeFile(join(overlay.root, "public/a.jpg"), "z");
+    await overlay.reset();
+
+    expect(await Bun.file(join(overlay.root, "public/a.jpg")).text()).toBe("a");
+  });
+
   test("reset undoes a modification, a creation and a deletion", async () => {
     const root = await repoWithProject({
       "pages/index.md": "original\n",
@@ -309,6 +370,11 @@ describe("materialiseGitFixture", () => {
       " D pages/about.md",
       " M pages/index.md",
       "?? components/sc-cta.json",
+    ]);
+    // Pinned after the dirty layer is laid down, and without hiding any of it from `status` above.
+    expect(await mtimesOf(dest, ["pages/index.md", "components/sc-cta.json"])).toEqual([
+      PINNED,
+      PINNED,
     ]);
   });
 
