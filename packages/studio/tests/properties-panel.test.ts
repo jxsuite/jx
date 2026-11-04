@@ -913,9 +913,13 @@ describe("what Content no longer draws", () => {
     if (!(openLogic instanceof HTMLElement)) {
       throw new TypeError("the repeating list offered no Open Logic action");
     }
+    /* The dock is reached through a lazy import (Content must not statically depend on its host).
+       Loaded first, because a cold load is not a number of turns: on a cold disk it yields to the
+       event loop while it reads, so a slow runner spent all 20 below with the import still open and
+       failed this test on a commit whose source had just passed. Once loaded, the import settles
+       in microtasks and what is left to prove is that the click asks for the Logic tab. */
+    await import("../src/panels/right-panel");
     openLogic.click();
-    // The dock is reached through a lazy import (Content must not statically depend on its host),
-    // So the tab lands a few turns later.
     for (let i = 0; i < 20 && tab.session.ui.rightTab !== "events"; i++) {
       await flush(1);
     }
