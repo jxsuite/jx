@@ -1,0 +1,1390 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioImageEditor",
+  "$description": "The Image editor (studio.md §9.5): one image asset, edited where it is opened, as a recipe previewed in CSS over the picture already on screen and baked once at save. `media/image-editor.ts` owns the recipe, the undo stack, the decoded source and the one write door, and hands this document a flat projection of pre-formatted strings and discriminant words; nothing here computes geometry. The preview is the real image under a `transform` for the turns and flips and a `filter` for the tone pass, with the crop drawn as a frame over it, so there is no `<canvas>` in this document at all. The crop geometry and the oriented aspect travel as custom properties bound to state in this document's own `style` block, which is how a document binds a style declaration to state (spec.md §9.1). The overwrite sentence is permanent: the path, the absence of a backup and the recovery path are in view whenever the button that writes is.",
+  "tagName": "div",
+  "attributes": {
+    "part": "editor",
+    "data-jx-region": "${state.region}"
+  },
+  "style": {
+    "$description": "Keyed on `part`, re-valued onto the studio token layer like every other pane document. The stage is a size container so the frame can fit the picture inside it with container units and an `aspect-ratio`, never larger than the picture's own pixels; the crop scrim is a spread shadow on the crop box clipped by the frame, written as `rgba(0, 0, 0, 0.5)` because `check-styles.ts` allow-lists colour by value.",
+    "--jx-image-ratio": "${state.ratio}",
+    "--jx-image-max": "${state.maxWidth}",
+    "--jx-image-w": "${state.imageWidth}",
+    "--jx-image-h": "${state.imageHeight}",
+    "--jx-image-transform": "${state.imageTransform}",
+    "--jx-image-filter": "${state.filter}",
+    "--jx-crop-x": "${state.cropX}",
+    "--jx-crop-y": "${state.cropY}",
+    "--jx-crop-w": "${state.cropW}",
+    "--jx-crop-h": "${state.cropH}",
+    "--jx-crop-cursor": "${state.moveCursor}",
+    "height": "100%",
+    "display": "flex",
+    "gap": "var(--jx-space-5)",
+    "padding": "var(--jx-space-5)",
+    "boxSizing": "border-box",
+    "background": "var(--bg-panel)",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"stage-slot\"], & [part=\"quality-slot\"]": {
+      "$description": "A `$switch` renders a container of its own, and neither of these is a box: each case stands where the switch does.",
+      "display": "contents"
+    },
+    "& [part=\"stage\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "minHeight": "0",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "containerType": "size"
+    },
+    "& [part=\"frame\"]": {
+      "$description": "The whole picture as the author sees it, turned and mirrored: the largest box of the oriented aspect that fits the stage, and never wider than the picture's own pixels, because an upscaled preview is a lie about the asset. It clips nothing itself, so a handle on the picture's edge can stand half outside it.",
+      "position": "relative",
+      "aspectRatio": "var(--jx-image-ratio, 1)",
+      "width": "min(100cqw, calc(100cqh * var(--jx-image-ratio, 1)), var(--jx-image-max, 100cqw))"
+    },
+    "& [part=\"picture\"]": {
+      "$description": "The clipped layer: the turned image and the crop scrim, which is a spread shadow that has to stop at the picture.",
+      "position": "absolute",
+      "inset": "0",
+      "overflow": "hidden",
+      "background": "var(--bg-input)"
+    },
+    "& [part=\"image\"]": {
+      "$description": "The image in its own, unturned frame, centred in the oriented one and turned into it. On an odd turn its box is the frame's with the sides swapped, which is why the two sizes are percentages the host computes rather than 100%.",
+      "position": "absolute",
+      "left": "50%",
+      "top": "50%",
+      "width": "var(--jx-image-w, 100%)",
+      "height": "var(--jx-image-h, 100%)",
+      "maxWidth": "none",
+      "transform": "var(--jx-image-transform, translate(-50%, -50%))",
+      "filter": "var(--jx-image-filter, none)",
+      "userSelect": "none",
+      "pointerEvents": "none"
+    },
+    "& [part=\"scrim\"], & [part=\"crop\"]": {
+      "position": "absolute",
+      "left": "var(--jx-crop-x, 0%)",
+      "top": "var(--jx-crop-y, 0%)",
+      "width": "var(--jx-crop-w, 100%)",
+      "height": "var(--jx-crop-h, 100%)",
+      "boxSizing": "border-box"
+    },
+    "& [part=\"scrim\"]": {
+      "boxShadow": "0 0 0 100vmax rgba(0, 0, 0, 0.5)"
+    },
+    "& [part=\"crop\"]": {
+      "$description": "The kept region's outline, in white with a dark halo so it reads over a picture of any colour. Above the clipped layer, not in it, so the handles are whole at every edge.",
+      "outline": "1px solid white",
+      "boxShadow": "0 0 0 1px rgba(0, 0, 0, 0.6)"
+    },
+    "& [part=\"handle\"]": {
+      "$description": "A handle is a real button, so it has a name and a focus ring; drawn as a white square with a dark edge, centred on the point it moves, with `touch-action: none` so a touch drag moves the edge rather than scrolling the pane.",
+      "position": "absolute",
+      "width": "14px",
+      "height": "14px",
+      "margin": "-7px 0 0 -7px",
+      "padding": "0",
+      "border": "1px solid rgba(0, 0, 0, 0.7)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "white",
+      "touchAction": "none",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      }
+    },
+    "& [part=\"handle\"][data-handle=\"move\"]": {
+      "$description": "The kept area itself, the one stop that moves the crop rather than resizing it. Drawn first, so the eight handles paint over it, and a button like them, so it can be focused and moved from the keyboard as well as dragged.",
+      "inset": "0",
+      "width": "auto",
+      "height": "auto",
+      "margin": "0",
+      "border": "none",
+      "borderRadius": "0",
+      "background": "transparent",
+      "cursor": "var(--jx-crop-cursor, move)"
+    },
+    "& [part=\"handle\"][data-handle=\"n\"]": {
+      "left": "50%",
+      "top": "0%",
+      "cursor": "ns-resize"
+    },
+    "& [part=\"handle\"][data-handle=\"ne\"]": {
+      "left": "100%",
+      "top": "0%",
+      "cursor": "nesw-resize"
+    },
+    "& [part=\"handle\"][data-handle=\"e\"]": {
+      "left": "100%",
+      "top": "50%",
+      "cursor": "ew-resize"
+    },
+    "& [part=\"handle\"][data-handle=\"se\"]": {
+      "left": "100%",
+      "top": "100%",
+      "cursor": "nwse-resize"
+    },
+    "& [part=\"handle\"][data-handle=\"s\"]": {
+      "left": "50%",
+      "top": "100%",
+      "cursor": "ns-resize"
+    },
+    "& [part=\"handle\"][data-handle=\"sw\"]": {
+      "left": "0%",
+      "top": "100%",
+      "cursor": "nesw-resize"
+    },
+    "& [part=\"handle\"][data-handle=\"w\"]": {
+      "left": "0%",
+      "top": "50%",
+      "cursor": "ew-resize"
+    },
+    "& [part=\"handle\"][data-handle=\"nw\"]": {
+      "left": "0%",
+      "top": "0%",
+      "cursor": "nwse-resize"
+    },
+    "& [part=\"note\"], & [part=\"refused\"]": {
+      "maxWidth": "48ch",
+      "margin": "0",
+      "padding": "var(--jx-space-6)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)",
+      "textAlign": "center"
+    },
+    "& [part=\"refused\"]": {
+      "border": "1px dashed var(--border)",
+      "borderRadius": "var(--radius)"
+    },
+    "& [part=\"controls\"]": {
+      "flex": "0 0 260px",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-4)",
+      "overflowY": "auto"
+    },
+    "& [part=\"title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-lg)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"facts\"], & [part=\"help\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"group\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"group-title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "500",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"tools\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "2px"
+    },
+    "& [part=\"field-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-3)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"field-label\"]": {
+      "flex": "1"
+    },
+    "& [part=\"actions\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-2)",
+      "justifyContent": "flex-end"
+    },
+    "& [part=\"footer\"]": {
+      "$description": "The button that writes and the sentence about it stay together and stay in view: a column too short for its controls scrolls behind them rather than taking the sentence away.",
+      "position": "sticky",
+      "bottom": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "marginTop": "auto",
+      "paddingTop": "var(--jx-space-2)",
+      "background": "var(--bg-panel)"
+    },
+    "& [part=\"warning\"]": {
+      "$description": "The permanent sentence, beside the button that writes. Not a dialog, because a confirmation on every save is a tax the author learns to dismiss unread.",
+      "margin": "0",
+      "padding": "var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"discards\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "stage"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "stage-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/status"
+          },
+          "cases": {
+            "loading": {
+              "tagName": "p",
+              "attributes": {
+                "part": "note"
+              },
+              "textContent": "${state.message}"
+            },
+            "refused": {
+              "tagName": "p",
+              "attributes": {
+                "part": "refused",
+                "role": "status"
+              },
+              "textContent": "${state.message}"
+            },
+            "ready": {
+              "tagName": "div",
+              "attributes": {
+                "part": "frame"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "picture"
+                  },
+                  "children": [
+                    {
+                      "tagName": "img",
+                      "attributes": {
+                        "part": "image",
+                        "src": "${state.src}",
+                        "alt": "${state.alt}"
+                      },
+                      "onload": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/imageLoaded"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/naturalWidth"
+                              },
+                              {
+                                "$ref": "event#/target/naturalHeight"
+                              }
+                            ]
+                          }
+                        ],
+                        "description": "The decoded size, with any orientation tag applied, which is the frame the crop is stored in."
+                      },
+                      "onerror": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/imageFailed"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/target/src"
+                              }
+                            ]
+                          }
+                        ],
+                        "description": "A header can parse over a body that does not decode. The host decides what that means."
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "scrim"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "crop",
+                    "role": "group",
+                    "aria-label": "Crop"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/handles"
+                      },
+                      "key": {
+                        "$ref": "$map/item/id"
+                      },
+                      "map": {
+                        "tagName": "button",
+                        "attributes": {
+                          "part": "handle",
+                          "type": "button",
+                          "data-handle": "${$map.item.id}",
+                          "aria-label": "${$map.item.label}",
+                          "aria-describedby": "${state.handleHelpId}",
+                          "tabindex": "${$map.item.tabindex}"
+                        },
+                        "onpointerdown": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/handleDown"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/id"
+                                },
+                                {
+                                  "$ref": "event#/pointerId"
+                                },
+                                {
+                                  "$ref": "event#/clientX"
+                                },
+                                {
+                                  "$ref": "event#/clientY"
+                                },
+                                {
+                                  "$ref": "event#/currentTarget"
+                                }
+                              ]
+                            }
+                          ],
+                          "description": "A drag starts on the handle and captures the pointer to it, so every move and the release arrive here however far the pointer travels. The host decides what a pixel on screen is in the image's own frame."
+                        },
+                        "onpointermove": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/handleMove"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/pointerId"
+                                },
+                                {
+                                  "$ref": "event#/clientX"
+                                },
+                                {
+                                  "$ref": "event#/clientY"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "onpointerup": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/handleUp"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/pointerId"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "onpointercancel": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/handleUp"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/pointerId"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "onfocus": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/handleFocused"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/id"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "onkeydown": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "$switch": {
+                                "$ref": "event#/key"
+                              },
+                              "cases": {
+                                "ArrowLeft": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/nudge"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/id"
+                                      },
+                                      -1,
+                                      0,
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "ArrowRight": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/nudge"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/id"
+                                      },
+                                      1,
+                                      0,
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "ArrowUp": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/nudge"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/id"
+                                      },
+                                      0,
+                                      -1,
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "ArrowDown": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/nudge"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/id"
+                                      },
+                                      0,
+                                      1,
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "Home": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/cycleHandle"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/id"
+                                      },
+                                      -1
+                                    ]
+                                  }
+                                ],
+                                "End": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/cycleHandle"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/id"
+                                      },
+                                      1
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          "description": "One roving tab stop for all eight handles: the arrows move the focused handle's edge one pixel (ten with Shift), and Home and End move to the previous and next handle clockwise. Tab leaves the group, so the handles are not eight stops between the image and the controls."
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "controls"
+      },
+      "children": [
+        {
+          "tagName": "h2",
+          "attributes": {
+            "part": "title"
+          },
+          "textContent": "${state.name}"
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "facts",
+            "aria-live": "polite"
+          },
+          "textContent": "${state.facts}"
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "help",
+            "id": "${state.handleHelpId}"
+          },
+          "textContent": "Drag inside the crop to move it, or drag a handle to resize it. From the keyboard, the arrows move whichever is focused by one pixel, Shift by ten; Home and End step between them."
+        },
+        {
+          "tagName": "section",
+          "attributes": {
+            "part": "group"
+          },
+          "children": [
+            {
+              "tagName": "h3",
+              "attributes": {
+                "part": "group-title"
+              },
+              "textContent": "Crop"
+            },
+            {
+              "tagName": "label",
+              "attributes": {
+                "part": "field-row"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "field-label"
+                  },
+                  "textContent": "Ratio"
+                },
+                {
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "aspect"
+                  },
+                  "$props": {
+                    "label": "Ratio",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/aspectOptions"
+                    },
+                    "value": {
+                      "$ref": "#/state/aspect"
+                    },
+                    "disabled": {
+                      "$ref": "#/state/undecoded"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setAspect"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "section",
+          "attributes": {
+            "part": "group"
+          },
+          "children": [
+            {
+              "tagName": "h3",
+              "attributes": {
+                "part": "group-title"
+              },
+              "textContent": "Orientation"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "tools",
+                "role": "toolbar",
+                "aria-label": "Orientation and history"
+              },
+              "children": [
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "rotate-left"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "arrows-clockwise",
+                    "label": "Rotate left",
+                    "hint": "Rotate left",
+                    "mirror": true,
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/rotate"
+                        },
+                        "value": [-1]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "rotate-right"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "arrows-clockwise",
+                    "label": "Rotate right",
+                    "hint": "Rotate right",
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/rotate"
+                        },
+                        "value": [1]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "flip-h"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "flip-horizontal",
+                    "label": "Flip horizontally",
+                    "hint": "Flip horizontally",
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/flip"
+                        },
+                        "value": ["h"]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "flip-v"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "flip-vertical",
+                    "label": "Flip vertically",
+                    "hint": "Flip vertically",
+                    "disabled": {
+                      "$ref": "#/state/busy"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/flip"
+                        },
+                        "value": ["v"]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "undo"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "arrow-u-up-left",
+                    "label": "Undo",
+                    "hint": "Undo",
+                    "disabled": {
+                      "$ref": "#/state/cannotUndo"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/undo"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "redo"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "arrow-u-up-right",
+                    "label": "Redo",
+                    "hint": "Redo",
+                    "disabled": {
+                      "$ref": "#/state/cannotRedo"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/redo"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "section",
+          "attributes": {
+            "part": "group"
+          },
+          "children": [
+            {
+              "tagName": "h3",
+              "attributes": {
+                "part": "group-title"
+              },
+              "textContent": "Size"
+            },
+            {
+              "tagName": "label",
+              "attributes": {
+                "part": "field-row"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "field-label"
+                  },
+                  "textContent": "Width"
+                },
+                {
+                  "tagName": "jx-number-field",
+                  "attributes": {
+                    "part": "width"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "Width",
+                    "value": {
+                      "$ref": "#/state/width"
+                    },
+                    "stepper": true,
+                    "max": {
+                      "$ref": "#/state/maxOutputWidth"
+                    },
+                    "min": "1",
+                    "disabled": {
+                      "$ref": "#/state/undecoded"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setWidth"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/fieldEdited"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Text not yet committed is unsaved work, so the Save chord is not refused over it."
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "fit"
+              },
+              "$props": {
+                "size": "sm",
+                "variant": "secondary",
+                "disabled": {
+                  "$ref": "#/state/cannotFit"
+                },
+                "hint": "${state.fitHint}"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/fitForWeb"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "${state.fitLabel}"
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "quality-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/quality"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "label",
+                  "attributes": {
+                    "part": "field-row"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "field-label"
+                      },
+                      "textContent": "Quality"
+                    },
+                    {
+                      "tagName": "jx-number-field",
+                      "attributes": {
+                        "part": "quality"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "label": "Quality",
+                        "value": {
+                          "$ref": "#/state/qualityValue"
+                        },
+                        "stepper": true,
+                        "min": "1",
+                        "max": "100",
+                        "disabled": {
+                          "$ref": "#/state/undecoded"
+                        }
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/setValue"
+                            },
+                            "value": [
+                              "quality",
+                              {
+                                "$ref": "event#/target/value"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "oninput": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/fieldEdited"
+                            },
+                            "value": []
+                          }
+                        ],
+                        "description": "Text not yet committed is unsaved work, so the Save chord is not refused over it."
+                      }
+                    }
+                  ]
+                },
+                "hidden": {
+                  "tagName": "span",
+                  "attributes": {
+                    "hidden": true
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "section",
+          "attributes": {
+            "part": "group"
+          },
+          "children": [
+            {
+              "tagName": "h3",
+              "attributes": {
+                "part": "group-title"
+              },
+              "textContent": "Tone"
+            },
+            {
+              "tagName": "label",
+              "attributes": {
+                "part": "field-row"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "field-label"
+                  },
+                  "textContent": "Brightness"
+                },
+                {
+                  "tagName": "jx-number-field",
+                  "attributes": {
+                    "part": "brightness"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "Brightness",
+                    "value": {
+                      "$ref": "#/state/brightness"
+                    },
+                    "stepper": true,
+                    "min": "0",
+                    "max": "200",
+                    "disabled": {
+                      "$ref": "#/state/undecoded"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setValue"
+                        },
+                        "value": [
+                          "brightness",
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/fieldEdited"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Text not yet committed is unsaved work, so the Save chord is not refused over it."
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "label",
+              "attributes": {
+                "part": "field-row"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "field-label"
+                  },
+                  "textContent": "Contrast"
+                },
+                {
+                  "tagName": "jx-number-field",
+                  "attributes": {
+                    "part": "contrast"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "Contrast",
+                    "value": {
+                      "$ref": "#/state/contrast"
+                    },
+                    "stepper": true,
+                    "min": "0",
+                    "max": "200",
+                    "disabled": {
+                      "$ref": "#/state/undecoded"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setValue"
+                        },
+                        "value": [
+                          "contrast",
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/fieldEdited"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Text not yet committed is unsaved work, so the Save chord is not refused over it."
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "label",
+              "attributes": {
+                "part": "field-row"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "field-label"
+                  },
+                  "textContent": "Saturation"
+                },
+                {
+                  "tagName": "jx-number-field",
+                  "attributes": {
+                    "part": "saturation"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "Saturation",
+                    "value": {
+                      "$ref": "#/state/saturation"
+                    },
+                    "stepper": true,
+                    "min": "0",
+                    "max": "200",
+                    "disabled": {
+                      "$ref": "#/state/undecoded"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setValue"
+                        },
+                        "value": [
+                          "saturation",
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/fieldEdited"
+                        },
+                        "value": []
+                      }
+                    ],
+                    "description": "Text not yet committed is unsaved work, so the Save chord is not refused over it."
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "footer"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "actions"
+              },
+              "children": [
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "reset"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "variant": "secondary",
+                    "disabled": {
+                      "$ref": "#/state/clean"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/reset"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Reset"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "save"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "variant": "accent",
+                    "disabled": {
+                      "$ref": "#/state/cannotSave"
+                    },
+                    "loading": {
+                      "$ref": "#/state/saving"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/save"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Save"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "warning"
+              },
+              "textContent": "${state.warning}"
+            },
+            {
+              "tagName": "p",
+              "attributes": {
+                "part": "discards"
+              },
+              "textContent": "Saving writes pixels only: a rotation tag is applied to them, and any color profile, high bit depth and other metadata are dropped."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

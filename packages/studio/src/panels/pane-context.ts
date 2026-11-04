@@ -800,7 +800,12 @@ function editorAxis(tab: Tab): Partial<PaneContextView> {
   const current = editorKindOf(tab);
   const kinds = IMPLICIT_EDITOR_KINDS.has(current)
     ? [current]
-    : editorKindsOf(tab).filter((kind) => !IMPLICIT_EDITOR_KINDS.has(kind));
+    : editorKindsOf(tab).filter(
+        (kind) =>
+          !IMPLICIT_EDITOR_KINDS.has(kind) &&
+          // A collaborator who cannot write is not offered the editor that exists to write (§9.5).
+          (kind !== "image" || kind === current || !collabState(tab).readOnly),
+      );
   if (kinds.length < 2) {
     // One kind is not a choice. Rendering it as a segmented group would be a control that cannot move —
     // Which is the defect this axis exists to remove, in miniature.

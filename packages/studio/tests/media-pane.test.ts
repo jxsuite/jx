@@ -34,7 +34,10 @@ import {
   renderMediaMode,
 } from "../src/media/media-pane";
 import { isViewableMedia, mediaTabModes, openMediaTab } from "../src/media/media-open";
+import { IMAGE_MODE } from "../src/media/image-editor";
 import type { Tab } from "../src/tabs/tab";
+import { noteLocalWrite, resetAssetVersions } from "../src/files/asset-versions";
+import { getPlatform } from "../src/platform";
 import type { StudioPlatform } from "../src/types";
 
 const FILES = {
@@ -92,6 +95,20 @@ describe("which files reach the viewer", () => {
 
   test("SVG keeps a source alternate, because it is the one media format that is also text", () => {
     expect(mediaTabModes("public/icon.svg")).toEqual([MEDIA_MODE, "source"]);
+    expect(mediaTabModes("public/promo.mp4")).toEqual([MEDIA_MODE]);
+  });
+
+  test("an editable raster gains the Image editor, on a host that can read raw bytes", () => {
+    // The harness's mock platform implements `readFileBytes`, like all four shipped adapters.
+    expect(mediaTabModes("public/hero.png")).toEqual([MEDIA_MODE, IMAGE_MODE]);
+    expect(mediaTabModes("public/photo.JPEG")).toEqual([MEDIA_MODE, IMAGE_MODE]);
+    // A format the host cannot encode is not offered rather than offered and then refused.
+    expect(mediaTabModes("public/anim.gif")).toEqual([MEDIA_MODE]);
+    expect(mediaTabModes("public/next.avif")).toEqual([MEDIA_MODE]);
+  });
+
+  test("the same raster on a host without readFileBytes is viewer-only", () => {
+    delete getPlatform().readFileBytes;
     expect(mediaTabModes("public/hero.png")).toEqual([MEDIA_MODE]);
   });
 
@@ -102,12 +119,25 @@ describe("which files reach the viewer", () => {
   });
 });
 
+describe("an in-place write", () => {
+  test("repaints a viewer that is already mounted", async () => {
+    const { el } = await open("public/hero.png");
+    const src = () => el.querySelector('[part="image"]')?.getAttribute("src");
+    expect(src()).toBe("/hero.png");
+    const key = noteLocalWrite("public/hero.png")!;
+    await flush(4);
+    expect(src()).toBe(`/hero.png?r=${key}`);
+    resetAssetVersions();
+  });
+});
+
 describe("opening one", () => {
   test("a click in the file tree opens a viewer tab, not an error", async () => {
     await openFileInTab("public/hero.png");
     const tab = workspace.tabs.get("public/hero.png");
     expect(tab).toBeTruthy();
-    expect(tab!.capabilities.modes).toEqual([MEDIA_MODE]);
+    // The fixture's bytes are not a PNG, so the Image editor is offered and then withdrawn.
+    expect(tab!.capabilities.modes[0]).toBe(MEDIA_MODE);
   });
 
   test("a second open reveals the same tab rather than building another", async () => {

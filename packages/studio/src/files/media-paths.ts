@@ -38,8 +38,8 @@
 
 import { encodeProjectPath, normalizeProjectPath, PUBLIC_DIR } from "@jxsuite/schema/asset-paths";
 import { contentMountFor, hostAssetDeclarations, projectLocales } from "../canvas/asset-refs";
-import { withVersion } from "../canvas/asset-resolve";
-import { versionOf } from "./asset-versions";
+import { withRevision, withVersion } from "../canvas/asset-resolve";
+import { localRevisionOf, versionOf } from "./asset-versions";
 import { loopbackAssetSrc } from "../canvas/canvas-origin";
 import { projectState } from "../store";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
@@ -134,10 +134,18 @@ export function previewFileSrc(path: string): string {
      host serves the FILE, at its own path, under the declared base — versioned when a listing
      vouched for its bytes, so a host that recognizes the version can let the browser cache it. */
   const { space, fileBaseUrl } = hostAssetDeclarations();
+  /* Studio's own repaint key rides in BOTH branches (§3.4). The site branch is the one that needs
+     it most: it carries no version at all, so after an in-place overwrite its URL would be
+     byte-identical and every thumbnail already decoded would keep the old pixels. */
+  const revision = localRevisionOf(normalized);
   if (space === "repo") {
-    return withVersion(`${fileBaseUrl}${encodeProjectPath(normalized)}`, versionOf(normalized));
+    return withRevision(
+      withVersion(`${fileBaseUrl}${encodeProjectPath(normalized)}`, versionOf(normalized)),
+      revision,
+    );
   }
   /* Encoded per segment for the `src` only. `mediaSiteUrl` is also what an author's document is
      given, and stays as typed; a `#` or `?` in a filename would cut this URL short. */
-  return loopbackAssetSrc(`/${encodeProjectPath(mediaSiteUrl(normalized).slice(1))}`);
+  const encoded = encodeProjectPath(mediaSiteUrl(normalized).slice(1));
+  return withRevision(loopbackAssetSrc(`/${encoded}`), revision);
 }

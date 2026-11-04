@@ -1579,6 +1579,56 @@
                           ]
                         },
                         {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "edit-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/editable"
+                          },
+                          "cases": {
+                            "yes": {
+                              "tagName": "jx-button",
+                              "attributes": {
+                                "part": "edit-image"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "variant": "secondary"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/editImage"
+                                    },
+                                    "value": []
+                                  }
+                                ],
+                                "description": "Withheld, not disabled, for a file the editor cannot write: a refused format is not offered rather than offered and then refused (studio.md §9.5)."
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "Edit image"
+                                }
+                              ]
+                            },
+                            "no": {
+                              "tagName": "span",
+                              "attributes": {
+                                "hidden": true
+                              }
+                            }
+                          }
+                        },
+                        {
                           "tagName": "jx-button",
                           "attributes": {
                             "part": "delete"

@@ -2335,6 +2335,34 @@
           "of": "pane.primary/media-library"
         }
       ]
+    },
+    {
+      "name": "image-editor-shot",
+      "docs": ["studio/projects/media"],
+      "open": {
+        "project": "packages/starters/sites/restaurant",
+        "file": "pages/index.md",
+        "view": "preview"
+      },
+      "steps": [
+        {
+          "args": {
+            "path": "public/images/dish-mains.jpg"
+          },
+          "cmd": "media.edit"
+        }
+      ],
+      "expect": [
+        {
+          "region": "pane.primary"
+        }
+      ],
+      "capture": [
+        {
+          "image": "image-editor",
+          "of": "pane.primary"
+        }
+      ]
     }
   ]
 }

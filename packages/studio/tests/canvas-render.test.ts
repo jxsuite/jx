@@ -458,6 +458,7 @@ function openSyncedTab(
 }
 
 const { detachMediaPane } = await import("../src/media/media-pane");
+const { imageEditorMounted } = await import("../src/media/image-editor");
 
 /** `initCanvasRender`'s context, with the seams the tests read back kept as mocks. */
 interface RenderCtxFixture {
@@ -1644,6 +1645,34 @@ describe("media mode", () => {
     await flush(4);
     expect(stageEl().querySelector('[part="viewer"]')).toBe(viewer!);
 
+    detachMediaPane("primary");
+  });
+});
+
+describe("image mode", () => {
+  test("mounts the editor, a repaint of the same tab leaves it alone, and leaving tears it down", async () => {
+    /* The recipe is the editor's, and a repaint that reached the canvas pipeline would tear down the
+       mount a gesture is running in. `commands/context.ts` must know the mode too, or it resolves
+       to the Canvas key scope. */
+    const tab = openSyncedTab({ tagName: "div" }, { documentPath: "public/hero.png" });
+    tab.capabilities.modes = ["media", "image"];
+    setMode("image");
+    renderCanvas();
+    await flush(6);
+
+    const editor = stageEl().querySelector('[part="editor"]');
+    expect(editor).not.toBeNull();
+    expect(canvasPanels.length).toBe(0);
+
+    renderCanvas();
+    await flush(4);
+    expect(stageEl().querySelector('[part="editor"]')).toBe(editor!);
+
+    setMode("media");
+    renderCanvas();
+    await flush(4);
+    expect(stageEl().querySelector('[part="editor"]')).toBeNull();
+    expect(imageEditorMounted("primary", tab)).toBe(false);
     detachMediaPane("primary");
   });
 });

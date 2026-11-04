@@ -47,7 +47,8 @@ export function workspaceOfTab(tab: Tab): WorkspaceId {
   if (mode === "git-diff") {
     return "publish";
   }
-  if (mode === "media") {
+  // The viewer and its editing sibling (`media/image-editor.ts`, §9.5): one file, one workspace.
+  if (mode === "media" || mode === "image") {
     return "media";
   }
   if (CONTENT_MODES.has(mode)) {

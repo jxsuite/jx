@@ -30,7 +30,7 @@ import { resolveI18n } from "@jxsuite/schema/locale";
 import { componentRegistry } from "../files/components";
 import { getNodeAtPath, projectState } from "../store";
 import { shell } from "../shell";
-import { activeTab, workspace } from "../workspace/workspace";
+import { activeTab, tabHoldsEditBesideDocument, workspace } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
 import { canRedo, canUndo } from "../tabs/transact";
 import { hasTyping } from "../tabs/typing";
@@ -140,7 +140,10 @@ export function createLiveContext(sources: LiveContextSources): () => CommandCon
 
     ctx.document.open = tab !== null;
     // Typing still in a source buffer is unsaved work too, though the document has not seen it.
-    ctx.document.dirty = tab ? tab.doc.dirty === true || hasTyping(tab.id) : false;
+    // So is an image edit, which is held beside the document rather than in it (§9.5).
+    ctx.document.dirty = tab
+      ? tab.doc.dirty === true || hasTyping(tab.id) || tabHoldsEditBesideDocument(tab)
+      : false;
     ctx.document.mode = tab?.doc.mode ?? "";
     ctx.document.canUndo = tab ? canUndo(tab) : false;
     ctx.document.canRedo = tab ? canRedo(tab) : false;
