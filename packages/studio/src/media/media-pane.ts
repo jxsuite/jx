@@ -16,8 +16,9 @@
  * confirmation_: you could only learn what an image was used for by trying to remove it. This is
  * the surface that query was waiting for.
  *
- * Read-only, deliberately. Rename, delete and reveal are the file tree's, and a second set of
- * buttons for them here would be a second place to keep them right.
+ * Read-only, deliberately. Rename, duplicate, replace and delete are the Media home's and reveal is
+ * the file tree's, and a second set of buttons for them here would be a second place to keep them
+ * right.
  *
  * **This module is the flow; `surfaces/media-pane.json` is the markup.** Everything below decides
  * something — which pane holds which tab, which of the six stages a file belongs in, when the

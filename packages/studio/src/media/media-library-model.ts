@@ -97,7 +97,7 @@ export function passesFilter(
  * says. Not its path: every path starts `public/` or `content/`, so a one-letter search for "b" or
  * "c" kept the whole library and looked broken.
  */
-export function matchesQuery(file: LibraryMediaFile, query: string): boolean {
+export function matchesQuery(file: Pick<LibraryMediaFile, "name">, query: string): boolean {
   const needle = query.trim().toLowerCase();
   return needle === "" || file.name.toLowerCase().includes(needle);
 }

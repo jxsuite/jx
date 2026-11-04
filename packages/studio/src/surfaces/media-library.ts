@@ -4,8 +4,8 @@
  *
  * This is the adapter. `media/media-library.ts` is the flow: which files a filter keeps, in what
  * order, what each count may claim, which tile is selected, where an arrow lands and what Replace,
- * Delete and an upload write. It hands this module one projection, and this module hands the
- * document a scope and reports the nodes the flow needs to hold.
+ * Rename, Duplicate, Delete and an upload write. It hands this module one projection, and this
+ * module hands the document a scope and reports the nodes the flow needs to hold.
  *
  * **Four islands, all through `onNodeCreated`.** The flow needs four nodes the document creates:
  * each tile (watched for viewport entry, so a thumbnail is requested only when it is looked at, and
@@ -102,6 +102,8 @@ export interface MediaLibraryView {
    * conditions `media.edit` gates on, so the palette and this pane cannot give two answers.
    */
   editable: "yes" | "no";
+  /** Whether the host can copy the selected file: `media.duplicate` gates on the same capability. */
+  duplicable: "yes" | "no";
   usageState: "hidden" | "shown";
   usageHeadline: string;
   usageFiles: MediaUsageRow[];
@@ -131,6 +133,10 @@ export interface MediaLibraryActions {
   openDocument: (path: string) => void;
   replace: (input: HTMLInputElement) => void;
   remove: () => void;
+  /** Rename the selected file, through the Rename dialog. */
+  rename: () => void;
+  /** Copy the selected file to a new name beside it, and select the copy. */
+  duplicate: () => void;
   openViewer: () => void;
   /** Open the selected image in its Image editor. */
   editImage: () => void;
@@ -182,6 +188,7 @@ export function emptyMediaLibraryView(): MediaLibraryView {
     region: "",
     replaceAccept: "",
     editable: "no",
+    duplicable: "no",
     selectedFile: "",
     sort: "",
     sortOptions: [],

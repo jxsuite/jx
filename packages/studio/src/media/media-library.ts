@@ -4,9 +4,10 @@
  *
  * One flow, two modes (studio.md §22.6). In **manage** mode it is the Media home tab: filters on
  * the left, a grid of tiles in the middle, and the selected file's detail on the right, with
- * **Replace**, **Open in viewer** and **Delete**. In **pick** mode it is the full-size media picker
- * (§9.3), the same surface inside a `jx-dialog` whose footer answers Cancel or Use <file>; the
- * compact popover's **Browse all media…** opens it (`ui/media-picker.ts`).
+ * **Replace**, **Open in viewer**, **Rename**, **Duplicate** and **Delete**. In **pick** mode it is
+ * the full-size media picker (§9.3), the same surface inside a `jx-dialog` whose footer answers
+ * Cancel or Use <file>; the compact popover's **Browse all media…** opens it
+ * (`ui/media-picker.ts`).
  *
  * **What it lists is `ui/media-picker.ts`'s listing**, `public/**` and every collection's
  * `images/**`, so the workspace, the pickers and the Site panel cannot disagree about what exists.
@@ -27,8 +28,10 @@
  * drop, only files the listing will show are uploaded, and the first upload is selected at once, so
  * the detail pane describes it, and its tile scrolls into view, the moment the re-read listing has
  * it. **Replace** is the one overwrite (`replaceAsset`), offered only files of the replaced one's
- * own type; **Delete** goes through the same confirmation as every delete, which states the usage
- * line (`files/file-ops.ts`), and a delete that empties an upload destination (`public/media/`, a
+ * own type; **Rename** keeps the file's folder and format and refuses a name already taken, and
+ * **Duplicate** copies the bytes on disk to a new name beside it (both studio.md §9.3); **Delete**
+ * goes through the same confirmation as every delete, which states the usage line
+ * (`files/file-ops.ts`), and a delete that empties an upload destination (`public/media/`, a
  * collection's `images/`) takes the folder the upload created with it.
  *
  * **This module is the flow; `surfaces/media-library.json` is the markup.** Every decision is made
@@ -42,14 +45,17 @@ import { getPlatform } from "../platform";
 import { notify } from "../services/notify";
 import { invalidateUsages, onUsagesInvalidated, usagesSupported } from "../services/references";
 import { overlayRegion, paneRegion } from "../ui/regions";
-import { layerHost } from "../ui/layers";
+import { layerHost, showPromptDialog } from "../ui/layers";
 import { rectOf } from "../utils/geometry";
 import { activeTab, closeTab, workspace } from "../workspace/workspace";
 import { createPreviewObserver } from "../browse/library-preview";
 import {
   DEFAULT_MEDIA_DIR,
   announceMediaChanged,
+  duplicateAsset,
   isUploadDestination,
+  joinDir,
+  mediaRenameRefusal,
   replaceAccept,
   replaceAsset,
   uploadAccept,
@@ -63,12 +69,18 @@ import {
   peekMediaMeta,
   recordImageSize,
 } from "../files/media-meta";
-import { dirName, previewFileSrc } from "../files/media-paths";
+import { baseName, dirName, previewFileSrc } from "../files/media-paths";
 import { forgetVersions } from "../files/asset-versions";
 import { loadMediaUsages, peekMediaUsages } from "../files/media-usage";
 import { onProjectMediaChange, projectMediaFiles } from "../ui/media-picker";
 import { openMenu } from "../surfaces/menu";
-import { canEditImage, openImageEditor, openMediaTab } from "./media-open";
+import {
+  canDuplicateMedia,
+  canEditImage,
+  mediaWriteRefused,
+  openImageEditor,
+  openMediaTab,
+} from "./media-open";
 import { imageEditorAllowsReplace, imageFileChanged } from "./image-editor";
 import { factsLine, mediaStageFor, specimenOf, usageOf } from "./media-pane";
 import {
@@ -249,6 +261,11 @@ interface LibraryMount {
    */
   reveal: string | null;
   /**
+   * Whether {@link reveal}'s tile also takes the keyboard. A rename and a duplicate draw a NEW tile
+   * for the file the reader was on, and the focus they left on the old one is gone with it.
+   */
+  revealFocus: boolean;
+  /**
    * Whether the keyboard is owed to this library's tab stop ({@link focusMediaHome}) and no tile
    * has been drawn to take it yet: a home mounted before its listing has arrived has no tiles.
    */
@@ -320,6 +337,10 @@ function revealPending(mount: LibraryMount): void {
   if (tile?.isConnected) {
     mount.reveal = null;
     tile.scrollIntoView({ block: "nearest" });
+    if (mount.revealFocus) {
+      mount.revealFocus = false;
+      tile.focus();
+    }
   }
 }
 
@@ -580,6 +601,7 @@ function detailView(
   | "previewSpecimenFamily"
   | "replaceAccept"
   | "editable"
+  | "duplicable"
   | "usageState"
   | "usageHeadline"
   | "usageFiles"
@@ -600,6 +622,7 @@ function detailView(
       previewSrc: "",
       replaceAccept: "",
       editable: "no",
+      duplicable: "no",
       selectedFile: "",
       usageFiles: [],
       usageHeadline: "",
@@ -642,6 +665,7 @@ function detailView(
     previewSrc: previewKind === "glyph" ? "" : previewFileSrc(entry.file),
     replaceAccept: replaceAccept(entry.file),
     editable: canEditImage(entry.file) ? "yes" : "no",
+    duplicable: canDuplicateMedia() ? "yes" : "no",
     selectedFile: entry.file,
     ...usageOf(usage),
   };
@@ -782,6 +806,108 @@ async function pruneEmptiedDestination(
   }
 }
 
+/**
+ * Rename a media file, in the dialog every rename goes through (studio.md §9.3): the references the
+ * refactor pass will rewrite are counted before the field opens, and the field refuses a name the
+ * file cannot take, a taken name above all, because the backend would overwrite it in silence.
+ *
+ * Whatever showed the file goes on showing it: the selection follows it, and an open tab keeps its
+ * state under the new path.
+ *
+ * @returns The new path, or `null` when nothing was renamed.
+ */
+export async function renameMediaFile(path: string): Promise<string | null> {
+  if (mediaWriteRefused(path, "renamed")) {
+    return null;
+  }
+  const name = baseName(path);
+  const dir = dirName(path);
+  let taken: Set<string>;
+  try {
+    const listed = await getPlatform().listDirectory(dir);
+    taken = new Set(listed.map((entry) => entry.name));
+  } catch (error) {
+    // Without the listing, a collision would overwrite a file. Nothing is the safe thing to do.
+    notify.error(`Could not rename ${name}.`, {
+      detail: `The folder could not be read to check the new name: ${errorMessage(error)}`,
+      path,
+      source: "Media",
+    });
+    return null;
+  }
+  const { renamePromptMessage } = await fileOpsModule();
+  const message = await renamePromptMessage(path);
+  const entered = await showPromptDialog("Rename", {
+    confirmLabel: "Rename",
+    select: "stem",
+    validate: (value) => mediaRenameRefusal(path, value, taken),
+    value: name,
+    ...(message !== undefined && { message }),
+  });
+  if (!entered || entered === name) {
+    return null;
+  }
+  const to = joinDir(dir, entered);
+  const { commitRename, notifyMoveOutcome, renameStatus } = await filesModule();
+  const measured = peekMediaMeta(path);
+  try {
+    const report = await commitRename(path, to);
+    if (homeChoice.selected === path) {
+      landOnNewFile(to);
+    }
+    await announceMediaChanged(dir);
+    /* The announcement drops every measurement, and a viewer already showing the picture will not
+       load it again to measure it. A rename changes no bytes, so what was true of them still is. */
+    if (measured?.width != null && measured.height != null) {
+      recordImageSize(to, measured.width, measured.height);
+    }
+    notifyMoveOutcome(renameStatus(entered, report), report, to);
+    return to;
+  } catch (error) {
+    notify.error(`Could not rename ${name}.`, {
+      detail: errorMessage(error),
+      path,
+      source: "Media",
+    });
+    return null;
+  }
+}
+
+/**
+ * Duplicate a media file (studio.md §9.3), and select the copy in the Media home, as an upload is.
+ *
+ * @returns The copy's path, or `null` when none was made.
+ */
+export async function duplicateMediaFile(path: string): Promise<string | null> {
+  if (mediaWriteRefused(path, "duplicated")) {
+    return null;
+  }
+  const copy = await duplicateAsset(path);
+  if (copy === null) {
+    return null;
+  }
+  landOnNewFile(copy.path);
+  redrawAll();
+  return copy.path;
+}
+
+/**
+ * Put the Media home's selection on a file a rename or a duplicate has just made: on screen, and
+ * holding the keyboard once its tile is drawn. Neither verb changes a file's kind, and a file just
+ * renamed or copied is as unused as it was, so the filter still keeps it; only a search the new
+ * name does not match has to go.
+ */
+function landOnNewFile(file: string): void {
+  homeChoice.selected = file;
+  if (!matchesQuery({ name: baseName(file) }, homeChoice.query)) {
+    homeChoice.query = "";
+  }
+  for (const { mount } of _panes.values()) {
+    mount.reveal = file;
+    mount.revealFocus = true;
+  }
+}
+
 function actionsFor(mount: LibraryMount) {
   return {
     activate: (file: string) => {
@@ -873,6 +999,18 @@ function actionsFor(mount: LibraryMount) {
         void deleteMediaFile(selected);
       }
     },
+    rename: () => {
+      const { selected } = mount.choice;
+      if (selected !== null) {
+        void renameMediaFile(selected);
+      }
+    },
+    duplicate: () => {
+      const { selected } = mount.choice;
+      if (selected !== null) {
+        void duplicateMediaFile(selected);
+      }
+    },
     replace: (input: HTMLInputElement) => {
       const [chosen] = input.files ?? [];
       // Cleared first: a file input that keeps its value refuses the same file twice.
@@ -947,10 +1085,9 @@ let _tileMenu: MenuHandle | null = null;
 /**
  * A right-click on a tile: select it, then offer the detail pane's actions at the pointer.
  *
- * The same four verbs as the detail pane's (studio.md §22.6), in the order the pane draws them, and
- * each calls what the pane's control calls, so the menu cannot drift from the pane. Selecting first
- * is what makes the pane describe the file the menu acts on, as a right-click on a row does in the
- * Content workspace.
+ * The same verbs as the detail pane's (studio.md §22.6), and each calls what the pane's control
+ * calls, so the menu cannot drift from the pane. Selecting first is what makes the pane describe
+ * the file the menu acts on, as a right-click on a row does in the Content workspace.
  */
 function showTileMenu(mount: LibraryMount, file: string, x: number, y: number): void {
   select(mount, file);
@@ -986,7 +1123,22 @@ function showTileMenu(mount: LibraryMount, file: string, x: number, y: number): 
       row("open", "Open in Viewer", () => openMediaTab(file)),
       ...(canEditImage(file) ? [row("edit", "Edit Image", () => openImageEditor(file))] : []),
       row("copy-url", "Copy Site URL", () => copySiteUrl(entry)),
-      row("replace", "Replace…", () => requestMediaReplace(file), { dividerAbove: true }),
+      row(
+        "rename",
+        "Rename…",
+        () => {
+          void renameMediaFile(file);
+        },
+        { dividerAbove: true },
+      ),
+      ...(canDuplicateMedia()
+        ? [
+            row("duplicate", "Duplicate", () => {
+              void duplicateMediaFile(file);
+            }),
+          ]
+        : []),
+      row("replace", "Replace…", () => requestMediaReplace(file)),
       row(
         "delete",
         "Delete",
@@ -1071,6 +1223,7 @@ function createMount(
     onSelect: null,
     paneId,
     reveal: null,
+    revealFocus: false,
     focusOwed: false,
     region,
     sweepTimer: null,

@@ -15,6 +15,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { isUnder } from "./paths.ts";
 import { rewriteDocRefs, rewriteTagName } from "./refs.ts";
 import { documentGlob, fwd, loadDoc, skipScanPath } from "./scan.ts";
+import { invalidateReferenceCache } from "./find-refs.ts";
 import { refactorMounts } from "./mounts.ts";
 import type { RefChange } from "./refs.ts";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
@@ -74,6 +75,19 @@ export function deriveTag(absPath: string): string {
  * must have already moved the file on disk.
  */
 export async function applyRename(opts: ApplyRenameOptions): Promise<RenameReport> {
+  /* The usage cache is otherwise dropped by the file watcher, which reports this rename some time
+     after the route has answered it, and not at all under a path it ignores. The caller's very next
+     question is "who uses the new name?", and a confident zero read from the old sweep is the one
+     answer a delete must never be prompted by. On every exit: a pass that threw may have written. */
+  try {
+    return await rewriteReferences(opts);
+  } finally {
+    invalidateReferenceCache(opts.root);
+  }
+}
+
+/** The refactor pass itself: see {@link applyRename}. */
+async function rewriteReferences(opts: ApplyRenameOptions): Promise<RenameReport> {
   const root = fwd(opts.root);
   const absFrom = fwd(opts.absFrom);
   const absTo = fwd(opts.absTo);

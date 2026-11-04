@@ -1,6 +1,6 @@
 ---
 title: "Media"
-description: "Find, upload, edit, replace and delete your site's images, video, audio, documents and fonts in the Media workspace, or upload from any field."
+description: "Find, upload, edit, rename, duplicate and delete your site's images, video, audio, documents and fonts in the Media workspace."
 spec:
   - site-architecture.md#9
   - site-architecture.md#9.4
@@ -61,11 +61,15 @@ Select a file and the right-hand pane describes it:
 - **What it is**: its kind, its pixel dimensions once the picture has loaded, its size on disk, and when it was last modified. An SVG's dimensions are the ones the file declares (its `width` and `height`, or its `viewBox`), and an SVG that declares no size shows none. Anything Studio hasn't been told is left out rather than shown as a zero.
 - **Site URL**: the address a document writes for this file, with a **Copy** button. A file at `public/media/hero.jpg` is referenced `/media/hero.jpg`, a string that is not its path, and writing the path instead is the commonest way an image goes missing from a page.
 - **Used on**: every document that refers to the file, with a count each, headed by a line such as _Used on 2 pages and 1 other file_ or, when no page uses it directly, _Used in 1 file_ (a layout or component, say). Click one to open it.
-- **Replace**, **Open in viewer**, **Edit image** (for an image Studio can [edit](#edit-an-image)) and **Delete**.
+- **Replace**, **Open in viewer**, **Edit image** (for an image Studio can [edit](#edit-an-image)), **Rename**, **Duplicate** and **Delete**.
 
-Right-click a tile to select it and reach the same actions without moving to the pane: **Open in Viewer**, **Edit Image**, **Copy Site URL**, **Replace…** and **Delete**. Each does exactly what its button in the details pane does. The media picker you open from a field has no tile menu; double-click a tile there to use it.
+Right-click a tile to select it and reach the same actions without moving to the pane: **Open in Viewer**, **Edit Image**, **Copy Site URL**, **Rename…**, **Duplicate**, **Replace…** and **Delete**. Each does exactly what its button in the details pane does. The media picker you open from a field has no tile menu; double-click a tile there to use it.
 
 **Replace** swaps a file's contents and keeps its name. Pick the new file and Studio writes it over the old one at the same path, so every page, component and entry that uses it shows the new picture straight away, with nothing to re-link. It is the one way Studio writes over an existing file with a file you chose; [editing an image](#edit-an-image) is the other overwrite, with pixels Studio worked out from the ones already there. The new file has to be the same type as the old one (a JPEG for a JPEG, an SVG for an SVG), because the address stays the same and a page asking for `hero.jpg` cannot show a PNG. To swap in a different type, upload it as a new file and point the pages at it.
+
+**Rename** changes a file's name and keeps it in its folder. The dialog says how many references Studio will rewrite for you, so every page, component and entry that uses the file goes on showing it, and an open tab follows the file (a pending [image edit](#edit-an-image) included). The name has to keep the file's type, because a rename doesn't convert anything: `hero.jpg` can become `banner.jpg` or `banner.jpeg`, not `banner.png`. It also can't be a name already in that folder, in any mix of capitals, since that would overwrite the other file. To move a file to another folder, drag it in the Files panel.
+
+**Duplicate** makes a copy beside the original and selects it: `hero.jpg` becomes `hero-copy.jpg`, then `hero-copy-1.jpg`, and it never overwrites anything. Nothing refers to the copy yet, so it starts out **Unused**. It copies the file as it is on disk: a pending image edit stays with its own tab until you save it. A host that cannot read a file's raw bytes doesn't offer Duplicate.
 
 **Delete** asks first, and says what it would break (see [Deleting media](#deleting-media) below). Deleting the last file in `public/media/`, or in a collection's `images/` folder, removes that folder too: Studio made it for your uploads, so it does not leave it behind empty. A folder you made yourself stays.
 
@@ -75,7 +79,7 @@ Click **Upload** in the Media workspace's toolbar, or drop files anywhere on it.
 
 Only the kinds of file the workspace lists are uploaded: images, video, audio, PDFs and fonts. Drop a text file or a spreadsheet along with your pictures and Studio skips it and says which files it left out, rather than adding something you would never see here.
 
-You can also run **Upload Media…** from the command palette (:kbd[⌘K]), which opens the same file picker.
+You can also run **Upload Media…** from the command palette (:kbd[⌘K]), which opens the same file picker. **Rename Media File…** and **Duplicate Media File** are there too, for a script or a shortcut that names a file's path.
 
 ## Drag onto the canvas
 
@@ -143,7 +147,7 @@ Beside the file, the same three things the Media workspace's details pane shows:
 - **How to reference it**: the URL a document actually writes for this file, with a **Copy** button. This is worth having in front of you, because a file at `public/hero.jpg` is referenced `/hero.jpg`, a string that shares no part of its path, and writing the path instead is the commonest way an image goes missing from a page.
 - **Used by**: every document that references it, with a count each. Click one to open it.
 
-The viewer is read-only. [Editing an image](#edit-an-image) is the **Image** editor beside it; replacing and deleting a file are in the Media workspace's details pane; renaming and revealing one belong to the Files panel, where you already do them for everything else.
+The viewer is read-only. [Editing an image](#edit-an-image) is the **Image** editor beside it; renaming, duplicating, replacing and deleting a file are in the Media workspace's details pane; revealing one belongs to the Files panel, where you already do it for everything else.
 
 The Media workspace shows no tab strip, so the viewer's context bar starts with **Back to Media**. Press it, or :kbd[Esc], to close the viewer and return to the library, with the keyboard back on the tile you opened; :kbd[⌘W] does the same. Opening another file replaces the viewer, so the library always has one viewer beside it.
 

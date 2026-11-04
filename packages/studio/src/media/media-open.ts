@@ -143,6 +143,36 @@ export function canEditImage(path: string): boolean {
 }
 
 /**
+ * Whether this host can copy a media file: a copy needs its raw bytes (studio.md §9.3), and a
+ * backend that cannot read them is not offered Duplicate rather than offered it and then refused.
+ */
+export function canDuplicateMedia(): boolean {
+  return hasPlatform() && isFunction(getPlatform().readFileBytes);
+}
+
+/**
+ * Whether a collaborator with read access to this file's session is the one asking to write it, and
+ * if so say so. Asks the PATH's own tab, as {@link openImageEditor} does: a record's context
+ * describes the focused tab, which may be another file.
+ *
+ * @param path The file.
+ * @param done How the sentence ends: "renamed", "duplicated".
+ */
+export function mediaWriteRefused(path: string, done: string): boolean {
+  const tab = workspace.tabs.get(path);
+  if (!tab || !collabReadOnly(tab)) {
+    return false;
+  }
+  const name = path.split("/").pop() ?? path;
+  notify.warn(`You have read access to this session, so ${name} cannot be ${done}.`, {
+    key: `media.readOnly:${path}`,
+    path,
+    source: "Collaboration",
+  });
+  return true;
+}
+
+/**
  * Open a media file in its Image editor (studio.md §9.5) — `media.edit`, and the Media workspace's
  * Edit action. The mode is entered by choosing a subject, never by name through `canvas.setMode`.
  *
