@@ -721,6 +721,18 @@ describe("the keyboard", () => {
     pointer(part("open-viewer"), "click");
     expect(workspace.tabs.has("public/media/menu.pdf")).toBe(true);
   });
+
+  test("Edit image is offered for an editable image alone, and opens its Image editor", async () => {
+    await mountHome();
+    pointer(tileOf("public/media/menu.pdf"), "click");
+    await settle();
+    // Withheld rather than disabled: a refused format is not offered (studio.md §9.5).
+    expect(document.querySelector('[part="edit-image"]')).toBeNull();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    pointer(part("edit-image"), "click");
+    expect(workspace.tabs.get("public/hero.jpg")?.session.ui.canvasMode).toBe("image");
+  });
 });
 
 // ─── The tile menu ───────────────────────────────────────────────────────────
@@ -772,6 +784,15 @@ describe("the tile menu", () => {
       "---",
       "Delete",
     ]);
+  });
+
+  test("an editable image's menu also offers Edit Image, which opens its Image editor", async () => {
+    await mountHome();
+    rightClick(tileOf("public/hero.jpg"));
+    await settle();
+    expect(menuRows().slice(0, 2)).toEqual(["Open in Viewer", "Edit Image"]);
+    await choose_("edit");
+    expect(workspace.tabs.get("public/hero.jpg")?.session.ui.canvasMode).toBe("image");
   });
 
   test("Open in Viewer opens the file's viewer tab", async () => {

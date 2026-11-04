@@ -52,6 +52,12 @@ import { detachGridPanel, gridPanelMounted, renderGridMode } from "../grid/grid-
 import { detachEntryPane, entryPaneMounted, renderEntryMode } from "../content/entry-editor";
 import { detachMediaPane, mediaPaneMounted, renderMediaMode } from "../media/media-pane";
 import {
+  IMAGE_MODE,
+  detachImageEditor,
+  imageEditorMounted,
+  renderImageMode,
+} from "../media/image-editor";
+import {
   detachVariablesView,
   renderVariablesMode,
   variablesViewMounted,
@@ -629,6 +635,7 @@ function resetCanvasView(surface: CanvasSurface) {
   detachEntryPane(paneId);
   detachWritingBanner(paneId);
   detachMediaPane(paneId);
+  detachImageEditor(paneId);
   detachVariablesView(paneId);
   detachWorkspaceHome(paneId);
   disposeSourceCollab(surface);
@@ -1182,6 +1189,11 @@ function renderCanvasImpl(surface: CanvasSurface) {
     return;
   }
 
+  // Image-editor fast-path, same shape: a gesture repaints the editor through its own effect.
+  if (canvasMode === IMAGE_MODE && imageEditorMounted(surface.paneId, tab) && !modeChanged) {
+    return;
+  }
+
   // Variables fast-path, same shape: the view follows the document through its own effect.
   if (
     canvasMode === PROJECT_VARIABLES_VIEW &&
@@ -1266,6 +1278,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
 
     // And for the media viewer, whose effect scope subscribes to the tab's path
     detachMediaPane(surface.paneId);
+
+    // And for the Image editor, whose effect scope subscribes to the tab's recipe
+    detachImageEditor(surface.paneId);
 
     // And for the Variables view, whose effect scope subscribes to the document's style
     detachVariablesView(surface.paneId);
@@ -1401,6 +1416,15 @@ function renderCanvasImpl(surface: CanvasSurface) {
     canvasWrap.style.padding = "0";
     canvasWrap.style.display = "block";
     renderMediaMode(surface, tab);
+    return;
+  }
+
+  /* Image mode: the media viewer's editing sibling (`media/image-editor.ts`, §9.5). Same pattern;
+     its recipe lives with the tab, so a teardown here loses no unsaved work. */
+  if (canvasMode === IMAGE_MODE) {
+    canvasWrap.style.padding = "0";
+    canvasWrap.style.display = "block";
+    renderImageMode(surface, tab);
     return;
   }
 
@@ -2003,6 +2027,7 @@ setSurfaceTeardown((surface) => {
   detachGridPanel(surface.paneId);
   detachEntryPane(surface.paneId);
   detachMediaPane(surface.paneId);
+  detachImageEditor(surface.paneId);
   detachVariablesView(surface.paneId);
   detachWorkspaceHome(surface.paneId);
   detachWritingBanner(surface.paneId);

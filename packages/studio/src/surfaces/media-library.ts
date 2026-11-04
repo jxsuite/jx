@@ -97,6 +97,11 @@ export interface MediaLibraryView {
   previewSpecimen: string;
   /** The Replace input's `accept`: the selected file's own format only. */
   replaceAccept: string;
+  /**
+   * Whether the selected file opens in the Image editor (studio.md §9.5): withheld on exactly the
+   * conditions `media.edit` gates on, so the palette and this pane cannot give two answers.
+   */
+  editable: "yes" | "no";
   usageState: "hidden" | "shown";
   usageHeadline: string;
   usageFiles: MediaUsageRow[];
@@ -127,6 +132,8 @@ export interface MediaLibraryActions {
   replace: (input: HTMLInputElement) => void;
   remove: () => void;
   openViewer: () => void;
+  /** Open the selected image in its Image editor. */
+  editImage: () => void;
   reset: () => void;
   /** A tile node was created for `file`. */
   tileHost: (element: HTMLElement, file: string) => void;
@@ -174,6 +181,7 @@ export function emptyMediaLibraryView(): MediaLibraryView {
     query: "",
     region: "",
     replaceAccept: "",
+    editable: "no",
     selectedFile: "",
     sort: "",
     sortOptions: [],

@@ -83,6 +83,7 @@ import { openMenu } from "../surfaces/menu";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import { saveFile } from "../files/file-ops";
 import { collabReadOnly } from "../collab/collab-session";
+import { imageEditorDirty } from "../media/image-editor";
 import { collabState } from "../collab/collab-state";
 import { elementAtPoint, rectOf } from "../utils/geometry";
 import { resolveRegion } from "../ui/regions";
@@ -255,6 +256,8 @@ export function mount(host: HTMLElement) {
         // A tab's workspace follows its editor (`project.json` is Styles' in its stylebook only).
         void tab.session.ui.canvasMode;
         void tab.doc.dirty;
+        // An image edit is the tab's unsaved work too (§9.5), held beside the document, not in it.
+        void imageEditorDirty(tab);
         void tab.documentPath;
         void tab.pinned;
         void tab.preview;
@@ -689,7 +692,7 @@ function chipView(
   const pill = entryDraftPill(tab);
   return [
     {
-      dirty: tab.doc.dirty,
+      dirty: tab.doc.dirty || imageEditorDirty(tab),
       draft: pill?.draft ?? false,
       index,
       key: id,
@@ -1336,11 +1339,17 @@ export function tabLabel(tab: Tab): string {
  * buffer rather than resyncing over a half-typed heading), and that text exists nowhere else.
  * {@link tabBufferUnsaved} is that residue, and it is the user's own typing by construction.
  *
+ * **And an image tab's unsaved work is not in its document at all.** A media tab's document is a
+ * stub; an Image editor edit (§9.5) is a recipe held beside it, so it is a third source of dirt,
+ * and it takes the residue's side of the peer-count gate for the residue's reason: a recipe has
+ * never been published, mirrored or written, so no peer focused on the path holds a copy of it.
+ *
  * @param {Tab} tab
  */
 export function shouldWarnOnClose(tab: Tab): boolean {
   const residue = tabBufferUnsaved(tab);
-  if (!tab.doc.dirty && !residue) {
+  const image = imageEditorDirty(tab);
+  if (!tab.doc.dirty && !residue && !image) {
     return false;
   }
   const state = collabState(tab);
@@ -1361,7 +1370,7 @@ export function shouldWarnOnClose(tab: Tab): boolean {
      lock holder is by definition a peer focused on this path, so the busier the room got, the
      quieter the close became. Asked before the peer count rather than after, because the peer count
      has no jurisdiction over text the room has never been told about. */
-  if (residue) {
+  if (residue || image) {
     return true;
   }
   const peersHere = state.peers.filter((p) => p.state.focusedPath === tab.documentPath);

@@ -46,6 +46,7 @@ import {
   setCloseLanding,
   setEmptyPaneFallback,
   setTabScope,
+  tabHoldsEditBesideDocument,
   workspace,
 } from "./workspace";
 import { homeWorkspaceOfTabId, isHomeWorkspace, workspaceHomeTabId } from "./workspace-ids";
@@ -119,7 +120,8 @@ export function viewsReplacedBy(
       homeWorkspaceOfTabId(other) !== id &&
       workspaceOfTab(tab) === id &&
       !tab.pinned &&
-      !tab.doc.dirty
+      !tab.doc.dirty &&
+      !tabHoldsEditBesideDocument(tab)
     );
   });
 }

@@ -23,6 +23,8 @@
 
 import { loadUsages, usageWarning } from "../services/references";
 import { isMediaFile } from "./media-upload";
+import { IMAGE_MODE, imageEditorDirty, saveImage } from "../media/image-editor";
+import { canvasModeOfTab } from "../canvas/canvas-surface";
 import { loadMediaUsages } from "./media-usage";
 import { showConfirmDialog } from "../ui/layers";
 import { locateDocument } from "../services/code-services";
@@ -312,7 +314,9 @@ function reportSaved(tab: Tab) {
  * `source` alternate has the same stub behind it — `canvas-render.ts`'s `sourceContent` falls
  * through to the same `JSON.stringify` when no format class claims the path — so a guard reading
  * `canvasMode === "media"` would have left the one media type that offers a text editor still able
- * to overwrite itself with a placeholder it never showed anyone.
+ * to overwrite itself with a placeholder it never showed anyone. It stays keyed on the file now
+ * that an image can be edited (§9.5): the Image editor writes through its own door, `saveImage`,
+ * and the stub document is still not something any mode may serialize.
  */
 function hasSerializableDocument(tab: Tab): boolean {
   return !isMediaFile(tab.documentPath ?? "");
@@ -373,6 +377,12 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
      from one that worked. `warn` rather than `error` — nothing is broken and there is nothing to fix;
      the file is simply not the kind of thing Save writes. */
   if (!hasSerializableDocument(tab)) {
+    /* An image with an edit has a write of its own (§9.5), and ⌘S is the same key for the same
+       intent there. Asked by the edit as well as the mode, so the close prompt's Save writes a
+       pending crop even from the read-only viewer it was left behind in. */
+    if (canvasModeOfTab(tab) === IMAGE_MODE || imageEditorDirty(tab)) {
+      return saveImage(tab);
+    }
     notify.warn(
       `${tab.documentPath ?? "This file"} is a media file, so there is no document for Save to write.`,
       atTabPath(tab, {

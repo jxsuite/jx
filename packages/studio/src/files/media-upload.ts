@@ -24,7 +24,8 @@ import { getPlatform, hasPlatform } from "../platform";
 import { notify } from "../services/notify";
 import { invalidateUsages } from "../services/references";
 import { activeTab } from "../workspace/workspace";
-import { forgetVersions, notedListing } from "./asset-versions";
+import { forgetVersions, noteLocalWrite, notedListing } from "./asset-versions";
+import { markLocalMutation } from "./fs-events";
 import {
   AUDIO_EXTENSIONS,
   IMAGE_EXTENSIONS,
@@ -231,10 +232,17 @@ export function joinDir(dir: string, name: string): string {
  * this module doesn't import the media-picker / Manage / file-tree caches it needs to invalidate
  * (they all import from here) — the same injection pattern as the canvas host's drop handlers.
  */
-let mediaChangedHandler: ((dir: string) => void | Promise<void>) | null = null;
+let mediaChangedHandler: MediaChangedHandler | null = null;
+
+/**
+ * The post-upload cache invalidator. `overwritten` names a path whose bytes were replaced IN PLACE,
+ * which is the one change a re-list cannot show: the listing is unchanged, so anything already
+ * drawn from that path has to be drawn again (studio.md §3.4).
+ */
+export type MediaChangedHandler = (dir: string, overwritten?: string) => void | Promise<void>;
 
 /** Register the post-upload cache invalidator (see {@link mediaChangedHandler}). */
-export function setMediaChangedHandler(fn: ((dir: string) => void | Promise<void>) | null): void {
+export function setMediaChangedHandler(fn: MediaChangedHandler | null): void {
   mediaChangedHandler = fn;
 }
 
@@ -242,8 +250,10 @@ export function setMediaChangedHandler(fn: ((dir: string) => void | Promise<void
  * Say that the media in `dir` changed by some door other than {@link uploadAssets} — a replace, or
  * the Media workspace's delete — so every cache keyed on the listing is dropped the same way.
  */
-export async function announceMediaChanged(dir: string): Promise<void> {
-  await mediaChangedHandler?.(dir);
+export async function announceMediaChanged(dir: string, overwritten?: string): Promise<void> {
+  await (overwritten === undefined
+    ? mediaChangedHandler?.(dir)
+    : mediaChangedHandler?.(dir, overwritten));
 }
 
 /** The directory part of a project path, `.` for a file at the root. */
@@ -405,7 +415,11 @@ export function canReplaceWith(path: string, file: { name: string }): boolean {
  *
  * @returns Whether the bytes now at `path` are the new ones.
  */
-export async function replaceAsset(path: string, file: File): Promise<boolean> {
+export async function replaceAsset(
+  path: string,
+  file: File,
+  opts: { note?: string } = {},
+): Promise<boolean> {
   const name = path.split("/").pop() ?? path;
   /* An `accept` narrows only the chooser (and a backend's own picker may ignore it), so the format is
      checked here too: same path, other format, is every reference broken at once. */
@@ -425,6 +439,10 @@ export async function replaceAsset(path: string, file: File): Promise<boolean> {
     });
     return false;
   }
+  /* Studio's own write, marked BEFORE it happens (§3.4): the watcher's echo of it is absorbed rather
+     than reported as somebody else's change, and the path's content version is forgotten while the
+     bytes are still the old ones, so no listing in flight can vouch the old version afterwards. */
+  markLocalMutation(path);
   let written: string;
   try {
     ({ path: written } = await getPlatform().uploadFile(path, file));
@@ -437,10 +455,18 @@ export async function replaceAsset(path: string, file: File): Promise<boolean> {
     return false;
   }
   forgetVersions([path, written]);
+  /* The repaint key: on a host that vouches no version (`jx dev`, desktop) the URL of `path` is
+     otherwise byte-identical before and after, and every image already decoded keeps the old
+     pixels. Only on the path that was actually written; a second file beside it is new. */
+  if (written === path) {
+    noteLocalWrite(path);
+  }
   // The answers were about the old bytes' place in the project; the place is the same, but a stale
   // "Used on" is a list the reader acts on, so it is asked again rather than trusted.
   invalidateUsages();
-  await announceMediaChanged(parentDir(path));
+  await (written === path
+    ? announceMediaChanged(parentDir(path), path)
+    : announceMediaChanged(parentDir(path)));
   if (written !== path) {
     notify.warn(`${name} was not replaced.`, {
       detail: `The backend stored the new file as ${written}, so every reference still shows the old one.`,
@@ -451,6 +477,8 @@ export async function replaceAsset(path: string, file: File): Promise<boolean> {
     });
     return false;
   }
-  notify.success(`Replaced ${name}`);
+  /* One toast per write. A caller with something to add (the Image editor's written size) adds it
+     to the message, because a toast draws its message alone: `detail` is for Problems. */
+  notify.success(opts.note === undefined ? `Replaced ${name}` : `Replaced ${name}: ${opts.note}`);
   return true;
 }

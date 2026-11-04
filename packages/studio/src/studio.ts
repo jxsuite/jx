@@ -212,6 +212,7 @@ import { setProjectAdopter } from "./services/project-adoption";
 import { setImportHandoff } from "./services/import-seed";
 import { watchConnection } from "./services/connection";
 import { commitTabBuffers, tabBufferUnsaved } from "./services/monaco-buffer";
+import { imageEditorDirty } from "./media/image-editor";
 import { clearTyping } from "./tabs/typing";
 import * as leftPanelMod from "./panels/left-panel";
 import * as tabStrip from "./panels/tab-strip";
@@ -605,12 +606,19 @@ setInsertZoneClickHandler(runInsertZoneAction);
 setFileDropHandler(applyFileDrop);
 // Every upload surface routes through uploadAssets(); refresh the three caches that list project
 // Files afterwards. Injected here because all three modules import from media-upload.
-setMediaChangedHandler(async (dir) => {
+setMediaChangedHandler(async (dir, overwritten) => {
   invalidateMediaCache();
   invalidateLibrary();
   invalidateSiteIndex();
   await loadDirectory(dir);
   renderLeftPanel();
+  /* Bytes replaced IN PLACE change no listing, so nothing above redraws what was already drawn from
+     them. Every pane draws again, and its asset resolver now carries the path's repaint key. */
+  if (overwritten !== undefined) {
+    for (const pane of workspace.panes) {
+      renderCanvas(pane.id);
+    }
+  }
 });
 // The in-iframe "/" trigger drives the parent-realm slash menu across the bridge.
 setCanvasSlashHandler(canvasSlashHandler);
@@ -677,7 +685,7 @@ document.addEventListener(
  */
 export function hasUnsavedTabs(): boolean {
   for (const tab of workspace.tabs.values()) {
-    if (tab.doc.dirty || tabBufferUnsaved(tab)) {
+    if (tab.doc.dirty || tabBufferUnsaved(tab) || imageEditorDirty(tab)) {
       return true;
     }
   }

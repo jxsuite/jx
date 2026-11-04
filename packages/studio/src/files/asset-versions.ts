@@ -98,6 +98,22 @@ let floor = 0;
 const dirtiedPaths = new Map<string, number>();
 /** The sequence number at which each directory prefix (`dir/`) was last forgotten. */
 const dirtiedPrefixes = new Map<string, number>();
+/**
+ * Studio's own repaint keys, by normalized project path: a token minted when Studio has just
+ * written a path's bytes itself, which every asset URL builder appends as `"r"` (see
+ * {@link noteLocalWrite}). A map of its own, so nothing that reads a backend version changes
+ * meaning.
+ */
+const revisions = new Map<string, string>();
+/** Counts the repaint keys minted this session. */
+let revisionCount = 0;
+/**
+ * The session the keys are minted in, so a key cannot repeat across a reload: a revalidating cache
+ * still holds `?r=1` from the last session, for bytes that may be older than this session's.
+ */
+const REVISION_SESSION = Date.now().toString(36);
+/** The memoized repaint-key snapshot, or null once a key changed under it. */
+let revisionsSnapshot: Readonly<Record<string, string>> | null = null;
 /** The memoized canvas snapshot, or null once a media version changed under it. */
 let snapshot: Readonly<Record<string, string>> | null = null;
 /**
@@ -117,6 +133,28 @@ export const assetVersionsEpoch = shallowRef(0);
 function mediaChanged(): void {
   snapshot = null;
   assetVersionsEpoch.value += 1;
+}
+
+/**
+ * Mint a path's repaint key again, if it holds one, reporting whether a media path's did. The key
+ * has a URL's cached pixels behind it, so when the bytes change by any other door (a source-control
+ * discard, say) the old key would go on showing the picture they replaced.
+ */
+function remintRevision(path: string): boolean {
+  if (!revisions.has(path)) {
+    return false;
+  }
+  revisionCount += 1;
+  revisions.set(path, `${REVISION_SESSION}.${revisionCount.toString(36)}`);
+  revisionsSnapshot = null;
+  return isVersionedMediaPath(path);
+}
+
+/** Drop a path's repaint key, if Studio holds one. */
+function dropRevision(path: string): void {
+  if (revisions.delete(path)) {
+    revisionsSnapshot = null;
+  }
 }
 
 /**
@@ -173,6 +211,9 @@ export function noteListing(entries: readonly DirEntry[], since: number): void {
       continue;
     } else {
       versions.set(path, version);
+      /* A version the host vouches for supersedes Studio's own repaint key: it names the same new
+         bytes, and it is the one a host may cache. */
+      dropRevision(path);
     }
     if (isVersionedMediaPath(path)) {
       changed = true;
@@ -212,6 +253,9 @@ export function forgetVersions(paths: readonly string[], prefixDirs: readonly st
     if (versions.delete(path) && isVersionedMediaPath(path)) {
       changed = true;
     }
+    if (remintRevision(path)) {
+      changed = true;
+    }
   }
   for (const raw of prefixDirs) {
     const dir = normalizeProjectPath(raw);
@@ -220,6 +264,11 @@ export function forgetVersions(paths: readonly string[], prefixDirs: readonly st
     }
     const prefix = `${dir}/`;
     dirtiedPrefixes.set(prefix, seq);
+    for (const path of revisions.keys()) {
+      if (path.startsWith(prefix) && remintRevision(path)) {
+        changed = true;
+      }
+    }
     for (const path of versions.keys()) {
       if (path.startsWith(prefix)) {
         versions.delete(path);
@@ -286,9 +335,66 @@ export function forgetAllVersions(): void {
 }
 
 /**
- * Drop every version and dirt record — a project switch, and between tests. A listing begun before
- * the reset is ignored when it lands: it lists the project that was closed.
+ * Record that Studio itself has just written new bytes to `path`, and return the repaint key minted
+ * for it (studio.md §3.4).
+ *
+ * The version above only exists where a host vouches for one, which is the cloud's repo space
+ * alone. Everywhere else an asset URL carries no key at all, so after an in-place overwrite (the
+ * Media workspace's Replace, the Image editor's save) the URL is byte-identical before and after,
+ * and every `<img>` already decoded in the document keeps the old pixels. This key is the second,
+ * clearly separate channel: a monotonic token both asset-URL builders append as `"r"` in BOTH of
+ * their branches. It is deliberately not `v`, because §3.4 binds that name to a version the host
+ * issued and may answer immutably, and a token Studio minted is neither. It is dropped when a
+ * listing vouches for a version, which then names the same bytes.
+ */
+export function noteLocalWrite(path: string): string | undefined {
+  const key = normalizeProjectPath(path);
+  if (key === "") {
+    return undefined;
+  }
+  revisionCount += 1;
+  const token = `${REVISION_SESSION}.${revisionCount.toString(36)}`;
+  revisions.set(key, token);
+  revisionsSnapshot = null;
+  if (isVersionedMediaPath(key)) {
+    // The canvas host watches the same epoch, so a frame is reposted the new keys.
+    mediaChanged();
+  }
+  return token;
+}
+
+/** The repaint key Studio minted for `path`, or undefined when Studio has not written it. */
+export function localRevisionOf(path: string): string | undefined {
+  return revisions.get(normalizeProjectPath(path));
+}
+
+/** Whether Studio holds a repaint key for any path. */
+export function hasLocalRevisions(): boolean {
+  return revisions.size > 0;
+}
+
+/**
+ * Every repaint key as a plain record, for the canvas iframe. Memoized like
+ * {@link assetVersionsSnapshot}, so identity is a cheap "did anything move" test.
+ */
+export function localRevisionsSnapshot(): Readonly<Record<string, string>> {
+  if (revisionsSnapshot) {
+    return revisionsSnapshot;
+  }
+  revisionsSnapshot =
+    revisions.size === 0 ? EMPTY_SNAPSHOT : Object.freeze(Object.fromEntries(revisions));
+  return revisionsSnapshot;
+}
+
+/**
+ * Drop every version, dirt record and repaint key — a project switch, and between tests. A listing
+ * begun before the reset is ignored when it lands: it lists the project that was closed.
  */
 export function resetAssetVersions(): void {
   forgetAllVersions();
+  if (revisions.size > 0) {
+    revisions.clear();
+    revisionsSnapshot = null;
+    mediaChanged();
+  }
 }

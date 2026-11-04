@@ -68,7 +68,8 @@ import { forgetVersions } from "../files/asset-versions";
 import { loadMediaUsages, peekMediaUsages } from "../files/media-usage";
 import { onProjectMediaChange, projectMediaFiles } from "../ui/media-picker";
 import { openMenu } from "../surfaces/menu";
-import { openMediaTab } from "./media-open";
+import { canEditImage, openImageEditor, openMediaTab } from "./media-open";
+import { imageEditorAllowsReplace, imageFileChanged } from "./image-editor";
 import { factsLine, mediaStageFor, specimenOf, usageOf } from "./media-pane";
 import {
   MEDIA_FILTERS,
@@ -578,6 +579,7 @@ function detailView(
   | "previewSpecimen"
   | "previewSpecimenFamily"
   | "replaceAccept"
+  | "editable"
   | "usageState"
   | "usageHeadline"
   | "usageFiles"
@@ -597,6 +599,7 @@ function detailView(
       previewSpecimenFamily: "",
       previewSrc: "",
       replaceAccept: "",
+      editable: "no",
       selectedFile: "",
       usageFiles: [],
       usageHeadline: "",
@@ -638,6 +641,7 @@ function detailView(
     previewSpecimenFamily: specimen.specimenFamily,
     previewSrc: previewKind === "glyph" ? "" : previewFileSrc(entry.file),
     replaceAccept: replaceAccept(entry.file),
+    editable: canEditImage(entry.file) ? "yes" : "no",
     selectedFile: entry.file,
     ...usageOf(usage),
   };
@@ -857,6 +861,12 @@ function actionsFor(mount: LibraryMount) {
         openMediaTab(selected);
       }
     },
+    editImage: () => {
+      const { selected } = mount.choice;
+      if (selected !== null) {
+        openImageEditor(selected);
+      }
+    },
     remove: () => {
       const { selected } = mount.choice;
       if (selected !== null) {
@@ -868,11 +878,16 @@ function actionsFor(mount: LibraryMount) {
       // Cleared first: a file input that keeps its value refuses the same file twice.
       input.value = "";
       const { selected } = mount.choice;
-      if (chosen && selected !== null) {
+      if (chosen && selected !== null && imageEditorAllowsReplace(selected)) {
         /* No metadata invalidation here: `replaceAsset` announces the change, whose handler drops
            the listing AND its metadata and re-reads them in that order. A second drop after it
            lands would wipe the fresh facts of every other tile, and nothing would re-seed them. */
-        void replaceAsset(selected, chosen).then(redrawAll);
+        void replaceAsset(selected, chosen).then((replaced) => {
+          if (replaced) {
+            imageFileChanged(selected);
+          }
+          redrawAll();
+        });
       }
     },
     reset: () => {
@@ -969,6 +984,7 @@ function showTileMenu(mount: LibraryMount, file: string, x: number, y: number): 
     region: "media-tile",
     rows: [
       row("open", "Open in Viewer", () => openMediaTab(file)),
+      ...(canEditImage(file) ? [row("edit", "Edit Image", () => openImageEditor(file))] : []),
       row("copy-url", "Copy Site URL", () => copySiteUrl(entry)),
       row("replace", "Replace…", () => requestMediaReplace(file), { dividerAbove: true }),
       row(

@@ -18,9 +18,9 @@ code:
 
 # Editors and views
 
-Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Entry**, **Home**, or one of the Styles workspace's **Elements** and **Variables**. It lists only the editors this file supports, so there is nothing in it to be disabled. **Diff** is never one of the choices: it is the editor a comparison opens in, and it shows as the bar's Editor only while you are looking at one. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
+Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Entry**, **Media**, **Image**, **Home**, or one of the Styles workspace's **Elements** and **Variables**. It lists only the editors this file supports, so there is nothing in it to be disabled. **Diff** is never one of the choices: it is the editor a comparison opens in, and it shows as the bar's Editor only while you are looking at one. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
 
-Those seven names come from one list in Studio, which is why the pane's context bar and the status bar can never print different words for the same editor.
+Those nine names come from one list in Studio, which is why the pane's context bar and the status bar can never print different words for the same editor.
 
 ## Edit
 
@@ -53,6 +53,10 @@ Home is a workspace's own page, the tab a workspace opens on when none of its do
 ## Media
 
 An image, video, audio file, font or PDF opens in a viewer rather than an editor. It shows the file itself (the picture at full size, media with playback controls, a font set as a specimen) plus what Studio knows about it, the URL a document references it by, and which documents use it. Clicking a file in the Files panel, or **Open in viewer** on a file in the Media workspace, is all it takes. Full guide: **[Media](/docs/studio/projects/media#open-a-media-file)**.
+
+## Image
+
+A PNG, JPEG or WebP file also offers **Image** in the **Editor** control: the same file, with tools to crop, rotate, flip, resize and adjust its tone, written over the original when you save. Full guide: **[Edit an image](/docs/studio/projects/media#edit-an-image)**.
 
 ## Code
 
@@ -92,6 +96,7 @@ Every file opens in its natural editor and view, and the two controls offer only
 | Components and pages (`.json`)     | **Canvas** · Edit | **Code**, **Elements**  | **Design**, **Preview** |
 | Spreadsheets (`.csv`)              | **Grid**          | **Code**                | —                       |
 | Images, video, audio, fonts, PDFs  | **Media**         | —                       | —                       |
+| PNG, JPEG and WebP images          | **Media**         | **Image**               | —                       |
 | Vector images (`.svg`)             | **Media**         | **Code**                | —                       |
 | The project file (`project.json`)  | **Elements**      | **Variables**, **Code** | —                       |
 

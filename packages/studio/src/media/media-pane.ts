@@ -30,6 +30,7 @@
 import { effect, effectScope } from "../reactivity";
 import { paneRegion } from "../ui/regions";
 import { localDay } from "../utils/local-day";
+import { assetVersionsEpoch } from "../files/asset-versions";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
 import {
   formatBytes,
@@ -208,7 +209,6 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
   detachMediaPane(paneId);
 
   const path = tab.documentPath ?? "";
-  const src = previewFileSrc(path);
   const ref = mediaSiteUrl(path);
   const ext = extensionOf(path);
   const kind = mediaStageFor(path);
@@ -244,7 +244,9 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
       region: paneRegion(paneId, "media"),
       specimen: specimen.specimen,
       specimenFamily: specimen.specimenFamily,
-      src,
+      /* Asked on every paint: bytes written in place give the URL a new repaint key (§3.4), and a
+         viewer holding the old URL would go on showing the picture they replaced. */
+      src: previewFileSrc(path),
       ...usageOf(usage),
     };
   };
@@ -285,6 +287,7 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
          browser's problem, and its metadata repaints through `redraw`. Reading it here is what
          makes a rename repaint the viewer rather than leave it pointing at a name that is gone. */
       void tab.documentPath;
+      void assetVersionsEpoch.value;
       draw();
     });
   });

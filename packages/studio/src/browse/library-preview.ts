@@ -34,7 +34,7 @@ import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canv
 import { canvasBaseOrigin, documentBase, hostResolveToken } from "../canvas/canvas-origin";
 import { npmModuleUrl } from "../canvas/npm-modules";
 import { projectState } from "../store";
-import { assetVersionsSnapshot } from "../files/asset-versions";
+import { assetVersionsSnapshot, localRevisionsSnapshot } from "../files/asset-versions";
 import { componentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
 import { loadFormats, formatForPath } from "../format/format-host";
@@ -184,7 +184,11 @@ async function renderDocument(
      `documentDir` would resolve its relative refs against the wrong entry. The version map is
      read as the render starts, after the reads above: the Library is the many-images screen,
      and a versioned src is what lets its cards repaint from the browser cache. */
-  const assets = context && { ...context, versions: assetVersionsSnapshot() };
+  const assets = context && {
+    ...context,
+    revisions: localRevisionsSnapshot(),
+    versions: assetVersionsSnapshot(),
+  };
   setCanvasAssetResolver((value) => resolveAssetRef(value, assets));
   try {
     const element = renderNode(document_, scope);

@@ -18,7 +18,11 @@ import { contentMountFor, resolveAssetRef } from "./asset-resolve";
 import { documentBase, loopbackAssetSrc } from "./canvas-origin";
 import { getPlatform, hasPlatform } from "../platform";
 import { projectState } from "../store";
-import { assetVersionsSnapshot } from "../files/asset-versions";
+import {
+  assetVersionsSnapshot,
+  hasLocalRevisions,
+  localRevisionsSnapshot,
+} from "../files/asset-versions";
 import { activeTab } from "../workspace/workspace";
 import type { AssetContext } from "./asset-resolve";
 import type { ContentSectionEntry } from "../types";
@@ -59,9 +63,10 @@ export function assetContextFor(
     projectState?.projectConfig?.content as Record<string, ContentSectionEntry> | undefined,
     projectLocales(),
   );
-  /* In site space the mount is the ONLY thing that needs doing, so no mount means no work. In repo
+  /* In site space the mount is the ONLY thing that needs doing, so no mount means no work — unless
+     Studio has just written a file in place, whose references need its repaint key (§3.4). In repo
      space every reference needs rebasing, mount or not. */
-  if (space === "site" && !mount) {
+  if (space === "site" && !mount && !hasLocalRevisions()) {
     return null;
   }
   const context: AssetContext = {
@@ -116,7 +121,11 @@ export function previewAssetSrcFor(value: string, documentPath: string | null | 
     return value;
   }
   const ctx = assetContextFor(documentPath, hostAssetDeclarations());
-  const versioned = ctx && { ...ctx, versions: assetVersionsSnapshot() };
+  const versioned = ctx && {
+    ...ctx,
+    revisions: localRevisionsSnapshot(),
+    versions: assetVersionsSnapshot(),
+  };
   return loopbackAssetSrc(resolveAssetRef(value, versioned) ?? value);
 }
 

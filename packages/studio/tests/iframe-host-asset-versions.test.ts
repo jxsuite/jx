@@ -17,6 +17,7 @@ import {
   beginListing,
   forgetVersions,
   noteListing,
+  noteLocalWrite,
   resetAssetVersions,
 } from "../src/files/asset-versions";
 import type { postMessageChannel } from "../src/canvas/iframe-channel";
@@ -180,6 +181,22 @@ describe("asset versions reach the frame", () => {
     await mountIframeCanvas(2, { tagName: "div" }, canvasEl, null, tab.id);
     await flush();
     expect(versionPosts(channel)).toEqual([]);
+  });
+
+  test("a repaint key Studio mints is posted beside the versions, with none vouched", async () => {
+    const tab = resetWorkspaceWithTab({ tagName: "div" }, { id: "t-rev" });
+    const channel = await mountQueued(tab.id);
+    channel.deliver({ kind: "ready" });
+    await flush();
+    // A host that versions nothing sends nothing...
+    expect(versionPosts(channel)).toEqual([]);
+    const token = noteLocalWrite("public/hero.png")!;
+    await flush();
+    // ...until Studio writes a file in place, and then it sends the key.
+    const posts = channel.posts.flatMap((post) => (post.kind === "assetVersions" ? [post] : []));
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.versions).toEqual({});
+    expect(posts[0]!.revisions).toEqual({ "public/hero.png": token });
   });
 
   test("a version change is reposted, coalesced, without waiting for a render", async () => {

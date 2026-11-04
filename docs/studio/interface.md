@@ -82,7 +82,7 @@ Studio has five workspaces in the Command Bar, one for each kind of work, and a 
 
 - **Design** (:kbd[⌘1]): pages, layouts, components and every other file, on the canvas. It is the only workspace with the rail.
 - **Content** (:kbd[⌘2]): the [Content workspace](/docs/studio/projects/browse), with the Collections panel, a home tab for one collection at a time, the content grids, and every entry of a content collection, written on the canvas inside its template.
-- **Media** (:kbd[⌘3]): your images, video, audio, documents and fonts in one library you can filter, search, upload to, replace and delete from, and the viewer for each one. See [Media](/docs/studio/projects/media#the-media-workspace).
+- **Media** (:kbd[⌘3]): your images, video, audio, documents and fonts in one library you can filter, search, upload to, replace and delete from, the viewer for each one, and an editor for PNG, JPEG and WebP images. See [Media](/docs/studio/projects/media#the-media-workspace).
 - **Styles** (:kbd[⌘4]): [Project Styles](/docs/studio/design/stylebook) over `project.json`, in three views: **Variables** (your [CSS custom properties](/docs/studio/design/tokens), where it opens), **Elements** (the default look of each element type) and **Code**. The **Styles** panel beside it lists your variables, your element defaults and your color schemes, and takes you to each one.
 - **Publish** (:kbd[⌘5]): your unpublished changes and the comparison of each one.
 

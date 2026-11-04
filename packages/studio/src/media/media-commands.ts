@@ -7,6 +7,8 @@
  * - `media.upload` shows the Media home and opens its Upload picker.
  * - `media.replace { path }` selects a file and opens its Replace picker: the one overwrite.
  * - `media.delete { path }` deletes a file, through the confirmation that states its usage.
+ * - `media.edit { path }` opens an image in its Image editor (§9.5), the only way that mode is
+ *   entered by a verb.
  *
  * Every one runs the flow, never a copy of it: the surface's Upload label and Replace input are the
  * same controls these open (`HTMLInputElement.showPicker()`), and Delete is the detail pane's own.
@@ -31,6 +33,7 @@ import type { MediaBrowseRequest } from "./media-library";
 import type { CommandArgValues } from "../commands/command-args";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type * as MediaLibraryModule from "./media-library";
+import type * as MediaOpenModule from "./media-open";
 import type * as WorkspaceHomeModule from "../workspace/workspace-home";
 
 /** The ids, which Add new and the Site panel run. */
@@ -38,6 +41,7 @@ export const MEDIA_BROWSE = "media.browse";
 export const MEDIA_UPLOAD = "media.upload";
 export const MEDIA_REPLACE = "media.replace";
 export const MEDIA_DELETE = "media.delete";
+export const MEDIA_EDIT = "media.edit";
 
 /**
  * The flow and the home opener, each imported once. One cached promise per module: two dynamic
@@ -45,6 +49,7 @@ export const MEDIA_DELETE = "media.delete";
  */
 let _library: Promise<typeof MediaLibraryModule> | null = null;
 let _home: Promise<typeof WorkspaceHomeModule> | null = null;
+let _open: Promise<typeof MediaOpenModule> | null = null;
 
 function library(): Promise<typeof MediaLibraryModule> {
   _library ??= import("./media-library");
@@ -54,6 +59,11 @@ function library(): Promise<typeof MediaLibraryModule> {
 function home(): Promise<typeof WorkspaceHomeModule> {
   _home ??= import("../workspace/workspace-home");
   return _home;
+}
+
+function opener(): Promise<typeof MediaOpenModule> {
+  _open ??= import("./media-open");
+  return _open;
 }
 
 /** A path argument that must name a media file. Refused with the sentence a person can act on. */
@@ -91,7 +101,7 @@ async function showHome(): Promise<void> {
 
 const PATH_DESCRIPTION = "The media file's project path, such as public/media/hero.jpg.";
 
-/** The four records. */
+/** The five records. */
 export function mediaCommands(): AnyCommand[] {
   const base = {
     category: "Project",
@@ -153,6 +163,26 @@ export function mediaCommands(): AnyCommand[] {
       },
       title: "Replace Media File…",
       undo: "none",
+    },
+    {
+      ...base,
+      args: argsSchema(
+        { path: stringProperty(`The image to edit: a PNG, JPEG or WebP. ${PATH_DESCRIPTION}`) },
+        ["path"],
+      ),
+      icon: "crop",
+      id: MEDIA_EDIT,
+      requires: "an open project, on a backend that can read a file's raw bytes",
+      run: async (_ctx, args) => {
+        const path = mediaPathArg(MEDIA_EDIT, args, "path");
+        const flow = await opener();
+        flow.openImageEditor(path);
+      },
+      title: "Edit Image…",
+      undo: "none",
+      /* Not gated on `collab.readOnly`: that is the FOCUSED tab's session, and this record takes a
+         path that may be another file. The refusal asks the path's own tab, in the flow. */
+      when: (ctx) => ctx.project.open && ctx.capability.readFileBytes,
     },
     {
       ...base,

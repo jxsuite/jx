@@ -1063,10 +1063,31 @@ export function promoteTab(tabId: string) {
  */
 export function promoteDirtyPreviewTabs() {
   for (const [id, tab] of workspace.tabs) {
-    if (tab.preview && tab.doc.dirty) {
+    if (tab.preview && (tab.doc.dirty || tabHoldsEditBesideDocument(tab))) {
       promoteTab(id);
     }
   }
+}
+
+/** The answer to {@link tabHoldsEditBesideDocument}, injected by the module that holds the edit. */
+let editBesideDocument: ((tab: Tab) => boolean) | null = null;
+
+/**
+ * Register who answers {@link tabHoldsEditBesideDocument}. Injected rather than imported, because
+ * the Image editor (`media/image-editor.ts`, studio.md §9.5) reaches the upload and collab layers,
+ * every one of which imports this module.
+ */
+export function setEditBesideDocument(answer: (tab: Tab) => boolean): void {
+  editBesideDocument = answer;
+}
+
+/**
+ * Whether this tab holds unsaved work that is NOT in its document: a media tab's document is a
+ * stub, and an image edit is a recipe held beside it, so `tab.doc.dirty` cannot say. Every gate
+ * that discards a tab without asking has to ask this too, or a pending crop goes in silence.
+ */
+export function tabHoldsEditBesideDocument(tab: Tab): boolean {
+  return editBesideDocument?.(tab) ?? false;
 }
 
 /**

@@ -26,10 +26,14 @@ void mock.module("../src/media/media-library.ts", () => ({
 void mock.module("../src/workspace/workspace-home.ts", () => ({
   openWorkspaceHome: (id: string) => calls.push(["home", id]),
 }));
+void mock.module("../src/media/media-open.ts", () => ({
+  openImageEditor: (path: string) => calls.push(["edit", path]),
+}));
 
 const {
   MEDIA_BROWSE,
   MEDIA_DELETE,
+  MEDIA_EDIT,
   MEDIA_REPLACE,
   MEDIA_UPLOAD,
   mediaCommands,
@@ -38,7 +42,7 @@ const {
 
 function registry() {
   const commands = createCommandRegistry({
-    getContext: () => makeContext({ project: { open: true } }),
+    getContext: () => makeContext({ capability: { readFileBytes: true }, project: { open: true } }),
     mac: true,
   });
   registerMediaCommands(commands);
@@ -65,12 +69,13 @@ beforeEach(() => {
 });
 
 describe("the records", () => {
-  test("are four project-level palette records with schemas where they take arguments", () => {
+  test("are five project-level palette records with schemas where they take arguments", () => {
     const records = mediaCommands();
     expect(records.map((record) => record.id)).toEqual([
       MEDIA_BROWSE,
       MEDIA_UPLOAD,
       MEDIA_REPLACE,
+      MEDIA_EDIT,
       MEDIA_DELETE,
     ]);
     for (const record of records) {
@@ -86,10 +91,11 @@ describe("the records", () => {
     ]);
     expect(records[2]?.args?.required).toEqual(["path"]);
     expect(records[3]?.args?.required).toEqual(["path"]);
+    expect(records[4]?.args?.required).toEqual(["path"]);
     // Delete is the one danger row: styled as one and ordered last, like every other delete verb.
-    expect(records[3]?.destructive).toBe(true);
-    expect(records[3]?.group).toBe("9_danger");
-    expect(records.slice(0, 3).every((record) => record.destructive !== true)).toBe(true);
+    expect(records[4]?.destructive).toBe(true);
+    expect(records[4]?.group).toBe("9_danger");
+    expect(records.slice(0, 4).every((record) => record.destructive !== true)).toBe(true);
     // Gated on an open project, and only on that.
     expect(browse.when?.(emptyContext())).toBe(false);
   });
@@ -150,6 +156,29 @@ describe("media.upload, media.replace, media.delete", () => {
       'command "media.replace": "project.json" is not a media file',
     );
     expect(await refusal(MEDIA_DELETE, { path: "notes.md" })).toContain("is not a media file");
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("media.edit", () => {
+  test("opens the image in its editor through the flow, and nothing else", async () => {
+    await run(MEDIA_EDIT, { path: "./public/hero.jpg" });
+    expect(calls).toEqual([["edit", "public/hero.jpg"]]);
+  });
+
+  test("is offered only on a host that can read a file's raw bytes", () => {
+    const edit = mediaCommands().find((record) => record.id === MEDIA_EDIT)!;
+    expect(edit.when?.(makeContext({ project: { open: true } }))).toBe(false);
+    expect(
+      edit.when?.(makeContext({ capability: { readFileBytes: true }, project: { open: true } })),
+    ).toBe(true);
+    expect(edit.when?.(makeContext({ capability: { readFileBytes: true } }))).toBe(false);
+  });
+
+  test("refuses a path that is not media before importing anything", async () => {
+    expect(await refusal(MEDIA_EDIT, { path: "pages/index.json" })).toContain(
+      'command "media.edit": "pages/index.json" is not a media file',
+    );
     expect(calls).toEqual([]);
   });
 });

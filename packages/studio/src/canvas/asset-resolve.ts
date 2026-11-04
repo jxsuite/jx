@@ -99,6 +99,11 @@ export interface AssetContext {
    * unversioned, exactly as before versions existed.
    */
   versions?: Readonly<Record<string, string>> | undefined;
+  /**
+   * Studio's own repaint keys by normalized project path, appended as `?r=<key>` in BOTH spaces
+   * (see {@link withRevision}). A path appears only after Studio itself wrote its bytes.
+   */
+  revisions?: Readonly<Record<string, string>> | undefined;
 }
 
 /**
@@ -122,7 +127,27 @@ export interface AssetContext {
  * @returns {string} The versioned URL
  */
 export function withVersion(url: string, version: string | undefined): string {
-  if (!isString(version) || version === "") {
+  return withParam(url, "v", version);
+}
+
+/**
+ * `url` with `r=<revision>` in its query: Studio's own repaint key for a path it has just written
+ * (specs/studio.md §3.4). Same placement rules as {@link withVersion}, and a different name on
+ * purpose: `v` is a version the HOST issued and may answer immutably, and this is a token Studio
+ * minted, which never may be. It exists because an unversioned URL is byte-identical before and
+ * after an in-place overwrite, so without it a decoded `<img>` keeps the old pixels.
+ *
+ * @param {string} url - A URL, absolute or relative
+ * @param {string | undefined} revision - The path's repaint key, if Studio holds one
+ * @returns {string} The URL carrying the key
+ */
+export function withRevision(url: string, revision?: string): string {
+  return withParam(url, "r", revision);
+}
+
+/** `url` with one `name=value` query parameter, replacing every `name` it already had. */
+function withParam(url: string, name: "v" | "r", value: string | undefined): string {
+  if (!isString(value) || value === "") {
     return url;
   }
   const hashAt = url.indexOf("#");
@@ -131,23 +156,23 @@ export function withVersion(url: string, version: string | undefined): string {
   const queryAt = beforeHash.indexOf("?");
   const base = queryAt === -1 ? beforeHash : beforeHash.slice(0, queryAt);
   const parts = queryAt === -1 ? [] : beforeHash.slice(queryAt + 1).split("&");
-  const kept = parts.filter((part) => part !== "" && !namesV(part));
-  kept.push(`v=${encodeURIComponent(version)}`);
+  const kept = parts.filter((part) => part !== "" && !namesKey(part, name));
+  kept.push(`${name}=${encodeURIComponent(value)}`);
   return `${base}?${kept.join("&")}${fragment}`;
 }
 
-/** Whether one `key[=value]` query part's key decodes to `v`, the way `URLSearchParams` reads it. */
-function namesV(part: string): boolean {
+/** Whether one `key[=value]` query part's key decodes to `name`, the way `URLSearchParams` reads it. */
+function namesKey(part: string, name: string): boolean {
   const eq = part.indexOf("=");
   const key = eq === -1 ? part : part.slice(0, eq);
-  if (key === "v") {
+  if (key === name) {
     return true;
   }
   if (!key.includes("%")) {
     return false;
   }
   try {
-    return decodeURIComponent(key) === "v";
+    return decodeURIComponent(key) === name;
   } catch {
     // A malformed escape decodes to itself under `URLSearchParams`, which is never a bare `v`.
     return false;
@@ -292,13 +317,31 @@ export function resolveAssetRef(value: string, ctx: AssetContext | null): string
       return null;
     }
     const { suffix } = splitRefSuffix(value);
-    return withVersion(
-      `${ctx.fileBaseUrl}${encodeProjectPath(path)}${suffix}`,
-      ownVersion(ctx.versions, path),
+    return withRevision(
+      withVersion(
+        `${ctx.fileBaseUrl}${encodeProjectPath(path)}${suffix}`,
+        ownVersion(ctx.versions, path),
+      ),
+      ownVersion(ctx.revisions, path),
     );
   }
   const [mount] = ctx.mounts;
-  return mount ? mountedRefFor(value, ctx.documentDir, mount) : null;
+  const mounted = mount ? mountedRefFor(value, ctx.documentDir, mount) : null;
+  /* In site space a reference is otherwise left as written, which after an in-place overwrite is
+     the same string naming new bytes. So a path Studio has just written gets its repaint key here
+     too, on the mounted URL or on the reference as written. The lane lookup only runs when Studio
+     holds a key at all, which on most sessions is never. */
+  const revision = siteRevision(value, ctx);
+  return revision === undefined ? mounted : withRevision(mounted ?? value, revision);
+}
+
+/** The repaint key for the project file a site-space reference names, or undefined. */
+function siteRevision(value: string, ctx: AssetContext): string | undefined {
+  if (!ctx.revisions || Object.keys(ctx.revisions).length === 0) {
+    return undefined;
+  }
+  const path = projectPathForRef(value, ctx.documentDir, ctx.mounts, ctx.lanes);
+  return path === null ? undefined : ownVersion(ctx.revisions, path);
 }
 
 /**

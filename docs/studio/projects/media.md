@@ -1,10 +1,11 @@
 ---
 title: "Media"
-description: "Find, upload, replace and delete your site's images, video, audio, documents and fonts in the Media workspace, or upload from any image field."
+description: "Find, upload, edit, replace and delete your site's images, video, audio, documents and fonts in the Media workspace, or upload from any field."
 spec:
   - site-architecture.md#9
   - site-architecture.md#9.4
   - studio.md#9.3
+  - studio.md#9.5
   - studio.md#22.6
 code:
   - packages/studio/src/files/media-upload.ts
@@ -25,6 +26,11 @@ code:
   - packages/studio/src/media/media-pane.ts
   - packages/studio/src/surfaces/media-pane.ts
   - packages/studio/src/media/media-open.ts
+  - packages/studio/src/media/image-editor.ts
+  - packages/studio/src/media/image-recipe.ts
+  - packages/studio/src/media/image-format.ts
+  - packages/studio/src/media/image-bake.ts
+  - packages/studio/src/surfaces/image-editor.ts
 ---
 
 # Media
@@ -55,11 +61,11 @@ Select a file and the right-hand pane describes it:
 - **What it is**: its kind, its pixel dimensions once the picture has loaded, its size on disk, and when it was last modified. An SVG's dimensions are the ones the file declares (its `width` and `height`, or its `viewBox`), and an SVG that declares no size shows none. Anything Studio hasn't been told is left out rather than shown as a zero.
 - **Site URL**: the address a document writes for this file, with a **Copy** button. A file at `public/media/hero.jpg` is referenced `/media/hero.jpg`, a string that is not its path, and writing the path instead is the commonest way an image goes missing from a page.
 - **Used on**: every document that refers to the file, with a count each, headed by a line such as _Used on 2 pages and 1 other file_ or, when no page uses it directly, _Used in 1 file_ (a layout or component, say). Click one to open it.
-- **Replace**, **Open in viewer** and **Delete**.
+- **Replace**, **Open in viewer**, **Edit image** (for an image Studio can [edit](#edit-an-image)) and **Delete**.
 
-Right-click a tile to select it and reach the same actions without moving to the pane: **Open in Viewer**, **Copy Site URL**, **Replace…** and **Delete**. Each does exactly what its button in the details pane does. The media picker you open from a field has no tile menu; double-click a tile there to use it.
+Right-click a tile to select it and reach the same actions without moving to the pane: **Open in Viewer**, **Edit Image**, **Copy Site URL**, **Replace…** and **Delete**. Each does exactly what its button in the details pane does. The media picker you open from a field has no tile menu; double-click a tile there to use it.
 
-**Replace** swaps a file's contents and keeps its name. Pick the new file and Studio writes it over the old one at the same path, so every page, component and entry that uses it shows the new picture straight away, with nothing to re-link. It is the one way Studio ever writes over an existing file. The new file has to be the same type as the old one (a JPEG for a JPEG, an SVG for an SVG), because the address stays the same and a page asking for `hero.jpg` cannot show a PNG. To swap in a different type, upload it as a new file and point the pages at it.
+**Replace** swaps a file's contents and keeps its name. Pick the new file and Studio writes it over the old one at the same path, so every page, component and entry that uses it shows the new picture straight away, with nothing to re-link. It is the one way Studio writes over an existing file with a file you chose; [editing an image](#edit-an-image) is the other overwrite, with pixels Studio worked out from the ones already there. The new file has to be the same type as the old one (a JPEG for a JPEG, an SVG for an SVG), because the address stays the same and a page asking for `hero.jpg` cannot show a PNG. To swap in a different type, upload it as a new file and point the pages at it.
 
 **Delete** asks first, and says what it would break (see [Deleting media](#deleting-media) below). Deleting the last file in `public/media/`, or in a collection's `images/` folder, removes that folder too: Studio made it for your uploads, so it does not leave it behind empty. A folder you made yourself stays.
 
@@ -137,13 +143,63 @@ Beside the file, the same three things the Media workspace's details pane shows:
 - **How to reference it**: the URL a document actually writes for this file, with a **Copy** button. This is worth having in front of you, because a file at `public/hero.jpg` is referenced `/hero.jpg`, a string that shares no part of its path, and writing the path instead is the commonest way an image goes missing from a page.
 - **Used by**: every document that references it, with a count each. Click one to open it.
 
-The viewer is read-only. Replacing and deleting a file are in the Media workspace's details pane; renaming and revealing one belong to the Files panel, where you already do them for everything else.
+The viewer is read-only. [Editing an image](#edit-an-image) is the **Image** editor beside it; replacing and deleting a file are in the Media workspace's details pane; renaming and revealing one belong to the Files panel, where you already do them for everything else.
 
 The Media workspace shows no tab strip, so the viewer's context bar starts with **Back to Media**. Press it, or :kbd[Esc], to close the viewer and return to the library, with the keyboard back on the tile you opened; :kbd[⌘W] does the same. Opening another file replaces the viewer, so the library always has one viewer beside it.
 
 :::doc-tip
 This is the fastest way to check what an [imported site](/docs/studio/projects/create) actually brought in. Open the Media workspace and click through the grid (or open `public/assets/images/` in the Files panel): you'll see the real dimensions of every asset the crawl downloaded, and which of your new pages uses each one.
 :::
+
+## Edit an image
+
+An image you can edit offers a second editor next to **Media** in the pane's **Editor** control: **Image**. Choose it there, or choose **Edit image** in the Media workspace, or run **Edit Image…** from the command palette.
+
+![The Image editor: a photo with crop handles around it, and the orientation, size, quality and tone controls beside it](../../images/image-editor.png)
+
+:::doc-warning
+Saving overwrites the file and keeps no backup. There is no undo after a save, so source control is how you get the original back. The editor says this beside the **Save** button, with the file's path.
+:::
+
+Everything you do is a pending edit until you save, shown over the real picture:
+
+- **Crop**: drag any of the eight handles around the picture to resize the crop, and drag inside it to move it. From the keyboard they are one tab stop: the arrow keys move whichever is focused by a pixel, :kbd[⇧] with an arrow moves it by ten, and :kbd[Home] and :kbd[End] step between them. Each move is announced to a screen reader.
+- **Ratio**: hold the crop to **Original**, square, 4:3, 3:2, 16:9 or either way up, or leave it **Free**. Choosing one reshapes the crop to the largest of that shape that fits the picture, and the handles keep to it until you choose **Free**. Rotating swaps it with the picture, so 16:9 becomes 9:16.
+- **Orientation**: rotate left or right by a quarter turn, and flip either way. A handle is named for where you see it, so after a rotation the top handle still trims what is at the top.
+- **Width**: type a smaller width, and the height follows. You can only reduce, because enlarging adds no detail and makes every copy the build derives larger. **Fit for web** proposes the largest of your project's `images.widths` (or the build's defaults, if it declares none) that is below the width of the crop.
+- **Quality**: for a JPEG or WebP only, since a PNG is lossless. The only way to see what a quality setting costs is to encode with it, so Studio tells you the size after the save rather than guessing before it.
+- **Tone**: brightness, contrast and saturation, where 100 changes nothing.
+
+**Undo** and **Redo** (and :kbd[⌘Z]) step through the edit one gesture at a time, so a whole drag is one step. **Reset** returns to the picture as it is on disk.
+
+:kbd[⌘S] and the **Save** button both write the file. The toast names the size written and the size it replaced. With nothing changed, **Save** is disabled and nothing is written; a half turn with both flips counts as nothing, since it is the same picture. A number field you leave empty goes back to its value. Every page, thumbnail and open canvas that uses the file shows the new picture straight away, with nothing to re-link.
+
+A pending edit belongs to the tab, so you can leave the editor and come back to it. Closing the tab asks first, as it does for any unsaved work, and if the save you choose there cannot write, the tab stays open and says why. **Replace** on a file with a pending edit asks you to save or discard the edit first.
+
+### Which images can be edited
+
+PNG, JPEG and WebP files can be edited, and these cannot, so **Image** is not offered for them:
+
+| File                    | Why not                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| GIF                     | The browser cannot write one, and an edit would keep one frame |
+| AVIF, BMP               | The browser cannot write one                                   |
+| SVG                     | A vector document rather than a picture: edit it in **Code**   |
+| ICO                     | Several images at different sizes rather than one              |
+| An animated PNG or WebP | An edit would keep only the first frame                        |
+| Past 48 megapixels      | An edit holds the picture in memory twice while it saves       |
+
+The last two are decided from the file itself, so Studio reads it first: if you go straight to **Edit image** on one, it returns you to the viewer and says why.
+
+### What a save changes besides the picture
+
+A save writes pixels and nothing else, so anything else the file carried is gone:
+
+- **Orientation**: a photo recorded sideways with a rotation tag has that rotation applied to its pixels and the tag dropped. It looks the same, but its stored width and height swap.
+- **Color profile and bit depth**: a wide-gamut image is converted to the browser's color space, and sixteen bits per channel become eight.
+- **File size**: the browser writes full-color PNG, so a flat graphic that an optimizer stored with a palette can grow, sometimes several times over. Studio saves it anyway and says the file grew.
+
+With no edit pending, the editor picks up a change to the file. With one pending, it does not notice another program changing the file: saving writes over that change from the copy the editor read.
 
 ## What Studio knows about a file
 

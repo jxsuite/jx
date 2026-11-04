@@ -69,6 +69,7 @@ export type EditorKind =
   | "tokens"
   | "entry"
   | "media"
+  | "image"
   | "home"
   | "none";
 
@@ -112,6 +113,9 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
      can SHOW but has no document model for, which is why clicking one used to end in "No format
      class imported for …", advice that means nothing about a PNG. */
   ["media", "media"],
+  /* The Image editor — `media/image-editor.ts`'s IMAGE_MODE, the media viewer's editing sibling
+     (§9.5). A recipe over one image: nothing to paste into, so not the Canvas key scope. */
+  ["image", "image"],
   ["preview", "canvas"],
   ["source", "code"],
   ["stylebook", "config"],
@@ -143,6 +147,7 @@ export const EDITOR_KIND_LABELS: Readonly<Record<EditorKind, string>> = {
   entry: "Entry",
   grid: "Grid",
   home: "Home",
+  image: "Image",
   media: "Media",
   none: "None",
   tokens: "Variables",
