@@ -34,6 +34,7 @@ prs:
   - jxsuite/jx#493
   - jxsuite/jx#499
   - jxsuite/jx#502
+  - jxsuite/jx#545
 ---
 
 # Jx harness core: the Phase 1 plan
@@ -83,9 +84,9 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
 | J1.24 | Native Anthropic                                    | `ai.md#2.2`, `ai.md#2.6` | open (v1-wire path landed) |
 | J1.25 | Project tools over a ProjectHost, and the six twins | —                        | open                       |
 | J1.26 | Studio approvals on                                 | —                        | open                       |
-| J1.27 | Parallel read-only calls                            | —                        | open (with J1.29)          |
+| J1.27 | Parallel read-only calls                            | —                        | merged jxsuite/jx#545      |
 | J1.28 | Summarising compaction                              | —                        | open                       |
-| J1.29 | A turn with room to work                            | —                        | open                       |
+| J1.29 | A turn with room to work                            | —                        | merged jxsuite/jx#545      |
 
 - Each slice pull request updates its row and appends itself to `prs`. The rows carried over from the old Status table keep their notes here:
   - J1.1: `applyDocOpsAsUser` was deferred to J1.16, its first caller, under Studio's reachability rule.
