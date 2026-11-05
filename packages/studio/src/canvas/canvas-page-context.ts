@@ -50,6 +50,11 @@ export interface PageContextSource {
   params?: Readonly<Record<string, string>>;
 }
 
+/** Whether a project-relative path is one of a site's pages. */
+export function isPagePath(documentPath: string): boolean {
+  return documentPath.startsWith("pages/") || documentPath.startsWith("./pages/");
+}
+
 /** The parameters `url` fills in `pattern`, by position: `/blog/:slug` and `/blog/a` → `{slug: a}`. */
 export function routeParams(pattern: string, url: string): NonNullable<SiteRoute["_pathParams"]> {
   const values = url.split("/");

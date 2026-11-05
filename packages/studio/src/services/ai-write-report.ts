@@ -22,7 +22,7 @@
  */
 
 import type { ToolResult } from "@jxsuite/ai/tools";
-import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonValue, JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 import { toRaw } from "../reactivity";
 import type { Tab } from "../tabs/tab";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
@@ -37,12 +37,28 @@ export type RenderVerdict = { ok: true } | { ok: false; error: string };
  */
 export type CandidateDocument = JxMutableNode | JsonValue;
 
+/** Where a document under a render check lives: what its route and relative references resolve from. */
+export interface RenderSource {
+  /** Its project-relative path, once it has one. */
+  documentPath?: string | null | undefined;
+  /** A format-class page's frontmatter, which is where its `$paths` is. */
+  frontmatter?: Record<string, JxDocumentValue | undefined> | null | undefined;
+}
+
+/** A detached-DOM render probe. */
+export type RenderProbe = (doc: CandidateDocument, source?: RenderSource) => Promise<RenderVerdict>;
+
+/** Where an open tab's document lives, as a render check reads it. */
+function renderSourceOf(tab: Tab): RenderSource {
+  return { documentPath: tab.documentPath, frontmatter: tab.doc.content.frontmatter };
+}
+
 /** What a write reporter needs. Every member is what `registerAiTools` already takes by injection. */
 export interface WriteReportDeps {
   /** Schema errors for a document, as raw ajv sentences. */
   validate: (doc: CandidateDocument) => Promise<string[]>;
   /** The detached-DOM render probe, when the host has one. */
-  renderCheck?: ((doc: CandidateDocument) => Promise<RenderVerdict>) | undefined;
+  renderCheck?: RenderProbe | undefined;
   /** The project's design tokens, read per call so a project opened mid-session contributes. */
   getProjectStyle?: (() => Record<string, string> | undefined) | undefined;
 }
@@ -122,7 +138,9 @@ export function translateValidationError(rawError: string): string {
 export async function snapshotBeforeWrite(tab: Tab, deps: WriteReportDeps): Promise<WriteSnapshot> {
   const rawBefore = toRaw(tab.doc.document);
   const errors = new Set(await deps.validate(rawBefore));
-  const rendered = deps.renderCheck ? await deps.renderCheck(rawBefore) : { ok: true };
+  const rendered = deps.renderCheck
+    ? await deps.renderCheck(rawBefore, renderSourceOf(tab))
+    : { ok: true };
   return { errors, renderOk: rendered.ok };
 }
 
@@ -159,7 +177,7 @@ export async function reportDocumentWrite(
   }
 
   if (deps.renderCheck && before.renderOk) {
-    const renderResult = await deps.renderCheck(rawAfter);
+    const renderResult = await deps.renderCheck(rawAfter, renderSourceOf(tab));
     if (!renderResult.ok) {
       return {
         success: false,

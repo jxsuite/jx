@@ -38,7 +38,7 @@ import { getAiProvider, getBaseUrl, getOpenAiKey } from "./ai-settings";
 import { preferredModel } from "./ai-models";
 import { pruneOrphanToolMessages, trimContext } from "./context-manager";
 import { renderCheck } from "./render-critic";
-import type { CandidateDocument, RenderVerdict } from "./ai-write-report";
+import type { RenderProbe } from "./ai-write-report";
 import { validateDoc } from "./jx-validate";
 import { reloadFileInTab } from "../files/files";
 import { getExtensionCatalog, refreshExtensionUi } from "../format/format-host";
@@ -68,7 +68,7 @@ function projectConfig(): ProjectConfig | null {
 /* SAFETY: renderCheck runs the whole render inside a try and answers `{ ok: false, error }` for
    anything it cannot render, so JSON that is not (yet) a valid document is exactly what it is safe
    to hand; its JxDocument parameter names what renders, not what may be probed. */
-const probeRender = renderCheck as (doc: CandidateDocument) => Promise<RenderVerdict>;
+const probeRender = renderCheck as RenderProbe;
 
 /**
  * Create a document-assistant session bound to the currently active tab.

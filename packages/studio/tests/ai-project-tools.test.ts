@@ -214,6 +214,24 @@ describe("ai-project-tools — write_file", () => {
     expect(writes(state)).toHaveLength(0);
   });
 
+  test("tells the render check where the document will live", async () => {
+    const sources: unknown[] = [];
+    const { registry } = makeHarness(
+      {},
+      {
+        renderCheck: async (_doc, source) => {
+          sources.push(source);
+          return { ok: true as const };
+        },
+      },
+    );
+    await registry.execute("write_file", {
+      content: JSON.stringify({ tagName: "div" }),
+      path: "pages/about.json",
+    });
+    expect(sources).toEqual([{ documentPath: "pages/about.json" }]);
+  });
+
   test("validates doc-shaped JSON outside conventional dirs, but not plain data arrays", async () => {
     const validate = mock(async (): Promise<string[]> => []);
     const { registry, state } = makeHarness({}, { validate });

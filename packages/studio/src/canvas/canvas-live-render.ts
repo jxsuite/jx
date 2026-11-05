@@ -42,7 +42,7 @@ import { assetContextFor, hostAssetDeclarations } from "./asset-refs";
 import { collectionForFile } from "../content/collection-match";
 import { writesEntryOnCanvas } from "../content/content-collections";
 import { collectionPage, entryLayoutPath, entryLocale } from "../content/collection-pages";
-import { pageContextFor } from "./canvas-page-context";
+import { isPagePath, pageContextFor } from "./canvas-page-context";
 import { loadExtensions } from "../format/format-host";
 import { bakeRepeaterSources, extensionClassKeys, repeaterSourceKeys } from "./repeater-sources";
 
@@ -304,10 +304,7 @@ export async function resolveCanvasDocument(
       : prepareForEditMode(stripEventHandlers(doc));
 
   let layoutWrapped = false;
-  const isPage =
-    S.documentPath &&
-    projectState?.isSiteProject &&
-    (S.documentPath.startsWith("pages/") || S.documentPath.startsWith("./pages/"));
+  const isPage = S.documentPath && projectState?.isSiteProject && isPagePath(S.documentPath);
   /* A collection entry written on the canvas is drawn the way a page is: inside a layout, with the
      layout's nodes locked and the entry's own tree the editable region (studio.md §22.5). */
   const isEntry =

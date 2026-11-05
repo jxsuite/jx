@@ -132,7 +132,7 @@ Options that used to be page-wide settings are read per mount:
 
 A resolver answer is private to its mount. It never enters the shared cache, so two mounts can answer the same URL differently.
 
-A template binding that throws, such as `${state.posts.length}` before the posts load, renders nothing and fills in once its data arrives. To check whether a document renders at all, install `setTemplateErrorHandler((error, source) => …)` around the render to receive every such error, and pass `null` afterwards. Without a handler, each failing template logs one console warning.
+A template binding that throws, such as `${state.posts.length}` before the posts load, renders nothing and fills in once its data arrives. To check whether a document renders at all, await `lookupsSettled()` after `buildScope` so templates read real data (put your own time limit on it, because a lookup can hang), then install `setTemplateErrorHandler((error, source) => …)` around the render to receive every such error, and pass `null` afterwards. Without a handler, a failing template logs one console warning, held until any class lookup, `timing: "server"` call or `Request` in flight has settled, so a template that only read its data too early logs nothing. A handler is not held: it hears those early reads too.
 
 ## Redefine an element
 

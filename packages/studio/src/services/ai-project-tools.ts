@@ -28,7 +28,7 @@ import { adoptCreatedProject } from "./project-adoption";
 import { translateValidationError } from "./ai-tools";
 import { validateDoc, validateProjectConfig } from "./jx-validate";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
-import type { CandidateDocument } from "./ai-write-report";
+import type { CandidateDocument, RenderProbe } from "./ai-write-report";
 import { invalidPathResult, normalizeRelPath } from "./project-path";
 
 /** Directories the file tools never descend into or report. */
@@ -71,7 +71,7 @@ export interface ProjectToolsCtx {
    * judges the live configuration and a candidate parsed from the model's text alike.
    */
   validateProject?: (config: ProjectConfig | JsonValue) => Promise<string[]>;
-  renderCheck?: (doc: CandidateDocument) => Promise<{ ok: true } | { ok: false; error: string }>;
+  renderCheck?: RenderProbe;
   /** Live getter — the project style appears only after a project is open/bootstrapped. */
   getProjectStyle?: () => Record<string, string> | undefined;
   /** The open tab whose `documentPath` equals the given project-relative path, if any. */
@@ -323,7 +323,7 @@ export function registerProjectTools(
             };
           }
           if (renderCheck) {
-            const renderResult = await renderCheck(parsed);
+            const renderResult = await renderCheck(parsed, { documentPath: relPath });
             if (!renderResult.ok) {
               return {
                 success: false,
