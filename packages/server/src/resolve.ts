@@ -342,20 +342,16 @@ export async function handleResolve(
   }
 
   let moduleAbsPath;
+  let docDir: string | null = null;
   // A bare specifier resolves through Node's module resolution (an installed package), so the
   // Class file — and the `$implementation` sibling it names — are as trusted as the package's own
   // Code. The root-escape guard only binds a caller-supplied relative `$src`/`$base`.
   let trustedResolution = false;
   try {
+    docDir = $base ? baseDirectory($base, root, activeProjectRoot || root) : null;
     if ($src.startsWith("./") || $src.startsWith("../")) {
       // Relative path
-      if ($base) {
-        const docUrlPath = new URL($base).pathname;
-        const docDir = docUrlPath.slice(0, docUrlPath.lastIndexOf("/") + 1);
-        moduleAbsPath = resolve(resolve(root, `.${docDir}`), $src);
-      } else {
-        moduleAbsPath = resolve(activeProjectRoot || root, $src);
-      }
+      moduleAbsPath = resolve(docDir ?? (activeProjectRoot || root), $src);
       if (!isImportable(moduleAbsPath, root, activeProjectRoot)) {
         return new Response(`$src "${$src}" escapes the project root`, { status: 403 });
       }
@@ -371,13 +367,10 @@ export async function handleResolve(
   }
 
   // Rebase relative config paths from doc-relative to CWD-relative
-  if ($base) {
-    const docUrlPath = new URL($base).pathname;
-    const docDir = docUrlPath.slice(0, docUrlPath.lastIndexOf("/") + 1);
-    const docAbsDir = resolve(root, `.${docDir}`);
+  if (docDir) {
     for (const [k, v] of Object.entries(config)) {
       if (isString(v) && (v.startsWith("./") || v.startsWith("../"))) {
-        config[k] = `./${relative(process.cwd(), resolve(docAbsDir, v)).split("\\").join("/")}`;
+        config[k] = `./${relative(process.cwd(), resolve(docDir, v)).split("\\").join("/")}`;
       }
     }
   }
