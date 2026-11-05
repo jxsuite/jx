@@ -32,6 +32,8 @@
 19. [Declarative Expressions](#19-declarative-expressions-expression)
 20. [Structured Function Bodies](#20-structured-function-bodies-statements)
 21. [Evaluation Surface](#21-evaluation-surface)
+22. [The `.jx` Document Format](#22-the-jx-document-format)
+23. [TypeScript in Documents](#23-typescript-in-documents)
 
 ---
 
@@ -2458,6 +2460,38 @@ That settles the staging question by removing it. The shell is not a deployment 
 | `require-trusted-types-for 'script'` reports `eval` and `new Function`, not only DOM sinks | The script half cannot apply to an interpreter                                                                                           |
 | With no `trusted-types` allow-list, policy creation raises no violation                    | An allow-list is the only lever over a dependency's sink, and naming a pass-through blesses it                                           |
 | An `http` child frame does not inherit its parent's policy; a `srcdoc` child does          | The two profiles are separable **because** the canvas is a real document. Moving it to `srcdoc`, `blob:` or `about:blank` would end that |
+
+---
+
+## 22. The `.jx` Document Format
+
+> **Status: Pending.** No host reads `.jx` yet: a document is `.json` or a format-extension file.
+
+A Jx document may be written as a `.jx` file, in KDL 2. `.jx` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jx` is a native format, so no extension has to be enabled to use it. `project.json`, `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
+
+---
+
+## 23. TypeScript in Documents
+
+Code in a document is TypeScript, whichever format holds the document. This section states what that means for a function body, for a document's own modules, and for reporting type errors.
+
+### 23.1 Function Bodies
+
+> **Status: Pending.** A string `body` is JavaScript today, and every tier passes it to `new Function` or splices it into an emitted module as written.
+
+A string `body` in any document format is TypeScript, limited to syntax that can be erased without emitting code. Types are removed before anything analyses or runs the body, so each tier only ever sees JavaScript. A `${}` template stays a JavaScript expression. A structured body (§20) has no text to erase and is unaffected.
+
+### 23.2 Document Scripts
+
+> **Status: Pending.** A function that outgrows a body moves to a separate module named by `$src` (§5.3 4c).
+
+A document may carry its own client and server modules, so a component does not need a separate file for its own code. `$src` keeps working, and stays the only spelling for `npm:` packages and for modules shared between documents.
+
+### 23.3 Type Checking
+
+> **Status: Pending.** Nothing checks the code inside a document.
+
+Type errors in a document's bodies and modules are reported at their real positions, in the terminal and in an editor, and a scaffolded project is set up to report them.
 
 ---
 
