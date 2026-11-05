@@ -118,6 +118,19 @@ function setup() {
   // A project whose directory name a URL percent-encodes, with a page-relative server function
   mkdirSync(join(FIXTURES, "canvas proj", "pages"), { recursive: true });
   writeFileSync(join(FIXTURES, "canvas proj", "pages", "page-fn.js"), pageFn("canvas-pages"));
+  writeFileSync(join(FIXTURES, "canvas proj", "pages", "Ctx.class.json"), JSON.stringify(ctxClass));
+  writeFileSync(
+    join(FIXTURES, "canvas proj", "pages", "Echo.class.json"),
+    JSON.stringify({ $implementation: "./echo.js", $prototype: "Class", title: "Echo" }),
+  );
+  writeFileSync(
+    join(FIXTURES, "canvas proj", "pages", "echo.js"),
+    `export class Echo {
+  constructor(config) { this.source = config.source; }
+  resolve() { return { source: this.source }; }
+}
+`,
+  );
 }
 
 /** Build a POST request for handleServerFunction. */
@@ -143,6 +156,48 @@ describe("handleResolve — gaps", () => {
     expect(res.status).toBe(200);
     const value = await res.json();
     expect(value.hasProject).toBe(true);
+  });
+
+  test("resolves a relative class against the absolute-path base Studio's canvas sends", async () => {
+    /* The base's path is the document's absolute path, percent-encoded. Read as a site URL under
+       root it named `<root>/<root>/pages/`, so every project-local class 500ed on the canvas. */
+    const root = join(FIXTURES, "canvas proj");
+    const $base = canvasBase(join(root, "pages", "page.json"));
+    const res = await handleResolve(
+      resolveReq({ $base, $prototype: "Ctx", $src: "./Ctx.class.json" }),
+      root,
+    );
+    expect(res.status).toBe(200);
+    const value = await res.json();
+    expect(value.a).toBe(5);
+  });
+
+  test("rebases a relative config value against that same base", async () => {
+    const root = join(FIXTURES, "canvas proj");
+    const $base = canvasBase(join(root, "pages", "page.json"));
+    const res = await handleResolve(
+      resolveReq({ $base, $prototype: "Echo", $src: "./Echo.class.json", source: "./data/" }),
+      root,
+    );
+    expect(res.status).toBe(200);
+    const { source } = await res.json();
+    const rebased = resolve(source);
+    expect(rebased).toBe(join(root, "pages", "data"));
+  });
+
+  test("an absolute-path base outside both roots names nothing it can reach", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "jx-resolve-outside-"));
+    try {
+      writeFileSync(join(outside, "Ctx.class.json"), JSON.stringify(ctxClass));
+      const $base = canvasBase(join(outside, "page.json"));
+      const res = await handleResolve(
+        resolveReq({ $base, $prototype: "Ctx", $src: "./Ctx.class.json" }),
+        join(FIXTURES, "proj-valid"),
+      );
+      expect(res.status).toBe(500);
+    } finally {
+      rmSync(outside, { force: true, recursive: true });
+    }
   });
 
   test("constructs fields from initializer, default, and null fallback", async () => {
