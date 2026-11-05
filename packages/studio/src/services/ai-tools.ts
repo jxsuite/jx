@@ -18,7 +18,7 @@ import { validateDoc } from "./jx-validate";
 import { invalidPathResult, normalizeRelPath } from "./project-path";
 import { serializeJson } from "@jxsuite/schema/json-layout";
 import { translateValidationError } from "./ai-write-report";
-import type { CandidateDocument } from "./ai-write-report";
+import type { CandidateDocument, RenderProbe } from "./ai-write-report";
 import { studioDocumentHost, studioWriteReporter } from "./harness/studio-documents";
 
 /* Re-exported from its new home so `ai-project-tools.ts` and the tests keep their import: the
@@ -34,7 +34,7 @@ export { translateValidationError } from "./ai-write-report";
  *   getTab: () => import("../tabs/tab").Tab | null;
  *   validate?: (doc: CandidateDocument) => Promise<string[]>;
  *   saveFile?: (relPath: string, content: string) => Promise<void>;
- *   renderCheck?: (doc: CandidateDocument) => Promise<{ ok: true } | { ok: false; error: string }>;
+ *   renderCheck?: RenderProbe;
  *   projectStyle?: Record<string, string>;
  *   getProjectStyle?: () => Record<string, string> | undefined;
  *   findOpenTab?: (path: string) => import("../tabs/tab").Tab | null;
@@ -56,7 +56,7 @@ export function registerAiTools(
     getTab: () => Tab | null;
     validate?: (doc: CandidateDocument) => Promise<string[]>;
     saveFile?: (relPath: string, content: string) => Promise<void>;
-    renderCheck?: (doc: CandidateDocument) => Promise<{ ok: true } | { ok: false; error: string }>;
+    renderCheck?: RenderProbe;
     projectStyle?: Record<string, string> | undefined;
     /**
      * Live variant of `projectStyle` — takes precedence; re-read per tool call so a project
@@ -164,7 +164,7 @@ export function registerAiTools(
           };
         }
         if (renderCheck) {
-          const renderResult = await renderCheck(content);
+          const renderResult = await renderCheck(content, { documentPath: relPath });
           if (!renderResult.ok) {
             return {
               success: false,
@@ -252,7 +252,7 @@ export function registerAiTools(
           };
         }
         if (renderCheck) {
-          const renderResult = await renderCheck(content);
+          const renderResult = await renderCheck(content, { documentPath: relPath });
           if (!renderResult.ok) {
             return {
               success: false,

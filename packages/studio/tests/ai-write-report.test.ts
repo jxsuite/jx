@@ -14,6 +14,7 @@ import {
   snapshotBeforeWrite,
   translateValidationError,
 } from "../src/services/ai-write-report";
+import type { RenderProbe, RenderSource } from "../src/services/ai-write-report";
 
 describe("snapshotBeforeWrite", () => {
   test("reads the RAW document's errors and render state", async () => {
@@ -79,6 +80,25 @@ describe("reportDocumentWrite", () => {
     expect(broke.error).toContain("broke rendering");
     expect(broke.error).toContain("render boom");
     expect(checks).toBe(1);
+  });
+
+  test("both checks are told where the tab's document lives", async () => {
+    const tab = resetWorkspaceWithTab();
+    tab.documentPath = "pages/work/[slug].md";
+    tab.doc.content.frontmatter = { $paths: { contentType: "work" } };
+    const sources: (RenderSource | undefined)[] = [];
+    const renderCheck: RenderProbe = async (_doc, source) => {
+      sources.push(source);
+      return { ok: true };
+    };
+    const deps = { renderCheck, validate: async () => [] };
+    const before = await snapshotBeforeWrite(tab, deps);
+    await reportDocumentWrite(tab, before, "s", deps);
+    const expected = {
+      documentPath: "pages/work/[slug].md",
+      frontmatter: { $paths: { contentType: "work" } },
+    };
+    expect(sources).toEqual([expected, expected]);
   });
 
   test("a success carries the summary, plus the token hints when the project has tokens", async () => {
