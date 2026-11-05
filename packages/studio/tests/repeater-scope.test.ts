@@ -7,14 +7,21 @@
  */
 import { describe, expect, test } from "bun:test";
 import { isMappedArray } from "@jxsuite/schema/guards";
-import { findEnclosingRepeater, resolveRepeaterItemFields } from "../src/editor/repeater-scope";
+import {
+  findEnclosingRepeater,
+  mapRefLabel,
+  repeaterItemFields,
+  resolveRepeaterItemFields,
+} from "../src/editor/repeater-scope";
 
 import type { JxPath } from "../src/state";
 import type {
   Bindable,
+  JsonObject,
   JsonValue,
   JxMappedArray,
   JxMutableNode,
+  JxStateDefinition,
   ProjectConfig,
 } from "@jxsuite/schema/types";
 
@@ -87,6 +94,16 @@ describe("findEnclosingRepeater", () => {
   });
 });
 
+/** The tokens a template directly inside `arr` is offered, with `state` as its document's state. */
+function fieldsOf(
+  arr: JxMutableNode,
+  state: Record<string, JxStateDefinition>,
+  projectConfig: ProjectConfig | null,
+): string[] {
+  const doc: JxMutableNode = { children: [arr], state, tagName: "div" };
+  return resolveRepeaterItemFields(doc, ["children", 0, "map"], projectConfig);
+}
+
 describe("resolveRepeaterItemFields", () => {
   test("(a) content collection → item.id / item.body / item.data.<field>", () => {
     const arr = repeater({ $ref: "#/state/$docs" });
@@ -97,7 +114,7 @@ describe("resolveRepeaterItemFields", () => {
       },
     };
 
-    const tokens = resolveRepeaterItemFields(arr, state, projectConfig);
+    const tokens = fieldsOf(arr, state, projectConfig);
     expect(tokens).toEqual([
       "item",
       "index",
@@ -116,7 +133,7 @@ describe("resolveRepeaterItemFields", () => {
       content: { blog: { schema: { properties: { slug: { type: "string" } } } } },
     };
 
-    expect(resolveRepeaterItemFields(arr, state, projectConfig)).toEqual([
+    expect(fieldsOf(arr, state, projectConfig)).toEqual([
       "item",
       "index",
       "item.id",
@@ -133,23 +150,13 @@ describe("resolveRepeaterItemFields", () => {
         items: { properties: { name: { type: "string" }, qty: { type: "number" } } },
       },
     };
-    expect(resolveRepeaterItemFields(arr, state, null)).toEqual([
-      "item",
-      "index",
-      "item.name",
-      "item.qty",
-    ]);
+    expect(fieldsOf(arr, state, null)).toEqual(["item", "index", "item.name", "item.qty"]);
   });
 
   test("(c) state-array inferred from default[0], with $-keys filtered", () => {
     const arr = repeater({ $ref: "#/state/rows" });
     const state = { rows: { default: [{ $internal: 1, label: "a", value: 2 }] } };
-    expect(resolveRepeaterItemFields(arr, state, null)).toEqual([
-      "item",
-      "index",
-      "item.label",
-      "item.value",
-    ]);
+    expect(fieldsOf(arr, state, null)).toEqual(["item", "index", "item.label", "item.value"]);
   });
 
   test("(d) inline literal array → infer fields from items[0]", () => {
@@ -157,52 +164,336 @@ describe("resolveRepeaterItemFields", () => {
       { done: false, title: "x" },
       { done: true, title: "y" },
     ]);
-    expect(resolveRepeaterItemFields(arr, {}, null)).toEqual([
-      "item",
-      "index",
-      "item.done",
-      "item.title",
-    ]);
+    expect(fieldsOf(arr, {}, null)).toEqual(["item", "index", "item.done", "item.title"]);
   });
 
   test("(e) fallback → exactly ['item','index'] for unresolvable/primitive/empty bindings", () => {
     // Ref target missing from state.
-    expect(resolveRepeaterItemFields(repeater({ $ref: "#/state/gone" }), {}, null)).toEqual([
-      "item",
-      "index",
-    ]);
+    expect(fieldsOf(repeater({ $ref: "#/state/gone" }), {}, null)).toEqual(["item", "index"]);
     // Ref to a non-object def with neither contentType, items.properties, nor object default[0].
     expect(
-      resolveRepeaterItemFields(
-        repeater({ $ref: "#/state/nums" }),
-        { nums: { default: [1, 2, 3] } },
-        null,
-      ),
+      fieldsOf(repeater({ $ref: "#/state/nums" }), { nums: { default: [1, 2, 3] } }, null),
     ).toEqual(["item", "index"]);
     // Content collection whose contentType has no schema in projectConfig → just item.id/body.
     expect(
-      resolveRepeaterItemFields(
-        repeater({ $ref: "#/state/c" }),
-        { c: { contentType: "missing" } },
-        { content: {} } satisfies ProjectConfig,
-      ),
+      fieldsOf(repeater({ $ref: "#/state/c" }), { c: { contentType: "missing" } }, {
+        content: {},
+      } satisfies ProjectConfig),
     ).toEqual(["item", "index", "item.id", "item.body"]);
     // Inline array of primitives → no fields.
-    expect(resolveRepeaterItemFields(repeater([1, 2, 3]), {}, null)).toEqual(["item", "index"]);
+    expect(fieldsOf(repeater([1, 2, 3]), {}, null)).toEqual(["item", "index"]);
     // Empty inline array.
-    expect(resolveRepeaterItemFields(repeater([]), {}, null)).toEqual(["item", "index"]);
+    expect(fieldsOf(repeater([]), {}, null)).toEqual(["item", "index"]);
     // A non-state, non-array `items` (e.g. a bare ref not under #/state/).
-    expect(resolveRepeaterItemFields(repeater({ $ref: "#/context/x" }), {}, null)).toEqual([
-      "item",
-      "index",
-    ]);
+    expect(fieldsOf(repeater({ $ref: "#/context/x" }), {}, null)).toEqual(["item", "index"]);
   });
 
   test("caps inferred breadth at 50 fields", () => {
     const wide = Object.fromEntries(Array.from({ length: 70 }, (_, i) => [`f${i}`, i]));
     const arr = repeater([wide]);
-    const tokens = resolveRepeaterItemFields(arr, {}, null);
+    const tokens = fieldsOf(arr, {}, null);
     // 2 base (item/index) + 50 capped fields.
     expect(tokens.length).toBe(52);
+  });
+});
+
+describe("repeaterItemFields", () => {
+  const inside: JxPath = ["children", 0, "map"];
+  /** One repeater over `$ref`, with the given state, as the first child of a document. */
+  const docWith = (ref: string, state: Record<string, JxStateDefinition>): JxMutableNode => ({
+    children: [repeater({ $ref: ref })],
+    state,
+    tagName: "div",
+  });
+  const tokens = (doc: JxMutableNode, path: JxPath, config: ProjectConfig | null = null) =>
+    repeaterItemFields(doc, path, config).map((field) => field.token);
+
+  test("every field carries the pointer a $ref holds beside the token a template reads", () => {
+    const doc = docWith("#/state/team", { team: { contentType: "team" } });
+    const config: ProjectConfig = {
+      content: { team: { schema: { properties: { role: { type: "string" } } } } },
+    };
+    expect(repeaterItemFields(doc, inside, config).at(-1)).toEqual({
+      isArray: false,
+      path: ["data", "role"],
+      pointer: "$map/item/data/role",
+      token: "item.data.role",
+    });
+  });
+
+  test("a member name is escaped in the pointer and bracketed in the token", () => {
+    const doc = docWith("#/state/rows", { rows: [{ "a/b": 1, "my-field": 2, "t~x": 3 }] });
+    expect(repeaterItemFields(doc, inside, null).map((f) => [f.token, f.pointer])).toEqual([
+      ['item["a/b"]', "$map/item/a~1b"],
+      ['item["my-field"]', "$map/item/my-field"],
+      ['item["t~x"]', "$map/item/t~0x"],
+    ]);
+  });
+
+  test("outside a repeater there is nothing, and no shape is invented for a null path", () => {
+    const doc = docWith("#/state/rows", { rows: [{ a: 1 }] });
+    expect(repeaterItemFields(doc, ["children", 0], null)).toEqual([]);
+    expect(repeaterItemFields(doc, null, null)).toEqual([]);
+  });
+
+  describe("where a shape comes from", () => {
+    test("a naked array state entry", () => {
+      const doc = docWith("#/state/rows", { rows: [{ title: "x" }] });
+      expect(tokens(doc, inside)).toEqual(["item.title"]);
+    });
+
+    test("a list inside a naked object state entry", () => {
+      const doc = docWith("#/state/nav/sections", { nav: { sections: [{ label: "a" }] } });
+      expect(tokens(doc, inside)).toEqual(["item.label"]);
+    });
+
+    test("a list inside a declared object, reached by a deep pointer", () => {
+      const doc = docWith("#/state/nav/data/sections", {
+        nav: {
+          properties: {
+            data: {
+              properties: {
+                sections: { items: { properties: { label: { type: "string" } } }, type: "array" },
+              },
+            },
+          },
+        },
+      });
+      expect(tokens(doc, inside)).toEqual(["item.label"]);
+    });
+
+    test("a numeric member of a pointer reads the list's items", () => {
+      const doc = docWith("#/state/grid/0", { grid: [[{ cell: 1 }]] });
+      expect(tokens(doc, inside)).toEqual(["item.cell"]);
+    });
+
+    test("a pointer that walks off the schema resolves to nothing", () => {
+      const doc = docWith("#/state/rows/nope/deeper", { rows: { default: [{ a: 1 }] } });
+      expect(tokens(doc, inside)).toEqual([]);
+    });
+
+    test("a list a ContentEntry holds, which is one entry and not a list of them", () => {
+      const doc = docWith("#/state/post/data/related", {
+        post: { $prototype: "ContentEntry", contentType: "posts", id: "a" },
+      });
+      const config: ProjectConfig = {
+        content: {
+          posts: {
+            schema: {
+              properties: {
+                related: { items: { properties: { slug: { type: "string" } } }, type: "array" },
+              },
+            },
+          },
+        },
+      };
+      expect(tokens(doc, inside, config)).toEqual(["item.slug"]);
+    });
+
+    test("a type the document's $defs names, through a typed value and through items", () => {
+      const doc: JxMutableNode = {
+        $defs: {
+          Member: { properties: { name: { type: "string" } }, type: "object" },
+          Team: { items: { $ref: "#/$defs/Member" }, type: "array" },
+        },
+        children: [repeater({ $ref: "#/state/team" })],
+        // SAFETY: `documents.md` Shape 2 permits a `$ref` type; `JxStateObject.type` names only a string.
+        state: { team: { default: [], type: { $ref: "#/$defs/Team" } } as JsonObject },
+        tagName: "div",
+      };
+      expect(tokens(doc, inside)).toEqual(["item.name"]);
+    });
+
+    test("a type the project's $defs names", () => {
+      const doc = docWith("#/state/rows", {
+        rows: { default: [], items: { $ref: "#/$defs/Row" } },
+      });
+      const config: ProjectConfig = {
+        $defs: { Row: { properties: { sku: { type: "string" } } } },
+      };
+      expect(tokens(doc, inside, config)).toEqual(["item.sku"]);
+    });
+
+    test("a pointer loop in $defs ends rather than hanging", () => {
+      const doc: JxMutableNode = {
+        $defs: { A: { $ref: "#/$defs/B" }, B: { $ref: "#/$defs/A" } },
+        children: [repeater({ $ref: "#/state/rows" })],
+        state: { rows: { default: [], items: { $ref: "#/$defs/A" } } },
+        tagName: "div",
+      };
+      expect(tokens(doc, inside)).toEqual([]);
+    });
+
+    test("the union of a sample's rows, so a field the first row lacks is still found", () => {
+      const doc = docWith("#/state/rows", {
+        rows: [{ a: 1, meta: { x: 1 } }, { b: 2, meta: { y: 2 } }, 3],
+      });
+      expect(tokens(doc, inside)).toEqual([
+        "item.a",
+        "item.meta",
+        "item.b",
+        "item.meta.x",
+        "item.meta.y",
+      ]);
+    });
+
+    test("a computed entry says nothing until it runs", () => {
+      const doc = docWith("#/state/rows", {
+        rows: { $expression: { operator: "??", target: null, value: null } },
+      });
+      expect(tokens(doc, inside)).toEqual([]);
+    });
+
+    test("a schema with no field declarations falls back to the sample beside it", () => {
+      const doc = docWith("#/state/rows", {
+        rows: { default: [{ a: 1 }], items: { type: "object" }, type: "array" },
+      });
+      expect(tokens(doc, inside)).toEqual(["item.a"]);
+    });
+  });
+
+  describe("nested data", () => {
+    test("a nested object is offered, and so are its members", () => {
+      const doc = docWith("#/state/rows", { rows: [{ seo: { title: "x" } }] });
+      expect(tokens(doc, inside)).toEqual(["item.seo", "item.seo.title"]);
+    });
+
+    test("a list is offered and flagged, and not entered", () => {
+      const doc = docWith("#/state/rows", {
+        rows: {
+          default: [],
+          items: {
+            properties: {
+              a: { type: "array" },
+              tags: { items: { properties: { x: {} } }, type: "array" },
+            },
+          },
+        },
+      });
+      const fields = repeaterItemFields(doc, inside, null);
+      expect(fields.map((f) => [f.token, f.isArray])).toEqual([
+        ["item.a", true],
+        ["item.tags", true],
+      ]);
+    });
+
+    test("a relationship is entered as the full entry the loader resolves it to", () => {
+      const doc = docWith("#/state/posts", { posts: { contentType: "posts" } });
+      const config: ProjectConfig = {
+        content: {
+          authors: { schema: { properties: { name: { type: "string" } } } },
+          posts: { schema: { properties: { author: { $ref: "#/content/authors" } } } },
+        },
+      };
+      expect(tokens(doc, inside, config)).toEqual([
+        "item.id",
+        "item.body",
+        "item.data.author",
+        "item.data.author.id",
+        "item.data.author.body",
+        "item.data.author.data.name",
+      ]);
+    });
+
+    test("a relationship cycle stops at the content type it already passed through", () => {
+      const doc = docWith("#/state/posts", { posts: { contentType: "posts" } });
+      const config: ProjectConfig = {
+        content: {
+          authors: { schema: { properties: { latest: { $ref: "#/content/posts" } } } },
+          posts: { schema: { properties: { author: { $ref: "#/content/authors" } } } },
+        },
+      };
+      expect(tokens(doc, inside, config)).toEqual([
+        "item.id",
+        "item.body",
+        "item.data.author",
+        "item.data.author.id",
+        "item.data.author.body",
+        "item.data.author.data.latest",
+      ]);
+    });
+
+    test("a nested repeater reads the field of the item around it", () => {
+      const inner = repeater({ $ref: "$map/item/data/stops" });
+      const doc: JxMutableNode = {
+        children: [repeater({ $ref: "#/state/trips" }, inner)],
+        state: { trips: { contentType: "trips" } },
+        tagName: "div",
+      };
+      const config: ProjectConfig = {
+        content: {
+          trips: {
+            schema: {
+              properties: {
+                stops: { items: { properties: { city: { type: "string" } } }, type: "array" },
+              },
+            },
+          },
+        },
+      };
+      expect(tokens(doc, ["children", 0, "map", "map"], config)).toEqual(["item.city"]);
+      // The outer item is still what the inner repeater's own Items position reads.
+      expect(tokens(doc, ["children", 0, "map"], config)).toContain("item.data.stops");
+    });
+
+    test("a repeater over the outer item itself reads a list of lists", () => {
+      const inner = repeater({ $ref: "$map/item" });
+      const doc: JxMutableNode = {
+        children: [repeater({ $ref: "#/state/grid" }, inner)],
+        state: { grid: [[{ cell: 1 }]] },
+        tagName: "div",
+      };
+      expect(tokens(doc, ["children", 0, "map", "map"])).toEqual(["item.cell"]);
+    });
+
+    test("the #/$map/ spelling the runtime also accepts reads the same field", () => {
+      const inner = repeater({ $ref: "#/$map/item/tags" });
+      const doc: JxMutableNode = {
+        children: [repeater({ $ref: "#/state/rows" }, inner)],
+        state: { rows: [{ tags: [{ label: "x" }] }] },
+        tagName: "div",
+      };
+      expect(tokens(doc, ["children", 0, "map", "map"])).toEqual(["item.label"]);
+    });
+  });
+
+  test("the cap cuts the deepest fields, never a top-level one", () => {
+    const wide = Object.fromEntries(
+      Array.from({ length: 60 }, (_, i) => [`deep${String(i)}`, { type: "string" }]),
+    );
+    const doc = docWith("#/state/rows", {
+      rows: {
+        default: [],
+        items: { properties: { nested: { properties: wide }, plain: { type: "string" } } },
+      },
+    });
+    const found = tokens(doc, inside);
+    expect(found).toHaveLength(50);
+    expect(found.slice(0, 2)).toEqual(["item.nested", "item.plain"]);
+  });
+
+  test("the depth cap ends a long chain of objects", () => {
+    let leaf: JsonValue = 1;
+    for (let i = 0; i < 10; i += 1) {
+      leaf = { n: leaf };
+    }
+    // SAFETY: the loop above wrapped the number in an object at least once.
+    const doc = docWith("#/state/rows", { rows: [leaf as JsonObject] });
+    const deepest = tokens(doc, inside).at(-1) ?? "";
+    expect(deepest.split(".")).toHaveLength(7);
+  });
+});
+
+describe("mapRefLabel", () => {
+  test("a $map pointer reads as the name the picker offers it under", () => {
+    expect(mapRefLabel("$map/item")).toBe("item");
+    expect(mapRefLabel("$map/index")).toBe("index");
+    expect(mapRefLabel("$map/item/data/title")).toBe("item.data.title");
+    expect(mapRefLabel("$map/item/a~1b")).toBe('item["a/b"]');
+  });
+
+  test("any other pointer is not this function's to name", () => {
+    expect(mapRefLabel("#/state/title")).toBeNull();
+    expect(mapRefLabel("$map/other")).toBeNull();
   });
 });

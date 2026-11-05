@@ -28,6 +28,7 @@ import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import { capsForPosition } from "../src/ui/value-source";
+import { projectState, setProjectState } from "../src/store";
 import {
   bindContentHost,
   invalidatePageRouteCache,
@@ -876,6 +877,55 @@ describe("component props section", () => {
 
     await renderPanel();
     expect(options(control(c, "title"))).toEqual(["", "$map/item", "$map/index"]);
+  });
+
+  /*
+   * The picker offered only `$map/item` and `$map/index`, so reading one field of the item meant
+   * learning the template language. The fields are known whenever the shape is: the collection's
+   * schema here, and they read as what Insert data and the canvas already call them.
+   */
+  test("inside a map template, the item's schema fields are offered as signals", async () => {
+    registerCard();
+    /* SAFETY: `resetStudioState` seeded the deliberately partial project the harness documents, and
+       this adds one member to it. */
+    setProjectState({
+      ...projectState,
+      projectConfig: {
+        content: { team: { schema: { properties: { role: { type: "string" } } } } },
+      },
+    } as NonNullable<typeof projectState>);
+    openDoc(
+      {
+        children: [
+          { $prototype: "Array", items: { $ref: "#/state/team" }, map: { tagName: "my-card" } },
+        ],
+        state: { team: { $prototype: "ContentCollection", contentType: "team" } },
+        tagName: "div",
+      },
+      ["children", 0, "map"],
+    );
+    const c = await renderPanel();
+    await chooseValueSource(c, "title", "ref");
+
+    await renderPanel();
+    const picker = control(c, "title");
+    expect(options(picker)).toEqual([
+      "",
+      "#/state/team",
+      "$map/item",
+      "$map/item/id",
+      "$map/item/body",
+      "$map/item/data/role",
+      "$map/index",
+    ]);
+    const labels = [...picker.querySelectorAll("option")].map((o) => o.textContent.trim());
+    expect(labels).toContain("item.data.role");
+    expect(labels).toContain("index");
+
+    commit(picker, "$map/item/data/role");
+    await renderPanel();
+    expect(firstChild().map!.$props!.title).toEqual({ $ref: "$map/item/data/role" });
+    expect(chip(c, "title")?.textContent).toBe("item.data.role");
   });
 
   test("Edit definition link navigates to the component file", async () => {

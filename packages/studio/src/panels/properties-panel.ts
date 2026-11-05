@@ -41,7 +41,7 @@
  * @docs studio/design/properties
  */
 
-import { getNodeAtPath } from "../store";
+import { getNodeAtPath, projectState } from "../store";
 import { effect, effectScope, reactive } from "../reactivity";
 import {
   displayTagName,
@@ -114,6 +114,7 @@ import type { LinkKind } from "../utils/link-target";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
 import { mountMediaPicker, unmountMediaPicker } from "../ui/media-picker";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
+import { mapRefLabel, repeaterItemFields } from "../editor/repeater-scope";
 import { mountExpressionEditor } from "../ui/expression-editor";
 import type { ExpressionEditorOpts } from "../ui/expression-editor";
 import {
@@ -182,20 +183,39 @@ function nodeAtPath(doc: JxMutableNode, path: JxPath): JxMutableNode | undefined
 // ─── The binding vocabulary, shared with the Logic tab ───────────────────────
 
 /**
- * The two extra signals a position inside a repeater template can bind to, or `null` outside one.
+ * The extra signals a position inside a repeater template can bind to, or `null` outside one: the
+ * item, every field of the item the document and project declare, and its index.
  *
  * A "map" segment addresses a repeater template (`[…, "children", i, "map", …]`, or the legacy `[…,
  * "children", "map", …]`), so anything at or below it is inside one.
  *
  * Exported because Content and Logic both offer them and there is one right answer: a `$switch`
- * inside a `$map` can read `$map/item`, and so can the `alt` attribute two nodes below it.
+ * inside a `$map` can read `$map/item/data/title`, and so can the `alt` attribute two nodes below
+ * it. `$map/item` stays first, because a fresh binding lands on the first signal offered.
  */
-export function mapSignalsFor(path: JxPath): SurfaceOption[] | null {
-  return path.includes("map")
-    ? [
-        { label: "$map/item", value: "$map/item" },
-        { label: "$map/index", value: "$map/index" },
-      ]
+export function mapSignalsFor(doc: JxMutableNode, path: JxPath): SurfaceOption[] | null {
+  if (!path.includes("map")) {
+    return null;
+  }
+  const fields = repeaterItemFields(doc, path, projectState?.projectConfig);
+  return [
+    { label: "item", value: "$map/item" },
+    ...fields.map((field) => ({ label: field.token, value: field.pointer })),
+    { label: "index", value: "$map/index" },
+  ];
+}
+
+/**
+ * What a repeater's own Items can read from the repeater around it: the lists on the outer item.
+ * Only those, because an Items position takes a list, and the index or a text field would render
+ * nothing.
+ */
+export function mapListSignalsFor(doc: JxMutableNode, path: JxPath): SurfaceOption[] | null {
+  const lists = repeaterItemFields(doc, path, projectState?.projectConfig).filter(
+    (field) => field.isArray,
+  );
+  return lists.length > 0
+    ? lists.map((field) => ({ label: field.token, value: field.pointer }))
     : null;
 }
 
@@ -228,7 +248,7 @@ export function defaultAsString(def: JxStateDefinition | undefined) {
 function bindingDonor(value: JxDocumentValue | undefined): string {
   if (isRef(value)) {
     const ref = value.$ref;
-    return ref.startsWith("#/state/") ? ref.slice(8) : ref || "nothing yet";
+    return ref.startsWith("#/state/") ? ref.slice(8) : mapRefLabel(ref) || ref || "nothing yet";
   }
   return isString(value) ? "a template" : "a formula";
 }
@@ -1098,6 +1118,7 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
     plan.draft = undefined;
     const editorOpts: ExpressionEditorOpts = {
       allowEventRef: false,
+      extraRefs: opts.extraSignals,
       preview: null,
       stateDefs: opts.stateDefs,
       stateEntries: null,
@@ -1230,7 +1251,7 @@ function sectionsFor(node: JxMutableNode, path: JxPath): ContentSectionView[] {
   const tagName = displayTagName(node.tagName) || "div";
   const isCustomInstance = displayTagName(node.tagName).includes("-");
   const attrs = node.attributes || {};
-  const mapSignals = mapSignalsFor(path);
+  const mapSignals = mapSignalsFor(doc, path);
   const bindableSignals = bindableSignalNames(doc);
 
   // ── Which attributes this tag has, by section ──

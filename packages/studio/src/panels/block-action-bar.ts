@@ -1193,11 +1193,10 @@ function openMergeTagMenu(anchor: HTMLElement): void {
   // No live `$map` in edit mode — the perimeter renders one glyph template — so fields resolve
   // Parent-side from schema, keyed off the selected element's doc path (which carries a `map` segment).
   const selPath = getEditSnapshot().snapshot?.path ?? primarySelection(tab?.session.selection);
-  const arrayNode = tab && selPath ? findEnclosingRepeater(tab.doc.document, selPath) : null;
-  if (arrayNode && tab) {
+  if (tab && selPath && findEnclosingRepeater(tab.doc.document, selPath)) {
     const tokens = resolveRepeaterItemFields(
-      arrayNode,
-      tab.doc.document.state,
+      tab.doc.document,
+      selPath,
       projectState?.projectConfig,
     );
     tags.push(...buildRepeaterTagsFromFields(tokens));

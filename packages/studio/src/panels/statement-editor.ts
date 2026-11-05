@@ -62,6 +62,8 @@ export interface StatementEditorOpts {
   stateDefs: string[];
   stateEntries?: Record<string, JxStateDefinition> | null;
   allowEventRef: boolean;
+  /** Pointers beyond the document's own signals: inside a repeater, its item and that item's fields. */
+  extraRefs?: readonly SurfaceOption[] | null | undefined;
   /** The entry's declared CEM events — offered as dispatchEvent name completions. */
   emits?: CemEvent[];
   /**
@@ -342,6 +344,7 @@ function operandOpts(opts: StatementEditorOpts) {
   return {
     allowEventRef: opts.allowEventRef,
     depth: 0,
+    extraRefs: opts.extraRefs,
     stateDefs: opts.stateDefs,
     stateEntries: opts.stateEntries ?? null,
   };
@@ -578,6 +581,7 @@ export function flattenStatements(
           (n) => commit(n as JxStatement),
           {
             allowEventRef: opts.allowEventRef,
+            extraRefs: opts.extraRefs,
             stateDefs: opts.stateDefs,
             stateEntries: opts.stateEntries ?? null,
           },

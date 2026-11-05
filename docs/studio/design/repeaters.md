@@ -47,7 +47,16 @@ Select the repeater and click **Edit template →** in the **Repeating list** se
 Inside the template, each item's data is in scope:
 
 - While editing text, the **Insert data** button on the block action bar offers `item` (the current item) and `index`, its position, alongside the item's own fields: `item.data.title` for a content collection's fields, or `item.name`-style fields for lists of records. The same insertion is a command, **Insert Data**, so you can reach it from :kbd[⌘K] with the token typed rather than picked.
-- In the Inspector, any row whose **value source** is set to **From data…** offers the current item and its position alongside the document's own signals.
+- In the Inspector, any row whose **value source** is set to **From data…** offers `item`, `index` and the item's own fields alongside the document's signals, so you can pick `item.data.title` from the list instead of typing a template. The same fields appear under **List item** in a formula's operands, including in event handlers.
+
+Studio works out those fields without running anything, from whichever of these the list reads:
+
+- A content collection: the fields its schema declares, plus `item.id` and `item.body`. A field that references another collection also lists that entry's fields, such as `item.data.author.data.name`.
+- A signal with a declared schema, including a shared type from `$defs`.
+- A signal holding a sample value, or an inline list: every field found in its first rows.
+- A field of an outer item, for a list inside a list. A nested list's **Items** offers the outer item's list fields, and its template then offers the fields of each entry in that list.
+
+When the shape can't be deduced, as with a list computed by a formula, the picker offers `item` and `index` alone. You can still reach a field Studio doesn't know about with **Mixed text**, and a binding to one keeps showing in the picker as you wrote it.
 
 Bind the template's text and attributes to item fields and every rendered copy fills itself in from its own item.
 

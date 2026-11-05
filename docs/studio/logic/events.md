@@ -51,7 +51,7 @@ Click **Add Event**. Studio creates a binding on the first free event name and p
 
 **From data: call something you already declared.** A picker lists the functions declared in the **[Data panel](/docs/studio/logic/data)**; pick one and the event runs it. This is the tidiest option when the same behavior is used in more than one place.
 
-**Formula: an inline formula.** The event runs a single formula, edited right in the tab with live value badges, which suits one-step reactions like `$count += 1` or `$menuOpen = true`. Inside a repeater template it previews against the first item, so the badges show real values. The **open below** icon moves it into the **[formula workspace](/docs/studio/logic/formula-workspace)** in the Bottom dock, where the page keeps rendering behind it.
+**Formula: an inline formula.** The event runs a single formula, edited right in the tab with live value badges, which suits one-step reactions like `$count += 1` or `$menuOpen = true`. Inside a repeater template its operands can read the current item's fields from the **List item** group, and it previews against the first item, so the badges show real values. The **open below** icon moves it into the **[formula workspace](/docs/studio/logic/formula-workspace)** in the Bottom dock, where the page keeps rendering behind it.
 
 **Inline function: a handler written on the element itself.** A **Statements** / **Code** toggle picks how you write it: as visual **[statement](/docs/studio/logic/statements)** cards, or as JavaScript in a small text field with an **Open in editor** button for the real **[code editor](/docs/studio/logic/code)**.
 

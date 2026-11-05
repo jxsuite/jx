@@ -76,6 +76,7 @@ import {
   bindableSignalNames,
   defaultAsString,
   isInspectorSectionOpen,
+  mapListSignalsFor,
   mapSignalsFor,
   setInspectorSection,
 } from "./properties-panel";
@@ -348,6 +349,7 @@ function addField(
         (next) => spec.onChange({ $expression: next } as JsonValue),
         {
           allowEventRef: false,
+          extraRefs: spec.extraSignals,
           stateDefs: [...spec.stateDefs],
           stateEntries: null,
         },
@@ -452,7 +454,7 @@ export function projectLogicPanel(): LogicView {
     view.repeaterFields = [
       addField(fields, `prop|${key}|items`, "items", {
         caps: "repeaterItems",
-        extraSignals: null,
+        extraSignals: mapListSignalsFor(doc, selection),
         label: "Items",
         literalDefault: literalDefaultOf(node.items),
         onChange: (v?: JsonValue) =>
@@ -475,7 +477,7 @@ export function projectLogicPanel(): LogicView {
         // `SwitchDef` is a $ref and nothing else, so From data… is the only rung — a $switch is
         // Inherently dynamic, and de-escalating it would delete the key and demote the node.
         caps: "switchDiscriminant",
-        extraSignals: mapSignalsFor(selection),
+        extraSignals: mapSignalsFor(doc, selection),
         label: "Expression",
         literalDefault: literalDefaultOf(node.$switch),
         onChange: (v?: JsonValue) =>
@@ -620,6 +622,7 @@ function bindingView(
         {
           allowEventRef: true,
           emits: fn.emits ?? [],
+          extraRefs: mapSignalsFor(tab.doc.document, selection),
           /* The Inspector's copy, named by the handler it edits. It answered to
              `navigator/statements` until the docks were split, and then to a bare
              `inspector/statements` — which the binding list stamps once per structured handler, so
@@ -657,6 +660,7 @@ function bindingView(
     plan.paint = (host) =>
       mountExpressionEditor(host, expression, commitExpression, {
         allowEventRef: true,
+        extraRefs: mapSignalsFor(tab.doc.document, selection),
         onInsertDef: insertDef,
         preview,
         stateDefs: Object.keys(defs),

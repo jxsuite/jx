@@ -650,6 +650,40 @@ describe("ref picker", () => {
     expect(values).toContain("event#/target/value");
   });
 
+  test("a repeater's item and fields are a named group, ahead of the event refs", async () => {
+    const m = await mount(
+      { operator: "=", target: { $ref: "" } },
+      {
+        allowEventRef: true,
+        extraRefs: [{ label: "item.data.title", value: "$map/item/data/title" }],
+      },
+    );
+    const picker = part(row(m.host, "target"), "ref")!;
+    expect([...picker.querySelectorAll("optgroup")].map((g) => g.getAttribute("label"))).toEqual([
+      "List item",
+      "Event",
+    ]);
+    expect(optionValues(picker)).toContain("$map/item/data/title");
+  });
+
+  test("a repeater's item alone is enough to draw the picker with no state defined", async () => {
+    const m = await mount(
+      { operator: "=", target: { $ref: "" } },
+      { extraRefs: [{ label: "item", value: "$map/item" }], stateDefs: [] },
+    );
+    const target = row(m.host, "target");
+    expect(part(target, "empty")).toBeNull();
+    expect(optionValues(part(target, "ref"))).toEqual(["$map/item"]);
+  });
+
+  test("an empty list of extra refs is still nothing to bind", async () => {
+    const m = await mount(
+      { operator: "=", target: { $ref: "" } },
+      { extraRefs: [], stateDefs: [] },
+    );
+    expect(part(row(m.host, "target"), "empty")).not.toBeNull();
+  });
+
   test("a ref no group holds keeps its own stand-in row rather than falling to the first", async () => {
     const m = await mount({ operator: "=", target: { $ref: "#/weird/path" } });
     const picker = part(row(m.host, "target"), "ref")!;
