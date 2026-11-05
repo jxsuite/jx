@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.7.5-draft\
+**Version:** 0.7.6-draft\
 **Status:** Partial\
-**Updated:** 2026-10-29\
+**Updated:** 2026-11-04\
 **License:** MIT
 
 ---
@@ -2346,6 +2346,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.7.6-draft** (2026-11-04) — §4.3 a paginate source splits an array in the page's own state into numbered routes, the first at the list's own URL under a catch-all, each built with its slice and its pager values, once per value of an each source when the list belongs to another parameter; §4.5, §5.5 and §8.4.1 say so. §6.4 a ContentCollection queries several content types as one list, reads dotted field paths through arrays, and resolves #/$params and #/state references in a filter value; a field with no value contains nothing, so not contains keeps the entry.
 - **0.7.5-draft** (2026-10-29) — The image cache's npm lookup reads npm_config_cache first and gives npm config get cache 3 seconds.
 - **0.7.4-draft** (2026-10-29) — Desktop source paths follow the reorganization by process: src/main, src/preload, src/backend, src/webview and src/shared.
 - **0.7.3-draft** (2026-10-27) — §15 and §15.4: jx dev stands in for the worker's server-function routes as it does for its mounts.

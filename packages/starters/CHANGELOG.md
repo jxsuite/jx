@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.2.0](https://github.com/jxsuite/jx/compare/starters-v3.1.4...starters-v3.2.0) (2026-11-04)
+
+
+### Features
+
+* **site:** page a list into numbered routes, and query collections by path and by reference ([#535](https://github.com/jxsuite/jx/issues/535)) ([bd3eb1e](https://github.com/jxsuite/jx/commit/bd3eb1ef8f49ce8c8a4d9bfc4e89cb4f54ea1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.2.1
+  * devDependencies
+    * @jxsuite/parser bumped to 4.2.0
+    * @jxsuite/runtime bumped to 6.0.2
+    * @jxsuite/schema bumped to 5.1.0
+
 ## [3.1.4](https://github.com/jxsuite/jx/compare/starters-v3.1.3...starters-v3.1.4) (2026-11-03)
 
 

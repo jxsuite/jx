@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.0.4](https://github.com/jxsuite/jx/compare/desktop-v8.0.3...desktop-v8.0.4) (2026-11-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 8.1.0
+    * @jxsuite/create bumped to 1.5.3
+    * @jxsuite/protocol bumped to 6.2.1
+    * @jxsuite/schema bumped to 5.1.0
+    * @jxsuite/server bumped to 8.2.1
+    * @jxsuite/starters bumped to 3.2.0
+    * @jxsuite/studio bumped to 10.4.0
+  * devDependencies
+    * @jxsuite/server bumped to 8.2.1
+    * @jxsuite/ui bumped to 0.10.0
+
 ## [8.0.3](https://github.com/jxsuite/jx/compare/desktop-v8.0.2...desktop-v8.0.3) (2026-11-04)
 
 
