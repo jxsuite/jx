@@ -5,6 +5,7 @@ code:
   - packages/studio/src/panels/ai-panel.ts
   - packages/studio/src/services/document-assistant.ts
   - packages/studio/src/services/ai-tools.ts
+  - packages/studio/src/services/render-critic.ts
 ---
 
 # Document assistant
@@ -36,6 +37,8 @@ Every change lands on the canvas the moment it's made, so the page updates in fr
 ## Every edit is checked
 
 After each change, Studio validates the document and test-renders it out of sight. If an edit introduced a problem (an invalid property, something that breaks rendering), the assistant is told exactly what went wrong and fixes it with follow-up edits in the same request. The page may pass through an imperfect intermediate state while it iterates; that's the self-correction loop working, not the final result.
+
+The test render draws a page the way a build would: it waits up to five seconds for the page's content, and draws a dynamic route with its first entry. It never runs your `timing: "server"` functions or sends your `Request` entries, because it happens automatically and either can have side effects such as sending email. Templates that read them get a placeholder instead, so check those in Preview, where both do run.
 
 The rules it's checked against are your project's own, the same generated schemas the **[code editor](/docs/studio/logic/code)** underlines against, so sections contributed by the extensions you've enabled are enforced too. Writes to `project.json` go through the same gate before they reach disk, and a change to your enabled extensions updates the rules for both surfaces immediately.
 

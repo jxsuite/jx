@@ -1163,6 +1163,69 @@ export function setTemplateErrorHandler(
   _templateErrorHandler = handler;
 }
 
+/** Warn about a throwing template, once per source. */
+function warnTemplateError(source: string, error: Error): void {
+  if (!reportedTemplates.has(source)) {
+    reportedTemplates.add(source);
+    console.warn(`jx: template ${JSON.stringify(source)} threw:`, error);
+  }
+}
+
+/** Lookups in flight whose answers can make a throwing template valid (§6.1). */
+let pendingLookups = 0;
+
+/** Each binding still throwing while a lookup is in flight, by its `run`, with its latest throw. */
+const heldTemplateErrors = new Map<() => void, { error: Error; source: string }>();
+
+/** Who {@link lookupsSettled} has yet to answer. */
+const lookupWaiters: (() => void)[] = [];
+
+/**
+ * Hold template warnings until `lookup` and every other lookup in flight have settled.
+ *
+ * `lookup` must write its answer to state before it settles: the write re-runs the bindings waiting
+ * on it, so whatever is still held when the last one settles is a template the data did not fix,
+ * and only that is reported. A lookup its own answer starts is counted before this one is
+ * released.
+ *
+ * @param {Promise<void>} lookup - Never rejects: it reports its own failure
+ */
+function holdTemplateErrorsFor(lookup: Promise<void>): void {
+  pendingLookups += 1;
+  void lookup.finally(() => {
+    pendingLookups -= 1;
+    if (pendingLookups === 0) {
+      /* The console, even if a handler was installed meanwhile: these throws happened outside that
+         handler's render, and Studio's render critic would refuse its page for them. */
+      for (const { error, source } of heldTemplateErrors.values()) {
+        warnTemplateError(source, error);
+      }
+      heldTemplateErrors.clear();
+      for (const wake of lookupWaiters.splice(0)) {
+        wake();
+      }
+    }
+  });
+}
+
+/**
+ * Answers once no lookup the runtime started is in flight (embedding.md §5.2).
+ *
+ * A host whose question is whether a document renders awaits this between `buildScope` and
+ * `renderNode`, so its templates read the data rather than the `null` before it. A lookup can hang,
+ * and this waits for it, so bounding the wait is the host's job.
+ *
+ * @returns {Promise<void>}
+ */
+export function lookupsSettled(): Promise<void> {
+  if (pendingLookups === 0) {
+    return Promise.resolve();
+  }
+  return new Promise((wake) => {
+    lookupWaiters.push(wake);
+  });
+}
+
 /**
  * Run a template binding as an effect that survives its expression throwing.
  *
@@ -1172,7 +1235,8 @@ export function setTemplateErrorHandler(
  * and the throw unwound the whole `renderNode` above it: one early read blanked the page. Caught
  * INSIDE the effect, every dependency read before the throw stays tracked, so the binding re-runs
  * on the change that makes it valid. Until then it shows `fallback`'s answer (nothing written, by
- * default), and the error is reported once per source.
+ * default), and the error is reported once per source, after any lookup in flight has settled: a
+ * template that only needed that lookup's answer is not reported at all.
  *
  * @param {string} source - The template, for the report
  * @param {() => void} run - Evaluates the template and writes it
@@ -1182,12 +1246,15 @@ function bindTemplate(source: string, run: () => void, fallback?: () => void): v
   effect(() => {
     try {
       run();
+      heldTemplateErrors.delete(run);
     } catch (error) {
+      const thrown = error instanceof Error ? error : new Error(String(error));
       if (_templateErrorHandler) {
-        _templateErrorHandler(error instanceof Error ? error : new Error(String(error)), source);
-      } else if (!reportedTemplates.has(source)) {
-        reportedTemplates.add(source);
-        console.warn(`jx: template ${JSON.stringify(source)} threw:`, error);
+        _templateErrorHandler(thrown, source);
+      } else if (pendingLookups > 0) {
+        heldTemplateErrors.set(run, { error: thrown, source });
+      } else {
+        warnTemplateError(source, thrown);
       }
       fallback?.();
     }
@@ -3297,29 +3364,32 @@ export async function resolvePrototype(
             }
           });
 
-          const doFetch = () =>
-            fetch(url, {
-              method: def.method ?? "GET",
-              signal: controller.signal,
-              ...(def.headers && { headers: def.headers }),
-              ...(def.body && {
-                body: isNonNullObject(def.body) ? JSON.stringify(def.body) : def.body,
-              }),
-            })
-              .then((r): Promise<JsonValue> => (r.ok ? r.json() : Promise.reject(r.statusText)))
-              .then((d) => {
-                s.value = d;
+          const doFetch = () => {
+            holdTemplateErrorsFor(
+              fetch(url, {
+                method: def.method ?? "GET",
+                signal: controller.signal,
+                ...(def.headers && { headers: def.headers }),
+                ...(def.body && {
+                  body: isNonNullObject(def.body) ? JSON.stringify(def.body) : def.body,
+                }),
               })
-              .catch((error) => {
-                if (!(error instanceof Error && error.name === "AbortError")) {
-                  s.value = { error: String(error) };
-                }
-              });
+                .then((r): Promise<JsonValue> => (r.ok ? r.json() : Promise.reject(r.statusText)))
+                .then((d) => {
+                  s.value = d;
+                })
+                .catch((error) => {
+                  if (!(error instanceof Error && error.name === "AbortError")) {
+                    s.value = { error: String(error) };
+                  }
+                }),
+            );
+          };
 
           if (debounceMs > 0) {
             debounceTimer = setTimeout(doFetch, debounceMs);
           } else {
-            void doFetch();
+            doFetch();
           }
         });
       }
@@ -3850,24 +3920,25 @@ async function resolveViaDevProxy(def: JxPrototypeDef, state: JxScope, key: stri
 
   // Always wrap in ref for reactivity
   const s: Ref<JxScopeValue> = ref(null);
+  const resolveInto = (resolvedConfig: JxScope) => {
+    holdTemplateErrorsFor(
+      doResolve(resolvedConfig)
+        .then((value) => {
+          s.value = value;
+        })
+        .catch((error) => console.error("Jx dev proxy:", error)),
+    );
+  };
   if (hasTemplates) {
     effect(() => {
       const resolvedConfig: JxScope = {};
       for (const [k, v] of Object.entries(config)) {
         resolvedConfig[k] = isTemplateString(v) ? evaluateTemplate(v, state) : v;
       }
-      doResolve(resolvedConfig)
-        .then((value) => {
-          s.value = value;
-        })
-        .catch((error) => console.error("Jx dev proxy:", error));
+      resolveInto(resolvedConfig);
     });
   } else {
-    doResolve(config)
-      .then((value) => {
-        s.value = value;
-      })
-      .catch((error) => console.error("Jx dev proxy:", error));
+    resolveInto(config);
   }
   return s;
 }
@@ -3900,19 +3971,21 @@ function latestServerCall(
     const n = seq;
     /* The executor runs before the constructor returns, so the call still starts synchronously,
        and a throw inside it rejects this promise instead of escaping to the caller. */
-    new Promise<JsonValue>((settle) => {
-      settle(invoke(args));
-    })
-      .then((result) => {
-        if (n === seq) {
-          s.value = result;
-        }
+    holdTemplateErrorsFor(
+      new Promise<JsonValue>((settle) => {
+        settle(invoke(args));
       })
-      .catch((error) => {
-        if (n === seq) {
-          console.error(label, error);
-        }
-      });
+        .then((result) => {
+          if (n === seq) {
+            s.value = result;
+          }
+        })
+        .catch((error) => {
+          if (n === seq) {
+            console.error(label, error);
+          }
+        }),
+    );
   };
 }
 
