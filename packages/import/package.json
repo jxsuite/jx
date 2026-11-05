@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/import",
-  "version": "0.42.2",
+  "version": "0.42.3",
   "description": "Clone a live website into a Jx project",
   "license": "MIT",
   "repository": {

@@ -1,5 +1,33 @@
 # Changelog
 
+## [10.4.0](https://github.com/jxsuite/jx/compare/studio-v10.3.0...studio-v10.4.0) (2026-11-04)
+
+
+### Features
+
+* **site:** page a list into numbered routes, and query collections by path and by reference ([#535](https://github.com/jxsuite/jx/issues/535)) ([bd3eb1e](https://github.com/jxsuite/jx/commit/bd3eb1ef8f49ce8c8a4d9bfc4e89cb4f54ea1ef1))
+
+
+### Bug Fixes
+
+* **studio:** let the Style sidebar scroll again ([#536](https://github.com/jxsuite/jx/issues/536)) ([0eae46d](https://github.com/jxsuite/jx/commit/0eae46dcbd5c2928fcced926f49beab2e61f8ec0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.42.1
+    * @jxsuite/collab bumped to 0.11.5
+    * @jxsuite/create bumped to 1.5.3
+    * @jxsuite/formulas bumped to 0.0.27
+    * @jxsuite/markup bumped to 1.0.3
+    * @jxsuite/protocol bumped to 6.2.1
+    * @jxsuite/runtime bumped to 6.0.2
+    * @jxsuite/schema bumped to 5.1.0
+    * @jxsuite/site bumped to 2.3.0
+    * @jxsuite/ui bumped to 0.10.0
+
 ## [10.3.0](https://github.com/jxsuite/jx/compare/studio-v10.2.0...studio-v10.3.0) (2026-11-04)
 
 

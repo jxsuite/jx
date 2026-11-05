@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.1.0](https://github.com/jxsuite/jx/compare/compiler-v8.0.2...compiler-v8.1.0) (2026-11-04)
+
+
+### Features
+
+* **site:** page a list into numbered routes, and query collections by path and by reference ([#535](https://github.com/jxsuite/jx/issues/535)) ([bd3eb1e](https://github.com/jxsuite/jx/commit/bd3eb1ef8f49ce8c8a4d9bfc4e89cb4f54ea1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.5.3
+    * @jxsuite/runtime bumped to 6.0.2
+    * @jxsuite/schema bumped to 5.1.0
+    * @jxsuite/site bumped to 2.3.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.3
+    * @jxsuite/parser bumped to 4.2.0
+
 ## [8.0.2](https://github.com/jxsuite/jx/compare/compiler-v8.0.1...compiler-v8.0.2) (2026-11-03)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.2.1](https://github.com/jxsuite/jx/compare/server-v8.2.0...server-v8.2.1) (2026-11-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.42.1
+    * @jxsuite/catalog bumped to 0.1.7
+    * @jxsuite/collab bumped to 0.11.5
+    * @jxsuite/compiler bumped to 8.1.0
+    * @jxsuite/create bumped to 1.5.3
+    * @jxsuite/import bumped to 0.42.3
+    * @jxsuite/protocol bumped to 6.2.1
+    * @jxsuite/runtime bumped to 6.0.2
+    * @jxsuite/schema bumped to 5.1.0
+    * @jxsuite/site bumped to 2.3.0
+    * @jxsuite/starters bumped to 3.2.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.3
+    * @jxsuite/connector bumped to 0.8.3
+    * @jxsuite/parser bumped to 4.2.0
+
 ## [8.2.0](https://github.com/jxsuite/jx/compare/server-v8.1.0...server-v8.2.0) (2026-11-04)
 
 
