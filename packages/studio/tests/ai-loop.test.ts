@@ -84,6 +84,13 @@ function childNode(tab: Tab, index: number): JxMutableNode {
   return child;
 }
 
+/** Small bounds, so a capped turn is a few rounds, and a model that repeats itself runs them out. */
+const SMALL_BOUNDS = {
+  maxIdenticalRounds: Number.POSITIVE_INFINITY,
+  maxRounds: 25,
+  maxWorkRounds: 5,
+};
+
 function harness(tab: Tab, validate?: (doc: CandidateDocument) => Promise<string[]>) {
   const chatState = createChatState({ model: "test" });
   const toolRegistry: ToolRegistry = createToolRegistry();
@@ -373,9 +380,16 @@ describe("ai agent loop — integration", () => {
     );
 
     chatState.sendMessage("loop forever");
-    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+    await runAgentLoop({
+      chatState,
+      policy: SMALL_BOUNDS,
+      streamingClient: client,
+      systemPrompt: "",
+      toolRegistry,
+    });
 
-    expect(client.calls()).toBe(5); // MAX_ROUNDS
+    // Five rounds of work, and the closing round, whose calls were not run.
+    expect(client.calls()).toBe(6);
     expect(chatState.status).toBe("idle");
     expect(chatState.error).toBeNull();
     const tail = chatState.messages.at(-1)!;
@@ -423,7 +437,13 @@ describe("ai agent loop — integration", () => {
     );
 
     chatState.sendMessage("delete everything repeatedly");
-    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+    await runAgentLoop({
+      chatState,
+      policy: SMALL_BOUNDS,
+      streamingClient: client,
+      systemPrompt: "",
+      toolRegistry,
+    });
 
     expect(chatState.status).toBe("error");
     expect(chatState.error).toContain("ran out of tool-call rounds");
@@ -591,6 +611,7 @@ describe("ai agent loop — the interactive round budget", () => {
 
     h.chatState.sendMessage("ask me things");
     await runAgentLoop({
+      policy: SMALL_BOUNDS,
       interactions: askStore,
       chatState: h.chatState,
       streamingClient: client,
@@ -601,7 +622,7 @@ describe("ai agent loop — the interactive round budget", () => {
 
     expect(h.answered()).toBe(3);
     // Three interactive rounds plus five that did work.
-    expect(client.calls()).toBe(8);
+    expect(client.calls()).toBe(9);
   });
 
   test("a round that asked AND worked spends the budget", async () => {
@@ -621,6 +642,7 @@ describe("ai agent loop — the interactive round budget", () => {
 
     h.chatState.sendMessage("ask and work");
     await runAgentLoop({
+      policy: SMALL_BOUNDS,
       interactions: askStore,
       chatState: h.chatState,
       streamingClient: client,
@@ -629,7 +651,7 @@ describe("ai agent loop — the interactive round budget", () => {
     });
     h.stop();
 
-    expect(client.calls()).toBe(5);
+    expect(client.calls()).toBe(6);
   });
 
   test("a model that only ever asks still terminates", async () => {
@@ -641,6 +663,7 @@ describe("ai agent loop — the interactive round budget", () => {
 
     h.chatState.sendMessage("ask forever");
     await runAgentLoop({
+      policy: SMALL_BOUNDS,
       interactions: askStore,
       chatState: h.chatState,
       streamingClient: client,
@@ -649,7 +672,8 @@ describe("ai agent loop — the interactive round budget", () => {
     });
     h.stop();
 
-    expect(client.calls()).toBe(25); // MAX_TOTAL_ROUNDS
+    // The ceiling, and the closing round.
+    expect(client.calls()).toBe(26);
   });
 
   test("stopping the turn settles the question instead of hanging the loop", async () => {
@@ -984,9 +1008,15 @@ describe("ai agent loop — what a turn applied, and a turn that drew nothing", 
     );
 
     chatState.sendMessage("look at everything");
-    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+    await runAgentLoop({
+      chatState,
+      policy: SMALL_BOUNDS,
+      streamingClient: client,
+      systemPrompt: "",
+      toolRegistry,
+    });
 
-    expect(client.calls()).toBe(5);
+    expect(client.calls()).toBe(6);
     expect(chatState.status).toBe("error");
     expect(chatState.error).toContain("ran out of tool-call rounds");
     expect(chatState.error).not.toContain("Changes applied so far");
@@ -1023,7 +1053,13 @@ describe("ai agent loop — what a turn applied, and a turn that drew nothing", 
     const client = fakeClient(Array.from({ length: 6 }, (_, i) => round(i)));
 
     chatState.sendMessage("read then write, repeatedly");
-    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+    await runAgentLoop({
+      chatState,
+      policy: SMALL_BOUNDS,
+      streamingClient: client,
+      systemPrompt: "",
+      toolRegistry,
+    });
 
     expect(chatState.status).toBe("idle");
     const tail = chatState.messages.at(-1)!.content;
@@ -1066,7 +1102,13 @@ describe("ai agent loop — what a turn applied, and a turn that drew nothing", 
     ]);
 
     chatState.sendMessage("make me a site");
-    await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
+    await runAgentLoop({
+      chatState,
+      policy: SMALL_BOUNDS,
+      streamingClient: client,
+      systemPrompt: "",
+      toolRegistry,
+    });
 
     expect(chatState.status).toBe("idle");
     const listed = chatState.messages

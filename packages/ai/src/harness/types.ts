@@ -33,6 +33,11 @@ export interface ModelRequest {
   /** The conversation so far, this turn's own messages included. */
   readonly messages: readonly ChatMessage[];
   readonly tools: readonly ToolSpec[];
+  /**
+   * The note a closing round ends on (specs/ai.md §3.8), already the last of `messages`. It is on
+   * no transcript, so a host that projects its request from its own transcript sends it from here.
+   */
+  readonly closing?: ChatMessage;
 }
 
 /** Streams one round's answer. Called exactly once per round. */
@@ -51,9 +56,10 @@ export interface TurnError {
  * How a turn ended.
  *
  * - `complete`: the model stopped calling tools after drawing something.
- * - `cap_partial`: the work budget ran out after something was applied; the turn ends on a message
- *   saying what.
- * - `cap_failed`: the work budget ran out with nothing applied.
+ * - `cap_partial`: the turn stopped working (its work budget ran out, or it was repeating itself) and
+ *   ended on a message: the model's closing reply, or the harness's when something was applied and
+ *   the model gave none.
+ * - `cap_failed`: the turn stopped working, nothing was applied, and the model gave no closing reply.
  * - `error`: the provider sent an error frame.
  * - `cancelled`: the turn was stopped.
  * - `empty`: the model answered with neither text nor a tool call, and nothing earlier in the turn
@@ -67,17 +73,27 @@ export type TurnOutcomeKind =
   | "cancelled"
   | "empty";
 
+/** Why a turn stopped working: its work budget ran out, or it was repeating itself. */
+export type CapReason = "budget" | "repeating";
+
 /** The numbers and words a turn is bounded and reported by. */
 export interface TurnPolicy {
   /** Rounds that did work: a round whose calls were all interactive does not count. */
   readonly maxWorkRounds: number;
   /** Rounds of every kind, so a turn ends whatever the model does. */
   readonly maxRounds: number;
+  /** How many rounds of the same calls with the same results it takes to call a turn stuck. */
+  readonly maxIdenticalRounds: number;
+  /** What a turn's closing round tells the model. */
+  readonly closingText: (reason: CapReason) => string;
+  /** Whether neighbouring read-only calls in a round run at once. Their results stay in order. */
+  readonly parallelReadOnly: boolean;
   /** A token estimate for a text, reported beside each usage count for the system prompt. */
   readonly estimateTokens: (text: string) => number;
-  /** What a turn that ran out of work rounds says. */
+  /** What a turn says when it stopped working and the model gave no closing reply. */
   readonly capText: (cap: {
     readonly maxWorkRounds: number;
+    readonly reason: CapReason;
     readonly applied: readonly string[];
     readonly errors: readonly string[];
   }) => string;
@@ -209,6 +225,8 @@ export type HarnessEvent = EventBase &
         readonly round: number;
         readonly workRounds: number;
         readonly messageId: string;
+        /** Set on a closing round (specs/ai.md §3.8): the last, whose calls will not run. */
+        readonly closing?: CapReason;
       }
     | { readonly type: "text"; readonly messageId: string; readonly text: string }
     | { readonly type: "reasoning"; readonly messageId: string; readonly text: string }
@@ -287,7 +305,7 @@ export interface TurnOutcome {
   readonly usage: { readonly last: Usage | null; readonly total: Usage | null };
   /** Every message the turn added, in its final form. */
   readonly appended: readonly ChatMessage[];
-  /** For `cap_partial`: the message the turn ended on. */
+  /** For a `cap_partial` the harness ended, the model having given no closing reply: its message. */
   readonly cap?: { readonly messageId: string; readonly text: string };
   /** For `error` and `empty`: the round message that was dropped. */
   readonly removedMessageId?: string;

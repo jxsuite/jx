@@ -139,8 +139,11 @@ describe("the size of @jxsuite/ai in the page", () => {
    * Raised again to 40,960 for `./catalog` and the tool facts table (38,344 bytes): the assistant's
    * tools became one catalog with a title and four behaviour hints each, which is new code in the
    * page rather than a move. The gated registry and the composite it replaced were Studio's bytes.
+   *
+   * Raised again to 46,080 for the turn engine's closing round, its repeat guard and parallel reads
+   * (41,995 bytes): new behaviour in the page, specs/ai.md §3.8.
    */
-  const CEILING = 40_960;
+  const CEILING = 46_080;
 
   /** The `@jxsuite/ai` subpaths Studio imports or re-exports for their values, not only types. */
   function runtimeSubpaths(): string[] {

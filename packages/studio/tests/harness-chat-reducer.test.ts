@@ -183,7 +183,17 @@ describe("applyHarnessEvent", () => {
         type: "turn_end",
         outcome: outcome("cap_partial", { cap: { messageId: "k", text: "Capped." } }),
       },
-      [["beginAssistantTurn"], ["appendDelta", "Capped."], ["finishStream", "length"]],
+      [
+        ["cancelStream"],
+        ["beginAssistantTurn"],
+        ["appendDelta", "Capped."],
+        ["finishStream", "length"],
+      ],
+    ],
+    [
+      "the cap on the model's own closing reply, which is already drawn",
+      { ...base, type: "turn_end", outcome: outcome("cap_partial") },
+      [],
     ],
     [
       "the cap with nothing applied",

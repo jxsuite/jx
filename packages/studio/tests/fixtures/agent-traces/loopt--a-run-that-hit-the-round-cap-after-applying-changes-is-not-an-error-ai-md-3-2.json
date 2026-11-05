@@ -41,6 +41,9 @@
     "appendToolResult(\"c4\", {\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"})",
     "pushToolResultMessage(\"c4\", \"{\\\"success\\\":true,\\\"summary\\\":\\\"Set \\\\\\\"id\\\\\\\" at [].\\\"}\")",
     "beginAssistantTurn()",
+    "toMessagesArray()",
+    "cancelStream()",
+    "beginAssistantTurn()",
     "appendDelta(\"I ran out of tool-call rounds (5) before finishing.\\n\\nChanges applied so far:\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n- Set \\\"id\\\" at [].\\n\\nYou can continue by sending another message, or try a more specific request.\")",
     "finishStream(\"length\")"
   ],
@@ -191,6 +194,40 @@
           }
         ],
         "carried": 7
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 6,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c4",
+                "type": "function",
+                "function": {
+                  "name": "set_property",
+                  "arguments": "{\"key\":\"id\",\"path\":[],\"value\":\"v4\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c4",
+            "content": "{\"success\":true,\"summary\":\"Set \\\"id\\\" at [].\"}"
+          },
+          {
+            "role": "user",
+            "content": "This turn has used its whole tool budget. No further tool call will run. This note is from the system, not the author. Reply to the author now in plain text: answer as much as you can from what you already found, say what you changed, and say what is left. They can ask you to continue in their next message."
+          }
+        ],
+        "carried": 9
       },
       "systemPrompt": "= previous",
       "tools": "= previous"

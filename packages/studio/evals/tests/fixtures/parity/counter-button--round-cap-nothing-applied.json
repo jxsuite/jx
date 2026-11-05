@@ -1,13 +1,14 @@
 {
   "scenario": "counter-button--round-cap-nothing-applied",
   "task": "counter-button",
-  "what": "five failing work rounds (truncated args, missing key/node/arg): the cap as an error",
+  "what": "five failing work rounds (truncated args, missing key/node/arg), no closing reply: the cap as an error",
   "modelRequests": [
     "user",
     "user assistant tool",
     "user assistant tool assistant tool",
     "user assistant tool assistant tool assistant tool tool",
-    "user assistant tool assistant tool assistant tool tool assistant tool"
+    "user assistant tool assistant tool assistant tool tool assistant tool",
+    "user assistant tool assistant tool assistant tool tool assistant tool assistant tool user"
   ],
   "rounds": 5,
   "toolCallCount": 6,

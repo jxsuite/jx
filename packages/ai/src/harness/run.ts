@@ -9,10 +9,11 @@
  * - **The calls decide whether tools run, not the finish reason** (§2). A round whose stream carried
  *   tool calls executes them whatever finish the provider reported. Cancellation is the exception:
  *   a round that ends `cancelled`, or whose signal is aborted, runs nothing it streamed.
- * - **A partial success is not a failure** (§3.2). Running out of work rounds after applying
- *   something ends on an ordinary message saying what was applied; only a turn that applied nothing
- *   ends as a failure. Applied means it wrote: a call counts when it succeeded with a summary and
- *   recorded at least one `ok` write.
+ * - **A turn that stops working still answers** (§3.2, §3.8). Running out of work rounds, or making
+ *   the same calls with the same results, opens one closing round whose calls do not run, so the
+ *   model says what it found and did. Without a reply, a turn that applied something ends on the
+ *   harness's message saying what; only one that applied nothing ends as a failure. Applied means
+ *   it wrote: a call counts when it succeeded with a summary and recorded at least one `ok` write.
  * - **A turn that drew nothing says so** (§3.2), as an `empty` outcome, rather than ending silent.
  * - **Stop is checked between calls and after the round** (§2), so a Stop that lands mid-call stops
  *   the calls after it, and one that lands during the last call opens no further round.
@@ -43,6 +44,7 @@ import { joinSystem } from "./model.ts";
 import { DEFAULT_TURN_POLICY } from "./policy.ts";
 import type {
   HarnessEvent,
+  CapReason,
   TurnError,
   TurnInput,
   TurnOutcome,
@@ -260,6 +262,10 @@ export function runTurn(input: TurnInput): TurnRun {
     let workRounds = 0;
     let lastUsage: Usage | null = null;
     let totalUsage: Usage | null = null;
+    /* How many rounds made exactly these calls and got exactly these results. Nothing the model
+       could learn from a further one differs, so the count is what "stuck" means here. */
+    const roundsSeen = new Map<string, number>();
+    let repeating = false;
 
     const finish = (
       kind: TurnOutcomeKind,
@@ -282,18 +288,85 @@ export function runTurn(input: TurnInput): TurnRun {
       return outcome;
     };
 
+    /* How a turn that stopped working ends when the model gave no closing reply. A turn that applied
+       something still says what (§3.2); one that applied nothing has nothing to report but that. */
+    const capped = (reason: CapReason): TurnOutcome => {
+      const text = policy.capText({
+        maxWorkRounds: policy.maxWorkRounds,
+        reason,
+        applied,
+        errors,
+      });
+      if (applied.length === 0) {
+        return finish("cap_failed", { error: { message: text } });
+      }
+      const capId = newId();
+      appended.push({
+        id: capId,
+        role: "assistant",
+        blocks: [{ type: "text", text }],
+        timestamp: now(),
+        meta: { origin: "harness", kind: "round_cap" },
+      });
+      anchor = capId;
+      return finish("cap_partial", { cap: { messageId: capId, text } });
+    };
+
+    /** How many calls from the front of `calls` run together: at least the first. */
+    const parallelRunLength = (calls: readonly (readonly [string, { name: string }])[]): number => {
+      if (!policy.parallelReadOnly) {
+        return 1;
+      }
+      const end = calls.findIndex(([, call]) => {
+        const definition = input.tools.getDefinition(call.name);
+        return (
+          definition?.annotations?.readOnlyHint !== true ||
+          definition.interactive === true ||
+          definition.interaction !== undefined
+        );
+      });
+      if (end === -1) {
+        return calls.length;
+      }
+      return Math.max(end, 1);
+    };
+
     emit({ type: "turn_start" });
     const { sealed, dropped, moved } = repair;
     if (sealed.length + dropped.length + moved.length > 0) {
       emit({ type: "transcript_repaired", sealed, dropped, moved });
     }
-    for (let round = 1; round <= policy.maxRounds && workRounds < policy.maxWorkRounds; round++) {
+    /* The turn ends from inside this loop: on a round with no calls, or on the closing round, which
+       the bounds below reach whatever the model does. */
+    for (let round = 1; ; round++) {
       rounds = round;
+      let closing: CapReason | null = null;
+      if (repeating) {
+        closing = "repeating";
+      } else if (round > policy.maxRounds || workRounds >= policy.maxWorkRounds) {
+        closing = "budget";
+      }
       const messageId =
         round === 1 && input.firstMessageId !== undefined ? input.firstMessageId : newId();
-      emit({ type: "round_start", round, workRounds, messageId });
+      emit(
+        closing
+          ? { type: "round_start", round, workRounds, messageId, closing }
+          : { type: "round_start", round, workRounds, messageId },
+      );
 
+      /* A closing round still lists the tools. Taking them away would refuse the request on a
+         provider that wants a listing beside any call in the history, and would throw away the
+         prompt cache for its last request; a call the model makes anyway is simply not run. */
       const tools = fromOpenAITools(input.tools.listForLLM());
+      const note: ChatMessage | null = closing
+        ? {
+            id: newId(),
+            role: "user",
+            blocks: [{ type: "text", text: policy.closingText(closing) }],
+            timestamp: now(),
+            meta: { origin: "harness", kind: "round_cap" },
+          }
+        : null;
       let text = "";
       let reasoning: string | undefined;
       /* The message records each call as it starts, the way a transcript shows it; execution keys
@@ -306,9 +379,26 @@ export function runTurn(input: TurnInput): TurnRun {
       let errorCode: string | undefined;
 
       for await (const frame of input.model(
-        { system: input.system, messages: [...history, ...appended], tools },
+        note
+          ? {
+              system: input.system,
+              messages: [...history, ...appended, note],
+              tools,
+              closing: note,
+            }
+          : { system: input.system, messages: [...history, ...appended], tools },
         signal,
       )) {
+        /* A closing round's calls will not run, so they are not drawn either: a call on screen, or
+           in the transcript, with no reply is a question this turn has already decided to leave. */
+        if (
+          closing &&
+          (frame.type === "tool_call_start" ||
+            frame.type === "tool_call_delta" ||
+            frame.type === "tool_call_end")
+        ) {
+          continue;
+        }
         switch (frame.type) {
           case "delta": {
             text += frame.content;
@@ -377,13 +467,20 @@ export function runTurn(input: TurnInput): TurnRun {
           : { message: errorMessage };
         input.hooks?.onStreamError?.(error);
         emit({ type: "round_end", messageId, stopReason, truncated, dropped: true, error });
-        return finish("error", { error, removedMessageId: messageId });
+        // The closing round was a courtesy: losing it is not what the turn failed of.
+        return closing && !aborted()
+          ? capped(closing)
+          : finish("error", { error, removedMessageId: messageId });
       }
 
       /* A turn that has drawn nothing by the end of a round with no calls ends here. A stopped
          round is not empty: the author ended it. */
       const stopped = stopReason === "cancelled" || aborted();
       const drawn = text !== "" || records.length > 0;
+      if (closing && !stopped && text.trim() === "") {
+        emit({ type: "round_end", messageId, stopReason, truncated, dropped: true });
+        return capped(closing);
+      }
       if (calls.size === 0 && !stopped && !drawnBefore && anchor === null && !drawn) {
         emit({ type: "round_end", messageId, stopReason, truncated, dropped: true });
         return finish("empty", {
@@ -415,100 +512,111 @@ export function runTurn(input: TurnInput): TurnRun {
         );
         anchor = messageId;
       }
-      if (calls.size === 0 || stopped) {
-        return finish(stopped ? "cancelled" : "complete");
+      if (stopped) {
+        return finish("cancelled");
+      }
+      if (closing) {
+        return finish("cap_partial");
+      }
+      if (calls.size === 0) {
+        return finish("complete");
       }
 
+      /* The calls run in stream order. With `parallelReadOnly`, a run of neighbouring read-only
+         calls runs at once, because none of them can change what another reads; their results are
+         still reported in order, so the transcript and the wire see what a serial turn would. A
+         question or a write is never in such a run, so it still sees everything before it. */
       let didWork = false;
-      for (const [callId, call] of calls) {
+      const seen: string[] = [];
+      const pending = [...calls];
+      while (pending.length > 0) {
         if (aborted()) {
           return finish("cancelled");
         }
-        emit({
-          type: "tool_start",
-          callId,
-          name: call.name,
-          interactive: input.tools.getDefinition(call.name)?.interactive === true,
-        });
-        const before = ledger.writes.length;
-        /* The call's own signal: it aborts with the turn, and is unlinked once the call settles, so
-           a Stop later in the turn reaches nothing that already finished. */
-        const link = linkCallSignal(signal);
-        const ctx = createToolContext({
-          actor,
-          callId,
-          ledger,
-          progress: (progress) => {
-            emit({ type: "tool_progress", callId, progress });
-          },
-          session,
-          signal: link.signal,
-        });
-        let result;
-        try {
-          result = await invoke(
-            { callId, name: call.name, argumentsText: call.argumentsText },
-            ctx,
-            link.signal,
-          );
-        } finally {
-          link.release();
-        }
-        input.hooks?.afterTool?.({ callId, name: call.name, result });
-        // A call that suspends the turn on a person does not spend its work budget.
-        if (input.tools.getDefinition(call.name)?.interactive !== true) {
-          didWork = true;
-        }
-        if (!result.success && result.error) {
-          errors.push(result.error);
-        }
-        const recorded = ledger.writes.slice(before);
-        if (result.success && result.summary && recorded.some((write) => write.ok)) {
-          applied.push(result.summary);
-        }
-        for (const write of recorded) {
-          emit({ type: "write", callId, write });
-        }
-        const toolMessageId = newId();
-        appended.push({
-          id: toolMessageId,
-          role: "tool",
-          blocks: [
-            {
-              type: "tool_result",
+        const batch = pending.splice(0, parallelRunLength(pending));
+        let writesSeen = ledger.writes.length;
+        const results = await Promise.all(
+          batch.map(async ([callId, call]) => {
+            emit({
+              type: "tool_start",
               callId,
-              isError: result.success === false,
-              content: JSON.stringify(result),
-            },
-          ],
-          timestamp: now(),
-        });
-        emit({ type: "tool_result", callId, messageId, toolMessageId, result });
+              name: call.name,
+              interactive: input.tools.getDefinition(call.name)?.interactive === true,
+            });
+            /* The call's own signal: it aborts with the turn, and is unlinked once the call
+               settles, so a Stop later in the turn reaches nothing that already finished. */
+            const link = linkCallSignal(signal);
+            const ctx = createToolContext({
+              actor,
+              callId,
+              ledger,
+              progress: (progress) => {
+                emit({ type: "tool_progress", callId, progress });
+              },
+              session,
+              signal: link.signal,
+            });
+            try {
+              return await invoke(
+                { callId, name: call.name, argumentsText: call.argumentsText },
+                ctx,
+                link.signal,
+              );
+            } finally {
+              link.release();
+            }
+          }),
+        );
+        for (const [index, [callId, call]] of batch.entries()) {
+          const result = results[index]!;
+          input.hooks?.afterTool?.({ callId, name: call.name, result });
+          // A call that suspends the turn on a person does not spend its work budget.
+          if (input.tools.getDefinition(call.name)?.interactive !== true) {
+            didWork = true;
+          }
+          if (!result.success && result.error) {
+            errors.push(result.error);
+          }
+          const recorded = ledger.writes.slice(writesSeen);
+          writesSeen = ledger.writes.length;
+          if (result.success && result.summary && recorded.some((write) => write.ok)) {
+            applied.push(result.summary);
+          }
+          for (const write of recorded) {
+            emit({ type: "write", callId, write });
+          }
+          const content = JSON.stringify(result);
+          seen.push(call.name, call.argumentsText, content);
+          const toolMessageId = newId();
+          appended.push({
+            id: toolMessageId,
+            role: "tool",
+            blocks: [
+              {
+                type: "tool_result",
+                callId,
+                isError: result.success === false,
+                content,
+              },
+            ],
+            timestamp: now(),
+          });
+          emit({ type: "tool_result", callId, messageId, toolMessageId, result });
+        }
       }
 
       if (didWork) {
         workRounds += 1;
+        const fingerprint = JSON.stringify(seen);
+        const count = (roundsSeen.get(fingerprint) ?? 0) + 1;
+        roundsSeen.set(fingerprint, count);
+        repeating = count >= policy.maxIdenticalRounds;
       }
       // A Stop that landed during the round's last call opens no further round.
       if (aborted()) {
         return finish("cancelled");
       }
     }
-
-    const capText = policy.capText({ maxWorkRounds: policy.maxWorkRounds, applied, errors });
-    if (applied.length > 0) {
-      const capId = newId();
-      appended.push({
-        id: capId,
-        role: "assistant",
-        blocks: [{ type: "text", text: capText }],
-        timestamp: now(),
-        meta: { origin: "harness", kind: "round_cap" },
-      });
-      anchor = capId;
-      return finish("cap_partial", { cap: { messageId: capId, text: capText } });
-    }
-    return finish("cap_failed", { error: { message: capText } });
   }
 
   const outcome = loop().finally(settle);
