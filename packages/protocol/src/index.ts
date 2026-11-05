@@ -5,6 +5,7 @@
  * @license MIT
  */
 
+export * from "./git-scope";
 export * from "./problem";
 export * from "./problems";
 export * from "./routes";

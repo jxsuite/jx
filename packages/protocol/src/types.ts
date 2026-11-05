@@ -206,6 +206,10 @@ export interface GitFileStatus {
    * code.
    */
   status: string;
+  /**
+   * Relative to the PROJECT root, never the repository's: the path every other git verb and file
+   * route reads. A project nested in a larger repository lists only its own changes.
+   */
   path: string;
   /** Whether this change is in the index. Absent reads as unstaged. */
   staged?: boolean;
